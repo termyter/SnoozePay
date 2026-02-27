@@ -1,0 +1,7 @@
+{
+  "name": "SnoozePay Screens",
+  "id": "snoozepay-screens-gen",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"]
+}
