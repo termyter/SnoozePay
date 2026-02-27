@@ -22,9 +22,6 @@ final class BalanceServiceTests: XCTestCase {
 
     private func makeService(balance: Double = 0) -> BalanceService {
         testDefaults.set(balance, forKey: "user_balance")
-        // BalanceService.shared uses .standard, so we test via a fake double
-        // In a full DI setup, BalanceService would accept an injected defaults instance
-        // For now, test via AlarmsListViewModel with stubbed dependencies
         return BalanceService.shared
     }
 }
@@ -211,6 +208,7 @@ final class CreateAlarmViewModelTests: XCTestCase {
         vm.name = ""
         vm.save()
         // Verify the alarm was saved with default name
-        // (full verification requires checking Core Data, which requires the stack)
+        let saved = AlarmRepository().fetchAll().last
+        XCTAssertEqual(saved?.name, "Будильник")
     }
 }
