@@ -59,6 +59,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
-        PersistenceController.shared.save()
+        // UserDefaults writes are synchronous — no explicit save needed
     }
 }

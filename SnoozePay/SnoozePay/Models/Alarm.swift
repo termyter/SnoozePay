@@ -1,7 +1,7 @@
 import Foundation
 
 /// Domain model for an alarm. Separate from Core Data entity for clean MVVM.
-struct Alarm: Identifiable, Equatable {
+struct Alarm: Identifiable, Equatable, Codable {
     let id: UUID
     var time: Date
     var repeatDays: [Int] // 0 = Monday, 6 = Sunday

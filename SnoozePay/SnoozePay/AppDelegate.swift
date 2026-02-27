@@ -4,7 +4,6 @@
 //
 
 import UIKit
-import CoreData
 import UserNotifications
 
 @main
@@ -14,9 +13,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // Warm up Core Data stack
-        _ = PersistenceController.shared
-
         // Register notification categories and request permission
         AlarmScheduler.shared.registerCategories()
         AlarmScheduler.shared.requestPermission { granted in
@@ -109,29 +105,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         guard
             let alarmIDString = userInfo["alarmID"] as? String,
             let alarmID = UUID(uuidString: alarmIDString),
-            let penaltyAmount = userInfo["penaltyAmount"] as? Double,
-            let snoozeCount = userInfo["snoozeCount"] as? Int,
-            let snoozeMinutes = userInfo["snoozeMinutes"] as? Int
+            let snoozeCount = userInfo["snoozeCount"] as? Int
         else { return }
 
-        let progressiveScale = userInfo["progressiveScale"] as? Bool ?? false
+        let repo = AlarmRepository()
+        guard let alarm = repo.fetch(id: alarmID) else { return }
 
-        // Calculate penalty for this snooze
-        let penalty: Double
-        if progressiveScale && snoozeCount > 0 {
-            penalty = penaltyAmount * pow(2.0, Double(snoozeCount))
-        } else {
-            penalty = penaltyAmount
-        }
+        let penalty = alarm.penalty(forSnoozeCount: snoozeCount + 1)
 
-        // Attempt to charge
         let charged = BalanceService.shared.charge(amount: penalty, alarmID: alarmID)
         if charged {
-            // Reschedule snooze
-            let repo = AlarmRepository()
-            if let alarm = repo.fetch(id: alarmID) {
-                AlarmScheduler.shared.scheduleSnooze(for: alarm, snoozeCount: snoozeCount + 1)
-            }
+            AlarmScheduler.shared.scheduleSnooze(for: alarm, snoozeCount: snoozeCount + 1)
         }
     }
 }

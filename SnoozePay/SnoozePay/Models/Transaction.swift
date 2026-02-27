@@ -1,13 +1,13 @@
 import Foundation
 
 /// Type of balance transaction
-enum TransactionType: String {
+enum TransactionType: String, Codable {
     case topup = "topup"
     case charge = "charge"
 }
 
 /// Domain model for a balance transaction
-struct Transaction: Identifiable {
+struct Transaction: Identifiable, Codable {
     let id: UUID
     let type: TransactionType
     let amount: Double

@@ -1,55 +1,31 @@
-import CoreData
 import Foundation
 
-/// Responsible for CRUD operations on Transaction entities in Core Data
 final class TransactionRepository {
+    static let shared = TransactionRepository()
+    private let key = "stored_transactions"
+    private let defaults: UserDefaults
 
-    private let context: NSManagedObjectContext
-
-    init(context: NSManagedObjectContext = PersistenceController.shared.context) {
-        self.context = context
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
     }
 
-    // MARK: - Fetch
-
     func fetchAll() -> [Transaction] {
-        let request: NSFetchRequest<TransactionEntity> = TransactionEntity.fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        do {
-            return try context.fetch(request).compactMap { map($0) }
-        } catch {
-            print("Fetch transactions error: \(error)")
-            return []
-        }
+        guard let data = defaults.data(forKey: key),
+              let txs = try? JSONDecoder().decode([Transaction].self, from: data)
+        else { return [] }
+        return txs.sorted { $0.createdAt > $1.createdAt }
     }
 
     func fetchCharges(since date: Date) -> [Transaction] {
-        let request: NSFetchRequest<TransactionEntity> = TransactionEntity.fetchRequest()
-        request.predicate = NSPredicate(
-            format: "type == %@ AND createdAt >= %@",
-            TransactionType.charge.rawValue,
-            date as NSDate
-        )
-        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        do {
-            return try context.fetch(request).compactMap { map($0) }
-        } catch {
-            print("Fetch charges error: \(error)")
-            return []
-        }
+        fetchAll().filter { $0.type == .charge && $0.createdAt >= date }
     }
-
-    // MARK: - Create
 
     @discardableResult
     func record(_ transaction: Transaction) -> Bool {
-        let entity = TransactionEntity(context: context)
-        entity.id = transaction.id
-        entity.type = transaction.type.rawValue
-        entity.amount = transaction.amount
-        entity.alarmID = transaction.alarmID
-        entity.createdAt = transaction.createdAt
-        PersistenceController.shared.save()
+        var txs = fetchAll()
+        txs.append(transaction)
+        let data = try? JSONEncoder().encode(txs)
+        defaults.set(data, forKey: key)
         return true
     }
 
@@ -60,38 +36,16 @@ final class TransactionRepository {
         let calendar = Calendar.current
         var streak = 0
         var checkDate = calendar.startOfDay(for: Date())
-
         let allCharges = fetchAll().filter { $0.type == .charge }
         let chargeDates = Set(allCharges.map { calendar.startOfDay(for: $0.createdAt) })
 
-        // Walk backwards day by day
         while !chargeDates.contains(checkDate) {
             streak += 1
             guard let previous = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
             checkDate = previous
-            // Stop if we've gone back more than 365 days (reasonable limit)
             if streak > 365 { break }
         }
 
         return streak
-    }
-
-    // MARK: - Mapping
-
-    private func map(_ entity: TransactionEntity) -> Transaction? {
-        guard
-            let id = entity.id,
-            let typeRaw = entity.type,
-            let type = TransactionType(rawValue: typeRaw),
-            let createdAt = entity.createdAt
-        else { return nil }
-
-        return Transaction(
-            id: id,
-            type: type,
-            amount: entity.amount,
-            alarmID: entity.alarmID,
-            createdAt: createdAt
-        )
     }
 }

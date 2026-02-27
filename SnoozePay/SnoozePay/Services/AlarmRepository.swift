@@ -1,117 +1,57 @@
-import CoreData
 import Foundation
 
-/// Responsible for CRUD operations on Alarm entities in Core Data
 final class AlarmRepository {
+    static let shared = AlarmRepository()
+    private let key = "stored_alarms"
+    private let defaults: UserDefaults
 
-    private let context: NSManagedObjectContext
-
-    init(context: NSManagedObjectContext = PersistenceController.shared.context) {
-        self.context = context
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
     }
 
-    // MARK: - Fetch
-
     func fetchAll() -> [Alarm] {
-        let request: NSFetchRequest<AlarmEntity> = AlarmEntity.fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(key: "time", ascending: true)]
-        do {
-            return try context.fetch(request).map { map($0) }
-        } catch {
-            print("Fetch alarms error: \(error)")
-            return []
-        }
+        guard let data = defaults.data(forKey: key),
+              let alarms = try? JSONDecoder().decode([Alarm].self, from: data)
+        else { return [] }
+        return alarms.sorted { $0.time < $1.time }
     }
 
     func fetch(id: UUID) -> Alarm? {
-        let request: NSFetchRequest<AlarmEntity> = AlarmEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        request.fetchLimit = 1
-        return (try? context.fetch(request).first).map { map($0) }
+        fetchAll().first { $0.id == id }
     }
-
-    // MARK: - Create / Update
 
     @discardableResult
     func save(_ alarm: Alarm) -> Bool {
-        // Upsert: find existing or create new
-        let entity = findOrCreate(id: alarm.id)
-        apply(alarm, to: entity)
-        PersistenceController.shared.save()
+        var alarms = fetchAll()
+        if let idx = alarms.firstIndex(where: { $0.id == alarm.id }) {
+            alarms[idx] = alarm
+        } else {
+            alarms.append(alarm)
+        }
+        persist(alarms)
 
-        // Reschedule notifications
         AlarmScheduler.shared.cancel(alarm.id)
         if alarm.enabled {
             AlarmScheduler.shared.schedule(alarm)
         }
-
         return true
     }
 
-    // MARK: - Delete
-
     func delete(id: UUID) {
-        let request: NSFetchRequest<AlarmEntity> = AlarmEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        guard let entity = try? context.fetch(request).first else { return }
-        context.delete(entity)
-        PersistenceController.shared.save()
+        var alarms = fetchAll()
+        alarms.removeAll { $0.id == id }
+        persist(alarms)
         AlarmScheduler.shared.cancel(id)
     }
-
-    // MARK: - Enable / Disable
 
     func setEnabled(_ enabled: Bool, id: UUID) {
-        let request: NSFetchRequest<AlarmEntity> = AlarmEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        guard let entity = try? context.fetch(request).first else { return }
-        entity.enabled = enabled
-        PersistenceController.shared.save()
-
-        // Update scheduled notifications
-        AlarmScheduler.shared.cancel(id)
-        if enabled, let alarm = fetch(id: id) {
-            AlarmScheduler.shared.schedule(alarm)
-        }
+        guard var alarm = fetch(id: id) else { return }
+        alarm.enabled = enabled
+        save(alarm)
     }
 
-    // MARK: - Mapping helpers
-
-    private func map(_ entity: AlarmEntity) -> Alarm {
-        Alarm(
-            id: entity.id ?? UUID(),
-            time: entity.time ?? Date(),
-            repeatDays: entity.repeatDays ?? [],
-            name: entity.name ?? "Будильник",
-            soundID: entity.soundID ?? "default",
-            vibrationEnabled: entity.vibrationEnabled,
-            snoozeMinutes: Int(entity.snoozeMinutes),
-            penaltyAmount: entity.penaltyAmount,
-            progressiveScale: entity.progressiveScale,
-            enabled: entity.enabled
-        )
-    }
-
-    private func apply(_ alarm: Alarm, to entity: AlarmEntity) {
-        entity.id = alarm.id
-        entity.time = alarm.time
-        entity.repeatDays = alarm.repeatDays
-        entity.name = alarm.name
-        entity.soundID = alarm.soundID
-        entity.vibrationEnabled = alarm.vibrationEnabled
-        entity.snoozeMinutes = Int16(alarm.snoozeMinutes)
-        entity.penaltyAmount = alarm.penaltyAmount
-        entity.progressiveScale = alarm.progressiveScale
-        entity.enabled = alarm.enabled
-    }
-
-    private func findOrCreate(id: UUID) -> AlarmEntity {
-        let request: NSFetchRequest<AlarmEntity> = AlarmEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        request.fetchLimit = 1
-        if let existing = try? context.fetch(request).first {
-            return existing
-        }
-        return AlarmEntity(context: context)
+    private func persist(_ alarms: [Alarm]) {
+        let data = try? JSONEncoder().encode(alarms)
+        defaults.set(data, forKey: key)
     }
 }
