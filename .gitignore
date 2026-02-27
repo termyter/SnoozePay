@@ -1,0 +1,64 @@
+# === Agent workspace (HIDDEN) ===
+CLAUDE.md
+.claude/
+.mcp.json
+docs/FIGMA_AUDIT.md
+docs/DESIGN_TASKS.md
+docs/SETUP.md
+docs/ROADMAP.md
+docs/SESSION_LOG.md
+
+# === Claude Code ===
+.claude_history/
+.clauderc
+.claude.json
+
+# === Xcode ===
+build/
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# === CocoaPods ===
+Pods/
+Podfile.lock
+
+# === SPM ===
+.build/
+Package.resolved
+
+# === macOS ===
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# === Misc ===
+*.swp
+*.swo
+*~
+.env
+.env.local
+
+# === Android ===
+*.iml
+.gradle/
+/local.properties
+.idea/
+android/build/
+android/app/build/
+android/captures/
+android/.externalNativeBuild/
