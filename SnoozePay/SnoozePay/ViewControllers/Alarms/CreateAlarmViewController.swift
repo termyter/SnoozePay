@@ -356,10 +356,14 @@ extension CreateAlarmViewController: UITableViewDataSource {
 
         case .snoozeTime:
             cell.textLabel?.text = "Откладывать на"
+            snoozeValueLabel.text = "\(viewModel.snoozeMinutes) мин"
+            snoozeValueLabel.sizeToFit()
             let stack = UIStackView(arrangedSubviews: [snoozeValueLabel, snoozeStepper])
             stack.axis = .horizontal
             stack.spacing = AppSpacing.sm
+            stack.alignment = .center
             snoozeStepper.addTarget(self, action: #selector(stepperChanged(_:)), for: .valueChanged)
+            stack.sizeToFit()
             cell.accessoryView = stack
         }
 
