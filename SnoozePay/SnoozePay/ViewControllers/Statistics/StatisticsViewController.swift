@@ -2,7 +2,7 @@ import UIKit
 import SwiftUI
 import Charts
 
-/// Statistics screen: spending summary, bar chart, streak.
+/// Statistics screen: spending summary, bar chart, streak, motivation.
 class StatisticsViewController: UIViewController {
 
     // MARK: - ViewModel
@@ -33,54 +33,145 @@ class StatisticsViewController: UIViewController {
         return sc
     }()
 
-    // Summary card
-    private let totalLabel: UILabel = {
+    // MARK: Two-column summary
+
+    private let spentTitleLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 48, weight: .thin)
-        l.textColor = AppColors.accentOrange
-        l.textAlignment = .center
+        l.text = "Потрачено"
+        l.font = UIFont.systemFont(ofSize: 13)
+        l.textColor = .secondaryLabel
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
     }()
 
-    private let totalTitleLabel: UILabel = {
+    private let spentAmountLabel: UILabel = {
         let l = UILabel()
-        l.text = "Потрачено на откладывание"
+        l.font = UIFont.systemFont(ofSize: 32, weight: .bold)
+        l.textColor = AppColors.accentOrange
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private let snoozeTitleLabel: UILabel = {
+        let l = UILabel()
+        l.text = "Откладываний"
         l.font = UIFont.systemFont(ofSize: 13)
         l.textColor = .secondaryLabel
-        l.textAlignment = .center
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
     }()
 
     private let snoozeCountLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 17)
+        l.font = UIFont.systemFont(ofSize: 32, weight: .bold)
         l.textColor = .label
-        l.textAlignment = .center
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
     }()
 
-    // Chart hosting controller
+    // MARK: Average card
+
+    private let averageTitleLabel: UILabel = {
+        let l = UILabel()
+        l.text = "Среднее"
+        l.font = UIFont.systemFont(ofSize: 13)
+        l.textColor = .secondaryLabel
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private let averageValueLabel: UILabel = {
+        let l = UILabel()
+        l.font = UIFont.systemFont(ofSize: 28, weight: .bold)
+        l.textColor = .label
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    // MARK: Chart
+
+    private let chartTitleLabel: UILabel = {
+        let l = UILabel()
+        l.text = "График по дням"
+        l.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        l.textColor = .label
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
     private var chartHostingController: UIHostingController<StatisticsChartView>?
 
-    // Streak view
+    // MARK: Streak
+
+    private let streakIconView: UIView = {
+        let container = UIView()
+        container.backgroundColor = AppColors.accentOrange.withAlphaComponent(0.15)
+        container.layer.cornerRadius = 22
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = UILabel()
+        label.text = "🔥"
+        label.font = UIFont.systemFont(ofSize: 22)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalToConstant: 44),
+            container.heightAnchor.constraint(equalToConstant: 44),
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+        return container
+    }()
+
     private let streakLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 22, weight: .semibold)
-        l.textColor = AppColors.accentOrange
-        l.textAlignment = .center
+        l.font = UIFont.systemFont(ofSize: 20, weight: .bold)
+        l.textColor = .label
+        l.numberOfLines = 0
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
     }()
 
-    // Motivational message
-    private let motivationLabel: UILabel = {
+    private let bestStreakLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 15)
+        l.font = UIFont.systemFont(ofSize: 13)
         l.textColor = .secondaryLabel
-        l.textAlignment = .center
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    // MARK: Motivation banner
+
+    private let motivationCard: UIView = {
+        let v = UIView()
+        v.backgroundColor = AppColors.accentOrange
+        v.layer.cornerRadius = AppRadius.md
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+
+    private let motivationIconLabel: UILabel = {
+        let l = UILabel()
+        l.text = "↗️"
+        l.font = UIFont.systemFont(ofSize: 24)
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private let motivationTitleLabel: UILabel = {
+        let l = UILabel()
+        l.text = "Мотивация"
+        l.font = UIFont.systemFont(ofSize: 15, weight: .bold)
+        l.textColor = .white
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private let motivationMessageLabel: UILabel = {
+        let l = UILabel()
+        l.font = UIFont.systemFont(ofSize: 14)
+        l.textColor = UIColor.white.withAlphaComponent(0.9)
         l.numberOfLines = 0
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
@@ -126,59 +217,172 @@ class StatisticsViewController: UIViewController {
         periodSegment.addTarget(self, action: #selector(periodChanged), for: .valueChanged)
         contentStack.addArrangedSubview(periodSegment)
 
-        // Summary card
-        let summaryCard = makeCard()
-        let summaryStack = UIStackView(arrangedSubviews: [totalTitleLabel, totalLabel, snoozeCountLabel])
-        summaryStack.axis = .vertical
-        summaryStack.spacing = 4
-        summaryStack.translatesAutoresizingMaskIntoConstraints = false
-        summaryCard.addSubview(summaryStack)
+        // Two-column summary (Spent + Snooze Count)
+        contentStack.addArrangedSubview(makeTwoColumnSummary())
+
+        // Average card
+        contentStack.addArrangedSubview(makeAverageCard())
+
+        // Chart card
+        contentStack.addArrangedSubview(makeChartCard())
+
+        // Streak card
+        contentStack.addArrangedSubview(makeStreakCard())
+
+        // Motivation banner
+        contentStack.addArrangedSubview(makeMotivationBanner())
+    }
+
+    // MARK: - Card Builders
+
+    private func makeTwoColumnSummary() -> UIView {
+        // Left card — amount spent
+        let leftCard = makeCard()
+        let leftStack = UIStackView(arrangedSubviews: [spentTitleLabel, spentAmountLabel])
+        leftStack.axis = .vertical
+        leftStack.spacing = AppSpacing.xs
+        leftStack.translatesAutoresizingMaskIntoConstraints = false
+        leftCard.addSubview(leftStack)
         NSLayoutConstraint.activate([
-            summaryStack.leadingAnchor.constraint(equalTo: summaryCard.leadingAnchor, constant: AppSpacing.lg),
-            summaryStack.trailingAnchor.constraint(equalTo: summaryCard.trailingAnchor, constant: -AppSpacing.lg),
-            summaryStack.topAnchor.constraint(equalTo: summaryCard.topAnchor, constant: AppSpacing.lg),
-            summaryStack.bottomAnchor.constraint(equalTo: summaryCard.bottomAnchor, constant: -AppSpacing.lg)
+            leftStack.leadingAnchor.constraint(equalTo: leftCard.leadingAnchor, constant: AppSpacing.lg),
+            leftStack.trailingAnchor.constraint(equalTo: leftCard.trailingAnchor, constant: -AppSpacing.lg),
+            leftStack.topAnchor.constraint(equalTo: leftCard.topAnchor, constant: AppSpacing.lg),
+            leftStack.bottomAnchor.constraint(equalTo: leftCard.bottomAnchor, constant: -AppSpacing.lg)
         ])
-        contentStack.addArrangedSubview(summaryCard)
 
-        // Chart card with embedded SwiftUI chart
-        let chartCard = makeCard()
-        chartCard.clipsToBounds = true
+        // Right card — snooze count
+        let rightCard = makeCard()
+        let rightStack = UIStackView(arrangedSubviews: [snoozeTitleLabel, snoozeCountLabel])
+        rightStack.axis = .vertical
+        rightStack.spacing = AppSpacing.xs
+        rightStack.translatesAutoresizingMaskIntoConstraints = false
+        rightCard.addSubview(rightStack)
+        NSLayoutConstraint.activate([
+            rightStack.leadingAnchor.constraint(equalTo: rightCard.leadingAnchor, constant: AppSpacing.lg),
+            rightStack.trailingAnchor.constraint(equalTo: rightCard.trailingAnchor, constant: -AppSpacing.lg),
+            rightStack.topAnchor.constraint(equalTo: rightCard.topAnchor, constant: AppSpacing.lg),
+            rightStack.bottomAnchor.constraint(equalTo: rightCard.bottomAnchor, constant: -AppSpacing.lg)
+        ])
 
+        // Horizontal row
+        let row = UIStackView(arrangedSubviews: [leftCard, rightCard])
+        row.axis = .horizontal
+        row.spacing = AppSpacing.sm
+        row.distribution = .fillEqually
+        row.translatesAutoresizingMaskIntoConstraints = false
+        return row
+    }
+
+    private func makeAverageCard() -> UIView {
+        let card = makeCard()
+        let stack = UIStackView(arrangedSubviews: [averageTitleLabel, averageValueLabel])
+        stack.axis = .vertical
+        stack.spacing = AppSpacing.xs
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.lg),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.lg),
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: AppSpacing.lg),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.lg)
+        ])
+        return card
+    }
+
+    private func makeChartCard() -> UIView {
+        let card = makeCard()
+        card.clipsToBounds = true
+
+        // Title label
+        card.addSubview(chartTitleLabel)
+
+        // SwiftUI chart
         let chartSwiftUIView = StatisticsChartView(data: [])
         let hostingController = UIHostingController(rootView: chartSwiftUIView)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
         hostingController.view.backgroundColor = .clear
 
         addChild(hostingController)
-        chartCard.addSubview(hostingController.view)
+        card.addSubview(hostingController.view)
         hostingController.didMove(toParent: self)
 
         NSLayoutConstraint.activate([
-            hostingController.view.topAnchor.constraint(equalTo: chartCard.topAnchor, constant: AppSpacing.md),
-            hostingController.view.leadingAnchor.constraint(equalTo: chartCard.leadingAnchor, constant: AppSpacing.md),
-            hostingController.view.trailingAnchor.constraint(equalTo: chartCard.trailingAnchor, constant: -AppSpacing.md),
-            hostingController.view.bottomAnchor.constraint(equalTo: chartCard.bottomAnchor, constant: -AppSpacing.md),
+            chartTitleLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: AppSpacing.lg),
+            chartTitleLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.lg),
+            chartTitleLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.lg),
+
+            hostingController.view.topAnchor.constraint(equalTo: chartTitleLabel.bottomAnchor, constant: AppSpacing.sm),
+            hostingController.view.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.md),
+            hostingController.view.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.md),
+            hostingController.view.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.md),
             hostingController.view.heightAnchor.constraint(equalToConstant: 200)
         ])
 
         chartHostingController = hostingController
-        contentStack.addArrangedSubview(chartCard)
+        return card
+    }
 
-        // Streak card
-        let streakCard = makeCard()
-        let streakStack = UIStackView(arrangedSubviews: [streakLabel, motivationLabel])
-        streakStack.axis = .vertical
-        streakStack.spacing = 8
-        streakStack.translatesAutoresizingMaskIntoConstraints = false
-        streakCard.addSubview(streakStack)
+    private func makeStreakCard() -> UIView {
+        let card = makeCard()
+
+        // Text stack (title + subtitle)
+        let textStack = UIStackView(arrangedSubviews: [streakLabel, bestStreakLabel])
+        textStack.axis = .vertical
+        textStack.spacing = AppSpacing.xs
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // Horizontal layout: icon | text
+        let hStack = UIStackView(arrangedSubviews: [streakIconView, textStack])
+        hStack.axis = .horizontal
+        hStack.spacing = AppSpacing.md
+        hStack.alignment = .center
+        hStack.translatesAutoresizingMaskIntoConstraints = false
+
+        card.addSubview(hStack)
         NSLayoutConstraint.activate([
-            streakStack.leadingAnchor.constraint(equalTo: streakCard.leadingAnchor, constant: AppSpacing.lg),
-            streakStack.trailingAnchor.constraint(equalTo: streakCard.trailingAnchor, constant: -AppSpacing.lg),
-            streakStack.topAnchor.constraint(equalTo: streakCard.topAnchor, constant: AppSpacing.lg),
-            streakStack.bottomAnchor.constraint(equalTo: streakCard.bottomAnchor, constant: -AppSpacing.lg)
+            hStack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.lg),
+            hStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.lg),
+            hStack.topAnchor.constraint(equalTo: card.topAnchor, constant: AppSpacing.lg),
+            hStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.lg)
         ])
-        contentStack.addArrangedSubview(streakCard)
+
+        return card
+    }
+
+    private func makeMotivationBanner() -> UIView {
+        // Icon container
+        let iconContainer = UIView()
+        iconContainer.translatesAutoresizingMaskIntoConstraints = false
+        iconContainer.addSubview(motivationIconLabel)
+        NSLayoutConstraint.activate([
+            motivationIconLabel.topAnchor.constraint(equalTo: iconContainer.topAnchor),
+            motivationIconLabel.leadingAnchor.constraint(equalTo: iconContainer.leadingAnchor),
+            motivationIconLabel.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor),
+            iconContainer.widthAnchor.constraint(equalToConstant: 32)
+        ])
+
+        // Text stack
+        let textStack = UIStackView(arrangedSubviews: [motivationTitleLabel, motivationMessageLabel])
+        textStack.axis = .vertical
+        textStack.spacing = AppSpacing.xs
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // Horizontal layout: icon | text
+        let hStack = UIStackView(arrangedSubviews: [iconContainer, textStack])
+        hStack.axis = .horizontal
+        hStack.spacing = AppSpacing.md
+        hStack.alignment = .top
+        hStack.translatesAutoresizingMaskIntoConstraints = false
+
+        motivationCard.addSubview(hStack)
+        NSLayoutConstraint.activate([
+            hStack.leadingAnchor.constraint(equalTo: motivationCard.leadingAnchor, constant: AppSpacing.lg),
+            hStack.trailingAnchor.constraint(equalTo: motivationCard.trailingAnchor, constant: -AppSpacing.lg),
+            hStack.topAnchor.constraint(equalTo: motivationCard.topAnchor, constant: AppSpacing.lg),
+            hStack.bottomAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: -AppSpacing.lg)
+        ])
+
+        return motivationCard
     }
 
     private func makeCard() -> UIView {
@@ -189,6 +393,8 @@ class StatisticsViewController: UIViewController {
         return view
     }
 
+    // MARK: - Binding
+
     private func bindViewModel() {
         viewModel.onDataUpdated = { [weak self] in
             self?.refresh()
@@ -196,25 +402,41 @@ class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        // Update summary card with zero-state handling
+        // Two-column summary
         if viewModel.totalSpent > 0 {
-            totalLabel.textColor = AppColors.accentOrange
-            totalLabel.text = viewModel.totalSpentFormatted
+            spentAmountLabel.textColor = AppColors.accentOrange
+            spentAmountLabel.text = viewModel.totalSpentFormatted
         } else {
-            totalLabel.textColor = .secondaryLabel
-            totalLabel.text = "0 ₽"
+            spentAmountLabel.textColor = .secondaryLabel
+            spentAmountLabel.text = "₽0"
         }
 
         if viewModel.snoozeCount > 0 {
-            snoozeCountLabel.text = "Откладываний: \(viewModel.snoozeCountFormatted)"
+            snoozeCountLabel.text = viewModel.snoozeCountFormatted
         } else {
-            snoozeCountLabel.text = "Откладываний: Ни разу"
+            snoozeCountLabel.textColor = .secondaryLabel
+            snoozeCountLabel.text = "0"
         }
 
-        streakLabel.text = viewModel.streak > 0 ? "🔥 \(viewModel.streakMessage)" : ""
-        motivationLabel.text = viewModel.motivationalMessage
+        // Average
+        averageValueLabel.text = viewModel.averagePerDayFormatted
 
-        // Update chart data with animation
+        // Streak
+        if viewModel.streak > 0 {
+            streakLabel.text = viewModel.streakMessage
+            bestStreakLabel.text = viewModel.bestStreakFormatted
+            streakIconView.superview?.superview?.isHidden = false
+        } else {
+            streakLabel.text = "0 дней без откладываний"
+            bestStreakLabel.text = ""
+            // Still show the card but with zero state
+        }
+
+        // Motivation banner
+        motivationMessageLabel.text = viewModel.motivationalMessage
+        motivationCard.isHidden = viewModel.totalSpent <= 0
+
+        // Chart
         let chartData = viewModel.dailyChartData.map {
             ChartDataPoint(label: $0.label, amount: $0.amount)
         }
