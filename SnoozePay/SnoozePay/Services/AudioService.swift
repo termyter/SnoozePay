@@ -56,23 +56,24 @@ final class AudioService {
             ?? Bundle.main.url(forResource: "default_alarm", withExtension: "caf")
             ?? Bundle.main.url(forResource: "default_alarm", withExtension: "m4a")
 
-        guard let soundURL = url else {
-            print("Alarm sound file not found for soundID: \(soundID)")
-            // Even without sound, start vibration
-            startVibration()
-            isPlaying = true
-            return
+        let player: AVAudioPlayer?
+        if let soundURL = url {
+            player = try? AVAudioPlayer(contentsOf: soundURL)
+        } else {
+            // No sound file found — generate a synthetic alarm tone
+            player = Self.generateAlarmTone()
         }
 
-        do {
-            audioPlayer = try AVAudioPlayer(contentsOf: soundURL)
-            audioPlayer?.numberOfLoops = -1 // Loop indefinitely
-            audioPlayer?.volume = 1.0
-            audioPlayer?.prepareToPlay()
-            audioPlayer?.play()
+        if let player {
+            audioPlayer = player
+            player.numberOfLoops = -1
+            player.volume = 1.0
+            player.prepareToPlay()
+            player.play()
             isPlaying = true
-        } catch {
-            print("Failed to create audio player: \(error)")
+        } else {
+            // Last resort: vibration only
+            isPlaying = true
         }
 
         startVibration()
@@ -106,5 +107,81 @@ final class AudioService {
     private func stopVibration() {
         vibrationTimer?.invalidate()
         vibrationTimer = nil
+    }
+
+    // MARK: - Tone Generation
+
+    /// Generate a 440 Hz sine wave alarm tone as in-memory WAV data.
+    /// Returns an AVAudioPlayer ready to loop, or nil on failure.
+    private static func generateAlarmTone() -> AVAudioPlayer? {
+        let sampleRate: Double = 44100
+        let duration: Double = 1.5 // seconds per loop cycle
+        let frequency: Double = 880 // A5 — prominent alarm frequency
+        let totalSamples = Int(sampleRate * duration)
+
+        // Build interleaved 16-bit PCM samples with amplitude envelope
+        var samples = [Int16]()
+        samples.reserveCapacity(totalSamples)
+
+        for i in 0..<totalSamples {
+            let t = Double(i) / sampleRate
+            // Dual-tone: 880 Hz + 660 Hz for recognizable alarm character
+            let wave = sin(2.0 * .pi * frequency * t) + 0.6 * sin(2.0 * .pi * 660.0 * t)
+            // Amplitude envelope: short fade-in/out to avoid click
+            let envelope: Double
+            let fadeFrames = Int(sampleRate * 0.02)
+            if i < fadeFrames {
+                envelope = Double(i) / Double(fadeFrames)
+            } else if i > totalSamples - fadeFrames {
+                envelope = Double(totalSamples - i) / Double(fadeFrames)
+            } else {
+                // Pulse pattern: 0.3s on, 0.2s off
+                let cyclePos = t.truncatingRemainder(dividingBy: 0.5)
+                envelope = cyclePos < 0.3 ? 1.0 : 0.0
+            }
+            let amplitude = wave * envelope * 0.7
+            let sample = Int16(clamping: Int(amplitude * Double(Int16.max)))
+            samples.append(sample)
+        }
+
+        // Build WAV header + data
+        let dataSize = totalSamples * 2 // 16-bit = 2 bytes per sample
+        var wavData = Data()
+        wavData.append(contentsOf: [0x52, 0x49, 0x46, 0x46]) // "RIFF"
+        wavData.append(UInt32(36 + dataSize).littleEndianBytes)
+        wavData.append(contentsOf: [0x57, 0x41, 0x56, 0x45]) // "WAVE"
+        wavData.append(contentsOf: [0x66, 0x6D, 0x74, 0x20]) // "fmt "
+        wavData.append(UInt32(16).littleEndianBytes)           // chunk size
+        wavData.append(UInt16(1).littleEndianBytes)            // PCM format
+        wavData.append(UInt16(1).littleEndianBytes)            // mono
+        wavData.append(UInt32(44100).littleEndianBytes)        // sample rate
+        wavData.append(UInt32(44100 * 2).littleEndianBytes)    // byte rate
+        wavData.append(UInt16(2).littleEndianBytes)            // block align
+        wavData.append(UInt16(16).littleEndianBytes)           // bits per sample
+        wavData.append(contentsOf: [0x64, 0x61, 0x74, 0x61]) // "data"
+        wavData.append(UInt32(dataSize).littleEndianBytes)
+
+        samples.withUnsafeBufferPointer { ptr in
+            wavData.append(UnsafeBufferPointer(start: UnsafeRawPointer(ptr.baseAddress)?.assumingMemoryBound(to: UInt8.self), count: dataSize))
+        }
+
+        return try? AVAudioPlayer(data: wavData)
+    }
+}
+
+// MARK: - Binary helpers
+
+private extension UInt32 {
+    var littleEndianBytes: [UInt8] {
+        let value = self.littleEndian
+        return [UInt8(value & 0xFF), UInt8((value >> 8) & 0xFF),
+                UInt8((value >> 16) & 0xFF), UInt8((value >> 24) & 0xFF)]
+    }
+}
+
+private extension UInt16 {
+    var littleEndianBytes: [UInt8] {
+        let value = self.littleEndian
+        return [UInt8(value & 0xFF), UInt8((value >> 8) & 0xFF)]
     }
 }
