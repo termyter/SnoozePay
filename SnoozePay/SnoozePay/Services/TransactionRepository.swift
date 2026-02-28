@@ -32,18 +32,26 @@ final class TransactionRepository {
     // MARK: - Streak calculation
 
     /// Returns count of consecutive days ending today with no charge transactions.
+    /// Returns 0 if there are no transactions at all (new user).
     func currentStreak() -> Int {
+        let allTransactions = fetchAll()
+        guard !allTransactions.isEmpty else { return 0 }
+
         let calendar = Calendar.current
         var streak = 0
         var checkDate = calendar.startOfDay(for: Date())
-        let allCharges = fetchAll().filter { $0.type == .charge }
+        let allCharges = allTransactions.filter { $0.type == .charge }
         let chargeDates = Set(allCharges.map { calendar.startOfDay(for: $0.createdAt) })
 
-        while !chargeDates.contains(checkDate) {
+        // Only count back to the date of the first transaction
+        let firstTransactionDate = calendar.startOfDay(
+            for: allTransactions.map { $0.createdAt }.min() ?? Date()
+        )
+
+        while !chargeDates.contains(checkDate) && checkDate >= firstTransactionDate {
             streak += 1
             guard let previous = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
             checkDate = previous
-            if streak > 365 { break }
         }
 
         return streak
