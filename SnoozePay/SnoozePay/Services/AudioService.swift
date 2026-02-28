@@ -11,7 +11,7 @@ final class AudioService {
 
     private var audioPlayer: AVAudioPlayer?
     private var vibrationTimer: Timer?
-    private var isPlaying = false
+    private(set) var isPlaying = false
 
     private init() {}
 

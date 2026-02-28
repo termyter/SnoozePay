@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		AA0001002F5B000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3E2102FC2F525C3C00998846 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3E2103032F525C3C00998846;
+			remoteInfo = SnoozePay;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		3E2103042F525C3C00998846 /* SnoozePay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SnoozePay.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0001012F5B000000000002 /* SnoozePayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -29,10 +40,22 @@
 			path = SnoozePay;
 			sourceTree = "<group>";
 		};
+		AA0001022F5B000000000003 /* SnoozePayTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SnoozePayTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3E2103012F525C3C00998846 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0001032F5B000000000004 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +69,7 @@
 			isa = PBXGroup;
 			children = (
 				3E2103062F525C3C00998846 /* SnoozePay */,
+				AA0001022F5B000000000003 /* SnoozePayTests */,
 				3E2103052F525C3C00998846 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				3E2103042F525C3C00998846 /* SnoozePay.app */,
+				AA0001012F5B000000000002 /* SnoozePayTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,6 +108,27 @@
 			productReference = 3E2103042F525C3C00998846 /* SnoozePay.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA0001042F5B000000000005 /* SnoozePayTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0001052F5B000000000006 /* Build configuration list for PBXNativeTarget "SnoozePayTests" */;
+			buildPhases = (
+				AA0001062F5B000000000007 /* Sources */,
+				AA0001032F5B000000000004 /* Frameworks */,
+				AA0001072F5B000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA0001082F5B000000000009 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AA0001022F5B000000000003 /* SnoozePayTests */,
+			);
+			name = SnoozePayTests;
+			productName = SnoozePayTests;
+			productReference = AA0001012F5B000000000002 /* SnoozePayTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -95,6 +141,10 @@
 				TargetAttributes = {
 					3E2103032F525C3C00998846 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					AA0001042F5B000000000005 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 3E2103032F525C3C00998846;
 					};
 				};
 			};
@@ -113,12 +163,20 @@
 			projectRoot = "";
 			targets = (
 				3E2103032F525C3C00998846 /* SnoozePay */,
+				AA0001042F5B000000000005 /* SnoozePayTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		3E2103022F525C3C00998846 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0001072F5B000000000008 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +193,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0001062F5B000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA0001082F5B000000000009 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3E2103032F525C3C00998846 /* SnoozePay */;
+			targetProxy = AA0001002F5B000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3E2103182F525C3E00998846 /* Debug */ = {
@@ -321,6 +394,48 @@
 			};
 			name = Release;
 		};
+		AA0001092F5B000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Ivan-Emelyanov.SnoozePayTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SnoozePay.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SnoozePay";
+			};
+			name = Debug;
+		};
+		AA00010A2F5B000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Ivan-Emelyanov.SnoozePayTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SnoozePay.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SnoozePay";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -338,6 +453,15 @@
 			buildConfigurations = (
 				3E2103182F525C3E00998846 /* Debug */,
 				3E2103192F525C3E00998846 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0001052F5B000000000006 /* Build configuration list for PBXNativeTarget "SnoozePayTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0001092F5B000000000010 /* Debug */,
+				AA00010A2F5B000000000011 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
