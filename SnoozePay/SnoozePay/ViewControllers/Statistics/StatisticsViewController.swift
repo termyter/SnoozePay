@@ -1,4 +1,6 @@
 import UIKit
+import SwiftUI
+import Charts
 
 /// Statistics screen: spending summary, bar chart, streak.
 class StatisticsViewController: UIViewController {
@@ -60,8 +62,8 @@ class StatisticsViewController: UIViewController {
         return l
     }()
 
-    // Chart view
-    private let chartView = BarChartView()
+    // Chart hosting controller
+    private var chartHostingController: UIHostingController<StatisticsChartView>?
 
     // Streak view
     private let streakLabel: UILabel = {
@@ -139,17 +141,28 @@ class StatisticsViewController: UIViewController {
         ])
         contentStack.addArrangedSubview(summaryCard)
 
-        // Chart
-        chartView.translatesAutoresizingMaskIntoConstraints = false
-        chartView.heightAnchor.constraint(equalToConstant: 180).isActive = true
+        // Chart card with embedded SwiftUI chart
         let chartCard = makeCard()
-        chartCard.addSubview(chartView)
+        chartCard.clipsToBounds = true
+
+        let chartSwiftUIView = StatisticsChartView(data: [])
+        let hostingController = UIHostingController(rootView: chartSwiftUIView)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.backgroundColor = .clear
+
+        addChild(hostingController)
+        chartCard.addSubview(hostingController.view)
+        hostingController.didMove(toParent: self)
+
         NSLayoutConstraint.activate([
-            chartView.topAnchor.constraint(equalTo: chartCard.topAnchor, constant: AppSpacing.md),
-            chartView.leadingAnchor.constraint(equalTo: chartCard.leadingAnchor, constant: AppSpacing.md),
-            chartView.trailingAnchor.constraint(equalTo: chartCard.trailingAnchor, constant: -AppSpacing.md),
-            chartView.bottomAnchor.constraint(equalTo: chartCard.bottomAnchor, constant: -AppSpacing.md)
+            hostingController.view.topAnchor.constraint(equalTo: chartCard.topAnchor, constant: AppSpacing.md),
+            hostingController.view.leadingAnchor.constraint(equalTo: chartCard.leadingAnchor, constant: AppSpacing.md),
+            hostingController.view.trailingAnchor.constraint(equalTo: chartCard.trailingAnchor, constant: -AppSpacing.md),
+            hostingController.view.bottomAnchor.constraint(equalTo: chartCard.bottomAnchor, constant: -AppSpacing.md),
+            hostingController.view.heightAnchor.constraint(equalToConstant: 200)
         ])
+
+        chartHostingController = hostingController
         contentStack.addArrangedSubview(chartCard)
 
         // Streak card
@@ -183,11 +196,29 @@ class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        totalLabel.text = viewModel.totalSpentFormatted
-        snoozeCountLabel.text = "Откладываний: \(viewModel.snoozeCountFormatted)"
+        // Update summary card with zero-state handling
+        if viewModel.totalSpent > 0 {
+            totalLabel.textColor = AppColors.accentOrange
+            totalLabel.text = viewModel.totalSpentFormatted
+        } else {
+            totalLabel.textColor = .secondaryLabel
+            totalLabel.text = "0 ₽"
+        }
+
+        if viewModel.snoozeCount > 0 {
+            snoozeCountLabel.text = "Откладываний: \(viewModel.snoozeCountFormatted)"
+        } else {
+            snoozeCountLabel.text = "Откладываний: Ни разу"
+        }
+
         streakLabel.text = viewModel.streak > 0 ? "🔥 \(viewModel.streakMessage)" : ""
         motivationLabel.text = viewModel.motivationalMessage
-        chartView.data = viewModel.dailyChartData
+
+        // Update chart data with animation
+        let chartData = viewModel.dailyChartData.map {
+            ChartDataPoint(label: $0.label, amount: $0.amount)
+        }
+        chartHostingController?.rootView = StatisticsChartView(data: chartData)
     }
 
     // MARK: - Actions
@@ -198,49 +229,98 @@ class StatisticsViewController: UIViewController {
     }
 }
 
-// MARK: - Simple bar chart view
+// MARK: - Swift Charts data model
 
-/// Minimal bar chart — columns scaled to max value with day labels below.
-final class BarChartView: UIView {
+/// Single data point for the bar chart.
+struct ChartDataPoint: Identifiable {
+    let id = UUID()
+    let label: String
+    let amount: Double
+}
 
-    var data: [(label: String, amount: Double)] = [] {
-        didSet { setNeedsDisplay() }
+// MARK: - SwiftUI Chart View
+
+/// Bar chart built with Swift Charts framework, wrapped for UIKit embedding.
+struct StatisticsChartView: View {
+
+    let data: [ChartDataPoint]
+
+    @State private var animateChart = false
+
+    var body: some View {
+        if data.isEmpty || data.allSatisfy({ $0.amount == 0 }) {
+            // Empty state
+            VStack(spacing: 8) {
+                Image(systemName: "chart.bar")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.secondary)
+                Text("Нет данных")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Chart(data) { point in
+                BarMark(
+                    x: .value("День", point.label),
+                    y: .value("Сумма", animateChart ? point.amount : 0)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.orange, Color.orange.opacity(0.6)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .annotation(position: .top, spacing: 4) {
+                    if point.amount > 0 {
+                        Text("\(Int(point.amount)) ₽")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic) { _ in
+                    AxisValueLabel()
+                        .font(.caption)
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
+                        .foregroundStyle(Color.secondary.opacity(0.3))
+                    AxisValueLabel {
+                        if let amount = value.as(Double.self) {
+                            Text("\(Int(amount))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .chartYScale(domain: 0...(maxAmount * 1.2))
+            .animation(.easeOut(duration: 0.5), value: animateChart)
+            .onAppear {
+                // Trigger entrance animation
+                withAnimation(.easeOut(duration: 0.5)) {
+                    animateChart = true
+                }
+            }
+            .onChange(of: data.map(\.amount)) { oldValue, newValue in
+                // Re-animate when data changes
+                guard oldValue != newValue else { return }
+                animateChart = false
+                withAnimation(.easeOut(duration: 0.5)) {
+                    animateChart = true
+                }
+            }
+        }
     }
 
-    override func draw(_ rect: CGRect) {
-        super.draw(rect)
-        guard !data.isEmpty, let ctx = UIGraphicsGetCurrentContext() else { return }
-
-        let maxAmount = data.map { $0.amount }.max() ?? 1
-        let barWidth = rect.width / CGFloat(data.count) - 4
-        let labelHeight: CGFloat = 20
-        let chartHeight = rect.height - labelHeight
-
-        for (index, item) in data.enumerated() {
-            let x = CGFloat(index) * (barWidth + 4)
-            let barHeight = maxAmount > 0 ? CGFloat(item.amount / maxAmount) * chartHeight : 0
-
-            // Bar
-            let barRect = CGRect(
-                x: x,
-                y: chartHeight - barHeight,
-                width: barWidth,
-                height: barHeight
-            )
-            ctx.setFillColor(UIColor.systemOrange.withAlphaComponent(0.7).cgColor)
-            let path = UIBezierPath(roundedRect: barRect, cornerRadius: 3)
-            ctx.addPath(path.cgPath)
-            ctx.fillPath()
-
-            // Label
-            let label = item.label as NSString
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 9),
-                .foregroundColor: UIColor.secondaryLabel
-            ]
-            let labelSize = label.size(withAttributes: attrs)
-            let labelX = x + (barWidth - labelSize.width) / 2
-            label.draw(at: CGPoint(x: labelX, y: chartHeight + 4), withAttributes: attrs)
-        }
+    /// Maximum amount in the data set, at least 1 to avoid zero-range axis.
+    private var maxAmount: Double {
+        max(data.map(\.amount).max() ?? 1, 1)
     }
 }
