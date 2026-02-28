@@ -1,9 +1,8 @@
 import UIKit
 
 /// Fullscreen alarm firing screen.
-/// Mirrors the native iOS 26 AlarmKit UI: blurred wallpaper background,
-/// ALARM label at top, large time, alarm name, two frosted-glass buttons side-by-side.
-/// The only customisation: Snooze button shows the penalty price.
+/// Dark background with decorative purple gradient circles,
+/// large time display, alarm name, and two pill-shaped action buttons with icons.
 class AlarmFiringViewController: UIViewController {
 
     // MARK: - ViewModel
@@ -18,6 +17,26 @@ class AlarmFiringViewController: UIViewController {
         let view = UIVisualEffectView(effect: blur)
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
+    }()
+
+    /// Decorative purple circle — top left area
+    private let topLeftCircle: UIView = {
+        let size: CGFloat = 200
+        let circle = UIView(frame: CGRect(x: -40, y: -20, width: size, height: size))
+        circle.backgroundColor = UIColor(red: 0.55, green: 0.30, blue: 0.85, alpha: 0.40)
+        circle.layer.cornerRadius = size / 2
+        circle.layer.masksToBounds = true
+        return circle
+    }()
+
+    /// Decorative purple circle — bottom right area
+    private let bottomRightCircle: UIView = {
+        let size: CGFloat = 150
+        let circle = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))
+        circle.backgroundColor = UIColor(red: 0.55, green: 0.30, blue: 0.85, alpha: 0.30)
+        circle.layer.cornerRadius = size / 2
+        circle.layer.masksToBounds = true
+        return circle
     }()
 
     /// "БУДИЛЬНИК" label at top (matches native iOS alarm)
@@ -53,13 +72,19 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    /// "Выключить" — green frosted glass, left side
+    /// "Выключить" — light gray pill with xmark icon
     private let dismissButton: UIButton = {
+        // #EBEBF0 at 60% opacity
+        let bgColor = UIColor(red: 0.92, green: 0.92, blue: 0.94, alpha: 0.60)
+
         var config = UIButton.Configuration.filled()
         config.title = "Выключить"
-        config.baseBackgroundColor = UIColor(red: 0.19, green: 0.82, blue: 0.34, alpha: 0.85)
+        config.image = UIImage(systemName: "xmark")
+        config.imagePadding = 8
+        config.imagePlacement = .leading
+        config.baseBackgroundColor = bgColor
         config.baseForegroundColor = .white
-        config.cornerStyle = .large
+        config.cornerStyle = .capsule
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
             var a = attrs
             a.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
@@ -70,12 +95,18 @@ class AlarmFiringViewController: UIViewController {
         return button
     }()
 
-    /// "Отложить · X₽" — orange frosted glass, right side
+    /// "Отложить · X₽" — golden/warm orange pill with bell icon
     private let snoozeButton: UIButton = {
+        // #E8A838 warm orange/gold
+        let activeColor = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1.0)
+
         var config = UIButton.Configuration.filled()
-        config.baseBackgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
+        config.image = UIImage(systemName: "bell.fill")
+        config.imagePadding = 8
+        config.imagePlacement = .leading
+        config.baseBackgroundColor = activeColor
         config.baseForegroundColor = .white
-        config.cornerStyle = .large
+        config.cornerStyle = .capsule
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
             var a = attrs
             a.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
@@ -140,6 +171,10 @@ class AlarmFiringViewController: UIViewController {
             blurView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
+        // Decorative gradient circles
+        view.addSubview(topLeftCircle)
+        view.addSubview(bottomRightCircle)
+
         // Content
         view.addSubview(alarmTypeLabel)
         view.addSubview(timeLabel)
@@ -181,6 +216,21 @@ class AlarmFiringViewController: UIViewController {
         updateUI()
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        // Position decorative circles relative to screen bounds
+        let bounds = view.bounds
+        topLeftCircle.frame = CGRect(x: -40, y: bounds.height * 0.10, width: 200, height: 200)
+        bottomRightCircle.frame = CGRect(
+            x: bounds.width - 110,
+            y: bounds.height * 0.65,
+            width: 150,
+            height: 150
+        )
+
+    }
+
     private func bindViewModel() {
         viewModel.onStateChanged = { [weak self] in
             self?.updateUI()
@@ -189,17 +239,19 @@ class AlarmFiringViewController: UIViewController {
 
     private func updateUI() {
         nameLabel.text = viewModel.alarmName
-        snoozeButton.setTitle(viewModel.snoozeButtonTitle, for: .normal)
+
+        // Snooze button title (with config to preserve icon)
+        var snoozeConfig = snoozeButton.configuration
+        snoozeConfig?.title = viewModel.snoozeButtonTitle
 
         if viewModel.canSnooze {
-            var config = snoozeButton.configuration
-            config?.baseBackgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
-            snoozeButton.configuration = config
+            // #E8A838 warm orange/gold
+            snoozeConfig?.baseBackgroundColor = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1.0)
+            snoozeButton.configuration = snoozeConfig
             snoozeButton.isEnabled = true
         } else {
-            var config = snoozeButton.configuration
-            config?.baseBackgroundColor = UIColor.systemGray.withAlphaComponent(0.5)
-            snoozeButton.configuration = config
+            snoozeConfig?.baseBackgroundColor = UIColor.systemGray.withAlphaComponent(0.5)
+            snoozeButton.configuration = snoozeConfig
             snoozeButton.isEnabled = false
         }
     }

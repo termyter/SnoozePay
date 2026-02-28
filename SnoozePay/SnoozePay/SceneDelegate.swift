@@ -17,9 +17,29 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = makeRootViewController()
-        window.makeKeyAndVisible()
         self.window = window
+
+        if OnboardingViewController.isCompleted {
+            window.rootViewController = makeRootViewController()
+        } else {
+            let onboarding = OnboardingViewController()
+            onboarding.onFinished = { [weak self] in
+                self?.transitionToMainApp()
+            }
+            window.rootViewController = onboarding
+        }
+
+        window.makeKeyAndVisible()
+    }
+
+    // MARK: - Onboarding transition
+
+    private func transitionToMainApp() {
+        guard let window = window else { return }
+        let tabBar = makeRootViewController()
+        UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
+            window.rootViewController = tabBar
+        }
     }
 
     // MARK: - Root UI setup
