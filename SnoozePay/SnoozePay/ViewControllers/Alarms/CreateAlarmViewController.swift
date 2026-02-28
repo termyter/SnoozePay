@@ -1,4 +1,5 @@
 import UIKit
+import AudioToolbox
 
 /// Screen for creating or editing an alarm.
 /// Uses a static table view with sections for each setting group.
@@ -220,6 +221,10 @@ class CreateAlarmViewController: UIViewController {
         snoozeValueLabel.text = "\(viewModel.snoozeMinutes) мин"
     }
 
+    @objc private func previewSoundTapped() {
+        viewModel.previewSound(viewModel.soundID)
+    }
+
     @objc private func dayButtonTapped(_ sender: UIButton) {
         let day = sender.tag
         viewModel.toggleDay(day)
@@ -310,13 +315,34 @@ extension CreateAlarmViewController: UITableViewDataSource {
 
         case .sound:
             cell.textLabel?.text = "Звук"
+
+            // Sound name label
             let soundLabel = UILabel()
             soundLabel.text = viewModel.availableSounds.first(where: { $0.id == viewModel.soundID })?.name ?? "По умолчанию"
             soundLabel.textColor = .secondaryLabel
             soundLabel.font = UIFont.systemFont(ofSize: 17)
             soundLabel.sizeToFit()
-            cell.accessoryView = soundLabel
-            cell.accessoryType = .disclosureIndicator
+
+            // Play preview button
+            let playButton = UIButton(type: .system)
+            let playImage = UIImage(systemName: "play.circle.fill")?.withConfiguration(
+                UIImage.SymbolConfiguration(pointSize: 24, weight: .medium)
+            )
+            playButton.setImage(playImage, for: .normal)
+            playButton.tintColor = AppColors.accentBlue
+            playButton.addTarget(self, action: #selector(previewSoundTapped), for: .touchUpInside)
+            playButton.sizeToFit()
+
+            // Container stack for label + play button + disclosure
+            let accessoryStack = UIStackView(arrangedSubviews: [soundLabel, playButton])
+            accessoryStack.axis = .horizontal
+            accessoryStack.spacing = AppSpacing.sm
+            accessoryStack.alignment = .center
+            accessoryStack.sizeToFit()
+            accessoryStack.frame = CGRect(x: 0, y: 0,
+                                          width: soundLabel.frame.width + playButton.frame.width + AppSpacing.sm + 16,
+                                          height: max(soundLabel.frame.height, playButton.frame.height))
+            cell.accessoryView = accessoryStack
             cell.selectionStyle = .default
 
         case .vibration:
@@ -424,8 +450,12 @@ extension CreateAlarmViewController: UITableViewDelegate {
     private func showSoundPicker() {
         let alert = UIAlertController(title: "Выберите звук", message: nil, preferredStyle: .actionSheet)
         for sound in viewModel.availableSounds {
-            alert.addAction(UIAlertAction(title: sound.name, style: .default) { [weak self] _ in
+            let isSelected = sound.id == viewModel.soundID
+            let title = isSelected ? "✓ \(sound.name)" : sound.name
+            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
                 self?.viewModel.soundID = sound.id
+                // Play preview of the selected sound
+                self?.viewModel.previewSound(sound.id)
                 self?.tableView.reloadSections(IndexSet(integer: Section.sound.rawValue), with: .none)
             })
         }
