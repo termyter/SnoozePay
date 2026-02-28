@@ -18,7 +18,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         time: Date = Date(),
         repeatDays: [Int] = [],
         name: String = "Будильник",
-        soundID: String = "default",
+        soundID: String = "radar",
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
         penaltyAmount: Double = 50,

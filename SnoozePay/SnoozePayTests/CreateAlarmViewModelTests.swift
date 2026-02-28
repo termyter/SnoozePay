@@ -24,7 +24,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
     func testAvailableSounds_hasCorrectCount() {
         let vm = CreateAlarmViewModel(repository: repo)
-        XCTAssertEqual(vm.availableSounds.count, 6)
+        XCTAssertEqual(vm.availableSounds.count, 10)
     }
 
     func testAvailableSounds_allHaveUniqueIDs() {
@@ -47,9 +47,9 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let vm = CreateAlarmViewModel(repository: repo)
         // Calling previewSound with a valid ID should not crash.
         // AudioServicesPlaySystemSound may be a no-op in test environment.
-        vm.previewSound("default")
+        vm.previewSound("dawn")
         vm.previewSound("radar")
-        vm.previewSound("chimes")
+        vm.previewSound("drops")
     }
 
     func testPreviewSound_withInvalidID_doesNotCrash() {
@@ -68,7 +68,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertEqual(vm.name, "Будильник")
         XCTAssertEqual(vm.penaltyAmount, 50)
         XCTAssertEqual(vm.snoozeMinutes, 9)
-        XCTAssertEqual(vm.soundID, "default")
+        XCTAssertEqual(vm.soundID, "radar")
         XCTAssertTrue(vm.vibrationEnabled)
         XCTAssertFalse(vm.progressiveScale)
         XCTAssertTrue(vm.enabled)

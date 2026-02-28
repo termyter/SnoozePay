@@ -56,7 +56,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let userInfo = notification.request.content.userInfo
 
         // Start continuous alarm sound immediately (before presenting the VC)
-        let soundID = userInfo["soundID"] as? String ?? "default"
+        let soundID = userInfo["soundID"] as? String ?? "radar"
         AudioService.shared.startAlarmSound(soundID: soundID)
 
         // Show the alarm firing screen

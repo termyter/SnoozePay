@@ -18,6 +18,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = makeRootViewController()
+
+        // Apply saved theme preference
+        let savedTheme = UserDefaults.standard.string(forKey: "preferred_theme") ?? "system"
+        switch savedTheme {
+        case "dark": window.overrideUserInterfaceStyle = .dark
+        case "light": window.overrideUserInterfaceStyle = .light
+        default: window.overrideUserInterfaceStyle = .unspecified
+        }
+
         window.makeKeyAndVisible()
         self.window = window
     }
