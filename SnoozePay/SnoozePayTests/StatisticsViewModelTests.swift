@@ -314,4 +314,102 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
         XCTAssertEqual(vm.selectedPeriod, .week)
     }
+
+    // MARK: - averagePerDay
+
+    func testAveragePerDay_weekPeriod() {
+        // 700 spent over 7-day period = 100 per day
+        addCharge(amount: 100, daysAgo: 0)
+        addCharge(amount: 100, daysAgo: 1)
+        addCharge(amount: 100, daysAgo: 2)
+        addCharge(amount: 100, daysAgo: 3)
+        addCharge(amount: 100, daysAgo: 4)
+        addCharge(amount: 100, daysAgo: 5)
+        addCharge(amount: 100, daysAgo: 6)
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        XCTAssertEqual(vm.averagePerDay, 100, accuracy: 0.01)
+    }
+
+    func testAveragePerDay_zeroPeriod() {
+        // No charges at all — should return 0
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        XCTAssertEqual(vm.averagePerDay, 0)
+    }
+
+    func testAveragePerDayFormatted_format() {
+        addCharge(amount: 350, daysAgo: 0)
+        addCharge(amount: 350, daysAgo: 1)
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        // 700 / 7 = 100.0
+        XCTAssertEqual(vm.averagePerDayFormatted, "100.0 / утро")
+    }
+
+    // MARK: - bestStreak
+
+    func testBestStreak_equalToCurrentStreak() {
+        // In MVP, bestStreak is always the same as current streak
+        addCharge(amount: 50, daysAgo: 5)
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        XCTAssertEqual(vm.bestStreak, vm.streak)
+    }
+
+    func testBestStreakFormatted_format() {
+        // With no charges, streak should be some value; verify format
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        let formatted = vm.bestStreakFormatted
+        XCTAssertTrue(formatted.hasPrefix("Лучший результат: "), "Should start with 'Лучший результат: ', got: \(formatted)")
+        // Verify it ends with a day word (день/дня/дней)
+        let hasDayWord = formatted.contains("день") || formatted.contains("дня") || formatted.contains("дней")
+        XCTAssertTrue(hasDayWord, "Should contain a day declension, got: \(formatted)")
+    }
+
+    // MARK: - motivationalMessage coffee format
+
+    func testMotivationalMessage_coffeeFormat() {
+        // 450 / 150 = 3 coffees
+        addCharge(amount: 450, daysAgo: 0)
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        XCTAssertEqual(vm.motivationalMessage, "450₽ на лень = 3 кофе! ☕")
+    }
+
+    // MARK: - Updated formatting properties
+
+    func testTotalSpentFormatted_rublePrefix() {
+        addCharge(amount: 250, daysAgo: 0)
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        // New format uses ruble sign as prefix: "₽250"
+        XCTAssertEqual(vm.totalSpentFormatted, "₽250")
+    }
+
+    func testSnoozeCountFormatted_justNumber() {
+        // Add 23 charges
+        for _ in 0..<23 {
+            addCharge(amount: 10, daysAgo: 0)
+        }
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        // New format is just the number, no suffix
+        XCTAssertEqual(vm.snoozeCountFormatted, "23")
+    }
 }
