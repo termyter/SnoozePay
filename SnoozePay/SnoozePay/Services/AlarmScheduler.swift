@@ -101,7 +101,7 @@ final class AlarmScheduler {
 
     // MARK: - Private helpers
 
-    private func makeContent(for alarm: Alarm, snoozeCount: Int) -> UNMutableNotificationContent {
+    func makeContent(for alarm: Alarm, snoozeCount: Int) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = alarm.name
         content.body = "Время вставать!"
@@ -180,7 +180,7 @@ final class AlarmScheduler {
 
     /// Resolve alarm soundID to an actual file name with extension in the bundle.
     /// Returns nil if no matching file is found (falls back to default critical sound).
-    private func alarmSoundFileName(for soundID: String) -> String? {
+    func alarmSoundFileName(for soundID: String) -> String? {
         let extensions = ["caf", "m4a", "wav", "mp3"]
         for ext in extensions {
             if Bundle.main.url(forResource: soundID, withExtension: ext) != nil {
