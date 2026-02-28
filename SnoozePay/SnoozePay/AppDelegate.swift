@@ -53,8 +53,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
+
+        // Start continuous alarm sound immediately (before presenting the VC)
+        let soundID = userInfo["soundID"] as? String ?? "default"
+        AudioService.shared.startAlarmSound(soundID: soundID)
+
         // Show the alarm firing screen
-        presentAlarmFiringScreen(for: notification.request.content.userInfo)
+        presentAlarmFiringScreen(for: userInfo)
         completionHandler([])
     }
 
@@ -67,15 +73,25 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
 
         switch response.actionIdentifier {
-        case "DISMISS_ACTION", UNNotificationDefaultActionIdentifier:
-            // Just dismiss — no charge
-            break
+        case "DISMISS_ACTION":
+            // Dismiss from notification action — stop sound, no charge
+            AudioService.shared.stopAlarmSound()
+
+        case UNNotificationDefaultActionIdentifier:
+            // User tapped notification banner — present alarm screen
+            // AudioService will be started by AlarmFiringViewController
+            presentAlarmFiringScreen(for: userInfo)
 
         case "SNOOZE_ACTION":
+            AudioService.shared.stopAlarmSound()
             handleSnoozeFromNotification(userInfo: userInfo)
 
+        case UNNotificationDismissActionIdentifier:
+            // User swiped away notification — stop sound
+            AudioService.shared.stopAlarmSound()
+
         default:
-            break
+            AudioService.shared.stopAlarmSound()
         }
 
         completionHandler()
@@ -94,10 +110,29 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         DispatchQueue.main.async {
             let firingVC = AlarmFiringViewController(alarm: alarm, snoozeCount: userInfo["snoozeCount"] as? Int ?? 0)
-            firingVC.modalPresentationStyle = .overFullScreen
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?.windows.first?.rootViewController?.present(firingVC, animated: false)
+            firingVC.modalPresentationStyle = .fullScreen
+
+            // Find the topmost presented view controller to avoid "already presenting" issues
+            guard
+                let windowScene = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .first,
+                let rootVC = windowScene.windows.first?.rootViewController
+            else { return }
+
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                // If an alarm firing screen is already showing, dismiss it first
+                if presented is AlarmFiringViewController {
+                    presented.dismiss(animated: false) {
+                        topVC.present(firingVC, animated: false)
+                    }
+                    return
+                }
+                topVC = presented
+            }
+
+            topVC.present(firingVC, animated: false)
         }
     }
 

@@ -110,11 +110,17 @@ class AlarmFiringViewController: UIViewController {
         bindViewModel()
         startClock()
         startPulseAnimation()
+
+        // Start continuous alarm sound and vibration
+        AudioService.shared.startAlarmSound(soundID: viewModel.alarm.soundID)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         clockTimer?.invalidate()
+
+        // Stop alarm sound and vibration when screen is dismissed
+        AudioService.shared.stopAlarmSound()
     }
 
     override var prefersStatusBarHidden: Bool { true }
