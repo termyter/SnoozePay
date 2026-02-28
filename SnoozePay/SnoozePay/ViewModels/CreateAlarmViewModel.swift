@@ -1,4 +1,5 @@
 import Foundation
+import AudioToolbox
 
 /// ViewModel for create/edit alarm screen.
 final class CreateAlarmViewModel {
@@ -89,4 +90,22 @@ final class CreateAlarmViewModel {
         ("piano", "Пианино"),
         ("digital", "Цифровой")
     ]
+
+    // MARK: - System sound mapping (placeholder until custom audio files are bundled)
+
+    /// Maps sound IDs to AudioToolbox system sound IDs for preview playback
+    private static let systemSoundMap: [String: SystemSoundID] = [
+        "default": 1005,
+        "radar": 1033,
+        "chimes": 1006,
+        "birds": 1016,
+        "piano": 1013,
+        "digital": 1023
+    ]
+
+    /// Play a preview of the given sound using system sounds
+    func previewSound(_ soundID: String) {
+        guard let systemID = Self.systemSoundMap[soundID] else { return }
+        AudioServicesPlaySystemSound(systemID)
+    }
 }
