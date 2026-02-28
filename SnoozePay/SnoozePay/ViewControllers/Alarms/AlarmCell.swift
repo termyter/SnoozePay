@@ -1,21 +1,30 @@
 import UIKit
 
-/// Table view cell for displaying a single alarm in the list.
+/// Table view cell styled as a dark card for displaying a single alarm in the list.
 final class AlarmCell: UITableViewCell {
 
     static let reuseID = "AlarmCell"
 
     // MARK: - UI Elements
 
+    private let cardView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppColors.surface
+        view.layer.cornerRadius = AppRadius.md
+        view.clipsToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     private let timeLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 36, weight: .thin)
+        label.font = UIFont.monospacedDigitSystemFont(ofSize: 52, weight: .medium)
         label.textColor = .label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    private let subtitleLabel: UILabel = {
+    private let detailLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 13, weight: .regular)
         label.textColor = .secondaryLabel
@@ -23,10 +32,10 @@ final class AlarmCell: UITableViewCell {
         return label
     }()
 
-    private let nameLabel: UILabel = {
+    private let penaltyLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 13, weight: .regular)
-        label.textColor = .secondaryLabel
+        label.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+        label.textColor = AppColors.accentOrange
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -52,40 +61,57 @@ final class AlarmCell: UITableViewCell {
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = AppColors.surface
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
         selectionStyle = .none
 
-        let textStack = UIStackView(arrangedSubviews: [timeLabel, subtitleLabel, nameLabel])
-        textStack.axis = .vertical
-        textStack.spacing = 2
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-
-        contentView.addSubview(textStack)
-        contentView.addSubview(toggleSwitch)
+        contentView.addSubview(cardView)
+        cardView.addSubview(timeLabel)
+        cardView.addSubview(detailLabel)
+        cardView.addSubview(penaltyLabel)
+        cardView.addSubview(toggleSwitch)
 
         NSLayoutConstraint.activate([
-            textStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            textStack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: toggleSwitch.leadingAnchor, constant: -AppSpacing.md),
+            // Card with horizontal and vertical insets
+            cardView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm / 2),
+            cardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            cardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            cardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sm / 2),
 
-            toggleSwitch.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            toggleSwitch.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            // Toggle in top-right corner of card
+            toggleSwitch.topAnchor.constraint(equalTo: cardView.topAnchor, constant: AppSpacing.lg),
+            toggleSwitch.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -AppSpacing.lg),
 
-            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 80)
+            // Time label (large, top-left)
+            timeLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: AppSpacing.md),
+            timeLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: AppSpacing.lg),
+            timeLabel.trailingAnchor.constraint(lessThanOrEqualTo: toggleSwitch.leadingAnchor, constant: -AppSpacing.sm),
+
+            // Detail line: "Name - Days"
+            detailLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: AppSpacing.xs),
+            detailLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: AppSpacing.lg),
+            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -AppSpacing.lg),
+
+            // Penalty line at the bottom
+            penaltyLabel.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: AppSpacing.sm),
+            penaltyLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: AppSpacing.lg),
+            penaltyLabel.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -AppSpacing.lg),
+            penaltyLabel.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -AppSpacing.md),
         ])
     }
 
     // MARK: - Configure
 
-    func configure(time: String, subtitle: String, name: String, enabled: Bool) {
+    func configure(time: String, detail: String, penalty: String, enabled: Bool) {
         timeLabel.text = time
-        subtitleLabel.text = subtitle
-        nameLabel.text = name
+        detailLabel.text = detail
+        penaltyLabel.text = penalty
         toggleSwitch.isOn = enabled
 
-        // Dim text when disabled
-        timeLabel.alpha = enabled ? 1.0 : 0.4
-        subtitleLabel.alpha = enabled ? 1.0 : 0.4
-        nameLabel.alpha = enabled ? 1.0 : 0.4
+        // Dim text when alarm is disabled
+        let alpha: CGFloat = enabled ? 1.0 : 0.4
+        timeLabel.alpha = alpha
+        detailLabel.alpha = alpha
+        penaltyLabel.alpha = alpha
     }
 }

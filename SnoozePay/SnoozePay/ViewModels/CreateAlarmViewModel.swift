@@ -34,7 +34,7 @@ final class CreateAlarmViewModel {
         self.time = alarm?.time ?? Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
         self.repeatDays = alarm?.repeatDays ?? []
         self.name = alarm?.name ?? "Будильник"
-        self.soundID = alarm?.soundID ?? "default"
+        self.soundID = alarm?.soundID ?? "radar"
         self.vibrationEnabled = alarm?.vibrationEnabled ?? true
         self.snoozeMinutes = alarm?.snoozeMinutes ?? 9
         self.penaltyAmount = alarm?.penaltyAmount ?? 50
@@ -80,27 +80,35 @@ final class CreateAlarmViewModel {
         return values.enumerated().map { "\($0.offset + 1)-е: \($0.element)₽" }.joined(separator: " → ")
     }
 
-    // MARK: - Available sounds
+    // MARK: - Available sounds (10 sounds matching Figma design)
 
     let availableSounds: [(id: String, name: String)] = [
-        ("default", "По умолчанию"),
+        ("dawn", "Рассвет"),
         ("radar", "Радар"),
-        ("chimes", "Перезвон"),
+        ("drops", "Капли"),
+        ("piano", "Пиано"),
+        ("guitar", "Гитара"),
+        ("bell", "Колокольчик"),
+        ("waves", "Волны"),
         ("birds", "Птицы"),
-        ("piano", "Пианино"),
-        ("digital", "Цифровой")
+        ("classic", "Классика"),
+        ("jazz", "Джаз")
     ]
 
     // MARK: - System sound mapping (placeholder until custom audio files are bundled)
 
     /// Maps sound IDs to AudioToolbox system sound IDs for preview playback
     private static let systemSoundMap: [String: SystemSoundID] = [
-        "default": 1005,
+        "dawn": 1005,
         "radar": 1033,
-        "chimes": 1006,
-        "birds": 1016,
+        "drops": 1006,
         "piano": 1013,
-        "digital": 1023
+        "guitar": 1014,
+        "bell": 1016,
+        "waves": 1020,
+        "birds": 1023,
+        "classic": 1025,
+        "jazz": 1026
     ]
 
     /// Play a preview of the given sound using system sounds

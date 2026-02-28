@@ -13,6 +13,15 @@ final class StatisticsViewModel {
             case .allTime: return "Всё время"
             }
         }
+
+        /// Number of calendar days covered by this period.
+        var dayCount: Int {
+            switch self {
+            case .week: return 7
+            case .month: return 30
+            case .allTime: return 0 // variable
+            }
+        }
     }
 
     // MARK: - Dependencies
@@ -54,21 +63,51 @@ final class StatisticsViewModel {
     var totalSpent: Double { charges.reduce(0) { $0 + $1.amount } }
     var snoozeCount: Int { charges.count }
 
-    var totalSpentFormatted: String { "\(Int(totalSpent)) ₽" }
-    var snoozeCountFormatted: String { "\(snoozeCount) раз" }
+    var totalSpentFormatted: String { "₽\(Int(totalSpent))" }
+    var snoozeCountFormatted: String { "\(snoozeCount)" }
+
+    /// Average spending per day for the selected period.
+    var averagePerDay: Double {
+        let days: Int
+        switch selectedPeriod {
+        case .week:
+            days = 7
+        case .month:
+            days = 30
+        case .allTime:
+            // Calculate actual days from earliest charge to now
+            guard let earliest = charges.min(by: { $0.createdAt < $1.createdAt }) else { return 0 }
+            days = max(Calendar.current.dateComponents([.day], from: earliest.createdAt, to: Date()).day ?? 1, 1)
+        }
+        guard days > 0 else { return 0 }
+        return totalSpent / Double(days)
+    }
+
+    var averagePerDayFormatted: String {
+        String(format: "%.1f / утро", averagePerDay)
+    }
+
+    /// Best streak (for MVP, use current streak as best — can be improved later with persistence).
+    var bestStreak: Int {
+        max(streak, streak) // Placeholder — same as current streak for MVP
+    }
+
+    var bestStreakFormatted: String {
+        "Лучший результат: \(bestStreak) \(dayWord(bestStreak))"
+    }
 
     var motivationalMessage: String {
         guard totalSpent > 0 else { return "Отлично! Вы не откладывали будильник." }
         let coffees = Int(totalSpent / 150)
         if coffees > 0 {
-            return "Это стоимость \(coffees) чашек кофе! ☕"
+            return "\(Int(totalSpent))₽ на лень = \(coffees) кофе! ☕"
         }
         return "Продолжайте в том же духе!"
     }
 
     var streakMessage: String {
         guard streak > 0 else { return "" }
-        return "\(streak) \(dayWord(streak)) без откладывания"
+        return "\(streak) \(dayWord(streak)) без откладываний"
     }
 
     /// Daily chart data for the selected period (last 7 or 30 days)

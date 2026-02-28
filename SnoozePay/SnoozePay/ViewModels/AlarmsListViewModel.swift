@@ -85,11 +85,24 @@ final class AlarmsListViewModel {
         return formatter.string(from: alarms[index].time)
     }
 
+    /// Detail line for alarm card: "Name - Days" (e.g. "Работа - Будни")
+    func alarmDetail(at index: Int) -> String {
+        guard index < alarms.count else { return "" }
+        let alarm = alarms[index]
+        return "\(alarm.name) \u{2022} \(alarm.repeatDaysDescription)"
+    }
+
+    /// Penalty line for alarm card (e.g. "▲ ОТЛОЖИТЬ: 50 ₽")
+    func alarmPenaltyString(at index: Int) -> String {
+        guard index < alarms.count else { return "" }
+        return "▲ ОТЛОЖИТЬ: \(Int(alarms[index].penaltyAmount)) ₽"
+    }
+
     func alarmSubtitle(at index: Int) -> String {
         guard index < alarms.count else { return "" }
         let alarm = alarms[index]
         let days = alarm.repeatDaysDescription
         let penalty = "\(Int(alarm.penaltyAmount)) ₽"
-        return "\(days) · \(penalty)"
+        return "\(days) \u{00B7} \(penalty)"
     }
 }

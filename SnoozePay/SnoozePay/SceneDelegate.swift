@@ -19,6 +19,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let window = UIWindow(windowScene: windowScene)
         self.window = window
 
+        // Apply saved theme preference
+        let savedTheme = UserDefaults.standard.string(forKey: "preferred_theme") ?? "system"
+        switch savedTheme {
+        case "dark": window.overrideUserInterfaceStyle = .dark
+        case "light": window.overrideUserInterfaceStyle = .light
+        default: window.overrideUserInterfaceStyle = .unspecified
+        }
+
         if OnboardingViewController.isCompleted {
             window.rootViewController = makeRootViewController()
         } else {
