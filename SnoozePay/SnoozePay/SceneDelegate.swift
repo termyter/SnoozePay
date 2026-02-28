@@ -17,7 +17,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = makeRootViewController()
+        self.window = window
 
         // Apply saved theme preference
         let savedTheme = UserDefaults.standard.string(forKey: "preferred_theme") ?? "system"
@@ -27,8 +27,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         default: window.overrideUserInterfaceStyle = .unspecified
         }
 
+        if OnboardingViewController.isCompleted {
+            window.rootViewController = makeRootViewController()
+        } else {
+            let onboarding = OnboardingViewController()
+            onboarding.onFinished = { [weak self] in
+                self?.transitionToMainApp()
+            }
+            window.rootViewController = onboarding
+        }
+
         window.makeKeyAndVisible()
-        self.window = window
+    }
+
+    // MARK: - Onboarding transition
+
+    private func transitionToMainApp() {
+        guard let window = window else { return }
+        let tabBar = makeRootViewController()
+        UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
+            window.rootViewController = tabBar
+        }
     }
 
     // MARK: - Root UI setup
