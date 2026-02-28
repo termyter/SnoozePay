@@ -16,13 +16,25 @@ final class AlarmScheduler {
     private let dismissActionID = "DISMISS_ACTION"
     private let snoozeActionID = "SNOOZE_ACTION"
 
+    /// Whether the app has the critical alerts entitlement (set after permission request)
+    private(set) static var criticalAlertsAvailable = false
+
     private init() {}
 
     // MARK: - Permission
 
     func requestPermission(completion: @escaping (Bool) -> Void) {
-        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge, .criticalAlert]) { granted, _ in
-            DispatchQueue.main.async { completion(granted) }
+        // Request critical alerts if entitled, fall back to standard alerts otherwise
+        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge, .criticalAlert]) { granted, error in
+            if error != nil {
+                Self.criticalAlertsAvailable = false
+                self.notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    DispatchQueue.main.async { completion(granted) }
+                }
+            } else {
+                Self.criticalAlertsAvailable = granted
+                DispatchQueue.main.async { completion(granted) }
+            }
         }
     }
 
@@ -109,20 +121,21 @@ final class AlarmScheduler {
         let penalty = alarm.penalty(forSnoozeCount: snoozeCount + 1)
         content.subtitle = "Отложить · \(Int(penalty)) ₽"
 
-        // Use critical alert sound to bypass Do Not Disturb and Silent Mode.
-        // Requires NSCriticalAlertUsageDescription in Info.plist and
-        // com.apple.developer.usernotifications.critical-alerts entitlement.
+        // Use critical sound if entitled, otherwise fall back to standard sound.
+        // Critical alerts bypass DND and silent mode (requires Apple approval).
         if let soundName = alarmSoundFileName(for: alarm.soundID) {
-            content.sound = UNNotificationSound.criticalSoundNamed(
-                UNNotificationSoundName(soundName),
-                withAudioVolume: 1.0
-            )
+            let soundN = UNNotificationSoundName(soundName)
+            content.sound = Self.criticalAlertsAvailable
+                ? UNNotificationSound.criticalSoundNamed(soundN, withAudioVolume: 1.0)
+                : UNNotificationSound(named: soundN)
         } else {
-            content.sound = UNNotificationSound.defaultCriticalSound(withAudioVolume: 1.0)
+            content.sound = Self.criticalAlertsAvailable
+                ? UNNotificationSound.defaultCriticalSound(withAudioVolume: 1.0)
+                : .default
         }
 
         content.categoryIdentifier = categoryID
-        content.interruptionLevel = .critical
+        content.interruptionLevel = Self.criticalAlertsAvailable ? .critical : .timeSensitive
 
         // Pass alarm metadata via userInfo for handling in AppDelegate
         content.userInfo = [

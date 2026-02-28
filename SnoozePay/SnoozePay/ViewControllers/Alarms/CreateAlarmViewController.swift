@@ -147,7 +147,7 @@ class CreateAlarmViewController: UIViewController {
         )
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: "Сохранить",
-            style: .done,
+            style: .plain,
             target: self,
             action: #selector(saveTapped)
         )
