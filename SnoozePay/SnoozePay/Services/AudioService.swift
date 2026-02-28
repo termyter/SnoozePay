@@ -148,21 +148,21 @@ final class AudioService {
         let dataSize = totalSamples * 2 // 16-bit = 2 bytes per sample
         var wavData = Data()
         wavData.append(contentsOf: [0x52, 0x49, 0x46, 0x46]) // "RIFF"
-        wavData.append(UInt32(36 + dataSize).littleEndianBytes)
+        wavData.append(contentsOf: UInt32(36 + dataSize).littleEndianBytes)
         wavData.append(contentsOf: [0x57, 0x41, 0x56, 0x45]) // "WAVE"
         wavData.append(contentsOf: [0x66, 0x6D, 0x74, 0x20]) // "fmt "
-        wavData.append(UInt32(16).littleEndianBytes)           // chunk size
-        wavData.append(UInt16(1).littleEndianBytes)            // PCM format
-        wavData.append(UInt16(1).littleEndianBytes)            // mono
-        wavData.append(UInt32(44100).littleEndianBytes)        // sample rate
-        wavData.append(UInt32(44100 * 2).littleEndianBytes)    // byte rate
-        wavData.append(UInt16(2).littleEndianBytes)            // block align
-        wavData.append(UInt16(16).littleEndianBytes)           // bits per sample
+        wavData.append(contentsOf: UInt32(16).littleEndianBytes)           // chunk size
+        wavData.append(contentsOf: UInt16(1).littleEndianBytes)            // PCM format
+        wavData.append(contentsOf: UInt16(1).littleEndianBytes)            // mono
+        wavData.append(contentsOf: UInt32(44100).littleEndianBytes)        // sample rate
+        wavData.append(contentsOf: UInt32(44100 * 2).littleEndianBytes)    // byte rate
+        wavData.append(contentsOf: UInt16(2).littleEndianBytes)            // block align
+        wavData.append(contentsOf: UInt16(16).littleEndianBytes)           // bits per sample
         wavData.append(contentsOf: [0x64, 0x61, 0x74, 0x61]) // "data"
-        wavData.append(UInt32(dataSize).littleEndianBytes)
+        wavData.append(contentsOf: UInt32(dataSize).littleEndianBytes)
 
-        samples.withUnsafeBufferPointer { ptr in
-            wavData.append(UnsafeBufferPointer(start: UnsafeRawPointer(ptr.baseAddress)?.assumingMemoryBound(to: UInt8.self), count: dataSize))
+        samples.withUnsafeBytes { rawBuffer in
+            wavData.append(contentsOf: rawBuffer)
         }
 
         return try? AVAudioPlayer(data: wavData)
