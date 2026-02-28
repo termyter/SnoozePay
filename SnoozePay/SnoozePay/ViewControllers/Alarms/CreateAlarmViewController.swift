@@ -131,6 +131,12 @@ class CreateAlarmViewController: UIViewController {
         populateFromViewModel()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Refresh sound row when returning from SoundPickerViewController
+        tableView.reloadSections(IndexSet(integer: Section.sound.rawValue), with: .none)
+    }
+
     // MARK: - Setup
 
     private func setupNavigationBar() {
@@ -448,18 +454,16 @@ extension CreateAlarmViewController: UITableViewDelegate {
     }
 
     private func showSoundPicker() {
-        let alert = UIAlertController(title: "Выберите звук", message: nil, preferredStyle: .actionSheet)
-        for sound in viewModel.availableSounds {
-            let isSelected = sound.id == viewModel.soundID
-            let title = isSelected ? "✓ \(sound.name)" : sound.name
-            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
-                self?.viewModel.soundID = sound.id
-                // Play preview of the selected sound
-                self?.viewModel.previewSound(sound.id)
-                self?.tableView.reloadSections(IndexSet(integer: Section.sound.rawValue), with: .none)
-            })
-        }
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
-        present(alert, animated: true)
+        let picker = SoundPickerViewController(
+            sounds: viewModel.availableSounds,
+            selectedID: viewModel.soundID,
+            onSelect: { [weak self] soundID in
+                self?.viewModel.soundID = soundID
+            },
+            previewSound: { [weak self] soundID in
+                self?.viewModel.previewSound(soundID)
+            }
+        )
+        navigationController?.pushViewController(picker, animated: true)
     }
 }
