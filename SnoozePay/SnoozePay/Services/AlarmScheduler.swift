@@ -109,9 +109,20 @@ final class AlarmScheduler {
         let penalty = alarm.penalty(forSnoozeCount: snoozeCount + 1)
         content.subtitle = "Отложить · \(Int(penalty)) ₽"
 
-        content.sound = UNNotificationSound.defaultCriticalSound(withAudioVolume: 1.0)
+        // Use critical alert sound to bypass Do Not Disturb and Silent Mode.
+        // Requires NSCriticalAlertUsageDescription in Info.plist and
+        // com.apple.developer.usernotifications.critical-alerts entitlement.
+        if let soundName = alarmSoundFileName(for: alarm.soundID) {
+            content.sound = UNNotificationSound.criticalSoundNamed(
+                UNNotificationSoundName(soundName),
+                withAudioVolume: 1.0
+            )
+        } else {
+            content.sound = UNNotificationSound.defaultCriticalSound(withAudioVolume: 1.0)
+        }
+
         content.categoryIdentifier = categoryID
-        content.interruptionLevel = .timeSensitive
+        content.interruptionLevel = .critical
 
         // Pass alarm metadata via userInfo for handling in AppDelegate
         content.userInfo = [
@@ -119,7 +130,8 @@ final class AlarmScheduler {
             "penaltyAmount": alarm.penaltyAmount,
             "progressiveScale": alarm.progressiveScale,
             "snoozeCount": snoozeCount,
-            "snoozeMinutes": alarm.snoozeMinutes
+            "snoozeMinutes": alarm.snoozeMinutes,
+            "soundID": alarm.soundID
         ]
 
         return content
@@ -164,5 +176,23 @@ final class AlarmScheduler {
 
     private func snoozeNotificationID(for alarmID: UUID) -> String {
         "snooze_\(alarmID.uuidString)"
+    }
+
+    /// Resolve alarm soundID to an actual file name with extension in the bundle.
+    /// Returns nil if no matching file is found (falls back to default critical sound).
+    private func alarmSoundFileName(for soundID: String) -> String? {
+        let extensions = ["caf", "m4a", "wav", "mp3"]
+        for ext in extensions {
+            if Bundle.main.url(forResource: soundID, withExtension: ext) != nil {
+                return "\(soundID).\(ext)"
+            }
+        }
+        // Try default alarm sound
+        for ext in extensions {
+            if Bundle.main.url(forResource: "default_alarm", withExtension: ext) != nil {
+                return "default_alarm.\(ext)"
+            }
+        }
+        return nil
     }
 }
