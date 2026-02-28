@@ -121,6 +121,42 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
                        "Dismiss should not deduct any balance")
     }
 
+    func testDismiss_disablesNonRepeatingAlarm() {
+        let repo = AlarmRepository()
+        var alarm = Alarm(penaltyAmount: 50)
+        alarm.repeatDays = []
+        alarm.enabled = true
+        repo.save(alarm)
+
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
+        vm.dismiss()
+
+        let saved = repo.fetch(id: alarm.id)
+        XCTAssertEqual(saved?.enabled, false,
+                       "Non-repeating alarm should be disabled after dismiss")
+
+        // Cleanup
+        repo.delete(id: alarm.id)
+    }
+
+    func testDismiss_keepsRepeatingAlarmEnabled() {
+        let repo = AlarmRepository()
+        var alarm = Alarm(penaltyAmount: 50)
+        alarm.repeatDays = [0, 1, 2, 3, 4] // Weekdays
+        alarm.enabled = true
+        repo.save(alarm)
+
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
+        vm.dismiss()
+
+        let saved = repo.fetch(id: alarm.id)
+        XCTAssertEqual(saved?.enabled, true,
+                       "Repeating alarm should stay enabled after dismiss")
+
+        // Cleanup
+        repo.delete(id: alarm.id)
+    }
+
     // MARK: - Penalty calculation (progressive scale)
 
     func testCurrentPenalty_firstSnooze_returnsBase() {

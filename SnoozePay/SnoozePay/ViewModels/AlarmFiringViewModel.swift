@@ -75,7 +75,12 @@ final class AlarmFiringViewModel {
     }
 
     /// Dismiss the alarm without charge.
+    /// Non-repeating alarms are disabled after dismissal.
     func dismiss() {
         scheduler.cancel(alarm.id)
+
+        if alarm.repeatDays.isEmpty {
+            alarmRepository.setEnabled(false, id: alarm.id)
+        }
     }
 }
