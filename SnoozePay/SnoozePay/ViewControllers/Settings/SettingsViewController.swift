@@ -21,17 +21,17 @@ class SettingsViewController: UIViewController {
         return tv
     }()
 
-    private let themeToggle: UISwitch = {
-        let sw = UISwitch()
-        sw.onTintColor = AppColors.accentBlue
-        return sw
+    private let themeSegment: UISegmentedControl = {
+        let sc = UISegmentedControl(items: ["Системная", "Светлая", "Тёмная"])
+        sc.selectedSegmentTintColor = AppColors.accentBlue
+        return sc
     }()
 
     // MARK: - Sections
 
     private enum Section: Int, CaseIterable {
         case account    // Transaction history + Balance
-        case appearance // Dark theme toggle
+        case appearance // Theme selector (system / light / dark)
         case info       // Privacy policy + Terms
         case contact    // Contact us
     }
@@ -66,16 +66,24 @@ class SettingsViewController: UIViewController {
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
-        themeToggle.isOn = (preferredTheme == "dark")
-        themeToggle.addTarget(self, action: #selector(themeToggleChanged), for: .valueChanged)
+        // Map stored preference to segment index: 0=system, 1=light, 2=dark
+        switch preferredTheme {
+        case "light": themeSegment.selectedSegmentIndex = 1
+        case "dark": themeSegment.selectedSegmentIndex = 2
+        default: themeSegment.selectedSegmentIndex = 0
+        }
+        themeSegment.addTarget(self, action: #selector(themeSegmentChanged), for: .valueChanged)
     }
 
     // MARK: - Theme
 
-    @objc private func themeToggleChanged() {
-        let isDark = themeToggle.isOn
-        preferredTheme = isDark ? "dark" : "light"
-        applyTheme(isDark ? .dark : .light)
+    @objc private func themeSegmentChanged() {
+        let values = ["system", "light", "dark"]
+        let index = themeSegment.selectedSegmentIndex
+        preferredTheme = values[index]
+
+        let styles: [UIUserInterfaceStyle] = [.unspecified, .light, .dark]
+        applyTheme(styles[index])
     }
 
     private func applyTheme(_ style: UIUserInterfaceStyle) {
@@ -171,10 +179,18 @@ extension SettingsViewController: UITableViewDataSource {
             let cell = makeIconRow(
                 systemName: "moon.fill",
                 iconColor: UIColor.systemIndigo,
-                title: "Тёмная тема",
+                title: "Тема",
                 accessory: .none
             )
-            cell.accessoryView = themeToggle
+            // Remove old segment if reused, then add current one
+            themeSegment.translatesAutoresizingMaskIntoConstraints = false
+            themeSegment.removeFromSuperview()
+            cell.contentView.addSubview(themeSegment)
+            NSLayoutConstraint.activate([
+                themeSegment.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
+                themeSegment.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
+                themeSegment.widthAnchor.constraint(equalToConstant: 220)
+            ])
             cell.selectionStyle = .none
             return cell
 
@@ -285,7 +301,10 @@ extension SettingsViewController: UITableViewDataSource {
 
 extension SettingsViewController: UITableViewDelegate {
 
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat { 52 }
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        guard let section = Section(rawValue: indexPath.section) else { return 52 }
+        return section == .appearance ? 56 : 52
+    }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
