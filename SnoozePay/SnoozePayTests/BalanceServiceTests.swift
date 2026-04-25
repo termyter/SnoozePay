@@ -24,7 +24,52 @@ final class BalanceServiceTests: XCTestCase {
 
     private func makeService(balance: Double = 0) -> BalanceService {
         testDefaults.set(balance, forKey: "user_balance")
-        return BalanceService.shared
+        return BalanceService(defaults: testDefaults)
+    }
+
+    // MARK: - Concurrency
+
+    func testConcurrentCharge_neverGoesNegative() {
+        let initialBalance: Double = 1000
+        let amount: Double = 10
+        let iterations = 100
+        let service = makeService(balance: initialBalance)
+
+        let successCount = NSCountedSet()
+        let lock = NSLock()
+
+        DispatchQueue.concurrentPerform(iterations: iterations) { _ in
+            let charged = service.charge(amount: amount, alarmID: nil)
+            if charged {
+                lock.lock()
+                successCount.add("ok")
+                lock.unlock()
+            }
+        }
+
+        let successes = successCount.count(for: "ok")
+        let expectedSuccesses = Int(initialBalance / amount)
+
+        XCTAssertGreaterThanOrEqual(service.balance, 0)
+        XCTAssertEqual(successes, expectedSuccesses)
+        XCTAssertEqual(service.balance, initialBalance - Double(successes) * amount)
+    }
+
+    func testConcurrentChargeAndTopUp_remainsConsistent() {
+        let initialBalance: Double = 500
+        let amount: Double = 5
+        let iterations = 200
+        let service = makeService(balance: initialBalance)
+
+        DispatchQueue.concurrentPerform(iterations: iterations) { idx in
+            if idx % 2 == 0 {
+                service.charge(amount: amount, alarmID: nil)
+            } else {
+                service.topUp(amount: amount)
+            }
+        }
+
+        XCTAssertGreaterThanOrEqual(service.balance, 0)
     }
 }
 
