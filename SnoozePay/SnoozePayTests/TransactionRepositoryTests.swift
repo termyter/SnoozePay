@@ -5,18 +5,18 @@ import XCTest
 final class TransactionRepositoryTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
+    private var suiteName: String!
     private var repo: TransactionRepository!
 
     override func setUp() {
         super.setUp()
-        testDefaults = UserDefaults(suiteName: "test.txRepo.\(UUID().uuidString)")!
+        suiteName = "test.txRepo.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
         repo = TransactionRepository(defaults: testDefaults)
     }
 
     override func tearDown() {
-        if let name = testDefaults.suiteName {
-            UserDefaults.removePersistentDomain(forName: name)
-        }
+        testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
@@ -169,7 +169,8 @@ final class TransactionRepositoryTests: XCTestCase {
 
     func testIsolation_separateSuites() {
         // Verify that our test UserDefaults suite is isolated
-        let otherDefaults = UserDefaults(suiteName: "test.txRepo.other.\(UUID().uuidString)")!
+        let otherSuiteName = "test.txRepo.other.\(UUID().uuidString)"
+        let otherDefaults = UserDefaults(suiteName: otherSuiteName)!
         let otherRepo = TransactionRepository(defaults: otherDefaults)
 
         repo.record(charge(amount: 50))
@@ -177,6 +178,6 @@ final class TransactionRepositoryTests: XCTestCase {
         XCTAssertEqual(repo.fetchAll().count, 1)
         XCTAssertEqual(otherRepo.fetchAll().count, 0, "Different suites should be isolated")
 
-        UserDefaults.removePersistentDomain(forName: otherDefaults.suiteName ?? "")
+        otherDefaults.removePersistentDomain(forName: otherSuiteName)
     }
 }

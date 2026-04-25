@@ -107,8 +107,12 @@ final class AlarmCell: UITableViewCell {
         detailLabel.text = detail
         penaltyLabel.text = penalty
         toggleSwitch.isOn = enabled
+        setEnabledAppearance(enabled)
+    }
 
-        // Dim text when alarm is disabled
+    /// Updates the dim/full opacity of text labels to match enabled state.
+    /// Called both during initial configuration and live from the toggle handler.
+    func setEnabledAppearance(_ enabled: Bool) {
         let alpha: CGFloat = enabled ? 1.0 : 0.4
         timeLabel.alpha = alpha
         detailLabel.alpha = alpha

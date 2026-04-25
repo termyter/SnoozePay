@@ -5,17 +5,17 @@ import XCTest
 final class SettingsViewModelTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
+    private var suiteName: String!
     private let themeKey = "preferred_theme"
 
     override func setUp() {
         super.setUp()
-        testDefaults = UserDefaults(suiteName: "test.settings.\(UUID().uuidString)")!
+        suiteName = "test.settings.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
     }
 
     override func tearDown() {
-        if let name = testDefaults.suiteName {
-            UserDefaults.removePersistentDomain(forName: name)
-        }
+        testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 

@@ -5,18 +5,18 @@ import XCTest
 final class StatisticsViewModelDataTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
+    private var suiteName: String!
     private var txRepo: TransactionRepository!
 
     override func setUp() {
         super.setUp()
-        testDefaults = UserDefaults(suiteName: "test.statistics.\(UUID().uuidString)")!
+        suiteName = "test.statistics.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
         txRepo = TransactionRepository(defaults: testDefaults)
     }
 
     override func tearDown() {
-        if let name = testDefaults.suiteName {
-            UserDefaults.removePersistentDomain(forName: name)
-        }
+        testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 

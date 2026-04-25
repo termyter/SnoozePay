@@ -5,18 +5,18 @@ import XCTest
 final class AlarmsListViewModelTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
+    private var suiteName: String!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        testDefaults = UserDefaults(suiteName: "test.alarmsList.\(UUID().uuidString)")!
+        suiteName = "test.alarmsList.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
         repo = AlarmRepository(defaults: testDefaults)
     }
 
     override func tearDown() {
-        if let name = testDefaults.suiteName {
-            UserDefaults.removePersistentDomain(forName: name)
-        }
+        testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
@@ -82,5 +82,46 @@ final class AlarmsListViewModelTests: XCTestCase {
 
         let penalty = vm.alarmPenaltyString(at: 0)
         XCTAssertEqual(penalty, "▲ ОТЛОЖИТЬ: 1000 ₽")
+    }
+
+    // MARK: - Safe index handling
+
+    func testAlarmTimeString_emptyAlarmsReturnsEmptyString() {
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarmTimeString(at: 0), "")
+        XCTAssertEqual(vm.alarmSubtitle(at: 0), "")
+    }
+
+    func testFormattedBalance_containsRubleSign() {
+        let vm = makeViewModel()
+        XCTAssertTrue(vm.formattedBalance.contains("₽"))
+    }
+
+    // MARK: - toggleAlarm(at:enabled:)
+
+    func testToggleAlarm_updatesInMemoryState() {
+        let alarm = Alarm(penaltyAmount: 50, enabled: true)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertTrue(vm.alarms[0].enabled)
+
+        vm.toggleAlarm(at: 0, enabled: false)
+        XCTAssertFalse(vm.alarms[0].enabled, "In-memory alarm must reflect the new enabled state immediately")
+    }
+
+    func testToggleAlarm_persistsToRepository() {
+        let alarm = Alarm(penaltyAmount: 50, enabled: true)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        vm.toggleAlarm(at: 0, enabled: false)
+        let stored = repo.fetchAll()
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertFalse(stored[0].enabled, "Toggle must persist through the repository")
     }
 }

@@ -6,15 +6,17 @@ final class BalanceServiceTests: XCTestCase {
 
     /// Use a fresh UserDefaults suite to avoid polluting real app data.
     private var testDefaults: UserDefaults!
+    private var suiteName: String!
     private var service: BalanceService!
 
     override func setUp() {
         super.setUp()
-        testDefaults = UserDefaults(suiteName: "test_\(UUID().uuidString)")!
+        suiteName = "test_\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
     }
 
     override func tearDown() {
-        testDefaults.removePersistentDomain(forName: testDefaults.suiteName ?? "")
+        testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
@@ -90,25 +92,6 @@ final class AlarmFiringViewModelTests: XCTestCase {
 
         XCTAssertFalse(vm.canSnooze)
         XCTAssertEqual(vm.snoozeButtonTitle, "Баланс пуст")
-    }
-}
-
-/// Tests for AlarmsListViewModel.
-final class AlarmsListViewModelTests: XCTestCase {
-
-    func testAlarmTimeFormatting() {
-        let repo = AlarmRepository()
-        let vm = AlarmsListViewModel(alarmRepository: repo)
-
-        // No alarms — verify safe index handling
-        XCTAssertEqual(vm.alarmTimeString(at: 0), "")
-        XCTAssertEqual(vm.alarmSubtitle(at: 0), "")
-    }
-
-    func testFormattedBalance() {
-        let vm = AlarmsListViewModel()
-        // formattedBalance should always contain ₽
-        XCTAssertTrue(vm.formattedBalance.contains("₽"))
     }
 }
 

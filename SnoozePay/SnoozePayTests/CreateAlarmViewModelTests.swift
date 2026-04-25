@@ -5,18 +5,18 @@ import XCTest
 final class CreateAlarmViewModelSoundTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
+    private var suiteName: String!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        testDefaults = UserDefaults(suiteName: "test.createAlarm.\(UUID().uuidString)")!
+        suiteName = "test.createAlarm.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
         repo = AlarmRepository(defaults: testDefaults)
     }
 
     override func tearDown() {
-        if let name = testDefaults.suiteName {
-            UserDefaults.removePersistentDomain(forName: name)
-        }
+        testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
