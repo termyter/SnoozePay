@@ -126,19 +126,23 @@ final class StoreKitService {
                 await transaction.finish()
                 return
             }
+            // Unknown productID in background listener: do NOT finish AND do NOT mark
+            // as processed — leave for retry after app update. Finishing would silently
+            // lose the user's money since fallbackPrice is nil here. Marking processed
+            // would poison the dedup table: on next launch the replay would be matched
+            // by the idempotency guard and finish() called below, also losing the money.
+            // Order matters — check amount before markProcessed.
+            let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: nil)
+            guard amount > 0 else {
+                print("[StoreKit] unknown productID \(transaction.productID) tx=\(transaction.id) — not finishing")
+                onPurchaseFailed?("Неизвестный пакет пополнения. Обнови приложение.")
+                return
+            }
             // Idempotency — guard against StoreKit replaying a transaction we already
             // credited (e.g. if the previous run crashed between topUp and finish()).
             guard markProcessed(transactionID: transaction.id) else {
                 print("[StoreKit] tx \(transaction.id) already processed — finishing without re-credit")
                 await transaction.finish()
-                return
-            }
-            // Unknown productID in background listener: do NOT finish — leave for retry.
-            // Finishing would silently lose the user's money since fallbackPrice is nil here.
-            let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: nil)
-            guard amount > 0 else {
-                print("[StoreKit] unknown productID \(transaction.productID) tx=\(transaction.id) — not finishing")
-                onPurchaseFailed?("Неизвестный пакет пополнения. Обнови приложение.")
                 return
             }
             BalanceService.shared.topUp(amount: amount)
