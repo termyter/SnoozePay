@@ -143,4 +143,22 @@ final class AlarmSchedulerTests: XCTestCase {
         }
         // If file doesn't exist, nil is acceptable
     }
+
+    // MARK: - Permission / scheduling smoke
+    //
+    // NOTE: AlarmScheduler depends on UNUserNotificationCenter.current() which is a
+    // process-wide singleton and cannot be DI'd without a refactor (extracting a
+    // protocol seam). Until that refactor lands, we cannot mock notification-center
+    // failures to assert that errors are logged. The smoke test below verifies that
+    // requesting permission does not crash and invokes its completion handler in a
+    // reasonable time — which at minimum guards against regressions in the
+    // permission dispatch flow added in IOS-033.
+
+    func testRequestPermission_invokesCompletionWithoutCrash() {
+        let expectation = expectation(description: "requestPermission completes")
+        AlarmScheduler.shared.requestPermission { _ in
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
+    }
 }
