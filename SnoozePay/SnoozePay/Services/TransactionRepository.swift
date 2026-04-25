@@ -1,31 +1,60 @@
 import Foundation
 
+/// Persists transactions in UserDefaults with a serial queue protecting all reads and writes.
+/// Transactions are a financial ledger — losing entries due to a read-modify-write race
+/// (e.g. concurrent BalanceService.charge from a notification action and a manual top-up)
+/// would silently corrupt user data.
 final class TransactionRepository {
+
     static let shared = TransactionRepository()
+
     private let key = "stored_transactions"
     private let defaults: UserDefaults
+    private let queue = DispatchQueue(label: "com.snoozepay.transactions.serial")
 
+    /// Production code MUST use `TransactionRepository.shared`.
+    /// Direct construction creates an isolated instance with its own serial queue —
+    /// two such instances racing on the same UserDefaults key reintroduce the race
+    /// this class exists to prevent.
+    #if DEBUG
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
+    #else
+    private init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+    #endif
+
+    // MARK: - Read
 
     func fetchAll() -> [Transaction] {
-        guard let data = defaults.data(forKey: key),
-              let txs = try? JSONDecoder().decode([Transaction].self, from: data)
-        else { return [] }
-        return txs.sorted { $0.createdAt > $1.createdAt }
+        queue.sync { readAll() }
     }
 
     func fetchCharges(since date: Date) -> [Transaction] {
-        fetchAll().filter { $0.type == .charge && $0.createdAt >= date }
+        queue.sync {
+            readAll().filter { $0.type == .charge && $0.createdAt >= date }
+        }
     }
+
+    // MARK: - Mutate
 
     @discardableResult
     func record(_ transaction: Transaction) -> Bool {
-        var txs = fetchAll()
-        txs.append(transaction)
-        let data = try? JSONEncoder().encode(txs)
-        defaults.set(data, forKey: key)
+        queue.sync {
+            var txs = readAll()
+            txs.append(transaction)
+            do {
+                let data = try JSONEncoder().encode(txs)
+                defaults.set(data, forKey: key)
+            } catch {
+                // Don't write nil — that wipes the financial ledger silently.
+                // Issue #23 tracks proper logging+UI surfacing.
+                assertionFailure("TransactionRepository encode failed: \(error)")
+                print("[TransactionRepository] encode failed, preserving previous state: \(error)")
+            }
+        }
         return true
     }
 
@@ -34,7 +63,7 @@ final class TransactionRepository {
     /// Returns count of consecutive days ending today with no charge transactions.
     /// Returns 0 if there are no transactions at all (new user).
     func currentStreak() -> Int {
-        let allTransactions = fetchAll()
+        let allTransactions = queue.sync { readAll() }
         guard !allTransactions.isEmpty else { return 0 }
 
         let calendar = Calendar.current
@@ -43,7 +72,6 @@ final class TransactionRepository {
         let allCharges = allTransactions.filter { $0.type == .charge }
         let chargeDates = Set(allCharges.map { calendar.startOfDay(for: $0.createdAt) })
 
-        // Only count back to the date of the first transaction
         let firstTransactionDate = calendar.startOfDay(
             for: allTransactions.map { $0.createdAt }.min() ?? Date()
         )
@@ -55,5 +83,14 @@ final class TransactionRepository {
         }
 
         return streak
+    }
+
+    // MARK: - Private (must be called inside queue.sync)
+
+    private func readAll() -> [Transaction] {
+        guard let data = defaults.data(forKey: key),
+              let txs = try? JSONDecoder().decode([Transaction].self, from: data)
+        else { return [] }
+        return txs.sorted { $0.createdAt > $1.createdAt }
     }
 }

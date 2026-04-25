@@ -180,4 +180,21 @@ final class TransactionRepositoryTests: XCTestCase {
 
         otherDefaults.removePersistentDomain(forName: otherSuiteName)
     }
+
+    // MARK: - Concurrency
+
+    func testConcurrentRecord_allTransactionsLanded() {
+        let iterations = 100
+
+        DispatchQueue.concurrentPerform(iterations: iterations) { idx in
+            let tx = Transaction(
+                type: idx % 2 == 0 ? .charge : .topup,
+                amount: Double(idx + 1)
+            )
+            self.repo.record(tx)
+        }
+
+        XCTAssertEqual(repo.fetchAll().count, iterations,
+                       "All concurrently-recorded transactions must be persisted")
+    }
 }
