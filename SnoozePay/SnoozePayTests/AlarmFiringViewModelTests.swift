@@ -12,9 +12,9 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         snoozeMinutes: Int = 9
     ) -> Alarm {
         Alarm(
+            snoozeMinutes: snoozeMinutes,
             penaltyAmount: penalty,
-            progressiveScale: progressive,
-            snoozeMinutes: snoozeMinutes
+            progressiveScale: progressive
         )
     }
 

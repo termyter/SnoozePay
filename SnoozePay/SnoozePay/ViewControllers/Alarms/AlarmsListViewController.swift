@@ -275,7 +275,11 @@ extension AlarmsListViewController: UITableViewDataSource {
     }
 
     @objc private func toggleChanged(_ sender: UISwitch) {
-        viewModel.toggleAlarm(at: sender.tag, enabled: sender.isOn)
+        let index = sender.tag
+        viewModel.toggleAlarm(at: index, enabled: sender.isOn)
+        if let cell = tableView.cellForRow(at: IndexPath(row: index, section: 0)) as? AlarmCell {
+            cell.setEnabledAppearance(sender.isOn)
+        }
     }
 }
 
