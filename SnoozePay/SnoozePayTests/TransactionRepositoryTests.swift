@@ -181,6 +181,63 @@ final class TransactionRepositoryTests: XCTestCase {
         otherDefaults.removePersistentDomain(forName: otherSuiteName)
     }
 
+    // MARK: - Corrupted persistence (issue #23)
+
+    /// When stored JSON can't be decoded, the read must return `[]`
+    /// without silently overwriting the corrupted blob — the raw bytes stay
+    /// on disk so we can diagnose what got broken.
+    func testFetchAll_corruptedJSON_returnsEmptyAndPreservesRawData() {
+        let corruptBytes = Data("{ this is not valid json".utf8)
+        testDefaults.set(corruptBytes, forKey: "stored_transactions")
+
+        XCTAssertTrue(repo.fetchAll().isEmpty, "Decode failure yields empty list to caller")
+
+        let onDisk = testDefaults.data(forKey: "stored_transactions")
+        XCTAssertEqual(onDisk, corruptBytes,
+                       "Corrupt JSON must remain untouched on disk for debugging")
+    }
+
+    func testFetchAll_corruptedJSON_repeatedReadDoesNotMutateStorage() {
+        let corruptBytes = Data("not json".utf8)
+        testDefaults.set(corruptBytes, forKey: "stored_transactions")
+
+        _ = repo.fetchAll()
+        _ = repo.fetchAll()
+        _ = repo.fetchCharges(since: Date.distantPast)
+
+        XCTAssertEqual(testDefaults.data(forKey: "stored_transactions"), corruptBytes,
+                       "Reading corrupt data must never write back")
+    }
+
+    func testFetchAll_keyAbsent_returnsEmptyAndDoesNotCreateKey() {
+        testDefaults.removeObject(forKey: "stored_transactions")
+
+        XCTAssertTrue(repo.fetchAll().isEmpty)
+        XCTAssertNil(testDefaults.data(forKey: "stored_transactions"),
+                     "Read on missing key must not materialize an empty value")
+    }
+
+    /// A subsequent valid `record()` call replaces the corrupt blob with healthy JSON.
+    /// This is the only path that may overwrite corrupted data — and only with a
+    /// known-good in-memory snapshot.
+    func testRecordAfterCorruption_overwritesWithValidData() {
+        testDefaults.set(Data("garbage".utf8), forKey: "stored_transactions")
+
+        repo.record(charge(amount: 99))
+
+        let all = repo.fetchAll()
+        XCTAssertEqual(all.count, 1)
+        XCTAssertEqual(all.first?.amount, 99)
+    }
+
+    /// On corrupted data, currentStreak() must not crash and must report 0
+    /// (matching the new-user fallback) rather than returning a misleading value.
+    func testCurrentStreak_corruptedJSON_returnsZero() {
+        testDefaults.set(Data("nope".utf8), forKey: "stored_transactions")
+
+        XCTAssertEqual(repo.currentStreak(), 0)
+    }
+
     // MARK: - Concurrency
 
     func testConcurrentRecord_allTransactionsLanded() {

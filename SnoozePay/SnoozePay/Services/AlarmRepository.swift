@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// Persists alarms in UserDefaults with a serial queue protecting all reads and writes.
 /// Without serialization, concurrent callers (UI edits + notification action handlers)
@@ -10,6 +11,7 @@ final class AlarmRepository {
     private let key = "stored_alarms"
     private let defaults: UserDefaults
     private let queue = DispatchQueue(label: "com.snoozepay.alarms.serial")
+    private static let log = OSLog(subsystem: "Ivan-Emelyanov.SnoozePay", category: "AlarmRepository")
 
     /// Production code MUST use `AlarmRepository.shared`.
     /// Direct construction creates an isolated instance with its own serial queue —
@@ -83,11 +85,32 @@ final class AlarmRepository {
 
     // MARK: - Private (must be called inside queue.sync)
 
+    /// Returns persisted alarms.
+    ///
+    /// Differentiates three states (issue #23):
+    ///   1. Key absent — new user, returns `[]` (legitimate empty state).
+    ///   2. Key present, decode succeeds — returns sorted alarms.
+    ///   3. Key present, decode fails — logs the error and returns `[]` for this read,
+    ///      but the corrupted JSON stays on disk untouched. The next `persist()`
+    ///      from a healthy in-memory state will overwrite it. Until then, the raw
+    ///      bytes remain available for debugging instead of being silently wiped.
     private func readAll() -> [Alarm] {
-        guard let data = defaults.data(forKey: key),
-              let alarms = try? JSONDecoder().decode([Alarm].self, from: data)
-        else { return [] }
-        return alarms.sorted { $0.time < $1.time }
+        guard let data = defaults.data(forKey: key) else {
+            // Case 1: brand-new install — no stored alarms yet.
+            return []
+        }
+        do {
+            let alarms = try JSONDecoder().decode([Alarm].self, from: data)
+            return alarms.sorted { $0.time < $1.time }
+        } catch {
+            // Case 3: stored bytes can't be decoded. Surface the failure but DO NOT
+            // overwrite the corrupted blob — preserve it for diagnosis.
+            os_log(
+                "Decode failed (%{public}d bytes preserved on disk): %{public}@",
+                log: Self.log, type: .error, data.count, String(describing: error)
+            )
+            return []
+        }
     }
 
     private func persist(_ alarms: [Alarm]) {
@@ -96,9 +119,12 @@ final class AlarmRepository {
             defaults.set(data, forKey: key)
         } catch {
             // Don't write nil — that wipes the entire alarm list silently.
-            // Issue #23 tracks proper logging+UI surfacing; this guard at least preserves data.
+            // If encode fails the previous JSON on disk stays intact (issue #23).
+            os_log(
+                "Encode failed, previous state preserved on disk: %{public}@",
+                log: Self.log, type: .error, String(describing: error)
+            )
             assertionFailure("AlarmRepository encode failed: \(error)")
-            print("[AlarmRepository] encode failed, preserving previous state: \(error)")
         }
     }
 }
