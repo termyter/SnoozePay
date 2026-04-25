@@ -27,6 +27,7 @@ final class StatisticsViewModel {
     // MARK: - Dependencies
 
     private let transactionRepository: TransactionRepository
+    private let defaults: UserDefaults
 
     // MARK: - State
 
@@ -38,8 +39,12 @@ final class StatisticsViewModel {
 
     // MARK: - Init
 
-    init(repository: TransactionRepository = TransactionRepository()) {
+    init(
+        repository: TransactionRepository = TransactionRepository(),
+        defaults: UserDefaults = .standard
+    ) {
         self.transactionRepository = repository
+        self.defaults = defaults
     }
 
     // MARK: - Load
@@ -55,6 +60,11 @@ final class StatisticsViewModel {
         }
 
         streak = transactionRepository.currentStreak()
+        // Bump persisted best streak only forward — never reset on streak = 0,
+        // so the user's all-time record survives a slip-up.
+        if streak > defaults.integer(forKey: "best_streak") {
+            defaults.set(streak, forKey: "best_streak")
+        }
         onDataUpdated?()
     }
 
@@ -87,9 +97,9 @@ final class StatisticsViewModel {
         String(format: "%.1f / утро", averagePerDay)
     }
 
-    /// Best streak (for MVP, use current streak as best — can be improved later with persistence).
+    /// All-time best streak, persisted across launches and never reset on a slip-up.
     var bestStreak: Int {
-        max(streak, streak) // Placeholder — same as current streak for MVP
+        defaults.integer(forKey: "best_streak")
     }
 
     var bestStreakFormatted: String {

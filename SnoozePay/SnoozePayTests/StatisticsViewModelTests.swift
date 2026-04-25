@@ -23,7 +23,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeVM() -> StatisticsViewModel {
-        StatisticsViewModel(repository: txRepo)
+        StatisticsViewModel(repository: txRepo, defaults: testDefaults)
     }
 
     private func addCharge(amount: Double, daysAgo: Int = 0) {
@@ -354,14 +354,42 @@ final class StatisticsViewModelDataTests: XCTestCase {
 
     // MARK: - bestStreak
 
-    func testBestStreak_equalToCurrentStreak() {
-        // In MVP, bestStreak is always the same as current streak
+    func testBestStreak_growsWhenCurrentExceedsStored() {
+        testDefaults.set(2, forKey: "best_streak")
+        // Charge 5 days ago + topup today → streak should be ~5 (no charges in last 5 days)
         addCharge(amount: 50, daysAgo: 5)
+        addTopup(amount: 100, daysAgo: 0)
 
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        XCTAssertEqual(vm.bestStreak, vm.streak)
+        XCTAssertGreaterThan(vm.streak, 2, "Test setup precondition: current streak should exceed stored")
+        XCTAssertEqual(vm.bestStreak, vm.streak, "Best streak should bump up to new high")
+        XCTAssertEqual(testDefaults.integer(forKey: "best_streak"), vm.streak)
+    }
+
+    func testBestStreak_doesNotResetWhenCurrentIsZero() {
+        testDefaults.set(7, forKey: "best_streak")
+        // Charge today → current streak = 0
+        addCharge(amount: 50, daysAgo: 0)
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        XCTAssertEqual(vm.streak, 0)
+        XCTAssertEqual(vm.bestStreak, 7, "Stored best streak must survive a slip-up")
+    }
+
+    func testBestStreak_doesNotShrinkWhenCurrentIsLower() {
+        testDefaults.set(10, forKey: "best_streak")
+        addCharge(amount: 50, daysAgo: 3)
+        addTopup(amount: 100, daysAgo: 0)
+
+        let vm = makeVM()
+        vm.loadData(period: .week)
+
+        XCTAssertLessThan(vm.streak, 10, "Test setup precondition: current streak should be below stored")
+        XCTAssertEqual(vm.bestStreak, 10, "Best streak should hold the previous high")
     }
 
     func testBestStreakFormatted_format() {
