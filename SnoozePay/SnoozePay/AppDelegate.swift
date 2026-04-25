@@ -46,32 +46,56 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Permission UI
 
     private func presentNotificationsDisabledAlert() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            // Cold-start: permission callback may fire before SceneDelegate attaches
+            // the window. Defer until a scene becomes active rather than dropping silently.
             guard
                 let windowScene = UIApplication.shared.connectedScenes
                     .compactMap({ $0 as? UIWindowScene })
                     .first,
                 let rootVC = windowScene.windows.first?.rootViewController
-            else { return }
-
-            let alert = UIAlertController(
-                title: "Уведомления выключены",
-                message: "Без разрешения на уведомления будильники не сработают. Включите их в Настройках.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
-            alert.addAction(UIAlertAction(title: "Настройки", style: .default) { _ in
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            })
-
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController {
-                topVC = presented
+            else {
+                print("[AppDelegate] no rootVC yet, deferring notifications-disabled alert")
+                self?.deferNotificationsDisabledAlertUntilSceneActive()
+                return
             }
-            topVC.present(alert, animated: true)
+
+            self?.showNotificationsDisabledAlert(on: rootVC)
         }
+    }
+
+    private func deferNotificationsDisabledAlertUntilSceneActive() {
+        var observer: NSObjectProtocol?
+        observer = NotificationCenter.default.addObserver(
+            forName: UIScene.didActivateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            if let observer = observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            self?.presentNotificationsDisabledAlert()
+        }
+    }
+
+    private func showNotificationsDisabledAlert(on rootVC: UIViewController) {
+        let alert = UIAlertController(
+            title: "Уведомления выключены",
+            message: "Без разрешения на уведомления будильники не сработают. Включите их в Настройках.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Настройки", style: .default) { _ in
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        })
+
+        var topVC = rootVC
+        while let presented = topVC.presentedViewController {
+            topVC = presented
+        }
+        topVC.present(alert, animated: true)
     }
 }
 

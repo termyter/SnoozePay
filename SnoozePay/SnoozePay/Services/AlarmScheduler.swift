@@ -24,25 +24,23 @@ final class AlarmScheduler {
     // MARK: - Permission
 
     func requestPermission(completion: @escaping (Bool) -> Void) {
-        // Request critical alerts if entitled, fall back to standard alerts otherwise
+        // Request critical alerts if entitled, fall back to standard alerts otherwise.
+        // Always log the resolved state so QA can tell if we're on the degraded
+        // (no critical-alert) path even when standard permission succeeds.
         notificationCenter.requestAuthorization(options: [.alert, .sound, .badge, .criticalAlert]) { granted, error in
             if let error = error {
-                print("[AlarmScheduler] permission state: granted=\(granted), error=\(error)")
+                print("[AlarmScheduler] critical-alert request failed: \(error). Falling back to standard.")
                 Self.criticalAlertsAvailable = false
                 let standardOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
                 self.notificationCenter.requestAuthorization(options: standardOptions) { granted, fallbackError in
-                    if let fallbackError = fallbackError {
-                        print("[AlarmScheduler] permission state: granted=\(granted), error=\(fallbackError)")
-                    } else if !granted {
-                        print("[AlarmScheduler] permission state: granted=false, error=nil")
-                    }
+                    Self.criticalAlertsAvailable = false
+                    let errorPart = fallbackError.map { ", error=\($0)" } ?? ""
+                    print("[AlarmScheduler] resolved path=fallback granted=\(granted) critical=false\(errorPart)")
                     DispatchQueue.main.async { completion(granted) }
                 }
             } else {
-                if !granted {
-                    print("[AlarmScheduler] permission state: granted=false, error=nil")
-                }
                 Self.criticalAlertsAvailable = granted
+                print("[AlarmScheduler] resolved path=primary granted=\(granted) critical=\(granted)")
                 DispatchQueue.main.async { completion(granted) }
             }
         }
