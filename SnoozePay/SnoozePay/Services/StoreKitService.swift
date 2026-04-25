@@ -39,6 +39,10 @@ final class StoreKitService {
     /// and purchases that completed while the app was not running.
     private var transactionListener: Task<Void, Never>?
 
+    /// Persisted set of transaction IDs that have already been credited. Prevents
+    /// double-credit when StoreKit replays an unfinished transaction on next launch.
+    private static let processedTxKey = "storekit.processed_tx_ids"
+
     private init() {
         transactionListener = Self.makeTransactionListener()
     }
@@ -60,11 +64,11 @@ final class StoreKitService {
     func loadProducts() async {
         do {
             let loaded = try await Product.products(for: Set(StoreKitService.productIDs))
-            // Sort by price ascending
             products = loaded.sorted { $0.price < $1.price }
             onProductsLoaded?(products)
         } catch {
-            print("StoreKit product load error: \(error)")
+            print("[StoreKit] product load failed: \(error)")
+            onPurchaseFailed?("Не удалось загрузить пакеты пополнения. Проверь интернет-соединение.")
         }
     }
 
@@ -76,6 +80,11 @@ final class StoreKitService {
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
+                guard markProcessed(transactionID: transaction.id) else {
+                    print("[StoreKit] tx \(transaction.id) already processed — skipping double credit")
+                    await transaction.finish()
+                    return
+                }
                 let amount = creditBalance(for: transaction.productID, fallbackPrice: product.price)
                 await transaction.finish()
                 onPurchaseCompleted?(amount)
@@ -88,7 +97,8 @@ final class StoreKitService {
                 onPurchasePending?()
 
             @unknown default:
-                break
+                print("[StoreKit] unknown PurchaseResult case — likely future StoreKit addition")
+                onPurchaseFailed?("Покупка не выполнена. Обнови приложение и попробуй ещё раз.")
             }
         } catch {
             onPurchaseFailed?(error.localizedDescription)
@@ -103,23 +113,53 @@ final class StoreKitService {
     private func handle(transactionResult: VerificationResult<StoreKit.Transaction>) async {
         switch transactionResult {
         case .verified(let transaction):
-            // Skip revoked transactions (refunds / family-share removal):
-            // Apple delivers them so we can revoke entitlements, but for
-            // consumables we simply finish them — the balance was already spent.
-            if transaction.revocationDate == nil {
-                let amount = creditBalance(for: transaction.productID, fallbackPrice: nil)
-                if amount > 0 {
-                    onPurchaseCompleted?(amount)
-                }
+            // Revoked (refund / family-share removal): log audit trail, don't re-credit,
+            // do finish so it stops being delivered. For consumables we cannot reverse
+            // a spent balance — track this as a known limitation (see #22-style follow-up).
+            guard transaction.revocationDate == nil else {
+                print("[StoreKit] revoked tx \(transaction.id) productID=\(transaction.productID)")
+                await transaction.finish()
+                return
             }
+            // Idempotency — guard against StoreKit replaying a transaction we already
+            // credited (e.g. if the previous run crashed between topUp and finish()).
+            guard markProcessed(transactionID: transaction.id) else {
+                print("[StoreKit] tx \(transaction.id) already processed — finishing without re-credit")
+                await transaction.finish()
+                return
+            }
+            // Unknown productID in background listener: do NOT finish — leave for retry.
+            // Finishing would silently lose the user's money since fallbackPrice is nil here.
+            let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: nil)
+            guard amount > 0 else {
+                print("[StoreKit] unknown productID \(transaction.productID) tx=\(transaction.id) — not finishing")
+                onPurchaseFailed?("Неизвестный пакет пополнения. Обнови приложение.")
+                return
+            }
+            BalanceService.shared.topUp(amount: amount)
             await transaction.finish()
+            onPurchaseCompleted?(amount)
 
         case .unverified(let transaction, let error):
-            // Per Apple docs: still finish unverified transactions to drain the queue,
-            // but do not credit balance.
-            print("StoreKit unverified transaction \(transaction.id): \(error)")
-            await transaction.finish()
+            // Don't finish — let Apple retry next launch. Verification can fail temporarily
+            // (clock drift, cert refresh). Finishing here would discard a potentially valid
+            // purchase. WWDC sample code (Fruta, Backyard Birds) follows this pattern too.
+            print("[StoreKit] unverified tx=\(transaction.id) productID=\(transaction.productID) error=\(error)")
+            onPurchaseFailed?("Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.")
         }
+    }
+
+    // MARK: - Idempotency
+
+    /// Returns true if this transaction is new (recorded for the first time);
+    /// false if it was already processed in a previous app session.
+    private func markProcessed(transactionID: UInt64) -> Bool {
+        let defaults = UserDefaults.standard
+        var processed = Set(defaults.array(forKey: Self.processedTxKey) as? [UInt64] ?? [])
+        guard !processed.contains(transactionID) else { return false }
+        processed.insert(transactionID)
+        defaults.set(Array(processed), forKey: Self.processedTxKey)
+        return true
     }
 
     // MARK: - Verify transaction
