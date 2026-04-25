@@ -91,7 +91,14 @@ final class AlarmRepository {
     }
 
     private func persist(_ alarms: [Alarm]) {
-        let data = try? JSONEncoder().encode(alarms)
-        defaults.set(data, forKey: key)
+        do {
+            let data = try JSONEncoder().encode(alarms)
+            defaults.set(data, forKey: key)
+        } catch {
+            // Don't write nil — that wipes the entire alarm list silently.
+            // Issue #23 tracks proper logging+UI surfacing; this guard at least preserves data.
+            assertionFailure("AlarmRepository encode failed: \(error)")
+            print("[AlarmRepository] encode failed, preserving previous state: \(error)")
+        }
     }
 }

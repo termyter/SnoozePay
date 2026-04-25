@@ -117,16 +117,29 @@ final class AlarmRepositoryTests: XCTestCase {
                       "All added alarms must be persisted")
     }
 
-    func testConcurrentToggleEnabled_lastWriteSticks() {
+    func testConcurrentToggleVsSave_finalStateIsConsistent() {
+        // Race a setEnabled(true) loop against save(disabledClone) on the same id.
+        // On the buggy code, save() does fetch+upsert without serialization — the
+        // last write seen by readers can be a torn merge of two threads' snapshots.
+        // With the queue, every reader observes one of the two writers' Alarm verbatim:
+        // either enabled=true (from setEnabled) or enabled=false (from the save clone).
         let alarm = makeAlarm()
         repo.save(alarm)
 
-        DispatchQueue.concurrentPerform(iterations: 100) { idx in
-            self.repo.setEnabled(idx % 2 == 0, id: alarm.id)
+        DispatchQueue.concurrentPerform(iterations: 200) { idx in
+            if idx % 2 == 0 {
+                self.repo.setEnabled(true, id: alarm.id)
+            } else {
+                var disabled = alarm
+                disabled.enabled = false
+                self.repo.save(disabled)
+            }
         }
 
-        // Race-free invariant: the alarm still exists and store contains exactly one entry.
-        XCTAssertEqual(repo.fetchAll().count, 1)
-        XCTAssertNotNil(repo.fetch(id: alarm.id))
+        XCTAssertEqual(repo.fetchAll().count, 1, "Concurrent ops must not duplicate or drop the alarm")
+        let final = repo.fetch(id: alarm.id)
+        XCTAssertNotNil(final)
+        // Final state must match one of the writers, not torn (penaltyAmount preserved).
+        XCTAssertEqual(final?.penaltyAmount, alarm.penaltyAmount)
     }
 }

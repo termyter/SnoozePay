@@ -45,8 +45,15 @@ final class TransactionRepository {
         queue.sync {
             var txs = readAll()
             txs.append(transaction)
-            let data = try? JSONEncoder().encode(txs)
-            defaults.set(data, forKey: key)
+            do {
+                let data = try JSONEncoder().encode(txs)
+                defaults.set(data, forKey: key)
+            } catch {
+                // Don't write nil — that wipes the financial ledger silently.
+                // Issue #23 tracks proper logging+UI surfacing.
+                assertionFailure("TransactionRepository encode failed: \(error)")
+                print("[TransactionRepository] encode failed, preserving previous state: \(error)")
+            }
         }
         return true
     }
