@@ -17,6 +17,11 @@ final class BalanceService {
     // Observers can subscribe to balance changes
     var onBalanceChanged: ((Double) -> Void)?
 
+    /// Production code MUST use `BalanceService.shared`.
+    /// Direct construction creates an isolated instance with its own serial queue —
+    /// two such instances racing on the same UserDefaults key reintroduce the race
+    /// this class exists to prevent.
+    #if DEBUG
     init(
         defaults: UserDefaults = .standard,
         transactionRepository: TransactionRepository = TransactionRepository()
@@ -24,6 +29,15 @@ final class BalanceService {
         self.defaults = defaults
         self.transactionRepository = transactionRepository
     }
+    #else
+    private init(
+        defaults: UserDefaults = .standard,
+        transactionRepository: TransactionRepository = TransactionRepository()
+    ) {
+        self.defaults = defaults
+        self.transactionRepository = transactionRepository
+    }
+    #endif
 
     // MARK: - Read
 
@@ -55,7 +69,7 @@ final class BalanceService {
         }
 
         if result.charged {
-            onBalanceChanged?(result.newBalance)
+            notifyBalanceChanged(result.newBalance)
         }
         return result.charged
     }
@@ -77,12 +91,24 @@ final class BalanceService {
             return updated
         }
 
-        onBalanceChanged?(newBalance)
+        notifyBalanceChanged(newBalance)
     }
 
     // MARK: - Validation
 
     func canAfford(_ amount: Double) -> Bool {
         queue.sync { defaults.double(forKey: balanceKey) >= amount }
+    }
+
+    /// Hop to main since `charge`/`topUp` may be called from a background queue
+    /// (notification action handler) and listeners drive UIKit.
+    private func notifyBalanceChanged(_ newBalance: Double) {
+        if Thread.isMainThread {
+            onBalanceChanged?(newBalance)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.onBalanceChanged?(newBalance)
+            }
+        }
     }
 }
