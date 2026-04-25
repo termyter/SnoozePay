@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// Persists transactions in UserDefaults with a serial queue protecting all reads and writes.
 /// Transactions are a financial ledger — losing entries due to a read-modify-write race
@@ -11,6 +12,10 @@ final class TransactionRepository {
     private let key = "stored_transactions"
     private let defaults: UserDefaults
     private let queue = DispatchQueue(label: "com.snoozepay.transactions.serial")
+    private static let log = OSLog(
+        subsystem: "Ivan-Emelyanov.SnoozePay",
+        category: "TransactionRepository"
+    )
 
     /// Production code MUST use `TransactionRepository.shared`.
     /// Direct construction creates an isolated instance with its own serial queue —
@@ -45,15 +50,7 @@ final class TransactionRepository {
         queue.sync {
             var txs = readAll()
             txs.append(transaction)
-            do {
-                let data = try JSONEncoder().encode(txs)
-                defaults.set(data, forKey: key)
-            } catch {
-                // Don't write nil — that wipes the financial ledger silently.
-                // Issue #23 tracks proper logging+UI surfacing.
-                assertionFailure("TransactionRepository encode failed: \(error)")
-                print("[TransactionRepository] encode failed, preserving previous state: \(error)")
-            }
+            persist(txs)
         }
         return true
     }
@@ -87,10 +84,46 @@ final class TransactionRepository {
 
     // MARK: - Private (must be called inside queue.sync)
 
+    /// Returns persisted transactions.
+    ///
+    /// Differentiates three states (issue #23):
+    ///   1. Key absent — new user, returns `[]` (legitimate empty state).
+    ///   2. Key present, decode succeeds — returns sorted transactions.
+    ///   3. Key present, decode fails — logs the error and returns `[]` for this read,
+    ///      but the corrupted JSON stays on disk untouched. The next `persist()`
+    ///      from a healthy in-memory state will overwrite it. Until then, the raw
+    ///      bytes remain available for debugging instead of being silently wiped.
     private func readAll() -> [Transaction] {
-        guard let data = defaults.data(forKey: key),
-              let txs = try? JSONDecoder().decode([Transaction].self, from: data)
-        else { return [] }
-        return txs.sorted { $0.createdAt > $1.createdAt }
+        guard let data = defaults.data(forKey: key) else {
+            // Case 1: brand-new install — no recorded transactions yet.
+            return []
+        }
+        do {
+            let txs = try JSONDecoder().decode([Transaction].self, from: data)
+            return txs.sorted { $0.createdAt > $1.createdAt }
+        } catch {
+            // Case 3: stored bytes can't be decoded. Surface the failure but DO NOT
+            // overwrite the corrupted blob — preserve it for diagnosis.
+            os_log(
+                "Decode failed (%{public}d bytes preserved on disk): %{public}@",
+                log: Self.log, type: .error, data.count, String(describing: error)
+            )
+            return []
+        }
+    }
+
+    private func persist(_ transactions: [Transaction]) {
+        do {
+            let data = try JSONEncoder().encode(transactions)
+            defaults.set(data, forKey: key)
+        } catch {
+            // Don't write nil — that wipes the financial ledger silently.
+            // If encode fails the previous JSON on disk stays intact (issue #23).
+            os_log(
+                "Encode failed, previous state preserved on disk: %{public}@",
+                log: Self.log, type: .error, String(describing: error)
+            )
+            assertionFailure("TransactionRepository encode failed: \(error)")
+        }
     }
 }

@@ -117,6 +117,58 @@ final class AlarmRepositoryTests: XCTestCase {
                       "All added alarms must be persisted")
     }
 
+    // MARK: - Corrupted persistence (issue #23)
+
+    /// When the stored JSON can't be decoded, the read must return `[]`
+    /// without silently overwriting the corrupted blob — the raw bytes stay
+    /// on disk so we can diagnose what got broken.
+    func testFetchAll_corruptedJSON_returnsEmptyAndPreservesRawData() {
+        let corruptBytes = Data("{ this is not valid json".utf8)
+        testDefaults.set(corruptBytes, forKey: "stored_alarms")
+
+        XCTAssertEqual(repo.fetchAll(), [], "Decode failure should yield empty list to caller")
+
+        let onDisk = testDefaults.data(forKey: "stored_alarms")
+        XCTAssertEqual(onDisk, corruptBytes,
+                       "Corrupt JSON must remain untouched on disk for debugging")
+    }
+
+    /// fetchAll() called twice on corrupted data must NOT have overwritten
+    /// the stored blob between calls — the second fetch sees the same raw bytes.
+    func testFetchAll_corruptedJSON_repeatedReadDoesNotMutateStorage() {
+        let corruptBytes = Data("not json".utf8)
+        testDefaults.set(corruptBytes, forKey: "stored_alarms")
+
+        _ = repo.fetchAll()
+        _ = repo.fetchAll()
+
+        XCTAssertEqual(testDefaults.data(forKey: "stored_alarms"), corruptBytes,
+                       "Reading corrupt data must never write back")
+    }
+
+    /// Absent key (brand-new install) is the legitimate empty state.
+    func testFetchAll_keyAbsent_returnsEmptyAndDoesNotCreateKey() {
+        testDefaults.removeObject(forKey: "stored_alarms")
+
+        XCTAssertEqual(repo.fetchAll(), [])
+        XCTAssertNil(testDefaults.data(forKey: "stored_alarms"),
+                     "Read on missing key must not materialize an empty value")
+    }
+
+    /// After a successful save the previously-corrupted bytes are replaced
+    /// with valid JSON — proves persist() is the only path that can clobber
+    /// corrupt data, and only with a healthy snapshot.
+    func testSaveAfterCorruption_overwritesWithValidData() {
+        testDefaults.set(Data("garbage".utf8), forKey: "stored_alarms")
+
+        let alarm = makeAlarm(name: "Recovery")
+        repo.save(alarm)
+
+        let stored = repo.fetchAll()
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored.first?.name, "Recovery")
+    }
+
     func testConcurrentToggleVsSave_finalStateIsConsistent() {
         // Race a setEnabled(true) loop against save(disabledClone) on the same id.
         // On the buggy code, save() does fetch+upsert without serialization — the
