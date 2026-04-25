@@ -22,9 +22,94 @@ final class BalanceServiceTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeService(balance: Double = 0) -> BalanceService {
+    private func makeService(
+        balance: Double = 0,
+        notificationCenter: NotificationCenter = .default
+    ) -> BalanceService {
         testDefaults.set(balance, forKey: "user_balance")
-        return BalanceService(defaults: testDefaults)
+        return BalanceService(defaults: testDefaults, notificationCenter: notificationCenter)
+    }
+
+    // MARK: - Multi-observer broadcast (#22)
+
+    /// Three independent observers must all receive a balance update from a
+    /// single `topUp`. Regression for the single-slot closure pattern that
+    /// previously caused `AlarmsListViewModel` to silently overwrite any
+    /// other subscriber.
+    func testTopUp_notifiesAllObservers() {
+        // Use an isolated NotificationCenter so we don't clash with the real
+        // shared singleton observers running inside the host app.
+        let center = NotificationCenter()
+        let service = makeService(balance: 0, notificationCenter: center)
+
+        let exp1 = expectation(description: "observer 1")
+        let exp2 = expectation(description: "observer 2")
+        let exp3 = expectation(description: "observer 3")
+
+        var received: [Double] = []
+        let lock = NSLock()
+        let record: (Notification) -> Void = { note in
+            guard let amount = note.userInfo?[BalanceService.balanceUserInfoKey] as? Double else { return }
+            lock.lock()
+            received.append(amount)
+            lock.unlock()
+        }
+
+        let token1 = center.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { note in record(note); exp1.fulfill() }
+        let token2 = center.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { note in record(note); exp2.fulfill() }
+        let token3 = center.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { note in record(note); exp3.fulfill() }
+
+        defer {
+            center.removeObserver(token1)
+            center.removeObserver(token2)
+            center.removeObserver(token3)
+        }
+
+        service.topUp(amount: 100)
+
+        wait(for: [exp1, exp2, exp3], timeout: 2.0)
+        XCTAssertEqual(received, [100, 100, 100])
+    }
+
+    /// `charge` (the dual mutator) must also broadcast to all observers.
+    func testCharge_notifiesAllObservers() {
+        let center = NotificationCenter()
+        let service = makeService(balance: 500, notificationCenter: center)
+
+        let exp1 = expectation(description: "observer 1")
+        let exp2 = expectation(description: "observer 2")
+
+        let token1 = center.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in exp1.fulfill() }
+        let token2 = center.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in exp2.fulfill() }
+
+        defer {
+            center.removeObserver(token1)
+            center.removeObserver(token2)
+        }
+
+        let charged = service.charge(amount: 50, alarmID: nil)
+        XCTAssertTrue(charged)
+        wait(for: [exp1, exp2], timeout: 2.0)
     }
 
     // MARK: - Concurrency

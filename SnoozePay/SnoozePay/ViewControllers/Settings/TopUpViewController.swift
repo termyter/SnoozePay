@@ -31,6 +31,10 @@ class TopUpViewController: UIViewController {
     private let storeService = StoreKitService.shared
     private var loadingProductID: String?
 
+    /// NotificationCenter tokens — removed in `deinit`.
+    private var purchaseFailedObserver: NSObjectProtocol?
+    private var purchasePendingObserver: NSObjectProtocol?
+
     // MARK: - Sections
 
     private enum Section: Int, CaseIterable {
@@ -57,12 +61,27 @@ class TopUpViewController: UIViewController {
     }
 
     private func wireStoreCallbacks() {
-        // loadProducts() and the foreground purchase path call onPurchaseFailed
+        // loadProducts() and the foreground purchase path post `purchaseFailedNotification`
         // when the store is unreachable or a verification/cancel error occurs.
         // Without this wiring, the user-visible error message added in IOS-032
         // would silently drop on the floor.
-        storeService.onPurchaseFailed = { [weak self] message in
-            self?.presentErrorAlert(message)
+        purchaseFailedObserver = NotificationCenter.default.addObserver(
+            forName: StoreKitService.purchaseFailedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let message = note.userInfo?[StoreKitService.messageUserInfoKey] as? String else { return }
+            self.presentErrorAlert(message)
+        }
+    }
+
+    deinit {
+        if let token = purchaseFailedObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = purchasePendingObserver {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 
@@ -163,7 +182,20 @@ class TopUpViewController: UIViewController {
         }
 
         let product = products[index]
-        storeService.onPurchasePending = { [weak self] in
+
+        // Subscribe per-purchase. Removed at the end of the Task so the observer
+        // does not outlive the purchase attempt that registered it. NotificationCenter
+        // tolerates multiple observers on the same name from the same instance —
+        // we still defensively remove the previous token (if any) to avoid two
+        // alerts for back-to-back taps.
+        if let previousToken = purchasePendingObserver {
+            NotificationCenter.default.removeObserver(previousToken)
+        }
+        purchasePendingObserver = NotificationCenter.default.addObserver(
+            forName: StoreKitService.purchasePendingNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             self?.presentPendingAlert()
         }
 
@@ -179,9 +211,11 @@ class TopUpViewController: UIViewController {
             tableView.reloadData()
             // Always clear — including the .pending case where the alert was shown.
             // The actual credit happens later via Transaction.updates listener; the
-            // pending callback's job ends with the alert. Leaving the closure live
-            // would leak the VC capture if the user navigates away before approval.
-            storeService.onPurchasePending = nil
+            // pending observer's job ends with the alert.
+            if let token = purchasePendingObserver {
+                NotificationCenter.default.removeObserver(token)
+                purchasePendingObserver = nil
+            }
         }
     }
 

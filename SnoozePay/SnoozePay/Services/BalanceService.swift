@@ -9,13 +9,19 @@ final class BalanceService {
 
     static let shared = BalanceService()
 
+    /// Broadcast on every successful balance mutation (charge / topUp).
+    /// Multiple observers may subscribe simultaneously — each is independent
+    /// and must remove its own observer in `deinit` (or rely on
+    /// `NotificationCenter`'s automatic cleanup of dealloc'd weak observers).
+    /// `userInfo[Self.balanceUserInfoKey]` carries the new balance as `Double`.
+    static let balanceChangedNotification = Notification.Name("snoozepay.balance.changed")
+    static let balanceUserInfoKey = "balance"
+
     private let defaults: UserDefaults
     private let balanceKey = "user_balance"
     private let transactionRepository: TransactionRepository
     private let queue = DispatchQueue(label: "com.snoozepay.balance.serial")
-
-    // Observers can subscribe to balance changes
-    var onBalanceChanged: ((Double) -> Void)?
+    private let notificationCenter: NotificationCenter
 
     /// Production code MUST use `BalanceService.shared`.
     /// Direct construction creates an isolated instance with its own serial queue —
@@ -24,18 +30,22 @@ final class BalanceService {
     #if DEBUG
     init(
         defaults: UserDefaults = .standard,
-        transactionRepository: TransactionRepository = TransactionRepository()
+        transactionRepository: TransactionRepository = TransactionRepository(),
+        notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
         self.transactionRepository = transactionRepository
+        self.notificationCenter = notificationCenter
     }
     #else
     private init(
         defaults: UserDefaults = .standard,
-        transactionRepository: TransactionRepository = TransactionRepository()
+        transactionRepository: TransactionRepository = TransactionRepository(),
+        notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
         self.transactionRepository = transactionRepository
+        self.notificationCenter = notificationCenter
     }
     #endif
 
@@ -101,14 +111,24 @@ final class BalanceService {
     }
 
     /// Hop to main since `charge`/`topUp` may be called from a background queue
-    /// (notification action handler) and listeners drive UIKit.
+    /// (notification action handler) and observers drive UIKit. NotificationCenter
+    /// delivers synchronously on the posting thread, so we explicitly hop here
+    /// rather than push that responsibility onto every observer.
     private func notifyBalanceChanged(_ newBalance: Double) {
         if Thread.isMainThread {
-            onBalanceChanged?(newBalance)
+            postBalanceChanged(newBalance)
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.onBalanceChanged?(newBalance)
+                self?.postBalanceChanged(newBalance)
             }
         }
+    }
+
+    private func postBalanceChanged(_ newBalance: Double) {
+        notificationCenter.post(
+            name: Self.balanceChangedNotification,
+            object: self,
+            userInfo: [Self.balanceUserInfoKey: newBalance]
+        )
     }
 }

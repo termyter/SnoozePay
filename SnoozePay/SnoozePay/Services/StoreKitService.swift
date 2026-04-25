@@ -26,13 +26,29 @@ final class StoreKitService {
         "com.snooze_pay.balance.999": 999
     ]
 
-    private(set) var products: [Product] = []
-    var onProductsLoaded: (([Product]) -> Void)?
-    var onPurchaseCompleted: ((Double) -> Void)?
-    var onPurchaseFailed: ((String) -> Void)?
+    // MARK: - Notification names
+    //
+    // Multi-observer broadcast replaces the old single-slot closure properties.
+    // Each observer registers via `NotificationCenter.default.addObserver(...)`,
+    // stores its token, and removes it in `deinit`.
+
+    /// userInfo[`productsUserInfoKey`]: `[Product]`
+    static let productsLoadedNotification = Notification.Name("snoozepay.storekit.productsLoaded")
+    static let productsUserInfoKey = "products"
+
+    /// userInfo[`amountUserInfoKey`]: `Double` — RUB credited to the balance.
+    static let purchaseCompletedNotification = Notification.Name("snoozepay.storekit.purchaseCompleted")
+    static let amountUserInfoKey = "amount"
+
+    /// userInfo[`messageUserInfoKey`]: `String` — user-facing error description.
+    static let purchaseFailedNotification = Notification.Name("snoozepay.storekit.purchaseFailed")
+    static let messageUserInfoKey = "message"
+
     /// Fired when a purchase enters Ask-to-Buy / SCA verification.
-    /// Resolves later via `Transaction.updates` once parent approves.
-    var onPurchasePending: (() -> Void)?
+    /// Resolves later via `Transaction.updates` once parent approves. No userInfo.
+    static let purchasePendingNotification = Notification.Name("snoozepay.storekit.purchasePending")
+
+    private(set) var products: [Product] = []
 
     /// Background listener for `Transaction.updates`. Required by StoreKit 2 to
     /// receive deferred transactions: Ask-to-Buy approvals, refunds, restores
@@ -70,10 +86,10 @@ final class StoreKitService {
         do {
             let loaded = try await Product.products(for: Set(StoreKitService.productIDs))
             products = loaded.sorted { $0.price < $1.price }
-            onProductsLoaded?(products)
+            postProductsLoaded(products)
         } catch {
             print("[StoreKit] product load failed: \(error)")
-            onPurchaseFailed?("Не удалось загрузить пакеты пополнения. Проверь интернет-соединение.")
+            postPurchaseFailed("Не удалось загрузить пакеты пополнения. Проверь интернет-соединение.")
         }
     }
 
@@ -92,21 +108,21 @@ final class StoreKitService {
                 }
                 let amount = creditBalance(for: transaction.productID, fallbackPrice: product.price)
                 await transaction.finish()
-                onPurchaseCompleted?(amount)
+                postPurchaseCompleted(amount)
 
             case .userCancelled:
                 break
 
             case .pending:
                 // Ask-to-Buy or SCA — resolved later via Transaction.updates listener.
-                onPurchasePending?()
+                postPurchasePending()
 
             @unknown default:
                 print("[StoreKit] unknown PurchaseResult case — likely future StoreKit addition")
-                onPurchaseFailed?("Покупка не выполнена. Обнови приложение и попробуй ещё раз.")
+                postPurchaseFailed("Покупка не выполнена. Обнови приложение и попробуй ещё раз.")
             }
         } catch {
-            onPurchaseFailed?(error.localizedDescription)
+            postPurchaseFailed(error.localizedDescription)
         }
     }
 
@@ -135,7 +151,7 @@ final class StoreKitService {
             let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: nil)
             guard amount > 0 else {
                 print("[StoreKit] unknown productID \(transaction.productID) tx=\(transaction.id) — not finishing")
-                onPurchaseFailed?("Неизвестный пакет пополнения. Обнови приложение.")
+                postPurchaseFailed("Неизвестный пакет пополнения. Обнови приложение.")
                 return
             }
             // Idempotency — guard against StoreKit replaying a transaction we already
@@ -147,15 +163,48 @@ final class StoreKitService {
             }
             BalanceService.shared.topUp(amount: amount)
             await transaction.finish()
-            onPurchaseCompleted?(amount)
+            postPurchaseCompleted(amount)
 
         case .unverified(let transaction, let error):
             // Don't finish — let Apple retry next launch. Verification can fail temporarily
             // (clock drift, cert refresh). Finishing here would discard a potentially valid
             // purchase. WWDC sample code (Fruta, Backyard Birds) follows this pattern too.
             print("[StoreKit] unverified tx=\(transaction.id) productID=\(transaction.productID) error=\(error)")
-            onPurchaseFailed?("Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.")
+            postPurchaseFailed("Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.")
         }
+    }
+
+    // MARK: - Notification posting helpers
+
+    private func postProductsLoaded(_ products: [Product]) {
+        NotificationCenter.default.post(
+            name: Self.productsLoadedNotification,
+            object: self,
+            userInfo: [Self.productsUserInfoKey: products]
+        )
+    }
+
+    private func postPurchaseCompleted(_ amount: Double) {
+        NotificationCenter.default.post(
+            name: Self.purchaseCompletedNotification,
+            object: self,
+            userInfo: [Self.amountUserInfoKey: amount]
+        )
+    }
+
+    private func postPurchaseFailed(_ message: String) {
+        NotificationCenter.default.post(
+            name: Self.purchaseFailedNotification,
+            object: self,
+            userInfo: [Self.messageUserInfoKey: message]
+        )
+    }
+
+    private func postPurchasePending() {
+        NotificationCenter.default.post(
+            name: Self.purchasePendingNotification,
+            object: self
+        )
     }
 
     // MARK: - Idempotency
