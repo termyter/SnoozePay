@@ -124,4 +124,43 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(stored.count, 1)
         XCTAssertFalse(stored[0].enabled, "Toggle must persist through the repository")
     }
+
+    // MARK: - toggleAlarm(id:enabled:)
+
+    /// Regression for tag-based identity bug: when middle alarm is removed and the
+    /// caller toggles the *first* alarm, only that alarm — resolved by id — must flip,
+    /// not whichever alarm currently lives at the captured row index.
+    func testToggleAlarmByID_correctAlarmTogglesAfterDelete() {
+        // Three alarms with distinct times so sort order is stable: 06:00, 07:00, 08:00.
+        let calendar = Calendar(identifier: .gregorian)
+        let date6 = calendar.date(from: DateComponents(hour: 6, minute: 0))!
+        let date7 = calendar.date(from: DateComponents(hour: 7, minute: 0))!
+        let date8 = calendar.date(from: DateComponents(hour: 8, minute: 0))!
+
+        let first = Alarm(time: date6, name: "Early", penaltyAmount: 50, enabled: true)
+        let middle = Alarm(time: date7, name: "Mid", penaltyAmount: 50, enabled: true)
+        let last = Alarm(time: date8, name: "Late", penaltyAmount: 50, enabled: true)
+        repo.save(first)
+        repo.save(middle)
+        repo.save(last)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarms.map(\.id), [first.id, middle.id, last.id])
+
+        // Capture the first alarm's id BEFORE deletion — this is what an
+        // already-configured cell would have closed over.
+        let firstID = first.id
+
+        vm.deleteAlarm(at: 1) // remove "Mid"
+        XCTAssertEqual(vm.alarms.map(\.id), [first.id, last.id])
+
+        vm.toggleAlarm(id: firstID, enabled: false)
+
+        // Only "Early" should have flipped — "Late" stays enabled.
+        let early = vm.alarms.first { $0.id == first.id }
+        let late = vm.alarms.first { $0.id == last.id }
+        XCTAssertEqual(early?.enabled, false, "The alarm matching the captured id must toggle")
+        XCTAssertEqual(late?.enabled, true, "Sibling alarms must NOT be affected by an id-targeted toggle")
+    }
 }

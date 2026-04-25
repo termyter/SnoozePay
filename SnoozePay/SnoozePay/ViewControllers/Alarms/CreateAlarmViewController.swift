@@ -128,7 +128,17 @@ class CreateAlarmViewController: UIViewController {
         view.backgroundColor = .systemGroupedBackground
         setupNavigationBar()
         setupTableView()
+        // Targets must be wired exactly once on these shared controls.
+        // Wiring them in `cellForRowAt` accumulated duplicate handlers on every
+        // reload, multiplying penalty/snooze updates per single user action.
+        wireControlTargets()
         populateFromViewModel()
+    }
+
+    private func wireControlTargets() {
+        penaltySlider.addTarget(self, action: #selector(sliderChanged(_:)), for: .valueChanged)
+        progressiveToggle.addTarget(self, action: #selector(progressiveToggled(_:)), for: .valueChanged)
+        snoozeStepper.addTarget(self, action: #selector(stepperChanged(_:)), for: .valueChanged)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -360,7 +370,6 @@ extension CreateAlarmViewController: UITableViewDataSource {
             stack.axis = .horizontal
             stack.spacing = AppSpacing.md
             stack.translatesAutoresizingMaskIntoConstraints = false
-            penaltySlider.addTarget(self, action: #selector(sliderChanged(_:)), for: .valueChanged)
             cell.contentView.addSubview(stack)
             NSLayoutConstraint.activate([
                 stack.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
@@ -372,7 +381,6 @@ extension CreateAlarmViewController: UITableViewDataSource {
         case .progressiveScale:
             if indexPath.row == 0 {
                 cell.textLabel?.text = "Прогрессивная шкала"
-                progressiveToggle.addTarget(self, action: #selector(progressiveToggled(_:)), for: .valueChanged)
                 cell.accessoryView = progressiveToggle
             } else {
                 // Preview row
@@ -394,7 +402,6 @@ extension CreateAlarmViewController: UITableViewDataSource {
             stack.axis = .horizontal
             stack.spacing = AppSpacing.sm
             stack.alignment = .center
-            snoozeStepper.addTarget(self, action: #selector(stepperChanged(_:)), for: .valueChanged)
             stack.sizeToFit()
             cell.accessoryView = stack
         }

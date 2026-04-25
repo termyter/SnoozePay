@@ -268,18 +268,14 @@ extension AlarmsListViewController: UITableViewDataSource {
             enabled: alarm.enabled
         )
 
-        cell.toggleSwitch.tag = indexPath.row
-        cell.toggleSwitch.addTarget(self, action: #selector(toggleChanged(_:)), for: .valueChanged)
+        // Capture the alarm's stable UUID rather than the row index — the
+        // index becomes invalid after delete/reorder, but the id never does.
+        let alarmID = alarm.id
+        cell.onToggle = { [weak self] isOn in
+            self?.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
+        }
 
         return cell
-    }
-
-    @objc private func toggleChanged(_ sender: UISwitch) {
-        let index = sender.tag
-        viewModel.toggleAlarm(at: index, enabled: sender.isOn)
-        if let cell = tableView.cellForRow(at: IndexPath(row: index, section: 0)) as? AlarmCell {
-            cell.setEnabledAppearance(sender.isOn)
-        }
     }
 }
 
