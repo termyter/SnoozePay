@@ -52,7 +52,24 @@ class TopUpViewController: UIViewController {
         )
 
         setupTableView()
+        wireStoreCallbacks()
         loadStoreProducts()
+    }
+
+    private func wireStoreCallbacks() {
+        // loadProducts() and the foreground purchase path call onPurchaseFailed
+        // when the store is unreachable or a verification/cancel error occurs.
+        // Without this wiring, the user-visible error message added in IOS-032
+        // would silently drop on the floor.
+        storeService.onPurchaseFailed = { [weak self] message in
+            self?.presentErrorAlert(message)
+        }
+    }
+
+    private func presentErrorAlert(_ message: String) {
+        let alert = UIAlertController(title: "Ошибка", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     // MARK: - Setup
@@ -146,6 +163,10 @@ class TopUpViewController: UIViewController {
         }
 
         let product = products[index]
+        storeService.onPurchasePending = { [weak self] in
+            self?.presentPendingAlert()
+        }
+
         Task {
             loadingProductID = product.id
             tableView.reloadData()
@@ -156,7 +177,22 @@ class TopUpViewController: UIViewController {
             // Refresh balance header
             tableView.tableHeaderView = makeBalanceHeader()
             tableView.reloadData()
+            // Always clear — including the .pending case where the alert was shown.
+            // The actual credit happens later via Transaction.updates listener; the
+            // pending callback's job ends with the alert. Leaving the closure live
+            // would leak the VC capture if the user navigates away before approval.
+            storeService.onPurchasePending = nil
         }
+    }
+
+    private func presentPendingAlert() {
+        let alert = UIAlertController(
+            title: "Ожидаем подтверждения",
+            message: "Покупка ожидает одобрения родителя. Баланс пополнится автоматически.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
 

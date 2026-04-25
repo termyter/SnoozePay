@@ -22,6 +22,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
         }
 
+        // Eagerly construct StoreKitService so its Transaction.updates listener
+        // starts at app launch — otherwise deferred Ask-to-Buy approvals / refunds
+        // pile up unprocessed until the user opens TopUp.
+        _ = StoreKitService.shared
+
         // Handle notification responses
         UNUserNotificationCenter.current().delegate = self
 
