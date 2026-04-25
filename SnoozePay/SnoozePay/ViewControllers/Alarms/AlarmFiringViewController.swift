@@ -150,6 +150,10 @@ class AlarmFiringViewController: UIViewController {
         super.viewDidDisappear(animated)
         clockTimer?.invalidate()
 
+        // Stop the repeating pulse animation explicitly so the
+        // animator does not retain self past dismissal.
+        nameLabel.layer.removeAllAnimations()
+
         // Stop alarm sound and vibration when screen is dismissed
         AudioService.shared.stopAlarmSound()
     }
@@ -278,8 +282,8 @@ class AlarmFiringViewController: UIViewController {
             withDuration: 1.4,
             delay: 0,
             options: [.autoreverse, .repeat, .allowUserInteraction],
-            animations: {
-                self.nameLabel.alpha = 0.5
+            animations: { [weak self] in
+                self?.nameLabel.alpha = 0.5
             }
         )
     }
