@@ -47,11 +47,21 @@ final class AlarmCell: UITableViewCell {
         return sw
     }()
 
+    // MARK: - Callbacks
+
+    /// Invoked when the user flips the toggle. Set by the controller in `cellForRowAt`.
+    /// Capturing the alarm's id (not row index or `tag`) lets the controller resolve
+    /// the right alarm even after deletion or reordering.
+    var onToggle: ((Bool) -> Void)?
+
     // MARK: - Init
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
+        // Wire the target once at cell creation so re-configuration in
+        // `cellForRowAt` never accumulates duplicate handlers.
+        toggleSwitch.addTarget(self, action: #selector(toggleSwitchChanged), for: .valueChanged)
     }
 
     required init?(coder: NSCoder) {
@@ -100,6 +110,13 @@ final class AlarmCell: UITableViewCell {
         ])
     }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        // The closure captures the previous row's identity — drop it so the
+        // recycled cell never fires the wrong alarm before the next configure.
+        onToggle = nil
+    }
+
     // MARK: - Configure
 
     func configure(time: String, detail: String, penalty: String, enabled: Bool) {
@@ -117,5 +134,11 @@ final class AlarmCell: UITableViewCell {
         timeLabel.alpha = alpha
         detailLabel.alpha = alpha
         penaltyLabel.alpha = alpha
+    }
+
+    @objc private func toggleSwitchChanged() {
+        let isOn = toggleSwitch.isOn
+        setEnabledAppearance(isOn)
+        onToggle?(isOn)
     }
 }
