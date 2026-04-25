@@ -15,9 +15,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         // Register notification categories and request permission
         AlarmScheduler.shared.registerCategories()
-        AlarmScheduler.shared.requestPermission { granted in
+        AlarmScheduler.shared.requestPermission { [weak self] granted in
             if !granted {
                 print("Notification permission denied — alarms may not fire")
+                self?.presentNotificationsDisabledAlert()
             }
         }
 
@@ -41,6 +42,37 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didDiscardSceneSessions sceneSessions: Set<UISceneSession>
     ) {}
+
+    // MARK: - Permission UI
+
+    private func presentNotificationsDisabledAlert() {
+        DispatchQueue.main.async {
+            guard
+                let windowScene = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .first,
+                let rootVC = windowScene.windows.first?.rootViewController
+            else { return }
+
+            let alert = UIAlertController(
+                title: "Уведомления выключены",
+                message: "Без разрешения на уведомления будильники не сработают. Включите их в Настройках.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Настройки", style: .default) { _ in
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            })
+
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
+            topVC.present(alert, animated: true)
+        }
+    }
 }
 
 // MARK: - UNUserNotificationCenterDelegate

@@ -26,12 +26,22 @@ final class AlarmScheduler {
     func requestPermission(completion: @escaping (Bool) -> Void) {
         // Request critical alerts if entitled, fall back to standard alerts otherwise
         notificationCenter.requestAuthorization(options: [.alert, .sound, .badge, .criticalAlert]) { granted, error in
-            if error != nil {
+            if let error = error {
+                print("[AlarmScheduler] permission state: granted=\(granted), error=\(error)")
                 Self.criticalAlertsAvailable = false
-                self.notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                let standardOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
+                self.notificationCenter.requestAuthorization(options: standardOptions) { granted, fallbackError in
+                    if let fallbackError = fallbackError {
+                        print("[AlarmScheduler] permission state: granted=\(granted), error=\(fallbackError)")
+                    } else if !granted {
+                        print("[AlarmScheduler] permission state: granted=false, error=nil")
+                    }
                     DispatchQueue.main.async { completion(granted) }
                 }
             } else {
+                if !granted {
+                    print("[AlarmScheduler] permission state: granted=false, error=nil")
+                }
                 Self.criticalAlertsAvailable = granted
                 DispatchQueue.main.async { completion(granted) }
             }
@@ -76,7 +86,11 @@ final class AlarmScheduler {
                 content: content,
                 trigger: trigger.trigger
             )
-            notificationCenter.add(request)
+            notificationCenter.add(request) { error in
+                if let error = error {
+                    print("[AlarmScheduler] schedule failed: \(error)")
+                }
+            }
         }
     }
 
@@ -95,7 +109,11 @@ final class AlarmScheduler {
             content: content,
             trigger: trigger
         )
-        notificationCenter.add(request)
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[AlarmScheduler] schedule failed: \(error)")
+            }
+        }
     }
 
     // MARK: - Cancel
