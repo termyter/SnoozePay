@@ -146,6 +146,12 @@ class TopUpViewController: UIViewController {
         }
 
         let product = products[index]
+        var pendingShown = false
+        storeService.onPurchasePending = { [weak self] in
+            pendingShown = true
+            self?.presentPendingAlert()
+        }
+
         Task {
             loadingProductID = product.id
             tableView.reloadData()
@@ -156,7 +162,20 @@ class TopUpViewController: UIViewController {
             // Refresh balance header
             tableView.tableHeaderView = makeBalanceHeader()
             tableView.reloadData()
+            if !pendingShown {
+                storeService.onPurchasePending = nil
+            }
         }
+    }
+
+    private func presentPendingAlert() {
+        let alert = UIAlertController(
+            title: "Ожидаем подтверждения",
+            message: "Покупка ожидает одобрения родителя. Баланс пополнится автоматически.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
 
