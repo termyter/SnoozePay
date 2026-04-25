@@ -41,7 +41,12 @@ final class StoreKitService {
 
     /// Persisted set of transaction IDs that have already been credited. Prevents
     /// double-credit when StoreKit replays an unfinished transaction on next launch.
+    /// Stored as `[String]` because UserDefaults does not round-trip `UInt64` cleanly
+    /// (plist normalises numerics; `as? [UInt64]` can fail silently and re-enable
+    /// double-crediting). Bounded — keeps the most recent N IDs to prevent unbounded
+    /// growth in UserDefaults across the lifetime of the install.
     private static let processedTxKey = "storekit.processed_tx_ids"
+    private static let processedTxCap = 200
 
     private init() {
         transactionListener = Self.makeTransactionListener()
@@ -153,12 +158,23 @@ final class StoreKitService {
 
     /// Returns true if this transaction is new (recorded for the first time);
     /// false if it was already processed in a previous app session.
+    ///
+    /// Storage is `[String]` (not `[UInt64]`) because UserDefaults plist storage
+    /// silently fails the `as? [UInt64]` cast in some cases — a nil cast result
+    /// would reset the set and re-enable double-crediting. Strings round-trip safely.
+    /// We keep insertion order (Array, not Set) so we can trim the oldest IDs once
+    /// the cap is exceeded, keeping UserDefaults bounded.
     private func markProcessed(transactionID: UInt64) -> Bool {
         let defaults = UserDefaults.standard
-        var processed = Set(defaults.array(forKey: Self.processedTxKey) as? [UInt64] ?? [])
-        guard !processed.contains(transactionID) else { return false }
-        processed.insert(transactionID)
-        defaults.set(Array(processed), forKey: Self.processedTxKey)
+        let key = Self.processedTxKey
+        let idString = String(transactionID)
+        var processed = (defaults.array(forKey: key) as? [String]) ?? []
+        guard !processed.contains(idString) else { return false }
+        processed.append(idString)
+        if processed.count > Self.processedTxCap {
+            processed = Array(processed.suffix(Self.processedTxCap))
+        }
+        defaults.set(processed, forKey: key)
         return true
     }
 
