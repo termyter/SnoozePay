@@ -159,10 +159,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         guard
             let alarmIDString = userInfo["alarmID"] as? String,
             let alarmID = UUID(uuidString: alarmIDString)
-        else { return }
+        else {
+            // Audio may already be playing from willPresent — stop it so the user
+            // is not stuck with a silent-screen + sounding alarm we can't dismiss.
+            print("[AppDelegate] alarm not found (missing/invalid alarmID), stopping audio")
+            AudioService.shared.stopAlarmSound()
+            return
+        }
 
         let repo = AlarmRepository()
-        guard let alarm = repo.fetch(id: alarmID) else { return }
+        guard let alarm = repo.fetch(id: alarmID) else {
+            print("[AppDelegate] alarm not found (repo returned nil for \(alarmID)), stopping audio")
+            AudioService.shared.stopAlarmSound()
+            return
+        }
 
         DispatchQueue.main.async {
             let firingVC = AlarmFiringViewController(alarm: alarm, snoozeCount: userInfo["snoozeCount"] as? Int ?? 0)
@@ -174,7 +184,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                     .compactMap({ $0 as? UIWindowScene })
                     .first,
                 let rootVC = windowScene.windows.first?.rootViewController
-            else { return }
+            else {
+                print("[AppDelegate] no window scene, stopping audio")
+                AudioService.shared.stopAlarmSound()
+                return
+            }
 
             var topVC = rootVC
             while let presented = topVC.presentedViewController {

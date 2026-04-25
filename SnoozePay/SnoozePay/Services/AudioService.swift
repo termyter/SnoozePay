@@ -19,13 +19,16 @@ final class AudioService {
 
     /// Configure the audio session for alarm playback.
     /// Uses `.playback` category so audio continues when screen is locked.
-    private func configureAudioSession() {
+    /// - Returns: `true` if the session is active and ready, `false` otherwise.
+    private func configureAudioSession() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, options: [.duckOthers])
             try session.setActive(true, options: [])
+            return true
         } catch {
-            print("Failed to configure audio session: \(error)")
+            print("[AudioService] Failed to configure audio session: \(error)")
+            return false
         }
     }
 
@@ -46,7 +49,14 @@ final class AudioService {
     func startAlarmSound(soundID: String) {
         guard !isPlaying else { return }
 
-        configureAudioSession()
+        guard configureAudioSession() else {
+            // Audio session unavailable (e.g. another app holds it).
+            // Surface explicitly via isPlaying = false so the UI / caller can react.
+            // Skip vibration too — without an active session we cannot guarantee playback.
+            print("[AudioService] startAlarmSound aborted: audio session unavailable")
+            isPlaying = false
+            return
+        }
 
         // Try to find the sound file in the bundle
         let url: URL? = Bundle.main.url(forResource: soundID, withExtension: "caf")
@@ -56,11 +66,17 @@ final class AudioService {
             ?? Bundle.main.url(forResource: "default_alarm", withExtension: "caf")
             ?? Bundle.main.url(forResource: "default_alarm", withExtension: "m4a")
 
-        let player: AVAudioPlayer?
+        // Try the bundled file first; fall back to synthetic tone if the file
+        // is missing or corrupt (AVAudioPlayer init returns nil).
+        var player: AVAudioPlayer?
         if let soundURL = url {
             player = try? AVAudioPlayer(contentsOf: soundURL)
-        } else {
-            // No sound file found — generate a synthetic alarm tone
+            if player == nil {
+                let name = soundURL.lastPathComponent
+                print("[AudioService] AVAudioPlayer init failed for \(name), using synthetic tone")
+            }
+        }
+        if player == nil {
             player = Self.generateAlarmTone()
         }
 
@@ -71,12 +87,14 @@ final class AudioService {
             player.prepareToPlay()
             player.play()
             isPlaying = true
+            startVibration()
         } else {
-            // Last resort: vibration only
-            isPlaying = true
+            // Neither bundled file nor synthetic tone available — refuse to claim playback.
+            // We still vibrate, but isPlaying stays false to signal silent failure.
+            print("[AudioService] startAlarmSound: no audio source available, vibration only")
+            isPlaying = false
+            startVibration()
         }
-
-        startVibration()
     }
 
     /// Stop alarm sound and vibration immediately.
