@@ -19,6 +19,13 @@ final class AlarmsListViewModel {
     var onAlarmsUpdated: (() -> Void)?
     var onBalanceUpdated: ((Double) -> Void)?
 
+    // MARK: - Observers
+
+    /// Owned observer token. Removed in `deinit` to prevent the
+    /// NotificationCenter from holding a stale reference after this VM dies
+    /// (the ViewController owning it may outlive the VM in edge cases).
+    private var balanceObserver: NSObjectProtocol?
+
     // MARK: - Init
 
     init(
@@ -28,9 +35,21 @@ final class AlarmsListViewModel {
         self.alarmRepository = alarmRepository
         self.balanceService = balanceService
 
-        balanceService.onBalanceChanged = { [weak self] newBalance in
-            self?.balance = newBalance
-            self?.onBalanceUpdated?(newBalance)
+        balanceObserver = NotificationCenter.default.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let newBalance = note.userInfo?[BalanceService.balanceUserInfoKey] as? Double else { return }
+            self.balance = newBalance
+            self.onBalanceUpdated?(newBalance)
+        }
+    }
+
+    deinit {
+        if let token = balanceObserver {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 

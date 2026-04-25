@@ -27,6 +27,13 @@ class SettingsViewController: UIViewController {
         return sc
     }()
 
+    /// Held weakly so the cell may be recycled (and the label deallocated)
+    /// without leaving the observer with a dangling reference.
+    private weak var balanceAmountLabel: UILabel?
+
+    /// NotificationCenter token for balance-change updates. Removed in `deinit`.
+    private var balanceObserver: NSObjectProtocol?
+
     // MARK: - Sections
 
     private enum Section: Int, CaseIterable {
@@ -44,11 +51,35 @@ class SettingsViewController: UIViewController {
         navigationController?.navigationBar.prefersLargeTitles = true
         view.backgroundColor = .systemGroupedBackground
         setupUI()
+        observeBalanceChanges()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         tableView.reloadData()
+    }
+
+    deinit {
+        if let token = balanceObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    // MARK: - Balance live-update
+
+    /// Subscribe to balance changes so the row updates immediately after a
+    /// top-up that happens while Settings is on-screen (e.g. another tab posts
+    /// a change). Without this, the balance only refreshes on `viewWillAppear`.
+    private func observeBalanceChanges() {
+        balanceObserver = NotificationCenter.default.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let newBalance = note.userInfo?[BalanceService.balanceUserInfoKey] as? Double else { return }
+            self.balanceAmountLabel?.text = "₽\(Int(newBalance))"
+        }
     }
 
     // MARK: - Setup
@@ -170,6 +201,12 @@ extension SettingsViewController: UITableViewDataSource {
                     balanceAmount.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
                     balanceAmount.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor)
                 ])
+
+                // Track the latest label instance so the balance observer can
+                // refresh it. When the cell is recycled the weak ref nils out
+                // automatically, so the observer becomes a no-op until the row
+                // is rebuilt — at which point this assignment captures the new label.
+                self.balanceAmountLabel = balanceAmount
 
                 cell.selectionStyle = .none
                 return cell
