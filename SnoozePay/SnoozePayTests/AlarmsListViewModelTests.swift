@@ -4,15 +4,40 @@ import XCTest
 /// Unit tests for AlarmsListViewModel helper methods — detail and penalty formatting.
 final class AlarmsListViewModelTests: XCTestCase {
 
+    /// Synchronous stub scheduler for tests that don't care about the
+    /// scheduling outcome. Resolves `.success(())` immediately so the VM's
+    /// completion-driven rollback path (#129) is exercised on the happy
+    /// branch without bringing up `UNUserNotificationCenter`. Tests that
+    /// need to verify the failure branch swap in their own stub.
+    final class StubScheduler: AlarmScheduling {
+        var scheduleResult: Result<Void, AlarmScheduler.SchedulingError> = .success(())
+        private(set) var scheduledIDs: [UUID] = []
+        private(set) var cancelledIDs: [UUID] = []
+
+        func schedule(
+            _ alarm: Alarm,
+            completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
+        ) {
+            scheduledIDs.append(alarm.id)
+            completion?(scheduleResult)
+        }
+
+        func cancel(_ alarmID: UUID) {
+            cancelledIDs.append(alarmID)
+        }
+    }
+
     private var testDefaults: UserDefaults!
     private var suiteName: String!
+    private var stubScheduler: StubScheduler!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
         suiteName = "test.alarmsList.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
-        repo = AlarmRepository(defaults: testDefaults)
+        stubScheduler = StubScheduler()
+        repo = AlarmRepository(defaults: testDefaults, scheduler: stubScheduler)
     }
 
     override func tearDown() {
@@ -379,5 +404,102 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertNotNil(receivedError, "VM must propagate the persist block to the VC")
         XCTAssertEqual(vm.alarms.count, 1,
                        "In-memory snapshot must NOT shrink when persistence is refused")
+    }
+
+    // MARK: - Issue #129: surfaced scheduling errors from list toggle
+
+    /// When `UNUserNotificationCenter.add` fails (revoked permission, malformed
+    /// trigger, 64-pending limit) during a list toggle, the VM must surface the
+    /// underlying `AlarmScheduler.SchedulingError` to the VC AND roll the
+    /// in-memory `enabled` flag back so the cell switch matches the user's
+    /// actual notification state. Before this fix the toggle landed in
+    /// UserDefaults with `enabled=true` while the notification never registered
+    /// — silent failure (audit-finding from #127).
+    func testToggleAlarm_schedulingFailure_firesOnLoadErrorAndRollsBackEnabled() {
+        let alarm = Alarm(name: "ToggleOn", penaltyAmount: 50, enabled: false)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarms.count, 1)
+        XCTAssertFalse(vm.alarms[0].enabled, "Pre-condition: alarm starts disabled")
+
+        // Stub the scheduler to mimic a denied-permission rejection from
+        // UNUserNotificationCenter. The VM must observe the failure and
+        // unwind the optimistic enable.
+        let underlying = "Notifications are not allowed for this application"
+        stubScheduler.scheduleResult = .failure(.system(message: underlying))
+
+        var receivedError: LocalizedError?
+        var rebindFired = false
+        vm.onLoadError = { receivedError = $0 }
+        vm.onAlarmsUpdated = { rebindFired = true }
+
+        vm.toggleAlarm(id: alarm.id, enabled: true)
+
+        // Error must reach the VC verbatim through the existing onLoadError
+        // channel — `SchedulingError` is itself `LocalizedError`, no new
+        // callback needed.
+        XCTAssertTrue(rebindFired, "VM must trigger a re-bind so the cell switch rolls back")
+        guard let typed = receivedError as? AlarmScheduler.SchedulingError else {
+            return XCTFail("Expected AlarmScheduler.SchedulingError, got \(String(describing: receivedError))")
+        }
+        if case .system(let message) = typed {
+            XCTAssertEqual(message, underlying, "UN error must reach the VM verbatim")
+        } else {
+            XCTFail("Expected .system, got \(typed)")
+        }
+        XCTAssertFalse(
+            vm.alarms[0].enabled,
+            "In-memory `enabled` must roll back to the pre-toggle state on schedule failure"
+        )
+    }
+
+    /// Inverse of the failure test: when the scheduler resolves successfully,
+    /// the VM must NOT fire `onLoadError` and must NOT rebind — the optimistic
+    /// cell flip is already correct, so a redundant table reload would drop
+    /// in-flight switch animations.
+    func testToggleAlarm_schedulingSuccess_doesNotFireOnLoadError() {
+        let alarm = Alarm(name: "Healthy", penaltyAmount: 50, enabled: false)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        // Stub defaults to .success(()) — set here for clarity.
+        stubScheduler.scheduleResult = .success(())
+
+        var receivedError: LocalizedError?
+        var rebindCount = 0
+        vm.onLoadError = { receivedError = $0 }
+        vm.onAlarmsUpdated = { rebindCount += 1 }
+
+        vm.toggleAlarm(id: alarm.id, enabled: true)
+
+        XCTAssertNil(receivedError, "Successful schedule must not surface an error")
+        XCTAssertEqual(rebindCount, 0, "Successful toggle must not refire onAlarmsUpdated")
+        XCTAssertTrue(vm.alarms[0].enabled, "In-memory state must reflect the new toggle")
+    }
+
+    /// Toggle-OFF must not invoke the scheduler at all (there is no work to
+    /// schedule), and the completion path must resolve as success so async
+    /// callers don't hang. Belt-and-suspenders against a future regression
+    /// that accidentally fires `.failure` for the disabled branch.
+    func testToggleAlarm_disablingAlarm_doesNotInvokeScheduler() {
+        let alarm = Alarm(name: "ToggleOff", penaltyAmount: 50, enabled: true)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        // Pre-arm the stub with a failure — disabling MUST NOT consult it.
+        stubScheduler.scheduleResult = .failure(.system(message: "should not fire"))
+
+        var receivedError: LocalizedError?
+        vm.onLoadError = { receivedError = $0 }
+
+        vm.toggleAlarm(id: alarm.id, enabled: false)
+
+        XCTAssertNil(receivedError, "Disabling must skip the scheduler — no failure path")
+        XCTAssertTrue(stubScheduler.scheduledIDs.isEmpty, "schedule() must not run for enabled=false")
+        XCTAssertFalse(vm.alarms[0].enabled, "In-memory state must reflect disable")
     }
 }
