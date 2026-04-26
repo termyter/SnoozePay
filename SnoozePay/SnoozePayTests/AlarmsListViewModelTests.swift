@@ -125,6 +125,79 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertFalse(stored[0].enabled, "Toggle must persist through the repository")
     }
 
+    // MARK: - Coverage gaps surfaced by pr-test-analyzer (#32)
+
+    /// `toggleAlarm` rebuilds the in-memory cache via the positional `Alarm(...)`
+    /// initializer. Every non-`enabled` field MUST round-trip unchanged — if a
+    /// future model field is added but the rebuild block is not updated, that
+    /// field would silently revert to the default on toggle (the suspected
+    /// root cause of #18). This is a regression fence: any new field plus a
+    /// changed default value will trip the assertion.
+    func testToggleAlarm_persistsAndRebuildsCacheCorrectly() {
+        let calendar = Calendar(identifier: .gregorian)
+        let time = calendar.date(from: DateComponents(hour: 7, minute: 30))!
+        let original = Alarm(
+            time: time,
+            repeatDays: [1, 3, 5],
+            name: "Тренировка",
+            soundID: "marimba",
+            vibrationEnabled: false,
+            snoozeMinutes: 7,
+            penaltyAmount: 250,
+            progressiveScale: true,
+            enabled: true
+        )
+        repo.save(original)
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        vm.toggleAlarm(at: 0, enabled: false)
+
+        let cached = vm.alarms[0]
+        XCTAssertEqual(cached.id, original.id)
+        XCTAssertEqual(cached.time, original.time)
+        XCTAssertEqual(cached.repeatDays, original.repeatDays)
+        XCTAssertEqual(cached.name, original.name)
+        XCTAssertEqual(cached.soundID, original.soundID)
+        XCTAssertEqual(cached.vibrationEnabled, original.vibrationEnabled)
+        XCTAssertEqual(cached.snoozeMinutes, original.snoozeMinutes)
+        XCTAssertEqual(cached.penaltyAmount, original.penaltyAmount)
+        XCTAssertEqual(cached.progressiveScale, original.progressiveScale)
+        XCTAssertFalse(cached.enabled, "Only `enabled` should change")
+
+        // Repository must mirror the in-memory state.
+        let stored = repo.fetch(id: original.id)!
+        XCTAssertEqual(stored, cached, "In-memory cache must equal persisted state after toggle")
+    }
+
+    /// Happy-path toggle (alarm exists in repo) MUST NOT call `onAlarmsUpdated`.
+    /// The current implementation updates the in-place cache and returns silently
+    /// — the cell already reflects the optimistic state. A regression that fired
+    /// the callback on every toggle would force a full table reload, dropping
+    /// in-flight cell animations and re-running every cellForRow path.
+    func testToggleAlarm_emitsOnAlarmsUpdatedExactlyOnce() {
+        let alarm = Alarm(penaltyAmount: 50, enabled: true)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        var emissions = 0
+        vm.onAlarmsUpdated = { emissions += 1 }
+
+        vm.loadData()
+        // loadData() MUST emit once (initial bind). Reset the counter so the
+        // toggle assertion below isolates the toggle's own emissions.
+        XCTAssertEqual(emissions, 1, "loadData must emit onAlarmsUpdated exactly once on initial load")
+        emissions = 0
+
+        vm.toggleAlarm(at: 0, enabled: false)
+
+        XCTAssertEqual(
+            emissions, 0,
+            "Successful toggle must not refire onAlarmsUpdated — the cell already shows the new state"
+        )
+    }
+
     // MARK: - toggleAlarm(id:enabled:)
 
     /// Regression for issue #35: when the alarm exists in the VM's in-memory snapshot

@@ -112,6 +112,91 @@ final class BalanceServiceTests: XCTestCase {
         wait(for: [exp1, exp2], timeout: 2.0)
     }
 
+    // MARK: - charge / topUp invariants (#32)
+
+    /// Helper: build an isolated TransactionRepository tied to the same
+    /// suite as the BalanceService under test, so we can assert side
+    /// effects on the financial ledger without touching shared state.
+    private func makeServiceWithLedger(
+        balance: Double,
+        notificationCenter: NotificationCenter
+    ) -> (service: BalanceService, ledger: TransactionRepository) {
+        testDefaults.set(balance, forKey: "user_balance")
+        let ledger = TransactionRepository(defaults: testDefaults)
+        let service = BalanceService(
+            defaults: testDefaults,
+            transactionRepository: ledger,
+            notificationCenter: notificationCenter
+        )
+        return (service, ledger)
+    }
+
+    /// Insufficient funds: `charge` MUST NOT mutate balance, MUST NOT record
+    /// a transaction, and MUST NOT broadcast `balanceChangedNotification`.
+    /// Three invariants in one test because they're a single atomic contract —
+    /// any one breaking is a financial bug.
+    func testCharge_insufficientFunds_balanceUnchanged_noTransaction_noNotification() {
+        let center = NotificationCenter()
+        let (service, ledger) = makeServiceWithLedger(balance: 30, notificationCenter: center)
+
+        let didFire = expectation(description: "notification must NOT fire")
+        didFire.isInverted = true
+        let token = center.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: nil
+        ) { _ in didFire.fulfill() }
+        defer { center.removeObserver(token) }
+
+        let charged = service.charge(amount: 50, alarmID: nil)
+
+        XCTAssertFalse(charged, "charge must report failure on insufficient funds")
+        XCTAssertEqual(service.balance, 30, "Balance must be untouched on failed charge")
+        XCTAssertTrue(ledger.fetchAll().isEmpty,
+                      "No transaction may be recorded for a failed charge")
+        wait(for: [didFire], timeout: 0.5)
+    }
+
+    /// Successful charge records exactly one Transaction with type=.charge,
+    /// amount = requested, and alarmID round-tripped through the optional UUID.
+    func testCharge_success_recordsTransactionWithAlarmID() {
+        let alarmID = UUID()
+        let (service, ledger) = makeServiceWithLedger(balance: 200, notificationCenter: NotificationCenter())
+
+        XCTAssertTrue(service.charge(amount: 75, alarmID: alarmID))
+
+        let transactions = ledger.fetchAll()
+        XCTAssertEqual(transactions.count, 1)
+        let transaction = transactions[0]
+        XCTAssertEqual(transaction.type, .charge)
+        XCTAssertEqual(transaction.amount, 75)
+        XCTAssertEqual(transaction.alarmID, alarmID.uuidString,
+                       "alarmID must be persisted as the original UUID's string form")
+    }
+
+    /// `topUp` always succeeds (no insufficient-funds gate) and records a
+    /// `.topup` transaction with the credited amount and `alarmID == nil`.
+    func testTopUp_recordsTransaction() {
+        let (service, ledger) = makeServiceWithLedger(balance: 0, notificationCenter: NotificationCenter())
+
+        service.topUp(amount: 149)
+
+        let transactions = ledger.fetchAll()
+        XCTAssertEqual(transactions.count, 1)
+        XCTAssertEqual(transactions[0].type, .topup)
+        XCTAssertEqual(transactions[0].amount, 149)
+        XCTAssertNil(transactions[0].alarmID, "topUp transactions must not carry an alarmID")
+        XCTAssertEqual(service.balance, 149)
+    }
+
+    /// Boundary: balance == amount must satisfy `canAfford` (>=, not >).
+    /// A subtle off-by-one here would silently disable the user's last snooze.
+    func testCanAfford_boundaryAtExactEquality() {
+        let service = makeService(balance: 50)
+        XCTAssertTrue(service.canAfford(50), "canAfford must return true when balance == amount")
+        XCTAssertFalse(service.canAfford(50.01), "canAfford must return false when balance < amount by any epsilon")
+    }
+
     // MARK: - Concurrency
 
     func testConcurrentCharge_neverGoesNegative() {
