@@ -44,7 +44,7 @@ final class SoundPickerViewController: UITableViewController {
         super.viewDidLoad()
         title = "Выбор звука"
         view.backgroundColor = .systemGroupedBackground
-        tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
+        tableView.register(SoundPickerRowCell.self, forCellReuseIdentifier: SoundPickerRowCell.reuseID)
     }
 
     // MARK: - Table View
@@ -59,8 +59,8 @@ final class SoundPickerViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let cell = tableView.dequeueReusableCell(
-            withIdentifier: SoundCell.reuseID, for: indexPath
-        ) as? SoundCell else {
+            withIdentifier: SoundPickerRowCell.reuseID, for: indexPath
+        ) as? SoundPickerRowCell else {
             return UITableViewCell()
         }
 
@@ -89,9 +89,9 @@ final class SoundPickerViewController: UITableViewController {
 
 // MARK: - Sound Cell
 
-final class SoundCell: UITableViewCell {
+final class SoundPickerRowCell: UITableViewCell {
 
-    static let reuseID = "SoundCell"
+    static let reuseID = "SoundPickerRowCell"
 
     var onPlayTapped: (() -> Void)?
 
