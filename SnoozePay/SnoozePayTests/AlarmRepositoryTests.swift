@@ -26,6 +26,14 @@ final class AlarmRepositoryTests: XCTestCase {
         Alarm(name: name, penaltyAmount: 50)
     }
 
+    /// Build an alarm at a deterministic time-of-day so sort/upsert tests
+    /// don't accidentally rely on `Date()` resolution within `setUp`.
+    private func makeAlarm(hour: Int, minute: Int = 0, name: String) -> Alarm {
+        let calendar = Calendar(identifier: .gregorian)
+        let date = calendar.date(from: DateComponents(hour: hour, minute: minute))!
+        return Alarm(time: date, name: name, penaltyAmount: 50)
+    }
+
     // MARK: - Basic CRUD
 
     func testSave_persistsAlarm() {
@@ -178,6 +186,52 @@ final class AlarmRepositoryTests: XCTestCase {
         let stored = repo.fetchAll()
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored.first?.name, "Recovery")
+    }
+
+    // MARK: - Coverage gaps surfaced by pr-test-analyzer (#32)
+
+    /// `save` is upsert: re-saving the same id MUST replace in place rather
+    /// than appending a duplicate. The previous `testSave_updatesExistingAlarm`
+    /// covers data-replacement; this one specifically pins down the array-shape
+    /// invariant so a future regression that switched to "always append" would
+    /// fail loudly here even if the last-write-wins on the field comparison.
+    func testSave_upsertsExistingAlarmInPlace() {
+        var alarm = makeAlarm(name: "v1")
+        repo.save(alarm)
+        repo.save(alarm) // same id, second time
+        alarm.name = "v2"
+        repo.save(alarm) // mutated, same id
+
+        let stored = repo.fetchAll()
+        XCTAssertEqual(stored.count, 1, "Repeated saves of the same id must NOT duplicate the alarm")
+        XCTAssertEqual(stored.first?.name, "v2")
+    }
+
+    /// `fetchAll()` must return alarms sorted by `time` ascending so the list UI
+    /// renders earliest-first. Without an explicit assertion the natural insert
+    /// order would mask a regression that dropped the `sorted` call in `readAll`.
+    func testFetchAll_sortsByTime() {
+        let late = makeAlarm(hour: 22, name: "Late")
+        let early = makeAlarm(hour: 6, name: "Early")
+        let mid = makeAlarm(hour: 12, name: "Mid")
+
+        // Insert out of order to ensure result depends on sort, not insertion order.
+        repo.save(late)
+        repo.save(early)
+        repo.save(mid)
+
+        let names = repo.fetchAll().map(\.name)
+        XCTAssertEqual(names, ["Early", "Mid", "Late"],
+                       "fetchAll must order alarms by time ascending")
+    }
+
+    /// Earlier tests cover preservation of corrupt bytes on disk. This one nails
+    /// the caller-visible contract: a single `fetchAll()` against syntactically
+    /// invalid JSON returns `[]` silently — no crash, no rethrow, no partial list.
+    /// Listed explicitly in #32 as an acceptance-criteria bullet.
+    func testCorruptJSONInDefaults_returnsEmptyArray() {
+        testDefaults.set(Data("totally not json {".utf8), forKey: "stored_alarms")
+        XCTAssertEqual(repo.fetchAll(), [])
     }
 
     func testConcurrentToggleVsSave_finalStateIsConsistent() {

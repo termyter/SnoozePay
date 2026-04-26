@@ -46,4 +46,51 @@ final class StoreKitServiceTests: XCTestCase {
             )
         }
     }
+
+    // MARK: - Coverage gaps surfaced by pr-test-analyzer (#32)
+
+    /// `productIDs` and `productAmounts` are two parallel sources of truth.
+    /// The keysets MUST be identical: an ID present in one but not the other
+    /// would silently miscredit (or no-credit) on purchase.
+    func testProductIDs_andProductAmounts_haveIdenticalKeysets() {
+        let idSet = Set(StoreKitService.productIDs)
+        let amountKeys = Set(StoreKitService.productAmounts.keys)
+        XCTAssertEqual(
+            idSet, amountKeys,
+            "productIDs and productAmounts must declare exactly the same product identifiers"
+        )
+    }
+
+    /// Notification names must include the `snoozepay.storekit.` namespace
+    /// prefix so subscribers across the app match a stable, scoped identifier.
+    /// A rename without this assertion would silently break every subscriber.
+    func testNotificationNames_useStableNamespace() {
+        let prefix = "snoozepay.storekit."
+        XCTAssertTrue(StoreKitService.productsLoadedNotification.rawValue.hasPrefix(prefix))
+        XCTAssertTrue(StoreKitService.purchaseCompletedNotification.rawValue.hasPrefix(prefix))
+        XCTAssertTrue(StoreKitService.purchaseFailedNotification.rawValue.hasPrefix(prefix))
+        XCTAssertTrue(StoreKitService.purchasePendingNotification.rawValue.hasPrefix(prefix))
+    }
+
+    /// userInfo keys are part of the contract with subscribers.
+    /// Renaming a key without updating subscribers would silently drop data.
+    func testUserInfoKeys_areDistinctAndStable() {
+        let keys = [
+            StoreKitService.productsUserInfoKey,
+            StoreKitService.amountUserInfoKey,
+            StoreKitService.messageUserInfoKey
+        ]
+        XCTAssertEqual(Set(keys).count, keys.count, "userInfo keys must be distinct")
+        XCTAssertEqual(StoreKitService.amountUserInfoKey, "amount")
+        XCTAssertEqual(StoreKitService.messageUserInfoKey, "message")
+        XCTAssertEqual(StoreKitService.productsUserInfoKey, "products")
+    }
+
+    // TODO(IOS-032+): The remaining gaps from #32 — `.userCancelled` /
+    // `.pending` / `failedVerification` / double-call dedup — exercise
+    // `Product.purchase()` and `Transaction.updates`, which are StoreKit
+    // built-ins without a substitution seam. Covering them requires lifting
+    // the StoreKit boundary behind a protocol (handle(transactionResult:),
+    // purchaseProduct, transactionUpdates AsyncStream). Tracked as a
+    // follow-up so this PR stays test-only and does not modify production.
 }
