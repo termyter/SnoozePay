@@ -171,21 +171,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         case "SNOOZE_ACTION":
             stopAlarmSoundIfOwner(of: payload, action: "SNOOZE_ACTION")
-            let outcome = AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo)
-            switch outcome {
-            case .invalidPayload:
-                AppLogger.appDelegate.error("SNOOZE_ACTION: invalid payload, snooze skipped")
-            case .alarmNotFound:
-                AppLogger.appDelegate.notice("SNOOZE_ACTION: alarm not found, snooze skipped")
-            case .insufficientFunds:
-                AppLogger.appDelegate.notice(
-                    "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
-                )
-            case let .scheduled(newSnoozeCount, charged):
-                AppLogger.appDelegate.info(
-                    "SNOOZE_ACTION: snooze #\(newSnoozeCount, privacy: .public) scheduled, charged=\(charged, privacy: .public)"
-                )
+            // `handleSnooze` is async — we must keep the system
+            // `completionHandler` alive until it resolves, otherwise iOS may
+            // suspend the app before the scheduler callback fires (#130).
+            AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo) { [weak self] outcome in
+                self?.logSnoozeOutcome(outcome)
+                if case let .scheduleFailed(error) = outcome {
+                    self?.postSnoozeScheduleFailedBanner(error: error)
+                }
+                completionHandler()
             }
+            return // async path owns `completionHandler` from here on
 
         case UNNotificationDismissActionIdentifier:
             // User swiped away notification — stop sound. Gate on ownership
@@ -292,6 +288,72 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             }
 
             topVC.present(firingVC, animated: false)
+        }
+    }
+
+    /// Centralised logging for every `SnoozeOutcome` branch — extracted from
+    /// the `didReceive` switch so that path stays under cyclomatic-complexity
+    /// limits and the logging vocabulary lives next to the fallback-banner
+    /// helper that depends on the same outcome.
+    private func logSnoozeOutcome(_ outcome: AlarmFiringCoordinator.SnoozeOutcome) {
+        switch outcome {
+        case .invalidPayload:
+            AppLogger.appDelegate.error("SNOOZE_ACTION: invalid payload, snooze skipped")
+        case .alarmNotFound:
+            AppLogger.appDelegate.notice("SNOOZE_ACTION: alarm not found, snooze skipped")
+        case .insufficientFunds:
+            AppLogger.appDelegate.notice(
+                "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
+            )
+        case let .scheduled(newSnoozeCount, charged):
+            AppLogger.appDelegate.info(
+                "SNOOZE_ACTION: scheduled #\(newSnoozeCount, privacy: .public) charged=\(charged, privacy: .public)"
+            )
+        case let .scheduleFailed(error):
+            // Penalty was refunded inside the coordinator. We log the cause
+            // here and rely on the caller to post the user-facing banner.
+            let desc = error.localizedDescription
+            AppLogger.appDelegate.error(
+                "SNOOZE_ACTION: schedule failed (\(desc, privacy: .public)) — posting fallback banner"
+            )
+        }
+    }
+
+    /// Schedule a local notification that surfaces immediately when the
+    /// snooze action's reschedule attempt failed. The user is no longer in
+    /// the app (notification actions run from the lock screen / banner), so
+    /// a UIAlertController would never reach them — only a banner the system
+    /// itself delivers will. The penalty has already been refunded by the
+    /// coordinator before this is called (issue #130).
+    private func postSnoozeScheduleFailedBanner(error: AlarmScheduler.SchedulingError) {
+        let detail = error.errorDescription ?? error.localizedDescription
+        let content = UNMutableNotificationContent()
+        content.title = "Снуз не запланирован"
+        content.body = "Установите запасной — \(detail)"
+        content.sound = .default
+        // Time-sensitive so it pierces Focus modes the same way the alarm
+        // itself does — the user needs to know NOW that there's no re-fire.
+        content.interruptionLevel = .timeSensitive
+
+        // Fire ASAP. UNTimeIntervalNotificationTrigger requires > 0; 1s is
+        // the minimum that survives the daemon's clamp without being silently
+        // dropped, and is imperceptible to the user.
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "snooze_schedule_failed_\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request) { fallbackError in
+            if let fallbackError = fallbackError {
+                // Even the fallback banner failed to register — usually
+                // because notification permission was revoked, which is
+                // exactly the same root cause the snooze hit. Nothing left
+                // to surface from a notification action context.
+                AppLogger.appDelegate.fault(
+                    "snooze fallback banner failed: \(fallbackError.localizedDescription, privacy: .public)"
+                )
+            }
         }
     }
 
