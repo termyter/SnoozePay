@@ -37,6 +37,13 @@ final class AlarmFiringCoordinator {
         /// wallet reflects the unsuccessful snooze. Callers (AppDelegate) MUST
         /// surface a local banner so the user knows the alarm will not re-fire.
         case scheduleFailed(error: AlarmScheduler.SchedulingError)
+        /// Charge succeeded, schedule failed, AND the offsetting refund also
+        /// failed (typically because the ledger is locked from a corrupt blob,
+        /// see #72/#119). Wallet is in a degraded state — money was taken,
+        /// alarm will not re-fire, refund did not land. Callers MUST surface
+        /// a stronger banner instructing the user to contact support so they
+        /// don't silently lose the penalty (silent-failure-hunter HIGH on #132).
+        case scheduleFailedAndRefundFailed(error: AlarmScheduler.SchedulingError)
     }
 
     // MARK: - Dependencies
@@ -176,20 +183,22 @@ final class AlarmFiringCoordinator {
                     refunded=\(penalty, privacy: .public) reason=\(desc, privacy: .public)
                     """
                 )
+                completion?(.scheduleFailed(error: error))
             } else {
                 // Refund itself failed — wallet is in a degraded state
                 // (charge recorded, refund didn't land — typically because
                 // the ledger is locked from a corrupt blob, see #72/#119).
-                // Surface separately so this doesn't masquerade as a
-                // successful refund in the logs.
+                // Distinct outcome so AppDelegate can post a stronger banner
+                // ("обратитесь в поддержку") rather than the standard "снуз
+                // не запланирован" message that implies money was returned.
                 AppLogger.coordinator.fault(
                     """
                     snooze: schedule failed alarm=\(alarmID, privacy: .private) \
                     AND refund failed — wallet desync, manual reconciliation required
                     """
                 )
+                completion?(.scheduleFailedAndRefundFailed(error: error))
             }
-            completion?(.scheduleFailed(error: error))
         }
     }
 }

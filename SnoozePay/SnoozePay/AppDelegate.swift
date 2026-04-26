@@ -174,14 +174,43 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // `handleSnooze` is async — we must keep the system
             // `completionHandler` alive until it resolves, otherwise iOS may
             // suspend the app before the scheduler callback fires (#130).
-            AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo) { [weak self] outcome in
-                self?.logSnoozeOutcome(outcome)
-                if case let .scheduleFailed(error) = outcome {
-                    self?.postSnoozeScheduleFailedBanner(error: error)
-                }
+            //
+            // BUT: if the scheduler chain hangs (UN daemon unresponsive, main
+            // queue starved) the closure never fires and iOS terminates the
+            // process at ~30s, silently dropping the snooze and the fallback
+            // banner. A 25s watchdog calls `completionHandler` once whichever
+            // path resolves first wins — preventing the timeout class of
+            // silent failure (silent-failure-hunter CRITICAL on #132).
+            let resolveLock = NSLock()
+            var didResolve = false
+            let resolveOnce: () -> Void = {
+                resolveLock.lock()
+                defer { resolveLock.unlock() }
+                guard !didResolve else { return }
+                didResolve = true
                 completionHandler()
             }
-            return // async path owns `completionHandler` from here on
+            let watchdog = DispatchWorkItem {
+                AppLogger.appDelegate.fault(
+                    "SNOOZE_ACTION watchdog fired — coordinator did not resolve in 25s, releasing completionHandler"
+                )
+                resolveOnce()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 25, execute: watchdog)
+            AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo) { [weak self] outcome in
+                watchdog.cancel()
+                self?.logSnoozeOutcome(outcome)
+                switch outcome {
+                case let .scheduleFailed(error):
+                    self?.postSnoozeScheduleFailedBanner(error: error, refundLanded: true)
+                case let .scheduleFailedAndRefundFailed(error):
+                    self?.postSnoozeScheduleFailedBanner(error: error, refundLanded: false)
+                default:
+                    break
+                }
+                resolveOnce()
+            }
+            return // async path + watchdog own `completionHandler` from here on
 
         case UNNotificationDismissActionIdentifier:
             // User swiped away notification — stop sound. Gate on ownership
@@ -314,7 +343,15 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // here and rely on the caller to post the user-facing banner.
             let desc = error.localizedDescription
             AppLogger.appDelegate.error(
-                "SNOOZE_ACTION: schedule failed (\(desc, privacy: .public)) — posting fallback banner"
+                "SNOOZE_ACTION: schedule failed (\(desc, privacy: .public)) — posting fallback banner (refunded)"
+            )
+        case let .scheduleFailedAndRefundFailed(error):
+            // Both schedule AND refund failed — money was taken, alarm won't
+            // re-fire, refund didn't land. Stronger banner copy is posted by
+            // the caller; we log at fault-level for forensics.
+            let desc = error.localizedDescription
+            AppLogger.appDelegate.fault(
+                "SNOOZE_ACTION: schedule AND refund failed (\(desc, privacy: .public)) — wallet desync"
             )
         }
     }
@@ -325,11 +362,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// a UIAlertController would never reach them — only a banner the system
     /// itself delivers will. The penalty has already been refunded by the
     /// coordinator before this is called (issue #130).
-    private func postSnoozeScheduleFailedBanner(error: AlarmScheduler.SchedulingError) {
+    private func postSnoozeScheduleFailedBanner(
+        error: AlarmScheduler.SchedulingError,
+        refundLanded: Bool
+    ) {
         let detail = error.errorDescription ?? error.localizedDescription
         let content = UNMutableNotificationContent()
         content.title = "Снуз не запланирован"
-        content.body = "Установите запасной — \(detail)"
+        if refundLanded {
+            content.body = "Установите запасной — \(detail)"
+        } else {
+            // Penalty was charged but refund failed — surface this so the user
+            // knows to reach out instead of silently absorbing the loss.
+            content.body = "Установите запасной. Списание не возвращено — обратитесь в поддержку. \(detail)"
+        }
         content.sound = .default
         // Time-sensitive so it pierces Focus modes the same way the alarm
         // itself does — the user needs to know NOW that there's no re-fire.
