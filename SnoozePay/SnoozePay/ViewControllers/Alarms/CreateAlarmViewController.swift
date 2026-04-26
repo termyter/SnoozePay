@@ -365,34 +365,7 @@ extension CreateAlarmViewController: UITableViewDataSource {
 
         case .sound:
             cell.textLabel?.text = "Звук"
-
-            // Sound name label
-            let soundLabel = UILabel()
-            soundLabel.text = viewModel.availableSounds.first(where: { $0.id == viewModel.soundID })?.name ?? "По умолчанию"
-            soundLabel.textColor = .secondaryLabel
-            soundLabel.font = UIFont.systemFont(ofSize: 17)
-            soundLabel.sizeToFit()
-
-            // Play preview button
-            let playButton = UIButton(type: .system)
-            let playImage = UIImage(systemName: "play.circle.fill")?.withConfiguration(
-                UIImage.SymbolConfiguration(pointSize: 24, weight: .medium)
-            )
-            playButton.setImage(playImage, for: .normal)
-            playButton.tintColor = AppColors.accentBlue
-            playButton.addTarget(self, action: #selector(previewSoundTapped), for: .touchUpInside)
-            playButton.sizeToFit()
-
-            // Container stack for label + play button + disclosure
-            let accessoryStack = UIStackView(arrangedSubviews: [soundLabel, playButton])
-            accessoryStack.axis = .horizontal
-            accessoryStack.spacing = AppSpacing.sm
-            accessoryStack.alignment = .center
-            accessoryStack.sizeToFit()
-            accessoryStack.frame = CGRect(x: 0, y: 0,
-                                          width: soundLabel.frame.width + playButton.frame.width + AppSpacing.sm + 16,
-                                          height: max(soundLabel.frame.height, playButton.frame.height))
-            cell.accessoryView = accessoryStack
+            cell.accessoryView = makeSoundAccessoryView()
             cell.selectionStyle = .default
 
         case .vibration:
@@ -467,6 +440,48 @@ extension CreateAlarmViewController: UITableViewDataSource {
             stack.addArrangedSubview(button)
         }
 
+        return stack
+    }
+
+    /// Builds the sound row's `accessoryView`: sound name label + play preview button + chevron.
+    /// The chevron is required because setting `accessoryView` suppresses `accessoryType`,
+    /// so without it the row offers no visual disclosure cue.
+    private func makeSoundAccessoryView() -> UIStackView {
+        let soundLabel = UILabel()
+        let soundName = viewModel.availableSounds.first(where: { $0.id == viewModel.soundID })?.name
+        soundLabel.text = soundName ?? "По умолчанию"
+        soundLabel.textColor = .secondaryLabel
+        soundLabel.font = UIFont.systemFont(ofSize: 17)
+        soundLabel.sizeToFit()
+
+        let playButton = UIButton(type: .system)
+        let playImage = UIImage(systemName: "play.circle.fill")?.withConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 24, weight: .medium)
+        )
+        playButton.setImage(playImage, for: .normal)
+        playButton.tintColor = AppColors.accentBlue
+        playButton.addTarget(self, action: #selector(previewSoundTapped), for: .touchUpInside)
+        playButton.sizeToFit()
+
+        let chevronImage = UIImage(systemName: "chevron.right")?.withConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        )
+        let chevronImageView = UIImageView(image: chevronImage)
+        chevronImageView.tintColor = .tertiaryLabel
+        chevronImageView.sizeToFit()
+
+        let stack = UIStackView(arrangedSubviews: [soundLabel, playButton, chevronImageView])
+        stack.axis = .horizontal
+        stack.spacing = AppSpacing.sm
+        stack.alignment = .center
+        stack.sizeToFit()
+        let width = soundLabel.frame.width
+            + playButton.frame.width
+            + chevronImageView.frame.width
+            + AppSpacing.sm * 2
+            + 16
+        let height = max(soundLabel.frame.height, playButton.frame.height, chevronImageView.frame.height)
+        stack.frame = CGRect(x: 0, y: 0, width: width, height: height)
         return stack
     }
 }
