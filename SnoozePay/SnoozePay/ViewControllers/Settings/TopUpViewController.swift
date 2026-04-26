@@ -330,7 +330,7 @@ final class TopUpPackageCell: UITableViewCell {
 
     private let coinIcon: UIImageView = {
         let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "dollarsign.circle.fill")?.withConfiguration(
+        imageView.image = UIImage(systemName: "rublesign.circle.fill")?.withConfiguration(
             UIImage.SymbolConfiguration(pointSize: 28, weight: .medium)
         )
         imageView.tintColor = AppColors.accentOrange
