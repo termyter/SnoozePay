@@ -170,7 +170,7 @@ final class AlarmSchedulerTests: XCTestCase {
     // is removed. We can't go through schedule() in the test process because that
     // requires notification permission and a real future trigger date.
 
-    func testCancel_removesAllVariantsIncludingOnce() {
+    func testCancel_removesAllVariantsIncludingOnce() throws {
         let alarmID = UUID()
         let center = UNUserNotificationCenter.current()
         let prefix = "alarm_\(alarmID.uuidString)_"

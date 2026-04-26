@@ -307,7 +307,8 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.loadData()
 
         XCTAssertNotNil(receivedError, "VM must propagate decode failures to the VC")
-        if case AlarmRepository.RepositoryError.decodeFailure = receivedError as? AlarmRepository.RepositoryError {
+        if let typed = receivedError as? AlarmRepository.RepositoryError,
+           case .decodeFailure = typed {
             // expected
         } else {
             XCTFail("Expected decodeFailure, got \(String(describing: receivedError))")
