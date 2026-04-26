@@ -118,17 +118,24 @@ final class AlarmsListViewModel {
 
         let didUpdate = alarmRepository.setEnabled(enabled, id: id) { [weak self] result in
             // Scheduling outcome only fires on the successful-persist path.
-            // On failure we roll the in-memory cache back to the previous
-            // `enabled` state and re-bind the cell — without this the user
-            // sees "включён" while the notification never registered (#129).
+            // On failure we roll BOTH the in-memory cache AND the on-disk
+            // persisted state back to the previous `enabled` value — without
+            // the disk-rollback the next cold-launch would re-read enabled=true
+            // from UserDefaults while the notification still isn't registered,
+            // re-introducing the very silent failure this fix addresses (#129).
             guard let self else { return }
             if case .failure(let error) = result {
                 AppLogger.ui.notice(
-                    "schedule failed during toggle id=\(id, privacy: .private); rolling back UI"
+                    "schedule failed during toggle id=\(id, privacy: .private); rolling back UI + disk"
                 )
                 if let idx = self.alarms.firstIndex(where: { $0.id == id }) {
                     self.alarms[idx].enabled = !enabled
                 }
+                // Persist the rollback. We pass `nil` completion so we don't
+                // re-trigger this closure on the rollback's own scheduler call
+                // (toggle-off does no schedule work; toggle-on rollback after
+                // a failed enable becomes a disable — also no schedule work).
+                _ = self.alarmRepository.setEnabled(!enabled, id: id, schedulingResult: nil)
                 self.onLoadError?(error)
                 self.onAlarmsUpdated?()
             }
