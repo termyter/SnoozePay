@@ -43,7 +43,14 @@ class TopUpViewController: UIViewController {
 
     /// NotificationCenter tokens — removed in `deinit`.
     private var purchaseFailedObserver: NSObjectProtocol?
+    /// Single stable observer registered in `viewDidLoad`. Previously this was
+    /// re-registered per-purchase, which raced when the user tapped a second
+    /// package while the first purchase was still in flight (#120).
     private var purchasePendingObserver: NSObjectProtocol?
+    /// Observes `BalanceService.balanceChangedNotification` so the header card
+    /// refreshes when a deferred (Ask-to-Buy) purchase resolves through the
+    /// `Transaction.updates` listener while this screen is on-screen (#120).
+    private var balanceChangedObserver: NSObjectProtocol?
 
     // MARK: - Sections
 
@@ -84,6 +91,32 @@ class TopUpViewController: UIViewController {
                   let message = note.userInfo?[StoreKitService.messageUserInfoKey] as? String else { return }
             self.presentErrorAlert(message)
         }
+
+        // Single stable pending observer (#120). Previously this was registered
+        // and torn down inside the per-purchase Task, which dropped or duplicated
+        // alerts when the user tapped a second package mid-purchase. Now the
+        // observer lives for the lifetime of the VC and is removed in `deinit`.
+        purchasePendingObserver = NotificationCenter.default.addObserver(
+            forName: StoreKitService.purchasePendingNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.presentPendingAlert()
+        }
+
+        // Refresh the balance header card when BalanceService broadcasts a
+        // change. This catches deferred (Ask-to-Buy) credits resolved via the
+        // `Transaction.updates` listener while TopUp is on-screen — without
+        // this, the service's balance grows but the header shows the stale
+        // pre-purchase amount until the screen is reopened (#120).
+        balanceChangedObserver = NotificationCenter.default.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.tableView.tableHeaderView = self.makeBalanceHeader()
+        }
     }
 
     deinit {
@@ -91,6 +124,9 @@ class TopUpViewController: UIViewController {
             NotificationCenter.default.removeObserver(token)
         }
         if let token = purchasePendingObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = balanceChangedObserver {
             NotificationCenter.default.removeObserver(token)
         }
     }
@@ -193,39 +229,26 @@ class TopUpViewController: UIViewController {
             return
         }
 
-        // Subscribe per-purchase. Removed at the end of the Task so the observer
-        // does not outlive the purchase attempt that registered it. NotificationCenter
-        // tolerates multiple observers on the same name from the same instance —
-        // we still defensively remove the previous token (if any) to avoid two
-        // alerts for back-to-back taps.
-        if let previousToken = purchasePendingObserver {
-            NotificationCenter.default.removeObserver(previousToken)
-        }
-        purchasePendingObserver = NotificationCenter.default.addObserver(
-            forName: StoreKitService.purchasePendingNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.presentPendingAlert()
-        }
+        // `[weak self]` so dismissing the screen mid-purchase doesn't keep the VC
+        // alive across `await`. Re-resolve `self?` after each suspension point —
+        // without this, `tableView` access could fire on a VC whose view is no
+        // longer in the hierarchy (#120). The pending alert is no longer raced
+        // here: it lives on a single stable observer registered in `viewDidLoad`.
+        Task { [weak self] in
+            self?.loadingProductID = product.id
+            self?.tableView.reloadData()
 
-        Task {
-            loadingProductID = product.id
-            tableView.reloadData()
+            // Capture the service reference before the await so we don't need
+            // `self` just to reach it. If `self` is gone after the suspension,
+            // the purchase still completes and `Transaction.updates` will credit
+            // the wallet — we simply skip the UI refresh.
+            guard let service = self?.storeService else { return }
+            await service.purchase(product)
 
-            await storeService.purchase(product)
-
-            loadingProductID = nil
-            // Refresh balance header
-            tableView.tableHeaderView = makeBalanceHeader()
-            tableView.reloadData()
-            // Always clear — including the .pending case where the alert was shown.
-            // The actual credit happens later via Transaction.updates listener; the
-            // pending observer's job ends with the alert.
-            if let token = purchasePendingObserver {
-                NotificationCenter.default.removeObserver(token)
-                purchasePendingObserver = nil
-            }
+            guard let self else { return }
+            self.loadingProductID = nil
+            self.tableView.tableHeaderView = self.makeBalanceHeader()
+            self.tableView.reloadData()
         }
     }
 
