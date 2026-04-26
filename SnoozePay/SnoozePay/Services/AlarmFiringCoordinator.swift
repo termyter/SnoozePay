@@ -16,9 +16,11 @@ final class AlarmFiringCoordinator {
     // MARK: - Outcome
 
     /// Result of attempting a snooze from a notification action.
-    /// Surfaced for tests and future telemetry — AppDelegate currently ignores
-    /// the value because there's no UI affordance once the alarm screen is
-    /// already dismissed.
+    /// Surfaced for tests and AppDelegate so a `.scheduleFailed` can drive a
+    /// user-visible local notification — without that surface a `UN.add`
+    /// failure here silently swallows the snooze and the user has already
+    /// paid the penalty (issue #130, follow-up to #118 / silent-failure-hunter
+    /// review of #127).
     enum SnoozeOutcome: Equatable {
         /// Required identifiers (alarmID/snoozeCount) were missing or malformed.
         case invalidPayload
@@ -28,6 +30,20 @@ final class AlarmFiringCoordinator {
         case insufficientFunds
         /// Charge succeeded and a new snooze notification was scheduled.
         case scheduled(newSnoozeCount: Int, charged: Double)
+        /// Charge succeeded but the underlying `UNUserNotificationCenter.add`
+        /// rejected the snooze trigger (revoked permission, 64-pending-limit,
+        /// malformed trigger). The penalty has been **refunded** synchronously
+        /// inside the coordinator before this outcome is reported, so the
+        /// wallet reflects the unsuccessful snooze. Callers (AppDelegate) MUST
+        /// surface a local banner so the user knows the alarm will not re-fire.
+        case scheduleFailed(error: AlarmScheduler.SchedulingError)
+        /// Charge succeeded, schedule failed, AND the offsetting refund also
+        /// failed (typically because the ledger is locked from a corrupt blob,
+        /// see #72/#119). Wallet is in a degraded state — money was taken,
+        /// alarm will not re-fire, refund did not land. Callers MUST surface
+        /// a stronger banner instructing the user to contact support so they
+        /// don't silently lose the penalty (silent-failure-hunter HIGH on #132).
+        case scheduleFailedAndRefundFailed(error: AlarmScheduler.SchedulingError)
     }
 
     // MARK: - Dependencies
@@ -65,13 +81,29 @@ final class AlarmFiringCoordinator {
 
     /// Resolves the alarm + snoozeCount from a notification's userInfo dict,
     /// charges the appropriate (possibly progressive) penalty, and schedules
-    /// the next snooze notification. Returns a structured outcome so callers
-    /// (and tests) can assert exactly what happened without scraping logs.
-    @discardableResult
-    func handleSnooze(userInfo: [AnyHashable: Any]) -> SnoozeOutcome {
+    /// the next snooze notification. The outcome is delivered via `completion`
+    /// because `scheduleSnooze` is asynchronous — callers (AppDelegate, tests)
+    /// must wait for the scheduler to confirm registration before they can
+    /// distinguish `.scheduled` from `.scheduleFailed` (issue #130).
+    ///
+    /// On `.scheduleFailed` the penalty is refunded via
+    /// `BalanceService.topUp` so the user is not billed for a snooze that
+    /// will never re-fire. The refund posts an offsetting ledger entry —
+    /// transaction history therefore shows both the charge and the refund,
+    /// which is the consistent representation for stats/auditing (mirrors the
+    /// rollback pattern from StoreKitService dedup-mark in #72).
+    ///
+    /// Synchronous early-exit branches (invalid payload, alarm missing,
+    /// insufficient funds) call `completion` inline before returning so the
+    /// caller sees a single resolution per invocation.
+    func handleSnooze(
+        userInfo: [AnyHashable: Any],
+        completion: ((SnoozeOutcome) -> Void)? = nil
+    ) {
         guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
             AppLogger.coordinator.error("snooze: invalid payload \(userInfo, privacy: .private(mask: .hash))")
-            return .invalidPayload
+            completion?(.invalidPayload)
+            return
         }
 
         let alarm: Alarm?
@@ -86,11 +118,13 @@ final class AlarmFiringCoordinator {
             AppLogger.coordinator.error(
                 "snooze: fetch failed for \(payload.alarmID, privacy: .private): \(errorDesc, privacy: .public)"
             )
-            return .alarmNotFound
+            completion?(.alarmNotFound)
+            return
         }
         guard let alarm else {
             AppLogger.coordinator.error("snooze: alarm \(payload.alarmID, privacy: .private) not in repository")
-            return .alarmNotFound
+            completion?(.alarmNotFound)
+            return
         }
 
         let newCount = payload.snoozeCount + 1
@@ -98,16 +132,73 @@ final class AlarmFiringCoordinator {
 
         let charged = balanceService.charge(amount: penalty, alarmID: payload.alarmID)
         guard charged else {
+            let alarmID = payload.alarmID
             AppLogger.coordinator.notice(
-                "snooze: insufficient funds for alarm \(payload.alarmID, privacy: .private), penalty=\(penalty, privacy: .public)"
+                "snooze: insufficient funds alarm=\(alarmID, privacy: .private) penalty=\(penalty, privacy: .public)"
             )
-            return .insufficientFunds
+            completion?(.insufficientFunds)
+            return
         }
 
-        scheduler.scheduleSnooze(for: alarm, snoozeCount: newCount)
-        AppLogger.coordinator.info(
-            "snooze: scheduled #\(newCount, privacy: .public) for \(payload.alarmID, privacy: .private), penalty=\(penalty, privacy: .public)"
-        )
-        return .scheduled(newSnoozeCount: newCount, charged: penalty)
+        scheduler.scheduleSnooze(for: alarm, snoozeCount: newCount) { [weak self] result in
+            self?.handleScheduleResult(
+                result,
+                alarmID: payload.alarmID,
+                newCount: newCount,
+                penalty: penalty,
+                completion: completion
+            )
+        }
+    }
+
+    /// Resolves the async scheduler result into a `SnoozeOutcome`. On failure
+    /// the penalty is refunded via `BalanceService.topUp` so the user is not
+    /// billed for a snooze that won't re-fire — extracted from `handleSnooze`
+    /// to keep the entry-point readable and to give the refund logic its own
+    /// log seam.
+    private func handleScheduleResult(
+        _ result: Result<Void, AlarmScheduler.SchedulingError>,
+        alarmID: UUID,
+        newCount: Int,
+        penalty: Double,
+        completion: ((SnoozeOutcome) -> Void)?
+    ) {
+        switch result {
+        case .success:
+            AppLogger.coordinator.info(
+                "snooze: scheduled #\(newCount, privacy: .public) alarm=\(alarmID, privacy: .private)"
+            )
+            completion?(.scheduled(newSnoozeCount: newCount, charged: penalty))
+        case .failure(let error):
+            // Refund the penalty so the user isn't billed for a snooze that
+            // will never re-fire. `topUp` records an offsetting ledger entry
+            // (rather than mutating storage directly) so transaction history
+            // shows both the charge and the refund — stats stay auditable.
+            let refunded = balanceService.topUp(amount: penalty)
+            let desc = error.errorDescription ?? error.localizedDescription
+            if refunded {
+                AppLogger.coordinator.error(
+                    """
+                    snooze: schedule failed alarm=\(alarmID, privacy: .private) \
+                    refunded=\(penalty, privacy: .public) reason=\(desc, privacy: .public)
+                    """
+                )
+                completion?(.scheduleFailed(error: error))
+            } else {
+                // Refund itself failed — wallet is in a degraded state
+                // (charge recorded, refund didn't land — typically because
+                // the ledger is locked from a corrupt blob, see #72/#119).
+                // Distinct outcome so AppDelegate can post a stronger banner
+                // ("обратитесь в поддержку") rather than the standard "снуз
+                // не запланирован" message that implies money was returned.
+                AppLogger.coordinator.fault(
+                    """
+                    snooze: schedule failed alarm=\(alarmID, privacy: .private) \
+                    AND refund failed — wallet desync, manual reconciliation required
+                    """
+                )
+                completion?(.scheduleFailedAndRefundFailed(error: error))
+            }
+        }
     }
 }
