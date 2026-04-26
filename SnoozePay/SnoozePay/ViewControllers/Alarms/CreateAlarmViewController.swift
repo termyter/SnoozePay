@@ -1,100 +1,31 @@
 import UIKit
-import AudioToolbox
 
 /// Screen for creating or editing an alarm.
-/// Uses a static table view with sections for each setting group.
-class CreateAlarmViewController: UIViewController {
+/// Each section is rendered by a dedicated `UITableViewCell` subclass that owns
+/// its own controls — the previous shared-property design (timePicker,
+/// nameField, sliders, toggles…) caused stale-constraint crashes during
+/// `reloadSections`, since the same control was re-parented across recycled
+/// cells.
+final class CreateAlarmViewController: UIViewController {
 
-    // MARK: - Properties
+    // MARK: - Callbacks
 
     var onSave: (() -> Void)?
     /// Invoked after the user confirms deletion of the alarm being edited so the
     /// presenter can refresh its list. Defaults to nil for new alarms (delete row
     /// is hidden in create mode).
     var onDelete: (() -> Void)?
+
+    // MARK: - Dependencies
+
     private let viewModel: CreateAlarmViewModel
 
     // MARK: - UI
 
     private let tableView: UITableView = {
-        let tv = UITableView(frame: .zero, style: .insetGrouped)
-        tv.translatesAutoresizingMaskIntoConstraints = false
-        return tv
-    }()
-
-    // Time picker
-    private let timePicker: UIDatePicker = {
-        let picker = UIDatePicker()
-        picker.datePickerMode = .time
-        picker.preferredDatePickerStyle = .wheels
-        picker.translatesAutoresizingMaskIntoConstraints = false
-        return picker
-    }()
-
-    // Day buttons
-    private var dayButtons: [UIButton] = []
-    private let dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-
-    // Penalty slider
-    private let penaltySlider: UISlider = {
-        let s = UISlider()
-        s.minimumValue = 10
-        s.maximumValue = 1000
-        s.translatesAutoresizingMaskIntoConstraints = false
-        return s
-    }()
-
-    private let penaltyValueLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 17)
-        l.textColor = AppColors.accentOrange
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
-    }()
-
-    // Progressive scale toggle
-    private let progressiveToggle: UISwitch = {
-        let sw = UISwitch()
-        sw.onTintColor = AppColors.accentOrange
-        return sw
-    }()
-
-    private let progressivePreviewLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 13)
-        l.textColor = AppColors.accentOrange
-        l.numberOfLines = 0
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
-    }()
-
-    // Snooze stepper. The "X мин" value is shown in the cell's
-    // `detailTextLabel` (UITableViewCell `.value1` style), not via a custom
-    // stack accessory — `UIStackView.sizeToFit()` did not produce a sensible
-    // intrinsic size for a stepper + label combo, leaving the stepper drawn
-    // at the cell's top-left and clipping the value label.
-    private let snoozeStepper: UIStepper = {
-        let s = UIStepper()
-        s.minimumValue = 1
-        s.maximumValue = 30
-        s.stepValue = 1
-        return s
-    }()
-
-    // Vibration toggle
-    private let vibrationToggle: UISwitch = {
-        let sw = UISwitch()
-        sw.onTintColor = AppColors.accentGreen
-        return sw
-    }()
-
-    // Name field
-    private let nameField: UITextField = {
-        let tf = UITextField()
-        tf.placeholder = "Название"
-        tf.font = UIFont.systemFont(ofSize: 17)
-        tf.translatesAutoresizingMaskIntoConstraints = false
-        return tf
+        let view = UITableView(frame: .zero, style: .insetGrouped)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }()
 
     // MARK: - Sections
@@ -109,8 +40,6 @@ class CreateAlarmViewController: UIViewController {
         case progressiveScale
         case snoozeTime
         /// Destructive "Удалить будильник" row — only visible in edit mode.
-        /// In create mode `numberOfRowsInSection` returns 0, hiding the section
-        /// entirely (including its background pill).
         case deleteAction
     }
 
@@ -133,22 +62,12 @@ class CreateAlarmViewController: UIViewController {
         view.backgroundColor = .systemGroupedBackground
         setupNavigationBar()
         setupTableView()
-        // Targets must be wired exactly once on these shared controls.
-        // Wiring them in `cellForRowAt` accumulated duplicate handlers on every
-        // reload, multiplying penalty/snooze updates per single user action.
-        wireControlTargets()
-        populateFromViewModel()
-    }
-
-    private func wireControlTargets() {
-        penaltySlider.addTarget(self, action: #selector(sliderChanged(_:)), for: .valueChanged)
-        progressiveToggle.addTarget(self, action: #selector(progressiveToggled(_:)), for: .valueChanged)
-        snoozeStepper.addTarget(self, action: #selector(stepperChanged(_:)), for: .valueChanged)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Refresh sound row when returning from SoundPickerViewController
+        // Refresh the sound row in case the user picked a new sound on
+        // SoundPickerViewController and is returning here.
         tableView.reloadSections(IndexSet(integer: Section.sound.rawValue), with: .none)
     }
 
@@ -172,29 +91,25 @@ class CreateAlarmViewController: UIViewController {
         view.addSubview(tableView)
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+        tableView.register(TimePickerCell.self, forCellReuseIdentifier: TimePickerCell.reuseID)
+        tableView.register(DayPickerCell.self, forCellReuseIdentifier: DayPickerCell.reuseID)
+        tableView.register(NameCell.self, forCellReuseIdentifier: NameCell.reuseID)
+        tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
+        tableView.register(VibrationCell.self, forCellReuseIdentifier: VibrationCell.reuseID)
+        tableView.register(PenaltyCell.self, forCellReuseIdentifier: PenaltyCell.reuseID)
+        tableView.register(ProgressiveScaleCell.self, forCellReuseIdentifier: ProgressiveScaleCell.reuseID)
+        tableView.register(ProgressivePreviewCell.self, forCellReuseIdentifier: ProgressivePreviewCell.reuseID)
+        tableView.register(SnoozeCell.self, forCellReuseIdentifier: SnoozeCell.reuseID)
+        tableView.register(DeleteActionCell.self, forCellReuseIdentifier: DeleteActionCell.reuseID)
 
         // Pin to safe area on top so the first section's "ПОВТОР" header is
-        // not clipped under the navigation bar. Bottom can stay at view edge
-        // since insetGrouped style handles bottom safe area via contentInset.
+        // not clipped under the navigation bar.
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-    }
-
-    private func populateFromViewModel() {
-        timePicker.date = viewModel.time
-        penaltySlider.value = Float(viewModel.penaltyAmount)
-        penaltyValueLabel.text = "\(Int(viewModel.penaltyAmount)) ₽"
-        progressiveToggle.isOn = viewModel.progressiveScale
-        progressivePreviewLabel.text = viewModel.progressiveScalePreview
-        progressivePreviewLabel.isHidden = !viewModel.progressiveScale
-        snoozeStepper.value = Double(viewModel.snoozeMinutes)
-        vibrationToggle.isOn = viewModel.vibrationEnabled
-        nameField.text = viewModel.name
     }
 
     // MARK: - Actions
@@ -204,54 +119,28 @@ class CreateAlarmViewController: UIViewController {
     }
 
     @objc private func saveTapped() {
-        // Collect values from controls back into viewModel
-        viewModel.time = timePicker.date
-        viewModel.name = nameField.text ?? "Будильник"
-        viewModel.penaltyAmount = Double(penaltySlider.value)
-        viewModel.progressiveScale = progressiveToggle.isOn
-        viewModel.snoozeMinutes = Int(snoozeStepper.value)
-        viewModel.vibrationEnabled = vibrationToggle.isOn
-
+        // Cells push state into the view-model live via callbacks, so save just
+        // forwards the current snapshot to the repository.
         viewModel.save()
         onSave?()
         dismiss(animated: true)
     }
 
-    @objc private func sliderChanged(_ sender: UISlider) {
-        // Round to nearest 10
-        let rounded = (sender.value / 10).rounded() * 10
-        sender.value = rounded
-        viewModel.penaltyAmount = Double(rounded)
-        penaltyValueLabel.text = "\(Int(rounded)) ₽"
-        progressivePreviewLabel.text = viewModel.progressiveScalePreview
-    }
+    // MARK: - View-model bridges
 
-    @objc private func progressiveToggled(_ sender: UISwitch) {
-        viewModel.progressiveScale = sender.isOn
-        progressivePreviewLabel.text = viewModel.progressiveScalePreview
-        progressivePreviewLabel.isHidden = !sender.isOn
+    private func setProgressiveScale(_ isOn: Bool) {
+        viewModel.progressiveScale = isOn
 
-        // Detach the shared preview label from its previous host cell before the
-        // table view rebuilds the section. Reusing the same view across cells
-        // without removing it first leaves stale auto-layout constraints attached
-        // to a discarded cell, which crashes UIKit when it tries to lay out a
-        // table view that is not yet (or no longer) in the view hierarchy.
-        progressivePreviewLabel.removeFromSuperview()
-
-        // Skip animated updates if the view is detached from a window — UIKit
-        // logs "told to layout its visible cells without being in the view
-        // hierarchy" and may crash when applying the diff.
         guard view.window != nil else {
-            tableView.reloadData()
+            // Detached views can't safely run insertRows/deleteRows; reload as a
+            // safe fallback (no animation visible to the user anyway).
+            tableView.reloadSections(IndexSet(integer: Section.progressiveScale.rawValue), with: .none)
             return
         }
 
-        // Insert/delete the preview row instead of reloading the whole section.
-        // This avoids tearing down the toggle row (which owns `progressiveToggle`
-        // as accessoryView) on every flip and keeps the animation smooth.
         let previewIndexPath = IndexPath(row: 1, section: Section.progressiveScale.rawValue)
         tableView.performBatchUpdates({
-            if sender.isOn {
+            if isOn {
                 tableView.insertRows(at: [previewIndexPath], with: .fade)
             } else {
                 tableView.deleteRows(at: [previewIndexPath], with: .fade)
@@ -259,36 +148,13 @@ class CreateAlarmViewController: UIViewController {
         })
     }
 
-    @objc private func stepperChanged(_ sender: UIStepper) {
-        viewModel.snoozeMinutes = Int(sender.value)
-        // Update the visible cell's detail label in place. Avoids
-        // `reloadRows`, which would recreate the cell mid-interaction and
-        // drop the stepper's gesture state.
-        let snoozePath = IndexPath(row: 0, section: Section.snoozeTime.rawValue)
-        if let cell = tableView.cellForRow(at: snoozePath) {
-            cell.detailTextLabel?.text = snoozeMinutesText
-        }
-    }
-
-    private var snoozeMinutesText: String {
-        "\(viewModel.snoozeMinutes) мин"
-    }
-
-    @objc private func previewSoundTapped() {
-        viewModel.previewSound(viewModel.soundID)
-    }
-
-    @objc private func dayButtonTapped(_ sender: UIButton) {
-        let day = sender.tag
-        viewModel.toggleDay(day)
-        updateDayButtons()
-    }
-
-    private func updateDayButtons() {
-        for (index, button) in dayButtons.enumerated() {
-            let isSelected = viewModel.repeatDays.contains(index)
-            button.backgroundColor = isSelected ? AppColors.accentBlue : .secondarySystemBackground
-            button.setTitleColor(isSelected ? .white : .label, for: .normal)
+    private func setPenaltyAmount(_ amount: Double) {
+        viewModel.penaltyAmount = amount
+        // Refresh the preview row's text if it's currently visible.
+        guard viewModel.progressiveScale else { return }
+        let previewIndexPath = IndexPath(row: 1, section: Section.progressiveScale.rawValue)
+        if let cell = tableView.cellForRow(at: previewIndexPath) as? ProgressivePreviewCell {
+            cell.configure(text: viewModel.progressiveScalePreview)
         }
     }
 }
@@ -307,8 +173,6 @@ extension CreateAlarmViewController: UITableViewDataSource {
         case .progressiveScale:
             return viewModel.progressiveScale ? 2 : 1
         case .deleteAction:
-            // Hide the destructive row entirely when creating a new alarm —
-            // there's nothing to delete yet.
             return viewModel.isEditing ? 1 : 0
         default:
             return 1
@@ -318,194 +182,95 @@ extension CreateAlarmViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
-        case .timePicker: return nil
         case .repeatDays: return "ПОВТОР"
         case .name: return "НАЗВАНИЕ"
         case .sound: return "ЗВУК"
-        case .vibration: return nil
         case .penalty: return "ШТРАФ ЗА ОТКЛАДЫВАНИЕ"
-        case .progressiveScale: return nil
         case .snoozeTime: return "ВРЕМЯ ОТКЛАДЫВАНИЯ"
-        case .deleteAction: return nil
+        default: return nil
         }
     }
 
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let section = Section(rawValue: indexPath.section) else {
             return UITableViewCell()
         }
-
-        // `.value1` is used only for the snooze row so its detail label
-        // ("X мин") sits between the title and the stepper accessory.
-        // All other rows use `.default` because they either own custom
-        // content or use accessoryView/accessoryType only.
-        let style: UITableViewCell.CellStyle = (section == .snoozeTime) ? .value1 : .default
-        let cell = UITableViewCell(style: style, reuseIdentifier: nil)
-        cell.selectionStyle = .none
-        cell.backgroundColor = .secondarySystemBackground
-
         switch section {
         case .timePicker:
-            cell.contentView.addSubview(timePicker)
-            NSLayoutConstraint.activate([
-                timePicker.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor),
-                timePicker.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor),
-                timePicker.topAnchor.constraint(equalTo: cell.contentView.topAnchor),
-                timePicker.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor)
-            ])
-
-        case .repeatDays:
-            let container = makeDayPicker()
-            container.translatesAutoresizingMaskIntoConstraints = false
-            cell.contentView.addSubview(container)
-            NSLayoutConstraint.activate([
-                container.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
-                container.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
-                container.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: AppSpacing.sm),
-                container.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -AppSpacing.sm),
-                container.heightAnchor.constraint(equalToConstant: 44)
-            ])
-
-        case .name:
-            cell.contentView.addSubview(nameField)
-            NSLayoutConstraint.activate([
-                nameField.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
-                nameField.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
-                nameField.topAnchor.constraint(equalTo: cell.contentView.topAnchor),
-                nameField.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor),
-                nameField.heightAnchor.constraint(equalToConstant: 48)
-            ])
-
-        case .sound:
-            cell.textLabel?.text = "Звук"
-            cell.accessoryView = makeSoundAccessoryView()
-            cell.selectionStyle = .default
-
-        case .vibration:
-            cell.textLabel?.text = "Вибрация"
-            cell.accessoryView = vibrationToggle
-
-        case .penalty:
-            let stack = UIStackView(arrangedSubviews: [penaltySlider, penaltyValueLabel])
-            stack.axis = .horizontal
-            stack.spacing = AppSpacing.md
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            cell.contentView.addSubview(stack)
-            NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
-                stack.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
-                stack.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: AppSpacing.md),
-                stack.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -AppSpacing.md)
-            ])
-
-        case .progressiveScale:
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "Прогрессивная шкала"
-                cell.accessoryView = progressiveToggle
-            } else {
-                // Preview row. The label is a stored property reused across cells,
-                // so detach it from any previous host before re-attaching. Stale
-                // constraints on a discarded cell crash UIKit during layout.
-                // Text is kept fresh by `progressiveToggled` and `sliderChanged`.
-                progressivePreviewLabel.removeFromSuperview()
-                cell.contentView.addSubview(progressivePreviewLabel)
-                NSLayoutConstraint.activate([
-                    progressivePreviewLabel.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
-                    progressivePreviewLabel.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
-                    progressivePreviewLabel.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: AppSpacing.sm),
-                    progressivePreviewLabel.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -AppSpacing.sm)
-                ])
+            let cell = tableView.dequeueReusableCell(withIdentifier: TimePickerCell.reuseID, for: indexPath)
+            if let cell = cell as? TimePickerCell {
+                cell.configure(time: viewModel.time)
+                cell.onTimeChanged = { [weak self] date in self?.viewModel.time = date }
             }
-
+            return cell
+        case .repeatDays:
+            let cell = tableView.dequeueReusableCell(withIdentifier: DayPickerCell.reuseID, for: indexPath)
+            if let cell = cell as? DayPickerCell {
+                cell.configure(selectedDays: viewModel.repeatDays)
+                cell.onDayToggled = { [weak self, weak cell] day in
+                    guard let self else { return }
+                    self.viewModel.toggleDay(day)
+                    cell?.configure(selectedDays: self.viewModel.repeatDays)
+                }
+            }
+            return cell
+        case .name:
+            let cell = tableView.dequeueReusableCell(withIdentifier: NameCell.reuseID, for: indexPath)
+            if let cell = cell as? NameCell {
+                cell.configure(name: viewModel.name)
+                cell.onNameChanged = { [weak self] text in self?.viewModel.name = text }
+            }
+            return cell
+        case .sound:
+            let cell = tableView.dequeueReusableCell(withIdentifier: SoundCell.reuseID, for: indexPath)
+            if let cell = cell as? SoundCell {
+                let soundName = viewModel.availableSounds
+                    .first(where: { $0.id == viewModel.soundID })?.name ?? "По умолчанию"
+                cell.configure(soundName: soundName)
+                cell.onPreviewTapped = { [weak self] in
+                    guard let self else { return }
+                    self.viewModel.previewSound(self.viewModel.soundID)
+                }
+            }
+            return cell
+        case .vibration:
+            let cell = tableView.dequeueReusableCell(withIdentifier: VibrationCell.reuseID, for: indexPath)
+            if let cell = cell as? VibrationCell {
+                cell.configure(isOn: viewModel.vibrationEnabled)
+                cell.onToggled = { [weak self] isOn in self?.viewModel.vibrationEnabled = isOn }
+            }
+            return cell
+        case .penalty:
+            let cell = tableView.dequeueReusableCell(withIdentifier: PenaltyCell.reuseID, for: indexPath)
+            if let cell = cell as? PenaltyCell {
+                cell.configure(amount: viewModel.penaltyAmount)
+                cell.onValueChanged = { [weak self] amount in self?.setPenaltyAmount(amount) }
+            }
+            return cell
+        case .progressiveScale where indexPath.row == 0:
+            let cell = tableView.dequeueReusableCell(withIdentifier: ProgressiveScaleCell.reuseID, for: indexPath)
+            if let cell = cell as? ProgressiveScaleCell {
+                cell.configure(isOn: viewModel.progressiveScale)
+                cell.onToggled = { [weak self] isOn in self?.setProgressiveScale(isOn) }
+            }
+            return cell
+        case .progressiveScale:
+            let cell = tableView.dequeueReusableCell(withIdentifier: ProgressivePreviewCell.reuseID, for: indexPath)
+            if let cell = cell as? ProgressivePreviewCell {
+                cell.configure(text: viewModel.progressiveScalePreview)
+            }
+            return cell
         case .snoozeTime:
-            cell.textLabel?.text = "Откладывать на"
-            cell.detailTextLabel?.text = snoozeMinutesText
-            cell.detailTextLabel?.textColor = .label
-            cell.accessoryView = snoozeStepper
-
+            let cell = tableView.dequeueReusableCell(withIdentifier: SnoozeCell.reuseID, for: indexPath)
+            if let cell = cell as? SnoozeCell {
+                cell.configure(minutes: viewModel.snoozeMinutes)
+                cell.onValueChanged = { [weak self] minutes in self?.viewModel.snoozeMinutes = minutes }
+            }
+            return cell
         case .deleteAction:
-            // Centered red text mimics iOS Settings' destructive row pattern
-            // (see Calendar.app "Delete Event"). selectionStyle=.default to give
-            // the user tactile feedback before the confirmation alert appears.
-            cell.textLabel?.text = "Удалить будильник"
-            cell.textLabel?.textColor = .systemRed
-            cell.textLabel?.textAlignment = .center
-            cell.textLabel?.font = UIFont.systemFont(ofSize: 17, weight: .regular)
-            cell.selectionStyle = .default
+            return tableView.dequeueReusableCell(withIdentifier: DeleteActionCell.reuseID, for: indexPath)
         }
-
-        return cell
-    }
-
-    // MARK: - Day picker helper
-
-    private func makeDayPicker() -> UIStackView {
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.distribution = .fillEqually
-        stack.spacing = 4
-
-        dayButtons = []
-        for (index, name) in dayNames.enumerated() {
-            let button = UIButton(type: .system)
-            button.setTitle(name, for: .normal)
-            button.tag = index
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            button.layer.cornerRadius = 8
-            button.layer.masksToBounds = true
-            button.addTarget(self, action: #selector(dayButtonTapped(_:)), for: .touchUpInside)
-
-            let isSelected = viewModel.repeatDays.contains(index)
-            button.backgroundColor = isSelected ? AppColors.accentBlue : .tertiarySystemBackground
-            button.setTitleColor(isSelected ? .white : .label, for: .normal)
-
-            dayButtons.append(button)
-            stack.addArrangedSubview(button)
-        }
-
-        return stack
-    }
-
-    /// Builds the sound row's `accessoryView`: sound name label + play preview button + chevron.
-    /// The chevron is required because setting `accessoryView` suppresses `accessoryType`,
-    /// so without it the row offers no visual disclosure cue.
-    private func makeSoundAccessoryView() -> UIStackView {
-        let soundLabel = UILabel()
-        let soundName = viewModel.availableSounds.first(where: { $0.id == viewModel.soundID })?.name
-        soundLabel.text = soundName ?? "По умолчанию"
-        soundLabel.textColor = .secondaryLabel
-        soundLabel.font = UIFont.systemFont(ofSize: 17)
-        soundLabel.sizeToFit()
-
-        let playButton = UIButton(type: .system)
-        let playImage = UIImage(systemName: "play.circle.fill")?.withConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 24, weight: .medium)
-        )
-        playButton.setImage(playImage, for: .normal)
-        playButton.tintColor = AppColors.accentBlue
-        playButton.addTarget(self, action: #selector(previewSoundTapped), for: .touchUpInside)
-        playButton.sizeToFit()
-
-        let chevronImage = UIImage(systemName: "chevron.right")?.withConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
-        )
-        let chevronImageView = UIImageView(image: chevronImage)
-        chevronImageView.tintColor = .tertiaryLabel
-        chevronImageView.sizeToFit()
-
-        let stack = UIStackView(arrangedSubviews: [soundLabel, playButton, chevronImageView])
-        stack.axis = .horizontal
-        stack.spacing = AppSpacing.sm
-        stack.alignment = .center
-        stack.sizeToFit()
-        let width = soundLabel.frame.width
-            + playButton.frame.width
-            + chevronImageView.frame.width
-            + AppSpacing.sm * 2
-            + 16
-        let height = max(soundLabel.frame.height, playButton.frame.height, chevronImageView.frame.height)
-        stack.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        return stack
     }
 }
 
@@ -528,7 +293,6 @@ extension CreateAlarmViewController: UITableViewDelegate {
         guard let section = Section(rawValue: indexPath.section) else { return }
         switch section {
         case .sound:
-            // Sound picker navigation — simple action sheet for MVP
             showSoundPicker()
         case .deleteAction:
             confirmDelete()
