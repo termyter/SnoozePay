@@ -317,14 +317,23 @@ extension AlarmsListViewController: UITableViewDelegate {
                 completion(false)
                 return
             }
-            // Guard against stale indexPath: the table may have already mutated
-            // (delete from detail screen, programmatic reload) since the swipe
-            // gesture began. Without this check we'd index past `alarms.count`.
+            // Capture the alarm id before the action fires so a concurrent mutation
+            // that re-orders rows (delete from detail, programmatic reload) cannot
+            // make us delete the wrong alarm. Index-based delete would silently
+            // drop whichever alarm now sits at the swiped row, with no feedback
+            // to the user. Identity-based delete short-circuits if the alarm has
+            // already been removed and triggers a full reload to resync the UI.
             guard indexPath.row < self.viewModel.alarms.count else {
+                self.viewModel.loadData()
                 completion(false)
                 return
             }
-            self.viewModel.deleteAlarm(at: indexPath.row)
+            let alarmID = self.viewModel.alarms[indexPath.row].id
+            guard self.viewModel.deleteAlarm(id: alarmID) else {
+                self.viewModel.loadData()
+                completion(false)
+                return
+            }
             tableView.deleteRows(at: [indexPath], with: .automatic)
             completion(true)
         }
