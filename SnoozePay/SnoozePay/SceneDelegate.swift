@@ -19,13 +19,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let window = UIWindow(windowScene: windowScene)
         self.window = window
 
-        // Apply saved theme preference
-        let savedTheme = UserDefaults.standard.string(forKey: "preferred_theme") ?? "system"
-        switch savedTheme {
-        case "dark": window.overrideUserInterfaceStyle = .dark
-        case "light": window.overrideUserInterfaceStyle = .light
-        default: window.overrideUserInterfaceStyle = .unspecified
-        }
+        // Apply saved theme preference. Apply to the window directly: it isn't
+        // attached to `windowScene.windows` yet, so `applyToActiveWindowScene`
+        // would skip it.
+        ThemeService.shared.apply(to: window)
 
         if OnboardingViewController.isCompleted {
             window.rootViewController = makeRootViewController()
