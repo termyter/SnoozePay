@@ -221,14 +221,34 @@ class CreateAlarmViewController: UIViewController {
 
     @objc private func progressiveToggled(_ sender: UISwitch) {
         viewModel.progressiveScale = sender.isOn
+        progressivePreviewLabel.text = viewModel.progressiveScalePreview
         progressivePreviewLabel.isHidden = !sender.isOn
 
-        // Animate the preview row appearing/disappearing
+        // Detach the shared preview label from its previous host cell before the
+        // table view rebuilds the section. Reusing the same view across cells
+        // without removing it first leaves stale auto-layout constraints attached
+        // to a discarded cell, which crashes UIKit when it tries to lay out a
+        // table view that is not yet (or no longer) in the view hierarchy.
+        progressivePreviewLabel.removeFromSuperview()
+
+        // Skip animated updates if the view is detached from a window — UIKit
+        // logs "told to layout its visible cells without being in the view
+        // hierarchy" and may crash when applying the diff.
+        guard view.window != nil else {
+            tableView.reloadData()
+            return
+        }
+
+        // Insert/delete the preview row instead of reloading the whole section.
+        // This avoids tearing down the toggle row (which owns `progressiveToggle`
+        // as accessoryView) on every flip and keeps the animation smooth.
+        let previewIndexPath = IndexPath(row: 1, section: Section.progressiveScale.rawValue)
         tableView.performBatchUpdates({
-            tableView.reloadSections(
-                IndexSet(integer: Section.progressiveScale.rawValue),
-                with: .automatic
-            )
+            if sender.isOn {
+                tableView.insertRows(at: [previewIndexPath], with: .fade)
+            } else {
+                tableView.deleteRows(at: [previewIndexPath], with: .fade)
+            }
         })
     }
 
@@ -383,8 +403,11 @@ extension CreateAlarmViewController: UITableViewDataSource {
                 cell.textLabel?.text = "Прогрессивная шкала"
                 cell.accessoryView = progressiveToggle
             } else {
-                // Preview row
-                progressivePreviewLabel.text = viewModel.progressiveScalePreview
+                // Preview row. The label is a stored property reused across cells,
+                // so detach it from any previous host before re-attaching. Stale
+                // constraints on a discarded cell crash UIKit during layout.
+                // Text is kept fresh by `progressiveToggled` and `sliderChanged`.
+                progressivePreviewLabel.removeFromSuperview()
                 cell.contentView.addSubview(progressivePreviewLabel)
                 NSLayoutConstraint.activate([
                     progressivePreviewLabel.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
