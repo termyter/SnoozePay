@@ -61,6 +61,14 @@ final class BalanceService {
         self.defaults = defaults
         self.transactionRepository = transactionRepository
         self.notificationCenter = notificationCenter
+        // Detect corruption at construction time so the gate is set BEFORE any
+        // background `charge` (notification action handler) can silently hit the
+        // refusal branch with no observer in place. Without this probe the
+        // `balanceCorruptedNotification` fires only on the FIRST balance read,
+        // which can happen on a background thread before any UI listener is
+        // attached — `NotificationCenter.post` does not retro-deliver to late
+        // subscribers, so the alert would be dropped.
+        _ = queue.sync { readRawBalance() }
     }
 
     /// Convenience for tests that supply only `defaults`: builds a matching
@@ -254,8 +262,23 @@ final class BalanceService {
     /// allowed (issue #119).
     private func readRawBalance() -> Double {
         let raw = defaults.double(forKey: balanceKey)
-        guard raw < 0 else { return raw }
+        // Treat NaN, ±Infinity AND negative as corruption. UserDefaults stores
+        // doubles verbatim, so a non-finite value can land via concurrent write
+        // race or external write — and `NaN < 0` is `false`, so a negative-only
+        // guard would let NaN/Inf sail through and propagate through
+        // `current >= amount` (always false for NaN) silently disabling charge
+        // without surfacing the corruption flag. Reject anything that isn't a
+        // finite, non-negative double.
+        guard raw.isFinite, raw >= 0 else {
+            return latchCorruption(raw: raw)
+        }
+        return raw
+    }
 
+    /// Latches the corruption flag, logs once, and broadcasts the notification.
+    /// Always returns `0` so callers can treat the wallet as empty for math.
+    /// MUST be called inside `queue.sync`.
+    private func latchCorruption(raw: Double) -> Double {
         // Latch the flag the first time we observe corruption, log once, and
         // broadcast for UI. Subsequent reads stay clamped at 0 until the user
         // acknowledges via `acknowledgeCorruption()`.
@@ -263,7 +286,7 @@ final class BalanceService {
         _balanceCorrupted = true
         if firstObservation {
             os_log(
-                "Negative balance observed in storage: %{public}f — gating mutations until acknowledged",
+                "Corrupted balance observed in storage: %{public}f — gating mutations until acknowledged",
                 log: Self.log, type: .error, raw
             )
             notifyBalanceCorrupted(rawValue: raw)
