@@ -144,6 +144,40 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertTrue(preview.contains("2-е: 20₽"))
     }
 
+    // MARK: - Progressive scale toggle (regression for #51)
+
+    func testProgressiveScaleToggle_flipsPersistedValue() {
+        // Toggling progressiveScale on the ViewModel must mirror through to a
+        // saved alarm so the UI toggle on CreateAlarmViewController stays in
+        // sync with persisted state. Regression guard for the toggle handler
+        // that previously crashed before the value could be saved.
+        let vm = CreateAlarmViewModel(repository: repo)
+        XCTAssertFalse(vm.progressiveScale)
+
+        vm.progressiveScale = true
+        vm.save()
+        XCTAssertTrue(repo.fetchAll().first?.progressiveScale ?? false)
+
+        vm.progressiveScale = false
+        vm.save()
+        XCTAssertFalse(repo.fetchAll().first?.progressiveScale ?? true)
+    }
+
+    func testProgressiveScalePreview_recomputesAfterPenaltyChange() {
+        // The CreateAlarmVC toggle handler now refreshes the preview label from
+        // `progressiveScalePreview` whenever the toggle flips. Make sure the
+        // ViewModel always returns the up-to-date computation (no caching).
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = 50
+        let firstPreview = vm.progressiveScalePreview
+
+        vm.penaltyAmount = 200
+        let secondPreview = vm.progressiveScalePreview
+
+        XCTAssertNotEqual(firstPreview, secondPreview)
+        XCTAssertTrue(secondPreview.hasPrefix("1-е: 200₽"))
+    }
+
     // MARK: - Save
 
     func testSave_createsAlarm() {
