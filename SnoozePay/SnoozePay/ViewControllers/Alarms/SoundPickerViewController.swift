@@ -44,7 +44,7 @@ final class SoundPickerViewController: UITableViewController {
         super.viewDidLoad()
         title = "Выбор звука"
         view.backgroundColor = .systemGroupedBackground
-        tableView.register(SoundOptionCell.self, forCellReuseIdentifier: SoundOptionCell.reuseID)
+        tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
     }
 
     // MARK: - Table View
@@ -59,8 +59,8 @@ final class SoundPickerViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let cell = tableView.dequeueReusableCell(
-            withIdentifier: SoundOptionCell.reuseID, for: indexPath
-        ) as? SoundOptionCell else {
+            withIdentifier: SoundCell.reuseID, for: indexPath
+        ) as? SoundCell else {
             return UITableViewCell()
         }
 
@@ -87,15 +87,11 @@ final class SoundPickerViewController: UITableViewController {
     }
 }
 
-// MARK: - Sound Option Cell
+// MARK: - Sound Cell
 
-/// Row cell used inside `SoundPickerViewController`. Renamed from `SoundCell` to
-/// avoid colliding with the cell of the same name extracted to
-/// `Cells/SoundCell.swift` in #73 — that one represents the row on the
-/// CreateAlarm screen, this one represents one selectable sound in the picker.
-final class SoundOptionCell: UITableViewCell {
+final class SoundCell: UITableViewCell {
 
-    static let reuseID = "SoundOptionCell"
+    static let reuseID = "SoundCell"
 
     var onPlayTapped: (() -> Void)?
 

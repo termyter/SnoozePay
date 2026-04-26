@@ -111,6 +111,25 @@ final class DayPickerCell: UITableViewCell {
         }
     }
 
+    /// Selected — filled accent + white text, no border. Unselected — clear fill +
+    /// hairline `UIColor.separator` border + secondary label colour. Borders give
+    /// each weekday pill a visible affordance in light mode where a flat
+    /// `tertiarySystemBackground` was reading as one undifferentiated grey block.
+    private func applyStyle(_ button: UIButton, isSelected: Bool) {
+        if isSelected {
+            button.backgroundColor = AppColors.accentBlue
+            button.setTitleColor(.white, for: .normal)
+            button.layer.borderWidth = 0
+            button.layer.borderColor = UIColor.clear.cgColor
+        } else {
+            button.backgroundColor = .clear
+            button.setTitleColor(AppColors.textSecondary, for: .normal)
+            button.layer.borderWidth = 1
+            button.layer.borderColor = UIColor.separator.cgColor
+        }
+        button.accessibilityValue = isSelected ? "выбрано" : "не выбрано"
+    }
+
     // MARK: - Actions
 
     @objc private func dayTapped(_ sender: UIButton) {

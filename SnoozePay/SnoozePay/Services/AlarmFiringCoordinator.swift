@@ -68,31 +68,27 @@ final class AlarmFiringCoordinator {
     /// (and tests) can assert exactly what happened without scraping logs.
     @discardableResult
     func handleSnooze(userInfo: [AnyHashable: Any]) -> SnoozeOutcome {
-        guard
-            let alarmIDString = userInfo["alarmID"] as? String,
-            let alarmID = UUID(uuidString: alarmIDString),
-            let snoozeCount = userInfo["snoozeCount"] as? Int
-        else {
+        guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
             print("[AlarmFiringCoordinator] snooze: invalid payload \(userInfo)")
             return .invalidPayload
         }
 
-        guard let alarm = alarmRepository.fetch(id: alarmID) else {
-            print("[AlarmFiringCoordinator] snooze: alarm \(alarmID) not in repository")
+        guard let alarm = alarmRepository.fetch(id: payload.alarmID) else {
+            print("[AlarmFiringCoordinator] snooze: alarm \(payload.alarmID) not in repository")
             return .alarmNotFound
         }
 
-        let newCount = snoozeCount + 1
+        let newCount = payload.snoozeCount + 1
         let penalty = alarm.penalty(forSnoozeCount: newCount)
 
-        let charged = balanceService.charge(amount: penalty, alarmID: alarmID)
+        let charged = balanceService.charge(amount: penalty, alarmID: payload.alarmID)
         guard charged else {
-            print("[AlarmFiringCoordinator] snooze: insufficient funds for alarm \(alarmID), penalty=\(penalty)")
+            print("[AlarmFiringCoordinator] snooze: insufficient funds for alarm \(payload.alarmID), \(penalty)")
             return .insufficientFunds
         }
 
         scheduler.scheduleSnooze(for: alarm, snoozeCount: newCount)
-        print("[AlarmFiringCoordinator] snooze: scheduled #\(newCount) for alarm \(alarmID), charged=\(penalty)")
+        print("[AlarmFiringCoordinator] snooze: scheduled #\(newCount) for \(payload.alarmID), \(penalty)")
         return .scheduled(newSnoozeCount: newCount, charged: penalty)
     }
 }
