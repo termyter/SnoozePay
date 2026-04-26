@@ -113,18 +113,40 @@ final class TransactionRepository {
     /// Returns 0 if there are no transactions at all (new user) or if the
     /// store can't be decoded — caller should consult `lastLoadFailed`
     /// before trusting a zero result.
+    ///
+    /// Production callers that have already paid the cost of a checked read
+    /// (StatisticsViewModel) should use `currentStreak(from:)` to avoid a
+    /// redundant decode on the hot path AND to share the surfaced error
+    /// (issue #117).
     func currentStreak() -> Int {
         let allTransactions = queue.sync { (try? readAll()) ?? [] }
-        guard !allTransactions.isEmpty else { return 0 }
+        return Self.computeStreak(from: allTransactions)
+    }
+
+    /// Streak computation against a caller-supplied transaction list. Used
+    /// by callers that already loaded transactions via `fetchAllChecked`,
+    /// so a single decode failure surfaces once instead of twice and a
+    /// transient zero from a hidden re-read can't contradict the surfaced
+    /// banner (issue #117).
+    func currentStreak(from transactions: [Transaction]) -> Int {
+        Self.computeStreak(from: transactions)
+    }
+
+    /// Pure function over a transaction list — extracted so `currentStreak()`
+    /// and `currentStreak(from:)` cannot drift apart. Lives as `static` so
+    /// it can't accidentally read instance state and reintroduce the silent
+    /// decode the caller-supplied variant exists to avoid.
+    private static func computeStreak(from transactions: [Transaction]) -> Int {
+        guard !transactions.isEmpty else { return 0 }
 
         let calendar = Calendar.current
         var streak = 0
         var checkDate = calendar.startOfDay(for: Date())
-        let allCharges = allTransactions.filter { $0.type == .charge }
+        let allCharges = transactions.filter { $0.type == .charge }
         let chargeDates = Set(allCharges.map { calendar.startOfDay(for: $0.createdAt) })
 
         let firstTransactionDate = calendar.startOfDay(
-            for: allTransactions.map { $0.createdAt }.min() ?? Date()
+            for: transactions.map { $0.createdAt }.min() ?? Date()
         )
 
         while !chargeDates.contains(checkDate) && checkDate >= firstTransactionDate {

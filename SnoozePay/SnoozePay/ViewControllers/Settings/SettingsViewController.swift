@@ -1,4 +1,5 @@
 import UIKit
+import os
 
 /// Settings screen matching Figma design: account, theme, legal, contact sections.
 class SettingsViewController: UIViewController {
@@ -409,8 +410,28 @@ final class TransactionHistoryViewController: UIViewController {
     }
 
     private func loadTransactions() {
-        transactions = TransactionRepository.shared.fetchAll()
+        // Use the checked variant so a corrupt ledger surfaces an alert
+        // instead of rendering the misleading "Нет транзакций" empty state
+        // — that would let the user assume the app reset itself (issue #117).
+        do {
+            transactions = try TransactionRepository.shared.fetchAllChecked()
+        } catch let error as TransactionRepository.RepositoryError {
+            transactions = []
+            presentLoadError(error)
+        } catch {
+            transactions = []
+        }
         tableView.reloadData()
+    }
+
+    private func presentLoadError(_ error: LocalizedError) {
+        let alert = UIAlertController(
+            title: "Ошибка",
+            message: error.errorDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
 
@@ -440,10 +461,21 @@ extension TransactionHistoryViewController: UITableViewDataSource, UITableViewDe
 
         let transaction = transactions[indexPath.row]
 
-        // Look up alarm name if available
+        // Look up alarm name if available — best-effort enrichment. If the
+        // alarm store is corrupt we log and fall back to nil so the row
+        // still renders (transaction amount/date is still meaningful).
+        // Without this, a single corrupt alarms blob would silently strip
+        // alarm names from every history row (issue #117).
         var alarmName: String?
         if let alarmIDString = transaction.alarmID, let alarmUUID = UUID(uuidString: alarmIDString) {
-            alarmName = alarmRepository.fetch(id: alarmUUID)?.name
+            do {
+                alarmName = try alarmRepository.fetchChecked(id: alarmUUID)?.name
+            } catch {
+                let errorDesc = String(describing: error)
+                AppLogger.ui.error(
+                    "TxHistory: name lookup failed for \(alarmUUID, privacy: .private): \(errorDesc, privacy: .public)"
+                )
+            }
         }
 
         cell.configure(with: transaction, alarmName: alarmName)

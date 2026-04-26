@@ -232,7 +232,28 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     // MARK: - Helpers
 
     private func presentAlarmFiringScreen(for payload: AlarmNotificationPayload) {
-        guard let alarm = AlarmRepository.shared.fetch(id: payload.alarmID) else {
+        let alarm: Alarm?
+        do {
+            // Use the checked variant so a corrupt UserDefaults blob surfaces
+            // a logged decode error instead of being indistinguishable from
+            // "alarm doesn't exist" — without this we silently bail on a
+            // recoverable glitch and the user wonders why the alarm fired
+            // but never showed a screen (issue #117).
+            alarm = try AlarmRepository.shared.fetchChecked(id: payload.alarmID)
+        } catch {
+            let errorDesc = String(describing: error)
+            AppLogger.appDelegate.error(
+                "alarm fetch failed for \(payload.alarmID, privacy: .private): \(errorDesc, privacy: .public)"
+            )
+            AudioService.shared.stopAlarmSound()
+            // Surface the decode failure to the user — without this they hear
+            // the alarm cut off and get no firing screen with no diagnostic.
+            // The alert is presented from the same dispatch we'd use for the
+            // firing screen so it reaches whichever VC is on top.
+            presentAlarmDataCorruptedAlert(error: error)
+            return
+        }
+        guard let alarm else {
             // Audio may already be playing from willPresent — stop it so the user
             // is not stuck with a silent-screen + sounding alarm we can't dismiss.
             AppLogger.appDelegate.error(
@@ -274,4 +295,41 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Presents an alert on the topmost VC explaining that the alarm fired
+    /// but its data couldn't be decoded. Without this surface the user just
+    /// hears their alarm cut off with no explanation — silently regressing
+    /// the very pattern #117 is fixing.
+    private func presentAlarmDataCorruptedAlert(error: Error) {
+        let message: String
+        if let repoError = error as? AlarmRepository.RepositoryError,
+           case let .decodeFailure(detail) = repoError {
+            message = "Будильник прозвенел, но его данные повреждены и экран не загрузился. Подробности: \(detail)"
+        } else {
+            message = "Будильник прозвенел, но его данные не удалось загрузить. Откройте приложение и проверьте список будильников."
+        }
+        DispatchQueue.main.async {
+            guard
+                let windowScene = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .first,
+                let rootVC = windowScene.windows.first?.rootViewController
+            else {
+                AppLogger.appDelegate.error(
+                    "decode-failure alert: no window scene to present on"
+                )
+                return
+            }
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
+            let alert = UIAlertController(
+                title: "Будильник",
+                message: message,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Ок", style: .default))
+            topVC.present(alert, animated: true)
+        }
+    }
 }

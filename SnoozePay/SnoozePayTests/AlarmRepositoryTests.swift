@@ -367,4 +367,40 @@ final class AlarmRepositoryTests: XCTestCase {
         // Final state must match one of the writers, not torn (penaltyAmount preserved).
         XCTAssertEqual(final?.penaltyAmount, alarm.penaltyAmount)
     }
+
+    // MARK: - Issue #117: fetchChecked(id:) surfaces decode failures
+
+    /// Happy path: a known id returns the matching alarm via the checked variant.
+    func testFetchCheckedById_returnsAlarmWhenPresent() throws {
+        let alarm = makeAlarm(name: "Found")
+        repo.save(alarm)
+
+        let fetched = try repo.fetchChecked(id: alarm.id)
+        XCTAssertEqual(fetched?.id, alarm.id)
+    }
+
+    /// Happy path: a missing id returns nil rather than throwing — the
+    /// decode succeeded, the alarm just isn't there. Callers distinguish
+    /// "decode failed" (catch) from "doesn't exist" (nil).
+    func testFetchCheckedById_returnsNilWhenAbsent() throws {
+        let fetched = try repo.fetchChecked(id: UUID())
+        XCTAssertNil(fetched)
+    }
+
+    /// Sad path: a corrupt blob throws `decodeFailure` instead of silently
+    /// returning nil — without this, AppDelegate / AlarmFiringCoordinator
+    /// would treat corruption as "alarm not found" and bail with no
+    /// diagnostic trail (issue #117).
+    func testFetchCheckedById_corruptedJSON_throwsDecodeFailure() {
+        testDefaults.set(Data("not json".utf8), forKey: "stored_alarms")
+
+        XCTAssertThrowsError(try repo.fetchChecked(id: UUID())) { error in
+            guard case AlarmRepository.RepositoryError.decodeFailure = error else {
+                XCTFail("Expected decodeFailure, got \(error)")
+                return
+            }
+        }
+        XCTAssertTrue(repo.lastLoadFailed,
+                      "Checked single-id fetch must arm the persistence lock just like fetchAllChecked")
+    }
 }

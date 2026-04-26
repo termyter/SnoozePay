@@ -316,6 +316,44 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertTrue(vm.alarms.isEmpty)
     }
 
+    /// Issue #117: when `setEnabled` returns false because the persisted
+    /// alarms blob became corrupt mid-session, the rollback read must use
+    /// the checked variant and surface a `decodeFailure` to the VC. Before
+    /// this fix the VM read via `fetchAll()`, got `[]`, and the user saw the
+    /// toggle snap back with no banner explaining why.
+    func testToggleAlarm_corruptStoreDuringRollback_firesDecodeFailure() {
+        // 1. Healthy load.
+        let alarm = Alarm(name: "Rollback", penaltyAmount: 50, enabled: true)
+        repo.save(alarm)
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarms.count, 1)
+
+        // 2. Corrupt the store after the initial load — the next setEnabled
+        //    will fail (lastLoadFailed-armed inside the lock) and the VM
+        //    enters the rollback branch.
+        testDefaults.set(Data("garbage".utf8), forKey: "stored_alarms")
+
+        var receivedError: LocalizedError?
+        var rebindFired = false
+        vm.onLoadError = { receivedError = $0 }
+        vm.onAlarmsUpdated = { rebindFired = true }
+
+        vm.toggleAlarm(id: alarm.id, enabled: false)
+
+        XCTAssertTrue(rebindFired, "Rollback path must trigger a UI re-bind")
+        XCTAssertNotNil(receivedError, "Decode failure during rollback must surface to the VC")
+        if let typed = receivedError as? AlarmRepository.RepositoryError,
+           case .decodeFailure = typed {
+            // expected — the error must be the original decode failure, not a
+            // generic persistBlocked, so the user sees the right message.
+        } else {
+            XCTFail("Expected decodeFailure, got \(String(describing: receivedError))")
+        }
+        XCTAssertTrue(vm.alarms.isEmpty,
+                      "Rollback after a decode failure must clear the in-memory snapshot")
+    }
+
     /// When the store gets locked AFTER a successful initial load, the user
     /// might still try to delete an alarm from the cached snapshot. The VM
     /// must surface the persist failure so the swipe-to-delete UX doesn't
