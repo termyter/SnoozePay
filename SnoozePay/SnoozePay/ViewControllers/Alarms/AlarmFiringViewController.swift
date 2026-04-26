@@ -117,8 +117,32 @@ class AlarmFiringViewController: UIViewController {
         return button
     }()
 
+    /// Banner shown when AudioService falls back to vibration / silent mode.
+    /// Hidden by default; surfaces only on `.silentBecauseConfigFailed` or `.vibrationOnly`.
+    private let audioWarningBanner: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.backgroundColor = UIColor(red: 0.86, green: 0.27, blue: 0.27, alpha: 0.85)
+        label.layer.cornerRadius = 10
+        label.layer.masksToBounds = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        // Accessibility: VoiceOver reads the warning even if user can't see banner.
+        label.isAccessibilityElement = true
+        label.accessibilityTraits = [.staticText, .updatesFrequently]
+        return label
+    }()
+
     /// Timer to update displayed time each second
     private var clockTimer: Timer?
+
+    /// Observer token for `AudioService.stateChangedNotification`. Kept so we
+    /// can remove the observer in `deinit` and avoid leaking blocks across
+    /// presentations of this screen.
+    private var audioStateObserver: NSObjectProtocol?
 
     // MARK: - Init
 
@@ -133,17 +157,31 @@ class AlarmFiringViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        if let token = audioStateObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         bindViewModel()
+        observeAudioState()
         startClock()
         startPulseAnimation()
 
-        // Start continuous alarm sound and vibration
+        // Start continuous alarm sound and vibration. State observer (above)
+        // will surface the banner if AudioService falls back to vibration-only
+        // or fails to acquire the audio session.
         AudioService.shared.startAlarmSound(soundID: viewModel.alarm.soundID)
+
+        // Sync UI with whatever state startAlarmSound produced — observer fires
+        // on transitions, but the very first transition may have already
+        // happened above before we begin observing on the next runloop tick.
+        applyAudioState(AudioService.shared.state)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -192,6 +230,10 @@ class AlarmFiringViewController: UIViewController {
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(buttonStack)
 
+        // Audio fallback warning — sits just above the buttons so the user sees
+        // it without scrolling past the prominent time display.
+        view.addSubview(audioWarningBanner)
+
         NSLayoutConstraint.activate([
             // ALARM label — near top safe area
             alarmTypeLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
@@ -206,6 +248,11 @@ class AlarmFiringViewController: UIViewController {
             // Alarm name below time
             nameLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: 8),
             nameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+
+            // Audio warning banner — above the buttons, full width with margins
+            audioWarningBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            audioWarningBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            audioWarningBanner.bottomAnchor.constraint(equalTo: buttonStack.topAnchor, constant: -16),
 
             // Buttons — pinned to bottom safe area
             buttonStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
@@ -238,6 +285,46 @@ class AlarmFiringViewController: UIViewController {
     private func bindViewModel() {
         viewModel.onStateChanged = { [weak self] in
             self?.updateUI()
+        }
+    }
+
+    /// Observe `AudioService.stateChangedNotification` and reflect the new state
+    /// in the warning banner. Notification is posted on the main queue by the
+    /// service, so no extra hop is needed.
+    private func observeAudioState() {
+        audioStateObserver = NotificationCenter.default.addObserver(
+            forName: AudioService.stateChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard
+                let self,
+                let newState = note.userInfo?[AudioService.stateUserInfoKey] as? AudioPlaybackState
+            else { return }
+            self.applyAudioState(newState)
+        }
+    }
+
+    /// Surface (or hide) the warning banner depending on AudioService state.
+    /// Decoupled from `observeAudioState` so we can call it once after
+    /// `startAlarmSound` to catch the synchronous initial transition.
+    private func applyAudioState(_ newState: AudioPlaybackState) {
+        switch newState {
+        case .playing, .stopped:
+            audioWarningBanner.isHidden = true
+            audioWarningBanner.text = nil
+            audioWarningBanner.accessibilityLabel = nil
+        case .silentBecauseConfigFailed:
+            let text = "Звук недоступен — другое приложение использует аудио. " +
+                "Проверьте режим звука."
+            audioWarningBanner.text = "  \(text)  "
+            audioWarningBanner.accessibilityLabel = text
+            audioWarningBanner.isHidden = false
+        case .vibrationOnly:
+            let text = "Звук не воспроизводится — будильник вибрирует."
+            audioWarningBanner.text = "  \(text)  "
+            audioWarningBanner.accessibilityLabel = text
+            audioWarningBanner.isHidden = false
         }
     }
 
