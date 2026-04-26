@@ -121,9 +121,29 @@ final class CreateAlarmViewController: UIViewController {
     @objc private func saveTapped() {
         // Cells push state into the view-model live via callbacks, so save just
         // forwards the current snapshot to the repository.
-        viewModel.save()
+        let didSave = viewModel.save()
+        guard didSave else {
+            // Persist failed (corrupt store / encode error). Surface the
+            // failure inline so the user doesn't tap "Сохранить", see the
+            // sheet dismiss, and assume their alarm landed (issue #72).
+            presentRepositoryError(AlarmRepository.RepositoryError.persistBlocked)
+            return
+        }
         onSave?()
         dismiss(animated: true)
+    }
+
+    /// Inline alert for repository failures that block save/delete. Kept
+    /// generic so the same call site can present any `LocalizedError`
+    /// (issue #72).
+    private func presentRepositoryError(_ error: LocalizedError) {
+        let alert = UIAlertController(
+            title: "Не удалось сохранить",
+            message: error.errorDescription ?? "Попробуйте ещё раз.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     // MARK: - View-model bridges
@@ -311,7 +331,14 @@ extension CreateAlarmViewController: UITableViewDelegate {
             guard let self else { return }
             // ViewModel.delete forwards to AlarmRepository.delete, which itself
             // cancels the scheduled UNNotificationRequests via AlarmScheduler.
-            self.viewModel.delete()
+            // Returns false when the store is locked due to a corrupt blob
+            // (issue #72) — surface the failure rather than dismiss the
+            // sheet on a no-op delete.
+            let didDelete = self.viewModel.delete()
+            guard didDelete else {
+                self.presentRepositoryError(AlarmRepository.RepositoryError.persistBlocked)
+                return
+            }
             self.onDelete?()
             self.dismiss(animated: true)
         })

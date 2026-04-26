@@ -37,6 +37,11 @@ final class StatisticsViewModel {
     private(set) var streak: Int = 0
 
     var onDataUpdated: (() -> Void)?
+    /// Fired when the transaction repository fails to decode the persisted
+    /// ledger. The VC presents an alert so a corrupt blob shows the user a
+    /// banner instead of a misleading "ноль откладываний" empty state
+    /// (issue #72).
+    var onLoadError: ((LocalizedError) -> Void)?
 
     // MARK: - Init
 
@@ -54,10 +59,23 @@ final class StatisticsViewModel {
         selectedPeriod = period
         let since = startDate(for: period)
 
-        if period == .allTime {
-            charges = transactionRepository.fetchAll().filter { $0.type == .charge }
-        } else {
-            charges = transactionRepository.fetchCharges(since: since)
+        // Use the checked variant so a corrupt ledger surfaces an alert
+        // instead of a deceptive zero-state — without this the user sees
+        // "₽0 / 0 откладываний" and assumes the app reset, which is much
+        // worse than a "не удалось загрузить" message (issue #72).
+        do {
+            let allTransactions = try transactionRepository.fetchAllChecked()
+            if period == .allTime {
+                charges = allTransactions.filter { $0.type == .charge }
+            } else {
+                charges = allTransactions
+                    .filter { $0.type == .charge && $0.createdAt >= since }
+            }
+        } catch let error as TransactionRepository.RepositoryError {
+            charges = []
+            onLoadError?(error)
+        } catch {
+            charges = []
         }
 
         streak = transactionRepository.currentStreak()
