@@ -308,6 +308,16 @@ extension CreateAlarmViewController: UITableViewDelegate {
         }
     }
 
+    /// Apply the shared card-style background so each `.insetGrouped` section
+    /// (time picker, repeat days, name, sound, vibration, penalty, …) lifts off
+    /// the page in light mode the same way the alarm-row cards do on the home
+    /// screen.
+    func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        let totalRows = self.tableView(tableView, numberOfRowsInSection: indexPath.section)
+        let position = CardRowPosition.resolve(row: indexPath.row, totalRows: totalRows)
+        cell.styleAsCardRow(position: position)
+    }
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let section = Section(rawValue: indexPath.section) else { return }

@@ -125,10 +125,11 @@ class TopUpViewController: UIViewController {
         let headerHeight: CGFloat = 140
         let header = UIView(frame: CGRect(x: 0, y: 0, width: view.bounds.width, height: headerHeight))
 
-        let card = UIView()
-        card.backgroundColor = .secondarySystemBackground
-        card.layer.cornerRadius = AppRadius.md
-        card.layer.masksToBounds = true
+        // Use the shared `CardView` so the header card lifts off the
+        // `systemGroupedBackground` page in light mode with the same shadow +
+        // border treatment as the rest of the app's cards. `CardView` rasterises
+        // its own shadow path on layout.
+        let card = CardView()
         card.translatesAutoresizingMaskIntoConstraints = false
         header.addSubview(card)
 
@@ -339,6 +340,14 @@ extension TopUpViewController: UITableViewDelegate {
         case .packages: return 64
         case .restore: return 48
         }
+    }
+
+    /// Lift each `.insetGrouped` section off the page with the shared
+    /// card-style background — same recipe as Settings + CreateAlarm.
+    func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        let totalRows = self.tableView(tableView, numberOfRowsInSection: indexPath.section)
+        let position = CardRowPosition.resolve(row: indexPath.row, totalRows: totalRows)
+        cell.styleAsCardRow(position: position)
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

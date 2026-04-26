@@ -9,23 +9,14 @@ final class AlarmCell: UITableViewCell {
 
     private let cardView: UIView = {
         let view = UIView()
-        view.backgroundColor = AppColors.surface
-        view.layer.cornerRadius = AppRadius.md
-        // Keep masksToBounds off so the drop shadow can render outside the rounded
-        // bounds. Subviews are constrained inside the card via Auto Layout, so they
-        // won't visually overflow even without clipping.
-        view.layer.masksToBounds = false
-        // Subtle drop shadow lifts the card off the background. In light mode this is
-        // the primary visual separator since `secondarySystemBackground` (#FFFFFF) sits
-        // on top of `systemGroupedBackground` (#F2F2F7) — only ~5% luminance delta.
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.06
+        // Shared card recipe: rounded corners, hairline border, soft drop shadow.
+        // See `UIView.applyCardStyle()` for the full rationale (light-mode
+        // contrast). The `shadowRadius` is bumped slightly here (8pt) compared
+        // to the default to keep the historical look of the alarm-row cards;
+        // tweak via direct `layer` access after applying the helper.
+        view.applyCardStyle()
         view.layer.shadowRadius = 8
         view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        // Hairline border reinforces the edge in light mode (UIColor.separator is
-        // fully opaque grey in light, and very faint in dark — auto-adapts).
-        view.layer.borderWidth = 0.5
-        view.layer.borderColor = UIColor.separator.cgColor
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
