@@ -290,4 +290,54 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(early?.enabled, false, "The alarm matching the captured id must toggle")
         XCTAssertEqual(late?.enabled, true, "Sibling alarms must NOT be affected by an id-targeted toggle")
     }
+
+    // MARK: - Issue #72: surfaced load errors
+
+    /// When the underlying repository can't decode the persisted blob, the
+    /// VM must fire `onLoadError` AND keep the alarms list empty so the VC
+    /// can show an alert + the empty state simultaneously.
+    func testLoadData_corruptedJSON_firesOnLoadError() {
+        testDefaults.set(Data("not json".utf8), forKey: "stored_alarms")
+
+        let vm = makeViewModel()
+        var receivedError: LocalizedError?
+        vm.onLoadError = { receivedError = $0 }
+
+        vm.loadData()
+
+        XCTAssertNotNil(receivedError, "VM must propagate decode failures to the VC")
+        if case AlarmRepository.RepositoryError.decodeFailure = receivedError as? AlarmRepository.RepositoryError {
+            // expected
+        } else {
+            XCTFail("Expected decodeFailure, got \(String(describing: receivedError))")
+        }
+        XCTAssertTrue(vm.alarms.isEmpty)
+    }
+
+    /// When the store gets locked AFTER a successful initial load, the user
+    /// might still try to delete an alarm from the cached snapshot. The VM
+    /// must surface the persist failure so the swipe-to-delete UX doesn't
+    /// silently succeed (issue #72).
+    func testDelete_whileStoreLockedAfterLoad_firesOnLoadError() {
+        // 1. Save valid alarm and load — VM caches it in memory.
+        let alarm = Alarm(name: "ToDelete", penaltyAmount: 50)
+        repo.save(alarm)
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarms.count, 1)
+
+        // 2. Corrupt the store out from under the VM.
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_alarms")
+        // Touching the repo's checked read arms the lock.
+        _ = try? repo.fetchAllChecked()
+
+        var receivedError: LocalizedError?
+        vm.onLoadError = { receivedError = $0 }
+
+        let didDelete = vm.deleteAlarm(id: alarm.id)
+        XCTAssertFalse(didDelete, "Delete must report failure when the store is locked")
+        XCTAssertNotNil(receivedError, "VM must propagate the persist block to the VC")
+        XCTAssertEqual(vm.alarms.count, 1,
+                       "In-memory snapshot must NOT shrink when persistence is refused")
+    }
 }

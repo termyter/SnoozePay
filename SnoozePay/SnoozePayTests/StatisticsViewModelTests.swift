@@ -440,4 +440,28 @@ final class StatisticsViewModelDataTests: XCTestCase {
         // New format is just the number, no suffix
         XCTAssertEqual(vm.snoozeCountFormatted, "23")
     }
+
+    // MARK: - Issue #72: surfaced load errors
+
+    /// Corrupt ledger must fire `onLoadError` instead of silently rendering
+    /// "₽0 / 0 откладываний" — that empty state looks identical to a
+    /// brand-new user and hides the data corruption.
+    func testLoadData_corruptedJSON_firesOnLoadError() {
+        testDefaults.set(Data("not json".utf8), forKey: "stored_transactions")
+
+        let vm = makeVM()
+        var receivedError: LocalizedError?
+        vm.onLoadError = { receivedError = $0 }
+
+        vm.loadData(period: .week)
+
+        XCTAssertNotNil(receivedError, "VM must propagate ledger decode failures to the VC")
+        if case TransactionRepository.RepositoryError.decodeFailure = receivedError as? TransactionRepository.RepositoryError {
+            // expected
+        } else {
+            XCTFail("Expected decodeFailure, got \(String(describing: receivedError))")
+        }
+        XCTAssertEqual(vm.totalSpent, 0)
+        XCTAssertEqual(vm.snoozeCount, 0)
+    }
 }

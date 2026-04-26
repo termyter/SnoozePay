@@ -66,12 +66,13 @@ final class CreateAlarmViewModel {
     /// Removes the alarm being edited. Returns `false` for new (unsaved) alarms,
     /// where there is nothing to delete — the caller should treat this case as a
     /// no-op (the user can simply cancel out of the create screen instead).
+    /// Also returns `false` when persistence is locked due to a corrupt
+    /// store (issue #72) — the caller should surface that to the user.
     /// Cancelling the scheduled notification is handled by `AlarmRepository.delete`.
     @discardableResult
     func delete() -> Bool {
         guard let id = existingID else { return false }
-        alarmRepository.delete(id: id)
-        return true
+        return alarmRepository.delete(id: id)
     }
 
     // MARK: - Day toggle helpers

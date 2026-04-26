@@ -174,18 +174,125 @@ final class AlarmRepositoryTests: XCTestCase {
                      "Read on missing key must not materialize an empty value")
     }
 
-    /// After a successful save the previously-corrupted bytes are replaced
-    /// with valid JSON — proves persist() is the only path that can clobber
-    /// corrupt data, and only with a healthy snapshot.
+    /// After the user has acknowledged data loss via `clearCorruptState()`,
+    /// the next save replaces the wiped slot with valid JSON. Before #72
+    /// `save()` would silently overwrite corrupt bytes from a partial
+    /// in-memory snapshot — now it refuses until the lock is released.
     func testSaveAfterCorruption_overwritesWithValidData() {
         testDefaults.set(Data("garbage".utf8), forKey: "stored_alarms")
 
+        // Trigger the lock by attempting a checked read.
+        XCTAssertThrowsError(try repo.fetchAllChecked())
+        XCTAssertTrue(repo.lastLoadFailed)
+
+        // Before recovery the save must be refused so we don't lose the
+        // corrupt blob behind a partial snapshot.
+        let blocked = makeAlarm(name: "Blocked")
+        XCTAssertFalse(repo.save(blocked),
+                       "Save must be refused while the store is locked")
+
+        // User acknowledges the data loss via the recovery flow.
+        repo.clearCorruptState()
+        XCTAssertFalse(repo.lastLoadFailed)
+
         let alarm = makeAlarm(name: "Recovery")
-        repo.save(alarm)
+        XCTAssertTrue(repo.save(alarm), "Save must succeed once the lock is cleared")
 
         let stored = repo.fetchAll()
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored.first?.name, "Recovery")
+    }
+
+    // MARK: - Issue #72: surfaced decode failure + corrupt backup + persist lock
+
+    func testFetchAllChecked_corruptedJSON_throwsDecodeFailure() {
+        let corrupt = Data("definitely not json".utf8)
+        testDefaults.set(corrupt, forKey: "stored_alarms")
+
+        XCTAssertThrowsError(try repo.fetchAllChecked()) { error in
+            guard case AlarmRepository.RepositoryError.decodeFailure = error else {
+                XCTFail("Expected decodeFailure, got \(error)")
+                return
+            }
+        }
+        XCTAssertTrue(repo.lastLoadFailed,
+                      "lastLoadFailed must latch on decode failure so writes refuse to clobber the corrupt blob")
+    }
+
+    func testFetchAllChecked_corruptedJSON_copiesBackupOnce() {
+        let corrupt = Data("not json v1".utf8)
+        testDefaults.set(corrupt, forKey: "stored_alarms")
+
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertEqual(testDefaults.data(forKey: AlarmRepository.corruptBackupKey), corrupt,
+                       "First decode failure must snapshot the corrupt bytes for diagnosis")
+
+        // Subsequent failures must NOT overwrite the original snapshot — we
+        // want the first observed corruption preserved, not a stale view.
+        let differentCorrupt = Data("not json v2".utf8)
+        testDefaults.set(differentCorrupt, forKey: "stored_alarms")
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertEqual(testDefaults.data(forKey: AlarmRepository.corruptBackupKey), corrupt,
+                       "Backup must capture the FIRST failure, not the latest one")
+    }
+
+    func testSave_whileStoreLocked_isRefused() {
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_alarms")
+        _ = try? repo.fetchAllChecked() // arms the lock
+
+        let alarm = makeAlarm(name: "Should not land")
+        XCTAssertFalse(repo.save(alarm),
+                       "save() must return false while lastLoadFailed == true")
+
+        // The corrupt blob on disk MUST be untouched — that's the whole point.
+        XCTAssertEqual(testDefaults.data(forKey: "stored_alarms"), Data("corrupt".utf8),
+                       "Locked store must not be overwritten by a partial snapshot")
+    }
+
+    func testDelete_whileStoreLocked_isRefused() {
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_alarms")
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertFalse(repo.delete(id: UUID()),
+                       "delete() must return false while the store is locked")
+        XCTAssertEqual(testDefaults.data(forKey: "stored_alarms"), Data("corrupt".utf8))
+    }
+
+    func testSetEnabled_whileStoreLocked_isRefused() {
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_alarms")
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertFalse(repo.setEnabled(true, id: UUID()),
+                       "setEnabled() must return false while the store is locked")
+    }
+
+    func testClearCorruptState_releasesLockAndRemovesKey() {
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_alarms")
+        _ = try? repo.fetchAllChecked()
+        XCTAssertTrue(repo.lastLoadFailed)
+
+        repo.clearCorruptState()
+
+        XCTAssertFalse(repo.lastLoadFailed)
+        XCTAssertNil(testDefaults.data(forKey: "stored_alarms"),
+                     "clearCorruptState must wipe the live key (the diagnostic backup is a separate slot)")
+    }
+
+    func testSuccessfulFetchAfterTransientFailure_clearsLock() {
+        // Arm the lock with corrupt bytes, then replace them with valid JSON
+        // (e.g. a different process recovered) — a subsequent successful
+        // checked read must clear the lock so writes proceed.
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_alarms")
+        _ = try? repo.fetchAllChecked()
+        XCTAssertTrue(repo.lastLoadFailed)
+
+        testDefaults.set(try! JSONEncoder().encode([Alarm]()), forKey: "stored_alarms")
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertFalse(repo.lastLoadFailed,
+                       "A subsequent successful read must clear the lock")
     }
 
     // MARK: - Coverage gaps surfaced by pr-test-analyzer (#32)

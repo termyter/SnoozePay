@@ -405,6 +405,25 @@ class StatisticsViewController: UIViewController {
         viewModel.onDataUpdated = { [weak self] in
             self?.refresh()
         }
+        viewModel.onLoadError = { [weak self] error in
+            self?.presentRepositoryError(error)
+        }
+    }
+
+    /// Alerts the user when the transaction ledger can't be decoded.
+    /// Empty stats look identical to a brand-new user, so without this
+    /// banner a corrupt blob hides itself behind "ноль откладываний"
+    /// (issue #72). Guarded against double-presentation in case load is
+    /// triggered repeatedly while the alert is still on screen.
+    private func presentRepositoryError(_ error: LocalizedError) {
+        guard presentedViewController == nil else { return }
+        let alert = UIAlertController(
+            title: "Ошибка данных",
+            message: error.errorDescription ?? "Не удалось загрузить статистику.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     private func refresh() {
