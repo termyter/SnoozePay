@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// ViewModel for the alarms list screen.
 /// Manages the alarm collection, balance display, and toggle state.
@@ -93,7 +94,7 @@ final class AlarmsListViewModel {
             // Stale cell closure or deleted alarm — the cell already flipped its visual
             // state in setEnabledAppearance. Force a re-bind so the list reverts to truth.
             assertionFailure("toggleAlarm: id \(id) not found (count=\(alarms.count))")
-            print("[AlarmsListViewModel] toggleAlarm called for missing id=\(id)")
+            AppLogger.alarms.warning("toggleAlarm called for missing id=\(id, privacy: .private)")
             onAlarmsUpdated?()
             return
         }
@@ -107,7 +108,7 @@ final class AlarmsListViewModel {
             // re-bind so the UI rolls back (issue #35). If the store is
             // locked, surface the lock so the user knows toggles aren't
             // landing rather than blaming the toggle for "not working".
-            print("[AlarmsListViewModel] setEnabled returned false; rolling back UI for id=\(id)")
+            AppLogger.alarms.warning("setEnabled returned false; rolling back UI for id=\(id, privacy: .private)")
             alarms = alarmRepository.fetchAll()
             if alarmRepository.lastLoadFailed {
                 onLoadError?(AlarmRepository.RepositoryError.persistBlocked)
@@ -143,7 +144,7 @@ final class AlarmsListViewModel {
     @discardableResult
     func deleteAlarm(id: UUID) -> Bool {
         guard let index = alarms.firstIndex(where: { $0.id == id }) else {
-            print("[AlarmsListViewModel] deleteAlarm: id \(id) not in current snapshot")
+            AppLogger.alarms.warning("deleteAlarm: id \(id, privacy: .private) not in current snapshot")
             return false
         }
         let didDelete = alarmRepository.delete(id: id)

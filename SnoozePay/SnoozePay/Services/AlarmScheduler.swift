@@ -1,4 +1,5 @@
 import Foundation
+import os
 import UserNotifications
 
 /// Handles scheduling and cancelling alarms.
@@ -29,18 +30,28 @@ final class AlarmScheduler {
         // (no critical-alert) path even when standard permission succeeds.
         notificationCenter.requestAuthorization(options: [.alert, .sound, .badge, .criticalAlert]) { granted, error in
             if let error = error {
-                print("[AlarmScheduler] critical-alert request failed: \(error). Falling back to standard.")
+                AppLogger.notifications.warning(
+                    "critical-alert request failed: \(error.localizedDescription). Falling back to standard."
+                )
                 Self.criticalAlertsAvailable = false
                 let standardOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
                 self.notificationCenter.requestAuthorization(options: standardOptions) { granted, fallbackError in
                     Self.criticalAlertsAvailable = false
-                    let errorPart = fallbackError.map { ", error=\($0)" } ?? ""
-                    print("[AlarmScheduler] resolved path=fallback granted=\(granted) critical=false\(errorPart)")
+                    if let fallbackError {
+                        let message = fallbackError.localizedDescription
+                        AppLogger.notifications.error(
+                            "resolved path=fallback granted=\(granted) critical=false error=\(message)"
+                        )
+                    } else {
+                        AppLogger.notifications.notice(
+                            "resolved path=fallback granted=\(granted) critical=false"
+                        )
+                    }
                     DispatchQueue.main.async { completion(granted) }
                 }
             } else {
                 Self.criticalAlertsAvailable = granted
-                print("[AlarmScheduler] resolved path=primary granted=\(granted) critical=\(granted)")
+                AppLogger.notifications.notice("resolved path=primary granted=\(granted) critical=\(granted)")
                 DispatchQueue.main.async { completion(granted) }
             }
         }
@@ -86,7 +97,7 @@ final class AlarmScheduler {
             )
             notificationCenter.add(request) { error in
                 if let error = error {
-                    print("[AlarmScheduler] schedule failed: \(error)")
+                    AppLogger.alarms.error("schedule failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -109,7 +120,7 @@ final class AlarmScheduler {
         )
         notificationCenter.add(request) { error in
             if let error = error {
-                print("[AlarmScheduler] schedule failed: \(error)")
+                AppLogger.alarms.error("schedule snooze failed: \(error.localizedDescription)")
             }
         }
     }

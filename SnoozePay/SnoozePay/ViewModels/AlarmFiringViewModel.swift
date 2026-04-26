@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// ViewModel for the alarm firing screen.
 /// Manages penalty calculation and balance deduction logic.
@@ -88,7 +89,10 @@ final class AlarmFiringViewModel {
         if alarm.repeatDays.isEmpty {
             let didUpdate = alarmRepository.setEnabled(false, id: alarm.id)
             if !didUpdate {
-                print("[AlarmFiringViewModel] dismiss: alarm \(alarm.id) already removed from repository")
+                let alarmID = alarm.id
+                AppLogger.alarms.notice(
+                    "dismiss: alarm \(alarmID, privacy: .private) already removed from repository"
+                )
             }
         }
     }

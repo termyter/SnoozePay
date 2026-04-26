@@ -1,5 +1,6 @@
-import UIKit
+import os
 import StoreKit
+import UIKit
 
 /// Top-up balance screen with balance card, 5 IAP packages, and restore button.
 class TopUpViewController: UIViewController {
@@ -379,7 +380,7 @@ extension TopUpViewController {
                 if (error as NSError).code == NSUserCancelledError {
                     return
                 }
-                print("[TopUpVC] performRestorePurchases failed: \(error)")
+                AppLogger.storeKit.error("performRestorePurchases failed: \(error.localizedDescription)")
                 self.presentRestoreError(error)
             }
         }

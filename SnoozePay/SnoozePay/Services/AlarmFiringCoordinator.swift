@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Handles the business logic triggered by notification actions on a fired
 /// alarm (snooze charge + reschedule). Extracted from AppDelegate so the same
@@ -69,12 +70,12 @@ final class AlarmFiringCoordinator {
     @discardableResult
     func handleSnooze(userInfo: [AnyHashable: Any]) -> SnoozeOutcome {
         guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
-            print("[AlarmFiringCoordinator] snooze: invalid payload \(userInfo)")
+            AppLogger.alarms.error("snooze: invalid payload \(String(describing: userInfo), privacy: .private)")
             return .invalidPayload
         }
 
         guard let alarm = alarmRepository.fetch(id: payload.alarmID) else {
-            print("[AlarmFiringCoordinator] snooze: alarm \(payload.alarmID) not in repository")
+            AppLogger.alarms.warning("snooze: alarm \(payload.alarmID, privacy: .private) not in repository")
             return .alarmNotFound
         }
 
@@ -83,12 +84,16 @@ final class AlarmFiringCoordinator {
 
         let charged = balanceService.charge(amount: penalty, alarmID: payload.alarmID)
         guard charged else {
-            print("[AlarmFiringCoordinator] snooze: insufficient funds for alarm \(payload.alarmID), \(penalty)")
+            AppLogger.alarms.notice(
+                "snooze: insufficient funds for alarm \(payload.alarmID, privacy: .private), penalty=\(penalty)"
+            )
             return .insufficientFunds
         }
 
         scheduler.scheduleSnooze(for: alarm, snoozeCount: newCount)
-        print("[AlarmFiringCoordinator] snooze: scheduled #\(newCount) for \(payload.alarmID), \(penalty)")
+        AppLogger.alarms.info(
+            "snooze: scheduled #\(newCount) for \(payload.alarmID, privacy: .private), penalty=\(penalty)"
+        )
         return .scheduled(newSnoozeCount: newCount, charged: penalty)
     }
 }
