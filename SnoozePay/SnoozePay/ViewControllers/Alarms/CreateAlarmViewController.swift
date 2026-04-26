@@ -64,20 +64,17 @@ class CreateAlarmViewController: UIViewController {
         return l
     }()
 
-    // Snooze stepper
+    // Snooze stepper. The "X мин" value is shown in the cell's
+    // `detailTextLabel` (UITableViewCell `.value1` style), not via a custom
+    // stack accessory — `UIStackView.sizeToFit()` did not produce a sensible
+    // intrinsic size for a stepper + label combo, leaving the stepper drawn
+    // at the cell's top-left and clipping the value label.
     private let snoozeStepper: UIStepper = {
         let s = UIStepper()
         s.minimumValue = 1
         s.maximumValue = 30
         s.stepValue = 1
         return s
-    }()
-
-    private let snoozeValueLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 17)
-        l.textColor = .label
-        return l
     }()
 
     // Vibration toggle
@@ -169,8 +166,11 @@ class CreateAlarmViewController: UIViewController {
         tableView.dataSource = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
 
+        // Pin to safe area on top so the first section's "ПОВТОР" header is
+        // not clipped under the navigation bar. Bottom can stay at view edge
+        // since insetGrouped style handles bottom safe area via contentInset.
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -185,7 +185,6 @@ class CreateAlarmViewController: UIViewController {
         progressivePreviewLabel.text = viewModel.progressiveScalePreview
         progressivePreviewLabel.isHidden = !viewModel.progressiveScale
         snoozeStepper.value = Double(viewModel.snoozeMinutes)
-        snoozeValueLabel.text = "\(viewModel.snoozeMinutes) мин"
         vibrationToggle.isOn = viewModel.vibrationEnabled
         nameField.text = viewModel.name
     }
@@ -254,7 +253,17 @@ class CreateAlarmViewController: UIViewController {
 
     @objc private func stepperChanged(_ sender: UIStepper) {
         viewModel.snoozeMinutes = Int(sender.value)
-        snoozeValueLabel.text = "\(viewModel.snoozeMinutes) мин"
+        // Update the visible cell's detail label in place. Avoids
+        // `reloadRows`, which would recreate the cell mid-interaction and
+        // drop the stepper's gesture state.
+        let snoozePath = IndexPath(row: 0, section: Section.snoozeTime.rawValue)
+        if let cell = tableView.cellForRow(at: snoozePath) {
+            cell.detailTextLabel?.text = snoozeMinutesText
+        }
+    }
+
+    private var snoozeMinutesText: String {
+        "\(viewModel.snoozeMinutes) мин"
     }
 
     @objc private func previewSoundTapped() {
@@ -313,7 +322,12 @@ extension CreateAlarmViewController: UITableViewDataSource {
             return UITableViewCell()
         }
 
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        // `.value1` is used only for the snooze row so its detail label
+        // ("X мин") sits between the title and the stepper accessory.
+        // All other rows use `.default` because they either own custom
+        // content or use accessoryView/accessoryType only.
+        let style: UITableViewCell.CellStyle = (section == .snoozeTime) ? .value1 : .default
+        let cell = UITableViewCell(style: style, reuseIdentifier: nil)
         cell.selectionStyle = .none
         cell.backgroundColor = .secondarySystemBackground
 
@@ -419,14 +433,9 @@ extension CreateAlarmViewController: UITableViewDataSource {
 
         case .snoozeTime:
             cell.textLabel?.text = "Откладывать на"
-            snoozeValueLabel.text = "\(viewModel.snoozeMinutes) мин"
-            snoozeValueLabel.sizeToFit()
-            let stack = UIStackView(arrangedSubviews: [snoozeValueLabel, snoozeStepper])
-            stack.axis = .horizontal
-            stack.spacing = AppSpacing.sm
-            stack.alignment = .center
-            stack.sizeToFit()
-            cell.accessoryView = stack
+            cell.detailTextLabel?.text = snoozeMinutesText
+            cell.detailTextLabel?.textColor = .label
+            cell.accessoryView = snoozeStepper
         }
 
         return cell
