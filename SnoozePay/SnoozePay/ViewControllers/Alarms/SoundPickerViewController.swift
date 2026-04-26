@@ -43,7 +43,8 @@ final class SoundPickerViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Выбор звука"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
+        tableView.backgroundColor = AppColors.screenBackground
         tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
     }
 

@@ -187,7 +187,7 @@ class StatisticsViewController: UIViewController {
         super.viewDidLoad()
         title = "Статистика"
         navigationController?.navigationBar.prefersLargeTitles = true
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
         setupUI()
         bindViewModel()
     }

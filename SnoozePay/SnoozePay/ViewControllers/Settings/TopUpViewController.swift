@@ -47,7 +47,8 @@ class TopUpViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Пополнить баланс"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
+        tableView.backgroundColor = AppColors.screenBackground
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,

@@ -11,7 +11,7 @@ class AlarmsListViewController: UIViewController {
 
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .plain)
-        table.backgroundColor = .systemGroupedBackground
+        table.backgroundColor = AppColors.screenBackground
         table.separatorStyle = .none
         table.translatesAutoresizingMaskIntoConstraints = false
         return table
@@ -65,7 +65,7 @@ class AlarmsListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
         setupNavigationBar()
         setupTableView()
         setupBalanceHeader()

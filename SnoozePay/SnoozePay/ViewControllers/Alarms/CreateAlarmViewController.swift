@@ -130,7 +130,8 @@ class CreateAlarmViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = viewModel.isEditing ? "Редактировать" : "Новый будильник"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
+        tableView.backgroundColor = AppColors.screenBackground
         setupNavigationBar()
         setupTableView()
         // Targets must be wired exactly once on these shared controls.

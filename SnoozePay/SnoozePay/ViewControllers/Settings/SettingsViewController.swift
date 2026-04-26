@@ -48,7 +48,8 @@ class SettingsViewController: UIViewController {
         super.viewDidLoad()
         title = "Настройки"
         navigationController?.navigationBar.prefersLargeTitles = true
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
+        tableView.backgroundColor = AppColors.screenBackground
         setupUI()
         observeBalanceChanges()
     }
@@ -380,7 +381,8 @@ final class TransactionHistoryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "История транзакций"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
+        tableView.backgroundColor = AppColors.screenBackground
         setupTableView()
         loadTransactions()
     }
@@ -606,7 +608,7 @@ final class LegalViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = legalTitle
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.screenBackground
 
         let textView = UITextView()
         textView.text = "\(legalTitle)\n\nДокумент будет добавлен перед публикацией в App Store."

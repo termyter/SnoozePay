@@ -7,6 +7,15 @@ enum AppColors {
     static let surface = UIColor.secondarySystemBackground
     static let surface2 = UIColor.tertiarySystemBackground
 
+    /// Top-level screen background. Pure white in light mode (matches the
+    /// designed white theme), `.systemGroupedBackground` in dark mode so the
+    /// inset cards stay readable on a near-black canvas.
+    static let screenBackground = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.systemGroupedBackground
+            : UIColor.white
+    }
+
     // MARK: - Text
     static let textPrimary = UIColor.label
     static let textSecondary = UIColor.secondaryLabel
