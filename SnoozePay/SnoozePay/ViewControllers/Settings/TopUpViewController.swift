@@ -23,9 +23,9 @@ class TopUpViewController: UIViewController {
     // MARK: - UI
 
     private let tableView: UITableView = {
-        let tv = UITableView(frame: .zero, style: .insetGrouped)
-        tv.translatesAutoresizingMaskIntoConstraints = false
-        return tv
+        let table = UITableView(frame: .zero, style: .insetGrouped)
+        table.translatesAutoresizingMaskIntoConstraints = false
+        return table
     }()
 
     private let storeService = StoreKitService.shared
@@ -279,7 +279,7 @@ extension TopUpViewController: UITableViewDataSource {
             guard let cell = tableView.dequeueReusableCell(
                 withIdentifier: TopUpPackageCell.reuseID, for: indexPath
             ) as? TopUpPackageCell else {
-                return UITableViewCell()
+                fatalError("dequeueReusableCell returned wrong type for \(TopUpPackageCell.reuseID)")
             }
 
             let pkg = packages[indexPath.row]
@@ -328,47 +328,47 @@ final class TopUpPackageCell: UITableViewCell {
     // MARK: - UI
 
     private let coinIcon: UIImageView = {
-        let iv = UIImageView()
-        iv.image = UIImage(systemName: "dollarsign.circle.fill")?.withConfiguration(
+        let imageView = UIImageView()
+        imageView.image = UIImage(systemName: "dollarsign.circle.fill")?.withConfiguration(
             UIImage.SymbolConfiguration(pointSize: 28, weight: .medium)
         )
-        iv.tintColor = AppColors.accentOrange
-        iv.contentMode = .scaleAspectFit
-        iv.translatesAutoresizingMaskIntoConstraints = false
-        return iv
+        imageView.tintColor = AppColors.accentOrange
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
     }()
 
     private let amountLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 18, weight: .bold)
-        l.textColor = .label
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 18, weight: .bold)
+        label.textColor = .label
+        return label
     }()
 
     private let subtitleLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 13)
-        l.textColor = .secondaryLabel
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .secondaryLabel
+        return label
     }()
 
     private let popularBadge: UILabel = {
-        let l = UILabel()
-        l.text = "Популярный"
-        l.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
-        l.textColor = .white
-        l.backgroundColor = AppColors.accentBlue
-        l.layer.cornerRadius = 8
-        l.layer.masksToBounds = true
-        l.textAlignment = .center
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.text = "Популярный"
+        label.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .white
+        label.backgroundColor = AppColors.accentBlue
+        label.layer.cornerRadius = 8
+        label.layer.masksToBounds = true
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let spinner: UIActivityIndicatorView = {
-        let s = UIActivityIndicatorView(style: .medium)
-        s.hidesWhenStopped = true
-        return s
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.hidesWhenStopped = true
+        return indicator
     }()
 
     // MARK: - Init

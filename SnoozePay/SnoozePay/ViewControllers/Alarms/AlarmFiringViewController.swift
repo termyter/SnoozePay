@@ -86,9 +86,9 @@ class AlarmFiringViewController: UIViewController {
         config.baseForegroundColor = .white
         config.cornerStyle = .capsule
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
-            var a = attrs
-            a.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-            return a
+            var updated = attrs
+            updated.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+            return updated
         }
         let button = UIButton(configuration: config)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -108,9 +108,9 @@ class AlarmFiringViewController: UIViewController {
         config.baseForegroundColor = .white
         config.cornerStyle = .capsule
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
-            var a = attrs
-            a.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-            return a
+            var updated = attrs
+            updated.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+            return updated
         }
         let button = UIButton(configuration: config)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -269,10 +269,18 @@ class AlarmFiringViewController: UIViewController {
         }
     }
 
-    private func updateTime() {
+    /// Cached formatter — updateTime() runs once per second; rebuilding a
+    /// DateFormatter each tick is ~1ms wasted. Locale fixed to `en_US_POSIX`
+    /// so `HH:mm` is honoured regardless of the user's region.
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "HH:mm"
-        timeLabel.text = formatter.string(from: Date())
+        return formatter
+    }()
+
+    private func updateTime() {
+        timeLabel.text = Self.timeFormatter.string(from: Date())
     }
 
     // MARK: - Pulse animation
