@@ -310,13 +310,90 @@ extension TopUpViewController: UITableViewDelegate {
 
         switch sec {
         case .restore:
-            Task {
-                try? await AppStore.sync()
-                tableView.tableHeaderView = makeBalanceHeader()
-            }
+            performRestorePurchases()
         case .packages:
             purchaseProduct(at: indexPath.row)
         }
+    }
+}
+
+// MARK: - Restore Purchases
+
+extension TopUpViewController {
+
+    /// Wraps `AppStore.sync()` and surfaces typed errors instead of swallowing them
+    /// with `try?`. A silent failure here would let the user think no past purchases
+    /// exist and re-buy a package — a real financial loss path (#71).
+    fileprivate func performRestorePurchases() {
+        let balanceBeforeSync = BalanceService.shared.balance
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await AppStore.sync()
+                self.tableView.tableHeaderView = self.makeBalanceHeader()
+
+                // Heuristic: `AppStore.sync()` triggers `Transaction.updates` which
+                // credits the balance asynchronously. We sample after the await; if
+                // nothing changed we tell the user no purchases were found rather than
+                // leaving the screen silent.
+                let creditedSomething = BalanceService.shared.balance > balanceBeforeSync
+                self.presentRestoreSuccess(credited: creditedSomething)
+            } catch {
+                self.presentRestoreError(error)
+            }
+        }
+    }
+
+    private func presentRestoreSuccess(credited: Bool) {
+        let title = credited ? "Покупки восстановлены" : "Покупок не найдено"
+        let message = credited
+            ? "Баланс обновлён."
+            : "Мы не нашли предыдущих покупок, привязанных к вашему Apple ID."
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func presentRestoreError(_ error: Error) {
+        let alert = UIAlertController(
+            title: "Не удалось восстановить покупки",
+            message: restoreErrorMessage(for: error),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    /// Maps StoreKit / URLError failures to actionable Russian copy. Generic errors
+    /// fall back to the underlying `localizedDescription` plus support hint so the
+    /// user is never left with a silent button tap.
+    private func restoreErrorMessage(for error: Error) -> String {
+        let nsError = error as NSError
+
+        // Network reachability — URLError or NSURLErrorDomain bubbles up here.
+        if nsError.domain == NSURLErrorDomain {
+            return "Проверьте подключение к интернету и попробуйте снова."
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost:
+                return "Проверьте подключение к интернету и попробуйте снова."
+            default:
+                break
+            }
+        }
+
+        // StoreKit auth — codes vary by iOS version, fall back to substring match
+        // on the localized description which is what AppStore.sync surfaces.
+        let description = nsError.localizedDescription.lowercased()
+        if description.contains("not authenticated")
+            || description.contains("sign")
+            || description.contains("apple id") {
+            return "Войдите в Apple ID в Настройках и попробуйте снова."
+        }
+
+        return "\(error.localizedDescription)\n\nЕсли проблема повторяется, свяжитесь с поддержкой."
     }
 }
 
