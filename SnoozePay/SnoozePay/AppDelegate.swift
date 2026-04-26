@@ -17,7 +17,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AlarmScheduler.shared.registerCategories()
         AlarmScheduler.shared.requestPermission { [weak self] granted in
             if !granted {
-                print("[AppDelegate] notification permission denied — alarms may not fire")
+                AppLogger.appDelegate.notice("notification permission denied — alarms may not fire")
                 self?.presentNotificationsDisabledAlert()
             }
         }
@@ -60,7 +60,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                     .first,
                 let rootVC = windowScene.windows.first?.rootViewController
             else {
-                print("[AppDelegate] no rootVC yet, deferring notifications-disabled alert")
+                AppLogger.appDelegate.info("no rootVC yet, deferring notifications-disabled alert")
                 self?.deferNotificationsDisabledAlertUntilSceneActive()
                 return
             }
@@ -119,7 +119,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
             // Malformed payload — surface and bail rather than playing audio we
             // can never stop because the firing screen will never be presented.
-            print("[AppDelegate] willPresent: invalid alarm payload \(userInfo)")
+            AppLogger.appDelegate.error(
+                "willPresent: invalid alarm payload \(userInfo, privacy: .private(mask: .hash))"
+            )
             completionHandler([])
             return
         }
@@ -151,7 +153,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             if let payload = AlarmNotificationPayload(userInfo: userInfo) {
                 presentAlarmFiringScreen(for: payload)
             } else {
-                print("[AppDelegate] default action: invalid alarm payload \(userInfo)")
+                AppLogger.appDelegate.error(
+                    "default action: invalid alarm payload \(userInfo, privacy: .private(mask: .hash))"
+                )
                 AudioService.shared.stopAlarmSound()
             }
 
@@ -160,13 +164,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             let outcome = AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo)
             switch outcome {
             case .invalidPayload:
-                print("[AppDelegate] SNOOZE_ACTION: invalid payload, snooze skipped")
+                AppLogger.appDelegate.error("SNOOZE_ACTION: invalid payload, snooze skipped")
             case .alarmNotFound:
-                print("[AppDelegate] SNOOZE_ACTION: alarm not found, snooze skipped")
+                AppLogger.appDelegate.notice("SNOOZE_ACTION: alarm not found, snooze skipped")
             case .insufficientFunds:
-                print("[AppDelegate] SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat")
+                AppLogger.appDelegate.notice(
+                    "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
+                )
             case let .scheduled(newSnoozeCount, charged):
-                print("[AppDelegate] SNOOZE_ACTION: snooze #\(newSnoozeCount) scheduled, charged=\(charged)")
+                AppLogger.appDelegate.info(
+                    "SNOOZE_ACTION: snooze #\(newSnoozeCount, privacy: .public) scheduled, charged=\(charged, privacy: .public)"
+                )
             }
 
         case UNNotificationDismissActionIdentifier:
@@ -186,7 +194,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         guard let alarm = AlarmRepository.shared.fetch(id: payload.alarmID) else {
             // Audio may already be playing from willPresent — stop it so the user
             // is not stuck with a silent-screen + sounding alarm we can't dismiss.
-            print("[AppDelegate] alarm not found (repo returned nil for \(payload.alarmID)), stopping audio")
+            AppLogger.appDelegate.error(
+                "alarm not found (repo returned nil for \(payload.alarmID, privacy: .private)), stopping audio"
+            )
             AudioService.shared.stopAlarmSound()
             return
         }
@@ -202,7 +212,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                     .first,
                 let rootVC = windowScene.windows.first?.rootViewController
             else {
-                print("[AppDelegate] no window scene, stopping audio")
+                AppLogger.appDelegate.error("no window scene, stopping audio")
                 AudioService.shared.stopAlarmSound()
                 return
             }

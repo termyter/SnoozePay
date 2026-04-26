@@ -88,7 +88,7 @@ final class AlarmFiringViewModel {
         if alarm.repeatDays.isEmpty {
             let didUpdate = alarmRepository.setEnabled(false, id: alarm.id)
             if !didUpdate {
-                print("[AlarmFiringViewModel] dismiss: alarm \(alarm.id) already removed from repository")
+                AppLogger.ui.notice("dismiss: alarm \(alarm.id, privacy: .private) already removed from repository")
             }
         }
     }

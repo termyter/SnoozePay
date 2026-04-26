@@ -82,7 +82,7 @@ final class AudioService {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {
-            print("[AudioService] failed to deactivate audio session: \(error)")
+            AppLogger.audio.error("failed to deactivate audio session: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -104,7 +104,7 @@ final class AudioService {
             // Audio session unavailable (e.g. another app holds it).
             // Cannot guarantee playback — skip vibration too and surface the
             // explicit fallback state so the UI can warn the user.
-            print("[AudioService] failed to configure audio session: \(error)")
+            AppLogger.audio.error("failed to configure audio session: \(error.localizedDescription, privacy: .public)")
             state = .silentBecauseConfigFailed
             return
         }
@@ -125,7 +125,10 @@ final class AudioService {
                 player = try AVAudioPlayer(contentsOf: soundURL)
             } catch {
                 let name = soundURL.lastPathComponent
-                print("[AudioService] AVAudioPlayer init failed for \(name): \(error)")
+                let desc = error.localizedDescription
+                AppLogger.audio.error(
+                    "AVAudioPlayer init failed for \(name, privacy: .public): \(desc, privacy: .public)"
+                )
                 player = nil
             }
         }
@@ -136,7 +139,7 @@ final class AudioService {
         guard let player else {
             // Neither bundled file nor synthetic tone available — refuse to claim
             // playback. Vibration still runs so the user is at least woken.
-            print("[AudioService] startAlarmSound: no audio source available, vibration only")
+            AppLogger.audio.notice("startAlarmSound: no audio source available, vibration only")
             state = .vibrationOnly
             startVibration()
             return
@@ -154,7 +157,9 @@ final class AudioService {
         let prepared = player.prepareToPlay()
         let started = player.play()
         if !prepared || !started {
-            print("[AudioService] AVAudioPlayer play() rejected (prepared=\(prepared), started=\(started))")
+            AppLogger.audio.error(
+                "AVAudioPlayer play() rejected (prepared=\(prepared, privacy: .public), started=\(started, privacy: .public))"
+            )
             audioPlayer = nil
             state = .vibrationOnly
             startVibration()

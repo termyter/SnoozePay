@@ -88,7 +88,7 @@ final class StoreKitService {
             products = loaded.sorted { $0.price < $1.price }
             postProductsLoaded(products)
         } catch {
-            print("[StoreKit] product load failed: \(error)")
+            AppLogger.storeKit.error("product load failed: \(error.localizedDescription, privacy: .public)")
             postPurchaseFailed("Не удалось загрузить пакеты пополнения. Проверь интернет-соединение.")
         }
     }
@@ -102,7 +102,9 @@ final class StoreKitService {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
                 guard markProcessed(transactionID: transaction.id) else {
-                    print("[StoreKit] tx \(transaction.id) already processed — skipping double credit")
+                    AppLogger.storeKit.notice(
+                        "tx \(transaction.id, privacy: .private) already processed — skipping double credit"
+                    )
                     await transaction.finish()
                     return
                 }
@@ -118,7 +120,7 @@ final class StoreKitService {
                 postPurchasePending()
 
             @unknown default:
-                print("[StoreKit] unknown PurchaseResult case — likely future StoreKit addition")
+                AppLogger.storeKit.error("unknown PurchaseResult case — likely future StoreKit addition")
                 postPurchaseFailed("Покупка не выполнена. Обнови приложение и попробуй ещё раз.")
             }
         } catch {
@@ -138,7 +140,9 @@ final class StoreKitService {
             // do finish so it stops being delivered. For consumables we cannot reverse
             // a spent balance — track this as a known limitation (see #22-style follow-up).
             guard transaction.revocationDate == nil else {
-                print("[StoreKit] revoked tx \(transaction.id) productID=\(transaction.productID)")
+                AppLogger.storeKit.notice(
+                    "revoked tx \(transaction.id, privacy: .private) productID=\(transaction.productID, privacy: .public)"
+                )
                 await transaction.finish()
                 return
             }
@@ -150,14 +154,18 @@ final class StoreKitService {
             // Order matters — check amount before markProcessed.
             let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: nil)
             guard amount > 0 else {
-                print("[StoreKit] unknown productID \(transaction.productID) tx=\(transaction.id) — not finishing")
+                AppLogger.storeKit.error(
+                    "unknown productID \(transaction.productID, privacy: .public) tx=\(transaction.id, privacy: .private) — not finishing"
+                )
                 postPurchaseFailed("Неизвестный пакет пополнения. Обнови приложение.")
                 return
             }
             // Idempotency — guard against StoreKit replaying a transaction we already
             // credited (e.g. if the previous run crashed between topUp and finish()).
             guard markProcessed(transactionID: transaction.id) else {
-                print("[StoreKit] tx \(transaction.id) already processed — finishing without re-credit")
+                AppLogger.storeKit.notice(
+                    "tx \(transaction.id, privacy: .private) already processed — finishing without re-credit"
+                )
                 await transaction.finish()
                 return
             }
@@ -169,7 +177,10 @@ final class StoreKitService {
             // Don't finish — let Apple retry next launch. Verification can fail temporarily
             // (clock drift, cert refresh). Finishing here would discard a potentially valid
             // purchase. WWDC sample code (Fruta, Backyard Birds) follows this pattern too.
-            print("[StoreKit] unverified tx=\(transaction.id) productID=\(transaction.productID) error=\(error)")
+            let errDesc = error.localizedDescription
+            AppLogger.storeKit.error(
+                "unverified tx=\(transaction.id, privacy: .private) productID=\(transaction.productID, privacy: .public) error=\(errDesc, privacy: .public)"
+            )
             postPurchaseFailed("Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.")
         }
     }
