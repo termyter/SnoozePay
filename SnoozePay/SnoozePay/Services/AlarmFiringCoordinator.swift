@@ -73,10 +73,12 @@ final class AlarmFiringCoordinator {
             let alarmID = UUID(uuidString: alarmIDString),
             let snoozeCount = userInfo["snoozeCount"] as? Int
         else {
+            print("[AlarmFiringCoordinator] snooze: invalid payload \(userInfo)")
             return .invalidPayload
         }
 
         guard let alarm = alarmRepository.fetch(id: alarmID) else {
+            print("[AlarmFiringCoordinator] snooze: alarm \(alarmID) not in repository")
             return .alarmNotFound
         }
 
@@ -85,10 +87,12 @@ final class AlarmFiringCoordinator {
 
         let charged = balanceService.charge(amount: penalty, alarmID: alarmID)
         guard charged else {
+            print("[AlarmFiringCoordinator] snooze: insufficient funds for alarm \(alarmID), penalty=\(penalty)")
             return .insufficientFunds
         }
 
         scheduler.scheduleSnooze(for: alarm, snoozeCount: newCount)
+        print("[AlarmFiringCoordinator] snooze: scheduled #\(newCount) for alarm \(alarmID), charged=\(penalty)")
         return .scheduled(newSnoozeCount: newCount, charged: penalty)
     }
 }

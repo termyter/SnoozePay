@@ -145,7 +145,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         case "SNOOZE_ACTION":
             AudioService.shared.stopAlarmSound()
-            AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo)
+            let outcome = AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo)
+            switch outcome {
+            case .invalidPayload:
+                print("[AppDelegate] SNOOZE_ACTION: invalid payload, snooze skipped")
+            case .alarmNotFound:
+                print("[AppDelegate] SNOOZE_ACTION: alarm not found, snooze skipped")
+            case .insufficientFunds:
+                print("[AppDelegate] SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat")
+            case let .scheduled(newSnoozeCount, charged):
+                print("[AppDelegate] SNOOZE_ACTION: snooze #\(newSnoozeCount) scheduled, charged=\(charged)")
+            }
 
         case UNNotificationDismissActionIdentifier:
             // User swiped away notification — stop sound
