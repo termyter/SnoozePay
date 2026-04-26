@@ -82,9 +82,9 @@ final class OnboardingViewController: UIViewController {
         config.baseForegroundColor = .white
         config.cornerStyle = .large
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
-            var a = attrs
-            a.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-            return a
+            var modified = attrs
+            modified.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+            return modified
         }
         let button = UIButton(configuration: config)
         button.translatesAutoresizingMaskIntoConstraints = false

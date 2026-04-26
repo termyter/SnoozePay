@@ -288,7 +288,8 @@ final class AlarmRepositoryTests: XCTestCase {
         _ = try? repo.fetchAllChecked()
         XCTAssertTrue(repo.lastLoadFailed)
 
-        testDefaults.set(try! JSONEncoder().encode([Alarm]()), forKey: "stored_alarms")
+        let emptyAlarmsData = (try? JSONEncoder().encode([Alarm]())) ?? Data()
+        testDefaults.set(emptyAlarmsData, forKey: "stored_alarms")
         _ = try? repo.fetchAllChecked()
 
         XCTAssertFalse(repo.lastLoadFailed,

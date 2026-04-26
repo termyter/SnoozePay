@@ -456,7 +456,8 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
 
         XCTAssertNotNil(receivedError, "VM must propagate ledger decode failures to the VC")
-        if case TransactionRepository.RepositoryError.decodeFailure = receivedError as? TransactionRepository.RepositoryError {
+        if let typed = receivedError as? TransactionRepository.RepositoryError,
+           case .decodeFailure = typed {
             // expected
         } else {
             XCTFail("Expected decodeFailure, got \(String(describing: receivedError))")

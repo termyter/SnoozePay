@@ -36,67 +36,67 @@ class StatisticsViewController: UIViewController {
     // MARK: Two-column summary
 
     private let spentTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "Потрачено"
-        l.font = UIFont.systemFont(ofSize: 13)
-        l.textColor = .secondaryLabel
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.text = "Потрачено"
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let spentAmountLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 32, weight: .bold)
-        l.textColor = AppColors.accentOrange
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 32, weight: .bold)
+        label.textColor = AppColors.accentOrange
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let snoozeTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "Откладываний"
-        l.font = UIFont.systemFont(ofSize: 13)
-        l.textColor = .secondaryLabel
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.text = "Откладываний"
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let snoozeCountLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 32, weight: .bold)
-        l.textColor = .label
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 32, weight: .bold)
+        label.textColor = .label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     // MARK: Average card
 
     private let averageTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "Среднее"
-        l.font = UIFont.systemFont(ofSize: 13)
-        l.textColor = .secondaryLabel
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.text = "Среднее"
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let averageValueLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 28, weight: .bold)
-        l.textColor = .label
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 28, weight: .bold)
+        label.textColor = .label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     // MARK: Chart
 
     private let chartTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "График по дням"
-        l.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        l.textColor = .label
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.text = "График по дням"
+        label.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        label.textColor = .label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private var chartHostingController: UIHostingController<StatisticsChartView>?
@@ -129,56 +129,56 @@ class StatisticsViewController: UIViewController {
     }()
 
     private let streakLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 20, weight: .bold)
-        l.textColor = .label
-        l.numberOfLines = 0
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 20, weight: .bold)
+        label.textColor = .label
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let bestStreakLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 13)
-        l.textColor = .secondaryLabel
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     // MARK: Motivation banner
 
     private let motivationCard: UIView = {
-        let v = UIView()
-        v.backgroundColor = AppColors.accentOrange
-        v.layer.cornerRadius = AppRadius.md
-        v.translatesAutoresizingMaskIntoConstraints = false
-        return v
+        let view = UIView()
+        view.backgroundColor = AppColors.accentOrange
+        view.layer.cornerRadius = AppRadius.md
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }()
 
     private let motivationIconLabel: UILabel = {
-        let l = UILabel()
-        l.text = "↗️"
-        l.font = UIFont.systemFont(ofSize: 24)
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.text = "↗️"
+        label.font = UIFont.systemFont(ofSize: 24)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let motivationTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "Мотивация"
-        l.font = UIFont.systemFont(ofSize: 15, weight: .bold)
-        l.textColor = .white
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.text = "Мотивация"
+        label.font = UIFont.systemFont(ofSize: 15, weight: .bold)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let motivationMessageLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 14)
-        l.textColor = UIColor.white.withAlphaComponent(0.9)
-        l.numberOfLines = 0
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 14)
+        label.textColor = UIColor.white.withAlphaComponent(0.9)
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     // MARK: - Lifecycle
