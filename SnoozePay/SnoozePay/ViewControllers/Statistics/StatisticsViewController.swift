@@ -439,7 +439,8 @@ class StatisticsViewController: UIViewController {
         averageValueLabel.text = viewModel.averagePerDayFormatted
 
         // Streak — when no active streak we show the zero-state caption but
-        // keep the card visible so the layout doesn't jump.
+        // keep the card visible so the layout doesn't jump. The card is
+        // never hidden anywhere, so no `isHidden = false` reset is needed.
         if viewModel.streakActive {
             streakLabel.text = viewModel.streakMessage
             bestStreakLabel.text = viewModel.bestStreakFormatted
@@ -447,7 +448,6 @@ class StatisticsViewController: UIViewController {
             streakLabel.text = viewModel.streakZeroMessage
             bestStreakLabel.text = ""
         }
-        streakCard?.isHidden = false
 
         // Motivation banner — VM decides whether there's anything to motivate
         // against; view just toggles visibility off the bool.

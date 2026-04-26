@@ -25,6 +25,12 @@ enum AppColors {
     static let snoozeButton = UIColor.systemOrange
     static let dismissButton = UIColor(red: 0.19, green: 0.82, blue: 0.34, alpha: 1) // #30D158
     static let disabledButton = UIColor.systemGray
+
+    /// Warm orange/gold used for the active "Отложить" pill on the alarm-firing
+    /// screen (#E8A838). Kept distinct from `accentOrange`/`snoozeButton` so the
+    /// firing UI can preserve its specific Figma hue without leaking that
+    /// magic literal into the view code (#79).
+    static let alarmFiringSnooze = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1) // #E8A838
 }
 
 /// App-wide spacing constants
