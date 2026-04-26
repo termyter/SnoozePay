@@ -225,6 +225,100 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertEqual(service.balance, initialBalance - Double(successes) * amount)
     }
 
+    // MARK: - Negative balance corruption (#119)
+
+    /// Synthetic negative `user_balance` (race / downgrade / tampering) MUST
+    /// flip `balanceCorrupted`, broadcast `balanceCorruptedNotification` with
+    /// the raw value, and report `balance == 0` to downstream math so the
+    /// wallet doesn't behave as if it owes money.
+    func testNegativeStoredBalance_flipsCorruptedFlagAndBroadcasts() {
+        let center = NotificationCenter()
+        // Inject the corrupt value directly — the public API would never
+        // produce this state, which is the whole point of the detection.
+        testDefaults.set(-42.5, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        let exp = expectation(description: "corruption notification fires")
+        var receivedRaw: Double?
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            receivedRaw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double
+            exp.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        // Reading triggers detection.
+        XCTAssertEqual(service.balance, 0,
+                       "Corrupt negative balance must be reported as 0 to downstream math")
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(service.balanceCorrupted, "balanceCorrupted flag must latch on detection")
+        XCTAssertEqual(receivedRaw, -42.5, "Notification must carry the raw negative value")
+    }
+
+    /// Under corruption, `charge` must refuse and return `false` — mirrors the
+    /// locked-ledger gate from #72 so we don't silently mutate a corrupt store.
+    func testCharge_refusedUnderCorruption() {
+        let center = NotificationCenter()
+        let (service, ledger) = makeServiceWithLedger(balance: -10, notificationCenter: center)
+        _ = service.balance // trigger detection
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertFalse(service.charge(amount: 1, alarmID: nil),
+                       "charge must refuse when balance store is corrupted")
+        XCTAssertTrue(ledger.fetchAll().isEmpty,
+                      "No transaction may land while balance is corrupted")
+    }
+
+    /// Under corruption, `topUp` must refuse — otherwise an IAP would silently
+    /// land on top of a corrupt value the user hasn't acknowledged.
+    func testTopUp_refusedUnderCorruption() {
+        let center = NotificationCenter()
+        let (service, ledger) = makeServiceWithLedger(balance: -10, notificationCenter: center)
+        _ = service.balance // trigger detection
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertFalse(service.topUp(amount: 100),
+                       "topUp must refuse when balance store is corrupted")
+        XCTAssertTrue(ledger.fetchAll().isEmpty,
+                      "No transaction may land while balance is corrupted")
+    }
+
+    /// `acknowledgeCorruption` resets storage to 0, clears the flag, and
+    /// broadcasts a regular `balanceChangedNotification` so observers refresh
+    /// to the new zero state. After ack, `charge`/`topUp` work again.
+    func testAcknowledgeCorruption_clearsFlagAndRestoresMutability() {
+        let center = NotificationCenter()
+        testDefaults.set(-99.0, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+        _ = service.balance // trigger detection
+        XCTAssertTrue(service.balanceCorrupted)
+
+        let changed = expectation(description: "balanceChanged fires after ack")
+        var receivedAmount: Double?
+        let token = center.addObserver(
+            forName: BalanceService.balanceChangedNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            receivedAmount = note.userInfo?[BalanceService.balanceUserInfoKey] as? Double
+            changed.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        service.acknowledgeCorruption()
+
+        wait(for: [changed], timeout: 1.0)
+        XCTAssertEqual(receivedAmount, 0)
+        XCTAssertFalse(service.balanceCorrupted, "Flag must clear after acknowledgement")
+        XCTAssertEqual(service.balance, 0, "Balance must be reset to 0")
+        XCTAssertTrue(service.topUp(amount: 50), "Mutations must work again after ack")
+        XCTAssertEqual(service.balance, 50)
+    }
+
     func testConcurrentChargeAndTopUp_remainsConsistent() {
         let initialBalance: Double = 500
         let amount: Double = 5
