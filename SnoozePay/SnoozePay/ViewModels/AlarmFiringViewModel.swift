@@ -76,11 +76,22 @@ final class AlarmFiringViewModel {
 
     /// Dismiss the alarm without charge.
     /// Non-repeating alarms are disabled after dismissal.
+    ///
+    /// `setEnabled` returns `false` when the alarm is no longer in the repository
+    /// (e.g. user deleted it from another screen while the firing UI was up).
+    /// In that case the desired end-state ("disabled") is already true, so we
+    /// only surface a diagnostic — no UI rollback or user-facing error needed
+    /// (issue #54 mirrors the silent-failure fix from #35 for the list path).
     func dismiss() {
         scheduler.cancel(alarm.id)
 
         if alarm.repeatDays.isEmpty {
-            alarmRepository.setEnabled(false, id: alarm.id)
+            let didUpdate = alarmRepository.setEnabled(false, id: alarm.id)
+            if !didUpdate {
+                #if DEBUG
+                print("[AlarmFiringViewModel] dismiss: alarm \(alarm.id) already removed from repository")
+                #endif
+            }
         }
     }
 }

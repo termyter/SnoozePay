@@ -157,6 +157,26 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         repo.delete(id: alarm.id)
     }
 
+    /// Issue #54: when the alarm has already been deleted from the repository
+    /// (e.g. user removed it from list while firing screen was up), `dismiss()`
+    /// must not crash and must not leak any user-facing error — the desired
+    /// end-state is already achieved.
+    func testDismiss_alarmAlreadyRemoved_doesNotCrash() {
+        let repo = AlarmRepository()
+        var alarm = Alarm(penaltyAmount: 50)
+        alarm.repeatDays = []
+        alarm.enabled = true
+        // Intentionally do NOT save — simulate "already removed" repo state.
+
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
+
+        // Should complete without throwing/crashing; returned Bool is consumed inside dismiss().
+        vm.dismiss()
+
+        XCTAssertNil(repo.fetch(id: alarm.id),
+                     "Alarm should remain absent from repo after dismiss on missing alarm")
+    }
+
     // MARK: - Penalty calculation (progressive scale)
 
     func testCurrentPenalty_firstSnooze_returnsBase() {
