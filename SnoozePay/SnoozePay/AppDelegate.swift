@@ -127,8 +127,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             return
         }
 
-        // Start continuous alarm sound immediately (before presenting the VC)
-        AudioService.shared.startAlarmSound(soundID: payload.soundID)
+        // Start continuous alarm sound immediately (before presenting the VC).
+        // Passing `alarmID` lets AudioService track ownership so a stacking
+        // race between firing VCs cannot silence the wrong alarm (#116).
+        AudioService.shared.startAlarmSound(
+            soundID: payload.soundID,
+            alarmID: payload.alarmID
+        )
 
         // Show the alarm firing screen
         presentAlarmFiringScreen(for: payload)
@@ -143,15 +148,19 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = response.notification.request.content.userInfo
 
+        let payload = AlarmNotificationPayload(userInfo: userInfo)
         switch response.actionIdentifier {
         case "DISMISS_ACTION":
-            // Dismiss from notification action — stop sound, no charge
-            AudioService.shared.stopAlarmSound()
+            // Dismiss from notification action — stop sound, no charge.
+            // Gate on ownership so a notification action targeting alarm A
+            // cannot silence audio that has already been claimed by alarm B
+            // (stacking-race symmetry with #116).
+            stopAlarmSoundIfOwner(of: payload, action: "DISMISS_ACTION")
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped notification banner — present alarm screen
             // AudioService will be started by AlarmFiringViewController
-            if let payload = AlarmNotificationPayload(userInfo: userInfo) {
+            if let payload {
                 presentAlarmFiringScreen(for: payload)
             } else {
                 AppLogger.appDelegate.error(
@@ -161,7 +170,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             }
 
         case "SNOOZE_ACTION":
-            AudioService.shared.stopAlarmSound()
+            stopAlarmSoundIfOwner(of: payload, action: "SNOOZE_ACTION")
             let outcome = AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo)
             switch outcome {
             case .invalidPayload:
@@ -179,14 +188,45 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             }
 
         case UNNotificationDismissActionIdentifier:
-            // User swiped away notification — stop sound
-            AudioService.shared.stopAlarmSound()
+            // User swiped away notification — stop sound. Gate on ownership
+            // for the same reason as DISMISS_ACTION above.
+            stopAlarmSoundIfOwner(of: payload, action: "swipe-dismiss")
 
         default:
+            AppLogger.appDelegate.notice(
+                "unknown notification action \(response.actionIdentifier, privacy: .public) — stopping audio unconditionally"
+            )
             AudioService.shared.stopAlarmSound()
         }
 
         completionHandler()
+    }
+
+    /// Stop the alarm sound only if its session is currently owned by the
+    /// alarm referenced in `payload`. Used to defend against the stacking
+    /// race where a notification action for alarm A arrives after alarm B
+    /// has already claimed the audio pipeline (#116). When the payload is
+    /// `nil` (un-parseable) we fall back to unconditional stop and log so
+    /// the caller can audit. Always logs the decision either way.
+    private func stopAlarmSoundIfOwner(
+        of payload: AlarmNotificationPayload?,
+        action: String
+    ) {
+        guard let payload else {
+            AppLogger.appDelegate.error(
+                "\(action, privacy: .public): missing payload — stopping audio unconditionally"
+            )
+            AudioService.shared.stopAlarmSound()
+            return
+        }
+        let owner = AudioService.shared.currentAlarmID
+        guard owner == payload.alarmID else {
+            AppLogger.appDelegate.notice(
+                "\(action, privacy: .public): skipping stop — audio session owned by \(String(describing: owner), privacy: .private), payload alarm=\(payload.alarmID, privacy: .private)"
+            )
+            return
+        }
+        AudioService.shared.stopAlarmSound()
     }
 
     // MARK: - Helpers

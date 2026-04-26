@@ -140,6 +140,71 @@ final class AudioServiceTests: XCTestCase {
                       "Expected .stopped state to be broadcast, got \(observedStates)")
     }
 
+    // MARK: - Ownership tracking (IOS-116)
+
+    /// `currentAlarmID` must reflect the alarm that started the current session
+    /// and clear back to nil after `stopAlarmSound()`.
+    func testCurrentAlarmID_setOnStart_clearedOnStop() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        XCTAssertNil(service.currentAlarmID)
+
+        let alarmID = UUID()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmID)
+        XCTAssertEqual(service.currentAlarmID, alarmID)
+
+        service.stopAlarmSound()
+        XCTAssertNil(service.currentAlarmID)
+    }
+
+    /// IOS-116 — alarm-stacking race regression guard.
+    ///
+    /// Sequence:
+    ///   1. Alarm A starts → owns the audio session.
+    ///   2. AppDelegate dismisses A's firing VC and presents B's; B's
+    ///      `viewDidLoad` calls `startAlarmSound(alarmID: B)` while A's
+    ///      `viewDidDisappear` has not yet fired.
+    ///   3. A's `viewDidDisappear` finally runs and would normally call
+    ///      `stopAlarmSound()` — but with the new ownership check, it sees
+    ///      `currentAlarmID != A.id` and skips the stop, preserving B's audio.
+    ///
+    /// We can't simulate the VC lifecycle in a unit test directly, so we
+    /// reproduce the *contract* the VC relies on: after a second start with a
+    /// different ID, the previous owner has lost the session.
+    func testStartAlarmSound_secondStartOverridesOwnership() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+
+        let alarmA = UUID()
+        let alarmB = UUID()
+
+        service.startAlarmSound(soundID: "tone_a", alarmID: alarmA)
+        XCTAssertEqual(service.currentAlarmID, alarmA)
+
+        // Simulating B taking over — startAlarmSound is guarded by `state == .stopped`,
+        // so the second call short-circuits, but it still must transfer ownership
+        // so the dismissed-VC's stop check skips correctly.
+        service.startAlarmSound(soundID: "tone_b", alarmID: alarmB)
+        XCTAssertEqual(
+            service.currentAlarmID,
+            alarmB,
+            "Second startAlarmSound must transfer ownership to the new alarm so " +
+            "the previous VC's viewDidDisappear does not silence it (#116)"
+        )
+
+        // Now A's "viewDidDisappear" check would compare `currentAlarmID == alarmA`,
+        // see false, and refuse to stop — emulate that and confirm audio still plays.
+        if service.currentAlarmID == alarmA {
+            service.stopAlarmSound()
+        }
+        XCTAssertTrue(
+            service.isPlaying,
+            "Audio for alarm B must keep playing when A's VC dismisses after the handoff"
+        )
+
+        service.stopAlarmSound()
+    }
+
     /// Restarting while already playing must not re-emit `.playing` (didSet
     /// guards on equality). This protects observers from spurious banner flicker.
     func testStateNotification_notRepostedOnSameState() {

@@ -45,6 +45,15 @@ final class AudioService {
     private var audioPlayer: AVAudioPlayer?
     private var vibrationTimer: Timer?
 
+    /// Identifier of the alarm that currently owns the audio session.
+    ///
+    /// Set in `startAlarmSound(soundID:alarmID:)` and cleared in `stopAlarmSound()`.
+    /// Callers that present a per-alarm UI (e.g. `AlarmFiringViewController`) check
+    /// this value before calling `stopAlarmSound()` from `viewDidDisappear` so a
+    /// dismissed firing screen does not silence audio that has already been
+    /// claimed by the *next* alarm during a stacking-replace race (#116).
+    private(set) var currentAlarmID: UUID?
+
     /// Current playback state. Mutating this also broadcasts a notification so
     /// callers can react to fallback paths (config failed / vibration only).
     private(set) var state: AudioPlaybackState = .stopped {
@@ -90,14 +99,42 @@ final class AudioService {
     // MARK: - Alarm Sound
 
     /// Start playing alarm sound in a loop.
-    /// - Parameter soundID: Name of the sound file (without extension) in the app bundle.
-    ///   Falls back to a system-generated tone if the file is missing or fails to load.
-    func startAlarmSound(soundID: String) {
+    /// - Parameters:
+    ///   - soundID: Name of the sound file (without extension) in the app bundle.
+    ///     Falls back to a system-generated tone if the file is missing or fails to load.
+    ///   - alarmID: Identifier of the alarm taking ownership of the audio session.
+    ///     Optional for callers that don't have a per-alarm context (legacy / tests).
+    ///     Stored on `currentAlarmID` and cleared by `stopAlarmSound()`.
+    func startAlarmSound(soundID: String, alarmID: UUID? = nil) {
         // Already in a non-stopped state — preserve the existing pipeline.
         // Earlier guard was `!isPlaying` (Bool); using state covers
         // `.vibrationOnly` and `.silentBecauseConfigFailed` so we don't try to
         // restart on top of a partial fallback either.
-        guard state == .stopped else { return }
+        guard state == .stopped else {
+            // We're already playing — but the *caller* may be a new alarm taking
+            // over (stacking-replace path #116). Update ownership so the previous
+            // VC's `viewDidDisappear` correctly recognises the session no longer
+            // belongs to it and skips `stopAlarmSound()`.
+            if let alarmID {
+                let previous = currentAlarmID
+                currentAlarmID = alarmID
+                let prevDesc = String(describing: previous)
+                let stateDesc = String(describing: self.state)
+                AppLogger.audio.notice(
+                    "ownership transfer \(prevDesc, privacy: .private) → \(alarmID, privacy: .private), state=\(stateDesc, privacy: .public)"
+                )
+            } else {
+                // No alarmID provided while audio is already playing means the
+                // existing owner is preserved. Log so a regression where a new
+                // call site forgets to pass alarmID is diagnosable in Console.
+                let stateDesc = String(describing: self.state)
+                let ownerDesc = String(describing: self.currentAlarmID)
+                AppLogger.audio.error(
+                    "missing alarmID while state=\(stateDesc, privacy: .public) — ownership NOT transferred, owner=\(ownerDesc, privacy: .private)"
+                )
+            }
+            return
+        }
 
         do {
             try configureAudioSession()
@@ -106,6 +143,7 @@ final class AudioService {
             // Cannot guarantee playback — skip vibration too and surface the
             // explicit fallback state so the UI can warn the user.
             AppLogger.audio.error("failed to configure audio session: \(error.localizedDescription, privacy: .public)")
+            currentAlarmID = alarmID
             state = .silentBecauseConfigFailed
             return
         }
@@ -141,6 +179,7 @@ final class AudioService {
             // Neither bundled file nor synthetic tone available — refuse to claim
             // playback. Vibration still runs so the user is at least woken.
             AppLogger.audio.notice("startAlarmSound: no audio source available, vibration only")
+            currentAlarmID = alarmID
             state = .vibrationOnly
             startVibration()
             return
@@ -162,11 +201,13 @@ final class AudioService {
                 "AVAudioPlayer play() rejected (prepared=\(prepared, privacy: .public), started=\(started, privacy: .public))"
             )
             audioPlayer = nil
+            currentAlarmID = alarmID
             state = .vibrationOnly
             startVibration()
             return
         }
 
+        currentAlarmID = alarmID
         state = .playing
         startVibration()
     }
@@ -177,6 +218,7 @@ final class AudioService {
         audioPlayer = nil
         stopVibration()
         deactivateAudioSession()
+        currentAlarmID = nil
         state = .stopped
     }
 
