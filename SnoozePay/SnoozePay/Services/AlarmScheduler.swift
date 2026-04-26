@@ -97,7 +97,7 @@ final class AlarmScheduler {
     func scheduleSnooze(for alarm: Alarm, snoozeCount: Int) {
         let content = makeContent(for: alarm, snoozeCount: snoozeCount)
 
-        let fireDate = Date().addingTimeInterval(TimeInterval(alarm.snoozeMinutes * 60))
+        let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
         var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
         components.second = 0
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
@@ -112,6 +112,13 @@ final class AlarmScheduler {
                 print("[AlarmScheduler] schedule failed: \(error)")
             }
         }
+    }
+
+    /// Pure factory for the snooze fire date — extracted so unit tests can pin the
+    /// arithmetic without touching UNUserNotificationCenter. Bug guard for mistaken
+    /// unit conversions (minutes vs seconds vs hours).
+    static func scheduledFireDate(now: Date, snoozeMinutes: Int) -> Date {
+        now.addingTimeInterval(TimeInterval(snoozeMinutes * 60))
     }
 
     // MARK: - Cancel
@@ -177,13 +184,15 @@ final class AlarmScheduler {
         return content
     }
 
-    private struct TriggerWithLabel {
+    struct TriggerWithLabel {
         let label: String
         let trigger: UNNotificationTrigger
     }
 
     /// Build triggers for all active repeat days, or a one-time trigger if no repeat days.
-    private func makeTriggers(for alarm: Alarm) -> [TriggerWithLabel] {
+    /// Exposed as `internal` so tests can pin the legacy 0=Mon → Calendar.weekday 1=Sun
+    /// mapping; an off-by-one here means "alarm on Saturday rings on Sunday".
+    func makeTriggers(for alarm: Alarm) -> [TriggerWithLabel] {
         let calendar = Calendar.current
         let timeComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
 
@@ -220,7 +229,7 @@ final class AlarmScheduler {
         "alarm_\(alarmID.uuidString)_"
     }
 
-    private func snoozeNotificationID(for alarmID: UUID) -> String {
+    func snoozeNotificationID(for alarmID: UUID) -> String {
         "snooze_\(alarmID.uuidString)"
     }
 
