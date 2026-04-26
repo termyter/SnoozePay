@@ -281,14 +281,44 @@ class CreateAlarmViewController: UIViewController {
     @objc private func dayButtonTapped(_ sender: UIButton) {
         let day = sender.tag
         viewModel.toggleDay(day)
-        updateDayButtons()
+        // Light haptic confirms the toggle without being intrusive — matches the
+        // tactile feel of native iOS segmented controls.
+        UISelectionFeedbackGenerator().selectionChanged()
+        UIView.animate(
+            withDuration: 0.18,
+            delay: 0,
+            options: [.curveEaseOut, .allowUserInteraction],
+            animations: { [weak self] in
+                self?.applyDayButtonStyle(sender, isSelected: self?.viewModel.repeatDays.contains(day) ?? false)
+            }
+        )
+        // Other buttons (none should change state, but keeps the visual model
+        // single-source-of-truth in case toggleDay ever mutates more than one).
+        updateDayButtons(except: sender)
     }
 
-    private func updateDayButtons() {
-        for (index, button) in dayButtons.enumerated() {
+    private func updateDayButtons(except skip: UIButton? = nil) {
+        for (index, button) in dayButtons.enumerated() where button !== skip {
             let isSelected = viewModel.repeatDays.contains(index)
-            button.backgroundColor = isSelected ? AppColors.accentBlue : .secondarySystemBackground
-            button.setTitleColor(isSelected ? .white : .label, for: .normal)
+            applyDayButtonStyle(button, isSelected: isSelected)
+        }
+    }
+
+    /// Visual treatment for a single weekday pill. Selected — filled accent with
+    /// white text. Unselected — clear fill with a hairline border that adapts to
+    /// dark mode via `UIColor.separator`. Centralised so toggle-tap animation and
+    /// initial render stay in sync.
+    private func applyDayButtonStyle(_ button: UIButton, isSelected: Bool) {
+        if isSelected {
+            button.backgroundColor = AppColors.accentBlue
+            button.setTitleColor(.white, for: .normal)
+            button.layer.borderWidth = 0
+            button.layer.borderColor = UIColor.clear.cgColor
+        } else {
+            button.backgroundColor = .clear
+            button.setTitleColor(AppColors.textSecondary, for: .normal)
+            button.layer.borderWidth = 1
+            button.layer.borderColor = UIColor.separator.cgColor
         }
     }
 }
@@ -439,25 +469,27 @@ extension CreateAlarmViewController: UITableViewDataSource {
 
     // MARK: - Day picker helper
 
+    /// Builds the weekday picker row: 7 toggleable pills laid out edge-to-edge
+    /// inside the cell. The cell itself already supplies the grouped-card
+    /// background (insetGrouped table view + `secondarySystemBackground` cell
+    /// background), so this stack only needs internal padding.
     private func makeDayPicker() -> UIStackView {
         let stack = UIStackView()
         stack.axis = .horizontal
         stack.distribution = .fillEqually
-        stack.spacing = 4
+        stack.spacing = AppSpacing.sm
 
         dayButtons = []
         for (index, name) in dayNames.enumerated() {
             let button = UIButton(type: .system)
             button.setTitle(name, for: .normal)
             button.tag = index
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            button.layer.cornerRadius = 8
+            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+            button.layer.cornerRadius = AppRadius.sm
             button.layer.masksToBounds = true
             button.addTarget(self, action: #selector(dayButtonTapped(_:)), for: .touchUpInside)
 
-            let isSelected = viewModel.repeatDays.contains(index)
-            button.backgroundColor = isSelected ? AppColors.accentBlue : .tertiarySystemBackground
-            button.setTitleColor(isSelected ? .white : .label, for: .normal)
+            applyDayButtonStyle(button, isSelected: viewModel.repeatDays.contains(index))
 
             dayButtons.append(button)
             stack.addArrangedSubview(button)
