@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Manages the user's local balance stored in UserDefaults.
 /// All operations are synchronous and offline-first.

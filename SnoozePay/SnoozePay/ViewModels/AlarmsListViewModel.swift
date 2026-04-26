@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// ViewModel for the alarms list screen.
 /// Manages the alarm collection, balance display, and toggle state.

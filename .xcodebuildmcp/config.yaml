@@ -1,0 +1,9 @@
+schemaVersion: 1
+sessionDefaults:
+  projectPath: /Users/ivanemelanov/Xcode/SnoozePay/SnoozePay/SnoozePay.xcodeproj
+  scheme: SnoozePay
+  configuration: Debug
+  simulatorId: 84737131-F188-4841-A4CE-38BC0DFD791A
+  bundleId: Ivan-Emelyanov.SnoozePay
+  simulatorName: iPhone 17
+  simulatorPlatform: iOS Simulator

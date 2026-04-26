@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import os
 
 /// Handles scheduling and cancelling alarms.
 /// Uses UNUserNotificationCenter (iOS 18+) as the scheduling backend.

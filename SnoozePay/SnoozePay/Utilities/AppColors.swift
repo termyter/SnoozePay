@@ -33,7 +33,9 @@ enum AppColors {
     static let alarmFiringSnooze = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1) // #E8A838
 }
 
-/// App-wide spacing constants
+/// App-wide spacing constants. T-shirt sizes (`xs`...`xxl`) are the underlying
+/// tokens; the semantic aliases below are what new code should reach for so a
+/// single design-system bump (e.g. screen inset 16 → 20) only touches one line.
 enum AppSpacing {
     static let xs: CGFloat = 4
     static let sm: CGFloat = 8
@@ -41,6 +43,20 @@ enum AppSpacing {
     static let lg: CGFloat = 16
     static let xl: CGFloat = 24
     static let xxl: CGFloat = 32
+
+    /// Standard horizontal inset for cards / banners against the screen edge.
+    static let screenInset: CGFloat = lg
+    /// Vertical gap between logical sections (e.g. between the balance card and
+    /// the alarms list).
+    static let sectionGap: CGFloat = xl
+    /// Vertical gap between rows / items inside the same section.
+    static let itemGap: CGFloat = md
+    /// Horizontal gap between an icon and its inline label.
+    static let inlineGap: CGFloat = sm
+    /// Vertical padding inside a card (top / bottom).
+    static let cardVerticalPadding: CGFloat = md
+    /// Horizontal padding inside a card (leading / trailing of card contents).
+    static let cardHorizontalPadding: CGFloat = lg
 }
 
 /// App-wide corner radius constants
@@ -49,4 +65,21 @@ enum AppRadius {
     static let md: CGFloat = 12
     static let lg: CGFloat = 16
     static let xl: CGFloat = 20
+
+    /// Canonical card corner radius — every standalone surface should round to
+    /// this value so cards on different screens read as the same primitive.
+    static let card: CGFloat = md
+}
+
+/// Typography tokens. Section headers had three slightly-different recipes
+/// across `SettingsVC` / `CreateAlarmVC` / `StatisticsVC`; route every site
+/// through these so future copy / weight changes happen in one place.
+enum AppTypography {
+    /// Font for table-view section headers and any "ВЕРХНИЙ ТЕКСТ"-style
+    /// uppercase label.
+    static let sectionHeader: UIFont = .preferredFont(forTextStyle: .footnote)
+    static let sectionHeaderColor: UIColor = .secondaryLabel
+    /// Letter-spacing applied to uppercase headers (matches iOS system grouped
+    /// table-view header tracking).
+    static let sectionHeaderKerning: CGFloat = 0.5
 }
