@@ -227,7 +227,9 @@ class AlarmsListViewController: UIViewController {
 
         viewModel.onBalanceUpdated = { [weak self] _ in
             guard let self else { return }
-            self.balanceAmountLabel.text = "₽ \(self.viewModel.formattedBalance)"
+            // `formattedBalance` already includes the "₽" suffix (e.g. "0 ₽").
+            // Adding a "₽ " prefix here previously rendered "₽ 0 ₽" (issue #55).
+            self.balanceAmountLabel.text = self.viewModel.formattedBalance
         }
     }
 

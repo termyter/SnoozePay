@@ -98,6 +98,35 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertTrue(vm.formattedBalance.contains("₽"))
     }
 
+    /// Regression for issue #55: the balance banner previously showed "₽ 0 ₽" because
+    /// AlarmsListViewController prepended "₽ " to a string that already had a " ₽" suffix.
+    /// `formattedBalance` is the single source of truth for the banner — it MUST contain
+    /// exactly one ruble glyph, and the controller MUST render it verbatim (no extra prefix).
+    func testFormattedBalance_containsExactlyOneRubleSign() {
+        let vm = makeViewModel()
+        let occurrences = vm.formattedBalance.filter { $0 == "₽" }.count
+        XCTAssertEqual(
+            occurrences, 1,
+            "formattedBalance must contain exactly one ₽ symbol — saw \"\(vm.formattedBalance)\""
+        )
+    }
+
+    /// Sibling assertion to `testFormattedBalance_containsExactlyOneRubleSign`:
+    /// the formatted string must end with the ruble suffix (Russian convention is
+    /// "X ₽", not "₽X"). A regression toward prefix style would silently break the
+    /// banner layout; encode the convention explicitly here.
+    func testFormattedBalance_endsWithRubleSuffix() {
+        let vm = makeViewModel()
+        XCTAssertTrue(
+            vm.formattedBalance.hasSuffix("₽"),
+            "formattedBalance must end with ₽ (suffix style); got \"\(vm.formattedBalance)\""
+        )
+        XCTAssertFalse(
+            vm.formattedBalance.hasPrefix("₽"),
+            "formattedBalance must NOT start with ₽; got \"\(vm.formattedBalance)\""
+        )
+    }
+
     // MARK: - toggleAlarm(at:enabled:)
 
     func testToggleAlarm_updatesInMemoryState() {
