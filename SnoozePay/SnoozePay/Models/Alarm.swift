@@ -69,6 +69,32 @@ struct Alarm: Identifiable, Equatable, Codable {
         let multiplier = pow(2.0, Double(count - 1))
         return penaltyAmount * multiplier
     }
+
+    // MARK: - Typed views (phase 1 of #31)
+    //
+    // The fields below are the typed-domain projections of the underlying
+    // primitive storage. They never mutate state — they're read-only views.
+    // Phase 2 will migrate the storage itself; until then, callers can adopt
+    // the typed view incrementally without invalidating persisted JSON.
+
+    /// Wall-clock time-of-day projection of `time`. `nil` only if the
+    /// calendar refuses to extract hour/minute, which doesn't happen for
+    /// real `Date` values + `Calendar.current`.
+    var timeOfDay: TimeOfDay? {
+        TimeOfDay(from: time)
+    }
+
+    /// Typed view over `repeatDays`. Out-of-range integers in legacy storage
+    /// are silently skipped (existing data may contain them).
+    var weekdays: Set<Weekday> {
+        Set<Weekday>(legacyMondayFirstIndices: repeatDays)
+    }
+
+    /// Typed view of `penaltyAmount`. `nil` if the legacy `Double` is
+    /// negative or non-finite, which a typed setter would have refused.
+    var penaltyMoney: Money? {
+        Money(penaltyAmount)
+    }
 }
 
 // MARK: - Safe array subscript
