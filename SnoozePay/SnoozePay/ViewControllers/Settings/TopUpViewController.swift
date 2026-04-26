@@ -8,19 +8,26 @@ class TopUpViewController: UIViewController {
 
     /// Local copy ("~N откладываний") and styling per row. Price text comes from
     /// StoreKit's `Product.displayPrice` (#75) — we no longer hardcode amounts here.
-    /// Order must match the ascending-price order produced by `StoreKitService.loadProducts()`.
+    /// Each row binds to its `Product` by `productID`; if App Store Connect ever
+    /// reorders, drops, or A/B-prices a product, the subtitle stays paired with
+    /// the right price instead of silently desyncing.
     private struct Package {
+        let productID: String
         let subtitle: String
         let isPopular: Bool
     }
 
     private let packages: [Package] = [
-        Package(subtitle: "~1 откладывание", isPopular: false),
-        Package(subtitle: "~3 откладывания", isPopular: true),
-        Package(subtitle: "~6 откладываний", isPopular: false),
-        Package(subtitle: "~10 откладываний", isPopular: false),
-        Package(subtitle: "~20 откладываний", isPopular: false)
+        Package(productID: "com.snooze_pay.balance.49", subtitle: "~1 откладывание", isPopular: false),
+        Package(productID: "com.snooze_pay.balance.149", subtitle: "~3 откладывания", isPopular: true),
+        Package(productID: "com.snooze_pay.balance.299", subtitle: "~6 откладываний", isPopular: false),
+        Package(productID: "com.snooze_pay.balance.499", subtitle: "~10 откладываний", isPopular: false),
+        Package(productID: "com.snooze_pay.balance.999", subtitle: "~20 откладываний", isPopular: false)
     ]
+
+    /// `true` once `loadProducts()` has finished at least once (regardless of success).
+    /// Lets the data source distinguish "still loading" from "load failed / product absent".
+    private var didFinishInitialLoad = false
 
     // MARK: - UI
 
@@ -158,9 +165,10 @@ class TopUpViewController: UIViewController {
     }
 
     private func loadStoreProducts() {
-        Task {
-            await storeService.loadProducts()
-            tableView.reloadData()
+        Task { [weak self] in
+            await self?.storeService.loadProducts()
+            self?.didFinishInitialLoad = true
+            self?.tableView.reloadData()
         }
     }
 
@@ -171,8 +179,8 @@ class TopUpViewController: UIViewController {
     }
 
     private func purchaseProduct(at index: Int) {
-        let products = storeService.products
-        guard index < products.count else {
+        guard index < packages.count,
+              let product = product(for: packages[index]) else {
             let alert = UIAlertController(
                 title: "Недоступно",
                 message: "Магазин временно недоступен. Попробуйте позже.",
@@ -182,8 +190,6 @@ class TopUpViewController: UIViewController {
             present(alert, animated: true)
             return
         }
-
-        let product = products[index]
 
         // Subscribe per-purchase. Removed at the end of the Task so the observer
         // does not outlive the purchase attempt that registered it. NotificationCenter
@@ -286,15 +292,18 @@ extension TopUpViewController: UITableViewDataSource {
             }
 
             let pkg = packages[indexPath.row]
-            let products = storeService.products
-            let isLoading = indexPath.row < products.count && products[indexPath.row].id == loadingProductID
+            let matchedProduct = product(for: pkg)
+            let isLoading = matchedProduct?.id == loadingProductID
             // Prefer StoreKit's localized displayPrice (respects user's storefront/currency)
             // over a hardcoded "₽<int>" string. The hardcoded form is wrong for non-RU
             // storefronts and lies about what Apple Pay will actually charge (see #75).
-            // Fall back to the placeholder amount only while products are still loading.
+            // Three states: loading ("…"), loaded with product (displayPrice), loaded
+            // without product ("Недоступно") — never silently mask a load failure.
             let priceText: String
-            if indexPath.row < products.count {
-                priceText = products[indexPath.row].displayPrice
+            if let matchedProduct {
+                priceText = matchedProduct.displayPrice
+            } else if didFinishInitialLoad {
+                priceText = "Недоступно"
             } else {
                 priceText = "…"
             }
@@ -304,8 +313,19 @@ extension TopUpViewController: UITableViewDataSource {
                 isPopular: pkg.isPopular,
                 isLoading: isLoading
             )
+            // Disable selection on rows whose product never loaded — prevents the
+            // "tap shows alert that contradicts the visible price text" path.
+            cell.selectionStyle = matchedProduct == nil && didFinishInitialLoad ? .none : .default
+            cell.isUserInteractionEnabled = !(matchedProduct == nil && didFinishInitialLoad)
             return cell
         }
+    }
+
+    /// Map a package row to its `Product` by `productID` (not by array index).
+    /// Returns `nil` if StoreKit hasn't loaded that product (network down,
+    /// pulled from sale, etc) — caller decides UI treatment.
+    private func product(for package: Package) -> Product? {
+        storeService.products.first { $0.id == package.productID }
     }
 }
 
