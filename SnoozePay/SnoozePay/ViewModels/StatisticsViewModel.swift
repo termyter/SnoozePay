@@ -69,6 +69,12 @@ final class StatisticsViewModel {
         // instead of a deceptive zero-state — without this the user sees
         // "₽0 / 0 откладываний" and assumes the app reset, which is much
         // worse than a "не удалось загрузить" message (issue #72).
+        //
+        // Streak is computed from the same in-memory transaction list rather
+        // than re-reading via `currentStreak()` — that earlier path silently
+        // returned 0 on a transient decode glitch and contradicted the
+        // banner we surface here (issue #117). Sharing one read keeps the
+        // banner and the streak number consistent.
         do {
             let allTransactions = try transactionRepository.fetchAllChecked()
             if period == .allTime {
@@ -77,16 +83,19 @@ final class StatisticsViewModel {
                 charges = allTransactions
                     .filter { $0.type == .charge && $0.createdAt >= since }
             }
+            streak = transactionRepository.currentStreak(from: allTransactions)
         } catch let error as TransactionRepository.RepositoryError {
             charges = []
+            streak = 0
             onLoadError?(error)
         } catch {
             charges = []
+            streak = 0
         }
 
-        streak = transactionRepository.currentStreak()
         // Bump persisted best streak only forward — never reset on streak = 0,
-        // so the user's all-time record survives a slip-up.
+        // so the user's all-time record survives a slip-up. Skipped on a
+        // decode failure because `streak == 0` is a fallback, not a truth.
         if streak > defaults.integer(forKey: Self.bestStreakKey) {
             defaults.set(streak, forKey: Self.bestStreakKey)
         }

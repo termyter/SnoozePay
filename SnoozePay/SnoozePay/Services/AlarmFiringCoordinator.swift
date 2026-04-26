@@ -74,7 +74,21 @@ final class AlarmFiringCoordinator {
             return .invalidPayload
         }
 
-        guard let alarm = alarmRepository.fetch(id: payload.alarmID) else {
+        let alarm: Alarm?
+        do {
+            // Use the checked variant so a corrupt store surfaces in logs
+            // rather than collapsing into the "alarmNotFound" outcome —
+            // otherwise a transient decode glitch silently turns into
+            // "snooze didn't work" with no diagnostic trail (issue #117).
+            alarm = try alarmRepository.fetchChecked(id: payload.alarmID)
+        } catch {
+            let errorDesc = String(describing: error)
+            AppLogger.coordinator.error(
+                "snooze: fetch failed for \(payload.alarmID, privacy: .private): \(errorDesc, privacy: .public)"
+            )
+            return .alarmNotFound
+        }
+        guard let alarm else {
             AppLogger.coordinator.error("snooze: alarm \(payload.alarmID, privacy: .private) not in repository")
             return .alarmNotFound
         }

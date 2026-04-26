@@ -87,6 +87,16 @@ final class AlarmRepository {
         queue.sync { (try? readAll())?.first { $0.id == id } }
     }
 
+    /// Single-alarm read variant that surfaces decode failures instead of
+    /// swallowing them. Callers on hot paths (AppDelegate presenting the
+    /// firing screen, AlarmFiringCoordinator routing snooze) use this so a
+    /// corrupt blob is logged + visible to the user instead of being
+    /// indistinguishable from "alarm doesn't exist" (issue #117). Returns
+    /// `nil` when the id is genuinely absent — only throws on decode failure.
+    func fetchChecked(id: UUID) throws -> Alarm? {
+        try queue.sync { try readAll().first { $0.id == id } }
+    }
+
     // MARK: - Mutate
 
     /// Saves (upserts) an alarm.

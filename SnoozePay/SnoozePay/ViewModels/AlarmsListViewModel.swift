@@ -106,7 +106,22 @@ final class AlarmsListViewModel {
             // locked, surface the lock so the user knows toggles aren't
             // landing rather than blaming the toggle for "not working".
             AppLogger.ui.notice("setEnabled returned false; rolling back UI for id=\(id, privacy: .private)")
-            alarms = alarmRepository.fetchAll()
+            // Use the checked variant on the rollback read so a decode failure
+            // surfaces directly instead of returning [] and forcing the user
+            // to infer corruption from the toggle silently snapping back
+            // (issue #117). The persistBlocked branch below remains a separate
+            // case because `setEnabled` can return false with a healthy store
+            // (alarm deleted from another path, #35).
+            do {
+                alarms = try alarmRepository.fetchAllChecked()
+            } catch let error as AlarmRepository.RepositoryError {
+                alarms = []
+                onLoadError?(error)
+                onAlarmsUpdated?()
+                return
+            } catch {
+                alarms = []
+            }
             if alarmRepository.lastLoadFailed {
                 onLoadError?(AlarmRepository.RepositoryError.persistBlocked)
             }

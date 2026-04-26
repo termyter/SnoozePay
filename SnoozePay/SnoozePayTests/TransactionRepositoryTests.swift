@@ -306,6 +306,43 @@ final class TransactionRepositoryTests: XCTestCase {
         XCTAssertEqual(repo.currentStreak(), 0)
     }
 
+    // MARK: - Issue #117: caller-supplied streak variant
+
+    /// `currentStreak(from:)` lets callers that already paid the cost of a
+    /// checked read share the result so a transient decode glitch can't
+    /// produce a banner + a contradicting "0 days" elsewhere on the same
+    /// screen (issue #117).
+    func testCurrentStreakFromTransactions_matchesInternalImplementation() {
+        repo.record(charge(amount: 50, daysAgo: 3))
+        repo.record(topup(amount: 500, daysAgo: 0))
+
+        let allTransactions = repo.fetchAll()
+
+        XCTAssertEqual(repo.currentStreak(from: allTransactions), repo.currentStreak(),
+                       "Pre-loaded variant must match the internal-read variant on identical data")
+        XCTAssertEqual(repo.currentStreak(from: allTransactions), 3)
+    }
+
+    func testCurrentStreakFromTransactions_emptyArray_returnsZero() {
+        XCTAssertEqual(repo.currentStreak(from: []), 0)
+    }
+
+    /// Even if the persisted store is corrupt, passing a healthy in-memory
+    /// snapshot to `currentStreak(from:)` must yield the right answer —
+    /// proves the pure variant doesn't secretly re-read.
+    func testCurrentStreakFromTransactions_ignoresPersistedStore() {
+        testDefaults.set(Data("garbage".utf8), forKey: "stored_transactions")
+
+        let calendar = Calendar.current
+        let snapshot = [
+            Transaction(type: .charge, amount: 50,
+                        createdAt: calendar.date(byAdding: .day, value: -2, to: Date())!),
+            Transaction(type: .topup, amount: 100, createdAt: Date())
+        ]
+        XCTAssertEqual(repo.currentStreak(from: snapshot), 2,
+                       "Pre-loaded variant must compute against the supplied list, not re-read storage")
+    }
+
     // MARK: - Concurrency
 
     func testConcurrentRecord_allTransactionsLanded() {

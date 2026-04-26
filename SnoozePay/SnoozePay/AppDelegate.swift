@@ -232,7 +232,23 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     // MARK: - Helpers
 
     private func presentAlarmFiringScreen(for payload: AlarmNotificationPayload) {
-        guard let alarm = AlarmRepository.shared.fetch(id: payload.alarmID) else {
+        let alarm: Alarm?
+        do {
+            // Use the checked variant so a corrupt UserDefaults blob surfaces
+            // a logged decode error instead of being indistinguishable from
+            // "alarm doesn't exist" — without this we silently bail on a
+            // recoverable glitch and the user wonders why the alarm fired
+            // but never showed a screen (issue #117).
+            alarm = try AlarmRepository.shared.fetchChecked(id: payload.alarmID)
+        } catch {
+            let errorDesc = String(describing: error)
+            AppLogger.appDelegate.error(
+                "alarm fetch failed for \(payload.alarmID, privacy: .private): \(errorDesc, privacy: .public)"
+            )
+            AudioService.shared.stopAlarmSound()
+            return
+        }
+        guard let alarm else {
             // Audio may already be playing from willPresent — stop it so the user
             // is not stuck with a silent-screen + sounding alarm we can't dismiss.
             AppLogger.appDelegate.error(

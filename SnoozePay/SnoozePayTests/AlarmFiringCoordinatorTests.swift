@@ -130,4 +130,28 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         XCTAssertEqual(outcome, .scheduled(newSnoozeCount: 1, charged: 75))
         XCTAssertEqual(balanceService.balance, 0)
     }
+
+    // MARK: - Issue #117: corrupted store must not collapse into alarmNotFound silently
+
+    /// When the alarm store is corrupt, `handleSnooze` must still report
+    /// `.alarmNotFound` (callers can't do anything else from a notification
+    /// action), but the path must run through the throwing fetch so the
+    /// decode error gets logged and the persistence lock arms — without
+    /// this the snooze silently drops with no diagnostic trail (issue #117).
+    func testHandleSnooze_corruptedAlarmStore_returnsAlarmNotFoundAndArmsLock() {
+        // Save an alarm so `valid UUID + missing key` isn't the failure mode,
+        // then corrupt the persistence store under the coordinator's feet.
+        let alarm = makeAlarm()
+        testDefaults.set(Data("not json".utf8), forKey: "stored_alarms")
+
+        let outcome = coordinator.handleSnooze(userInfo: [
+            "alarmID": alarm.id.uuidString,
+            "snoozeCount": 0
+        ])
+
+        XCTAssertEqual(outcome, .alarmNotFound,
+                       "From a notification action there's no recovery UI, so collapse to alarmNotFound")
+        XCTAssertTrue(alarmRepo.lastLoadFailed,
+                      "The checked fetch must arm the persistence lock so a follow-up save can't clobber the corrupt blob")
+    }
 }
