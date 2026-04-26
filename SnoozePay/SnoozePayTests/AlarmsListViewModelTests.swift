@@ -127,6 +127,31 @@ final class AlarmsListViewModelTests: XCTestCase {
 
     // MARK: - toggleAlarm(id:enabled:)
 
+    /// Regression for issue #35: when the alarm exists in the VM's in-memory snapshot
+    /// but has been deleted from the repository (e.g. via another tab/path), `setEnabled`
+    /// must report failure and the VM must resync from the repo + trigger a re-bind so
+    /// the optimistic switch flip in the cell rolls back.
+    func testToggleAlarm_repoMissingTriggersResyncAndRebind() {
+        let alarm = Alarm(penaltyAmount: 50, enabled: true)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarms.count, 1)
+
+        // Simulate a parallel delete that bypassed the VM (the VM still has the
+        // alarm in its in-memory snapshot, but the repository no longer does).
+        repo.delete(id: alarm.id)
+
+        var rebindFired = false
+        vm.onAlarmsUpdated = { rebindFired = true }
+
+        vm.toggleAlarm(id: alarm.id, enabled: false)
+
+        XCTAssertTrue(rebindFired, "VM must trigger a UI re-bind so the cell switch rolls back")
+        XCTAssertTrue(vm.alarms.isEmpty, "VM must resync from the repository after a missing-id failure")
+    }
+
     /// Regression for tag-based identity bug: when middle alarm is removed and the
     /// caller toggles the *first* alarm, only that alarm — resolved by id — must flip,
     /// not whichever alarm currently lives at the captured row index.

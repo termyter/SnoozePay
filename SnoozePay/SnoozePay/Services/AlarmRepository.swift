@@ -67,7 +67,13 @@ final class AlarmRepository {
         AlarmScheduler.shared.cancel(id)
     }
 
-    func setEnabled(_ enabled: Bool, id: UUID) {
+    /// Toggles `enabled` on the alarm with the given id.
+    /// - Returns: `true` if the alarm existed and was updated; `false` if no alarm
+    ///   matched the id. Callers (e.g. `AlarmsListViewModel`) rely on the boolean
+    ///   to roll back optimistic UI flips when the underlying alarm has been
+    ///   deleted from another path (issue #35).
+    @discardableResult
+    func setEnabled(_ enabled: Bool, id: UUID) -> Bool {
         let updated: Alarm? = queue.sync {
             var alarms = readAll()
             guard let idx = alarms.firstIndex(where: { $0.id == id }) else { return nil }
@@ -76,11 +82,18 @@ final class AlarmRepository {
             return alarms[idx]
         }
 
-        guard let alarm = updated else { return }
+        guard let alarm = updated else {
+            os_log(
+                "setEnabled: no alarm with id %{public}@",
+                log: Self.log, type: .info, id.uuidString
+            )
+            return false
+        }
         AlarmScheduler.shared.cancel(alarm.id)
         if alarm.enabled {
             AlarmScheduler.shared.schedule(alarm)
         }
+        return true
     }
 
     // MARK: - Private (must be called inside queue.sync)
