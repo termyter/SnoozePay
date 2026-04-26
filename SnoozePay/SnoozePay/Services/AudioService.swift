@@ -116,7 +116,22 @@ final class AudioService {
             // VC's `viewDidDisappear` correctly recognises the session no longer
             // belongs to it and skips `stopAlarmSound()`.
             if let alarmID {
+                let previous = currentAlarmID
                 currentAlarmID = alarmID
+                let prevDesc = String(describing: previous)
+                let stateDesc = String(describing: self.state)
+                AppLogger.audio.notice(
+                    "ownership transfer \(prevDesc, privacy: .private) → \(alarmID, privacy: .private), state=\(stateDesc, privacy: .public)"
+                )
+            } else {
+                // No alarmID provided while audio is already playing means the
+                // existing owner is preserved. Log so a regression where a new
+                // call site forgets to pass alarmID is diagnosable in Console.
+                let stateDesc = String(describing: self.state)
+                let ownerDesc = String(describing: self.currentAlarmID)
+                AppLogger.audio.error(
+                    "missing alarmID while state=\(stateDesc, privacy: .public) — ownership NOT transferred, owner=\(ownerDesc, privacy: .private)"
+                )
             }
             return
         }

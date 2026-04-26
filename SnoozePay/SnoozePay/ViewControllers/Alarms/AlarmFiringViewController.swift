@@ -1,4 +1,5 @@
 import UIKit
+import os
 
 /// Fullscreen alarm firing screen.
 /// Dark background with decorative purple gradient circles,
@@ -206,6 +207,15 @@ class AlarmFiringViewController: UIViewController {
         // through it (#116).
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
+        } else {
+            // Mismatch is expected during a stacking handoff — log the skip so a
+            // future regression where the right alarm's stop is also dropped can
+            // be diagnosed from Console without re-running the race manually.
+            let ownerDesc = String(describing: AudioService.shared.currentAlarmID)
+            let ours = self.viewModel.alarm.id
+            AppLogger.audio.notice(
+                "viewDidDisappear: skip stop — owner=\(ownerDesc, privacy: .private), ours=\(ours, privacy: .private)"
+            )
         }
     }
 
