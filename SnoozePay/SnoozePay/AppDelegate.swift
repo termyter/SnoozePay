@@ -5,6 +5,7 @@
 
 import UIKit
 import UserNotifications
+import os
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {

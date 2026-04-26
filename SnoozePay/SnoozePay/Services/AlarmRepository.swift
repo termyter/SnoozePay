@@ -1,5 +1,5 @@
 import Foundation
-import os.log
+import os
 
 /// Persists alarms in UserDefaults with a serial queue protecting all reads and writes.
 /// Without serialization, concurrent callers (UI edits + notification action handlers)

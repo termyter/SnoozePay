@@ -1,6 +1,7 @@
 import AVFoundation
 import AudioToolbox
 import Foundation
+import os
 
 /// Playback state of the alarm audio pipeline.
 ///

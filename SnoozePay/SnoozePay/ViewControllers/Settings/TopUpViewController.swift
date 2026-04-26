@@ -1,5 +1,6 @@
 import UIKit
 import StoreKit
+import os
 
 /// Top-up balance screen with balance card, 5 IAP packages, and restore button.
 class TopUpViewController: UIViewController {

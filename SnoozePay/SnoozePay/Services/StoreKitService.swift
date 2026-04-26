@@ -1,5 +1,6 @@
 import StoreKit
 import Foundation
+import os
 
 /// Manages consumable In-App Purchases using StoreKit 2.
 /// Five fixed packages: 49, 149, 299, 499, 999 RUB.
