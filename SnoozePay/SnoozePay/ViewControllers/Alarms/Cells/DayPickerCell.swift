@@ -15,7 +15,7 @@ final class DayPickerCell: UITableViewCell {
         let stack = UIStackView()
         stack.axis = .horizontal
         stack.distribution = .fillEqually
-        stack.spacing = 4
+        stack.spacing = AppSpacing.sm
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
@@ -50,8 +50,8 @@ final class DayPickerCell: UITableViewCell {
             let button = UIButton(type: .system)
             button.setTitle(Self.dayNames[index], for: .normal)
             button.tag = index
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            button.layer.cornerRadius = 8
+            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+            button.layer.cornerRadius = AppRadius.sm
             button.layer.masksToBounds = true
             button.addTarget(self, action: #selector(dayTapped(_:)), for: .touchUpInside)
             dayButtons.append(button)
@@ -78,15 +78,33 @@ final class DayPickerCell: UITableViewCell {
     func configure(selectedDays: [Int]) {
         let selected = Set(selectedDays)
         for (index, button) in dayButtons.enumerated() {
-            let isSelected = selected.contains(index)
-            button.backgroundColor = isSelected ? AppColors.accentBlue : .tertiarySystemBackground
-            button.setTitleColor(isSelected ? .white : .label, for: .normal)
+            applyStyle(button, isSelected: selected.contains(index))
         }
+    }
+
+    /// Selected — filled accent + white text, no border. Unselected — clear fill +
+    /// hairline `UIColor.separator` border + secondary label colour. Borders give
+    /// each weekday pill a visible affordance in light mode where a flat
+    /// `tertiarySystemBackground` was reading as one undifferentiated grey block.
+    private func applyStyle(_ button: UIButton, isSelected: Bool) {
+        if isSelected {
+            button.backgroundColor = AppColors.accentBlue
+            button.setTitleColor(.white, for: .normal)
+            button.layer.borderWidth = 0
+            button.layer.borderColor = UIColor.clear.cgColor
+        } else {
+            button.backgroundColor = .clear
+            button.setTitleColor(AppColors.textSecondary, for: .normal)
+            button.layer.borderWidth = 1
+            button.layer.borderColor = UIColor.separator.cgColor
+        }
+        button.accessibilityValue = isSelected ? "выбрано" : "не выбрано"
     }
 
     // MARK: - Actions
 
     @objc private func dayTapped(_ sender: UIButton) {
+        UISelectionFeedbackGenerator().selectionChanged()
         onDayToggled?(sender.tag)
     }
 }
