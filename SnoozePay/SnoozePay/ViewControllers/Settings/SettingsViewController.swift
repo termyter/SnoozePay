@@ -3,15 +3,9 @@ import UIKit
 /// Settings screen matching Figma design: account, theme, legal, contact sections.
 class SettingsViewController: UIViewController {
 
-    // MARK: - Data
+    // MARK: - Dependencies
 
-    private let defaults = UserDefaults.standard
-    private let themeKey = "preferred_theme"
-
-    private var preferredTheme: String {
-        get { defaults.string(forKey: themeKey) ?? "system" }
-        set { defaults.set(newValue, forKey: themeKey) }
-    }
+    private let themeService: ThemeService
 
     // MARK: - UI
 
@@ -21,15 +15,20 @@ class SettingsViewController: UIViewController {
         return tv
     }()
 
-    private let themeSegment: UISegmentedControl = {
-        let sc = UISegmentedControl(items: ["Системная", "Светлая", "Тёмная"])
-        sc.selectedSegmentTintColor = AppColors.accentBlue
-        return sc
-    }()
-
     /// Held weakly so the cell may be recycled (and the label deallocated)
     /// without leaving the observer with a dangling reference.
     private weak var balanceAmountLabel: UILabel?
+
+    // MARK: - Init
+
+    init(themeService: ThemeService = .shared) {
+        self.themeService = themeService
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     /// NotificationCenter token for balance-change updates. Removed in `deinit`.
     private var balanceObserver: NSObjectProtocol?
@@ -89,6 +88,7 @@ class SettingsViewController: UIViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+        tableView.register(ThemeSegmentCell.self, forCellReuseIdentifier: ThemeSegmentCell.reuseID)
 
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -96,48 +96,27 @@ class SettingsViewController: UIViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-
-        // Map stored preference to segment index: 0=system, 1=light, 2=dark
-        switch preferredTheme {
-        case "light": themeSegment.selectedSegmentIndex = 1
-        case "dark": themeSegment.selectedSegmentIndex = 2
-        default: themeSegment.selectedSegmentIndex = 0
-        }
-        themeSegment.addTarget(self, action: #selector(themeSegmentChanged), for: .valueChanged)
     }
 
     // MARK: - Theme
 
-    @objc private func themeSegmentChanged() {
-        let values = ["system", "light", "dark"]
-        let index = themeSegment.selectedSegmentIndex
-        preferredTheme = values[index]
-
-        let styles: [UIUserInterfaceStyle] = [.unspecified, .light, .dark]
-        applyTheme(styles[index])
-    }
-
-    private func applyTheme(_ style: UIUserInterfaceStyle) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-        for window in windowScene.windows {
-            window.overrideUserInterfaceStyle = style
+    /// Map stored preference to segment index: 0=system, 1=light, 2=dark.
+    private var themeSegmentIndex: Int {
+        switch themeService.current {
+        case .system: return 0
+        case .light: return 1
+        case .dark: return 2
         }
     }
 
-    /// Restore theme from saved preference on app launch
-    static func restoreSavedTheme() {
-        let saved = UserDefaults.standard.string(forKey: "preferred_theme") ?? "system"
-        let style: UIUserInterfaceStyle
-        switch saved {
-        case "dark": style = .dark
-        case "light": style = .light
-        default: style = .unspecified
+    private func handleThemeSegmentChange(_ index: Int) {
+        let theme: ThemeService.Theme
+        switch index {
+        case 1: theme = .light
+        case 2: theme = .dark
+        default: theme = .system
         }
-
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-        for window in windowScene.windows {
-            window.overrideUserInterfaceStyle = style
-        }
+        themeService.setTheme(theme)
     }
 }
 
@@ -213,22 +192,18 @@ extension SettingsViewController: UITableViewDataSource {
             }
 
         case .appearance:
-            let cell = makeIconRow(
-                systemName: "moon.fill",
-                iconColor: UIColor.systemIndigo,
-                title: "Тема",
-                accessory: .none
-            )
-            // Remove old segment if reused, then add current one
-            themeSegment.translatesAutoresizingMaskIntoConstraints = false
-            themeSegment.removeFromSuperview()
-            cell.contentView.addSubview(themeSegment)
-            NSLayoutConstraint.activate([
-                themeSegment.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
-                themeSegment.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
-                themeSegment.widthAnchor.constraint(equalToConstant: 220)
-            ])
-            cell.selectionStyle = .none
+            // Dedicated cell type owns the segment control — avoids the previous
+            // removeFromSuperview/re-add dance that left the control bound to
+            // whichever cell rendered last.
+            guard let cell = tableView.dequeueReusableCell(
+                withIdentifier: ThemeSegmentCell.reuseID,
+                for: indexPath
+            ) as? ThemeSegmentCell else {
+                return UITableViewCell()
+            }
+            cell.configure(selectedIndex: themeSegmentIndex) { [weak self] index in
+                self?.handleThemeSegmentChange(index)
+            }
             return cell
 
         case .info:

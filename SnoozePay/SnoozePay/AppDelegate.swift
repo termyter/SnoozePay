@@ -145,7 +145,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         case "SNOOZE_ACTION":
             AudioService.shared.stopAlarmSound()
-            handleSnoozeFromNotification(userInfo: userInfo)
+            let outcome = AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo)
+            switch outcome {
+            case .invalidPayload:
+                print("[AppDelegate] SNOOZE_ACTION: invalid payload, snooze skipped")
+            case .alarmNotFound:
+                print("[AppDelegate] SNOOZE_ACTION: alarm not found, snooze skipped")
+            case .insufficientFunds:
+                print("[AppDelegate] SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat")
+            case let .scheduled(newSnoozeCount, charged):
+                print("[AppDelegate] SNOOZE_ACTION: snooze #\(newSnoozeCount) scheduled, charged=\(charged)")
+            }
 
         case UNNotificationDismissActionIdentifier:
             // User swiped away notification — stop sound
@@ -211,21 +221,4 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         }
     }
 
-    private func handleSnoozeFromNotification(userInfo: [AnyHashable: Any]) {
-        guard
-            let alarmIDString = userInfo["alarmID"] as? String,
-            let alarmID = UUID(uuidString: alarmIDString),
-            let snoozeCount = userInfo["snoozeCount"] as? Int
-        else { return }
-
-        let repo = AlarmRepository()
-        guard let alarm = repo.fetch(id: alarmID) else { return }
-
-        let penalty = alarm.penalty(forSnoozeCount: snoozeCount + 1)
-
-        let charged = BalanceService.shared.charge(amount: penalty, alarmID: alarmID)
-        if charged {
-            AlarmScheduler.shared.scheduleSnooze(for: alarm, snoozeCount: snoozeCount + 1)
-        }
-    }
 }

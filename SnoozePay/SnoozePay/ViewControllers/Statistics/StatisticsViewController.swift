@@ -101,6 +101,10 @@ class StatisticsViewController: UIViewController {
 
     private var chartHostingController: UIHostingController<StatisticsChartView>?
 
+    /// Explicit reference to the streak card so `refresh()` can toggle its
+    /// visibility without walking the view-hierarchy via `superview?.superview`.
+    private var streakCard: UIView?
+
     // MARK: Streak
 
     private let streakIconView: UIView = {
@@ -227,7 +231,9 @@ class StatisticsViewController: UIViewController {
         contentStack.addArrangedSubview(makeChartCard())
 
         // Streak card
-        contentStack.addArrangedSubview(makeStreakCard())
+        let streakCardView = makeStreakCard()
+        streakCard = streakCardView
+        contentStack.addArrangedSubview(streakCardView)
 
         // Motivation banner
         contentStack.addArrangedSubview(makeMotivationBanner())
@@ -402,39 +408,32 @@ class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        // Two-column summary
-        if viewModel.totalSpent > 0 {
-            spentAmountLabel.textColor = AppColors.accentOrange
-            spentAmountLabel.text = viewModel.totalSpentFormatted
-        } else {
-            spentAmountLabel.textColor = .secondaryLabel
-            spentAmountLabel.text = "₽0"
-        }
+        // Two-column summary — colour and text both come from the VM so the
+        // empty-state vs has-data branching lives in one place.
+        spentAmountLabel.textColor = viewModel.spentColor
+        spentAmountLabel.text = viewModel.totalSpentFormatted
 
-        if viewModel.snoozeCount > 0 {
-            snoozeCountLabel.text = viewModel.snoozeCountFormatted
-        } else {
-            snoozeCountLabel.textColor = .secondaryLabel
-            snoozeCountLabel.text = "0"
-        }
+        snoozeCountLabel.textColor = viewModel.snoozeCountColor
+        snoozeCountLabel.text = viewModel.snoozeCountFormatted
 
         // Average
         averageValueLabel.text = viewModel.averagePerDayFormatted
 
-        // Streak
-        if viewModel.streak > 0 {
+        // Streak — when no active streak we show the zero-state caption but
+        // keep the card visible so the layout doesn't jump.
+        if viewModel.streakActive {
             streakLabel.text = viewModel.streakMessage
             bestStreakLabel.text = viewModel.bestStreakFormatted
-            streakIconView.superview?.superview?.isHidden = false
         } else {
-            streakLabel.text = "0 дней без откладываний"
+            streakLabel.text = viewModel.streakZeroMessage
             bestStreakLabel.text = ""
-            // Still show the card but with zero state
         }
+        streakCard?.isHidden = false
 
-        // Motivation banner
+        // Motivation banner — VM decides whether there's anything to motivate
+        // against; view just toggles visibility off the bool.
         motivationMessageLabel.text = viewModel.motivationalMessage
-        motivationCard.isHidden = viewModel.totalSpent <= 0
+        motivationCard.isHidden = !viewModel.motivationVisible
 
         // Chart
         let chartData = viewModel.dailyChartData.map {

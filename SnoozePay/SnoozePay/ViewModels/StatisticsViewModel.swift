@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// ViewModel for the statistics screen.
 final class StatisticsViewModel {
@@ -73,8 +74,43 @@ final class StatisticsViewModel {
     var totalSpent: Double { charges.reduce(0) { $0 + $1.amount } }
     var snoozeCount: Int { charges.count }
 
-    var totalSpentFormatted: String { "₽\(Int(totalSpent))" }
+    var totalSpentFormatted: String {
+        totalSpent > 0 ? "₽\(Int(totalSpent))" : "₽0"
+    }
     var snoozeCountFormatted: String { "\(snoozeCount)" }
+
+    // MARK: - Presentation-ready (extracted from StatisticsViewController.refresh)
+
+    /// Colour for the "spent" headline. Orange when there's actual spend to
+    /// surface, secondary grey for the empty state. Lives in the VM so the
+    /// view doesn't reach into model values to make presentation decisions.
+    var spentColor: UIColor {
+        totalSpent > 0 ? AppColors.accentOrange : .secondaryLabel
+    }
+
+    /// Colour for the snooze-count headline — same secondary-label-on-empty
+    /// convention as `spentColor`.
+    var snoozeCountColor: UIColor {
+        snoozeCount > 0 ? .label : .secondaryLabel
+    }
+
+    /// Whether the motivation banner should be visible. Hidden when there's
+    /// nothing to motivate against (totalSpent == 0).
+    var motivationVisible: Bool {
+        totalSpent > 0
+    }
+
+    /// Whether the user has an active streak worth celebrating. When false the
+    /// view shows a zero-state caption (`streakZeroMessage`) instead of the
+    /// "X days without snoozing" / best-result lines.
+    var streakActive: Bool {
+        streak > 0
+    }
+
+    /// Caption shown when the user has no active streak.
+    var streakZeroMessage: String {
+        "0 дней без откладываний"
+    }
 
     /// Average spending per day for the selected period.
     var averagePerDay: Double {
