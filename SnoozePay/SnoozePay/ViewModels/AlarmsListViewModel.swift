@@ -29,7 +29,7 @@ final class AlarmsListViewModel {
     // MARK: - Init
 
     init(
-        alarmRepository: AlarmRepository = AlarmRepository(),
+        alarmRepository: AlarmRepository = .shared,
         balanceService: BalanceService = .shared
     ) {
         self.alarmRepository = alarmRepository

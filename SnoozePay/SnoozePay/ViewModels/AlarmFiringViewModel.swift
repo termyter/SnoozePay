@@ -25,7 +25,7 @@ final class AlarmFiringViewModel {
         alarm: Alarm,
         snoozeCount: Int = 0,
         balanceService: BalanceService = .shared,
-        alarmRepository: AlarmRepository = AlarmRepository(),
+        alarmRepository: AlarmRepository = .shared,
         scheduler: AlarmScheduler = .shared
     ) {
         self.alarm = alarm

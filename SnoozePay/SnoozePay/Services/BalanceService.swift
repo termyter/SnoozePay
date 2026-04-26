@@ -30,7 +30,7 @@ final class BalanceService {
     #if DEBUG
     init(
         defaults: UserDefaults = .standard,
-        transactionRepository: TransactionRepository = TransactionRepository(),
+        transactionRepository: TransactionRepository = .shared,
         notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
@@ -40,7 +40,7 @@ final class BalanceService {
     #else
     private init(
         defaults: UserDefaults = .standard,
-        transactionRepository: TransactionRepository = TransactionRepository(),
+        transactionRepository: TransactionRepository = .shared,
         notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
