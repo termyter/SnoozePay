@@ -292,9 +292,16 @@ extension AlarmsListViewController: UITableViewDataSource {
 extension AlarmsListViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
         let alarm = viewModel.alarms[indexPath.row]
         let editVC = CreateAlarmViewController(alarm: alarm)
         editVC.onSave = { [weak self] in
+            self?.viewModel.loadData()
+        }
+        // Re-fetch from the source of truth instead of mutating by row index —
+        // the row that was tapped may have shifted after another in-flight
+        // delete (e.g. swipe + detail open near-simultaneously).
+        editVC.onDelete = { [weak self] in
             self?.viewModel.loadData()
         }
         let nav = UINavigationController(rootViewController: editVC)
@@ -306,10 +313,35 @@ extension AlarmsListViewController: UITableViewDelegate {
         trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
     ) -> UISwipeActionsConfiguration? {
         let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, completion in
-            self?.viewModel.deleteAlarm(at: indexPath.row)
+            guard let self else {
+                completion(false)
+                return
+            }
+            // Capture the alarm id before the action fires so a concurrent mutation
+            // that re-orders rows (delete from detail, programmatic reload) cannot
+            // make us delete the wrong alarm. Index-based delete would silently
+            // drop whichever alarm now sits at the swiped row, with no feedback
+            // to the user. Identity-based delete short-circuits if the alarm has
+            // already been removed and triggers a full reload to resync the UI.
+            guard indexPath.row < self.viewModel.alarms.count else {
+                self.viewModel.loadData()
+                completion(false)
+                return
+            }
+            let alarmID = self.viewModel.alarms[indexPath.row].id
+            guard self.viewModel.deleteAlarm(id: alarmID) else {
+                self.viewModel.loadData()
+                completion(false)
+                return
+            }
             tableView.deleteRows(at: [indexPath], with: .automatic)
             completion(true)
         }
+        // SF Symbol gives the action a recognisable affordance even before the
+        // user has read the title — addresses the PM feedback that the swipe
+        // gesture was not obvious.
+        delete.image = UIImage(systemName: "trash")
+        delete.backgroundColor = .systemRed
         return UISwipeActionsConfiguration(actions: [delete])
     }
 }

@@ -230,6 +230,49 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertEqual(alarms.first?.penaltyAmount, 200)
     }
 
+    // MARK: - Delete (issue #50)
+
+    func testDelete_existingAlarm_removesFromRepository() {
+        // Persist an alarm directly so the VM thinks it's editing an existing one.
+        let original = Alarm(name: "Утро", penaltyAmount: 100)
+        repo.save(original)
+        XCTAssertEqual(repo.fetchAll().count, 1)
+
+        let vm = CreateAlarmViewModel(alarm: original, repository: repo)
+        XCTAssertTrue(vm.isEditing)
+
+        let didDelete = vm.delete()
+        XCTAssertTrue(didDelete)
+        XCTAssertEqual(repo.fetchAll().count, 0)
+    }
+
+    func testDelete_newAlarm_isNoOp() {
+        // No existingID → there's nothing to delete. The VM should refuse and
+        // return false so the VC can short-circuit (no alert dismiss, etc.).
+        let vm = CreateAlarmViewModel(repository: repo)
+        XCTAssertFalse(vm.isEditing)
+
+        let didDelete = vm.delete()
+        XCTAssertFalse(didDelete)
+        XCTAssertEqual(repo.fetchAll().count, 0)
+    }
+
+    func testDelete_existingAlarm_doesNotAffectOtherAlarms() {
+        // Two alarms, delete one — the other must survive.
+        let alpha = Alarm(name: "Альфа")
+        let beta = Alarm(name: "Бета")
+        repo.save(alpha)
+        repo.save(beta)
+        XCTAssertEqual(repo.fetchAll().count, 2)
+
+        let vm = CreateAlarmViewModel(alarm: alpha, repository: repo)
+        vm.delete()
+
+        let remaining = repo.fetchAll()
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining.first?.name, "Бета")
+    }
+
     func testInit_fromExistingAlarm_loadsValues() {
         let alarm = Alarm(
             repeatDays: [0, 2, 4],

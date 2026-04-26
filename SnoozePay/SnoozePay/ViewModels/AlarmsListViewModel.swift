@@ -111,8 +111,21 @@ final class AlarmsListViewModel {
 
     func deleteAlarm(at index: Int) {
         guard index < alarms.count else { return }
-        alarmRepository.delete(id: alarms[index].id)
+        deleteAlarm(id: alarms[index].id)
+    }
+
+    /// Identity-based delete — preferred over index-based when triggered by
+    /// async UI events (swipe handlers) where the visible index may have
+    /// drifted from the data-source row by the time the action fires.
+    @discardableResult
+    func deleteAlarm(id: UUID) -> Bool {
+        guard let index = alarms.firstIndex(where: { $0.id == id }) else {
+            print("[AlarmsListViewModel] deleteAlarm: id \(id) not in current snapshot")
+            return false
+        }
+        alarmRepository.delete(id: id)
         alarms.remove(at: index)
+        return true
     }
 
     // MARK: - Formatted balance

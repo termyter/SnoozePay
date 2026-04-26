@@ -61,6 +61,19 @@ final class CreateAlarmViewModel {
         return alarmRepository.save(alarm)
     }
 
+    // MARK: - Delete
+
+    /// Removes the alarm being edited. Returns `false` for new (unsaved) alarms,
+    /// where there is nothing to delete — the caller should treat this case as a
+    /// no-op (the user can simply cancel out of the create screen instead).
+    /// Cancelling the scheduled notification is handled by `AlarmRepository.delete`.
+    @discardableResult
+    func delete() -> Bool {
+        guard let id = existingID else { return false }
+        alarmRepository.delete(id: id)
+        return true
+    }
+
     // MARK: - Day toggle helpers
 
     func toggleDay(_ day: Int) {
