@@ -121,24 +121,41 @@ final class CreateAlarmViewController: UIViewController {
     @objc private func saveTapped() {
         // Cells push state into the view-model live via callbacks, so save just
         // forwards the current snapshot to the repository.
-        let didSave = viewModel.save()
-        guard didSave else {
-            // Persist failed (corrupt store / encode error). Surface the
-            // failure inline so the user doesn't tap "Сохранить", see the
-            // sheet dismiss, and assume their alarm landed (issue #72).
-            presentRepositoryError(AlarmRepository.RepositoryError.persistBlocked)
-            return
+        // The async overload waits on `AlarmScheduler.schedule` to resolve so
+        // we don't dismiss-and-toast on a notification request that
+        // silently failed to register (issue #118).
+        viewModel.save { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .success:
+                self.onSave?()
+                self.dismiss(animated: true)
+            case .persistFailed:
+                // Persist failed (corrupt store / encode error). Surface the
+                // failure inline so the user doesn't tap "Сохранить", see the
+                // sheet dismiss, and assume their alarm landed (issue #72).
+                self.presentSaveError(
+                    title: "Не удалось сохранить",
+                    error: AlarmRepository.RepositoryError.persistBlocked
+                )
+            case .schedulingFailed(let error):
+                // Persist landed but the notification didn't — the user is
+                // about to go to bed thinking the alarm will ring. Tell
+                // them so they can fix the cause (issue #118).
+                self.presentSaveError(
+                    title: "Не удалось запланировать будильник",
+                    error: error
+                )
+            }
         }
-        onSave?()
-        dismiss(animated: true)
     }
 
-    /// Inline alert for repository failures that block save/delete. Kept
-    /// generic so the same call site can present any `LocalizedError`
-    /// (issue #72).
-    private func presentRepositoryError(_ error: LocalizedError) {
+    /// Inline alert for repository or scheduler failures that block the
+    /// save flow. Kept generic so the same call site can present any
+    /// `LocalizedError` (issues #72, #118).
+    private func presentSaveError(title: String, error: LocalizedError) {
         let alert = UIAlertController(
-            title: "Не удалось сохранить",
+            title: title,
             message: error.errorDescription ?? "Попробуйте ещё раз.",
             preferredStyle: .alert
         )
@@ -346,7 +363,10 @@ extension CreateAlarmViewController: UITableViewDelegate {
             // sheet on a no-op delete.
             let didDelete = self.viewModel.delete()
             guard didDelete else {
-                self.presentRepositoryError(AlarmRepository.RepositoryError.persistBlocked)
+                self.presentSaveError(
+                    title: "Не удалось сохранить",
+                    error: AlarmRepository.RepositoryError.persistBlocked
+                )
                 return
             }
             self.onDelete?()

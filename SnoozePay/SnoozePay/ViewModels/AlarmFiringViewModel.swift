@@ -61,16 +61,29 @@ final class AlarmFiringViewModel {
     // MARK: - Actions
 
     /// Deduct penalty and reschedule snooze.
-    /// Returns true if snooze was successful.
+    /// Returns true if charge + snoozeCount bump succeeded. The optional
+    /// `scheduleCompletion` is invoked AFTER the underlying scheduler reports
+    /// the result of registering the snooze trigger with iOS — if it fires
+    /// `.failure(SchedulingError)` the user has already been charged but the
+    /// alarm will NOT actually re-fire. The VC must surface the error so the
+    /// user knows to set a backup alarm (or contact support for refund).
+    /// Without consuming this completion the original silent-failure-class
+    /// from #118 reappears in the snooze flow (silent-failure-hunter #127).
     @discardableResult
-    func snooze() -> Bool {
+    func snooze(
+        scheduleCompletion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)? = nil
+    ) -> Bool {
         guard canSnooze else { return false }
 
         let charged = balanceService.charge(amount: currentPenalty, alarmID: alarm.id)
         guard charged else { return false }
 
         snoozeCount += 1
-        scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount)
+        scheduler.scheduleSnooze(
+            for: alarm,
+            snoozeCount: snoozeCount,
+            completion: scheduleCompletion
+        )
         onStateChanged?()
         return true
     }

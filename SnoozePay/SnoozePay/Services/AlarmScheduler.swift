@@ -2,6 +2,38 @@ import Foundation
 import UserNotifications
 import os
 
+/// Subset of `UNUserNotificationCenter` the scheduler depends on. Extracted as a
+/// protocol so unit tests can substitute a mock and verify error-propagation
+/// paths (issue #118) — the real `UNUserNotificationCenter.current()` is a
+/// process-wide singleton whose `add(_:)` failure modes (permission revoked
+/// mid-session, malformed trigger, 64-pending limit) cannot otherwise be
+/// reproduced deterministically.
+protocol NotificationScheduling: AnyObject {
+    // Sendable closures match `UNUserNotificationCenter`'s post-Swift-6
+    // signature. Without them the implicit conformance is a warning
+    // today and an error under Swift 6 strict concurrency.
+    func add(
+        _ request: UNNotificationRequest,
+        withCompletionHandler completion: (@Sendable (Error?) -> Void)?
+    )
+    func getPendingNotificationRequests(
+        completionHandler: @escaping @Sendable ([UNNotificationRequest]) -> Void
+    )
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
+    func getDeliveredNotifications(
+        completionHandler: @escaping @Sendable ([UNNotification]) -> Void
+    )
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
+    func removeAllPendingNotificationRequests()
+    func requestAuthorization(
+        options: UNAuthorizationOptions,
+        completionHandler: @escaping @Sendable (Bool, Error?) -> Void
+    )
+}
+
+extension UNUserNotificationCenter: NotificationScheduling {}
+
 /// Handles scheduling and cancelling alarms.
 /// Uses UNUserNotificationCenter (iOS 18+) as the scheduling backend.
 /// On iOS 26+ with AlarmKit, the system alarm engine takes over — this service
@@ -10,7 +42,39 @@ final class AlarmScheduler {
 
     static let shared = AlarmScheduler()
 
-    private let notificationCenter = UNUserNotificationCenter.current()
+    /// Errors surfaced to UI callers so the user sees a real explanation
+    /// instead of a fake "Будильник создан" toast on a notification that
+    /// never registered (issue #118).
+    enum SchedulingError: LocalizedError, Equatable {
+        /// `UNUserNotificationCenter.add` returned an error — typically a
+        /// revoked notification permission or a malformed trigger.
+        case system(message: String)
+        /// Pre-flight check found we are at or above the iOS 64-pending
+        /// notification cap. Adding another would silently evict an
+        /// existing one, so we refuse and let the user delete old alarms.
+        case pendingLimitReached(currentCount: Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .system(let message):
+                return "Не удалось запланировать будильник: \(message). "
+                     + "Включите уведомления в Настройках или удалите старые будильники."
+            case .pendingLimitReached(let count):
+                return "Достигнут лимит iOS на запланированные уведомления (\(count) из 64). "
+                     + "Удалите старые будильники, чтобы освободить место."
+            }
+        }
+        // Equatable synthesis is automatic — `String` and `Int` associated
+        // values both conform out of the box.
+    }
+
+    /// iOS hard-cap on pending notification requests per app. Above this the
+    /// system silently drops additional requests (oldest-first), so we
+    /// pre-flight check and refuse rather than scheduling a request that may
+    /// or may not survive eviction.
+    static let pendingNotificationLimit = 64
+
+    private let notificationCenter: NotificationScheduling
 
     // Notification category and action IDs
     private let categoryID = "ALARM_CATEGORY"
@@ -20,7 +84,15 @@ final class AlarmScheduler {
     /// Whether the app has the critical alerts entitlement (set after permission request)
     private(set) static var criticalAlertsAvailable = false
 
-    private init() {}
+    private init() {
+        self.notificationCenter = UNUserNotificationCenter.current()
+    }
+
+    /// Test-only initializer that swaps the notification-center seam.
+    /// Production code MUST use `AlarmScheduler.shared` (see `singleton`).
+    init(notificationCenter: NotificationScheduling) {
+        self.notificationCenter = notificationCenter
+    }
 
     // MARK: - Permission
 
@@ -86,29 +158,66 @@ final class AlarmScheduler {
 
     // MARK: - Schedule alarm
 
-    func schedule(_ alarm: Alarm) {
-        guard alarm.enabled else { return }
+    /// Schedule the user's alarm.
+    /// - Parameters:
+    ///   - alarm: alarm model to schedule (no-op when `enabled == false`).
+    ///   - completion: optional callback invoked once on the main queue once
+    ///     all triggers have either landed or one of them failed. Failures
+    ///     are reported as `SchedulingError.system(message:)`. Default `nil`
+    ///     keeps the scheduler-driven call sites (`AlarmRepository.save`)
+    ///     backwards compatible (issue #118).
+    func schedule(_ alarm: Alarm, completion: ((Result<Void, SchedulingError>) -> Void)? = nil) {
+        guard alarm.enabled else {
+            completion?(.success(()))
+            return
+        }
 
         let content = makeContent(for: alarm, snoozeCount: 0)
         let triggers = makeTriggers(for: alarm)
 
-        for trigger in triggers {
-            let request = UNNotificationRequest(
-                identifier: notificationID(for: alarm.id, trigger: trigger.label),
-                content: content,
-                trigger: trigger.trigger
-            )
-            notificationCenter.add(request) { error in
-                if let error = error {
-                    AppLogger.scheduler.error("schedule failed: \(error.localizedDescription, privacy: .public)")
-                }
+        guard !triggers.isEmpty else {
+            completion?(.success(()))
+            return
+        }
+
+        // Pre-flight 64-pending limit check. We refuse to schedule when the
+        // batch we're about to add would push us over — iOS would otherwise
+        // silently evict our oldest pending request. Surface the situation
+        // to the user instead so they know to delete old alarms.
+        runPendingLimitPreflight(triggerCount: triggers.count) { [weak self] preflight in
+            guard let self else {
+                completion?(.success(()))
+                return
             }
+            if case .failure(let error) = preflight {
+                completion?(.failure(error))
+                return
+            }
+            self.dispatchAdds(
+                requests: triggers.map { trigger in
+                    UNNotificationRequest(
+                        identifier: self.notificationID(for: alarm.id, trigger: trigger.label),
+                        content: content,
+                        trigger: trigger.trigger
+                    )
+                },
+                completion: completion
+            )
         }
     }
 
     // MARK: - Schedule snooze
 
-    func scheduleSnooze(for alarm: Alarm, snoozeCount: Int) {
+    /// Schedule a follow-up snooze notification.
+    /// Carries the same `completion` semantics as `schedule(_:completion:)`
+    /// so `AlarmFiringViewModel` / `AlarmFiringCoordinator` can surface
+    /// scheduling failures instead of silently leaving the user without a
+    /// re-fire (issue #118).
+    func scheduleSnooze(
+        for alarm: Alarm,
+        snoozeCount: Int,
+        completion: ((Result<Void, SchedulingError>) -> Void)? = nil
+    ) {
         let content = makeContent(for: alarm, snoozeCount: snoozeCount)
 
         let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
@@ -121,9 +230,83 @@ final class AlarmScheduler {
             content: content,
             trigger: trigger
         )
-        notificationCenter.add(request) { error in
-            if let error = error {
-                AppLogger.scheduler.error("schedule failed: \(error.localizedDescription, privacy: .public)")
+
+        runPendingLimitPreflight(triggerCount: 1) { [weak self] preflight in
+            guard let self else {
+                completion?(.success(()))
+                return
+            }
+            if case .failure(let error) = preflight {
+                completion?(.failure(error))
+                return
+            }
+            self.dispatchAdds(requests: [request], completion: completion)
+        }
+    }
+
+    // MARK: - Private scheduling helpers
+
+    /// Run the iOS 64-pending-limit pre-flight. Resolves to `.failure` when
+    /// adding `triggerCount` requests would push us over the cap.
+    /// Always resolves on the main queue so callers don't need to bounce.
+    private func runPendingLimitPreflight(
+        triggerCount: Int,
+        completion: @escaping (Result<Void, SchedulingError>) -> Void
+    ) {
+        notificationCenter.getPendingNotificationRequests { requests in
+            let pending = requests.count
+            DispatchQueue.main.async {
+                if pending + triggerCount > Self.pendingNotificationLimit {
+                    let limit = Self.pendingNotificationLimit
+                    AppLogger.scheduler.error(
+                        "schedule blocked: pending=\(pending, privacy: .public) batch=\(triggerCount, privacy: .public) limit=\(limit, privacy: .public)"
+                    )
+                    completion(.failure(.pendingLimitReached(currentCount: pending)))
+                } else {
+                    completion(.success(()))
+                }
+            }
+        }
+    }
+
+    /// Add a batch of notification requests sequentially, fan-in their
+    /// completion blocks, and report the first error to the caller. We
+    /// fan-in instead of bailing on the first failure so partial success
+    /// (e.g. 5/7 weekday triggers landed, 2 rejected) is logged for every
+    /// failure even though only the first is surfaced to the UI.
+    private func dispatchAdds(
+        requests: [UNNotificationRequest],
+        completion: ((Result<Void, SchedulingError>) -> Void)?
+    ) {
+        guard !requests.isEmpty else {
+            completion?(.success(()))
+            return
+        }
+
+        let group = DispatchGroup()
+        var firstError: Error?
+        let errorLock = NSLock()
+
+        for request in requests {
+            group.enter()
+            notificationCenter.add(request) { error in
+                if let error = error {
+                    AppLogger.scheduler.error(
+                        "schedule failed: \(error.localizedDescription, privacy: .public)"
+                    )
+                    errorLock.lock()
+                    if firstError == nil { firstError = error }
+                    errorLock.unlock()
+                }
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            if let error = firstError {
+                completion?(.failure(.system(message: error.localizedDescription)))
+            } else {
+                completion?(.success(()))
             }
         }
     }

@@ -413,10 +413,33 @@ class AlarmFiringViewController: UIViewController {
     }
 
     @objc private func snoozeTapped() {
-        let success = viewModel.snooze()
+        // Pass a scheduleCompletion so a notification-center failure (revoked
+        // permission, 64-pending-limit, malformed trigger) reaches the user
+        // even though the VM has already charged them — without this surface
+        // the user pays for a snooze that will never re-fire (silent-failure-
+        // hunter critical finding on PR #127).
+        let success = viewModel.snooze { [weak self] result in
+            guard let self else { return }
+            if case let .failure(error) = result {
+                self.presentSnoozeScheduleFailureAlert(error: error)
+            }
+        }
         if success {
             dismiss(animated: true)
         }
         // If failed (balance empty) — button is already disabled, nothing to do
+    }
+
+    private func presentSnoozeScheduleFailureAlert(
+        error: AlarmScheduler.SchedulingError
+    ) {
+        let detail = error.errorDescription ?? error.localizedDescription
+        let alert = UIAlertController(
+            title: "Снуз не запланирован",
+            message: "\(detail) Будильник не зазвенит повторно — установите запасной.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        present(alert, animated: true)
     }
 }
