@@ -127,8 +127,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             return
         }
 
-        // Start continuous alarm sound immediately (before presenting the VC)
-        AudioService.shared.startAlarmSound(soundID: payload.soundID)
+        // Start continuous alarm sound immediately (before presenting the VC).
+        // Passing `alarmID` lets AudioService track ownership so a stacking
+        // race between firing VCs cannot silence the wrong alarm (#116).
+        AudioService.shared.startAlarmSound(
+            soundID: payload.soundID,
+            alarmID: payload.alarmID
+        )
 
         // Show the alarm firing screen
         presentAlarmFiringScreen(for: payload)

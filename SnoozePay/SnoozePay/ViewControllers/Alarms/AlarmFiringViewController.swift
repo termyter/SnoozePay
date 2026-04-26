@@ -176,8 +176,13 @@ class AlarmFiringViewController: UIViewController {
 
         // Start continuous alarm sound and vibration. State observer (above)
         // will surface the banner if AudioService falls back to vibration-only
-        // or fails to acquire the audio session.
-        AudioService.shared.startAlarmSound(soundID: viewModel.alarm.soundID)
+        // or fails to acquire the audio session. Passing `alarmID` lets the
+        // service track ownership so a stacking-replace race (#116) does not
+        // silence the next alarm when this VC's `viewDidDisappear` fires.
+        AudioService.shared.startAlarmSound(
+            soundID: viewModel.alarm.soundID,
+            alarmID: viewModel.alarm.id
+        )
 
         // Sync UI with whatever state startAlarmSound produced — observer fires
         // on transitions, but the very first transition may have already
@@ -193,8 +198,15 @@ class AlarmFiringViewController: UIViewController {
         // animator does not retain self past dismissal.
         nameLabel.layer.removeAllAnimations()
 
-        // Stop alarm sound and vibration when screen is dismissed
-        AudioService.shared.stopAlarmSound()
+        // Stop alarm sound and vibration only if AudioService still belongs to
+        // *this* alarm. When AppDelegate stacks a second firing screen on top
+        // (alarm B fires while alarm A is on-screen), our `viewDidDisappear`
+        // can fire AFTER the new VC's `viewDidLoad` already started audio for
+        // alarm B. Without this guard we'd silence B and the user sleeps
+        // through it (#116).
+        if AudioService.shared.currentAlarmID == viewModel.alarm.id {
+            AudioService.shared.stopAlarmSound()
+        }
     }
 
     override var prefersStatusBarHidden: Bool { true }
