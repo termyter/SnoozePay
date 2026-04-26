@@ -18,6 +18,11 @@ final class AlarmsListViewModel {
 
     var onAlarmsUpdated: (() -> Void)?
     var onBalanceUpdated: ((Double) -> Void)?
+    /// Fired when a repository read or write fails. The VC presents an
+    /// alert so the user understands the empty list isn't them losing
+    /// their alarms (issue #72). Carries a `LocalizedError` whose
+    /// `errorDescription` is already user-facing Russian copy.
+    var onLoadError: ((LocalizedError) -> Void)?
 
     // MARK: - Observers
 
@@ -56,7 +61,18 @@ final class AlarmsListViewModel {
     // MARK: - Load
 
     func loadData() {
-        alarms = alarmRepository.fetchAll()
+        // Use the checked variant so a corrupt UserDefaults blob shows the
+        // user a banner instead of a deceptive empty list — otherwise they
+        // assume their alarms were wiped, recreate them, and the next
+        // persist clobbers the recoverable JSON for good (issue #72).
+        do {
+            alarms = try alarmRepository.fetchAllChecked()
+        } catch let error as AlarmRepository.RepositoryError {
+            alarms = []
+            onLoadError?(error)
+        } catch {
+            alarms = []
+        }
         balance = balanceService.balance
         onAlarmsUpdated?()
         onBalanceUpdated?(balance)
@@ -84,11 +100,18 @@ final class AlarmsListViewModel {
 
         let didUpdate = alarmRepository.setEnabled(enabled, id: id)
         guard didUpdate else {
-            // Repository no longer has this alarm (deleted from another path).
-            // The cell already optimistically flipped its switch in setEnabledAppearance —
-            // resync from the source of truth and re-bind so the UI rolls back (issue #35).
+            // Repository no longer has this alarm (deleted from another path)
+            // or the store is locked due to a corrupt blob (issue #72).
+            // The cell already optimistically flipped its switch in
+            // setEnabledAppearance — resync from the source of truth and
+            // re-bind so the UI rolls back (issue #35). If the store is
+            // locked, surface the lock so the user knows toggles aren't
+            // landing rather than blaming the toggle for "not working".
             print("[AlarmsListViewModel] setEnabled returned false; rolling back UI for id=\(id)")
             alarms = alarmRepository.fetchAll()
+            if alarmRepository.lastLoadFailed {
+                onLoadError?(AlarmRepository.RepositoryError.persistBlocked)
+            }
             onAlarmsUpdated?()
             return
         }
@@ -123,7 +146,14 @@ final class AlarmsListViewModel {
             print("[AlarmsListViewModel] deleteAlarm: id \(id) not in current snapshot")
             return false
         }
-        alarmRepository.delete(id: id)
+        let didDelete = alarmRepository.delete(id: id)
+        guard didDelete else {
+            // Persist was blocked (corrupt store) or encode failed — keep
+            // the in-memory snapshot intact and surface the failure so the
+            // user doesn't think the swipe-to-delete worked (issue #72).
+            onLoadError?(AlarmRepository.RepositoryError.persistBlocked)
+            return false
+        }
         alarms.remove(at: index)
         return true
     }

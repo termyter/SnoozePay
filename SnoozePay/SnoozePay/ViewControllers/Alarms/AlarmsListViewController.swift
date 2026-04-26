@@ -231,6 +231,27 @@ class AlarmsListViewController: UIViewController {
             // Adding a "₽ " prefix here previously rendered "₽ 0 ₽" (issue #55).
             self.balanceAmountLabel.text = self.viewModel.formattedBalance
         }
+
+        viewModel.onLoadError = { [weak self] error in
+            self?.presentRepositoryError(error)
+        }
+    }
+
+    /// Shows a non-blocking alert when the repository couldn't load or
+    /// persist data. Without this the user would see an empty list and
+    /// assume the app wiped their alarms — then recreate them, and the
+    /// next save would clobber the recoverable corrupt JSON for good
+    /// (issue #72). Guarded against double-presentation so a load failure
+    /// followed quickly by a persist failure doesn't stack alerts.
+    private func presentRepositoryError(_ error: LocalizedError) {
+        guard presentedViewController == nil else { return }
+        let alert = UIAlertController(
+            title: "Ошибка данных",
+            message: error.errorDescription ?? "Не удалось загрузить будильники.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     // MARK: - Actions

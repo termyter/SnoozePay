@@ -217,17 +217,85 @@ final class TransactionRepositoryTests: XCTestCase {
                      "Read on missing key must not materialize an empty value")
     }
 
-    /// A subsequent valid `record()` call replaces the corrupt blob with healthy JSON.
-    /// This is the only path that may overwrite corrupted data — and only with a
-    /// known-good in-memory snapshot.
+    /// After the user has acknowledged data loss via `clearCorruptState()`,
+    /// the next record replaces the wiped slot with valid JSON. Before #72
+    /// `record()` would silently clobber the corrupt blob from a partial
+    /// in-memory snapshot — now it refuses until the lock is released.
     func testRecordAfterCorruption_overwritesWithValidData() {
         testDefaults.set(Data("garbage".utf8), forKey: "stored_transactions")
 
-        repo.record(charge(amount: 99))
+        // Trigger the lock by attempting a checked read.
+        XCTAssertThrowsError(try repo.fetchAllChecked())
+        XCTAssertTrue(repo.lastLoadFailed)
+
+        // Before recovery the record must be refused to preserve diagnostics.
+        XCTAssertFalse(repo.record(charge(amount: 1)),
+                       "record() must be refused while the store is locked")
+
+        repo.clearCorruptState()
+        XCTAssertFalse(repo.lastLoadFailed)
+
+        XCTAssertTrue(repo.record(charge(amount: 99)),
+                      "record() must succeed once the lock is cleared")
 
         let all = repo.fetchAll()
         XCTAssertEqual(all.count, 1)
         XCTAssertEqual(all.first?.amount, 99)
+    }
+
+    // MARK: - Issue #72: surfaced decode failure + corrupt backup + persist lock
+
+    func testFetchAllChecked_corruptedJSON_throwsDecodeFailure() {
+        let corrupt = Data("definitely not json".utf8)
+        testDefaults.set(corrupt, forKey: "stored_transactions")
+
+        XCTAssertThrowsError(try repo.fetchAllChecked()) { error in
+            guard case TransactionRepository.RepositoryError.decodeFailure = error else {
+                XCTFail("Expected decodeFailure, got \(error)")
+                return
+            }
+        }
+        XCTAssertTrue(repo.lastLoadFailed,
+                      "lastLoadFailed must latch on decode failure so writes refuse to clobber the corrupt blob")
+    }
+
+    func testFetchAllChecked_corruptedJSON_copiesBackupOnce() {
+        let corrupt = Data("not json v1".utf8)
+        testDefaults.set(corrupt, forKey: "stored_transactions")
+
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertEqual(testDefaults.data(forKey: TransactionRepository.corruptBackupKey), corrupt,
+                       "First decode failure must snapshot the corrupt bytes for diagnosis")
+
+        let differentCorrupt = Data("not json v2".utf8)
+        testDefaults.set(differentCorrupt, forKey: "stored_transactions")
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertEqual(testDefaults.data(forKey: TransactionRepository.corruptBackupKey), corrupt,
+                       "Backup must capture the FIRST failure, not the latest one")
+    }
+
+    func testRecord_whileStoreLocked_isRefused() {
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_transactions")
+        _ = try? repo.fetchAllChecked()
+
+        XCTAssertFalse(repo.record(charge(amount: 1)),
+                       "record() must return false while the store is locked")
+        XCTAssertEqual(testDefaults.data(forKey: "stored_transactions"), Data("corrupt".utf8),
+                       "Locked store must not be overwritten by a partial snapshot")
+    }
+
+    func testClearCorruptState_releasesLockAndRemovesKey() {
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_transactions")
+        _ = try? repo.fetchAllChecked()
+        XCTAssertTrue(repo.lastLoadFailed)
+
+        repo.clearCorruptState()
+
+        XCTAssertFalse(repo.lastLoadFailed)
+        XCTAssertNil(testDefaults.data(forKey: "stored_transactions"),
+                     "clearCorruptState must wipe the live key (the diagnostic backup is a separate slot)")
     }
 
     /// On corrupted data, currentStreak() must not crash and must report 0
