@@ -78,16 +78,22 @@ final class BalanceService {
             let current = defaults.double(forKey: balanceKey)
             guard current >= amount else { return (false, current) }
 
-            let newBalance = current - amount
-            defaults.set(newBalance, forKey: balanceKey)
-
             let transaction = Transaction(
                 type: .charge,
                 amount: amount,
                 alarmID: alarmID?.uuidString
             )
-            transactionRepository.record(transaction)
+            // Record the ledger entry FIRST. If the transaction repository is
+            // locked (corrupt blob waiting on user ack) or encoding fails, we
+            // refuse to mutate the balance — otherwise money would silently
+            // disappear from the wallet with no record in stats (see #72 hunter
+            // review of PR #101).
+            guard transactionRepository.record(transaction) else {
+                return (false, current)
+            }
 
+            let newBalance = current - amount
+            defaults.set(newBalance, forKey: balanceKey)
             return (true, newBalance)
         }
 
@@ -99,22 +105,31 @@ final class BalanceService {
 
     // MARK: - Top up (IAP)
 
-    func topUp(amount: Double) {
-        let newBalance: Double = queue.sync {
+    /// Returns `true` if the credit landed (balance moved AND ledger updated).
+    /// Returns `false` when the transaction repository is locked or encoding
+    /// failed — caller should surface this to the user instead of pretending
+    /// the IAP credited (silent ledger desync was the regression behind the #72
+    /// PR #101 hunter feedback).
+    @discardableResult
+    func topUp(amount: Double) -> Bool {
+        let result: (recorded: Bool, newBalance: Double) = queue.sync {
             let current = defaults.double(forKey: balanceKey)
-            let updated = current + amount
-            defaults.set(updated, forKey: balanceKey)
-
             let transaction = Transaction(
                 type: .topup,
                 amount: amount
             )
-            transactionRepository.record(transaction)
-
-            return updated
+            guard transactionRepository.record(transaction) else {
+                return (false, current)
+            }
+            let updated = current + amount
+            defaults.set(updated, forKey: balanceKey)
+            return (true, updated)
         }
 
-        notifyBalanceChanged(newBalance)
+        if result.recorded {
+            notifyBalanceChanged(result.newBalance)
+        }
+        return result.recorded
     }
 
     // MARK: - Validation
@@ -146,8 +161,10 @@ final class BalanceService {
     }
 
     /// Money-typed top-up. The `Money` invariant guarantees non-negative,
-    /// finite — replacing the loose `Double` precondition.
-    func topUp(_ amount: Money) {
+    /// finite — replacing the loose `Double` precondition. Returns whether
+    /// the credit actually landed (see legacy `topUp(amount:)`).
+    @discardableResult
+    func topUp(_ amount: Money) -> Bool {
         topUp(amount: amount.toDouble())
     }
 
