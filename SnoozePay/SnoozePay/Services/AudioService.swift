@@ -1,5 +1,26 @@
 import AVFoundation
 import AudioToolbox
+import Foundation
+
+/// Playback state of the alarm audio pipeline.
+///
+/// Replaces the old `isPlaying: Bool` so the UI can distinguish between
+/// "real audio is playing", "we tried but failed", and "stopped".
+enum AudioPlaybackState: Equatable {
+    /// Real audio (bundled file or synthetic tone) is looping.
+    case playing
+
+    /// AVAudioSession refused to activate — caller cannot guarantee any sound.
+    /// Vibration is also skipped since without a session we have no playback path.
+    case silentBecauseConfigFailed
+
+    /// Bundled file existed but `AVAudioPlayer` rejected it (corrupt/format).
+    /// Synthetic tone fallback also failed → only vibration is running.
+    case vibrationOnly
+
+    /// Initial state and after `stopAlarmSound()`.
+    case stopped
+}
 
 /// Manages continuous alarm sound playback and vibration.
 /// Configures AVAudioSession for playback even when screen is locked,
@@ -9,9 +30,36 @@ final class AudioService {
 
     static let shared = AudioService()
 
+    // MARK: - Notification names
+
+    /// Posted whenever `state` transitions. Observers receive the new state in
+    /// `userInfo[stateUserInfoKey]` so UI (e.g. AlarmFiringViewController) can
+    /// surface a banner when audio falls back to vibration or fails entirely.
+    ///
+    /// Always posted on the main queue — observers can update UI without
+    /// dispatching themselves.
+    static let stateChangedNotification = Notification.Name("snoozepay.audio.stateChanged")
+    static let stateUserInfoKey = "state"
+
     private var audioPlayer: AVAudioPlayer?
     private var vibrationTimer: Timer?
-    private(set) var isPlaying = false
+
+    /// Current playback state. Mutating this also broadcasts a notification so
+    /// callers can react to fallback paths (config failed / vibration only).
+    private(set) var state: AudioPlaybackState = .stopped {
+        didSet {
+            guard oldValue != state else { return }
+            NotificationCenter.default.post(
+                name: Self.stateChangedNotification,
+                object: self,
+                userInfo: [Self.stateUserInfoKey: state]
+            )
+        }
+    }
+
+    /// Backwards-compatible boolean. `true` only when actually playing real audio.
+    /// Retained so existing callers (AppDelegate guards, tests) keep working.
+    var isPlaying: Bool { state == .playing }
 
     private init() {}
 
@@ -19,20 +67,17 @@ final class AudioService {
 
     /// Configure the audio session for alarm playback.
     /// Uses `.playback` category so audio continues when screen is locked.
-    /// - Returns: `true` if the session is active and ready, `false` otherwise.
-    private func configureAudioSession() -> Bool {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, options: [.duckOthers])
-            try session.setActive(true, options: [])
-            return true
-        } catch {
-            print("[AudioService] failed to configure audio session: \(error)")
-            return false
-        }
+    /// - Throws: any underlying `AVAudioSession` error so the caller can decide
+    ///   whether to fall back or surface the failure.
+    private func configureAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, options: [.duckOthers])
+        try session.setActive(true, options: [])
     }
 
     /// Deactivate the audio session when alarm is stopped.
+    /// Failures are logged — there is no recovery path that the user could act on,
+    /// but a stale session may keep other apps duck'ed.
     private func deactivateAudioSession() {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
@@ -45,16 +90,22 @@ final class AudioService {
 
     /// Start playing alarm sound in a loop.
     /// - Parameter soundID: Name of the sound file (without extension) in the app bundle.
-    ///   Falls back to a system-generated tone if file is not found.
+    ///   Falls back to a system-generated tone if the file is missing or fails to load.
     func startAlarmSound(soundID: String) {
-        guard !isPlaying else { return }
+        // Already in a non-stopped state — preserve the existing pipeline.
+        // Earlier guard was `!isPlaying` (Bool); using state covers
+        // `.vibrationOnly` and `.silentBecauseConfigFailed` so we don't try to
+        // restart on top of a partial fallback either.
+        guard state == .stopped else { return }
 
-        guard configureAudioSession() else {
+        do {
+            try configureAudioSession()
+        } catch {
             // Audio session unavailable (e.g. another app holds it).
-            // Surface explicitly via isPlaying = false so the UI / caller can react.
-            // Skip vibration too — without an active session we cannot guarantee playback.
-            print("[AudioService] startAlarmSound aborted: audio session unavailable")
-            isPlaying = false
+            // Cannot guarantee playback — skip vibration too and surface the
+            // explicit fallback state so the UI can warn the user.
+            print("[AudioService] failed to configure audio session: \(error)")
+            state = .silentBecauseConfigFailed
             return
         }
 
@@ -67,34 +118,51 @@ final class AudioService {
             ?? Bundle.main.url(forResource: "default_alarm", withExtension: "m4a")
 
         // Try the bundled file first; fall back to synthetic tone if the file
-        // is missing or corrupt (AVAudioPlayer init returns nil).
+        // is missing or AVAudioPlayer rejects it (corrupt / format mismatch).
         var player: AVAudioPlayer?
         if let soundURL = url {
-            player = try? AVAudioPlayer(contentsOf: soundURL)
-            if player == nil {
+            do {
+                player = try AVAudioPlayer(contentsOf: soundURL)
+            } catch {
                 let name = soundURL.lastPathComponent
-                print("[AudioService] AVAudioPlayer init failed for \(name), using synthetic tone")
+                print("[AudioService] AVAudioPlayer init failed for \(name): \(error)")
+                player = nil
             }
         }
         if player == nil {
             player = Self.generateAlarmTone()
         }
 
-        if let player {
-            audioPlayer = player
-            player.numberOfLoops = -1
-            player.volume = 1.0
-            player.prepareToPlay()
-            player.play()
-            isPlaying = true
-            startVibration()
-        } else {
-            // Neither bundled file nor synthetic tone available — refuse to claim playback.
-            // We still vibrate, but isPlaying stays false to signal silent failure.
+        guard let player else {
+            // Neither bundled file nor synthetic tone available — refuse to claim
+            // playback. Vibration still runs so the user is at least woken.
             print("[AudioService] startAlarmSound: no audio source available, vibration only")
-            isPlaying = false
+            state = .vibrationOnly
             startVibration()
+            return
         }
+
+        audioPlayer = player
+        player.numberOfLoops = -1
+        player.volume = 1.0
+
+        // prepareToPlay returns Bool but does not throw; play() does not throw
+        // either, but its return value indicates whether the queue accepted the
+        // sound. A `false` here means we have a player object but the system
+        // refused to start playback — surface that as `vibrationOnly` so the UI
+        // does not silently swallow a real failure.
+        let prepared = player.prepareToPlay()
+        let started = player.play()
+        if !prepared || !started {
+            print("[AudioService] AVAudioPlayer play() rejected (prepared=\(prepared), started=\(started))")
+            audioPlayer = nil
+            state = .vibrationOnly
+            startVibration()
+            return
+        }
+
+        state = .playing
+        startVibration()
     }
 
     /// Stop alarm sound and vibration immediately.
@@ -103,7 +171,7 @@ final class AudioService {
         audioPlayer = nil
         stopVibration()
         deactivateAudioSession()
-        isPlaying = false
+        state = .stopped
     }
 
     // MARK: - Vibration

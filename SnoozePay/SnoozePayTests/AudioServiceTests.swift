@@ -107,4 +107,62 @@ final class AudioServiceTests: XCTestCase {
         service.stopAlarmSound()
         XCTAssertFalse(service.isPlaying)
     }
+
+    // MARK: - State + notifications (IOS-077)
+
+    /// Successful start path must transition state through `.stopped → .playing`
+    /// and broadcast the change via `stateChangedNotification`.
+    func testStartAlarmSound_postsPlayingStateNotification() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        XCTAssertEqual(service.state, .stopped)
+
+        var observedStates: [AudioPlaybackState] = []
+        let token = NotificationCenter.default.addObserver(
+            forName: AudioService.stateChangedNotification,
+            object: service,
+            queue: nil
+        ) { note in
+            if let state = note.userInfo?[AudioService.stateUserInfoKey] as? AudioPlaybackState {
+                observedStates.append(state)
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        service.startAlarmSound(soundID: "nonexistent_test_sound")
+        XCTAssertEqual(service.state, .playing)
+        XCTAssertTrue(observedStates.contains(.playing),
+                      "Expected .playing state to be broadcast, got \(observedStates)")
+
+        service.stopAlarmSound()
+        XCTAssertEqual(service.state, .stopped)
+        XCTAssertTrue(observedStates.contains(.stopped),
+                      "Expected .stopped state to be broadcast, got \(observedStates)")
+    }
+
+    /// Restarting while already playing must not re-emit `.playing` (didSet
+    /// guards on equality). This protects observers from spurious banner flicker.
+    func testStateNotification_notRepostedOnSameState() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+
+        var emissionCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: AudioService.stateChangedNotification,
+            object: service,
+            queue: nil
+        ) { _ in emissionCount += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        service.startAlarmSound(soundID: "x") // → .playing  (1)
+        let afterFirstStart = emissionCount
+
+        // Second call hits `guard state == .stopped` and returns early — no new
+        // notification should fire.
+        service.startAlarmSound(soundID: "y")
+        XCTAssertEqual(emissionCount, afterFirstStart,
+                       "Re-entrant start must not republish the same state")
+
+        service.stopAlarmSound()
+    }
 }
