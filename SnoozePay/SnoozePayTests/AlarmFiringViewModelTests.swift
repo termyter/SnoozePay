@@ -122,7 +122,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     }
 
     func testDismiss_disablesNonRepeatingAlarm() {
-        let repo = AlarmRepository()
+        let repo = AlarmRepository(defaults: .standard)
         var alarm = Alarm(penaltyAmount: 50)
         alarm.repeatDays = []
         alarm.enabled = true
@@ -140,7 +140,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     }
 
     func testDismiss_keepsRepeatingAlarmEnabled() {
-        let repo = AlarmRepository()
+        let repo = AlarmRepository(defaults: .standard)
         var alarm = Alarm(penaltyAmount: 50)
         alarm.repeatDays = [0, 1, 2, 3, 4] // Weekdays
         alarm.enabled = true
@@ -162,7 +162,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     /// must not crash and must not leak any user-facing error — the desired
     /// end-state is already achieved.
     func testDismiss_alarmAlreadyRemoved_doesNotCrash() {
-        let repo = AlarmRepository()
+        let repo = AlarmRepository(defaults: .standard)
         var alarm = Alarm(penaltyAmount: 50)
         alarm.repeatDays = []
         alarm.enabled = true

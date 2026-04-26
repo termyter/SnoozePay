@@ -23,31 +23,44 @@ final class BalanceService {
     private let queue = DispatchQueue(label: "com.snoozepay.balance.serial")
     private let notificationCenter: NotificationCenter
 
-    /// Production code MUST use `BalanceService.shared`.
-    /// Direct construction creates an isolated instance with its own serial queue —
-    /// two such instances racing on the same UserDefaults key reintroduce the race
-    /// this class exists to prevent.
-    #if DEBUG
+    /// Production code MUST use `BalanceService.shared` to avoid creating
+    /// isolated instances with separate serial queues (which reintroduces the
+    /// race this class exists to prevent).
+    ///
+    /// Tests inject a custom `UserDefaults` suite to stay isolated from app
+    /// state — that's why this initializer is `internal`. The `transactionRepository`
+    /// argument has no default to keep test ledgers explicit; tests that don't
+    /// care about the ledger pass `TransactionRepository(defaults: testDefaults)`.
     init(
-        defaults: UserDefaults = .standard,
-        transactionRepository: TransactionRepository = TransactionRepository(),
+        defaults: UserDefaults,
+        transactionRepository: TransactionRepository,
         notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
         self.transactionRepository = transactionRepository
         self.notificationCenter = notificationCenter
     }
-    #else
-    private init(
-        defaults: UserDefaults = .standard,
-        transactionRepository: TransactionRepository = TransactionRepository(),
+
+    /// Convenience for tests that supply only `defaults`: builds a matching
+    /// ledger pinned to the same suite so charges land in the test store.
+    convenience init(
+        defaults: UserDefaults,
         notificationCenter: NotificationCenter = .default
     ) {
-        self.defaults = defaults
-        self.transactionRepository = transactionRepository
-        self.notificationCenter = notificationCenter
+        self.init(
+            defaults: defaults,
+            transactionRepository: TransactionRepository(defaults: defaults),
+            notificationCenter: notificationCenter
+        )
     }
-    #endif
+
+    private convenience init() {
+        self.init(
+            defaults: .standard,
+            transactionRepository: .shared,
+            notificationCenter: .default
+        )
+    }
 
     // MARK: - Read
 

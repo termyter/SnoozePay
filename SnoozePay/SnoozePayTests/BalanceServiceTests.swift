@@ -406,7 +406,7 @@ final class CreateAlarmViewModelTests: XCTestCase {
         vm.name = ""
         vm.save()
         // Verify the alarm was saved with default name
-        let saved = AlarmRepository().fetchAll().last
+        let saved = AlarmRepository(defaults: .standard).fetchAll().last
         XCTAssertEqual(saved?.name, "Будильник")
     }
 }

@@ -26,7 +26,7 @@ final class CreateAlarmViewModel {
 
     // MARK: - Init
 
-    init(alarm: Alarm? = nil, repository: AlarmRepository = AlarmRepository()) {
+    init(alarm: Alarm? = nil, repository: AlarmRepository = .shared) {
         self.alarmRepository = repository
         self.existingID = alarm?.id
 
