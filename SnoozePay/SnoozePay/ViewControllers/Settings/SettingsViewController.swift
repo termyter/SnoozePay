@@ -398,9 +398,35 @@ final class TransactionHistoryViewController: UIViewController {
         ])
     }
 
+    /// Loads transactions through the checked variant so a corrupt ledger
+    /// surfaces an alert instead of rendering as an indistinguishable
+    /// "Нет транзакций" empty state (gauntlet CRITICAL #2 / issue #72 —
+    /// mirrors the treatment already in StatisticsViewModel and
+    /// AlarmsListViewModel).
     private func loadTransactions() {
-        transactions = TransactionRepository.shared.fetchAll()
+        do {
+            transactions = try TransactionRepository.shared.fetchAllChecked()
+        } catch let error as TransactionRepository.RepositoryError {
+            transactions = []
+            presentRepositoryError(error)
+        } catch {
+            transactions = []
+            presentRepositoryError(TransactionRepository.RepositoryError.decodeFailure(underlying: error))
+        }
         tableView.reloadData()
+    }
+
+    /// Guarded against double-presentation in case `loadTransactions` is
+    /// invoked again (e.g. via VC reload) while the alert is still on screen.
+    private func presentRepositoryError(_ error: LocalizedError) {
+        guard presentedViewController == nil else { return }
+        let alert = UIAlertController(
+            title: "Ошибка данных",
+            message: error.errorDescription ?? "Не удалось загрузить транзакции.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
 

@@ -17,6 +17,32 @@ final class BalanceService {
     static let balanceChangedNotification = Notification.Name("snoozepay.balance.changed")
     static let balanceUserInfoKey = "balance"
 
+    /// Broadcast when a `charge` / `topUp` had to be aborted because the
+    /// transaction ledger refused the write (corrupt blob → `_lastLoadFailed`,
+    /// or encode failure). Without this signal callers would see a `false`
+    /// return in `charge` (which is indistinguishable from "insufficient
+    /// funds") and `topUp` would have no signal at all — letting an IAP
+    /// success silently fail to credit. Surfacing the error here lets
+    /// VC-level observers raise an alert. (#72 follow-up.)
+    static let balancePersistFailedNotification = Notification.Name("snoozepay.balance.persistFailed")
+    static let errorUserInfoKey = "error"
+
+    /// Three-way outcome of a balance mutation, computed inside `queue.sync`
+    /// and consumed outside it to drive notifications without holding the
+    /// lock during synchronous observer dispatch (issue #72 follow-up).
+    private enum MutationOutcome {
+        /// Mutation committed; new persisted balance attached for the
+        /// `balanceChangedNotification` payload.
+        case applied(newBalance: Double)
+        /// Ledger refused the write (decode-locked or encode failed).
+        /// Balance untouched. Drives `balancePersistFailedNotification`.
+        case persistFailed
+        /// `charge` only — current balance < requested amount. Silent on the
+        /// notification side because this is the legitimate "out of money"
+        /// path the UI already handles via `canSnooze`.
+        case insufficient
+    }
+
     private let defaults: UserDefaults
     private let balanceKey = "user_balance"
     private let transactionRepository: TransactionRepository
@@ -71,50 +97,93 @@ final class BalanceService {
     // MARK: - Deduct (snooze penalty)
 
     /// Attempts to charge the given amount from balance.
-    /// Returns true if successful, false if insufficient funds.
+    /// Returns true if successful, false if insufficient funds **or if the
+    /// transaction ledger refused the write** (issue #72 follow-up — gauntlet
+    /// CRITICAL #1: previously the balance was decremented before `record()`
+    /// and its `Bool` return was discarded, so a corrupt ledger produced
+    /// "money gone, no receipt" desync). Order is now:
+    ///   1. Pre-validate funds.
+    ///   2. Attempt `record(...)`. If it fails, surface a notification and
+    ///      bail out **without** mutating the persisted balance.
+    ///   3. Only on a successful record do we write the new balance to disk.
+    /// Callers (FiringVC / FiringCoordinator) treat `false` here as either
+    /// insufficient funds **or** persistence failure — they already block on
+    /// it via `guard charged else { return }`, so user-perceived behaviour
+    /// (no UI snooze) matches actual on-disk state.
     @discardableResult
     func charge(amount: Double, alarmID: UUID?) -> Bool {
-        let result: (charged: Bool, newBalance: Double) = queue.sync {
+        let outcome = queue.sync { () -> MutationOutcome in
             let current = defaults.double(forKey: balanceKey)
-            guard current >= amount else { return (false, current) }
-
-            let newBalance = current - amount
-            defaults.set(newBalance, forKey: balanceKey)
+            guard current >= amount else { return .insufficient }
 
             let transaction = Transaction(
                 type: .charge,
                 amount: amount,
                 alarmID: alarmID?.uuidString
             )
-            transactionRepository.record(transaction)
+            // Record FIRST. If the ledger is locked (decode failure) or encode
+            // fails, refuse the charge — silently keeping the old balance is
+            // safer than debiting without a receipt.
+            guard transactionRepository.record(transaction) else {
+                return .persistFailed
+            }
 
-            return (true, newBalance)
+            let newBalance = current - amount
+            defaults.set(newBalance, forKey: balanceKey)
+            return .applied(newBalance: newBalance)
         }
 
-        if result.charged {
-            notifyBalanceChanged(result.newBalance)
+        switch outcome {
+        case .applied(let newBalance):
+            notifyBalanceChanged(newBalance)
+            return true
+        case .persistFailed:
+            notifyBalancePersistFailed(TransactionRepository.RepositoryError.persistBlocked)
+            return false
+        case .insufficient:
+            return false
         }
-        return result.charged
     }
 
     // MARK: - Top up (IAP)
 
-    func topUp(amount: Double) {
-        let newBalance: Double = queue.sync {
+    /// Adds to the balance and records a topup transaction.
+    /// - Returns: `true` on success; `false` if the ledger refused the write
+    ///   (corrupt blob / encode failure). Callers — notably the IAP flow in
+    ///   `StoreKitService` — must surface that to the user, otherwise the
+    ///   purchase silently fails to credit (gauntlet CRITICAL #1, #72).
+    @discardableResult
+    func topUp(amount: Double) -> Bool {
+        let outcome = queue.sync { () -> MutationOutcome in
             let current = defaults.double(forKey: balanceKey)
             let updated = current + amount
-            defaults.set(updated, forKey: balanceKey)
 
             let transaction = Transaction(
                 type: .topup,
                 amount: amount
             )
-            transactionRepository.record(transaction)
+            // Record FIRST so a corrupt ledger doesn't silently wipe out an
+            // IAP that the user actually paid for at Apple's end. Failing
+            // closed (no balance change, raise notification) lets the UI
+            // tell the user to contact support before they lose money.
+            guard transactionRepository.record(transaction) else {
+                return .persistFailed
+            }
 
-            return updated
+            defaults.set(updated, forKey: balanceKey)
+            return .applied(newBalance: updated)
         }
 
-        notifyBalanceChanged(newBalance)
+        switch outcome {
+        case .applied(let newBalance):
+            notifyBalanceChanged(newBalance)
+            return true
+        case .persistFailed:
+            notifyBalancePersistFailed(TransactionRepository.RepositoryError.persistBlocked)
+            return false
+        case .insufficient:
+            return false // unreachable for topUp; kept for exhaustive switch
+        }
     }
 
     // MARK: - Validation
@@ -147,7 +216,8 @@ final class BalanceService {
 
     /// Money-typed top-up. The `Money` invariant guarantees non-negative,
     /// finite — replacing the loose `Double` precondition.
-    func topUp(_ amount: Money) {
+    @discardableResult
+    func topUp(_ amount: Money) -> Bool {
         topUp(amount: amount.toDouble())
     }
 
@@ -174,6 +244,26 @@ final class BalanceService {
             name: Self.balanceChangedNotification,
             object: self,
             userInfo: [Self.balanceUserInfoKey: newBalance]
+        )
+    }
+
+    /// Mirror of `notifyBalanceChanged` for the persist-failed signal — same
+    /// thread-hop discipline so VC observers can safely drive UIKit alerts.
+    private func notifyBalancePersistFailed(_ error: Error) {
+        if Thread.isMainThread {
+            postBalancePersistFailed(error)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.postBalancePersistFailed(error)
+            }
+        }
+    }
+
+    private func postBalancePersistFailed(_ error: Error) {
+        notificationCenter.post(
+            name: Self.balancePersistFailedNotification,
+            object: self,
+            userInfo: [Self.errorUserInfoKey: error]
         )
     }
 }

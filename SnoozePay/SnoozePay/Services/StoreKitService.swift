@@ -106,7 +106,27 @@ final class StoreKitService {
                     await transaction.finish()
                     return
                 }
-                let amount = creditBalance(for: transaction.productID, fallbackPrice: product.price)
+                let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: product.price)
+                guard amount > 0 else {
+                    // Unknown productID — abandon without finish so Apple can retry
+                    // after a binary update; rollback dedup so retry is allowed.
+                    unmarkProcessed(transactionID: transaction.id)
+                    postPurchaseFailed("Неизвестный пакет пополнения. Обнови приложение.")
+                    return
+                }
+                // Gauntlet CRITICAL #1 (#72): if the ledger refuses the write
+                // we must NOT finish the transaction — Apple will replay it
+                // after the user fixes the corrupt state. Roll back the
+                // idempotency mark so the replay can credit instead of being
+                // dedup'd as "already processed".
+                guard BalanceService.shared.topUp(amount: amount) else {
+                    unmarkProcessed(transactionID: transaction.id)
+                    postPurchaseFailed(
+                        "Покупка прошла, но не удалось записать пополнение — данные повреждены. "
+                        + "Свяжитесь с поддержкой, чек сохранится у Apple."
+                    )
+                    return
+                }
                 await transaction.finish()
                 postPurchaseCompleted(amount)
 
@@ -161,7 +181,18 @@ final class StoreKitService {
                 await transaction.finish()
                 return
             }
-            BalanceService.shared.topUp(amount: amount)
+            // Gauntlet CRITICAL #1 (#72): refuse to finish if the ledger
+            // rejects the write — Apple will re-deliver this transaction
+            // through Transaction.updates on next launch, giving us another
+            // chance once the user clears the corrupt state.
+            guard BalanceService.shared.topUp(amount: amount) else {
+                unmarkProcessed(transactionID: transaction.id)
+                postPurchaseFailed(
+                    "Покупка прошла, но не удалось записать пополнение — данные повреждены. "
+                    + "Свяжитесь с поддержкой, чек сохранится у Apple."
+                )
+                return
+            }
             await transaction.finish()
             postPurchaseCompleted(amount)
 
@@ -231,6 +262,19 @@ final class StoreKitService {
         return true
     }
 
+    /// Reverses `markProcessed` when the credit step downstream fails so a
+    /// later retry (StoreKit replay after corrupt-state recovery) is allowed
+    /// to credit again. Without this rollback the dedup table would treat
+    /// the replayed tx as already processed and silently drop the money.
+    private func unmarkProcessed(transactionID: UInt64) {
+        let defaults = UserDefaults.standard
+        let key = Self.processedTxKey
+        let idString = String(transactionID)
+        var processed = (defaults.array(forKey: key) as? [String]) ?? []
+        processed.removeAll { $0 == idString }
+        defaults.set(processed, forKey: key)
+    }
+
     // MARK: - Verify transaction
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
@@ -244,16 +288,10 @@ final class StoreKitService {
 
     // MARK: - Helpers
 
-    /// Credits the user's balance for the given product. Returns the credited amount
-    /// (0 if the product is unknown and no fallback was provided).
-    @discardableResult
-    private func creditBalance(for productID: String, fallbackPrice: Decimal?) -> Double {
-        let amount = Self.creditAmount(for: productID, fallbackPrice: fallbackPrice)
-        guard amount > 0 else { return 0 }
-        BalanceService.shared.topUp(amount: amount)
-        return amount
-    }
-
+    /// Resolves the credit amount in rubles for a given productID. Falls back
+    /// to the StoreKit price if the productID isn't in the static lookup
+    /// table — used during initial purchase only, since `Transaction.updates`
+    /// has no `Product` reference.
     private static func creditAmount(for productID: String, fallbackPrice: Decimal?) -> Double {
         if let mapped = productAmounts[productID] {
             return mapped
