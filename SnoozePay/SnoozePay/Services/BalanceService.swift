@@ -110,6 +110,38 @@ final class BalanceService {
         queue.sync { defaults.double(forKey: balanceKey) >= amount }
     }
 
+    // MARK: - Typed API (phase 1 of #31)
+    //
+    // Money-based wrappers around the existing Double API. Storage stays
+    // Double for backward compatibility with persisted UserDefaults until
+    // phase 2 migrates it. These wrappers reject invalid amounts (negative,
+    // NaN, infinite) at the type-system level rather than allowing them
+    // through and corrupting the ledger.
+
+    /// Current balance as a `Money` value. Always non-nil — `Double` from
+    /// `UserDefaults.double(forKey:)` defaults to `0` (which is valid).
+    /// If a corrupt negative value somehow exists, falls back to `.zero`.
+    var balanceMoney: Money {
+        Money(balance) ?? .zero
+    }
+
+    /// Money-typed charge. Returns `false` when funds are insufficient,
+    /// matching the legacy `charge(amount:alarmID:)` contract.
+    @discardableResult
+    func charge(_ amount: Money, alarmID: UUID?) -> Bool {
+        charge(amount: amount.toDouble(), alarmID: alarmID)
+    }
+
+    /// Money-typed top-up. The `Money` invariant guarantees non-negative,
+    /// finite — replacing the loose `Double` precondition.
+    func topUp(_ amount: Money) {
+        topUp(amount: amount.toDouble())
+    }
+
+    func canAfford(_ amount: Money) -> Bool {
+        canAfford(amount.toDouble())
+    }
+
     /// Hop to main since `charge`/`topUp` may be called from a background queue
     /// (notification action handler) and observers drive UIKit. NotificationCenter
     /// delivers synchronously on the posting thread, so we explicitly hop here

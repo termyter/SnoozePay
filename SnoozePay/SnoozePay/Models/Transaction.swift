@@ -32,4 +32,13 @@ struct Transaction: Identifiable, Codable {
         let prefix = type == .charge ? "-" : "+"
         return "\(prefix)\(Int(amount)) ₽"
     }
+
+    // MARK: - Typed views (phase 1 of #31)
+
+    /// Typed view of the transaction amount. `nil` if the legacy `Double`
+    /// is negative or non-finite — old data may have leaked such values
+    /// since the primitive API never validated.
+    var money: Money? {
+        Money(amount)
+    }
 }
