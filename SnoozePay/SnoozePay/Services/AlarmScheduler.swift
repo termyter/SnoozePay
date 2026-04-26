@@ -148,9 +148,26 @@ final class AlarmScheduler {
         let snoozeID = snoozeNotificationID(for: alarmID)
         let belongsToAlarm: (String) -> Bool = { $0.hasPrefix(prefix) || $0 == snoozeID }
 
+        // Belt-and-suspenders: explicit-IDs sync removal first (no async dependency).
+        // If the async `getPendingNotificationRequests` completion returns an empty
+        // array — system glitch, background suspension, permission revoked — the
+        // prefix sweep below silently exits without removing anything. The sync
+        // call here guarantees the canonical day0..day6 / once / snooze IDs are
+        // removed regardless. Per #92 follow-up to #70.
+        let explicitIDs = (0..<7).map { notificationID(for: alarmID, trigger: "day\($0)") }
+            + [notificationID(for: alarmID, trigger: "once")]
+            + [snoozeID]
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: explicitIDs)
+        notificationCenter.removeDeliveredNotifications(withIdentifiers: explicitIDs)
+
+        // Then prefix sweep for any future label additions / stragglers the
+        // explicit set didn't cover (idempotent — already-removed IDs are no-ops).
         notificationCenter.getPendingNotificationRequests { [notificationCenter] requests in
             let ids = requests.map { $0.identifier }.filter(belongsToAlarm)
-            guard !ids.isEmpty else { return }
+            if ids.isEmpty {
+                AppLogger.scheduler.info("cancel sweep: no pending requests matched alarmID \(alarmID, privacy: .private) (explicit removal already ran)")
+                return
+            }
             notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
         }
         notificationCenter.getDeliveredNotifications { [notificationCenter] notifications in
