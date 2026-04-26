@@ -292,9 +292,16 @@ extension AlarmsListViewController: UITableViewDataSource {
 extension AlarmsListViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
         let alarm = viewModel.alarms[indexPath.row]
         let editVC = CreateAlarmViewController(alarm: alarm)
         editVC.onSave = { [weak self] in
+            self?.viewModel.loadData()
+        }
+        // Re-fetch from the source of truth instead of mutating by row index —
+        // the row that was tapped may have shifted after another in-flight
+        // delete (e.g. swipe + detail open near-simultaneously).
+        editVC.onDelete = { [weak self] in
             self?.viewModel.loadData()
         }
         let nav = UINavigationController(rootViewController: editVC)
@@ -306,10 +313,26 @@ extension AlarmsListViewController: UITableViewDelegate {
         trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
     ) -> UISwipeActionsConfiguration? {
         let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, completion in
-            self?.viewModel.deleteAlarm(at: indexPath.row)
+            guard let self else {
+                completion(false)
+                return
+            }
+            // Guard against stale indexPath: the table may have already mutated
+            // (delete from detail screen, programmatic reload) since the swipe
+            // gesture began. Without this check we'd index past `alarms.count`.
+            guard indexPath.row < self.viewModel.alarms.count else {
+                completion(false)
+                return
+            }
+            self.viewModel.deleteAlarm(at: indexPath.row)
             tableView.deleteRows(at: [indexPath], with: .automatic)
             completion(true)
         }
+        // SF Symbol gives the action a recognisable affordance even before the
+        // user has read the title — addresses the PM feedback that the swipe
+        // gesture was not obvious.
+        delete.image = UIImage(systemName: "trash")
+        delete.backgroundColor = .systemRed
         return UISwipeActionsConfiguration(actions: [delete])
     }
 }

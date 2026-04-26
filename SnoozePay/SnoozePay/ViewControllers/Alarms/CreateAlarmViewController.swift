@@ -8,6 +8,10 @@ class CreateAlarmViewController: UIViewController {
     // MARK: - Properties
 
     var onSave: (() -> Void)?
+    /// Invoked after the user confirms deletion of the alarm being edited so the
+    /// presenter can refresh its list. Defaults to nil for new alarms (delete row
+    /// is hidden in create mode).
+    var onDelete: (() -> Void)?
     private let viewModel: CreateAlarmViewModel
 
     // MARK: - UI
@@ -104,6 +108,10 @@ class CreateAlarmViewController: UIViewController {
         case penalty
         case progressiveScale
         case snoozeTime
+        /// Destructive "Удалить будильник" row — only visible in edit mode.
+        /// In create mode `numberOfRowsInSection` returns 0, hiding the section
+        /// entirely (including its background pill).
+        case deleteAction
     }
 
     // MARK: - Init
@@ -298,6 +306,10 @@ extension CreateAlarmViewController: UITableViewDataSource {
         switch sec {
         case .progressiveScale:
             return viewModel.progressiveScale ? 2 : 1
+        case .deleteAction:
+            // Hide the destructive row entirely when creating a new alarm —
+            // there's nothing to delete yet.
+            return viewModel.isEditing ? 1 : 0
         default:
             return 1
         }
@@ -314,6 +326,7 @@ extension CreateAlarmViewController: UITableViewDataSource {
         case .penalty: return "ШТРАФ ЗА ОТКЛАДЫВАНИЕ"
         case .progressiveScale: return nil
         case .snoozeTime: return "ВРЕМЯ ОТКЛАДЫВАНИЯ"
+        case .deleteAction: return nil
         }
     }
 
@@ -409,6 +422,16 @@ extension CreateAlarmViewController: UITableViewDataSource {
             cell.detailTextLabel?.text = snoozeMinutesText
             cell.detailTextLabel?.textColor = .label
             cell.accessoryView = snoozeStepper
+
+        case .deleteAction:
+            // Centered red text mimics iOS Settings' destructive row pattern
+            // (see Calendar.app "Delete Event"). selectionStyle=.default to give
+            // the user tactile feedback before the confirmation alert appears.
+            cell.textLabel?.text = "Удалить будильник"
+            cell.textLabel?.textColor = .systemRed
+            cell.textLabel?.textAlignment = .center
+            cell.textLabel?.font = UIFont.systemFont(ofSize: 17, weight: .regular)
+            cell.selectionStyle = .default
         }
 
         return cell
@@ -502,9 +525,40 @@ extension CreateAlarmViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let section = Section(rawValue: indexPath.section), section == .sound else { return }
-        // Sound picker navigation — simple action sheet for MVP
-        showSoundPicker()
+        guard let section = Section(rawValue: indexPath.section) else { return }
+        switch section {
+        case .sound:
+            // Sound picker navigation — simple action sheet for MVP
+            showSoundPicker()
+        case .deleteAction:
+            confirmDelete()
+        default:
+            return
+        }
+    }
+
+    private func confirmDelete() {
+        let alert = UIAlertController(
+            title: "Удалить будильник?",
+            message: "Это действие нельзя отменить.",
+            preferredStyle: .actionSheet
+        )
+        alert.addAction(UIAlertAction(title: "Удалить", style: .destructive) { [weak self] _ in
+            guard let self else { return }
+            // ViewModel.delete forwards to AlarmRepository.delete, which itself
+            // cancels the scheduled UNNotificationRequests via AlarmScheduler.
+            self.viewModel.delete()
+            self.onDelete?()
+            self.dismiss(animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        // Without a sourceView the action sheet crashes on iPad popovers.
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        present(alert, animated: true)
     }
 
     private func showSoundPicker() {
