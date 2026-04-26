@@ -11,7 +11,21 @@ final class AlarmCell: UITableViewCell {
         let view = UIView()
         view.backgroundColor = AppColors.surface
         view.layer.cornerRadius = AppRadius.md
-        view.clipsToBounds = true
+        // Keep masksToBounds off so the drop shadow can render outside the rounded
+        // bounds. Subviews are constrained inside the card via Auto Layout, so they
+        // won't visually overflow even without clipping.
+        view.layer.masksToBounds = false
+        // Subtle drop shadow lifts the card off the background. In light mode this is
+        // the primary visual separator since `secondarySystemBackground` (#FFFFFF) sits
+        // on top of `systemGroupedBackground` (#F2F2F7) — only ~5% luminance delta.
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.06
+        view.layer.shadowRadius = 8
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        // Hairline border reinforces the edge in light mode (UIColor.separator is
+        // fully opaque grey in light, and very faint in dark — auto-adapts).
+        view.layer.borderWidth = 0.5
+        view.layer.borderColor = UIColor.separator.cgColor
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -62,6 +76,14 @@ final class AlarmCell: UITableViewCell {
         // Wire the target once at cell creation so re-configuration in
         // `cellForRowAt` never accumulates duplicate handlers.
         toggleSwitch.addTarget(self, action: #selector(toggleSwitchChanged), for: .valueChanged)
+
+        // CALayer's `cgColor` properties don't auto-resolve dynamic UIColors,
+        // so refresh the border whenever the trait collection (light/dark) flips.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: AlarmCell, _) in
+            cell.cardView.layer.borderColor = UIColor.separator.resolvedColor(
+                with: cell.traitCollection
+            ).cgColor
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -115,6 +137,21 @@ final class AlarmCell: UITableViewCell {
         // The closure captures the previous row's identity — drop it so the
         // recycled cell never fires the wrong alarm before the next configure.
         onToggle = nil
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Pre-rasterize the shadow against the rounded card frame so scrolling
+        // doesn't pay the per-pixel offscreen pass cost.
+        cardView.layer.shadowPath = UIBezierPath(
+            roundedRect: cardView.bounds,
+            cornerRadius: AppRadius.md
+        ).cgPath
+        // Keep the border colour in sync with the current trait collection
+        // (cgColor doesn't auto-update for dynamic UIColors).
+        cardView.layer.borderColor = UIColor.separator.resolvedColor(
+            with: traitCollection
+        ).cgColor
     }
 
     // MARK: - Configure
