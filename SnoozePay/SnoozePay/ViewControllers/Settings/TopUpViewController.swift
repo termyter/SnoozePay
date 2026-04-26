@@ -179,8 +179,8 @@ class TopUpViewController: UIViewController {
     }
 
     private func purchaseProduct(at index: Int) {
-        let products = storeService.products
-        guard index < products.count else {
+        guard case .loaded(let products) = loadState,
+              index < products.count else {
             let alert = UIAlertController(
                 title: "Недоступно",
                 message: "Магазин временно недоступен. Попробуйте позже.",
@@ -190,7 +190,6 @@ class TopUpViewController: UIViewController {
             present(alert, animated: true)
             return
         }
-
         let product = products[index]
 
         // Subscribe per-purchase. Removed at the end of the Task so the observer
