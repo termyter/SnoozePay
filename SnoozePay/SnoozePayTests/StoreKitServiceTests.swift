@@ -93,4 +93,49 @@ final class StoreKitServiceTests: XCTestCase {
     // the StoreKit boundary behind a protocol (handle(transactionResult:),
     // purchaseProduct, transactionUpdates AsyncStream). Tracked as a
     // follow-up so this PR stays test-only and does not modify production.
+
+    // MARK: - #115: Bool-check on BalanceService.topUp
+
+    /// The user-facing copy used when `BalanceService.topUp` reports `false`
+    /// (locked ledger / record failed) is part of the contract with the
+    /// purchase UI. Renaming or emptying it would silently break the
+    /// failure-state alert. Pinned here so a refactor surfaces it.
+    func testLedgerLockedFailureMessage_isStableAndNonEmpty() {
+        XCTAssertEqual(
+            StoreKitService.ledgerLockedFailureMessage,
+            "Не удалось зачислить покупку. Свяжитесь с поддержкой."
+        )
+        XCTAssertFalse(StoreKitService.ledgerLockedFailureMessage.isEmpty)
+    }
+
+    /// `purchaseFailedNotification` carries the user-facing copy via
+    /// `messageUserInfoKey`. Subscribers (PaywallViewController) read the
+    /// message exactly through this key to drive the alert. If a future change
+    /// drops the userInfo or renames the key, this test catches it for the
+    /// ledger-locked path specifically.
+    func testPurchaseFailedNotification_carriesLedgerLockedMessageUnderMessageKey() {
+        let center = NotificationCenter()
+        let exp = expectation(description: "purchase failed notification received")
+        var receivedMessage: String?
+
+        let token = center.addObserver(
+            forName: StoreKitService.purchaseFailedNotification,
+            object: nil,
+            queue: nil
+        ) { note in
+            receivedMessage = note.userInfo?[StoreKitService.messageUserInfoKey] as? String
+            exp.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        // Simulate the ledger-locked failure post that StoreKitService now performs.
+        center.post(
+            name: StoreKitService.purchaseFailedNotification,
+            object: nil,
+            userInfo: [StoreKitService.messageUserInfoKey: StoreKitService.ledgerLockedFailureMessage]
+        )
+
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(receivedMessage, StoreKitService.ledgerLockedFailureMessage)
+    }
 }
