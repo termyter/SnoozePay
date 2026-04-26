@@ -30,6 +30,12 @@ final class StatisticsViewModel {
     private let transactionRepository: TransactionRepository
     private let defaults: UserDefaults
 
+    /// UserDefaults key under which the all-time best streak is persisted.
+    /// Centralised here so the read in `bestStreak` and the bump in `loadData`
+    /// can never drift apart (a typo in either site would silently reset the
+    /// user's record).
+    private static let bestStreakKey = "best_streak"
+
     // MARK: - State
 
     private(set) var selectedPeriod: Period = .week
@@ -81,8 +87,8 @@ final class StatisticsViewModel {
         streak = transactionRepository.currentStreak()
         // Bump persisted best streak only forward — never reset on streak = 0,
         // so the user's all-time record survives a slip-up.
-        if streak > defaults.integer(forKey: "best_streak") {
-            defaults.set(streak, forKey: "best_streak")
+        if streak > defaults.integer(forKey: Self.bestStreakKey) {
+            defaults.set(streak, forKey: Self.bestStreakKey)
         }
         onDataUpdated?()
     }
@@ -153,7 +159,7 @@ final class StatisticsViewModel {
 
     /// All-time best streak, persisted across launches and never reset on a slip-up.
     var bestStreak: Int {
-        defaults.integer(forKey: "best_streak")
+        defaults.integer(forKey: Self.bestStreakKey)
     }
 
     var bestStreakFormatted: String {

@@ -80,14 +80,11 @@ final class AlarmsListViewModel {
 
     // MARK: - Toggle
 
-    func toggleAlarm(at index: Int, enabled: Bool) {
-        guard index < alarms.count else { return }
-        toggleAlarm(id: alarms[index].id, enabled: enabled)
-    }
-
     /// Toggle by stable UUID rather than row index. Cells should call this so the
     /// right alarm flips even after the list has been reordered or items deleted
-    /// since the cell was configured.
+    /// since the cell was configured. The historical `toggleAlarm(at:)` shim was
+    /// removed in #79 — call sites must now resolve the UUID themselves so a
+    /// stale row index can never flip the wrong alarm.
     func toggleAlarm(id: UUID, enabled: Bool) {
         guard let index = alarms.firstIndex(where: { $0.id == id }) else {
             // Stale cell closure or deleted alarm — the cell already flipped its visual
@@ -192,13 +189,5 @@ final class AlarmsListViewModel {
     func alarmPenaltyString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
         return "▲ ОТЛОЖИТЬ: \(Int(alarms[index].penaltyAmount)) ₽"
-    }
-
-    func alarmSubtitle(at index: Int) -> String {
-        guard index < alarms.count else { return "" }
-        let alarm = alarms[index]
-        let days = alarm.repeatDaysDescription
-        let penalty = "\(Int(alarm.penaltyAmount)) ₽"
-        return "\(days) \u{00B7} \(penalty)"
     }
 }

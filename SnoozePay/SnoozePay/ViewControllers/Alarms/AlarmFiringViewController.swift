@@ -42,11 +42,15 @@ class AlarmFiringViewController: UIViewController {
     /// "БУДИЛЬНИК" label at top (matches native iOS alarm)
     private let alarmTypeLabel: UILabel = {
         let label = UILabel()
-        label.text = "БУДИЛЬНИК"
+        let title = "БУДИЛЬНИК"
+        let attributed = NSAttributedString(
+            string: title,
+            attributes: [.kern: 2]
+        )
+        label.attributedText = attributed
         label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
         label.textColor = UIColor.white.withAlphaComponent(0.6)
         label.textAlignment = .center
-        label.letterSpacing = 2
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -97,14 +101,11 @@ class AlarmFiringViewController: UIViewController {
 
     /// "Отложить · X₽" — golden/warm orange pill with bell icon
     private let snoozeButton: UIButton = {
-        // #E8A838 warm orange/gold
-        let activeColor = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1.0)
-
         var config = UIButton.Configuration.filled()
         config.image = UIImage(systemName: "bell.fill")
         config.imagePadding = 8
         config.imagePlacement = .leading
-        config.baseBackgroundColor = activeColor
+        config.baseBackgroundColor = AppColors.alarmFiringSnooze
         config.baseForegroundColor = .white
         config.cornerStyle = .capsule
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
@@ -336,8 +337,7 @@ class AlarmFiringViewController: UIViewController {
         snoozeConfig?.title = viewModel.snoozeButtonTitle
 
         if viewModel.canSnooze {
-            // #E8A838 warm orange/gold
-            snoozeConfig?.baseBackgroundColor = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1.0)
+            snoozeConfig?.baseBackgroundColor = AppColors.alarmFiringSnooze
             snoozeButton.configuration = snoozeConfig
             snoozeButton.isEnabled = true
         } else {
@@ -396,19 +396,5 @@ class AlarmFiringViewController: UIViewController {
             dismiss(animated: true)
         }
         // If failed (balance empty) — button is already disabled, nothing to do
-    }
-}
-
-// MARK: - UILabel letter spacing helper
-
-private extension UILabel {
-    var letterSpacing: CGFloat {
-        get { 0 }
-        set {
-            guard let text = text else { return }
-            let attrs = NSMutableAttributedString(string: text)
-            attrs.addAttribute(.kern, value: newValue, range: NSRange(location: 0, length: text.count))
-            attributedText = attrs
-        }
     }
 }

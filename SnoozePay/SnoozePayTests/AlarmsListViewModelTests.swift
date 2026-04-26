@@ -90,7 +90,8 @@ final class AlarmsListViewModelTests: XCTestCase {
         let vm = makeViewModel()
         vm.loadData()
         XCTAssertEqual(vm.alarmTimeString(at: 0), "")
-        XCTAssertEqual(vm.alarmSubtitle(at: 0), "")
+        XCTAssertEqual(vm.alarmDetail(at: 0), "")
+        XCTAssertEqual(vm.alarmPenaltyString(at: 0), "")
     }
 
     func testFormattedBalance_containsRubleSign() {
@@ -127,7 +128,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         )
     }
 
-    // MARK: - toggleAlarm(at:enabled:)
+    // MARK: - toggleAlarm(id:enabled:)
 
     func testToggleAlarm_updatesInMemoryState() {
         let alarm = Alarm(penaltyAmount: 50, enabled: true)
@@ -137,7 +138,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.loadData()
         XCTAssertTrue(vm.alarms[0].enabled)
 
-        vm.toggleAlarm(at: 0, enabled: false)
+        vm.toggleAlarm(id: vm.alarms[0].id, enabled: false)
         XCTAssertFalse(vm.alarms[0].enabled, "In-memory alarm must reflect the new enabled state immediately")
     }
 
@@ -148,7 +149,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         let vm = makeViewModel()
         vm.loadData()
 
-        vm.toggleAlarm(at: 0, enabled: false)
+        vm.toggleAlarm(id: vm.alarms[0].id, enabled: false)
         let stored = repo.fetchAll()
         XCTAssertEqual(stored.count, 1)
         XCTAssertFalse(stored[0].enabled, "Toggle must persist through the repository")
@@ -181,7 +182,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         let vm = makeViewModel()
         vm.loadData()
 
-        vm.toggleAlarm(at: 0, enabled: false)
+        vm.toggleAlarm(id: vm.alarms[0].id, enabled: false)
 
         let cached = vm.alarms[0]
         XCTAssertEqual(cached.id, original.id)
@@ -219,7 +220,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(emissions, 1, "loadData must emit onAlarmsUpdated exactly once on initial load")
         emissions = 0
 
-        vm.toggleAlarm(at: 0, enabled: false)
+        vm.toggleAlarm(id: vm.alarms[0].id, enabled: false)
 
         XCTAssertEqual(
             emissions, 0,

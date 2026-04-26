@@ -98,28 +98,28 @@ final class SoundPickerRowCell: UITableViewCell {
     // MARK: - UI
 
     private let nameLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 17)
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 17)
+        return label
     }()
 
     private let playButton: UIButton = {
-        let b = UIButton(type: .system)
+        let button = UIButton(type: .system)
         let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
-        b.setImage(UIImage(systemName: "play.circle", withConfiguration: config), for: .normal)
-        b.tintColor = AppColors.accentBlue
-        b.translatesAutoresizingMaskIntoConstraints = false
-        return b
+        button.setImage(UIImage(systemName: "play.circle", withConfiguration: config), for: .normal)
+        button.tintColor = AppColors.accentBlue
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
 
     private let checkmark: UIImageView = {
-        let iv = UIImageView()
-        iv.image = UIImage(systemName: "checkmark")?.withConfiguration(
+        let imageView = UIImageView()
+        imageView.image = UIImage(systemName: "checkmark")?.withConfiguration(
             UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
         )
-        iv.tintColor = AppColors.accentBlue
-        iv.translatesAutoresizingMaskIntoConstraints = false
-        return iv
+        imageView.tintColor = AppColors.accentBlue
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
     }()
 
     // MARK: - Init
