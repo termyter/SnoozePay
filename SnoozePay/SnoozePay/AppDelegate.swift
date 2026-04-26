@@ -116,12 +116,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = notification.request.content.userInfo
 
+        guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
+            print("[AppDelegate] willPresent: invalid alarm payload, ignoring \(userInfo)")
+            completionHandler([])
+            return
+        }
+
         // Start continuous alarm sound immediately (before presenting the VC)
-        let soundID = userInfo["soundID"] as? String ?? "radar"
-        AudioService.shared.startAlarmSound(soundID: soundID)
+        AudioService.shared.startAlarmSound(soundID: payload.soundID)
 
         // Show the alarm firing screen
-        presentAlarmFiringScreen(for: userInfo)
+        presentAlarmFiringScreen(for: payload)
         completionHandler([])
     }
 
@@ -141,7 +146,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         case UNNotificationDefaultActionIdentifier:
             // User tapped notification banner — present alarm screen
             // AudioService will be started by AlarmFiringViewController
-            presentAlarmFiringScreen(for: userInfo)
+            if let payload = AlarmNotificationPayload(userInfo: userInfo) {
+                presentAlarmFiringScreen(for: payload)
+            } else {
+                print("[AppDelegate] default action: invalid alarm payload \(userInfo)")
+            }
 
         case "SNOOZE_ACTION":
             AudioService.shared.stopAlarmSound()
@@ -170,26 +179,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
     // MARK: - Helpers
 
-    private func presentAlarmFiringScreen(for userInfo: [AnyHashable: Any]) {
-        guard
-            let alarmIDString = userInfo["alarmID"] as? String,
-            let alarmID = UUID(uuidString: alarmIDString)
-        else {
+    private func presentAlarmFiringScreen(for payload: AlarmNotificationPayload) {
+        guard let alarm = AlarmRepository.shared.fetch(id: payload.alarmID) else {
             // Audio may already be playing from willPresent — stop it so the user
             // is not stuck with a silent-screen + sounding alarm we can't dismiss.
-            print("[AppDelegate] alarm not found (missing/invalid alarmID), stopping audio")
-            AudioService.shared.stopAlarmSound()
-            return
-        }
-
-        guard let alarm = AlarmRepository.shared.fetch(id: alarmID) else {
-            print("[AppDelegate] alarm not found (repo returned nil for \(alarmID)), stopping audio")
+            print("[AppDelegate] alarm not found (repo returned nil for \(payload.alarmID)), stopping audio")
             AudioService.shared.stopAlarmSound()
             return
         }
 
         DispatchQueue.main.async {
-            let firingVC = AlarmFiringViewController(alarm: alarm, snoozeCount: userInfo["snoozeCount"] as? Int ?? 0)
+            let firingVC = AlarmFiringViewController(alarm: alarm, snoozeCount: payload.snoozeCount)
             firingVC.modalPresentationStyle = .fullScreen
 
             // Find the topmost presented view controller to avoid "already presenting" issues

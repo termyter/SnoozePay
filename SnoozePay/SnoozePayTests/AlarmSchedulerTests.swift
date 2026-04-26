@@ -51,12 +51,19 @@ final class AlarmSchedulerTests: XCTestCase {
         XCTAssertEqual(penalty, 75)
     }
 
-    func testNotificationContent_includesProgressiveScaleInUserInfo() {
-        let alarm = Alarm(penaltyAmount: 50, progressiveScale: true)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
+    func testNotificationContent_userInfoDecodesAsPayload() {
+        // The single source of truth for userInfo is AlarmNotificationPayload —
+        // verify the writer's output round-trips through `init?(userInfo:)`.
+        let alarmID = UUID()
+        let alarm = Alarm(id: alarmID, soundID: "morning_bells", penaltyAmount: 75)
+        let content = scheduler.makeContent(for: alarm, snoozeCount: 2)
 
-        let progressive = content.userInfo["progressiveScale"] as? Bool
-        XCTAssertEqual(progressive, true)
+        let payload = AlarmNotificationPayload(userInfo: content.userInfo)
+        XCTAssertNotNil(payload)
+        XCTAssertEqual(payload?.alarmID, alarmID)
+        XCTAssertEqual(payload?.penalty, 75)
+        XCTAssertEqual(payload?.snoozeCount, 2)
+        XCTAssertEqual(payload?.soundID, "morning_bells")
     }
 
     func testNotificationContent_hasCriticalSound() {

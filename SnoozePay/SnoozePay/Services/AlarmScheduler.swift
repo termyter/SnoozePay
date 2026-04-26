@@ -169,15 +169,16 @@ final class AlarmScheduler {
         content.categoryIdentifier = categoryID
         content.interruptionLevel = Self.criticalAlertsAvailable ? .critical : .timeSensitive
 
-        // Pass alarm metadata via userInfo for handling in AppDelegate
-        content.userInfo = [
-            "alarmID": alarm.id.uuidString,
-            "penaltyAmount": alarm.penaltyAmount,
-            "progressiveScale": alarm.progressiveScale,
-            "snoozeCount": snoozeCount,
-            "snoozeMinutes": alarm.snoozeMinutes,
-            "soundID": alarm.soundID
-        ]
+        // Pass alarm metadata via a typed payload — see AlarmNotificationPayload
+        // for the single source of truth shared between this writer and the
+        // read sites in AppDelegate / AlarmFiringCoordinator.
+        let payload = AlarmNotificationPayload(
+            alarmID: alarm.id,
+            penalty: alarm.penaltyAmount,
+            snoozeCount: snoozeCount,
+            soundID: alarm.soundID
+        )
+        content.userInfo = payload.asUserInfo()
 
         return content
     }
