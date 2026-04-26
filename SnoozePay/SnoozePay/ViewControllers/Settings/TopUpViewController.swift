@@ -325,32 +325,35 @@ extension TopUpViewController {
     /// with `try?`. A silent failure here would let the user think no past purchases
     /// exist and re-buy a package — a real financial loss path (#71).
     fileprivate func performRestorePurchases() {
-        let balanceBeforeSync = BalanceService.shared.balance
-
         Task { [weak self] in
             guard let self else { return }
             do {
                 try await AppStore.sync()
                 self.tableView.tableHeaderView = self.makeBalanceHeader()
-
-                // Heuristic: `AppStore.sync()` triggers `Transaction.updates` which
-                // credits the balance asynchronously. We sample after the await; if
-                // nothing changed we tell the user no purchases were found rather than
-                // leaving the screen silent.
-                let creditedSomething = BalanceService.shared.balance > balanceBeforeSync
-                self.presentRestoreSuccess(credited: creditedSomething)
+                // Don't predict success/no-purchases from a balance delta — the
+                // `Transaction.updates` listener that actually credits the wallet
+                // runs asynchronously and the await may return before it fires,
+                // producing a false "Покупок не найдено" when покупки really existed.
+                self.presentRestoreSuccess()
+            } catch is CancellationError {
+                // Screen dismissed mid-restore. Not a real failure — don't alert.
+                return
             } catch {
+                if (error as NSError).code == NSUserCancelledError {
+                    return
+                }
+                print("[TopUpVC] performRestorePurchases failed: \(error)")
                 self.presentRestoreError(error)
             }
         }
     }
 
-    private func presentRestoreSuccess(credited: Bool) {
-        let title = credited ? "Покупки восстановлены" : "Покупок не найдено"
-        let message = credited
-            ? "Баланс обновлён."
-            : "Мы не нашли предыдущих покупок, привязанных к вашему Apple ID."
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+    private func presentRestoreSuccess() {
+        let alert = UIAlertController(
+            title: "Запрос отправлен",
+            message: "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение нескольких секунд.",
+            preferredStyle: .alert
+        )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
@@ -369,6 +372,36 @@ extension TopUpViewController {
     /// fall back to the underlying `localizedDescription` plus support hint so the
     /// user is never left with a silent button tap.
     private func restoreErrorMessage(for error: Error) -> String {
+        // Typed StoreKit cases first — these match by code, not by locale-dependent
+        // string. `localizedDescription` substring matching would silently miss on
+        // any non-English iOS UI.
+        if let storeKitError = error as? StoreKitError {
+            switch storeKitError {
+            case .userCancelled:
+                return "Действие отменено."
+            case .networkError:
+                return "Проверьте подключение к интернету и попробуйте снова."
+            case .notAvailableInStorefront:
+                return "Покупки временно недоступны в вашем регионе."
+            case .notEntitled:
+                return "Войдите в Apple ID в Настройках и попробуйте снова."
+            default:
+                break
+            }
+        }
+
+        // SKError covers older / lower-level paths during restore.
+        if let skError = error as? SKError {
+            switch skError.code {
+            case .paymentNotAllowed:
+                return "В вашем Apple ID запрещены покупки. Проверьте настройки экранного времени."
+            case .cloudServiceNetworkConnectionFailed, .cloudServicePermissionDenied, .cloudServiceRevoked:
+                return "Проверьте подключение к интернету и доступ к iCloud в Настройках."
+            default:
+                break
+            }
+        }
+
         let nsError = error as NSError
 
         // Network reachability — URLError or NSURLErrorDomain bubbles up here.
@@ -382,15 +415,6 @@ extension TopUpViewController {
             default:
                 break
             }
-        }
-
-        // StoreKit auth — codes vary by iOS version, fall back to substring match
-        // on the localized description which is what AppStore.sync surfaces.
-        let description = nsError.localizedDescription.lowercased()
-        if description.contains("not authenticated")
-            || description.contains("sign")
-            || description.contains("apple id") {
-            return "Войдите в Apple ID в Настройках и попробуйте снова."
         }
 
         return "\(error.localizedDescription)\n\nЕсли проблема повторяется, свяжитесь с поддержкой."
