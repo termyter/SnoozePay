@@ -333,6 +333,16 @@ extension SettingsViewController: UITableViewDelegate {
         return section == .appearance ? 56 : 52
     }
 
+    /// Apply the shared card-style background to every row so each
+    /// `.insetGrouped` section reads as a lifted card in light mode (where
+    /// `secondarySystemBackground` is barely distinguishable from
+    /// `systemGroupedBackground`).
+    func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        let totalRows = self.tableView(tableView, numberOfRowsInSection: indexPath.section)
+        let position = CardRowPosition.resolve(row: indexPath.row, totalRows: totalRows)
+        cell.styleAsCardRow(position: position)
+    }
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let section = Section(rawValue: indexPath.section) else { return }
@@ -446,6 +456,14 @@ extension TransactionHistoryViewController: UITableViewDataSource, UITableViewDe
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         "ИСТОРИЯ"
+    }
+
+    /// Mirror SettingsViewController so the transaction list reads as a card
+    /// in light mode rather than blending into the page.
+    func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        let totalRows = self.tableView(tableView, numberOfRowsInSection: indexPath.section)
+        let position = CardRowPosition.resolve(row: indexPath.row, totalRows: totalRows)
+        cell.styleAsCardRow(position: position)
     }
 }
 

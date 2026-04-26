@@ -113,10 +113,18 @@ class AlarmsListViewController: UIViewController {
         // Container for the balance card with padding
         let headerContainer = UIView()
 
-        // Balance card styling — blue background
+        // Balance card styling — blue background. The accent blue is already
+        // high contrast against `systemGroupedBackground`, so we keep the
+        // border off (`applyCardStyle()` would override the blue fill) but add
+        // a soft drop shadow for the same elevation language as the alarm
+        // cards below.
         balanceCard.backgroundColor = AppColors.accentBlue
         balanceCard.layer.cornerRadius = AppRadius.md
-        balanceCard.clipsToBounds = true
+        balanceCard.layer.masksToBounds = false
+        balanceCard.layer.shadowColor = UIColor.black.cgColor
+        balanceCard.layer.shadowOpacity = 0.08
+        balanceCard.layer.shadowRadius = 6
+        balanceCard.layer.shadowOffset = CGSize(width: 0, height: 2)
         balanceCard.translatesAutoresizingMaskIntoConstraints = false
 
         // "БАЛАНС" small label
@@ -205,6 +213,13 @@ class AlarmsListViewController: UIViewController {
             header.frame.size = CGSize(width: tableView.bounds.width, height: newHeight)
             tableView.tableHeaderView = header
         }
+
+        // Pre-rasterise the balance card shadow against its current rounded
+        // bounds so the offscreen pass doesn't run on every scroll frame.
+        balanceCard.layer.shadowPath = UIBezierPath(
+            roundedRect: balanceCard.bounds,
+            cornerRadius: AppRadius.md
+        ).cgPath
     }
 
     private func setupEmptyState() {

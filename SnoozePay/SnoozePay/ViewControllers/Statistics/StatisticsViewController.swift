@@ -297,7 +297,10 @@ class StatisticsViewController: UIViewController {
 
     private func makeChartCard() -> UIView {
         let card = makeCard()
-        card.clipsToBounds = true
+        // Don't clip — `applyCardStyle()` needs `masksToBounds = false` so the
+        // drop shadow renders. Chart subviews are constrained inside `card`
+        // via Auto Layout below, so they won't visually overflow without the
+        // clip.
 
         // Title label
         card.addSubview(chartTitleLabel)
@@ -391,10 +394,12 @@ class StatisticsViewController: UIViewController {
         return motivationCard
     }
 
-    private func makeCard() -> UIView {
-        let view = UIView()
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = AppRadius.md
+    /// Standard widget card — surface colour, hairline border, subtle shadow.
+    /// Without the border + shadow these widgets dissolve into
+    /// `systemGroupedBackground` in light mode. `CardView` owns its shadow-path
+    /// rasterisation and trait-change refresh so the call site doesn't have to.
+    private func makeCard() -> CardView {
+        let view = CardView()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }
