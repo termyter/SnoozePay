@@ -1,142 +1,225 @@
 import XCTest
 @testable import SnoozePay
 
-/// Unit tests for `AlarmNotificationPayload` — the typed wrapper that replaced
-/// the previously stringly-typed notification `userInfo` dictionary.
+/// Round-trip and malformed-input coverage for the typed notification payload.
 ///
-/// Locks two contracts:
-/// - `payload → asUserInfo() → init?(userInfo:)` is a faithful round-trip.
-/// - any malformed/missing/wrong-typed value yields `nil` (no silent defaults).
+/// The struct is the single source of truth for what we put into and read out
+/// of `UNNotificationContent.userInfo`. Three independent reader sites used to
+/// scrape this dict with stringly-typed `as?` casts; a single key typo or type
+/// mismatch silently dropped a snooze. These tests guarantee we surface that
+/// kind of regression instead of returning a partially-populated struct.
 final class AlarmNotificationPayloadTests: XCTestCase {
+
+    // MARK: - Construction from Alarm
+
+    func testInit_fromAlarm_copiesAllFields() {
+        let alarm = Alarm(
+            id: UUID(),
+            name: "Утренний",
+            soundID: "morning_bells",
+            snoozeMinutes: 7,
+            penaltyAmount: 75,
+            progressiveScale: true
+        )
+        let payload = AlarmNotificationPayload(alarm: alarm, snoozeCount: 2)
+
+        XCTAssertEqual(payload.alarmID, alarm.id)
+        XCTAssertEqual(payload.penaltyAmount, 75)
+        XCTAssertEqual(payload.progressiveScale, true)
+        XCTAssertEqual(payload.snoozeCount, 2)
+        XCTAssertEqual(payload.snoozeMinutes, 7)
+        XCTAssertEqual(payload.soundID, "morning_bells")
+    }
 
     // MARK: - Round-trip
 
     func testRoundTrip_preservesAllFields() {
         let original = AlarmNotificationPayload(
             alarmID: UUID(),
-            penalty: 75,
-            snoozeCount: 2,
-            soundID: "morning_bells"
+            penaltyAmount: 125,
+            progressiveScale: true,
+            snoozeCount: 4,
+            snoozeMinutes: 9,
+            soundID: "radar"
         )
 
-        let decoded = AlarmNotificationPayload(userInfo: original.asUserInfo())
+        let dict = original.asUserInfo()
+        let decoded = AlarmNotificationPayload(userInfo: dict)
+
         XCTAssertEqual(decoded, original)
     }
 
-    func testRoundTrip_zeroSnoozeCountAndZeroPenalty() {
-        // Boundary: a fresh fire (snoozeCount=0) + free alarm (penalty=0) should
-        // still round-trip cleanly — guards against truthy-only checks creeping in.
+    func testRoundTrip_throughAnyHashableDict_preservesFields() {
+        // UNNotificationContent.userInfo is exposed as `[AnyHashable: Any]` to
+        // callers — round-trip through that shape too, in case Foundation
+        // ever bridges the keys differently from a plain `[String: Any]`.
         let original = AlarmNotificationPayload(
             alarmID: UUID(),
-            penalty: 0,
+            penaltyAmount: 50,
+            progressiveScale: false,
             snoozeCount: 0,
-            soundID: "radar"
+            snoozeMinutes: 9,
+            soundID: "default_alarm"
         )
 
-        XCTAssertEqual(AlarmNotificationPayload(userInfo: original.asUserInfo()), original)
+        let raw = original.asUserInfo()
+        let bridged: [AnyHashable: Any] = raw.reduce(into: [:]) { acc, pair in
+            acc[pair.key] = pair.value
+        }
+        let decoded = AlarmNotificationPayload(userInfo: bridged)
+
+        XCTAssertEqual(decoded, original)
     }
 
-    func testAsUserInfo_usesExpectedKeys() {
-        // Lock the wire format — these strings are what the system serialises into
-        // the notification payload, so renaming them is a breaking change for any
-        // notification that's already pending in the system queue.
+    // MARK: - asUserInfo emits Plist-compatible types
+
+    func testAsUserInfo_emitsExpectedKeys() {
         let payload = AlarmNotificationPayload(
             alarmID: UUID(),
-            penalty: 50,
-            snoozeCount: 0,
+            penaltyAmount: 100,
+            progressiveScale: true,
+            snoozeCount: 1,
+            snoozeMinutes: 5,
             soundID: "radar"
         )
+        let dict = payload.asUserInfo()
 
-        let userInfo = payload.asUserInfo()
-        XCTAssertNotNil(userInfo["alarmID"])
-        XCTAssertNotNil(userInfo["penaltyAmount"])
-        XCTAssertNotNil(userInfo["snoozeCount"])
-        XCTAssertNotNil(userInfo["soundID"])
+        XCTAssertEqual(Set(dict.keys), [
+            "alarmID",
+            "penaltyAmount",
+            "progressiveScale",
+            "snoozeCount",
+            "snoozeMinutes",
+            "soundID"
+        ])
+        XCTAssertTrue(dict["alarmID"] is String)
+        XCTAssertTrue(dict["penaltyAmount"] is Double)
+        XCTAssertTrue(dict["progressiveScale"] is Bool)
+        XCTAssertTrue(dict["snoozeCount"] is Int)
+        XCTAssertTrue(dict["snoozeMinutes"] is Int)
+        XCTAssertTrue(dict["soundID"] is String)
     }
 
-    // MARK: - Malformed userInfo
+    // MARK: - Malformed input → nil
 
-    func testInit_emptyUserInfo_isNil() {
+    func testInit_emptyUserInfo_returnsNil() {
         XCTAssertNil(AlarmNotificationPayload(userInfo: [:]))
     }
 
-    func testInit_missingAlarmID_isNil() {
-        let userInfo: [AnyHashable: Any] = [
+    func testInit_missingAlarmID_returnsNil() {
+        let dict: [AnyHashable: Any] = [
             "penaltyAmount": 50.0,
+            "progressiveScale": false,
             "snoozeCount": 0,
+            "snoozeMinutes": 9,
             "soundID": "radar"
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
-    func testInit_invalidUUIDString_isNil() {
-        let userInfo: [AnyHashable: Any] = [
-            "alarmID": "not-a-uuid",
+    func testInit_invalidUUIDString_returnsNil() {
+        let dict: [AnyHashable: Any] = [
+            "alarmID": "not-a-real-uuid",
             "penaltyAmount": 50.0,
+            "progressiveScale": false,
             "snoozeCount": 0,
+            "snoozeMinutes": 9,
             "soundID": "radar"
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
-    func testInit_missingPenalty_isNil() {
-        let userInfo: [AnyHashable: Any] = [
-            "alarmID": UUID().uuidString,
+    func testInit_alarmIDAsUUIDInsteadOfString_returnsNil() {
+        // Defensive: someone could try to put a UUID() directly. We require the
+        // string representation because that's what survives Plist encoding
+        // through the notification daemon.
+        let dict: [AnyHashable: Any] = [
+            "alarmID": UUID(),
+            "penaltyAmount": 50.0,
+            "progressiveScale": false,
             "snoozeCount": 0,
+            "snoozeMinutes": 9,
             "soundID": "radar"
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
-    func testInit_penaltyWrongType_isNil() {
-        // A String where Double was expected — the previous stringly-typed
-        // reader silently defaulted; the typed init rejects.
-        let userInfo: [AnyHashable: Any] = [
+    func testInit_penaltyAsString_returnsNil() {
+        let dict: [AnyHashable: Any] = [
             "alarmID": UUID().uuidString,
             "penaltyAmount": "50",
+            "progressiveScale": false,
             "snoozeCount": 0,
+            "snoozeMinutes": 9,
             "soundID": "radar"
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
-    func testInit_missingSnoozeCount_isNil() {
-        let userInfo: [AnyHashable: Any] = [
+    func testInit_snoozeCountAsDouble_returnsNil() {
+        // We require Int specifically — a Double would silently discard the
+        // user's intent if someone in a callsite ever wrote `5.5`.
+        let dict: [AnyHashable: Any] = [
             "alarmID": UUID().uuidString,
             "penaltyAmount": 50.0,
+            "progressiveScale": false,
+            "snoozeCount": 0.5,
+            "snoozeMinutes": 9,
             "soundID": "radar"
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
-    func testInit_snoozeCountWrongType_isNil() {
-        let userInfo: [AnyHashable: Any] = [
+    func testInit_progressiveScaleMissing_returnsNil() {
+        let dict: [AnyHashable: Any] = [
             "alarmID": UUID().uuidString,
             "penaltyAmount": 50.0,
-            "snoozeCount": "0",
+            "snoozeCount": 0,
+            "snoozeMinutes": 9,
             "soundID": "radar"
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
-    func testInit_missingSoundID_isNil() {
-        let userInfo: [AnyHashable: Any] = [
+    func testInit_soundIDMissing_returnsNil() {
+        let dict: [AnyHashable: Any] = [
             "alarmID": UUID().uuidString,
             "penaltyAmount": 50.0,
-            "snoozeCount": 0
+            "progressiveScale": false,
+            "snoozeCount": 0,
+            "snoozeMinutes": 9
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
-    func testInit_typoKey_isNil() {
-        // The original motivation for #74 — a single typo (`"alarmId"` vs
-        // `"alarmID"`) silently dropped snoozes. The typed init must reject it.
-        let userInfo: [AnyHashable: Any] = [
+    func testInit_typoedKeyAlarmId_returnsNil() {
+        // Regression: the original silent-failure path caught by /audit was
+        // exactly this — someone read `"alarmId"` (lowercase d) instead of
+        // `"alarmID"`. Now the entire payload bails so the typo is loud.
+        let dict: [AnyHashable: Any] = [
             "alarmId": UUID().uuidString,
             "penaltyAmount": 50.0,
+            "progressiveScale": false,
             "snoozeCount": 0,
+            "snoozeMinutes": 9,
             "soundID": "radar"
         ]
-        XCTAssertNil(AlarmNotificationPayload(userInfo: userInfo))
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
+    }
+
+    // MARK: - Compatibility with existing keys
+    //
+    // The keys here are the exact strings AlarmScheduler / AlarmFiringCoordinator
+    // / AppDelegate used before this refactor. Pinning them in a test guarantees
+    // a future rename can't silently invalidate a notification that was
+    // scheduled by an older build still pending in the system queue.
+
+    func testKeys_areStableContract() {
+        XCTAssertEqual(AlarmNotificationPayload.Key.alarmID, "alarmID")
+        XCTAssertEqual(AlarmNotificationPayload.Key.penaltyAmount, "penaltyAmount")
+        XCTAssertEqual(AlarmNotificationPayload.Key.progressiveScale, "progressiveScale")
+        XCTAssertEqual(AlarmNotificationPayload.Key.snoozeCount, "snoozeCount")
+        XCTAssertEqual(AlarmNotificationPayload.Key.snoozeMinutes, "snoozeMinutes")
+        XCTAssertEqual(AlarmNotificationPayload.Key.soundID, "soundID")
     }
 }

@@ -1,80 +1,117 @@
 import Foundation
 
-/// Typed wrapper for the `userInfo` dictionary attached to an alarm
-/// `UNNotificationContent`.
+/// Typed payload encoded into `UNNotificationContent.userInfo` so callers do not
+/// have to scrape stringly-typed dictionaries with `as? String` / `as? Int`.
 ///
-/// Without this struct, three sites (`AlarmScheduler.makeContent`,
-/// `AlarmFiringCoordinator.handleSnooze`, `AppDelegate`) each formed/parsed
-/// a stringly-typed `[AnyHashable: Any]` independently. A single typo in a
-/// key (e.g. `"alarmId"` vs `"alarmID"`) silently dropped the snooze with no
-/// compiler help. `init?(userInfo:)` + `asUserInfo()` give one source of
-/// truth and a typed failure path.
+/// Three sites used to read this dict independently (`AlarmFiringCoordinator`,
+/// `AppDelegate.userNotificationCenter(_:willPresent:...)`, and
+/// `AppDelegate.userNotificationCenter(_:didReceive:...)`) — a single key typo
+/// (`"alarmId"` vs `"alarmID"`) or type mismatch was enough to silently drop a
+/// snooze action. This struct is the single source of truth for what we put in
+/// and what we get out.
 ///
-/// Money-typed `penalty` stays `Double` until phase-2 of #31 migrates the
-/// underlying `Alarm.penaltyAmount` storage. Once that lands this should
-/// switch to `Money`.
+/// The payload bridges through a plain `[String: Any]` dictionary (instead of a
+/// JSON blob) because Apple's local-push pipeline already accepts `userInfo`
+/// dictionaries verbatim and we want the keys to remain inspectable in
+/// Console.app and in unit tests. Each field is encoded with its primitive
+/// representation (`UUID` → `String`, others as-is).
+///
+/// Phase 2 of #31 (typed `Money` / `AlarmSound`) will tighten the field types;
+/// today we mirror the underlying `Alarm` storage so the refactor stays a
+/// pure rename.
 struct AlarmNotificationPayload: Equatable {
 
-    /// Identifier of the alarm that fired. Used to look up the persisted
-    /// `Alarm` from `AlarmRepository` on the read side.
     let alarmID: UUID
-
-    /// Penalty (RUB) recorded at scheduling time. Currently informational —
-    /// read-sites recompute the actual charge from the live `Alarm` so a
-    /// changed setting takes effect on the next fire — but kept on the
-    /// payload for telemetry / debugging and for the notification subtitle.
-    let penalty: Double
-
-    /// How many times this alarm has already been snoozed in the current
-    /// firing cycle. Drives progressive-penalty arithmetic on the read side.
+    let penaltyAmount: Double
+    let progressiveScale: Bool
     let snoozeCount: Int
-
-    /// Identifier of the sound asset to play. Read by `AppDelegate` /
-    /// `AudioService` before the firing screen is presented so audio starts
-    /// even if the alarm has been deleted from the repository.
+    let snoozeMinutes: Int
     let soundID: String
 
-    // MARK: - userInfo bridging
-
-    /// Keys used in the underlying `userInfo` dict. Centralised here so
-    /// the write and read sites cannot drift.
-    enum Keys {
+    // MARK: - userInfo keys
+    //
+    // Centralised so a typo lives in exactly one place. The string values match
+    // the historical keys used before this refactor — changing them would
+    // invalidate any pending notifications scheduled by an older build.
+    enum Key {
         static let alarmID = "alarmID"
-        static let penalty = "penaltyAmount"
+        static let penaltyAmount = "penaltyAmount"
+        static let progressiveScale = "progressiveScale"
         static let snoozeCount = "snoozeCount"
+        static let snoozeMinutes = "snoozeMinutes"
         static let soundID = "soundID"
     }
-}
 
-extension AlarmNotificationPayload {
+    // MARK: - Construction from an alarm
 
-    /// Decode a notification's `userInfo` into a typed payload.
-    /// Returns `nil` if any required key is missing or has the wrong type —
-    /// callers are expected to log + bail out rather than guessing defaults.
-    init?(userInfo: [AnyHashable: Any]) {
-        guard
-            let alarmIDString = userInfo[Keys.alarmID] as? String,
-            let alarmID = UUID(uuidString: alarmIDString),
-            let penalty = userInfo[Keys.penalty] as? Double,
-            let snoozeCount = userInfo[Keys.snoozeCount] as? Int,
-            let soundID = userInfo[Keys.soundID] as? String
-        else {
-            return nil
-        }
-        self.alarmID = alarmID
-        self.penalty = penalty
+    /// Build the payload that goes into a fresh / snooze notification. The
+    /// `snoozeCount` is the count *up to and including* the most recent snooze
+    /// the user has performed — the firing coordinator increments it before
+    /// charging the next penalty.
+    init(alarm: Alarm, snoozeCount: Int) {
+        self.alarmID = alarm.id
+        self.penaltyAmount = alarm.penaltyAmount
+        self.progressiveScale = alarm.progressiveScale
         self.snoozeCount = snoozeCount
+        self.snoozeMinutes = alarm.snoozeMinutes
+        self.soundID = alarm.soundID
+    }
+
+    /// Designated init for tests / decode paths.
+    init(
+        alarmID: UUID,
+        penaltyAmount: Double,
+        progressiveScale: Bool,
+        snoozeCount: Int,
+        snoozeMinutes: Int,
+        soundID: String
+    ) {
+        self.alarmID = alarmID
+        self.penaltyAmount = penaltyAmount
+        self.progressiveScale = progressiveScale
+        self.snoozeCount = snoozeCount
+        self.snoozeMinutes = snoozeMinutes
         self.soundID = soundID
     }
 
-    /// Encode the payload as a `[String: Any]` ready for
-    /// `UNMutableNotificationContent.userInfo`.
+    // MARK: - userInfo bridge
+
+    /// Decode from a `UNNotificationContent.userInfo` dictionary. Returns `nil`
+    /// if any required field is missing or has the wrong type — callers MUST
+    /// surface this as a typed error path (log + early return), never proceed
+    /// with synthesised defaults.
+    init?(userInfo: [AnyHashable: Any]) {
+        guard
+            let alarmIDString = userInfo[Key.alarmID] as? String,
+            let alarmID = UUID(uuidString: alarmIDString),
+            let penaltyAmount = userInfo[Key.penaltyAmount] as? Double,
+            let progressiveScale = userInfo[Key.progressiveScale] as? Bool,
+            let snoozeCount = userInfo[Key.snoozeCount] as? Int,
+            let snoozeMinutes = userInfo[Key.snoozeMinutes] as? Int,
+            let soundID = userInfo[Key.soundID] as? String
+        else {
+            return nil
+        }
+
+        self.alarmID = alarmID
+        self.penaltyAmount = penaltyAmount
+        self.progressiveScale = progressiveScale
+        self.snoozeCount = snoozeCount
+        self.snoozeMinutes = snoozeMinutes
+        self.soundID = soundID
+    }
+
+    /// Encode as the dictionary that `UNMutableNotificationContent.userInfo`
+    /// expects. Only `Plist`-compatible value types are produced so iOS can
+    /// serialize it across the notification daemon.
     func asUserInfo() -> [String: Any] {
         [
-            Keys.alarmID: alarmID.uuidString,
-            Keys.penalty: penalty,
-            Keys.snoozeCount: snoozeCount,
-            Keys.soundID: soundID
+            Key.alarmID: alarmID.uuidString,
+            Key.penaltyAmount: penaltyAmount,
+            Key.progressiveScale: progressiveScale,
+            Key.snoozeCount: snoozeCount,
+            Key.snoozeMinutes: snoozeMinutes,
+            Key.soundID: soundID
         ]
     }
 }

@@ -117,7 +117,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let userInfo = notification.request.content.userInfo
 
         guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
-            print("[AppDelegate] willPresent: invalid alarm payload, ignoring \(userInfo)")
+            // Malformed payload — surface and bail rather than playing audio we
+            // can never stop because the firing screen will never be presented.
+            print("[AppDelegate] willPresent: invalid alarm payload \(userInfo)")
             completionHandler([])
             return
         }
@@ -150,6 +152,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 presentAlarmFiringScreen(for: payload)
             } else {
                 print("[AppDelegate] default action: invalid alarm payload \(userInfo)")
+                AudioService.shared.stopAlarmSound()
             }
 
         case "SNOOZE_ACTION":

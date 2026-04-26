@@ -81,15 +81,14 @@ final class AlarmFiringCoordinator {
         let newCount = payload.snoozeCount + 1
         let penalty = alarm.penalty(forSnoozeCount: newCount)
 
-        let alarmID = payload.alarmID
-        let charged = balanceService.charge(amount: penalty, alarmID: alarmID)
+        let charged = balanceService.charge(amount: penalty, alarmID: payload.alarmID)
         guard charged else {
-            print("[AlarmFiringCoordinator] snooze: insufficient funds for alarm \(alarmID), penalty=\(penalty)")
+            print("[AlarmFiringCoordinator] snooze: insufficient funds for alarm \(payload.alarmID), \(penalty)")
             return .insufficientFunds
         }
 
         scheduler.scheduleSnooze(for: alarm, snoozeCount: newCount)
-        print("[AlarmFiringCoordinator] snooze: scheduled #\(newCount) for alarm \(alarmID), charged=\(penalty)")
+        print("[AlarmFiringCoordinator] snooze: scheduled #\(newCount) for \(payload.alarmID), \(penalty)")
         return .scheduled(newSnoozeCount: newCount, charged: penalty)
     }
 }
