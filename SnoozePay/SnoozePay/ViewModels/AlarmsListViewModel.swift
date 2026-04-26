@@ -96,7 +96,43 @@ final class AlarmsListViewModel {
             return
         }
 
-        let didUpdate = alarmRepository.setEnabled(enabled, id: id)
+        // Pre-update the in-memory cache to the new enabled state so the
+        // failure-rollback closure below can flip it back regardless of
+        // whether the scheduler resolves synchronously (test mock) or
+        // asynchronously (real `UNUserNotificationCenter`). If we waited to
+        // mutate after `setEnabled` returns, a sync mock would fire its
+        // closure first, set `.enabled = !enabled`, then the post-call
+        // mutation would clobber the rollback (#129).
+        alarms[index] = Alarm(
+            id: alarms[index].id,
+            time: alarms[index].time,
+            repeatDays: alarms[index].repeatDays,
+            name: alarms[index].name,
+            soundID: alarms[index].soundID,
+            vibrationEnabled: alarms[index].vibrationEnabled,
+            snoozeMinutes: alarms[index].snoozeMinutes,
+            penaltyAmount: alarms[index].penaltyAmount,
+            progressiveScale: alarms[index].progressiveScale,
+            enabled: enabled
+        )
+
+        let didUpdate = alarmRepository.setEnabled(enabled, id: id) { [weak self] result in
+            // Scheduling outcome only fires on the successful-persist path.
+            // On failure we roll the in-memory cache back to the previous
+            // `enabled` state and re-bind the cell — without this the user
+            // sees "включён" while the notification never registered (#129).
+            guard let self else { return }
+            if case .failure(let error) = result {
+                AppLogger.ui.notice(
+                    "schedule failed during toggle id=\(id, privacy: .private); rolling back UI"
+                )
+                if let idx = self.alarms.firstIndex(where: { $0.id == id }) {
+                    self.alarms[idx].enabled = !enabled
+                }
+                self.onLoadError?(error)
+                self.onAlarmsUpdated?()
+            }
+        }
         guard didUpdate else {
             // Repository no longer has this alarm (deleted from another path)
             // or the store is locked due to a corrupt blob (issue #72).
@@ -128,19 +164,6 @@ final class AlarmsListViewModel {
             onAlarmsUpdated?()
             return
         }
-
-        alarms[index] = Alarm(
-            id: alarms[index].id,
-            time: alarms[index].time,
-            repeatDays: alarms[index].repeatDays,
-            name: alarms[index].name,
-            soundID: alarms[index].soundID,
-            vibrationEnabled: alarms[index].vibrationEnabled,
-            snoozeMinutes: alarms[index].snoozeMinutes,
-            penaltyAmount: alarms[index].penaltyAmount,
-            progressiveScale: alarms[index].progressiveScale,
-            enabled: enabled
-        )
     }
 
     // MARK: - Delete

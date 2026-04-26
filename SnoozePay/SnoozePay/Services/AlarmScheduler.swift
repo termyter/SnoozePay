@@ -34,11 +34,21 @@ protocol NotificationScheduling: AnyObject {
 
 extension UNUserNotificationCenter: NotificationScheduling {}
 
+/// Subset of `AlarmScheduler` that `AlarmRepository` depends on. Extracted as
+/// a protocol so unit tests covering repository → scheduler error propagation
+/// (issue #129 — toggle on alarm with denied permission must surface the
+/// failure to the VM instead of silently flipping the switch) can substitute a
+/// stub without bringing up `UNUserNotificationCenter`.
+protocol AlarmScheduling: AnyObject {
+    func schedule(_ alarm: Alarm, completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?)
+    func cancel(_ alarmID: UUID)
+}
+
 /// Handles scheduling and cancelling alarms.
 /// Uses UNUserNotificationCenter (iOS 18+) as the scheduling backend.
 /// On iOS 26+ with AlarmKit, the system alarm engine takes over — this service
 /// manages the notification fallback and snooze rescheduling.
-final class AlarmScheduler {
+final class AlarmScheduler: AlarmScheduling {
 
     static let shared = AlarmScheduler()
 

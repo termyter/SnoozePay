@@ -43,6 +43,10 @@ final class AlarmRepository {
     static let corruptBackupKey = "stored_alarms_backup_corrupt"
 
     private let defaults: UserDefaults
+    /// Scheduler seam — production uses the singleton, tests inject a stub so
+    /// they can verify error propagation (#129) without booting the real
+    /// `UNUserNotificationCenter`.
+    private let scheduler: AlarmScheduling
     private let queue = DispatchQueue(label: "com.snoozepay.alarms.serial")
     private static let log = OSLog(subsystem: "Ivan-Emelyanov.SnoozePay", category: "AlarmRepository")
 
@@ -62,8 +66,9 @@ final class AlarmRepository {
     /// Production call sites that pass no arguments would create an isolated
     /// instance backed by `.standard`, defeating the singleton serialization,
     /// so we deliberately omit the default value: callers must be explicit.
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, scheduler: AlarmScheduling = AlarmScheduler.shared) {
         self.defaults = defaults
+        self.scheduler = scheduler
     }
 
     private convenience init() {
@@ -138,9 +143,9 @@ final class AlarmRepository {
 
         guard didPersist else { return false }
 
-        AlarmScheduler.shared.cancel(alarm.id)
+        scheduler.cancel(alarm.id)
         if alarm.enabled {
-            AlarmScheduler.shared.schedule(alarm, completion: schedulingResult)
+            scheduler.schedule(alarm, completion: schedulingResult)
         } else {
             // Disabled alarms don't schedule — report success so async
             // callers don't hang waiting for a closure that never fires.
@@ -163,19 +168,33 @@ final class AlarmRepository {
             return persist(alarms)
         }
         if didPersist {
-            AlarmScheduler.shared.cancel(id)
+            scheduler.cancel(id)
         }
         return didPersist
     }
 
     /// Toggles `enabled` on the alarm with the given id.
+    /// - Parameters:
+    ///   - enabled: target state for the toggle.
+    ///   - id: stable UUID of the alarm to flip.
+    ///   - schedulingResult: optional callback invoked **only on the
+    ///     successful-persist path** once `AlarmScheduler.schedule` finishes
+    ///     (issue #129). Toggling off an alarm resolves with `.success(())`
+    ///     because there is no scheduling work — the closure is still called
+    ///     so async callers always observe completion. When the boolean
+    ///     return is `false` the closure is **not** invoked: the caller has
+    ///     already received the failure synchronously.
     /// - Returns: `true` if the alarm existed and was updated; `false` if no alarm
     ///   matched the id, the store is locked, or encoding failed. Callers
     ///   (e.g. `AlarmsListViewModel`) rely on the boolean to roll back
     ///   optimistic UI flips when the underlying alarm has been deleted from
     ///   another path (issue #35) or when the store is corrupt (issue #72).
     @discardableResult
-    func setEnabled(_ enabled: Bool, id: UUID) -> Bool {
+    func setEnabled(
+        _ enabled: Bool,
+        id: UUID,
+        schedulingResult: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)? = nil
+    ) -> Bool {
         let updated: Alarm? = queue.sync {
             guard !_lastLoadFailed else { return nil }
             var alarms: [Alarm]
@@ -197,9 +216,13 @@ final class AlarmRepository {
             )
             return false
         }
-        AlarmScheduler.shared.cancel(alarm.id)
+        scheduler.cancel(alarm.id)
         if alarm.enabled {
-            AlarmScheduler.shared.schedule(alarm)
+            scheduler.schedule(alarm, completion: schedulingResult)
+        } else {
+            // Toggle-off has no scheduling work — fire `.success(())` so async
+            // callers don't hang waiting for a closure that never lands.
+            schedulingResult?(.success(()))
         }
         return true
     }
