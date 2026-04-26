@@ -29,18 +29,31 @@ final class AlarmScheduler {
         // (no critical-alert) path even when standard permission succeeds.
         notificationCenter.requestAuthorization(options: [.alert, .sound, .badge, .criticalAlert]) { granted, error in
             if let error = error {
-                print("[AlarmScheduler] critical-alert request failed: \(error). Falling back to standard.")
+                let desc = error.localizedDescription
+                AppLogger.scheduler.error(
+                    "critical-alert request failed: \(desc, privacy: .public). Falling back to standard."
+                )
                 Self.criticalAlertsAvailable = false
                 let standardOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
                 self.notificationCenter.requestAuthorization(options: standardOptions) { granted, fallbackError in
                     Self.criticalAlertsAvailable = false
-                    let errorPart = fallbackError.map { ", error=\($0)" } ?? ""
-                    print("[AlarmScheduler] resolved path=fallback granted=\(granted) critical=false\(errorPart)")
+                    if let fallbackError = fallbackError {
+                        let fallbackDesc = fallbackError.localizedDescription
+                        AppLogger.scheduler.error(
+                            "resolved path=fallback granted=\(granted, privacy: .public) critical=false error=\(fallbackDesc, privacy: .public)"
+                        )
+                    } else {
+                        AppLogger.scheduler.notice(
+                            "resolved path=fallback granted=\(granted, privacy: .public) critical=false"
+                        )
+                    }
                     DispatchQueue.main.async { completion(granted) }
                 }
             } else {
                 Self.criticalAlertsAvailable = granted
-                print("[AlarmScheduler] resolved path=primary granted=\(granted) critical=\(granted)")
+                AppLogger.scheduler.notice(
+                    "resolved path=primary granted=\(granted, privacy: .public) critical=\(granted, privacy: .public)"
+                )
                 DispatchQueue.main.async { completion(granted) }
             }
         }
@@ -86,7 +99,7 @@ final class AlarmScheduler {
             )
             notificationCenter.add(request) { error in
                 if let error = error {
-                    print("[AlarmScheduler] schedule failed: \(error)")
+                    AppLogger.scheduler.error("schedule failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -109,7 +122,7 @@ final class AlarmScheduler {
         )
         notificationCenter.add(request) { error in
             if let error = error {
-                print("[AlarmScheduler] schedule failed: \(error)")
+                AppLogger.scheduler.error("schedule failed: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

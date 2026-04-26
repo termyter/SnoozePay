@@ -379,7 +379,7 @@ extension TopUpViewController {
                 if (error as NSError).code == NSUserCancelledError {
                     return
                 }
-                print("[TopUpVC] performRestorePurchases failed: \(error)")
+                AppLogger.storeKit.error("performRestorePurchases failed: \(error.localizedDescription, privacy: .public)")
                 self.presentRestoreError(error)
             }
         }
