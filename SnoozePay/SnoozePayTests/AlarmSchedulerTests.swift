@@ -161,4 +161,76 @@ final class AlarmSchedulerTests: XCTestCase {
         }
         wait(for: [expectation], timeout: 5.0)
     }
+
+    // MARK: - Cancel covers all trigger variants (regression for IOS-070)
+    //
+    // We add raw pending requests directly to UNUserNotificationCenter using the same
+    // identifier scheme AlarmScheduler.schedule() uses, then call cancel(_:) and verify
+    // that *every* variant — including the one-off "once" label that previously leaked —
+    // is removed. We can't go through schedule() in the test process because that
+    // requires notification permission and a real future trigger date.
+
+    func testCancel_removesAllVariantsIncludingOnce() {
+        let alarmID = UUID()
+        let center = UNUserNotificationCenter.current()
+        let prefix = "alarm_\(alarmID.uuidString)_"
+        let snoozePrefix = "snooze_\(alarmID.uuidString)"
+
+        // Identifiers that schedule() can produce: every weekday + once + snooze.
+        let labels = ["day0", "day1", "day2", "day3", "day4", "day5", "day6", "once"]
+        let scheduledIDs = labels.map { "\(prefix)\($0)" } + [snoozePrefix]
+
+        // Use a far-future trigger so requests are accepted as pending.
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 60 * 60 * 24, repeats: false)
+        let content = UNMutableNotificationContent()
+        content.title = "test"
+
+        let added = expectation(description: "all requests added")
+        added.expectedFulfillmentCount = scheduledIDs.count
+        for id in scheduledIDs {
+            let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+            center.add(request) { _ in added.fulfill() }
+        }
+        wait(for: [added], timeout: 5.0)
+
+        // Sanity: confirm at least one of our IDs landed in pending before we cancel.
+        let beforeCancel = expectation(description: "pending fetched before cancel")
+        var beforeIDs: Set<String> = []
+        center.getPendingNotificationRequests { requests in
+            beforeIDs = Set(requests.map { $0.identifier })
+            beforeCancel.fulfill()
+        }
+        wait(for: [beforeCancel], timeout: 5.0)
+
+        // If permission denied or scheduling silently dropped them, skip — the cancel
+        // logic is what we're testing, not UN's pre-permission scheduling behaviour.
+        let landedIDs = beforeIDs.intersection(scheduledIDs)
+        try XCTSkipIf(landedIDs.isEmpty,
+                      "UNUserNotificationCenter did not accept test requests in this environment")
+
+        // Act
+        scheduler.cancel(alarmID)
+
+        // Assert: poll up to 5s — cancel() goes through getPendingNotificationRequests
+        // which is async, so we need to give it time to complete.
+        let cancelled = expectation(description: "all variants cancelled")
+        var remainingIDs: Set<String> = []
+        let deadline = Date().addingTimeInterval(5.0)
+
+        func poll() {
+            center.getPendingNotificationRequests { requests in
+                remainingIDs = Set(requests.map { $0.identifier }).intersection(scheduledIDs)
+                if remainingIDs.isEmpty || Date() >= deadline {
+                    cancelled.fulfill()
+                } else {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { poll() }
+                }
+            }
+        }
+        poll()
+        wait(for: [cancelled], timeout: 6.0)
+
+        XCTAssertTrue(remainingIDs.isEmpty,
+                      "cancel(_:) must remove every notification for the alarm — leaked: \(remainingIDs)")
+    }
 }

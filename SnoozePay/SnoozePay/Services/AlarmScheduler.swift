@@ -116,11 +116,27 @@ final class AlarmScheduler {
 
     // MARK: - Cancel
 
+    /// Cancel every notification scheduled for the given alarm, regardless of trigger label
+    /// (e.g. `day0`-`day6`, `once`, future labels) and the snooze follow-up.
+    ///
+    /// We fetch pending requests and filter by `alarmID` prefix instead of hard-coding the
+    /// label list — this prevents regressions like IOS-070 where a one-off (`once`) alarm
+    /// kept ringing after deletion because its identifier was missing from the cancel set.
     func cancel(_ alarmID: UUID) {
-        let allIDs = (0...6).map { notificationID(for: alarmID, trigger: "day\($0)") }
-            + [snoozeNotificationID(for: alarmID)]
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: allIDs)
-        notificationCenter.removeDeliveredNotifications(withIdentifiers: allIDs)
+        let prefix = notificationIDPrefix(for: alarmID)
+        let snoozeID = snoozeNotificationID(for: alarmID)
+        let belongsToAlarm: (String) -> Bool = { $0.hasPrefix(prefix) || $0 == snoozeID }
+
+        notificationCenter.getPendingNotificationRequests { [notificationCenter] requests in
+            let ids = requests.map { $0.identifier }.filter(belongsToAlarm)
+            guard !ids.isEmpty else { return }
+            notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
+        }
+        notificationCenter.getDeliveredNotifications { [notificationCenter] notifications in
+            let ids = notifications.map { $0.request.identifier }.filter(belongsToAlarm)
+            guard !ids.isEmpty else { return }
+            notificationCenter.removeDeliveredNotifications(withIdentifiers: ids)
+        }
     }
 
     func cancelAll() {
@@ -200,7 +216,13 @@ final class AlarmScheduler {
     }
 
     private func notificationID(for alarmID: UUID, trigger: String) -> String {
-        "alarm_\(alarmID.uuidString)_\(trigger)"
+        "\(notificationIDPrefix(for: alarmID))\(trigger)"
+    }
+
+    /// Shared prefix for every per-trigger notification belonging to an alarm.
+    /// Used by `cancel(_:)` to remove pending requests for any trigger label.
+    private func notificationIDPrefix(for alarmID: UUID) -> String {
+        "alarm_\(alarmID.uuidString)_"
     }
 
     private func snoozeNotificationID(for alarmID: UUID) -> String {
