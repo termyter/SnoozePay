@@ -59,7 +59,11 @@ final class CreateAlarmViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = viewModel.isEditing ? "Редактировать" : "Новый будильник"
-        view.backgroundColor = .systemGroupedBackground
+        // Slightly darker than `systemGroupedBackground` in light mode so the
+        // insetGrouped rows (Sound, Vibration, Penalty…) read as distinct
+        // cards instead of dissolving into the page. See `AppColors.groupedBackground`.
+        view.backgroundColor = AppColors.groupedBackground
+        tableView.backgroundColor = AppColors.groupedBackground
         setupNavigationBar()
         setupTableView()
     }

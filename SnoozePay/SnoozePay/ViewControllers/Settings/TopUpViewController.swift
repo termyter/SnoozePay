@@ -56,7 +56,11 @@ class TopUpViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Пополнить баланс"
-        view.backgroundColor = .systemGroupedBackground
+        // Slightly darker than the system grouped background in light mode so
+        // the white insetGrouped package rows read as distinct cards. See
+        // `AppColors.groupedBackground` for the contrast rationale.
+        view.backgroundColor = AppColors.groupedBackground
+        tableView.backgroundColor = AppColors.groupedBackground
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
@@ -125,11 +129,10 @@ class TopUpViewController: UIViewController {
         let headerHeight: CGFloat = 140
         let header = UIView(frame: CGRect(x: 0, y: 0, width: view.bounds.width, height: headerHeight))
 
-        let card = UIView()
-        card.backgroundColor = .secondarySystemBackground
-        card.layer.cornerRadius = AppRadius.md
-        card.layer.masksToBounds = true
-        card.translatesAutoresizingMaskIntoConstraints = false
+        // `CardView` applies the shared shadow + hairline border treatment and
+        // self-maintains its shadow path / dynamic border colour across
+        // rotation and light/dark switches. See `UIView+CardStyle.swift`.
+        let card = CardView()
         header.addSubview(card)
 
         let titleLabel = UILabel()

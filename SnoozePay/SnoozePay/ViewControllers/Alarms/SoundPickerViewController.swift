@@ -43,7 +43,11 @@ final class SoundPickerViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Выбор звука"
-        view.backgroundColor = .systemGroupedBackground
+        // Tracks the rest of the app: light mode darkens the page background a
+        // notch so each sound row reads as a distinct card. See
+        // `AppColors.groupedBackground`.
+        view.backgroundColor = AppColors.groupedBackground
+        tableView.backgroundColor = AppColors.groupedBackground
         tableView.register(SoundPickerRowCell.self, forCellReuseIdentifier: SoundPickerRowCell.reuseID)
     }
 

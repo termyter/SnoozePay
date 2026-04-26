@@ -187,7 +187,11 @@ class StatisticsViewController: UIViewController {
         super.viewDidLoad()
         title = "Статистика"
         navigationController?.navigationBar.prefersLargeTitles = true
-        view.backgroundColor = .systemGroupedBackground
+        // Slightly darker than `systemGroupedBackground` in light mode so the
+        // statistics widgets (`makeCard()` returns a `secondarySystemBackground`
+        // surface) stand out — without it the card edges only differ from the
+        // page by ~5% luminance. See `AppColors.groupedBackground`.
+        view.backgroundColor = AppColors.groupedBackground
         setupUI()
         bindViewModel()
     }
@@ -297,7 +301,10 @@ class StatisticsViewController: UIViewController {
 
     private func makeChartCard() -> UIView {
         let card = makeCard()
-        card.clipsToBounds = true
+        // Don't clip — `applyCardStyle()` renders a drop shadow that lives
+        // outside the rounded bounds, and `clipsToBounds = true` would mask
+        // it. Subviews are constrained inside `card` via Auto Layout, so
+        // they won't visually overflow regardless.
 
         // Title label
         card.addSubview(chartTitleLabel)
@@ -388,15 +395,25 @@ class StatisticsViewController: UIViewController {
             hStack.bottomAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: -AppSpacing.lg)
         ])
 
+        // Shadow lift parity with the other cards. The motivation card stays
+        // orange-tinted (intentional accent) so we don't apply the full
+        // `applyCardStyle` (which sets a hairline `separator` border that
+        // would clash with the bright fill); just the shadow here.
+        motivationCard.layer.masksToBounds = false
+        motivationCard.layer.shadowColor = UIColor.black.cgColor
+        motivationCard.layer.shadowOpacity = 0.08
+        motivationCard.layer.shadowRadius = 8
+        motivationCard.layer.shadowOffset = CGSize(width: 0, height: 2)
+
         return motivationCard
     }
 
+    /// Returns a `CardView` so each widget reads as a distinct surface in light
+    /// mode (see `UIView+CardStyle.swift`). `CardView` self-maintains its
+    /// shadow path and border colour across rotation / theme switches — the
+    /// hosting VC stays free of layout boilerplate.
     private func makeCard() -> UIView {
-        let view = UIView()
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = AppRadius.md
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
+        CardView()
     }
 
     // MARK: - Binding

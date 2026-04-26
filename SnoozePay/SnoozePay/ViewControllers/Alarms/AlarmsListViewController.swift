@@ -11,7 +11,10 @@ class AlarmsListViewController: UIViewController {
 
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .plain)
-        table.backgroundColor = .systemGroupedBackground
+        // `AppColors.groupedBackground` darkens light-mode background a notch so
+        // each `AlarmCell` card (#FFFFFF) reads as a distinct surface — see
+        // `UIView+CardStyle.swift` for the contrast rationale.
+        table.backgroundColor = AppColors.groupedBackground
         table.separatorStyle = .none
         table.translatesAutoresizingMaskIntoConstraints = false
         return table
@@ -65,7 +68,7 @@ class AlarmsListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.groupedBackground
         setupNavigationBar()
         setupTableView()
         setupBalanceHeader()
@@ -113,10 +116,19 @@ class AlarmsListViewController: UIViewController {
         // Container for the balance card with padding
         let headerContainer = UIView()
 
-        // Balance card styling — blue background
+        // Balance card styling — blue background. Shadow lifts it off the
+        // table background so the hero stays visually distinct from the
+        // alarm cards stacked below in light mode (matches the lift treatment
+        // applied via `UIView+CardStyle.swift` to neutral cards).
         balanceCard.backgroundColor = AppColors.accentBlue
         balanceCard.layer.cornerRadius = AppRadius.md
-        balanceCard.clipsToBounds = true
+        // Don't clip — the drop shadow renders outside the rounded bounds.
+        // Subviews are constrained inside via Auto Layout so they stay put.
+        balanceCard.layer.masksToBounds = false
+        balanceCard.layer.shadowColor = UIColor.black.cgColor
+        balanceCard.layer.shadowOpacity = 0.10
+        balanceCard.layer.shadowRadius = 10
+        balanceCard.layer.shadowOffset = CGSize(width: 0, height: 3)
         balanceCard.translatesAutoresizingMaskIntoConstraints = false
 
         // "БАЛАНС" small label
@@ -204,6 +216,15 @@ class AlarmsListViewController: UIViewController {
         if header.frame.height != newHeight {
             header.frame.size = CGSize(width: tableView.bounds.width, height: newHeight)
             tableView.tableHeaderView = header
+        }
+
+        // Pre-rasterize the balance card's drop shadow against the rounded
+        // path so scrolling doesn't pay the per-pixel offscreen cost.
+        if balanceCard.bounds.width > 0 {
+            balanceCard.layer.shadowPath = UIBezierPath(
+                roundedRect: balanceCard.bounds,
+                cornerRadius: AppRadius.md
+            ).cgPath
         }
     }
 

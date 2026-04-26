@@ -48,7 +48,11 @@ class SettingsViewController: UIViewController {
         super.viewDidLoad()
         title = "Настройки"
         navigationController?.navigationBar.prefersLargeTitles = true
-        view.backgroundColor = .systemGroupedBackground
+        // Slightly darker than the system grouped background in light mode so
+        // the white insetGrouped cells read as distinct cards (~5% luminance
+        // delta at default is too subtle). See `AppColors.groupedBackground`.
+        view.backgroundColor = AppColors.groupedBackground
+        tableView.backgroundColor = AppColors.groupedBackground
         setupUI()
         observeBalanceChanges()
     }
@@ -380,7 +384,8 @@ final class TransactionHistoryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "История транзакций"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.groupedBackground
+        tableView.backgroundColor = AppColors.groupedBackground
         setupTableView()
         loadTransactions()
     }
@@ -606,7 +611,7 @@ final class LegalViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = legalTitle
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.groupedBackground
 
         let textView = UITextView()
         textView.text = "\(legalTitle)\n\nДокумент будет добавлен перед публикацией в App Store."
