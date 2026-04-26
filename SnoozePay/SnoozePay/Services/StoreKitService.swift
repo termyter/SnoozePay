@@ -108,6 +108,18 @@ final class StoreKitService {
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
+                // Determine the credit amount BEFORE marking processed. If we
+                // can't credit (unknown productID), we must not poison the dedup
+                // table — otherwise StoreKit's retry on next launch would silently
+                // finish() without crediting (re-enabling the #115 money-loss class).
+                let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: product.price)
+                guard amount > 0 else {
+                    AppLogger.storeKit.error(
+                        "unknown productID \(transaction.productID, privacy: .public) tx=\(transaction.id, privacy: .private) — not finishing"
+                    )
+                    postPurchaseFailed("Неизвестный пакет пополнения. Обнови приложение.")
+                    return
+                }
                 guard markProcessed(transactionID: transaction.id) else {
                     AppLogger.storeKit.notice(
                         "tx \(transaction.id, privacy: .private) already processed — skipping double credit"
@@ -115,15 +127,14 @@ final class StoreKitService {
                     await transaction.finish()
                     return
                 }
-                guard let amount = creditBalance(for: transaction.productID, fallbackPrice: product.price) else {
+                guard BalanceService.shared.topUp(amount: amount) else {
                     // Ledger locked / record() failed — money already collected by
                     // Apple. Roll back the dedup mark and DO NOT finish() so StoreKit
                     // replays the transaction on next launch (giving us another shot
                     // at crediting). Surface to the user immediately.
                     unmarkProcessed(transactionID: transaction.id)
-                    let pid = transaction.productID
                     AppLogger.storeKit.error(
-                        "topUp failed tx=\(transaction.id, privacy: .private) pid=\(pid, privacy: .public)"
+                        "topUp failed tx=\(transaction.id, privacy: .private) pid=\(transaction.productID, privacy: .public)"
                     )
                     postPurchaseFailed(Self.ledgerLockedFailureMessage)
                     return
@@ -143,6 +154,9 @@ final class StoreKitService {
                 postPurchaseFailed("Покупка не выполнена. Обнови приложение и попробуй ещё раз.")
             }
         } catch {
+            AppLogger.storeKit.error(
+                "purchase failed: \(String(describing: error), privacy: .public)"
+            )
             postPurchaseFailed(error.localizedDescription)
         }
     }
@@ -281,7 +295,17 @@ final class StoreKitService {
         let defaults = UserDefaults.standard
         let key = Self.processedTxKey
         let idString = String(transactionID)
-        guard var processed = defaults.array(forKey: key) as? [String] else { return }
+        guard var processed = defaults.array(forKey: key) as? [String] else {
+            // Dedup table missing or its plist type was reset. Without the mark,
+            // a replay of this transaction WILL re-enter `markProcessed` (no-op
+            // path) and credit normally — but we lose the audit trail. Logging
+            // so future divergence between StoreKit replays and our ledger is
+            // diagnosable in Console.
+            AppLogger.storeKit.error(
+                "unmarkProcessed: dedup table missing/corrupt — replay will silently finish tx=\(transactionID, privacy: .private)"
+            )
+            return
+        }
         processed.removeAll { $0 == idString }
         defaults.set(processed, forKey: key)
     }
@@ -298,24 +322,6 @@ final class StoreKitService {
     }
 
     // MARK: - Helpers
-
-    /// Credits the user's balance for the given product.
-    ///
-    /// Returns the credited amount on success (>0), `nil` when the underlying
-    /// `BalanceService.topUp` returned `false` (ledger locked / record failed).
-    /// Returns `0` when the product ID is unknown and no fallback was provided.
-    /// Callers MUST distinguish `nil` (transient ledger failure — do not finish
-    /// the StoreKit transaction so it retries) from `0` (unrecoverable — surface
-    /// "unknown package" error). Discarding the return value would silently
-    /// pretend the credit landed on a failed top-up — see #115.
-    private func creditBalance(for productID: String, fallbackPrice: Decimal?) -> Double? {
-        let amount = Self.creditAmount(for: productID, fallbackPrice: fallbackPrice)
-        guard amount > 0 else { return 0 }
-        guard BalanceService.shared.topUp(amount: amount) else {
-            return nil
-        }
-        return amount
-    }
 
     private static func creditAmount(for productID: String, fallbackPrice: Decimal?) -> Double {
         if let mapped = productAmounts[productID] {
