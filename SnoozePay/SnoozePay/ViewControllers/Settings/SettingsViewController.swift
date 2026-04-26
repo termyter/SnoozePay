@@ -10,9 +10,9 @@ class SettingsViewController: UIViewController {
     // MARK: - UI
 
     private let tableView: UITableView = {
-        let tv = UITableView(frame: .zero, style: .insetGrouped)
-        tv.translatesAutoresizingMaskIntoConstraints = false
-        return tv
+        let table = UITableView(frame: .zero, style: .insetGrouped)
+        table.translatesAutoresizingMaskIntoConstraints = false
+        return table
     }()
 
     /// Held weakly so the cell may be recycled (and the label deallocated)
@@ -177,7 +177,10 @@ extension SettingsViewController: UITableViewDataSource {
                 cell.contentView.addSubview(balanceAmount)
 
                 NSLayoutConstraint.activate([
-                    balanceAmount.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg),
+                    balanceAmount.trailingAnchor.constraint(
+                        equalTo: cell.contentView.trailingAnchor,
+                        constant: -AppSpacing.lg
+                    ),
                     balanceAmount.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor)
                 ])
 
@@ -199,6 +202,7 @@ extension SettingsViewController: UITableViewDataSource {
                 withIdentifier: ThemeSegmentCell.reuseID,
                 for: indexPath
             ) as? ThemeSegmentCell else {
+                assertionFailure("dequeueReusableCell returned wrong type for \(ThemeSegmentCell.reuseID)")
                 return UITableViewCell()
             }
             cell.configure(selectedIndex: themeSegmentIndex) { [weak self] index in
@@ -242,9 +246,15 @@ extension SettingsViewController: UITableViewDataSource {
             cell.contentView.addSubview(stack)
 
             NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
+                stack.leadingAnchor.constraint(
+                    equalTo: cell.contentView.leadingAnchor,
+                    constant: AppSpacing.lg
+                ),
                 stack.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
-                stack.trailingAnchor.constraint(lessThanOrEqualTo: cell.contentView.trailingAnchor, constant: -AppSpacing.lg)
+                stack.trailingAnchor.constraint(
+                    lessThanOrEqualTo: cell.contentView.trailingAnchor,
+                    constant: -AppSpacing.lg
+                )
             ])
 
             cell.accessoryType = .disclosureIndicator
@@ -254,7 +264,12 @@ extension SettingsViewController: UITableViewDataSource {
 
     // MARK: - Cell factory helpers
 
-    private func makeIconRow(systemName: String, iconColor: UIColor, title: String, accessory: UITableViewCell.AccessoryType) -> UITableViewCell {
+    private func makeIconRow(
+        systemName: String,
+        iconColor: UIColor,
+        title: String,
+        accessory: UITableViewCell.AccessoryType
+    ) -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
         cell.backgroundColor = .secondarySystemBackground
 
@@ -334,8 +349,8 @@ extension SettingsViewController: UITableViewDelegate {
 
         case .info:
             let title = indexPath.row == 0 ? "Политика конфиденциальности" : "Пользовательское соглашение"
-            let vc = LegalViewController(title: title)
-            navigationController?.pushViewController(vc, animated: true)
+            let legalVC = LegalViewController(title: title)
+            navigationController?.pushViewController(legalVC, animated: true)
 
         case .contact:
             openMailto()
@@ -354,9 +369,9 @@ extension SettingsViewController: UITableViewDelegate {
 final class TransactionHistoryViewController: UIViewController {
 
     private let tableView: UITableView = {
-        let tv = UITableView(frame: .zero, style: .insetGrouped)
-        tv.translatesAutoresizingMaskIntoConstraints = false
-        return tv
+        let table = UITableView(frame: .zero, style: .insetGrouped)
+        table.translatesAutoresizingMaskIntoConstraints = false
+        return table
     }()
 
     private var transactions: [Transaction] = []
@@ -409,18 +424,19 @@ extension TransactionHistoryViewController: UITableViewDataSource, UITableViewDe
         guard let cell = tableView.dequeueReusableCell(
             withIdentifier: TransactionCell.reuseID, for: indexPath
         ) as? TransactionCell else {
+            assertionFailure("dequeueReusableCell returned wrong type for \(TransactionCell.reuseID)")
             return UITableViewCell()
         }
 
-        let tx = transactions[indexPath.row]
+        let transaction = transactions[indexPath.row]
 
         // Look up alarm name if available
         var alarmName: String?
-        if let alarmIDString = tx.alarmID, let alarmUUID = UUID(uuidString: alarmIDString) {
+        if let alarmIDString = transaction.alarmID, let alarmUUID = UUID(uuidString: alarmIDString) {
             alarmName = alarmRepository.fetch(id: alarmUUID)?.name
         }
 
-        cell.configure(with: tx, alarmName: alarmName)
+        cell.configure(with: transaction, alarmName: alarmName)
         return cell
     }
 
@@ -442,42 +458,42 @@ final class TransactionCell: UITableViewCell {
     // MARK: - UI
 
     private let iconContainer: UIView = {
-        let v = UIView()
-        v.layer.cornerRadius = 20
-        v.layer.masksToBounds = true
-        v.translatesAutoresizingMaskIntoConstraints = false
-        return v
+        let view = UIView()
+        view.layer.cornerRadius = 20
+        view.layer.masksToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }()
 
     private let iconImageView: UIImageView = {
-        let iv = UIImageView()
-        iv.tintColor = .white
-        iv.contentMode = .scaleAspectFit
-        iv.translatesAutoresizingMaskIntoConstraints = false
-        return iv
+        let imageView = UIImageView()
+        imageView.tintColor = .white
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
     }()
 
     private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        l.textColor = .label
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.textColor = .label
+        return label
     }()
 
     private let subtitleLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 13)
-        l.textColor = .secondaryLabel
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .secondaryLabel
+        return label
     }()
 
     private let amountLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-        l.textAlignment = .right
-        l.setContentHuggingPriority(.required, for: .horizontal)
-        l.setContentCompressionResistancePriority(.required, for: .horizontal)
-        return l
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        label.textAlignment = .right
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return label
     }()
 
     // MARK: - Init
@@ -561,10 +577,10 @@ final class TransactionCell: UITableViewCell {
     // MARK: - Date formatting
 
     private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ru_RU")
-        f.dateFormat = "d MMMM 'в' HH:mm"
-        return f
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMMM 'в' HH:mm"
+        return formatter
     }()
 
     private static func formatDate(_ date: Date) -> String {

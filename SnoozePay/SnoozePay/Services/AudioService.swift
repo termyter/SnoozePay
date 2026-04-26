@@ -27,7 +27,7 @@ final class AudioService {
             try session.setActive(true, options: [])
             return true
         } catch {
-            print("[AudioService] Failed to configure audio session: \(error)")
+            print("[AudioService] failed to configure audio session: \(error)")
             return false
         }
     }
@@ -37,7 +37,7 @@ final class AudioService {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {
-            print("Failed to deactivate audio session: \(error)")
+            print("[AudioService] failed to deactivate audio session: \(error)")
         }
     }
 
@@ -141,20 +141,21 @@ final class AudioService {
         var samples = [Int16]()
         samples.reserveCapacity(totalSamples)
 
-        for i in 0..<totalSamples {
-            let t = Double(i) / sampleRate
+        for sampleIndex in 0..<totalSamples {
+            let timeSeconds = Double(sampleIndex) / sampleRate
             // Dual-tone: 880 Hz + 660 Hz for recognizable alarm character
-            let wave = sin(2.0 * .pi * frequency * t) + 0.6 * sin(2.0 * .pi * 660.0 * t)
+            let wave = sin(2.0 * .pi * frequency * timeSeconds)
+                + 0.6 * sin(2.0 * .pi * 660.0 * timeSeconds)
             // Amplitude envelope: short fade-in/out to avoid click
             let envelope: Double
             let fadeFrames = Int(sampleRate * 0.02)
-            if i < fadeFrames {
-                envelope = Double(i) / Double(fadeFrames)
-            } else if i > totalSamples - fadeFrames {
-                envelope = Double(totalSamples - i) / Double(fadeFrames)
+            if sampleIndex < fadeFrames {
+                envelope = Double(sampleIndex) / Double(fadeFrames)
+            } else if sampleIndex > totalSamples - fadeFrames {
+                envelope = Double(totalSamples - sampleIndex) / Double(fadeFrames)
             } else {
                 // Pulse pattern: 0.3s on, 0.2s off
-                let cyclePos = t.truncatingRemainder(dividingBy: 0.5)
+                let cyclePos = timeSeconds.truncatingRemainder(dividingBy: 0.5)
                 envelope = cyclePos < 0.3 ? 1.0 : 0.0
             }
             let amplitude = wave * envelope * 0.7

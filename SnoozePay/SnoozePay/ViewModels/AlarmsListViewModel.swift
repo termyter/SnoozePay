@@ -123,11 +123,19 @@ final class AlarmsListViewModel {
 
     // MARK: - Helpers for cell display
 
+    /// Cached formatter — avoids ~1ms per-call allocation that adds up in lists.
+    /// Locale fixed to `en_US_POSIX` so the 24-hour format `HH:mm` is honoured
+    /// regardless of the user's region (some locales otherwise render `7:00 AM`).
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
     func alarmTimeString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: alarms[index].time)
+        return Self.timeFormatter.string(from: alarms[index].time)
     }
 
     /// Detail line for alarm card: "Name - Days" (e.g. "Работа - Будни")

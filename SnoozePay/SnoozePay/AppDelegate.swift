@@ -17,7 +17,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AlarmScheduler.shared.registerCategories()
         AlarmScheduler.shared.requestPermission { [weak self] granted in
             if !granted {
-                print("Notification permission denied — alarms may not fire")
+                print("[AppDelegate] notification permission denied — alarms may not fire")
                 self?.presentNotificationsDisabledAlert()
             }
         }

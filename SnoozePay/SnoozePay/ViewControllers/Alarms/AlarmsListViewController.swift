@@ -10,11 +10,11 @@ class AlarmsListViewController: UIViewController {
     // MARK: - UI Elements
 
     private let tableView: UITableView = {
-        let tv = UITableView(frame: .zero, style: .plain)
-        tv.backgroundColor = .systemGroupedBackground
-        tv.separatorStyle = .none
-        tv.translatesAutoresizingMaskIntoConstraints = false
-        return tv
+        let table = UITableView(frame: .zero, style: .plain)
+        table.backgroundColor = .systemGroupedBackground
+        table.separatorStyle = .none
+        table.translatesAutoresizingMaskIntoConstraints = false
+        return table
     }()
 
     private let emptyStateView: UIView = {
@@ -173,7 +173,10 @@ class AlarmsListViewController: UIViewController {
 
             topUpButton.centerYAnchor.constraint(equalTo: balanceCard.centerYAnchor),
             topUpButton.trailingAnchor.constraint(equalTo: balanceCard.trailingAnchor, constant: -AppSpacing.lg),
-            topUpButton.leadingAnchor.constraint(greaterThanOrEqualTo: balanceAmountLabel.trailingAnchor, constant: AppSpacing.md),
+            topUpButton.leadingAnchor.constraint(
+                greaterThanOrEqualTo: balanceAmountLabel.trailingAnchor,
+                constant: AppSpacing.md
+            )
         ])
 
         // Size the header to fit its content
@@ -258,7 +261,10 @@ extension AlarmsListViewController: UITableViewDataSource {
         guard let cell = tableView.dequeueReusableCell(
             withIdentifier: AlarmCell.reuseID,
             for: indexPath
-        ) as? AlarmCell else { return UITableViewCell() }
+        ) as? AlarmCell else {
+            assertionFailure("dequeueReusableCell returned wrong type for \(AlarmCell.reuseID)")
+            return UITableViewCell()
+        }
 
         let alarm = viewModel.alarms[indexPath.row]
         cell.configure(
