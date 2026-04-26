@@ -182,8 +182,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             return
         }
 
-        let repo = AlarmRepository()
-        guard let alarm = repo.fetch(id: alarmID) else {
+        guard let alarm = AlarmRepository.shared.fetch(id: alarmID) else {
             print("[AppDelegate] alarm not found (repo returned nil for \(alarmID)), stopping audio")
             AudioService.shared.stopAlarmSound()
             return

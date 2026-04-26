@@ -17,19 +17,21 @@ final class TransactionRepository {
         category: "TransactionRepository"
     )
 
-    /// Production code MUST use `TransactionRepository.shared`.
-    /// Direct construction creates an isolated instance with its own serial queue —
-    /// two such instances racing on the same UserDefaults key reintroduce the race
-    /// this class exists to prevent.
-    #if DEBUG
-    init(defaults: UserDefaults = .standard) {
+    /// Production code MUST use `TransactionRepository.shared` to avoid
+    /// creating isolated instances with separate serial queues (which
+    /// reintroduces the race this class exists to prevent).
+    ///
+    /// Tests inject a custom `UserDefaults` suite to stay isolated from app
+    /// state — that's why this initializer is `internal` rather than `private`.
+    /// We deliberately omit the default value so a stray `TransactionRepository()`
+    /// call site cannot bypass the singleton.
+    init(defaults: UserDefaults) {
         self.defaults = defaults
     }
-    #else
-    private init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+
+    private convenience init() {
+        self.init(defaults: .standard)
     }
-    #endif
 
     // MARK: - Read
 

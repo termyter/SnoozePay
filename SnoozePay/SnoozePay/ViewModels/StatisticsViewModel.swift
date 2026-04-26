@@ -41,7 +41,7 @@ final class StatisticsViewModel {
     // MARK: - Init
 
     init(
-        repository: TransactionRepository = TransactionRepository(),
+        repository: TransactionRepository = .shared,
         defaults: UserDefaults = .standard
     ) {
         self.transactionRepository = repository

@@ -375,7 +375,7 @@ final class TransactionHistoryViewController: UIViewController {
     }()
 
     private var transactions: [Transaction] = []
-    private let alarmRepository = AlarmRepository()
+    private let alarmRepository = AlarmRepository.shared
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -399,7 +399,7 @@ final class TransactionHistoryViewController: UIViewController {
     }
 
     private func loadTransactions() {
-        transactions = TransactionRepository().fetchAll()
+        transactions = TransactionRepository.shared.fetchAll()
         tableView.reloadData()
     }
 }
