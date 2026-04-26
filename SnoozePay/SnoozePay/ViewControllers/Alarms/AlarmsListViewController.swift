@@ -262,7 +262,8 @@ extension AlarmsListViewController: UITableViewDataSource {
             withIdentifier: AlarmCell.reuseID,
             for: indexPath
         ) as? AlarmCell else {
-            fatalError("dequeueReusableCell returned wrong type for \(AlarmCell.reuseID)")
+            assertionFailure("dequeueReusableCell returned wrong type for \(AlarmCell.reuseID)")
+            return UITableViewCell()
         }
 
         let alarm = viewModel.alarms[indexPath.row]

@@ -27,9 +27,7 @@ final class AudioService {
             try session.setActive(true, options: [])
             return true
         } catch {
-            #if DEBUG
-            print("[AudioService] Failed to configure audio session: \(error)")
-            #endif
+            print("[AudioService] failed to configure audio session: \(error)")
             return false
         }
     }
@@ -39,9 +37,7 @@ final class AudioService {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {
-            #if DEBUG
-            print("Failed to deactivate audio session: \(error)")
-            #endif
+            print("[AudioService] failed to deactivate audio session: \(error)")
         }
     }
 
@@ -57,9 +53,7 @@ final class AudioService {
             // Audio session unavailable (e.g. another app holds it).
             // Surface explicitly via isPlaying = false so the UI / caller can react.
             // Skip vibration too — without an active session we cannot guarantee playback.
-            #if DEBUG
             print("[AudioService] startAlarmSound aborted: audio session unavailable")
-            #endif
             isPlaying = false
             return
         }
@@ -78,10 +72,8 @@ final class AudioService {
         if let soundURL = url {
             player = try? AVAudioPlayer(contentsOf: soundURL)
             if player == nil {
-                #if DEBUG
                 let name = soundURL.lastPathComponent
                 print("[AudioService] AVAudioPlayer init failed for \(name), using synthetic tone")
-                #endif
             }
         }
         if player == nil {
@@ -99,9 +91,7 @@ final class AudioService {
         } else {
             // Neither bundled file nor synthetic tone available — refuse to claim playback.
             // We still vibrate, but isPlaying stays false to signal silent failure.
-            #if DEBUG
             print("[AudioService] startAlarmSound: no audio source available, vibration only")
-            #endif
             isPlaying = false
             startVibration()
         }

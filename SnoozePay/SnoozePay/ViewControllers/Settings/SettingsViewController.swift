@@ -202,7 +202,8 @@ extension SettingsViewController: UITableViewDataSource {
                 withIdentifier: ThemeSegmentCell.reuseID,
                 for: indexPath
             ) as? ThemeSegmentCell else {
-                fatalError("dequeueReusableCell returned wrong type for \(ThemeSegmentCell.reuseID)")
+                assertionFailure("dequeueReusableCell returned wrong type for \(ThemeSegmentCell.reuseID)")
+                return UITableViewCell()
             }
             cell.configure(selectedIndex: themeSegmentIndex) { [weak self] index in
                 self?.handleThemeSegmentChange(index)
@@ -423,7 +424,8 @@ extension TransactionHistoryViewController: UITableViewDataSource, UITableViewDe
         guard let cell = tableView.dequeueReusableCell(
             withIdentifier: TransactionCell.reuseID, for: indexPath
         ) as? TransactionCell else {
-            fatalError("dequeueReusableCell returned wrong type for \(TransactionCell.reuseID)")
+            assertionFailure("dequeueReusableCell returned wrong type for \(TransactionCell.reuseID)")
+            return UITableViewCell()
         }
 
         let transaction = transactions[indexPath.row]

@@ -17,9 +17,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AlarmScheduler.shared.registerCategories()
         AlarmScheduler.shared.requestPermission { [weak self] granted in
             if !granted {
-                #if DEBUG
-                print("Notification permission denied — alarms may not fire")
-                #endif
+                print("[AppDelegate] notification permission denied — alarms may not fire")
                 self?.presentNotificationsDisabledAlert()
             }
         }
@@ -62,9 +60,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                     .first,
                 let rootVC = windowScene.windows.first?.rootViewController
             else {
-                #if DEBUG
                 print("[AppDelegate] no rootVC yet, deferring notifications-disabled alert")
-                #endif
                 self?.deferNotificationsDisabledAlertUntilSceneActive()
                 return
             }
@@ -150,7 +146,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         case "SNOOZE_ACTION":
             AudioService.shared.stopAlarmSound()
             let outcome = AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo)
-            #if DEBUG
             switch outcome {
             case .invalidPayload:
                 print("[AppDelegate] SNOOZE_ACTION: invalid payload, snooze skipped")
@@ -161,9 +156,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             case let .scheduled(newSnoozeCount, charged):
                 print("[AppDelegate] SNOOZE_ACTION: snooze #\(newSnoozeCount) scheduled, charged=\(charged)")
             }
-            #else
-            _ = outcome
-            #endif
 
         case UNNotificationDismissActionIdentifier:
             // User swiped away notification — stop sound
@@ -185,18 +177,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         else {
             // Audio may already be playing from willPresent — stop it so the user
             // is not stuck with a silent-screen + sounding alarm we can't dismiss.
-            #if DEBUG
             print("[AppDelegate] alarm not found (missing/invalid alarmID), stopping audio")
-            #endif
             AudioService.shared.stopAlarmSound()
             return
         }
 
         let repo = AlarmRepository()
         guard let alarm = repo.fetch(id: alarmID) else {
-            #if DEBUG
             print("[AppDelegate] alarm not found (repo returned nil for \(alarmID)), stopping audio")
-            #endif
             AudioService.shared.stopAlarmSound()
             return
         }
@@ -212,9 +200,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                     .first,
                 let rootVC = windowScene.windows.first?.rootViewController
             else {
-                #if DEBUG
                 print("[AppDelegate] no window scene, stopping audio")
-                #endif
                 AudioService.shared.stopAlarmSound()
                 return
             }

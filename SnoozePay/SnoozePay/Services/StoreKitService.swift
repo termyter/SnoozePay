@@ -88,9 +88,7 @@ final class StoreKitService {
             products = loaded.sorted { $0.price < $1.price }
             postProductsLoaded(products)
         } catch {
-            #if DEBUG
             print("[StoreKit] product load failed: \(error)")
-            #endif
             postPurchaseFailed("Не удалось загрузить пакеты пополнения. Проверь интернет-соединение.")
         }
     }
@@ -104,9 +102,7 @@ final class StoreKitService {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
                 guard markProcessed(transactionID: transaction.id) else {
-                    #if DEBUG
                     print("[StoreKit] tx \(transaction.id) already processed — skipping double credit")
-                    #endif
                     await transaction.finish()
                     return
                 }
@@ -122,9 +118,7 @@ final class StoreKitService {
                 postPurchasePending()
 
             @unknown default:
-                #if DEBUG
                 print("[StoreKit] unknown PurchaseResult case — likely future StoreKit addition")
-                #endif
                 postPurchaseFailed("Покупка не выполнена. Обнови приложение и попробуй ещё раз.")
             }
         } catch {
@@ -144,9 +138,7 @@ final class StoreKitService {
             // do finish so it stops being delivered. For consumables we cannot reverse
             // a spent balance — track this as a known limitation (see #22-style follow-up).
             guard transaction.revocationDate == nil else {
-                #if DEBUG
                 print("[StoreKit] revoked tx \(transaction.id) productID=\(transaction.productID)")
-                #endif
                 await transaction.finish()
                 return
             }
@@ -158,18 +150,14 @@ final class StoreKitService {
             // Order matters — check amount before markProcessed.
             let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: nil)
             guard amount > 0 else {
-                #if DEBUG
                 print("[StoreKit] unknown productID \(transaction.productID) tx=\(transaction.id) — not finishing")
-                #endif
                 postPurchaseFailed("Неизвестный пакет пополнения. Обнови приложение.")
                 return
             }
             // Idempotency — guard against StoreKit replaying a transaction we already
             // credited (e.g. if the previous run crashed between topUp and finish()).
             guard markProcessed(transactionID: transaction.id) else {
-                #if DEBUG
                 print("[StoreKit] tx \(transaction.id) already processed — finishing without re-credit")
-                #endif
                 await transaction.finish()
                 return
             }
@@ -181,11 +169,7 @@ final class StoreKitService {
             // Don't finish — let Apple retry next launch. Verification can fail temporarily
             // (clock drift, cert refresh). Finishing here would discard a potentially valid
             // purchase. WWDC sample code (Fruta, Backyard Birds) follows this pattern too.
-            #if DEBUG
             print("[StoreKit] unverified tx=\(transaction.id) productID=\(transaction.productID) error=\(error)")
-            #else
-            _ = (transaction, error)
-            #endif
             postPurchaseFailed("Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.")
         }
     }

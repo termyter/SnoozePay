@@ -279,7 +279,8 @@ extension TopUpViewController: UITableViewDataSource {
             guard let cell = tableView.dequeueReusableCell(
                 withIdentifier: TopUpPackageCell.reuseID, for: indexPath
             ) as? TopUpPackageCell else {
-                fatalError("dequeueReusableCell returned wrong type for \(TopUpPackageCell.reuseID)")
+                assertionFailure("dequeueReusableCell returned wrong type for \(TopUpPackageCell.reuseID)")
+                return UITableViewCell()
             }
 
             let pkg = packages[indexPath.row]
