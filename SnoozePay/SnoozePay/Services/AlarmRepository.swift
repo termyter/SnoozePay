@@ -94,8 +94,19 @@ final class AlarmRepository {
     ///   currently locked (`lastLoadFailed == true`) or encoding fails.
     ///   Callers (CreateAlarmViewModel) surface the failure to the user
     ///   instead of pretending the alarm landed safely (issue #72).
+    ///
+    /// `schedulingResult` is invoked **only on the successful-persist path**
+    /// once `AlarmScheduler.schedule` finishes (issue #118). Disabled alarms
+    /// resolve with `.success(())` because there is no scheduling work, but
+    /// the closure is still called so async callers always observe
+    /// completion when `save` returned `true`. When `save` returns `false`
+    /// the closure is **not** invoked — the caller has already received the
+    /// failure synchronously via the boolean.
     @discardableResult
-    func save(_ alarm: Alarm) -> Bool {
+    func save(
+        _ alarm: Alarm,
+        schedulingResult: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)? = nil
+    ) -> Bool {
         let didPersist: Bool = queue.sync {
             guard !_lastLoadFailed else { return false }
             // Read fresh state inside the lock so concurrent saves don't
@@ -115,13 +126,17 @@ final class AlarmRepository {
             return persist(alarms)
         }
 
-        if didPersist {
-            AlarmScheduler.shared.cancel(alarm.id)
-            if alarm.enabled {
-                AlarmScheduler.shared.schedule(alarm)
-            }
+        guard didPersist else { return false }
+
+        AlarmScheduler.shared.cancel(alarm.id)
+        if alarm.enabled {
+            AlarmScheduler.shared.schedule(alarm, completion: schedulingResult)
+        } else {
+            // Disabled alarms don't schedule — report success so async
+            // callers don't hang waiting for a closure that never fires.
+            schedulingResult?(.success(()))
         }
-        return didPersist
+        return true
     }
 
     @discardableResult

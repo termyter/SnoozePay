@@ -44,9 +44,53 @@ final class CreateAlarmViewModel {
 
     // MARK: - Save
 
+    /// Outcome of `save()` reported to the view-controller.
+    /// `persistFailed` mirrors the original `false` return from #72 — the
+    /// store rejected the write (locked / encode error). `schedulingFailed`
+    /// is the new failure path from #118 — persistence succeeded but the
+    /// notification request itself didn't register, which historically
+    /// surfaced as a fake "Будильник создан" toast on a silently dropped
+    /// alarm.
+    enum SaveOutcome: Equatable {
+        case success
+        case persistFailed
+        case schedulingFailed(AlarmScheduler.SchedulingError)
+    }
+
+    /// Save the alarm and report the outcome asynchronously.
+    /// Persistence is synchronous, so `.persistFailed` resolves on the
+    /// caller's queue; the schedule branch resolves on main once the
+    /// notification request lands or fails (issue #118).
+    /// The repository contract guarantees `schedulingResult` only fires on
+    /// the successful-persist path, so we never deliver two outcomes.
+    func save(completion: @escaping (SaveOutcome) -> Void) {
+        let alarm = makeAlarmFromCurrentState()
+
+        let didPersist = alarmRepository.save(alarm) { schedulingResult in
+            switch schedulingResult {
+            case .success:
+                completion(.success)
+            case .failure(let error):
+                completion(.schedulingFailed(error))
+            }
+        }
+
+        if !didPersist {
+            completion(.persistFailed)
+        }
+    }
+
+    /// Synchronous persist-only save — kept for legacy call sites and unit
+    /// tests that don't care about the scheduling outcome (issue #72 used
+    /// the boolean to gate the dismiss path before #118 introduced the
+    /// scheduling failure path).
     @discardableResult
     func save() -> Bool {
-        let alarm = Alarm(
+        alarmRepository.save(makeAlarmFromCurrentState())
+    }
+
+    private func makeAlarmFromCurrentState() -> Alarm {
+        Alarm(
             id: existingID ?? UUID(),
             time: time,
             repeatDays: repeatDays,
@@ -58,7 +102,6 @@ final class CreateAlarmViewModel {
             progressiveScale: progressiveScale,
             enabled: enabled
         )
-        return alarmRepository.save(alarm)
     }
 
     // MARK: - Delete
