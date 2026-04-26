@@ -6,18 +6,20 @@ class TopUpViewController: UIViewController {
 
     // MARK: - Package Data
 
+    /// Local copy ("~N откладываний") and styling per row. Price text comes from
+    /// StoreKit's `Product.displayPrice` (#75) — we no longer hardcode amounts here.
+    /// Order must match the ascending-price order produced by `StoreKitService.loadProducts()`.
     private struct Package {
-        let amount: Int
         let subtitle: String
         let isPopular: Bool
     }
 
     private let packages: [Package] = [
-        Package(amount: 49, subtitle: "~1 откладывание", isPopular: false),
-        Package(amount: 149, subtitle: "~3 откладывания", isPopular: true),
-        Package(amount: 299, subtitle: "~6 откладываний", isPopular: false),
-        Package(amount: 499, subtitle: "~10 откладываний", isPopular: false),
-        Package(amount: 999, subtitle: "~20 откладываний", isPopular: false)
+        Package(subtitle: "~1 откладывание", isPopular: false),
+        Package(subtitle: "~3 откладывания", isPopular: true),
+        Package(subtitle: "~6 откладываний", isPopular: false),
+        Package(subtitle: "~10 откладываний", isPopular: false),
+        Package(subtitle: "~20 откладываний", isPopular: false)
     ]
 
     // MARK: - UI
@@ -286,7 +288,22 @@ extension TopUpViewController: UITableViewDataSource {
             let pkg = packages[indexPath.row]
             let products = storeService.products
             let isLoading = indexPath.row < products.count && products[indexPath.row].id == loadingProductID
-            cell.configure(amount: pkg.amount, subtitle: pkg.subtitle, isPopular: pkg.isPopular, isLoading: isLoading)
+            // Prefer StoreKit's localized displayPrice (respects user's storefront/currency)
+            // over a hardcoded "₽<int>" string. The hardcoded form is wrong for non-RU
+            // storefronts and lies about what Apple Pay will actually charge (see #75).
+            // Fall back to the placeholder amount only while products are still loading.
+            let priceText: String
+            if indexPath.row < products.count {
+                priceText = products[indexPath.row].displayPrice
+            } else {
+                priceText = "…"
+            }
+            cell.configure(
+                priceText: priceText,
+                subtitle: pkg.subtitle,
+                isPopular: pkg.isPopular,
+                isLoading: isLoading
+            )
             return cell
         }
     }
@@ -520,8 +537,12 @@ final class TopUpPackageCell: UITableViewCell {
 
     // MARK: - Configure
 
-    func configure(amount: Int, subtitle: String, isPopular: Bool, isLoading: Bool) {
-        amountLabel.text = "₽\(amount)"
+    /// Configures the cell with a pre-formatted, localized price string.
+    /// Pass `Product.displayPrice` from StoreKit so we never hardcode a currency symbol
+    /// or assume a storefront — see #75. The caller may pass a placeholder ("…")
+    /// while products are still loading.
+    func configure(priceText: String, subtitle: String, isPopular: Bool, isLoading: Bool) {
+        amountLabel.text = priceText
         subtitleLabel.text = subtitle
         popularBadge.isHidden = !isPopular
 
