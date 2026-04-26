@@ -261,6 +261,15 @@ final class StoreKitService {
         return fallbackPrice?.doubleValue ?? 0
     }
 
+    /// Public lookup used by UI to render the "~N откладываний" hint without
+    /// hardcoding RUB amounts in the view layer. Returns 0 for unknown product
+    /// IDs so the caller can hide / fallback gracefully.
+    /// `nonisolated` because it only reads an immutable static dictionary —
+    /// callers shouldn't have to hop to MainActor just to compute a label.
+    nonisolated static func creditAmount(for productID: String) -> Double {
+        productAmounts[productID] ?? 0
+    }
+
     enum StoreError: Error {
         case failedVerification
     }

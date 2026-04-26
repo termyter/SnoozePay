@@ -4,21 +4,23 @@ import StoreKit
 /// Top-up balance screen with balance card, 5 IAP packages, and restore button.
 class TopUpViewController: UIViewController {
 
-    // MARK: - Package Data
+    // MARK: - Load state
 
-    private struct Package {
-        let amount: Int
-        let subtitle: String
-        let isPopular: Bool
+    /// Drives the packages section. We avoid rendering hardcoded RUB rows while
+    /// products are still loading or the store is unreachable — pre-#75 the UI
+    /// would show stale "₽49 / ₽149 / …" even on non-RU storefronts where the
+    /// real `displayPrice` differs in number, currency, and symbol.
+    private enum LoadState {
+        case loading
+        case loaded([Product])
+        case failed
     }
 
-    private let packages: [Package] = [
-        Package(amount: 49, subtitle: "~1 откладывание", isPopular: false),
-        Package(amount: 149, subtitle: "~3 откладывания", isPopular: true),
-        Package(amount: 299, subtitle: "~6 откладываний", isPopular: false),
-        Package(amount: 499, subtitle: "~10 откладываний", isPopular: false),
-        Package(amount: 999, subtitle: "~20 откладываний", isPopular: false)
-    ]
+    private var loadState: LoadState = .loading
+
+    /// Cost in RUB of a single snooze, used to derive the "~N откладываний" hint
+    /// from each product's credit amount instead of hardcoding it per package.
+    private static let snoozePriceRUB: Double = 49
 
     // MARK: - UI
 
@@ -156,8 +158,16 @@ class TopUpViewController: UIViewController {
     }
 
     private func loadStoreProducts() {
+        loadState = .loading
+        tableView.reloadData()
         Task {
             await storeService.loadProducts()
+            // `loadProducts()` swallows errors and posts a failure notification —
+            // we re-derive UI state from `products` so an empty result (network
+            // failure, IDs not configured in App Store Connect) lands in `.failed`
+            // instead of pretending success.
+            let loaded = storeService.products
+            loadState = loaded.isEmpty ? .failed : .loaded(loaded)
             tableView.reloadData()
         }
     }
@@ -241,7 +251,11 @@ extension TopUpViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         guard let sec = Section(rawValue: section) else { return 0 }
         switch sec {
-        case .packages: return packages.count
+        case .packages:
+            switch loadState {
+            case .loading, .failed: return 1   // skeleton row or retry row
+            case .loaded(let products): return products.count
+            }
         case .restore: return 1
         }
     }
@@ -276,19 +290,87 @@ extension TopUpViewController: UITableViewDataSource {
             return cell
 
         case .packages:
-            guard let cell = tableView.dequeueReusableCell(
-                withIdentifier: TopUpPackageCell.reuseID, for: indexPath
-            ) as? TopUpPackageCell else {
-                assertionFailure("dequeueReusableCell returned wrong type for \(TopUpPackageCell.reuseID)")
-                return UITableViewCell()
+            switch loadState {
+            case .loading:
+                return makePackagesPlaceholderCell(state: .loading)
+            case .failed:
+                return makePackagesPlaceholderCell(state: .failed)
+            case .loaded(let products):
+                return makePackageCell(at: indexPath, products: products)
             }
-
-            let pkg = packages[indexPath.row]
-            let products = storeService.products
-            let isLoading = indexPath.row < products.count && products[indexPath.row].id == loadingProductID
-            cell.configure(amount: pkg.amount, subtitle: pkg.subtitle, isPopular: pkg.isPopular, isLoading: isLoading)
-            return cell
         }
+    }
+
+    private func makePackageCell(at indexPath: IndexPath, products: [Product]) -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: TopUpPackageCell.reuseID, for: indexPath
+        ) as? TopUpPackageCell else {
+            assertionFailure("dequeueReusableCell returned wrong type for \(TopUpPackageCell.reuseID)")
+            return UITableViewCell()
+        }
+
+        let product = products[indexPath.row]
+        let isLoading = product.id == loadingProductID
+        // Highlight the middle tier as "Популярный". For the canonical 5-pack
+        // catalog this is the 149-RUB row; if the catalog ever changes the
+        // middle index still picks the most representative tier.
+        let popularIndex = products.count >= 3 ? products.count / 2 : -1
+        let isPopular = indexPath.row == popularIndex
+        let credits = StoreKitService.creditAmount(for: product.id)
+        let subtitle = Self.snoozeCountSubtitle(for: credits)
+
+        cell.configure(
+            displayPrice: product.displayPrice,
+            subtitle: subtitle,
+            isPopular: isPopular,
+            isLoading: isLoading
+        )
+        return cell
+    }
+
+    private func makePackagesPlaceholderCell(state: PlaceholderState) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        cell.backgroundColor = .secondarySystemBackground
+        cell.textLabel?.textAlignment = .center
+        cell.textLabel?.font = UIFont.systemFont(ofSize: 15)
+
+        switch state {
+        case .loading:
+            cell.textLabel?.text = "Загрузка пакетов…"
+            cell.textLabel?.textColor = .secondaryLabel
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            cell.accessoryView = spinner
+            cell.selectionStyle = .none
+        case .failed:
+            cell.textLabel?.text = "Не удалось загрузить пакеты. Нажмите для повтора."
+            cell.textLabel?.textColor = .systemBlue
+            cell.accessoryView = nil
+            cell.selectionStyle = .default
+        }
+        return cell
+    }
+
+    private enum PlaceholderState { case loading, failed }
+
+    /// Builds "~N откладываний" with correct Russian plural form. `creditRUB == 0`
+    /// (unknown product ID) collapses to an empty string so the cell hides the
+    /// hint instead of rendering a misleading "~0 откладываний".
+    static func snoozeCountSubtitle(for creditRUB: Double) -> String {
+        guard creditRUB > 0 else { return "" }
+        let count = Int((creditRUB / snoozePriceRUB).rounded(.down))
+        guard count > 0 else { return "" }
+        let rem10 = count % 10
+        let rem100 = count % 100
+        let word: String
+        if rem10 == 1 && rem100 != 11 {
+            word = "откладывание"
+        } else if (2...4).contains(rem10) && !(12...14).contains(rem100) {
+            word = "откладывания"
+        } else {
+            word = "откладываний"
+        }
+        return "~\(count) \(word)"
     }
 }
 
@@ -312,7 +394,14 @@ extension TopUpViewController: UITableViewDelegate {
         case .restore:
             performRestorePurchases()
         case .packages:
-            purchaseProduct(at: indexPath.row)
+            switch loadState {
+            case .loading:
+                break
+            case .failed:
+                loadStoreProducts()
+            case .loaded:
+                purchaseProduct(at: indexPath.row)
+            }
         }
     }
 }
@@ -520,9 +609,15 @@ final class TopUpPackageCell: UITableViewCell {
 
     // MARK: - Configure
 
-    func configure(amount: Int, subtitle: String, isPopular: Bool, isLoading: Bool) {
-        amountLabel.text = "₽\(amount)"
+    /// `displayPrice` comes from `Product.displayPrice` — already localised to the
+    /// user's storefront (e.g. "49 ₽", "$0.99", "0,99 €"). We deliberately do NOT
+    /// reformat it locally; doing so would re-introduce the bug fixed in #75.
+    /// `subtitle` may be empty (unknown product) — the row collapses the hint
+    /// rather than rendering a placeholder string.
+    func configure(displayPrice: String, subtitle: String, isPopular: Bool, isLoading: Bool) {
+        amountLabel.text = displayPrice
         subtitleLabel.text = subtitle
+        subtitleLabel.isHidden = subtitle.isEmpty
         popularBadge.isHidden = !isPopular
 
         if isLoading {
