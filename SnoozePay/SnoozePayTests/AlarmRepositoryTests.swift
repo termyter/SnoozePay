@@ -68,8 +68,19 @@ final class AlarmRepositoryTests: XCTestCase {
     }
 
     func testSetEnabled_unknownIDIsNoOp() {
-        repo.setEnabled(false, id: UUID())
+        let didUpdate = repo.setEnabled(false, id: UUID())
+        XCTAssertFalse(didUpdate, "setEnabled must report failure when no alarm matches the id")
         XCTAssertEqual(repo.fetchAll().count, 0)
+    }
+
+    func testSetEnabled_existingIDReturnsTrueAndPersists() {
+        let alarm = makeAlarm()
+        repo.save(alarm)
+
+        let didUpdate = repo.setEnabled(false, id: alarm.id)
+
+        XCTAssertTrue(didUpdate, "setEnabled must report success when the alarm exists")
+        XCTAssertEqual(repo.fetch(id: alarm.id)?.enabled, false, "Persistence must reflect the new flag")
     }
 
     // MARK: - Concurrency

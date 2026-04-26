@@ -81,7 +81,18 @@ final class AlarmsListViewModel {
             onAlarmsUpdated?()
             return
         }
-        alarmRepository.setEnabled(enabled, id: id)
+
+        let didUpdate = alarmRepository.setEnabled(enabled, id: id)
+        guard didUpdate else {
+            // Repository no longer has this alarm (deleted from another path).
+            // The cell already optimistically flipped its switch in setEnabledAppearance —
+            // resync from the source of truth and re-bind so the UI rolls back (issue #35).
+            print("[AlarmsListViewModel] setEnabled returned false; rolling back UI for id=\(id)")
+            alarms = alarmRepository.fetchAll()
+            onAlarmsUpdated?()
+            return
+        }
+
         alarms[index] = Alarm(
             id: alarms[index].id,
             time: alarms[index].time,
