@@ -201,4 +201,44 @@ final class AlarmFiringCoordinator {
             }
         }
     }
+
+    // MARK: - Pause / Resume (firing-time top-up, #141)
+    //
+    // The mid-firing top-up sheet needs to silence the alarm + freeze any
+    // running escalation work while the user completes Apple Pay. The current
+    // coordinator doesn't own a long-running timer (each `snooze` re-arms
+    // `AlarmScheduler` then returns) so the pause/resume pair here is mostly
+    // a delegation seam: it pauses the audio surface and logs the transition
+    // so a future regression where pause/resume falls out of sync with the
+    // audio session is diagnosable from Console alone. Owning the logic here
+    // (rather than calling `AudioService` directly from the sheet VC) keeps
+    // the pause contract atomic — when #138 lands the rewritten firing VC
+    // and adds a real escalation timer, this is the single place that needs
+    // to learn how to stop it.
+
+    /// `true` while a top-up sheet is suppressing audio + escalation. Public
+    /// read so tests can assert pause/resume parity without poking at private
+    /// state.
+    private(set) var isEscalationPaused: Bool = false
+
+    /// Pauses any active escalation work + the alarm audio session.
+    /// Called by `FiringTopUpBottomSheetViewController` on `viewWillAppear`
+    /// so the alarm goes quiet while the user picks a preset. Idempotent —
+    /// repeat calls are no-ops so the firing VC + the sheet can both arm the
+    /// pause without coordinating.
+    func pauseEscalation() {
+        guard !isEscalationPaused else { return }
+        isEscalationPaused = true
+        AudioService.shared.pauseAlarmSound()
+        AppLogger.coordinator.notice("escalation paused (top-up sheet open)")
+    }
+
+    /// Reverses `pauseEscalation()`. Called on sheet dismiss (cancel, success
+    /// auto-dismiss, 60s timeout) so the alarm picks up where it left off.
+    func resumeEscalation() {
+        guard isEscalationPaused else { return }
+        isEscalationPaused = false
+        AudioService.shared.resumeAlarmSound()
+        AppLogger.coordinator.notice("escalation resumed")
+    }
 }
