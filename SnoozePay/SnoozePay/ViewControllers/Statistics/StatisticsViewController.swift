@@ -2,180 +2,124 @@ import UIKit
 import SwiftUI
 import Charts
 
-/// Statistics screen: spending summary, bar chart, streak, motivation.
-class StatisticsViewController: UIViewController {
+/// Statistics screen — design-refresh 2026-04-27 rewrite (#147).
+///
+/// Vertical stack of:
+///   1. Period segmented (Неделя / Месяц / Всё время) — drives the VM.
+///   2. Two-column summary (Потрачено · Откладываний) on `SPCard(.surface)`s
+///      with caps + moneyMd typography.
+///   3. GitHub-style heatmap calendar — 7 columns × N rows of money-tinted
+///      squares. Tap a square → toast with date + amount.
+///   4. Apple-Charts bar chart of average penalty by weekday (Пн → Вс).
+///   5. Streak SPCard with 🔥 + current days + lifetime best — tap to open
+///      `StreakModalViewController`.
+///   6. Empty state when there are no transactions in the selected period.
+///
+/// Backed by the existing `StatisticsViewModel`; new heatmap / weekday-bar /
+/// `hasData` accessors land in the same file so the chart, heatmap, streak
+/// card, and empty state all read from one source of truth.
+///
+/// Card-building helpers (`makeSummaryRow()`, `makeHeatmapCard()`, ...) live
+/// in `StatisticsViewController+Cards.swift` so the main type body stays
+/// under SwiftLint's `type_body_length` ceiling.
+final class StatisticsViewController: UIViewController {
 
     // MARK: - ViewModel
 
-    private let viewModel = StatisticsViewModel()
+    let viewModel = StatisticsViewModel()
 
-    // MARK: - UI
+    // MARK: - Layout containers
 
-    private let scrollView: UIScrollView = {
-        let sv = UIScrollView()
-        sv.translatesAutoresizingMaskIntoConstraints = false
-        return sv
+    let scrollView = UIScrollView()
+    let contentStack = UIStackView()
+    /// Stack of "data" sections (summary + heatmap + chart + streak).
+    /// Hidden as a unit when the empty state takes over.
+    let dataStack = UIStackView()
+    var emptyStateView: StatisticsEmptyStateView?
+
+    // MARK: - Period selector
+
+    lazy var periodSegment: SPSegmented = {
+        let options = StatisticsViewModel.Period.allCases.map { period in
+            SPSegmented.Option(value: String(period.rawValue), label: period.title)
+        }
+        let segment = SPSegmented(
+            options: options,
+            selectedValue: String(StatisticsViewModel.Period.week.rawValue)
+        ) { [weak self] value in
+            guard let raw = Int(value), let period = StatisticsViewModel.Period(rawValue: raw) else { return }
+            self?.viewModel.loadData(period: period)
+        }
+        segment.translatesAutoresizingMaskIntoConstraints = false
+        return segment
     }()
 
-    private let contentStack: UIStackView = {
-        let sv = UIStackView()
-        sv.axis = .vertical
-        sv.spacing = AppSpacing.lg
-        sv.translatesAutoresizingMaskIntoConstraints = false
-        return sv
-    }()
+    // MARK: - Summary tiles
 
-    private let periodSegment: UISegmentedControl = {
-        let items = StatisticsViewModel.Period.allCases.map { $0.title }
-        let sc = UISegmentedControl(items: items)
-        sc.selectedSegmentIndex = 0
-        sc.translatesAutoresizingMaskIntoConstraints = false
-        return sc
-    }()
-
-    // MARK: Two-column summary
-
-    private let spentTitleLabel: UILabel = {
+    /// Pain-tinted "Потрачено" amount. Drawn with the pain-text gradient via
+    /// `UILabel.applyGradientMask(_:)` so the value glyphs track the brand
+    /// red sweep.
+    let spentAmountLabel: UILabel = {
         let label = UILabel()
-        label.text = "Потрачено"
-        label.font = UIFont.systemFont(ofSize: 13)
-        label.textColor = .secondaryLabel
+        label.font = AppTypography.moneyMd
+        label.textColor = AppColors.fg1
+        label.adjustsFontForContentSizeCategory = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    let spentGradientLayer = CAGradientLayer()
+
+    let snoozeCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = AppTypography.moneyMd
+        label.textColor = AppColors.fg1
+        label.adjustsFontForContentSizeCategory = false
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    private let spentAmountLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 32, weight: .bold)
-        label.textColor = AppColors.accentOrange
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    // MARK: - Heatmap
 
-    private let snoozeTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Откладываний"
-        label.font = UIFont.systemFont(ofSize: 13)
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    private let snoozeCountLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 32, weight: .bold)
-        label.textColor = .label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    // MARK: Average card
-
-    private let averageTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Среднее"
-        label.font = UIFont.systemFont(ofSize: 13)
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    private let averageValueLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 28, weight: .bold)
-        label.textColor = .label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    // MARK: Chart
-
-    private let chartTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "График по дням"
-        label.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        label.textColor = .label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    private var chartHostingController: UIHostingController<StatisticsChartView>?
-
-    /// Explicit reference to the streak card so `refresh()` can toggle its
-    /// visibility without walking the view-hierarchy via `superview?.superview`.
-    private var streakCard: UIView?
-
-    // MARK: Streak
-
-    private let streakIconView: UIView = {
-        let container = UIView()
-        container.backgroundColor = AppColors.accentOrange.withAlphaComponent(0.15)
-        container.layer.cornerRadius = 22
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        let label = UILabel()
-        label.text = "🔥"
-        label.font = UIFont.systemFont(ofSize: 22)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
-
-        NSLayoutConstraint.activate([
-            container.widthAnchor.constraint(equalToConstant: 44),
-            container.heightAnchor.constraint(equalToConstant: 44),
-            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-        ])
-        return container
-    }()
-
-    private let streakLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 20, weight: .bold)
-        label.textColor = .label
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    private let bestStreakLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 13)
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    // MARK: Motivation banner
-
-    private let motivationCard: UIView = {
-        let view = UIView()
-        view.backgroundColor = AppColors.accentOrange
-        view.layer.cornerRadius = AppRadius.md
+    let heatmapView: StatisticsHeatmapView = {
+        let view = StatisticsHeatmapView()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
 
-    private let motivationIconLabel: UILabel = {
+    /// Toast banner used for tap feedback on heatmap cells. Hidden by default;
+    /// `showToast(_:)` slides it in for ~2 s.
+    let toastLabel: UILabel = {
         let label = UILabel()
-        label.text = "↗️"
-        label.font = UIFont.systemFont(ofSize: 24)
+        label.font = AppTypography.body
+        label.textColor = AppColors.fg1
+        label.backgroundColor = AppColors.bg2
+        label.layer.cornerRadius = AppRadius.md
+        label.layer.masksToBounds = true
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.alpha = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    private let motivationTitleLabel: UILabel = {
+    // MARK: - Bar chart
+
+    var chartHostingController: UIHostingController<WeekdayChartView>?
+
+    // MARK: - Streak card
+
+    let streakValueLabel: UILabel = {
         let label = UILabel()
-        label.text = "Мотивация"
-        label.font = UIFont.systemFont(ofSize: 15, weight: .bold)
-        label.textColor = .white
+        label.font = AppTypography.moneyMd
+        label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    private let motivationMessageLabel: UILabel = {
+    let streakBestLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14)
-        label.textColor = UIColor.white.withAlphaComponent(0.9)
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -187,221 +131,102 @@ class StatisticsViewController: UIViewController {
         super.viewDidLoad()
         title = "Статистика"
         navigationController?.navigationBar.prefersLargeTitles = true
-        view.backgroundColor = .systemGroupedBackground
-        setupUI()
+        view.backgroundColor = AppColors.bg0
+        configureGradientLayers()
+        setupLayout()
         bindViewModel()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        let period = StatisticsViewModel.Period(rawValue: periodSegment.selectedSegmentIndex) ?? .week
+        let raw = Int(periodSegment.selectedValue ?? "") ?? 0
+        let period = StatisticsViewModel.Period(rawValue: raw) ?? .week
         viewModel.loadData(period: period)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        spentAmountLabel.applyGradientMask(spentGradientLayer)
     }
 
     // MARK: - Setup
 
-    private func setupUI() {
+    private func configureGradientLayers() {
+        spentGradientLayer.colors = SPSupport.painGradientColors
+        spentGradientLayer.locations = SPSupport.painGradientLocations
+        spentGradientLayer.startPoint = SPSupport.gradientStart
+        spentGradientLayer.endPoint = SPSupport.gradientEnd
+    }
+
+    private func setupLayout() {
+        configureContainers()
+        installContainerConstraints()
+        installToastConstraints()
+        contentStack.addArrangedSubview(periodSegment)
+        contentStack.addArrangedSubview(dataStack)
+        dataStack.addArrangedSubview(makeSummaryRow())
+        dataStack.addArrangedSubview(makeHeatmapCard())
+        dataStack.addArrangedSubview(makeChartCard())
+        dataStack.addArrangedSubview(makeStreakCard())
+        heatmapView.onCellTap = { [weak self] cell in
+            self?.presentHeatmapToast(for: cell)
+        }
+    }
+
+    private func configureContainers() {
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .vertical
+        contentStack.spacing = AppSpacing.sp5
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        dataStack.axis = .vertical
+        dataStack.spacing = AppSpacing.sp5
+        dataStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
+        view.addSubview(toastLabel)
+    }
 
+    private func installContainerConstraints() {
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            contentStack.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: AppSpacing.lg),
-            contentStack.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: AppSpacing.lg),
-            contentStack.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -AppSpacing.lg),
-            contentStack.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -AppSpacing.lg),
-            contentStack.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -AppSpacing.xxl)
+            contentStack.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: AppSpacing.sp5),
+            contentStack.leadingAnchor.constraint(
+                equalTo: scrollView.leadingAnchor,
+                constant: AppSpacing.screenInset
+            ),
+            contentStack.trailingAnchor.constraint(
+                equalTo: scrollView.trailingAnchor,
+                constant: -AppSpacing.screenInset
+            ),
+            contentStack.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -AppSpacing.sp7),
+            contentStack.widthAnchor.constraint(
+                equalTo: scrollView.widthAnchor,
+                constant: -AppSpacing.screenInset * 2
+            )
         ])
-
-        // Period selector
-        periodSegment.addTarget(self, action: #selector(periodChanged), for: .valueChanged)
-        contentStack.addArrangedSubview(periodSegment)
-
-        // Two-column summary (Spent + Snooze Count)
-        contentStack.addArrangedSubview(makeTwoColumnSummary())
-
-        // Average card
-        contentStack.addArrangedSubview(makeAverageCard())
-
-        // Chart card
-        contentStack.addArrangedSubview(makeChartCard())
-
-        // Streak card
-        let streakCardView = makeStreakCard()
-        streakCard = streakCardView
-        contentStack.addArrangedSubview(streakCardView)
-
-        // Motivation banner
-        contentStack.addArrangedSubview(makeMotivationBanner())
     }
 
-    // MARK: - Card Builders
-
-    private func makeTwoColumnSummary() -> UIView {
-        // Left card — amount spent
-        let leftCard = makeCard()
-        let leftStack = UIStackView(arrangedSubviews: [spentTitleLabel, spentAmountLabel])
-        leftStack.axis = .vertical
-        leftStack.spacing = AppSpacing.xs
-        leftStack.translatesAutoresizingMaskIntoConstraints = false
-        leftCard.addSubview(leftStack)
+    private func installToastConstraints() {
         NSLayoutConstraint.activate([
-            leftStack.leadingAnchor.constraint(equalTo: leftCard.leadingAnchor, constant: AppSpacing.lg),
-            leftStack.trailingAnchor.constraint(equalTo: leftCard.trailingAnchor, constant: -AppSpacing.lg),
-            leftStack.topAnchor.constraint(equalTo: leftCard.topAnchor, constant: AppSpacing.lg),
-            leftStack.bottomAnchor.constraint(equalTo: leftCard.bottomAnchor, constant: -AppSpacing.lg)
+            toastLabel.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -AppSpacing.sp5
+            ),
+            toastLabel.leadingAnchor.constraint(
+                greaterThanOrEqualTo: view.leadingAnchor,
+                constant: AppSpacing.screenInset
+            ),
+            toastLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: view.trailingAnchor,
+                constant: -AppSpacing.screenInset
+            ),
+            toastLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            toastLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
-
-        // Right card — snooze count
-        let rightCard = makeCard()
-        let rightStack = UIStackView(arrangedSubviews: [snoozeTitleLabel, snoozeCountLabel])
-        rightStack.axis = .vertical
-        rightStack.spacing = AppSpacing.xs
-        rightStack.translatesAutoresizingMaskIntoConstraints = false
-        rightCard.addSubview(rightStack)
-        NSLayoutConstraint.activate([
-            rightStack.leadingAnchor.constraint(equalTo: rightCard.leadingAnchor, constant: AppSpacing.lg),
-            rightStack.trailingAnchor.constraint(equalTo: rightCard.trailingAnchor, constant: -AppSpacing.lg),
-            rightStack.topAnchor.constraint(equalTo: rightCard.topAnchor, constant: AppSpacing.lg),
-            rightStack.bottomAnchor.constraint(equalTo: rightCard.bottomAnchor, constant: -AppSpacing.lg)
-        ])
-
-        // Horizontal row
-        let row = UIStackView(arrangedSubviews: [leftCard, rightCard])
-        row.axis = .horizontal
-        row.spacing = AppSpacing.sm
-        row.distribution = .fillEqually
-        row.translatesAutoresizingMaskIntoConstraints = false
-        return row
-    }
-
-    private func makeAverageCard() -> UIView {
-        let card = makeCard()
-        let stack = UIStackView(arrangedSubviews: [averageTitleLabel, averageValueLabel])
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.xs
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.lg),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.lg),
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: AppSpacing.lg),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.lg)
-        ])
-        return card
-    }
-
-    private func makeChartCard() -> UIView {
-        let card = makeCard()
-        // Don't clip — `applyCardStyle()` needs `masksToBounds = false` so the
-        // drop shadow renders. Chart subviews are constrained inside `card`
-        // via Auto Layout below, so they won't visually overflow without the
-        // clip.
-
-        // Title label
-        card.addSubview(chartTitleLabel)
-
-        // SwiftUI chart
-        let chartSwiftUIView = StatisticsChartView(data: [])
-        let hostingController = UIHostingController(rootView: chartSwiftUIView)
-        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-        hostingController.view.backgroundColor = .clear
-
-        addChild(hostingController)
-        card.addSubview(hostingController.view)
-        hostingController.didMove(toParent: self)
-
-        NSLayoutConstraint.activate([
-            chartTitleLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: AppSpacing.lg),
-            chartTitleLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.lg),
-            chartTitleLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.lg),
-
-            hostingController.view.topAnchor.constraint(equalTo: chartTitleLabel.bottomAnchor, constant: AppSpacing.sm),
-            hostingController.view.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.md),
-            hostingController.view.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.md),
-            hostingController.view.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.md),
-            hostingController.view.heightAnchor.constraint(equalToConstant: 200)
-        ])
-
-        chartHostingController = hostingController
-        return card
-    }
-
-    private func makeStreakCard() -> UIView {
-        let card = makeCard()
-
-        // Text stack (title + subtitle)
-        let textStack = UIStackView(arrangedSubviews: [streakLabel, bestStreakLabel])
-        textStack.axis = .vertical
-        textStack.spacing = AppSpacing.xs
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-
-        // Horizontal layout: icon | text
-        let hStack = UIStackView(arrangedSubviews: [streakIconView, textStack])
-        hStack.axis = .horizontal
-        hStack.spacing = AppSpacing.md
-        hStack.alignment = .center
-        hStack.translatesAutoresizingMaskIntoConstraints = false
-
-        card.addSubview(hStack)
-        NSLayoutConstraint.activate([
-            hStack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.lg),
-            hStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.lg),
-            hStack.topAnchor.constraint(equalTo: card.topAnchor, constant: AppSpacing.lg),
-            hStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.lg)
-        ])
-
-        return card
-    }
-
-    private func makeMotivationBanner() -> UIView {
-        // Icon container
-        let iconContainer = UIView()
-        iconContainer.translatesAutoresizingMaskIntoConstraints = false
-        iconContainer.addSubview(motivationIconLabel)
-        NSLayoutConstraint.activate([
-            motivationIconLabel.topAnchor.constraint(equalTo: iconContainer.topAnchor),
-            motivationIconLabel.leadingAnchor.constraint(equalTo: iconContainer.leadingAnchor),
-            motivationIconLabel.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor),
-            iconContainer.widthAnchor.constraint(equalToConstant: 32)
-        ])
-
-        // Text stack
-        let textStack = UIStackView(arrangedSubviews: [motivationTitleLabel, motivationMessageLabel])
-        textStack.axis = .vertical
-        textStack.spacing = AppSpacing.xs
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-
-        // Horizontal layout: icon | text
-        let hStack = UIStackView(arrangedSubviews: [iconContainer, textStack])
-        hStack.axis = .horizontal
-        hStack.spacing = AppSpacing.md
-        hStack.alignment = .top
-        hStack.translatesAutoresizingMaskIntoConstraints = false
-
-        motivationCard.addSubview(hStack)
-        NSLayoutConstraint.activate([
-            hStack.leadingAnchor.constraint(equalTo: motivationCard.leadingAnchor, constant: AppSpacing.lg),
-            hStack.trailingAnchor.constraint(equalTo: motivationCard.trailingAnchor, constant: -AppSpacing.lg),
-            hStack.topAnchor.constraint(equalTo: motivationCard.topAnchor, constant: AppSpacing.lg),
-            hStack.bottomAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: -AppSpacing.lg)
-        ])
-
-        return motivationCard
-    }
-
-    /// Standard widget card — surface colour, hairline border, subtle shadow.
-    /// Without the border + shadow these widgets dissolve into
-    /// `systemGroupedBackground` in light mode. `CardView` owns its shadow-path
-    /// rasterisation and trait-change refresh so the call site doesn't have to.
-    private func makeCard() -> CardView {
-        let view = CardView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
     }
 
     // MARK: - Binding
@@ -415,11 +240,6 @@ class StatisticsViewController: UIViewController {
         }
     }
 
-    /// Alerts the user when the transaction ledger can't be decoded.
-    /// Empty stats look identical to a brand-new user, so without this
-    /// banner a corrupt blob hides itself behind "ноль откладываний"
-    /// (issue #72). Guarded against double-presentation in case load is
-    /// triggered repeatedly while the alert is still on screen.
     private func presentRepositoryError(_ error: LocalizedError) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
@@ -432,140 +252,105 @@ class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        // Two-column summary — colour and text both come from the VM so the
-        // empty-state vs has-data branching lives in one place.
-        spentAmountLabel.textColor = viewModel.spentColor
+        // Summary row.
         spentAmountLabel.text = viewModel.totalSpentFormatted
-
-        snoozeCountLabel.textColor = viewModel.snoozeCountColor
         snoozeCountLabel.text = viewModel.snoozeCountFormatted
+        // The pain-gradient mask renders the "spent" value glyph-by-glyph;
+        // refresh after text updates so the mask matches the new string.
+        view.setNeedsLayout()
 
-        // Average
-        averageValueLabel.text = viewModel.averagePerDayFormatted
+        // Heatmap.
+        heatmapView.cells = viewModel.heatmapCells
 
-        // Streak — when no active streak we show the zero-state caption but
-        // keep the card visible so the layout doesn't jump. The card is
-        // never hidden anywhere, so no `isHidden = false` reset is needed.
-        if viewModel.streakActive {
-            streakLabel.text = viewModel.streakMessage
-            bestStreakLabel.text = viewModel.bestStreakFormatted
+        // Bar chart.
+        let chartBars = viewModel.weekdayBars.map { bar in
+            WeekdayBarPoint(label: bar.label, amount: bar.amount, weekday: bar.weekday)
+        }
+        chartHostingController?.rootView = WeekdayChartView(bars: chartBars)
+
+        // Streak card.
+        streakValueLabel.text = "\(viewModel.streak) \(StreakModalViewController.dayWord(for: viewModel.streak))"
+        streakBestLabel.text = "Лучший результат: \(viewModel.bestStreak) "
+            + "\(StreakModalViewController.dayWord(for: viewModel.bestStreak))"
+
+        // Empty state — VM handles the empty-period detection.
+        setEmptyStateVisible(!viewModel.hasData)
+    }
+
+    // MARK: - Empty state
+
+    /// Toggle between the "we have data" stack and the empty-state column.
+    /// We keep both views allocated — flipping `isHidden` is cheap and avoids
+    /// re-running `addArrangedSubview` for every period switch.
+    func setEmptyStateVisible(_ visible: Bool) {
+        dataStack.isHidden = visible
+        if visible {
+            if emptyStateView == nil {
+                let view = StatisticsEmptyStateView()
+                view.translatesAutoresizingMaskIntoConstraints = false
+                view.onCreateAlarmTap = { [weak self] in self?.createAlarmTapped() }
+                emptyStateView = view
+                contentStack.addArrangedSubview(view)
+            }
+            emptyStateView?.isHidden = false
         } else {
-            streakLabel.text = viewModel.streakZeroMessage
-            bestStreakLabel.text = ""
+            emptyStateView?.isHidden = true
         }
-
-        // Motivation banner — VM decides whether there's anything to motivate
-        // against; view just toggles visibility off the bool.
-        motivationMessageLabel.text = viewModel.motivationalMessage
-        motivationCard.isHidden = !viewModel.motivationVisible
-
-        // Chart
-        let chartData = viewModel.dailyChartData.map {
-            ChartDataPoint(label: $0.label, amount: $0.amount)
-        }
-        chartHostingController?.rootView = StatisticsChartView(data: chartData)
     }
 
     // MARK: - Actions
 
-    @objc private func periodChanged() {
-        let period = StatisticsViewModel.Period(rawValue: periodSegment.selectedSegmentIndex) ?? .week
-        viewModel.loadData(period: period)
+    @objc func streakTapped() {
+        let alarms = (try? AlarmRepository.shared.fetchAllChecked()) ?? []
+        let saved = StreakModalViewController.estimatedSavings(
+            for: viewModel.streak,
+            alarms: alarms
+        )
+        let modal = StreakModalViewController(
+            streakDays: viewModel.streak,
+            savedAmount: saved
+        )
+        present(modal, animated: true)
     }
-}
 
-// MARK: - Swift Charts data model
+    private func createAlarmTapped() {
+        let createVC = CreateAlarmViewController(alarm: nil)
+        navigationController?.pushViewController(createVC, animated: true)
+    }
 
-/// Single data point for the bar chart.
-struct ChartDataPoint: Identifiable {
-    let id = UUID()
-    let label: String
-    let amount: Double
-}
+    // MARK: - Heatmap toast
 
-// MARK: - SwiftUI Chart View
-
-/// Bar chart built with Swift Charts framework, wrapped for UIKit embedding.
-struct StatisticsChartView: View {
-
-    let data: [ChartDataPoint]
-
-    @State private var animateChart = false
-
-    var body: some View {
-        if data.isEmpty || data.allSatisfy({ $0.amount == 0 }) {
-            // Empty state
-            VStack(spacing: 8) {
-                Image(systemName: "chart.bar")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.secondary)
-                Text("Нет данных")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private func presentHeatmapToast(for cell: StatisticsViewModel.HeatmapCell) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMMM"
+        let dateText = formatter.string(from: cell.date)
+        let amountText: String
+        if cell.amount > 0 {
+            amountText = "−\(Int(cell.amount)) ₽"
         } else {
-            Chart(data) { point in
-                BarMark(
-                    x: .value("День", point.label),
-                    y: .value("Сумма", animateChart ? point.amount : 0)
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.orange, Color.orange.opacity(0.6)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .annotation(position: .top, spacing: 4) {
-                    if point.amount > 0 {
-                        Text("\(Int(point.amount)) ₽")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .chartXAxis {
-                AxisMarks(values: .automatic) { _ in
-                    AxisValueLabel()
-                        .font(.caption)
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .leading) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
-                        .foregroundStyle(Color.secondary.opacity(0.3))
-                    AxisValueLabel {
-                        if let amount = value.as(Double.self) {
-                            Text("\(Int(amount))")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .chartYScale(domain: 0...(maxAmount * 1.2))
-            .animation(.easeOut(duration: 0.5), value: animateChart)
-            .onAppear {
-                // Trigger entrance animation
-                withAnimation(.easeOut(duration: 0.5)) {
-                    animateChart = true
-                }
-            }
-            .onChange(of: data.map(\.amount)) { oldValue, newValue in
-                // Re-animate when data changes
-                guard oldValue != newValue else { return }
-                animateChart = false
-                withAnimation(.easeOut(duration: 0.5)) {
-                    animateChart = true
-                }
-            }
+            amountText = "без штрафов"
         }
+        showToast("\(dateText) · \(amountText)")
     }
 
-    /// Maximum amount in the data set, at least 1 to avoid zero-range axis.
-    private var maxAmount: Double {
-        max(data.map(\.amount).max() ?? 1, 1)
+    private func showToast(_ message: String) {
+        // Pad the toast text — UILabel doesn't have intrinsic insets, so we
+        // wrap with non-breaking space so the visual padding stays simple
+        // while honouring `numberOfLines = 0` for long dates.
+        toastLabel.text = "  \(message)  "
+        UIView.animate(withDuration: SPSupport.durationBase, animations: {
+            self.toastLabel.alpha = 1
+        }, completion: { _ in
+            UIView.animate(
+                withDuration: SPSupport.durationSlow,
+                delay: 1.4,
+                options: [.curveEaseOut],
+                animations: {
+                    self.toastLabel.alpha = 0
+                },
+                completion: nil
+            )
+        })
     }
 }
