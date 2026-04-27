@@ -222,6 +222,44 @@ final class AudioService {
         state = .stopped
     }
 
+    // MARK: - Pause / Resume
+    //
+    // The firing-time top-up flow (#141) needs to silence the alarm while a
+    // bottom sheet is open without losing the audio session — `stopAlarmSound`
+    // tears the session down which would force a fresh permission check on
+    // resume and break the `currentAlarmID` ownership tracking that #116
+    // depends on. `pauseAlarmSound` instead pauses the player + stops the
+    // vibration timer, leaving `state` and `currentAlarmID` intact so a
+    // subsequent `resumeAlarmSound()` can keep playing on the same session.
+
+    /// Pause looped playback + vibration without releasing the audio session.
+    /// No-op if no audio is currently owned (state != .playing). Used by the
+    /// firing-time top-up sheet (#141) so the alarm goes quiet while the user
+    /// completes Apple Pay, then resumes if they cancel or the 60s auto-resume
+    /// timer fires. Does not change `state` — observers continue to see
+    /// `.playing` because the session is still owned and the next `resume()`
+    /// must succeed without re-asking for it.
+    func pauseAlarmSound() {
+        guard state == .playing else { return }
+        audioPlayer?.pause()
+        stopVibration()
+    }
+
+    /// Resume playback + vibration after `pauseAlarmSound()`. No-op if no
+    /// player exists (state != .playing). Idempotent so the bottom sheet's
+    /// dismiss path can call it without checking pause state first.
+    func resumeAlarmSound() {
+        guard state == .playing, let player = audioPlayer else { return }
+        // `play()` returns false only if the queue refuses — which on a paused
+        // looping player should not happen unless the session was deactivated
+        // out-of-band. Log so a regression where pause/resume gets out of sync
+        // (e.g. interrupted by another app's audio) is diagnosable.
+        if !player.play() {
+            AppLogger.audio.error("resumeAlarmSound: AVAudioPlayer.play() returned false")
+        }
+        startVibration()
+    }
+
     // MARK: - Vibration
 
     /// Start a repeating vibration pattern (vibrate every ~1 second).
