@@ -42,6 +42,7 @@ final class CreateAlarmViewController: UIViewController {
         case penalty
         case progressiveScale
         case sound
+        case volume
         case vibration
         case theme
         /// Destructive "Удалить будильник" row — only visible in edit mode.
@@ -71,10 +72,10 @@ final class CreateAlarmViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Refresh the sound + theme rows in case the user picked a new
-        // value on a pushed picker and is returning here.
+        // Refresh the sound + volume + theme rows in case the user picked a
+        // new value on a pushed picker and is returning here.
         tableView.reloadSections(
-            IndexSet([Section.sound.rawValue, Section.theme.rawValue]),
+            IndexSet([Section.sound.rawValue, Section.volume.rawValue, Section.theme.rawValue]),
             with: .none
         )
     }
@@ -121,6 +122,7 @@ final class CreateAlarmViewController: UIViewController {
         tableView.register(DayPickerCell.self, forCellReuseIdentifier: DayPickerCell.reuseID)
         tableView.register(NameCell.self, forCellReuseIdentifier: NameCell.reuseID)
         tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
+        tableView.register(VolumeCell.self, forCellReuseIdentifier: VolumeCell.reuseID)
         tableView.register(VibrationCell.self, forCellReuseIdentifier: VibrationCell.reuseID)
         tableView.register(PenaltyCell.self, forCellReuseIdentifier: PenaltyCell.reuseID)
         tableView.register(ProgressiveScaleCell.self, forCellReuseIdentifier: ProgressiveScaleCell.reuseID)
@@ -320,6 +322,12 @@ extension CreateAlarmViewController: UITableViewDataSource {
                 }
             }
             return cell
+        case .volume:
+            let cell = tableView.dequeueReusableCell(withIdentifier: VolumeCell.reuseID, for: indexPath)
+            if let cell = cell as? VolumeCell {
+                cell.configure(volume: viewModel.volume, fadeIn: viewModel.volumeFadeIn)
+            }
+            return cell
         case .vibration:
             let cell = tableView.dequeueReusableCell(withIdentifier: VibrationCell.reuseID, for: indexPath)
             if let cell = cell as? VibrationCell {
@@ -396,6 +404,8 @@ extension CreateAlarmViewController: UITableViewDelegate {
         switch section {
         case .sound:
             showSoundPicker()
+        case .volume:
+            showVolumePicker()
         case .theme:
             // The full theme picker (`AlarmThemePickerViewController`) is
             // tracked by #151. Until it lands the row is a no-op so the form
@@ -454,6 +464,21 @@ extension CreateAlarmViewController: UITableViewDelegate {
                 self?.viewModel.previewSound(soundID)
             }
         )
+        navigationController?.pushViewController(picker, animated: true)
+    }
+
+    /// Push the new `VolumePickerViewController` (#150). The picker reports
+    /// every slider / switch change live so dismissing on the back chevron
+    /// is "auto-save" — the parent's `viewWillAppear` then refreshes the
+    /// volume row to render the new value.
+    private func showVolumePicker() {
+        let picker = VolumePickerViewController(
+            volume: viewModel.volume,
+            fadeIn: viewModel.volumeFadeIn
+        ) { [weak self] volume, fadeIn in
+            self?.viewModel.volume = volume
+            self?.viewModel.volumeFadeIn = fadeIn
+        }
         navigationController?.pushViewController(picker, animated: true)
     }
 }

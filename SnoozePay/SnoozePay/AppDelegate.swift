@@ -140,9 +140,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         // Start continuous alarm sound immediately (before presenting the VC).
         // Passing `alarmID` lets AudioService track ownership so a stacking
         // race between firing VCs cannot silence the wrong alarm (#116).
+        // Volume + fade-in (#150) come from the payload, which decodes them
+        // optionally so a pre-#150 notification still rings at full volume.
         AudioService.shared.startAlarmSound(
             soundID: payload.soundID,
-            alarmID: payload.alarmID
+            alarmID: payload.alarmID,
+            volume: payload.volume ?? 1.0,
+            fadeIn: payload.volumeFadeIn ?? false
         )
 
         // Show the alarm firing screen

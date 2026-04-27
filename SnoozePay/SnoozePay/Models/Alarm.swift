@@ -12,6 +12,13 @@ struct Alarm: Identifiable, Equatable, Codable {
     var penaltyAmount: Double
     var progressiveScale: Bool
     var enabled: Bool
+    /// Per-alarm playback volume in `0.0...1.0`. Default `1.0` keeps the
+    /// existing "ring at full volume" behaviour for legacy alarms (#150).
+    var volume: Float
+    /// When `true`, AudioService ramps from 0 → `volume` over 30 seconds at
+    /// firing time so the user is woken gently. Default `false` preserves the
+    /// pre-#150 instant-on behaviour.
+    var volumeFadeIn: Bool
 
     init(
         id: UUID = UUID(),
@@ -23,7 +30,9 @@ struct Alarm: Identifiable, Equatable, Codable {
         snoozeMinutes: Int = 9,
         penaltyAmount: Double = 50,
         progressiveScale: Bool = false,
-        enabled: Bool = true
+        enabled: Bool = true,
+        volume: Float = 1.0,
+        volumeFadeIn: Bool = false
     ) {
         self.id = id
         self.time = time
@@ -35,6 +44,40 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.penaltyAmount = penaltyAmount
         self.progressiveScale = progressiveScale
         self.enabled = enabled
+        self.volume = min(max(volume, 0), 1)
+        self.volumeFadeIn = volumeFadeIn
+    }
+
+    // MARK: - Codable (backwards-compatible decode)
+    //
+    // `volume` + `volumeFadeIn` were added in #150. Pre-#150 stored alarms do
+    // not carry these keys — `decodeIfPresent` plus the documented defaults
+    // keeps existing JSON readable without forcing a migration step. The
+    // default encode path is fine because new keys are simply additive.
+
+    private enum CodingKeys: String, CodingKey {
+        case id, time, repeatDays, name, soundID, vibrationEnabled
+        case snoozeMinutes, penaltyAmount, progressiveScale, enabled
+        case volume, volumeFadeIn
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.time = try container.decode(Date.self, forKey: .time)
+        self.repeatDays = try container.decode([Int].self, forKey: .repeatDays)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.soundID = try container.decode(String.self, forKey: .soundID)
+        self.vibrationEnabled = try container.decode(Bool.self, forKey: .vibrationEnabled)
+        self.snoozeMinutes = try container.decode(Int.self, forKey: .snoozeMinutes)
+        self.penaltyAmount = try container.decode(Double.self, forKey: .penaltyAmount)
+        self.progressiveScale = try container.decode(Bool.self, forKey: .progressiveScale)
+        self.enabled = try container.decode(Bool.self, forKey: .enabled)
+        // New in #150 — fall back to the "ring at full volume, no fade"
+        // pre-#150 behaviour when keys are missing or out of range.
+        let rawVolume = try container.decodeIfPresent(Float.self, forKey: .volume) ?? 1.0
+        self.volume = min(max(rawVolume.isFinite ? rawVolume : 1.0, 0), 1)
+        self.volumeFadeIn = try container.decodeIfPresent(Bool.self, forKey: .volumeFadeIn) ?? false
     }
 
     /// Human-readable repeat days string (e.g. "Пн, Вт, Пт")

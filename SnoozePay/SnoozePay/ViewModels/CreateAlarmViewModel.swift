@@ -19,6 +19,10 @@ final class CreateAlarmViewModel {
     var penaltyAmount: Double
     var progressiveScale: Bool
     var enabled: Bool
+    /// Per-alarm playback volume (#150). `0...1`, default `1.0`.
+    var volume: Float
+    /// Per-alarm "ramp from 0 → volume over 30 seconds" toggle (#150).
+    var volumeFadeIn: Bool
 
     private let existingID: UUID?
 
@@ -48,6 +52,8 @@ final class CreateAlarmViewModel {
         self.penaltyAmount = alarm?.penaltyAmount ?? 50
         self.progressiveScale = alarm?.progressiveScale ?? false
         self.enabled = alarm?.enabled ?? true
+        self.volume = alarm?.volume ?? 1.0
+        self.volumeFadeIn = alarm?.volumeFadeIn ?? false
     }
 
     // MARK: - Save
@@ -108,7 +114,9 @@ final class CreateAlarmViewModel {
             snoozeMinutes: snoozeMinutes,
             penaltyAmount: penaltyAmount,
             progressiveScale: progressiveScale,
-            enabled: enabled
+            enabled: enabled,
+            volume: volume,
+            volumeFadeIn: volumeFadeIn
         )
     }
 

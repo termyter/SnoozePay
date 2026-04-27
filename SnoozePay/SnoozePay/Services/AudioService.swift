@@ -45,6 +45,11 @@ final class AudioService {
     private var audioPlayer: AVAudioPlayer?
     private var vibrationTimer: Timer?
 
+    /// Total seconds the fade-in ramp covers when `alarm.volumeFadeIn == true`
+    /// (#150). Matches the design copy "За 30 секунд" exposed in the volume
+    /// picker UI.
+    private static let fadeInDuration: TimeInterval = 30
+
     /// Identifier of the alarm that currently owns the audio session.
     ///
     /// Set in `startAlarmSound(soundID:alarmID:)` and cleared in `stopAlarmSound()`.
@@ -105,7 +110,19 @@ final class AudioService {
     ///   - alarmID: Identifier of the alarm taking ownership of the audio session.
     ///     Optional for callers that don't have a per-alarm context (legacy / tests).
     ///     Stored on `currentAlarmID` and cleared by `stopAlarmSound()`.
-    func startAlarmSound(soundID: String, alarmID: UUID? = nil) {
+    ///   - volume: Per-alarm playback volume (#150). Clamped to `0...1`. Defaults
+    ///     to `1.0` to preserve the historical "ring at full volume" behaviour
+    ///     for callers that don't pass a volume.
+    ///   - fadeIn: When `true`, ramps the player's `volume` from `0` to the
+    ///     target `volume` over `fadeInDuration` seconds via
+    ///     `AVAudioPlayer.setVolume(_:fadeDuration:)` (#150). Defaults to
+    ///     `false` so legacy call sites keep their instant-on behaviour.
+    func startAlarmSound(
+        soundID: String,
+        alarmID: UUID? = nil,
+        volume: Float = 1.0,
+        fadeIn: Bool = false
+    ) {
         // Already in a non-stopped state — preserve the existing pipeline.
         // Earlier guard was `!isPlaying` (Bool); using state covers
         // `.vibrationOnly` and `.silentBecauseConfigFailed` so we don't try to
@@ -187,7 +204,20 @@ final class AudioService {
 
         audioPlayer = player
         player.numberOfLoops = -1
-        player.volume = 1.0
+        // Honour the per-alarm volume (#150). Clamp defensively even though
+        // the call sites + Alarm initializer already do so — a corrupt
+        // payload should still produce a playable alarm rather than crash
+        // here.
+        let clampedVolume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
+        if fadeIn {
+            // Start at 0 and ramp up so the user is woken gently. AVAudio
+            // schedules the ramp on the audio thread and survives screen
+            // lock — no Timer needed.
+            player.volume = 0
+            player.setVolume(clampedVolume, fadeDuration: Self.fadeInDuration)
+        } else {
+            player.volume = clampedVolume
+        }
 
         // prepareToPlay returns Bool but does not throw; play() does not throw
         // either, but its return value indicates whether the queue accepted the
