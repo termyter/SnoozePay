@@ -10,7 +10,9 @@ class SettingsViewController: UIViewController {
 
     // MARK: - UI
 
-    private let tableView: UITableView = {
+    /// Internal so `SettingsViewController+Referral` can call
+    /// `reloadSections` after a successful friend-code apply (issue #144).
+    let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .insetGrouped)
         table.translatesAutoresizingMaskIntoConstraints = false
         return table
@@ -36,12 +38,32 @@ class SettingsViewController: UIViewController {
 
     // MARK: - Sections
 
-    private enum Section: Int, CaseIterable {
+    /// `internal` so the cross-file `SettingsViewController+Referral`
+    /// extension can read `Section.referral` for the `reloadSections`
+    /// call (issue #144).
+    enum Section: Int, CaseIterable {
         case account    // Transaction history + Balance
+        case referral   // My code (copyable) + friend's code input + caption
         case appearance // Theme selector (system / light / dark)
         case info       // Privacy policy + Terms
         case contact    // Contact us
     }
+
+    /// Row layout inside `.referral`. Indexed positions stay readable when
+    /// the table calls `cellForRowAt:` — the alternative (raw `0/1/2`)
+    /// trades a static enum mismatch error for a runtime off-by-one.
+    enum ReferralRow: Int, CaseIterable {
+        case myCode       // "Ваш код" + 6-char code + copy icon
+        case friendInput  // SPInput "Код друга" + Применить button
+        case caption      // "За каждого друга — +200 ₽ ..." footer text
+    }
+
+    let referralService = ReferralService.shared
+
+    /// Held weak so the cell may be recycled without a dangling reference.
+    /// Used to surface inline validation messages from
+    /// `handleApplyFriendCodeTapped` without a full `reloadData`.
+    weak var friendCodeInput: SPInput?
 
     // MARK: - Lifecycle
 
@@ -133,6 +155,7 @@ extension SettingsViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return 0 }
         switch sec {
         case .account: return 2    // Transaction history, Balance
+        case .referral: return ReferralRow.allCases.count
         case .appearance: return 1 // Dark theme
         case .info: return 2       // Privacy, Terms
         case .contact: return 1    // Contact us
@@ -143,6 +166,7 @@ extension SettingsViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
         case .account: return "АККАУНТ"
+        case .referral: return "ПРИГЛАСИТЬ ДРУГА"
         case .appearance: return "ОФОРМЛЕНИЕ"
         case .info: return "ИНФОРМАЦИЯ"
         case .contact: return "СВЯЗАТЬСЯ"
@@ -194,6 +218,9 @@ extension SettingsViewController: UITableViewDataSource {
                 cell.selectionStyle = .none
                 return cell
             }
+
+        case .referral:
+            return makeReferralCell(at: indexPath)
 
         case .appearance:
             // Dedicated cell type owns the segment control — avoids the previous
@@ -331,7 +358,31 @@ extension SettingsViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         guard let section = Section(rawValue: indexPath.section) else { return 52 }
-        return section == .appearance ? 56 : 52
+        switch section {
+        case .appearance:
+            return 56
+        case .referral:
+            // Friend-input row hosts an SPInput (52pt field + label + hint);
+            // the caption row wraps to two lines on small screens — let
+            // self-sizing handle both rather than guessing.
+            guard let row = ReferralRow(rawValue: indexPath.row) else { return 52 }
+            switch row {
+            case .myCode:      return 52
+            case .friendInput: return UITableView.automaticDimension
+            case .caption:     return UITableView.automaticDimension
+            }
+        default:
+            return 52
+        }
+    }
+
+    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+        // `automaticDimension` paths above need an estimate or the table
+        // collapses on first layout pass. 52pt matches the rest of the
+        // settings rows for visual continuity.
+        guard let section = Section(rawValue: indexPath.section),
+              section == .referral else { return 52 }
+        return 80
     }
 
     /// Apply the shared card-style background to every row so each
@@ -353,6 +404,14 @@ extension SettingsViewController: UITableViewDelegate {
             if indexPath.row == 0 {
                 let historyVC = TransactionHistoryViewController()
                 navigationController?.pushViewController(historyVC, animated: true)
+            }
+
+        case .referral:
+            // Only the "Ваш код" row has a tap behaviour — the input row owns
+            // its own controls (SPInput / SPButton) and the caption row is
+            // non-interactive.
+            if ReferralRow(rawValue: indexPath.row) == .myCode {
+                copyMyCodeToPasteboard()
             }
 
         case .appearance:
@@ -594,20 +653,34 @@ final class TransactionCell: UITableViewCell {
     // MARK: - Configure
 
     func configure(with transaction: Transaction, alarmName: String?) {
-        let isTopup = transaction.type == .topup
+        let isCredit = transaction.type != .charge
 
-        // Icon
-        iconContainer.backgroundColor = isTopup ? AppColors.accentGreen : AppColors.destructiveRed
-        iconImageView.image = UIImage(systemName: isTopup ? "arrow.up" : "arrow.down")?.withConfiguration(
+        // Icon — credits (topup, promotion) read green/up; charges red/down.
+        // Promotion gets a distinct gift glyph so the user can tell a
+        // referral bonus apart from an IAP top-up at a glance (issue #144).
+        iconContainer.backgroundColor = isCredit ? AppColors.accentGreen : AppColors.destructiveRed
+        let iconName: String
+        switch transaction.type {
+        case .topup:     iconName = "arrow.up"
+        case .charge:    iconName = "arrow.down"
+        case .promotion: iconName = "gift.fill"
+        }
+        iconImageView.image = UIImage(systemName: iconName)?.withConfiguration(
             UIImage.SymbolConfiguration(pointSize: 14, weight: .bold)
         )
 
-        // Title
-        titleLabel.text = isTopup ? "Пополнение" : "Откладывание"
+        // Title — promotion reads "Бонус" so the row doesn't claim the user
+        // paid for the credit (which would mislead anyone scanning their
+        // history for IAP receipts).
+        switch transaction.type {
+        case .topup:     titleLabel.text = "Пополнение"
+        case .charge:    titleLabel.text = "Откладывание"
+        case .promotion: titleLabel.text = "Бонус"
+        }
 
-        // Subtitle: alarm name + date
+        // Subtitle: alarm name + date for charges; just the date otherwise.
         let dateString = Self.formatDate(transaction.createdAt)
-        if let name = alarmName, !isTopup {
+        if let name = alarmName, transaction.type == .charge {
             subtitleLabel.text = "\(name) \u{00B7} \(dateString)"
         } else {
             subtitleLabel.text = dateString
@@ -615,7 +688,7 @@ final class TransactionCell: UITableViewCell {
 
         // Amount
         let amount = Int(transaction.amount)
-        if isTopup {
+        if isCredit {
             amountLabel.text = "+₽\(amount)"
             amountLabel.textColor = AppColors.accentGreen
         } else {
