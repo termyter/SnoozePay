@@ -12,14 +12,20 @@ import UIKit
 /// 0.96) because the surface is bigger and 0.96 feels twitchy.
 final class SPSnoozePrice: UIControl {
 
-    enum Tone {
+    enum Tone: Equatable {
         case warn   // Default snooze — warm amber gradient
         case pain   // Progressive / expensive — pain coral gradient
+        /// Progressive escalation — interpolates linearly between the warn
+        /// and pain gradients. `intensity` is clamped to `0...1`; 0 renders
+        /// pure warn (snooze #1), 1 renders pure pain (snooze #6+). The
+        /// shadow tint blends the same way so the surrounding glow tracks
+        /// the fill colour as the user keeps snoozing.
+        case progressive(intensity: Double)
     }
 
     // MARK: - Configuration
 
-    let tone: Tone
+    private(set) var tone: Tone
     private(set) var price: Decimal
     private(set) var minutes: Int
     private(set) var hint: String?
@@ -120,6 +126,27 @@ final class SPSnoozePrice: UIControl {
         }
     }
 
+    /// Re-tone the surface in place. Used by the progressive-firing flow
+    /// (#139) to bump the snooze CTA's redness as `snoozeCount` grows
+    /// without rebuilding the control.
+    func setTone(_ newTone: Tone) {
+        guard tone != newTone else { return }
+        tone = newTone
+        applyTone()
+        priceLabel.textColor = foreground
+        hintLabel.textColor = foreground
+        // Re-render the caps label so its tinted attributedString picks up
+        // the new foreground.
+        capsLabel.attributedText = NSAttributedString(
+            string: "Поспать ещё \(self.minutes) мин".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: 12 * 0.14,
+                .foregroundColor: foreground.withAlphaComponent(0.82)
+            ]
+        )
+    }
+
     // MARK: - Configuration
 
     private func configure() {
@@ -163,6 +190,17 @@ final class SPSnoozePrice: UIControl {
         switch tone {
         case .warn: return AppColors.fgOnWarn
         case .pain: return AppColors.fgOnPain
+        case .progressive(let intensity):
+            // Cross-fade the on-fill text colour the same way the gradient
+            // is interpolated. At intensity 0 the surface is pure amber so
+            // we want the warn ink (near-black); at intensity 1 it's coral
+            // and the pain ink (white) gives 4.5:1 contrast.
+            let clamped = max(0.0, min(1.0, intensity))
+            return SPSupport.lerpColor(
+                AppColors.fgOnWarn,
+                AppColors.fgOnPain,
+                progress: clamped
+            )
         }
     }
 
@@ -181,6 +219,15 @@ final class SPSnoozePrice: UIControl {
             gradient.colors = SPSupport.painGradientColors
             gradient.locations = SPSupport.painGradientLocations
             layer.shadowColor = AppColors.pain500.cgColor
+        case .progressive(let intensity):
+            let clamped = max(0.0, min(1.0, intensity))
+            gradient.colors = SPSupport.progressiveGradientColors(intensity: clamped)
+            gradient.locations = SPSupport.warnGradientLocations
+            layer.shadowColor = SPSupport.lerpColor(
+                AppColors.warn500,
+                AppColors.pain500,
+                progress: clamped
+            ).cgColor
         }
         layer.insertSublayer(gradient, at: 0)
         gradientLayer = gradient
