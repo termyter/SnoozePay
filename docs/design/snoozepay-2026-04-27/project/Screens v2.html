@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1600" />
+  <title>SnoozePay · Экраны v2</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <link rel="stylesheet" href="components/components.css" />
+
+  <style>
+    body { background: #060912; }
+
+    /* compact inline label */
+    .scr-label {
+      display: flex; align-items: center; gap: 10px;
+      font: var(--sp-t-caps); color: var(--sp-fg-3);
+    }
+    .scr-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sp-money-500); }
+
+    /* phone scaling for canvas */
+    .phone {
+      transform: scale(.85);
+      transform-origin: top center;
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body data-theme="dark">
+  <div id="root"></div>
+
+  <script type="text/babel" src="components/SPComponents.jsx"></script>
+  <script type="text/babel" src="components/SPScreensV2.jsx"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState } = React;
+
+    function App() {
+      return (
+        <DesignCanvas
+          title="SnoozePay · Экраны v2"
+          subtitle="Свежие итерации. Firing — три направления, выбираем и докручиваем. Остальные экраны — по обновлённой системе."
+        >
+          <DCSection id="firing" title="Будильник срабатывает — 3 направления">
+            <DCArtboard id="firing-dawn" label="A · Dawn — атмосферный, тёплый рассвет" width={420} height={900}>
+              <Phone theme="dark"><FiringDawn /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-money" label="B · Money-first — цена доминирует" width={420} height={900}>
+              <Phone theme="dark"><FiringMoneyFirst /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-minimal" label="C · Minimal — чистый, монохром" width={420} height={900}>
+              <Phone theme="dark"><FiringMinimal /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="firing-states" title="Состояния firing-screen (по выбранному направлению A)">
+            <DCArtboard id="firing-progressive" label="Прогрессив — 4-й снуз, цена 200 ₽" width={420} height={900}>
+              <Phone theme="dark"><FiringDawn progressive /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-no-balance" label="Залог закончился — только встать" width={420} height={900}>
+              <Phone theme="dark"><FiringNoBalanceV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-money-prog" label="Money-first — прогрессив (для сравнения B)" width={420} height={900}>
+              <Phone theme="dark"><FiringMoneyFirst progressive /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="main-flow" title="Основной флоу">
+            <DCArtboard id="alarms-list" label="Главный · список будильников" width={420} height={900}>
+              <Phone theme="dark"><AlarmsListV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="create-alarm" label="Создание будильника" width={420} height={900}>
+              <Phone theme="dark"><CreateAlarmV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="wallet" label="Кошелёк / залог + пополнение" width={420} height={900}>
+              <Phone theme="dark"><WalletV2 /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="moments" title="Эмоциональные моменты">
+            <DCArtboard id="streak" label="Streak — 7 дней без снуза, +350 ₽" width={420} height={900}>
+              <Phone theme="dark"><StreakModalV2 /></Phone>
+            </DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
