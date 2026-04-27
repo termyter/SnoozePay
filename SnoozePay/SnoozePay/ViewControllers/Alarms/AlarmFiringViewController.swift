@@ -89,12 +89,66 @@ class AlarmFiringViewController: UIViewController {
     /// can re-tone it on `updateUI()`.
     var snoozeCTA: SPSnoozePrice?
 
-    private let dismissButton = SPButton(
+    /// `internal` so the +NoBalance extension can hide / show this when
+    /// swapping between the normal (balance OK) and no-balance layouts.
+    let dismissButton = SPButton(
         title: "Я встал",
         variant: .ghost,
         size: .lg,
         fullWidth: true
     )
+
+    // MARK: - No-balance UI (#140) — shown when `viewModel.canSnooze == false`.
+    //
+    // The no-balance state replaces the snooze CTA + dismiss group with a
+    // disabled snooze card on top, an Apple Pay 500 ₽ primary CTA, a big
+    // ghost "Я встал" secondary, and a small "Выбрать другую сумму" link.
+    // All four are mounted unconditionally so swapping is just a visibility
+    // flip — saves us from rebuilding constraints when the user tops up
+    // mid-firing and crosses the affordability threshold (#26 silent UX).
+
+    /// Disabled snooze card shown above the Apple Pay CTA. Mirrors the
+    /// `.warn` tone of the live card so the visual continuity reads as
+    /// "this WAS the action you wanted, but it's locked".
+    var noBalanceSnoozeCard: SPSnoozePrice?
+
+    /// Apple Pay 500 ₽ primary CTA. Single-tap purchase via StoreKitService
+    /// (SKU `com.snooze_pay.balance.499`); falls back to direct
+    /// `BalanceService.topUp` when the StoreKit product list hasn't loaded
+    /// yet (test / debug paths) so the wallet still credits end-to-end.
+    var applePayNoBalanceButton: SPButton?
+
+    /// Big ghost "Я встал — выключить" secondary. Calls `viewModel.dismiss()`
+    /// the same way the normal-state dismissButton does — PM directive
+    /// (chat1.md line 1180) was that this MUST be a full-width lg button,
+    /// not a small text link, so the half-asleep user can find it.
+    var noBalanceDismissButton: SPButton?
+
+    /// Small `.quiet/.sm` link "Выбрать другую сумму" rendered below the
+    /// ghost dismiss. Routes to the existing `presentTopUpSheet()` from #141
+    /// for users who want a different amount than the 500 ₽ default.
+    var chooseAmountLink: SPButton?
+
+    /// Container stacking the four no-balance views vertically. Hidden when
+    /// the user can afford the next snooze; shown otherwise. Membership lets
+    /// the +NoBalance extension hide a single view rather than four.
+    var noBalanceContainer: UIStackView?
+
+    /// Observer token for `BalanceService.balanceChangedNotification`. Drives
+    /// auto-recovery: when the user tops up past the snooze threshold the
+    /// no-balance stack hides and the normal Dawn snooze CTA returns. Removed
+    /// in `deinit` so blocks don't leak across screen presentations.
+    var balanceChangeObserver: NSObjectProtocol?
+
+    /// Observer token for `StoreKitService.purchaseFailedNotification`.
+    /// Surfaces the alert from the no-balance Apple Pay tap; the success
+    /// path is handled implicitly via `balanceChangedNotification`.
+    var purchaseFailedObserver: NSObjectProtocol?
+
+    /// Re-entrancy guard for the Apple Pay tap so a double-tap can't kick
+    /// off two purchases (StoreKit would reject the second, but the UI
+    /// would briefly look like two purchases were attempted).
+    var noBalancePurchaseInFlight: Bool = false
 
     // MARK: - Progressive UI (#139) — only mounted when `alarm.progressiveScale`.
     //
@@ -163,6 +217,12 @@ class AlarmFiringViewController: UIViewController {
         if let token = audioStateObserver {
             NotificationCenter.default.removeObserver(token)
         }
+        if let token = balanceChangeObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = purchaseFailedObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     // MARK: - Lifecycle
@@ -176,6 +236,7 @@ class AlarmFiringViewController: UIViewController {
         setupUI()
         bindViewModel()
         observeAudioState()
+        observeBalanceForNoBalanceState()
         startClock()
         startGlowBreathing()
 
@@ -297,6 +358,13 @@ class AlarmFiringViewController: UIViewController {
             )
         ])
 
+        // No-balance stack overlays the same bottom area as the snooze CTA +
+        // dismiss group. Initially hidden — `updateUI()` flips visibility
+        // based on `viewModel.canSnooze`. Building it eagerly keeps the
+        // affordability swap a single property toggle (no constraint churn)
+        // when the user tops up mid-firing and crosses the threshold.
+        installNoBalanceStack(inset: inset, gap: gap)
+
         updateUI()
     }
 
@@ -345,6 +413,16 @@ class AlarmFiringViewController: UIViewController {
         if viewModel.isProgressiveActive {
             updateProgressiveChrome()
         }
+
+        // Swap between the normal snooze + dismiss group and the no-balance
+        // (Apple Pay 500 ₽) stack based on affordability. `canSnooze` is
+        // the single source of truth — it accounts for both insufficient
+        // funds AND a corrupted balance latch (#119), so the no-balance
+        // path also catches the corruption case (the price hint then reads
+        // "Баланса не хватает · нужно ≥ N ₽" which is technically wrong for
+        // corruption but the corruption alert from BalanceService is its
+        // own modal that supersedes; not blocking #140).
+        refreshNoBalanceVisibility()
     }
 
     // MARK: - Clock
@@ -387,7 +465,9 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - Actions
 
-    @objc private func dismissTapped() {
+    /// `internal` so the +NoBalance extension can wire its big ghost
+    /// "Я встал — выключить" button to the same dismiss path.
+    @objc func dismissTapped() {
         viewModel.dismiss()
         dismiss(animated: true)
     }
