@@ -70,6 +70,54 @@ class AlarmsListViewController: UIViewController {
         super.viewWillAppear(animated)
         viewModel.loadData()
         tableView.reloadData()
+        presentStreakModalIfNeeded()
+    }
+
+    // MARK: - Streak modal
+
+    /// Streak milestones that fire the celebratory modal exactly once each.
+    /// 3 / 7 / 14 / 30 days are the milestones called out in #146; once a
+    /// milestone has fired we record it in `streakMilestonesShownKey` so the
+    /// user never sees the same modal twice for the same achievement.
+    private static let streakMilestoneDays: [Int] = [3, 7, 14, 30]
+    /// UserDefaults key that stores `[Int]` of milestones already shown.
+    private static let streakMilestonesShownKey = "streak_milestones_shown"
+
+    /// Presents `StreakModalViewController` over `viewController` (defaults
+    /// to `self`) when:
+    ///   - the current streak hits one of the milestone values, AND
+    ///   - that milestone has not been shown for this install yet, AND
+    ///   - no other modal is already on screen.
+    /// Wiring this into `viewWillAppear` keeps the trigger close to a state
+    /// observation point (alarms list refresh) without coupling the modal
+    /// to the firing flow. PM follow-up: replace the static milestone list
+    /// with a dedicated trigger service so notifications and the modal can
+    /// share one source of truth.
+    func presentStreakModalIfNeeded(in viewController: UIViewController? = nil) {
+        let host = viewController ?? self
+        guard host.presentedViewController == nil else { return }
+        let streak = TransactionRepository.shared.currentStreak()
+        guard Self.streakMilestoneDays.contains(streak) else { return }
+        var shown = UserDefaults.standard.array(forKey: Self.streakMilestonesShownKey) as? [Int] ?? []
+        guard !shown.contains(streak) else { return }
+        shown.append(streak)
+        UserDefaults.standard.set(shown, forKey: Self.streakMilestonesShownKey)
+        presentStreakModal(streakDays: streak, on: host)
+    }
+
+    /// Direct entry point — used by the DEBUG trigger button below and
+    /// available to other controllers that want to celebrate an arbitrary
+    /// streak. Bypasses the milestone gate but still respects the
+    /// "no double-presentation" guard.
+    func presentStreakModal(streakDays: Int, on viewController: UIViewController? = nil) {
+        let host = viewController ?? self
+        guard host.presentedViewController == nil else { return }
+        let saved = StreakModalViewController.estimatedSavings(
+            for: streakDays,
+            alarms: viewModel.alarms
+        )
+        let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved)
+        host.present(modal, animated: true)
     }
 
     // MARK: - Setup
@@ -85,7 +133,30 @@ class AlarmsListViewController: UIViewController {
             action: #selector(addAlarmTapped)
         )
         navigationItem.rightBarButtonItem = addButton
+
+        // DEBUG-only entry to surface the streak modal so PM and the design
+        // team can iterate on the visual treatment without manufacturing a
+        // 3-day streak in a fresh install. Stripped from release builds so
+        // the production toolbar stays a single "+" button.
+        #if DEBUG
+        let streakButton = UIBarButtonItem(
+            image: UIImage(systemName: "flame.fill"),
+            style: .plain,
+            target: self,
+            action: #selector(debugTriggerStreakModal)
+        )
+        navigationItem.leftBarButtonItem = streakButton
+        #endif
     }
+
+    #if DEBUG
+    @objc private func debugTriggerStreakModal() {
+        // Skip the milestone gate and the no-double-show flag — debug button
+        // should always render the modal regardless of how many times PM has
+        // already opened it this session. 7 days matches the spec screenshot.
+        presentStreakModal(streakDays: 7)
+    }
+    #endif
 
     private func setupLayout() {
         // Order matters — header is added LAST so it draws on top of the
