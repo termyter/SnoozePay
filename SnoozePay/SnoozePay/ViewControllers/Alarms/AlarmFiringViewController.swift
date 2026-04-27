@@ -1,127 +1,101 @@
 import UIKit
 import os
 
-/// Fullscreen alarm firing screen.
-/// Dark background with decorative purple gradient circles,
-/// large time display, alarm name, and two pill-shaped action buttons with icons.
+/// Fullscreen alarm firing screen — Dawn redesign (#138).
+///
+/// Replaces the previous iOS-blur + decorative purple circles with the
+/// design-refresh "Dawn" treatment: a vertical 4-stop atmospheric gradient
+/// (`--sp-grad-dawn`), a slow-breathing warm radial glow at the bottom, a
+/// 96pt mono clock, and a large warn-toned snooze CTA backed by
+/// `SPSnoozePrice`. The dismiss action degrades to a ghost button below
+/// the snooze so the visual hierarchy steers the half-asleep user toward
+/// the paid action while keeping "Я встал" reachable.
+///
+/// Existing audio + coordinator wiring (AudioService stacking guard,
+/// vibration-fallback banner, snooze schedule failure alert) is preserved
+/// verbatim — this PR is a visual rework, not a behaviour change.
 class AlarmFiringViewController: UIViewController {
 
     // MARK: - ViewModel
 
     private let viewModel: AlarmFiringViewModel
 
-    // MARK: - UI Elements
+    // MARK: - Background layers
 
-    /// Blurred background — simulates the iOS lock screen wallpaper blur
-    private let blurView: UIVisualEffectView = {
-        let blur = UIBlurEffect(style: .systemUltraThinMaterialDark)
-        let view = UIVisualEffectView(effect: blur)
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
+    /// Dawn 180° gradient sourced from `--sp-grad-dawn` in `tokens.css`:
+    /// #14122A → #0F1A2E (40%) → #0A1320 (70%) → #050912.
+    private let dawnGradientLayer: CAGradientLayer = {
+        let gradient = CAGradientLayer()
+        gradient.colors = [
+            UIColor(rgb: 0x14122A).cgColor,
+            UIColor(rgb: 0x0F1A2E).cgColor,
+            UIColor(rgb: 0x0A1320).cgColor,
+            UIColor(rgb: 0x050912).cgColor
+        ]
+        gradient.locations = [0.0, 0.4, 0.7, 1.0]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
+        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
+        return gradient
     }()
 
-    /// Decorative purple circle — top left area
-    private let topLeftCircle: UIView = {
-        let size: CGFloat = 200
-        let circle = UIView(frame: CGRect(x: -40, y: -20, width: size, height: size))
-        circle.backgroundColor = UIColor(red: 0.55, green: 0.30, blue: 0.85, alpha: 0.40)
-        circle.layer.cornerRadius = size / 2
-        circle.layer.masksToBounds = true
-        return circle
+    /// Warm radial glow anchored below the bottom edge — a warn500-flavoured
+    /// halo that "breathes" via a 4s opacity animation.
+    private let warmGlowLayer: CAGradientLayer = {
+        let gradient = CAGradientLayer()
+        gradient.type = .radial
+        gradient.colors = [
+            UIColor(rgb: 0xF59E0B, alpha: 0.22).cgColor,
+            UIColor(rgb: 0xF59E0B, alpha: 0.10).cgColor,
+            UIColor(rgb: 0xF59E0B, alpha: 0.0).cgColor
+        ]
+        gradient.locations = [0.0, 0.5, 1.0]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
+        return gradient
     }()
 
-    /// Decorative purple circle — bottom right area
-    private let bottomRightCircle: UIView = {
-        let size: CGFloat = 150
-        let circle = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))
-        circle.backgroundColor = UIColor(red: 0.55, green: 0.30, blue: 0.85, alpha: 0.30)
-        circle.layer.cornerRadius = size / 2
-        circle.layer.masksToBounds = true
-        return circle
-    }()
+    // MARK: - Content
 
-    /// "БУДИЛЬНИК" label at top (matches native iOS alarm)
-    private let alarmTypeLabel: UILabel = {
-        let label = UILabel()
-        let title = "БУДИЛЬНИК"
-        let attributed = NSAttributedString(
-            string: title,
-            attributes: [.kern: 2]
-        )
-        label.attributedText = attributed
-        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        label.textColor = UIColor.white.withAlphaComponent(0.6)
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    /// Large time display (96pt Light — matches native iOS alarm)
+    /// 96pt mono clock — `AppTypography.clockXl` with `.monospacedDigit()`
+    /// so digit columns don't reflow on each tick.
     private let timeLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 96, weight: .thin)
-        label.textColor = .white
+        label.font = AppTypography.clockXl.monospacedDigit()
+        label.textColor = AppColors.fg1
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.7
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    /// Alarm name subtitle
     private let nameLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 20, weight: .regular)
-        label.textColor = UIColor.white.withAlphaComponent(0.7)
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg2
         label.textAlignment = .center
+        label.numberOfLines = 1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    /// "Выключить" — light gray pill with xmark icon
-    private let dismissButton: UIButton = {
-        // #EBEBF0 at 60% opacity
-        let bgColor = UIColor(red: 0.92, green: 0.92, blue: 0.94, alpha: 0.60)
+    /// Big snooze CTA. Built in `setupUI` because its constructor needs
+    /// VM-derived price + minutes that aren't valid at property-init time.
+    /// Tone is `.warn` for the default path; the progressive `.pain`
+    /// variant ships in #139.
+    private var snoozeCTA: SPSnoozePrice?
 
-        var config = UIButton.Configuration.filled()
-        config.title = "Выключить"
-        config.image = UIImage(systemName: "xmark")
-        config.imagePadding = 8
-        config.imagePlacement = .leading
-        config.baseBackgroundColor = bgColor
-        config.baseForegroundColor = .white
-        config.cornerStyle = .capsule
-        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
-            var updated = attrs
-            updated.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-            return updated
-        }
-        let button = UIButton(configuration: config)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-
-    /// "Отложить · X₽" — golden/warm orange pill with bell icon
-    private let snoozeButton: UIButton = {
-        var config = UIButton.Configuration.filled()
-        config.image = UIImage(systemName: "bell.fill")
-        config.imagePadding = 8
-        config.imagePlacement = .leading
-        config.baseBackgroundColor = AppColors.alarmFiringSnooze
-        config.baseForegroundColor = .white
-        config.cornerStyle = .capsule
-        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
-            var updated = attrs
-            updated.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-            return updated
-        }
-        let button = UIButton(configuration: config)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let dismissButton = SPButton(
+        title: "Я встал",
+        variant: .ghost,
+        size: .lg,
+        fullWidth: true
+    )
 
     /// Banner shown when AudioService falls back to vibration / silent mode.
     /// Hidden by default; surfaces only on `.silentBecauseConfigFailed` or `.vibrationOnly`.
-    private let audioWarningBanner: UILabel = {
+    /// `internal` so the AudioState extension in the sibling file can update it.
+    let audioWarningBanner: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
         label.textColor = .white
@@ -132,19 +106,17 @@ class AlarmFiringViewController: UIViewController {
         label.layer.masksToBounds = true
         label.translatesAutoresizingMaskIntoConstraints = false
         label.isHidden = true
-        // Accessibility: VoiceOver reads the warning even if user can't see banner.
         label.isAccessibilityElement = true
         label.accessibilityTraits = [.staticText, .updatesFrequently]
         return label
     }()
 
-    /// Timer to update displayed time each second
     private var clockTimer: Timer?
 
-    /// Observer token for `AudioService.stateChangedNotification`. Kept so we
-    /// can remove the observer in `deinit` and avoid leaking blocks across
-    /// presentations of this screen.
-    private var audioStateObserver: NSObjectProtocol?
+    /// Observer token for `AudioService.stateChangedNotification`. Removed
+    /// in `deinit` so blocks don't leak across screen presentations.
+    /// `internal` so the AudioState extension in the sibling file can write it.
+    var audioStateObserver: NSObjectProtocol?
 
     // MARK: - Init
 
@@ -169,54 +141,39 @@ class AlarmFiringViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Per `tokens.css` lines 109–112: the firing screen is intentionally
-        // exempt from the brand light theme. The decorative purple gradient
-        // circles, blurred lock-screen-style backdrop and the white-on-dark
-        // numerals are designed against `--sp-grad-night`, so we pin
-        // `.dark` here rather than letting the system theme bleed through.
+        // Per `tokens.css` lines 109–112 and reaffirmed by #136: the firing
+        // screen is intentionally exempt from the brand light theme. Pin
+        // `.dark` so the system theme can't bleed through.
         overrideUserInterfaceStyle = .dark
         setupUI()
         bindViewModel()
         observeAudioState()
         startClock()
-        startPulseAnimation()
+        startGlowBreathing()
 
-        // Start continuous alarm sound and vibration. State observer (above)
-        // will surface the banner if AudioService falls back to vibration-only
-        // or fails to acquire the audio session. Passing `alarmID` lets the
-        // service track ownership so a stacking-replace race (#116) does not
-        // silence the next alarm when this VC's `viewDidDisappear` fires.
+        // Pass `alarmID` so a stacking-replace race (#116) does not silence
+        // the next alarm when this VC's `viewDidDisappear` fires.
         AudioService.shared.startAlarmSound(
             soundID: viewModel.alarm.soundID,
             alarmID: viewModel.alarm.id
         )
 
-        // Sync UI with whatever state startAlarmSound produced — observer fires
-        // on transitions, but the very first transition may have already
-        // happened above before we begin observing on the next runloop tick.
+        // Initial transition may have happened synchronously inside
+        // `startAlarmSound` before our observer is wired — sync now.
         applyAudioState(AudioService.shared.state)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         clockTimer?.invalidate()
+        warmGlowLayer.removeAllAnimations()
 
-        // Stop the repeating pulse animation explicitly so the
-        // animator does not retain self past dismissal.
-        nameLabel.layer.removeAllAnimations()
-
-        // Stop alarm sound and vibration only if AudioService still belongs to
-        // *this* alarm. When AppDelegate stacks a second firing screen on top
-        // (alarm B fires while alarm A is on-screen), our `viewDidDisappear`
-        // can fire AFTER the new VC's `viewDidLoad` already started audio for
-        // alarm B. Without this guard we'd silence B and the user sleeps
-        // through it (#116).
+        // Stop alarm sound only if AudioService still belongs to *this*
+        // alarm. Stacking handoff (alarm B fires while A is on-screen)
+        // could otherwise silence B (#116).
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
         } else {
-            // Mismatch is expected during a stacking handoff — log the skip so a
-            // future regression where the right alarm's stop is also dropped can
-            // be diagnosed from Console without re-running the race manually.
             let ownerDesc = String(describing: AudioService.shared.currentAlarmID)
             let ours = self.viewModel.alarm.id
             AppLogger.audio.notice(
@@ -225,90 +182,85 @@ class AlarmFiringViewController: UIViewController {
         }
     }
 
-    override var prefersStatusBarHidden: Bool { true }
+    override var prefersStatusBarHidden: Bool { false }
+    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
 
     // MARK: - Setup
 
     private func setupUI() {
-        view.backgroundColor = .black
+        view.backgroundColor = UIColor(rgb: 0x050912)
+        view.layer.insertSublayer(dawnGradientLayer, at: 0)
+        view.layer.insertSublayer(warmGlowLayer, at: 1)
 
-        // Background blur
-        view.addSubview(blurView)
-        NSLayoutConstraint.activate([
-            blurView.topAnchor.constraint(equalTo: view.topAnchor),
-            blurView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            blurView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            blurView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
+        // VM exposes `currentPenalty` as `Double`; wrap in `Decimal` so
+        // `SPSnoozePrice.formattedRubles()` does the locale-aware format.
+        let snooze = SPSnoozePrice(
+            price: Decimal(viewModel.currentPenalty),
+            minutes: viewModel.alarm.snoozeMinutes,
+            tone: .warn,
+            hint: nil
+        )
+        snooze.translatesAutoresizingMaskIntoConstraints = false
+        snooze.onTap = { [weak self] in self?.snoozeTapped() }
+        view.addSubview(snooze)
+        snoozeCTA = snooze
 
-        // Decorative gradient circles
-        view.addSubview(topLeftCircle)
-        view.addSubview(bottomRightCircle)
-
-        // Content
-        view.addSubview(alarmTypeLabel)
         view.addSubview(timeLabel)
         view.addSubview(nameLabel)
 
-        // Buttons side by side
-        let buttonStack = UIStackView(arrangedSubviews: [dismissButton, snoozeButton])
-        buttonStack.axis = .horizontal
-        buttonStack.distribution = .fillEqually
-        buttonStack.spacing = 12
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(buttonStack)
-
-        // Audio fallback warning — sits just above the buttons so the user sees
-        // it without scrolling past the prominent time display.
+        dismissButton.translatesAutoresizingMaskIntoConstraints = false
+        dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
+        view.addSubview(dismissButton)
         view.addSubview(audioWarningBanner)
 
-        NSLayoutConstraint.activate([
-            // ALARM label — near top safe area
-            alarmTypeLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            alarmTypeLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+        let inset: CGFloat = AppSpacing.sp5      // 20pt — Dawn spec
+        let gap: CGFloat = AppSpacing.sp3         // 12pt — Dawn spec
 
-            // Time — center ish, shifted up from middle
+        NSLayoutConstraint.activate([
             timeLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             timeLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -80),
-            timeLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            timeLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            timeLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            timeLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
 
-            // Alarm name below time
-            nameLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: 8),
+            nameLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: AppSpacing.sp2),
             nameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            nameLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset),
 
-            // Audio warning banner — above the buttons, full width with margins
-            audioWarningBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            audioWarningBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            audioWarningBanner.bottomAnchor.constraint(equalTo: buttonStack.topAnchor, constant: -16),
+            audioWarningBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            audioWarningBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            audioWarningBanner.bottomAnchor.constraint(equalTo: snooze.topAnchor, constant: -AppSpacing.sp4),
 
-            // Buttons — pinned to bottom safe area
-            buttonStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            buttonStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
-            buttonStack.heightAnchor.constraint(equalToConstant: 80)
+            snooze.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            snooze.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            snooze.bottomAnchor.constraint(equalTo: dismissButton.topAnchor, constant: -gap),
+
+            dismissButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            dismissButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            dismissButton.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -AppSpacing.sp6
+            )
         ])
-
-        dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
-        snoozeButton.addTarget(self, action: #selector(snoozeTapped), for: .touchUpInside)
 
         updateUI()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        dawnGradientLayer.frame = view.bounds
 
-        // Position decorative circles relative to screen bounds
+        // Glow anchored below the bottom edge — only the upper hemisphere
+        // of the radial bleeds into view.
         let bounds = view.bounds
-        topLeftCircle.frame = CGRect(x: -40, y: bounds.height * 0.10, width: 200, height: 200)
-        bottomRightCircle.frame = CGRect(
-            x: bounds.width - 110,
-            y: bounds.height * 0.65,
-            width: 150,
-            height: 150
+        let glowSize = CGSize(width: bounds.width * 1.2, height: bounds.height * 0.6)
+        warmGlowLayer.frame = CGRect(
+            x: -(glowSize.width - bounds.width) / 2,
+            y: bounds.height - glowSize.height * 0.55,
+            width: glowSize.width,
+            height: glowSize.height
         )
-
     }
 
     private func bindViewModel() {
@@ -317,61 +269,18 @@ class AlarmFiringViewController: UIViewController {
         }
     }
 
-    /// Observe `AudioService.stateChangedNotification` and reflect the new state
-    /// in the warning banner. Notification is posted on the main queue by the
-    /// service, so no extra hop is needed.
-    private func observeAudioState() {
-        audioStateObserver = NotificationCenter.default.addObserver(
-            forName: AudioService.stateChangedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            guard
-                let self,
-                let newState = note.userInfo?[AudioService.stateUserInfoKey] as? AudioPlaybackState
-            else { return }
-            self.applyAudioState(newState)
-        }
-    }
-
-    /// Surface (or hide) the warning banner depending on AudioService state.
-    /// Decoupled from `observeAudioState` so we can call it once after
-    /// `startAlarmSound` to catch the synchronous initial transition.
-    private func applyAudioState(_ newState: AudioPlaybackState) {
-        switch newState {
-        case .playing, .stopped:
-            audioWarningBanner.isHidden = true
-            audioWarningBanner.text = nil
-            audioWarningBanner.accessibilityLabel = nil
-        case .silentBecauseConfigFailed:
-            let text = "Звук недоступен — другое приложение использует аудио. " +
-                "Проверьте режим звука."
-            audioWarningBanner.text = "  \(text)  "
-            audioWarningBanner.accessibilityLabel = text
-            audioWarningBanner.isHidden = false
-        case .vibrationOnly:
-            let text = "Звук не воспроизводится — будильник вибрирует."
-            audioWarningBanner.text = "  \(text)  "
-            audioWarningBanner.accessibilityLabel = text
-            audioWarningBanner.isHidden = false
-        }
-    }
-
     private func updateUI() {
         nameLabel.text = viewModel.alarmName
 
-        // Snooze button title (with config to preserve icon)
-        var snoozeConfig = snoozeButton.configuration
-        snoozeConfig?.title = viewModel.snoozeButtonTitle
-
-        if viewModel.canSnooze {
-            snoozeConfig?.baseBackgroundColor = AppColors.alarmFiringSnooze
-            snoozeButton.configuration = snoozeConfig
-            snoozeButton.isEnabled = true
-        } else {
-            snoozeConfig?.baseBackgroundColor = UIColor.systemGray.withAlphaComponent(0.5)
-            snoozeButton.configuration = snoozeConfig
-            snoozeButton.isEnabled = false
+        // Refresh snooze CTA — VM may have bumped `snoozeCount` (progressive
+        // scaling) since the last update, which changes `currentPenalty`.
+        if let snooze = snoozeCTA {
+            snooze.update(
+                price: Decimal(viewModel.currentPenalty),
+                minutes: viewModel.alarm.snoozeMinutes,
+                hint: nil
+            )
+            snooze.isEnabled = viewModel.canSnooze
         }
     }
 
@@ -384,7 +293,7 @@ class AlarmFiringViewController: UIViewController {
         }
     }
 
-    /// Cached formatter — updateTime() runs once per second; rebuilding a
+    /// Cached formatter — `updateTime()` runs once per second; rebuilding a
     /// DateFormatter each tick is ~1ms wasted. Locale fixed to `en_US_POSIX`
     /// so `HH:mm` is honoured regardless of the user's region.
     private static let timeFormatter: DateFormatter = {
@@ -398,17 +307,19 @@ class AlarmFiringViewController: UIViewController {
         timeLabel.text = Self.timeFormatter.string(from: Date())
     }
 
-    // MARK: - Pulse animation
+    // MARK: - Glow breathing
 
-    private func startPulseAnimation() {
-        UIView.animate(
-            withDuration: 1.4,
-            delay: 0,
-            options: [.autoreverse, .repeat, .allowUserInteraction],
-            animations: { [weak self] in
-                self?.nameLabel.alpha = 0.5
-            }
-        )
+    /// 4s ease-in-out autoreverse opacity pulse on the warm glow. Driven via
+    /// CABasicAnimation because the glow is a CAGradientLayer (not a view).
+    private func startGlowBreathing() {
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = 0.55
+        animation.toValue = 1.0
+        animation.duration = 4.0
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        warmGlowLayer.add(animation, forKey: "breathing")
     }
 
     // MARK: - Actions
@@ -418,12 +329,10 @@ class AlarmFiringViewController: UIViewController {
         dismiss(animated: true)
     }
 
-    @objc private func snoozeTapped() {
-        // Pass a scheduleCompletion so a notification-center failure (revoked
-        // permission, 64-pending-limit, malformed trigger) reaches the user
-        // even though the VM has already charged them — without this surface
-        // the user pays for a snooze that will never re-fire (silent-failure-
-        // hunter critical finding on PR #127).
+    private func snoozeTapped() {
+        // scheduleCompletion surfaces a notification-center failure (revoked
+        // permission, 64-pending-limit, malformed trigger) so the user
+        // doesn't pay for a snooze that will never re-fire (#127 finding).
         let success = viewModel.snooze { [weak self] result in
             guard let self else { return }
             if case let .failure(error) = result {
@@ -433,7 +342,6 @@ class AlarmFiringViewController: UIViewController {
         if success {
             dismiss(animated: true)
         }
-        // If failed (balance empty) — button is already disabled, nothing to do
     }
 
     private func presentSnoozeScheduleFailureAlert(
@@ -447,5 +355,18 @@ class AlarmFiringViewController: UIViewController {
         )
         alert.addAction(UIAlertAction(title: "Ок", style: .default))
         present(alert, animated: true)
+    }
+}
+
+// MARK: - Hex helper
+
+private extension UIColor {
+    /// `0xRRGGBB` literal initializer so the Dawn gradient stops read as in
+    /// `tokens.css`. Local copy mirroring the (private) helper in AppColors.
+    convenience init(rgb: UInt32, alpha: CGFloat = 1) {
+        let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
+        let green = CGFloat((rgb >> 8) & 0xFF) / 255.0
+        let blue = CGFloat(rgb & 0xFF) / 255.0
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
