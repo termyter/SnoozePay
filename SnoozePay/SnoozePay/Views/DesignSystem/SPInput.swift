@@ -1,0 +1,246 @@
+import UIKit
+
+/// Branded text input wrapper — `.sp-input` in `components.css`.
+///
+/// Layout: optional caps label on top, then a 52pt-tall field with `bg2`
+/// fill, 1.5pt `stroke1` border, 16pt internal padding. Optional trailing
+/// view (icon button, character counter, ...). Hint / error message slot
+/// underneath.
+///
+/// Wraps a vanilla `UITextField` rather than subclassing it — composition
+/// keeps the field free for direct configuration (placeholder, keyboard
+/// type, secure entry, ...) without us hiding behind a delegate proxy.
+final class SPInput: UIView {
+
+    // MARK: - Public surface
+
+    /// The wrapped text field — call sites configure keyboard / secure
+    /// entry / delegate / first-responder behaviour directly on it.
+    let textField = UITextField()
+
+    /// Hint string shown below the field. `nil` hides the hint slot.
+    var hint: String? {
+        get { hintLabel.text }
+        set {
+            hintLabel.text = newValue
+            hintLabel.textColor = AppColors.fg3
+            updateMessageVisibility()
+        }
+    }
+
+    /// Error string. Setting a non-nil value flips the field border to
+    /// `pain500` and tints the message line. Pass `nil` to clear.
+    var error: String? {
+        didSet { applyError() }
+    }
+
+    /// Optional trailing accessory (icon, button, label). Replaces any
+    /// previous trailing view.
+    var trailingView: UIView? {
+        didSet { rebuildTrailing() }
+    }
+
+    /// Closure fired on every text change. Convenience over manual
+    /// `addTarget(_:action:for:.editingChanged)` wiring — caller still has
+    /// the option to set a `UITextFieldDelegate` for finer-grained events.
+    var onChange: ((String) -> Void)?
+
+    // MARK: - Subviews
+
+    private let labelView = UILabel()
+    private let fieldContainer = UIView()
+    private let hintLabel = UILabel()
+    private let trailingContainer = UIView()
+    private var stack: UIStackView!
+
+    // MARK: - Init
+
+    /// - Parameters:
+    ///   - label: Optional caps label above the field.
+    ///   - placeholder: Field placeholder.
+    ///   - text: Initial text.
+    ///   - trailing: Optional trailing accessory view.
+    ///   - hint: Optional helper line.
+    ///   - error: Optional error line — flips field to error state when
+    ///     non-nil.
+    init(
+        label: String? = nil,
+        placeholder: String? = nil,
+        text: String? = nil,
+        trailing: UIView? = nil,
+        hint: String? = nil,
+        error: String? = nil
+    ) {
+        super.init(frame: .zero)
+        configure()
+        if let label = label {
+            labelView.attributedText = NSAttributedString(
+                string: label.uppercased(),
+                attributes: [
+                    .font: AppTypography.caps,
+                    .kern: 12 * 0.12,
+                    .foregroundColor: AppColors.fg3
+                ]
+            )
+            labelView.isHidden = false
+        } else {
+            labelView.isHidden = true
+        }
+        textField.placeholder = placeholder
+        textField.text = text
+        self.trailingView = trailing
+        self.hint = hint
+        self.error = error
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Layout
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        fieldContainer.layer.cornerRadius = AppRadius.lg     // matches sp-r-md
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyBorder()
+    }
+
+    // MARK: - First responder forwarding
+
+    override var canBecomeFirstResponder: Bool { textField.canBecomeFirstResponder }
+
+    @discardableResult
+    override func becomeFirstResponder() -> Bool { textField.becomeFirstResponder() }
+
+    @discardableResult
+    override func resignFirstResponder() -> Bool { textField.resignFirstResponder() }
+
+    // MARK: - Configuration
+
+    private func configure() {
+        labelView.translatesAutoresizingMaskIntoConstraints = false
+        labelView.numberOfLines = 1
+
+        fieldContainer.translatesAutoresizingMaskIntoConstraints = false
+        fieldContainer.backgroundColor = AppColors.bg2
+        fieldContainer.layer.cornerRadius = AppRadius.lg
+        fieldContainer.layer.borderWidth = 1.5
+
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        textField.font = AppTypography.bodyLg
+        textField.textColor = AppColors.fg1
+        textField.tintColor = AppColors.money500
+        textField.addTarget(self, action: #selector(handleEditingDidBegin), for: .editingDidBegin)
+        textField.addTarget(self, action: #selector(handleEditingDidEnd), for: .editingDidEnd)
+        textField.addTarget(self, action: #selector(handleEditingChanged), for: .editingChanged)
+
+        trailingContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        let fieldRow = UIStackView(arrangedSubviews: [textField, trailingContainer])
+        fieldRow.translatesAutoresizingMaskIntoConstraints = false
+        fieldRow.axis = .horizontal
+        fieldRow.alignment = .center
+        fieldRow.spacing = AppSpacing.sp2
+        fieldContainer.addSubview(fieldRow)
+
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.font = AppTypography.meta
+        hintLabel.textColor = AppColors.fg3
+        hintLabel.numberOfLines = 0
+        hintLabel.isHidden = true
+
+        stack = UIStackView(arrangedSubviews: [labelView, fieldContainer, hintLabel])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.alignment = .fill
+        stack.spacing = 6
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            fieldContainer.heightAnchor.constraint(equalToConstant: 52),
+            fieldRow.topAnchor.constraint(equalTo: fieldContainer.topAnchor),
+            fieldRow.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor),
+            fieldRow.leadingAnchor.constraint(equalTo: fieldContainer.leadingAnchor, constant: 16),
+            fieldRow.trailingAnchor.constraint(equalTo: fieldContainer.trailingAnchor, constant: -16)
+        ])
+        applyBorder()
+    }
+
+    private func rebuildTrailing() {
+        trailingContainer.subviews.forEach { $0.removeFromSuperview() }
+        guard let view = trailingView else {
+            trailingContainer.isHidden = true
+            return
+        }
+        trailingContainer.isHidden = false
+        view.translatesAutoresizingMaskIntoConstraints = false
+        trailingContainer.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: trailingContainer.topAnchor),
+            view.bottomAnchor.constraint(equalTo: trailingContainer.bottomAnchor),
+            view.leadingAnchor.constraint(equalTo: trailingContainer.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: trailingContainer.trailingAnchor)
+        ])
+    }
+
+    private func applyBorder() {
+        if error != nil {
+            fieldContainer.layer.borderColor = AppColors.pain500.cgColor
+        } else if textField.isFirstResponder {
+            fieldContainer.layer.borderColor = AppColors.money500.cgColor
+        } else {
+            fieldContainer.layer.borderColor = AppColors.stroke1
+                .resolvedColor(with: traitCollection).cgColor
+        }
+    }
+
+    private func applyError() {
+        if let error = error {
+            hintLabel.text = error
+            hintLabel.textColor = AppColors.pain400
+            hintLabel.isHidden = false
+        } else if let hint = hint, !hint.isEmpty {
+            hintLabel.text = hint
+            hintLabel.textColor = AppColors.fg3
+            hintLabel.isHidden = false
+        } else {
+            hintLabel.isHidden = true
+        }
+        applyBorder()
+    }
+
+    private func updateMessageVisibility() {
+        if error != nil { return }
+        hintLabel.isHidden = (hintLabel.text ?? "").isEmpty
+    }
+
+    // MARK: - Field events
+
+    @objc
+    private func handleEditingDidBegin() {
+        UIView.animate(withDuration: SPSupport.durationQuick) {
+            self.applyBorder()
+        }
+    }
+
+    @objc
+    private func handleEditingDidEnd() {
+        UIView.animate(withDuration: SPSupport.durationQuick) {
+            self.applyBorder()
+        }
+    }
+
+    @objc
+    private func handleEditingChanged() {
+        onChange?(textField.text ?? "")
+    }
+}
