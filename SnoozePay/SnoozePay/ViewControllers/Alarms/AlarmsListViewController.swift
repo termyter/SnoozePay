@@ -294,7 +294,8 @@ extension AlarmsListViewController: UITableViewDataSource {
             time: viewModel.alarmTimeString(at: indexPath.row),
             detail: viewModel.alarmDetail(at: indexPath.row),
             penalty: viewModel.alarmPenaltyString(at: indexPath.row),
-            enabled: alarm.enabled
+            enabled: alarm.enabled,
+            theme: alarm.theme
         )
 
         // Capture the alarm's stable UUID rather than the row index — the
