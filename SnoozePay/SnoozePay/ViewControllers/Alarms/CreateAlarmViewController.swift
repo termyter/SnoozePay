@@ -30,15 +30,20 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Sections
 
+    /// Section order matches the #143 PM spec: name first (auto-focus on
+    /// create), then time picker, repeat days, snooze slider, penalty,
+    /// progressive scale, sound, vibration, theme, and finally the
+    /// destructive delete action (edit-mode only).
     private enum Section: Int, CaseIterable {
-        case timePicker = 0
+        case name = 0
+        case timePicker
         case repeatDays
-        case name
-        case sound
-        case vibration
+        case snoozeTime
         case penalty
         case progressiveScale
-        case snoozeTime
+        case sound
+        case vibration
+        case theme
         /// Destructive "Удалить будильник" row — only visible in edit mode.
         case deleteAction
     }
@@ -66,10 +71,31 @@ final class CreateAlarmViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Refresh the sound row in case the user picked a new sound on
-        // SoundPickerViewController and is returning here.
-        tableView.reloadSections(IndexSet(integer: Section.sound.rawValue), with: .none)
+        // Refresh the sound + theme rows in case the user picked a new
+        // value on a pushed picker and is returning here.
+        tableView.reloadSections(
+            IndexSet([Section.sound.rawValue, Section.theme.rawValue]),
+            with: .none
+        )
     }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Auto-focus the name field on create so the user can start typing
+        // immediately (matches iOS Reminders' "tap +" UX, #143). Edit mode
+        // skips this so the user isn't slammed with the keyboard when they
+        // just want to tweak the time / penalty.
+        guard !viewModel.isEditing, !didAutoFocusName else { return }
+        didAutoFocusName = true
+        let nameIndexPath = IndexPath(row: 0, section: Section.name.rawValue)
+        if let cell = tableView.cellForRow(at: nameIndexPath) as? NameCell {
+            cell.beginEditing()
+        }
+    }
+
+    /// Guards `viewDidAppear`'s auto-focus from re-firing on every return
+    /// from a pushed picker (Sound, Theme).
+    private var didAutoFocusName = false
 
     // MARK: - Setup
 
@@ -99,7 +125,8 @@ final class CreateAlarmViewController: UIViewController {
         tableView.register(PenaltyCell.self, forCellReuseIdentifier: PenaltyCell.reuseID)
         tableView.register(ProgressiveScaleCell.self, forCellReuseIdentifier: ProgressiveScaleCell.reuseID)
         tableView.register(ProgressivePreviewCell.self, forCellReuseIdentifier: ProgressivePreviewCell.reuseID)
-        tableView.register(SnoozeCell.self, forCellReuseIdentifier: SnoozeCell.reuseID)
+        tableView.register(SnoozeSliderCell.self, forCellReuseIdentifier: SnoozeSliderCell.reuseID)
+        tableView.register(ThemeRowCell.self, forCellReuseIdentifier: ThemeRowCell.reuseID)
         tableView.register(DeleteActionCell.self, forCellReuseIdentifier: DeleteActionCell.reuseID)
 
         // Pin to safe area on top so the first section's "ПОВТОР" header is
@@ -220,12 +247,34 @@ extension CreateAlarmViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
         case .repeatDays: return "ПОВТОР"
-        case .name: return "НАЗВАНИЕ"
         case .sound: return "ЗВУК"
         case .penalty: return "ШТРАФ ЗА ОТКЛАДЫВАНИЕ"
         case .snoozeTime: return "ВРЕМЯ ОТКЛАДЫВАНИЯ"
+        case .theme: return "ОФОРМЛЕНИЕ"
+        // Name no longer carries a header — the large in-cell placeholder
+        // already reads as the field's purpose (#143).
         default: return nil
         }
+    }
+
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        // Custom header view so each section uses the design-system caps
+        // role + tracking instead of the system's default footnote font.
+        // Falling through to the default `titleForHeaderInSection` keeps
+        // accessibility (`accessibilityLabel`) intact.
+        guard let title = self.tableView(tableView, titleForHeaderInSection: section) else {
+            return nil
+        }
+        return SectionHeaderView(text: title)
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        guard self.tableView(tableView, titleForHeaderInSection: section) != nil else {
+            return .leastNonzeroMagnitude
+        }
+        // Match the system's default grouped section header height so the
+        // custom typography swap doesn't shift the form's vertical rhythm.
+        return UITableView.automaticDimension
     }
 
     // swiftlint:disable:next cyclomatic_complexity function_body_length
@@ -299,10 +348,16 @@ extension CreateAlarmViewController: UITableViewDataSource {
             }
             return cell
         case .snoozeTime:
-            let cell = tableView.dequeueReusableCell(withIdentifier: SnoozeCell.reuseID, for: indexPath)
-            if let cell = cell as? SnoozeCell {
+            let cell = tableView.dequeueReusableCell(withIdentifier: SnoozeSliderCell.reuseID, for: indexPath)
+            if let cell = cell as? SnoozeSliderCell {
                 cell.configure(minutes: viewModel.snoozeMinutes)
                 cell.onValueChanged = { [weak self] minutes in self?.viewModel.snoozeMinutes = minutes }
+            }
+            return cell
+        case .theme:
+            let cell = tableView.dequeueReusableCell(withIdentifier: ThemeRowCell.reuseID, for: indexPath)
+            if let cell = cell as? ThemeRowCell {
+                cell.configure(themeName: viewModel.alarmThemeName)
             }
             return cell
         case .deleteAction:
@@ -341,6 +396,12 @@ extension CreateAlarmViewController: UITableViewDelegate {
         switch section {
         case .sound:
             showSoundPicker()
+        case .theme:
+            // The full theme picker (`AlarmThemePickerViewController`) is
+            // tracked by #151. Until it lands the row is a no-op so the form
+            // doesn't push an empty placeholder VC. The chevron + value
+            // chrome still surfaces the row's intent.
+            break
         case .deleteAction:
             confirmDelete()
         default:
@@ -394,5 +455,41 @@ extension CreateAlarmViewController: UITableViewDelegate {
             }
         )
         navigationController?.pushViewController(picker, animated: true)
+    }
+}
+
+// MARK: - Section header
+
+/// Custom section-header view rendered above each `.insetGrouped` group on
+/// the create/edit form. Replaces the default footnote-cased header with the
+/// design-system `caps` role + tracking so headers read at the same weight
+/// as the rest of the brand-refreshed surfaces (#143, builds on #135).
+private final class SectionHeaderView: UIView {
+
+    init(text: String) {
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.attributedText = NSAttributedString(
+            string: text.uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: layoutMarginsGuide.trailingAnchor),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.lg),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sm)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }

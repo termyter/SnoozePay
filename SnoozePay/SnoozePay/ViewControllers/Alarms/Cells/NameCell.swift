@@ -1,6 +1,11 @@
 import UIKit
 
 /// Single-line text input cell for the alarm's display name.
+///
+/// Refresh per #143: dropped the muted "Название" placeholder + label
+/// header pairing in favour of an iOS Reminders–style large placeholder
+/// "Будильник" with no inline header, and exposes `beginEditing()` so the
+/// host controller can auto-focus on appear in create-mode.
 final class NameCell: UITableViewCell {
 
     static let reuseID = "NameCell"
@@ -9,9 +14,20 @@ final class NameCell: UITableViewCell {
 
     private let textField: UITextField = {
         let field = UITextField()
-        field.placeholder = "Название"
-        field.font = UIFont.systemFont(ofSize: 17)
+        field.font = AppTypography.h3
+        field.textColor = AppColors.fg1
         field.translatesAutoresizingMaskIntoConstraints = false
+        // Large attributed placeholder ("Будильник") tinted with the disabled
+        // foreground role so the field still reads as empty without a label.
+        field.attributedPlaceholder = NSAttributedString(
+            string: "Будильник",
+            attributes: [
+                .font: AppTypography.h3,
+                .foregroundColor: AppColors.fg4
+            ]
+        )
+        field.returnKeyType = .done
+        field.clearButtonMode = .whileEditing
         return field
     }()
 
@@ -27,6 +43,7 @@ final class NameCell: UITableViewCell {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
         textField.addTarget(self, action: #selector(textChanged), for: .editingChanged)
+        textField.addTarget(self, action: #selector(returnTapped), for: .editingDidEndOnExit)
     }
 
     required init?(coder: NSCoder) {
@@ -37,14 +54,14 @@ final class NameCell: UITableViewCell {
 
     private func setupUI() {
         selectionStyle = .none
-        backgroundColor = .secondarySystemBackground
+        backgroundColor = AppColors.bg1
         contentView.addSubview(textField)
         NSLayoutConstraint.activate([
             textField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
             textField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            textField.topAnchor.constraint(equalTo: contentView.topAnchor),
-            textField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            textField.heightAnchor.constraint(equalToConstant: 48)
+            textField.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.md),
+            textField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md),
+            textField.heightAnchor.constraint(greaterThanOrEqualToConstant: 36)
         ])
     }
 
@@ -59,9 +76,19 @@ final class NameCell: UITableViewCell {
         textField.text = name
     }
 
+    /// Programmatically focus the field. Used by the host controller in
+    /// create-mode to mirror iOS Reminders' "tap-and-type" UX (#143).
+    func beginEditing() {
+        textField.becomeFirstResponder()
+    }
+
     // MARK: - Actions
 
     @objc private func textChanged() {
         onNameChanged?(textField.text ?? "")
+    }
+
+    @objc private func returnTapped() {
+        textField.resignFirstResponder()
     }
 }
