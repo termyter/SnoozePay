@@ -1,6 +1,25 @@
 import UIKit
 
-/// Main screen: alarm list with balance card header and navigation to create/edit alarms.
+/// Main screen — alarm list with a sticky balance header that stays pinned
+/// above the scroll, an optional low-balance warning banner under it, the
+/// alarm list itself, and an empty-state column that overlays the table when
+/// there are no alarms yet.
+///
+/// Layout (top → bottom inside `view`):
+/// ```
+/// safeArea.top
+///   ├─ SPAlarmsListHeader (sticky)
+///   │     ├─ balance card (caps + value + centered hint + trailing pill)
+///   │     └─ optional low-balance warning banner
+///   └─ UITableView (scrolls)
+///         └─ overlay: SPAlarmsListEmptyState (when alarms.isEmpty)
+/// safeArea.bottom
+/// ```
+///
+/// The header is pinned to the safe area — it does NOT live as
+/// `tableView.tableHeaderView` so it can't scroll away with the list. The
+/// table is anchored beneath the header with a small gap so the warning
+/// banner shadow can breathe before the list begins.
 class AlarmsListViewController: UIViewController {
 
     // MARK: - ViewModel
@@ -9,67 +28,41 @@ class AlarmsListViewController: UIViewController {
 
     // MARK: - UI Elements
 
+    private let header: SPAlarmsListHeader = {
+        let view = SPAlarmsListHeader()
+        view.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: AppSpacing.sp3,
+            leading: AppSpacing.screenInset,
+            bottom: AppSpacing.sp3,
+            trailing: AppSpacing.screenInset
+        )
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .plain)
-        table.backgroundColor = .systemGroupedBackground
+        table.backgroundColor = .clear
         table.separatorStyle = .none
         table.translatesAutoresizingMaskIntoConstraints = false
         return table
     }()
 
-    private let emptyStateView: UIView = {
-        let view = UIView()
+    private let emptyStateView: SPAlarmsListEmptyState = {
+        let view = SPAlarmsListEmptyState()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
-
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.alignment = .center
-        stack.spacing = AppSpacing.sm
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let iconLabel = UILabel()
-        iconLabel.text = "⏰"
-        iconLabel.font = UIFont.systemFont(ofSize: 64)
-
-        let titleLabel = UILabel()
-        titleLabel.text = "Нет будильников"
-        titleLabel.font = UIFont.systemFont(ofSize: 20, weight: .semibold)
-        titleLabel.textColor = .label
-
-        let subtitleLabel = UILabel()
-        subtitleLabel.text = "Нажмите + чтобы добавить"
-        subtitleLabel.font = UIFont.systemFont(ofSize: 15)
-        subtitleLabel.textColor = .secondaryLabel
-
-        stack.addArrangedSubview(iconLabel)
-        stack.addArrangedSubview(titleLabel)
-        stack.addArrangedSubview(subtitleLabel)
-        view.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
-
         return view
     }()
-
-    // MARK: - Balance Card (table header)
-
-    private let balanceCard = UIView()
-    private let balanceAmountLabel = UILabel()
-    private let topUpButton = UIButton(type: .system)
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.bg0
         setupNavigationBar()
-        setupTableView()
-        setupBalanceHeader()
-        setupEmptyState()
+        setupLayout()
+        setupCallbacks()
         bindViewModel()
     }
 
@@ -85,7 +78,6 @@ class AlarmsListViewController: UIViewController {
         navigationItem.title = "Будильники"
         navigationController?.navigationBar.prefersLargeTitles = false
 
-        // "+" button using SF Symbol
         let addButton = UIBarButtonItem(
             image: UIImage(systemName: "plus.circle.fill"),
             style: .plain,
@@ -95,161 +87,83 @@ class AlarmsListViewController: UIViewController {
         navigationItem.rightBarButtonItem = addButton
     }
 
-    private func setupTableView() {
+    private func setupLayout() {
+        // Order matters — header is added LAST so it draws on top of the
+        // table content shadow if any of the alarm cards bleed under the
+        // safe-area inset during scroll.
         view.addSubview(tableView)
+        view.addSubview(emptyStateView)
+        view.addSubview(header)
+
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(AlarmCell.self, forCellReuseIdentifier: AlarmCell.reuseID)
 
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            // Sticky header pinned to safe-area top.
+            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            // Table flows beneath the header.
+            tableView.topAnchor.constraint(equalTo: header.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-    }
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-    private func setupBalanceHeader() {
-        // Container for the balance card with padding
-        let headerContainer = UIView()
-
-        // Balance card styling — blue background. The accent blue is already
-        // high contrast against `systemGroupedBackground`, so we keep the
-        // border off (`applyCardStyle()` would override the blue fill) but add
-        // a soft drop shadow for the same elevation language as the alarm
-        // cards below.
-        balanceCard.backgroundColor = AppColors.accentBlue
-        balanceCard.layer.cornerRadius = AppRadius.md
-        balanceCard.layer.masksToBounds = false
-        balanceCard.layer.shadowColor = UIColor.black.cgColor
-        balanceCard.layer.shadowOpacity = 0.08
-        balanceCard.layer.shadowRadius = 6
-        balanceCard.layer.shadowOffset = CGSize(width: 0, height: 2)
-        balanceCard.translatesAutoresizingMaskIntoConstraints = false
-
-        // "БАЛАНС" small label
-        let titleLabel = UILabel()
-        titleLabel.text = "БАЛАНС"
-        titleLabel.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
-        titleLabel.textColor = UIColor.white.withAlphaComponent(0.7)
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        // Amount label (large, white)
-        balanceAmountLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 28, weight: .bold)
-        balanceAmountLabel.textColor = .white
-        balanceAmountLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        // Top-up button (white pill with wallet icon)
-        var buttonConfig = UIButton.Configuration.filled()
-        buttonConfig.baseBackgroundColor = .white
-        buttonConfig.baseForegroundColor = AppColors.accentBlue
-        buttonConfig.cornerStyle = .capsule
-        buttonConfig.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
-
-        let walletImage = UIImage(systemName: "wallet.pass.fill")?
-            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
-        buttonConfig.image = walletImage
-        buttonConfig.imagePadding = 6
-        buttonConfig.imagePlacement = .leading
-
-        var titleAttr = AttributedString("Пополнить")
-        titleAttr.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        buttonConfig.attributedTitle = titleAttr
-
-        topUpButton.configuration = buttonConfig
-        topUpButton.addTarget(self, action: #selector(topUpTapped), for: .touchUpInside)
-        topUpButton.translatesAutoresizingMaskIntoConstraints = false
-
-        balanceCard.addSubview(titleLabel)
-        balanceCard.addSubview(balanceAmountLabel)
-        balanceCard.addSubview(topUpButton)
-
-        headerContainer.addSubview(balanceCard)
-
-        NSLayoutConstraint.activate([
-            balanceCard.topAnchor.constraint(equalTo: headerContainer.topAnchor, constant: AppSpacing.sm),
-            balanceCard.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor, constant: AppSpacing.lg),
-            balanceCard.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor, constant: -AppSpacing.lg),
-            balanceCard.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor, constant: -AppSpacing.sm),
-
-            titleLabel.topAnchor.constraint(equalTo: balanceCard.topAnchor, constant: AppSpacing.md),
-            titleLabel.leadingAnchor.constraint(equalTo: balanceCard.leadingAnchor, constant: AppSpacing.lg),
-
-            balanceAmountLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.xs),
-            balanceAmountLabel.leadingAnchor.constraint(equalTo: balanceCard.leadingAnchor, constant: AppSpacing.lg),
-            balanceAmountLabel.bottomAnchor.constraint(equalTo: balanceCard.bottomAnchor, constant: -AppSpacing.md),
-
-            topUpButton.centerYAnchor.constraint(equalTo: balanceCard.centerYAnchor),
-            topUpButton.trailingAnchor.constraint(equalTo: balanceCard.trailingAnchor, constant: -AppSpacing.lg),
-            topUpButton.leadingAnchor.constraint(
-                greaterThanOrEqualTo: balanceAmountLabel.trailingAnchor,
-                constant: AppSpacing.md
-            )
-        ])
-
-        // Size the header to fit its content
-        let targetSize = CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height)
-        headerContainer.frame.size.width = view.bounds.width
-        headerContainer.setNeedsLayout()
-        headerContainer.layoutIfNeeded()
-        let height = headerContainer.systemLayoutSizeFitting(targetSize,
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel).height
-        headerContainer.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: height)
-
-        tableView.tableHeaderView = headerContainer
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-
-        // Recalculate header height on layout changes (rotation, etc.)
-        guard let header = tableView.tableHeaderView else { return }
-        let targetSize = CGSize(width: tableView.bounds.width, height: UIView.layoutFittingCompressedSize.height)
-        let newHeight = header.systemLayoutSizeFitting(targetSize,
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel).height
-        if header.frame.height != newHeight {
-            header.frame.size = CGSize(width: tableView.bounds.width, height: newHeight)
-            tableView.tableHeaderView = header
-        }
-
-        // Pre-rasterise the balance card shadow against its current rounded
-        // bounds so the offscreen pass doesn't run on every scroll frame.
-        balanceCard.layer.shadowPath = UIBezierPath(
-            roundedRect: balanceCard.bounds,
-            cornerRadius: AppRadius.md
-        ).cgPath
-    }
-
-    private func setupEmptyState() {
-        view.addSubview(emptyStateView)
-        NSLayoutConstraint.activate([
-            emptyStateView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            // Empty state overlays the same area as the table so the
+            // sticky header still shows the user their balance even
+            // when the list is empty.
+            emptyStateView.topAnchor.constraint(equalTo: tableView.topAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: tableView.leadingAnchor),
+            emptyStateView.trailingAnchor.constraint(equalTo: tableView.trailingAnchor),
             emptyStateView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
+    }
+
+    private func setupCallbacks() {
+        header.onBalanceTopUpTap = { [weak self] in
+            self?.presentTopUp()
+        }
+        header.onWarnTopUpTap = { [weak self] in
+            self?.presentTopUp()
+        }
+        emptyStateView.onAddAlarmTap = { [weak self] in
+            self?.addAlarmTapped()
+        }
     }
 
     private func bindViewModel() {
         viewModel.onAlarmsUpdated = { [weak self] in
             guard let self else { return }
             self.tableView.reloadData()
-            self.emptyStateView.isHidden = !self.viewModel.alarms.isEmpty
-            self.tableView.isHidden = self.viewModel.alarms.isEmpty
+            let isEmpty = self.viewModel.alarms.isEmpty
+            self.emptyStateView.isHidden = !isEmpty
+            self.tableView.isHidden = isEmpty
+            // Refresh the affordability hint — it depends on the
+            // current alarm set's average penalty, so a delete /
+            // create can change the snooze count even when the
+            // balance hasn't moved.
+            self.refreshHeader()
         }
 
         viewModel.onBalanceUpdated = { [weak self] _ in
-            guard let self else { return }
-            // `formattedBalance` already includes the "₽" suffix (e.g. "0 ₽").
-            // Adding a "₽ " prefix here previously rendered "₽ 0 ₽" (issue #55).
-            self.balanceAmountLabel.text = self.viewModel.formattedBalance
+            self?.refreshHeader()
         }
 
         viewModel.onLoadError = { [weak self] error in
             self?.presentRepositoryError(error)
         }
+    }
+
+    /// Push the latest balance / hint / warning state into the sticky
+    /// header. Called both from `onBalanceUpdated` (BalanceService
+    /// notification) and `onAlarmsUpdated` (alarm-set change shifts the
+    /// average penalty).
+    private func refreshHeader() {
+        let balance = Decimal(viewModel.balance)
+        header.setBalance(balance, hint: viewModel.affordabilityHint)
+        header.setWarning(visible: viewModel.isLowBalance, balance: balance)
     }
 
     /// Shows a non-blocking alert when the repository couldn't load or
@@ -280,7 +194,7 @@ class AlarmsListViewController: UIViewController {
         present(nav, animated: true)
     }
 
-    @objc private func topUpTapped() {
+    private func presentTopUp() {
         let topUpVC = TopUpViewController()
         let nav = UINavigationController(rootViewController: topUpVC)
         present(nav, animated: true)
