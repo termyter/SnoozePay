@@ -5,7 +5,7 @@ import UIKit
 /// `type_body_length` cap (mirrors the same pattern used by the +Audio file).
 ///
 /// Issue #139 — when `alarm.progressiveScale == true` the firing screen mounts
-/// an indicator pill ("Прогрессив · N-й снуз") above the snooze CTA, a single
+/// an indicator pill ("Прогрессив · N-е откладывание") above the snooze CTA, a single
 /// line history ticker ("сегодня: −50 → −100 → −200 ₽") below it, and
 /// cross-fades the snooze gradient from warn → pain as the user keeps
 /// snoozing. None of this is touched for default alarms — the +Progressive
@@ -21,7 +21,7 @@ extension AlarmFiringViewController {
         // view inside a horizontal wrapper rather than via `SPPill(icon:)`,
         // because we need the dot to host its own pulse animation while the
         // pill keeps its background/text styling.
-        let pill = SPPill(text: "Прогрессив · 1-й снуз", tone: .warn)
+        let pill = SPPill(text: "Прогрессив · 1-е откладывание", tone: .warn)
         pill.translatesAutoresizingMaskIntoConstraints = false
         progressivePill = pill
 
@@ -75,7 +75,7 @@ extension AlarmFiringViewController {
     /// the ticker grows as the user keeps snoozing.
     func updateProgressiveChrome() {
         let nextIndex = viewModel.snoozeCount + 1
-        progressivePill?.setText("Прогрессив · \(nextIndex)-й снуз")
+        progressivePill?.setText("Прогрессив · \(nextIndex)-е откладывание")
 
         guard let ticker = historyTicker else { return }
         let past = viewModel.pastPenalties

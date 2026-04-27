@@ -45,7 +45,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     static let defaultPresets: [Preset] = [
         Preset(amount: 200, label: "ровно на сейчас", productID: "com.snooze_pay.balance.149"),
         Preset(amount: 500, label: "на пару дней", productID: "com.snooze_pay.balance.499"),
-        Preset(amount: 1000, label: "забыть про залог", productID: "com.snooze_pay.balance.999")
+        Preset(amount: 1000, label: "забыть про баланс", productID: "com.snooze_pay.balance.999")
     ]
 
     // MARK: - Configuration

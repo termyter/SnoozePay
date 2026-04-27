@@ -382,7 +382,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let detail = error.errorDescription ?? error.localizedDescription
         let content = UNMutableNotificationContent()
-        content.title = "Снуз не запланирован"
+        content.title = "Откладывание не запланировано"
         if refundLanded {
             content.body = "Установите запасной — \(detail)"
         } else {

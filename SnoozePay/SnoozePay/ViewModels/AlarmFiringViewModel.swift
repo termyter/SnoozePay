@@ -46,7 +46,7 @@ final class AlarmFiringViewModel {
 
     /// `true` when the firing screen should render the progressive escalation
     /// chrome: the warn → pain gradient cross-fade on the snooze CTA, the
-    /// "Прогрессив · N-й снуз" indicator pill, and the history ticker.
+    /// "Прогрессив · N-е откладывание" indicator pill, and the history ticker.
     /// Mirrors the underlying alarm setting so default alarms keep the plain
     /// warn-tone Dawn treatment from #138.
     var isProgressiveActive: Bool { alarm.progressiveScale }
@@ -77,7 +77,7 @@ final class AlarmFiringViewModel {
 
     var snoozeButtonTitle: String {
         if canSnooze {
-            return "Отложить · \(Int(currentPenalty)) ₽"
+            return "+\(alarm.snoozeMinutes) минут · −\(Int(currentPenalty)) ₽"
         } else {
             return "Баланс пуст"
         }
