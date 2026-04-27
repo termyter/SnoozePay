@@ -27,6 +27,13 @@ struct AlarmNotificationPayload: Equatable {
     let snoozeCount: Int
     let snoozeMinutes: Int
     let soundID: String
+    /// Per-alarm playback volume (#150). Optional for backwards-compat with
+    /// notifications scheduled by pre-#150 builds — `nil` decodes to the
+    /// historical "ring at full volume" default.
+    let volume: Float?
+    /// Per-alarm fade-in flag (#150). Same backward-compat policy as
+    /// `volume`.
+    let volumeFadeIn: Bool?
 
     // MARK: - userInfo keys
     //
@@ -40,6 +47,8 @@ struct AlarmNotificationPayload: Equatable {
         static let snoozeCount = "snoozeCount"
         static let snoozeMinutes = "snoozeMinutes"
         static let soundID = "soundID"
+        static let volume = "volume"
+        static let volumeFadeIn = "volumeFadeIn"
     }
 
     // MARK: - Construction from an alarm
@@ -55,6 +64,8 @@ struct AlarmNotificationPayload: Equatable {
         self.snoozeCount = snoozeCount
         self.snoozeMinutes = alarm.snoozeMinutes
         self.soundID = alarm.soundID
+        self.volume = alarm.volume
+        self.volumeFadeIn = alarm.volumeFadeIn
     }
 
     /// Designated init for tests / decode paths.
@@ -64,7 +75,9 @@ struct AlarmNotificationPayload: Equatable {
         progressiveScale: Bool,
         snoozeCount: Int,
         snoozeMinutes: Int,
-        soundID: String
+        soundID: String,
+        volume: Float? = nil,
+        volumeFadeIn: Bool? = nil
     ) {
         self.alarmID = alarmID
         self.penaltyAmount = penaltyAmount
@@ -72,6 +85,8 @@ struct AlarmNotificationPayload: Equatable {
         self.snoozeCount = snoozeCount
         self.snoozeMinutes = snoozeMinutes
         self.soundID = soundID
+        self.volume = volume
+        self.volumeFadeIn = volumeFadeIn
     }
 
     // MARK: - userInfo bridge
@@ -99,13 +114,19 @@ struct AlarmNotificationPayload: Equatable {
         self.snoozeCount = snoozeCount
         self.snoozeMinutes = snoozeMinutes
         self.soundID = soundID
+        // Optional fields added in #150 — pre-#150 builds didn't write these
+        // into userInfo, so absence falls back to the documented defaults at
+        // the call site (full volume, no fade) without breaking decode.
+        self.volume = userInfo[Key.volume] as? Float
+            ?? (userInfo[Key.volume] as? Double).map { Float($0) }
+        self.volumeFadeIn = userInfo[Key.volumeFadeIn] as? Bool
     }
 
     /// Encode as the dictionary that `UNMutableNotificationContent.userInfo`
     /// expects. Only `Plist`-compatible value types are produced so iOS can
     /// serialize it across the notification daemon.
     func asUserInfo() -> [String: Any] {
-        [
+        var dict: [String: Any] = [
             Key.alarmID: alarmID.uuidString,
             Key.penaltyAmount: penaltyAmount,
             Key.progressiveScale: progressiveScale,
@@ -113,5 +134,17 @@ struct AlarmNotificationPayload: Equatable {
             Key.snoozeMinutes: snoozeMinutes,
             Key.soundID: soundID
         ]
+        // Only emit the new keys when set so a downgraded build's payload
+        // decoder still succeeds (it ignores unknown keys, but emitting nil
+        // would coerce to NSNull and break the userInfo plist serialiser).
+        if let volume = volume {
+            // Plist-encode as Double — `Float` is not a plist-compatible
+            // type on every iOS version's serialiser.
+            dict[Key.volume] = Double(volume)
+        }
+        if let volumeFadeIn = volumeFadeIn {
+            dict[Key.volumeFadeIn] = volumeFadeIn
+        }
+        return dict
     }
 }

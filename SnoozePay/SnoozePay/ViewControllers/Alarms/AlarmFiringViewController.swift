@@ -242,9 +242,12 @@ class AlarmFiringViewController: UIViewController {
 
         // Pass `alarmID` so a stacking-replace race (#116) does not silence
         // the next alarm when this VC's `viewDidDisappear` fires.
+        // Volume + fade-in honour the per-alarm settings introduced in #150.
         AudioService.shared.startAlarmSound(
             soundID: viewModel.alarm.soundID,
-            alarmID: viewModel.alarm.id
+            alarmID: viewModel.alarm.id,
+            volume: viewModel.alarm.volume,
+            fadeIn: viewModel.alarm.volumeFadeIn
         )
 
         // Initial transition may have happened synchronously inside
