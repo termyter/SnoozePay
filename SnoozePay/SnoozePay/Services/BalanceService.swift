@@ -170,6 +170,40 @@ final class BalanceService {
         return result.recorded
     }
 
+    // MARK: - Promotional credit (referral, daily bonus, ...)
+
+    /// Credits the wallet from a non-monetary source (referral bonus, daily
+    /// streak reward, ...) and records a `.promotion` ledger entry. Behaves
+    /// like `topUp` w.r.t. corruption gating and ledger-first ordering, but
+    /// the dedicated `TransactionType.promotion` case keeps these credits out
+    /// of any future StoreKit receipt-reconciliation / revenue accounting
+    /// logic that keys off `.topup` (issue #144).
+    @discardableResult
+    func creditPromotion(amount: Double) -> Bool {
+        guard amount.isFinite, amount > 0 else { return false }
+
+        let result: (recorded: Bool, newBalance: Double) = queue.sync {
+            let current = readRawBalance()
+            guard !_balanceCorrupted else { return (false, current) }
+
+            let transaction = Transaction(
+                type: .promotion,
+                amount: amount
+            )
+            guard transactionRepository.record(transaction) else {
+                return (false, current)
+            }
+            let updated = current + amount
+            defaults.set(updated, forKey: balanceKey)
+            return (true, updated)
+        }
+
+        if result.recorded {
+            notifyBalanceChanged(result.newBalance)
+        }
+        return result.recorded
+    }
+
     // MARK: - Validation
 
     func canAfford(_ amount: Double) -> Bool {

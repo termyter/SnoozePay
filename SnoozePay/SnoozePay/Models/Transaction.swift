@@ -1,9 +1,17 @@
 import Foundation
 
-/// Type of balance transaction
+/// Type of balance transaction.
+///
+/// `topup` is reserved for IAP / paid-money credits that flow through Apple's
+/// StoreKit pipeline — Statistics revenue accounting and any future receipt-
+/// reconciliation logic keys off this case. `promotion` covers free credits
+/// granted by in-app marketing flows (referrals, daily bonuses, etc.) so they
+/// stay segregated from purchases the user actually paid for. `charge` is a
+/// debit (snooze penalty).
 enum TransactionType: String, Codable {
     case topup = "topup"
     case charge = "charge"
+    case promotion = "promotion"
 }
 
 /// Domain model for a balance transaction
