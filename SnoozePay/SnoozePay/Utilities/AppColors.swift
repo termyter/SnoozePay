@@ -1,6 +1,10 @@
 import UIKit
 
-/// App-wide color tokens. Uses system colors where possible for automatic dark/light support.
+/// App-wide color tokens. The "money / pain / warn" scales are the SnoozePay
+/// brand palette (see `docs/design/snoozepay-2026-04-27/project/tokens.css`);
+/// the legacy `accentBlue` / `accentOrange` / `snoozeButton` aliases at the
+/// bottom map onto the new scales so existing screens keep compiling until
+/// each one is migrated in its own UI issue.
 enum AppColors {
     // MARK: - Backgrounds
     static let background = UIColor.systemBackground
@@ -12,38 +16,88 @@ enum AppColors {
     static let textSecondary = UIColor.secondaryLabel
     static let textTertiary = UIColor.tertiaryLabel
 
-    // MARK: - Accent
-    static let accentBlue = UIColor.systemBlue
-    static let accentGreen = UIColor(red: 0.19, green: 0.82, blue: 0.34, alpha: 1) // #30D158
-    static let accentOrange = UIColor.systemOrange
-    static let destructiveRed = UIColor.systemRed
+    // MARK: - Brand · Money (positive / earnings / "deposit recovered")
+    static let money300 = UIColor(hex: 0x5EEAB8)
+    static let money400 = UIColor(hex: 0x2EDB9F)
+    /// Primary money tone — used for the deposit / balance hero.
+    static let money500 = UIColor(hex: 0x10B981)
+    static let money600 = UIColor(hex: 0x0E9D6E)
+    static let money700 = UIColor(hex: 0x0B7A56)
+
+    // MARK: - Brand · Pain (progressive snooze / penalty / loss)
+    static let pain300 = UIColor(hex: 0xFFB4A8)
+    static let pain400 = UIColor(hex: 0xFF7A6B)
+    /// Default "progressive snooze charged" red.
+    static let pain500 = UIColor(hex: 0xF4523F)
+    static let pain600 = UIColor(hex: 0xD43A28)
+
+    // MARK: - Brand · Warn (snooze affordance / amber CTA)
+    static let warn300 = UIColor(hex: 0xFFD479)
+    static let warn400 = UIColor(hex: 0xFFB84D)
+    /// Default snooze-button amber.
+    static let warn500 = UIColor(hex: 0xF59E0B)
+    static let warn600 = UIColor(hex: 0xC97A06)
 
     // MARK: - Separator
     static let separator = UIColor.separator
 
-    // MARK: - Button states
-    static let snoozeButton = UIColor.systemOrange
-    static let dismissButton = UIColor(red: 0.19, green: 0.82, blue: 0.34, alpha: 1) // #30D158
+    // MARK: - Legacy aliases
+    //
+    // Existing screens reach for these names. Each one is now a thin alias on
+    // top of the brand scales, so a future PR can grep-and-replace call sites
+    // without changing the rendered colour.
+
+    /// Legacy "accent" — kept as systemBlue for now (pre-brand info actions).
+    /// Migrate sites individually before retiring.
+    static let accentBlue = UIColor.systemBlue
+    /// Legacy green accent → maps onto the new `money500`.
+    static let accentGreen = money500
+    /// Legacy orange accent → maps onto the new `warn500`.
+    static let accentOrange = warn500
+    /// Destructive red → maps onto the new `pain500`.
+    static let destructiveRed = pain500
+
+    // MARK: - Button states (legacy)
+    /// Snooze button amber → `warn500`.
+    static let snoozeButton = warn500
+    /// Dismiss button green → `money500`.
+    static let dismissButton = money500
     static let disabledButton = UIColor.systemGray
 
-    /// Warm orange/gold used for the active "Отложить" pill on the alarm-firing
-    /// screen (#E8A838). Kept distinct from `accentOrange`/`snoozeButton` so the
-    /// firing UI can preserve its specific Figma hue without leaking that
-    /// magic literal into the view code (#79).
+    /// Warm gold used for the active "Отложить" pill on the alarm-firing
+    /// screen (#E8A838). Kept as its own literal because the firing UI uses a
+    /// slightly warmer hue than `warn500` (#79); migrating it onto a brand
+    /// token is its own UI-issue decision.
     static let alarmFiringSnooze = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1) // #E8A838
 }
 
-/// App-wide spacing constants. T-shirt sizes (`xs`...`xxl`) are the underlying
-/// tokens; the semantic aliases below are what new code should reach for so a
-/// single design-system bump (e.g. screen inset 16 → 20) only touches one line.
+/// App-wide spacing constants. The 4px grid (`sp1`...`sp10`) is the underlying
+/// design-token (see `tokens.css`); the t-shirt aliases (`xs`...`xxl`) and the
+/// semantic aliases (`screenInset`, `cardVerticalPadding`, ...) are kept so
+/// existing call sites keep compiling. New code should reach for the `spN`
+/// tokens directly so a single design-system bump touches one line.
 enum AppSpacing {
-    static let xs: CGFloat = 4
-    static let sm: CGFloat = 8
-    static let md: CGFloat = 12
-    static let lg: CGFloat = 16
-    static let xl: CGFloat = 24
-    static let xxl: CGFloat = 32
+    // MARK: - 4px grid (canonical)
+    static let sp1: CGFloat = 4
+    static let sp2: CGFloat = 8
+    static let sp3: CGFloat = 12
+    static let sp4: CGFloat = 16
+    static let sp5: CGFloat = 20
+    static let sp6: CGFloat = 24
+    static let sp7: CGFloat = 32
+    static let sp8: CGFloat = 40
+    static let sp9: CGFloat = 56
+    static let sp10: CGFloat = 72
 
+    // MARK: - Legacy t-shirt aliases (pre-token)
+    static let xs: CGFloat = sp1   // 4
+    static let sm: CGFloat = sp2   // 8
+    static let md: CGFloat = sp3   // 12
+    static let lg: CGFloat = sp4   // 16
+    static let xl: CGFloat = sp6   // 24
+    static let xxl: CGFloat = sp7  // 32
+
+    // MARK: - Semantic aliases
     /// Standard horizontal inset for cards / banners against the screen edge.
     static let screenInset: CGFloat = lg
     /// Vertical gap between logical sections (e.g. between the balance card and
@@ -59,27 +113,108 @@ enum AppSpacing {
     static let cardHorizontalPadding: CGFloat = lg
 }
 
-/// App-wide corner radius constants
+/// App-wide corner radius constants. `xs`/`sm`/`md`/`lg` are pre-token aliases;
+/// `xl`/`r2xl`/`pill` are new design-token additions matching `tokens.css`.
 enum AppRadius {
-    static let sm: CGFloat = 8
+    static let xs: CGFloat = 8
+    static let sm: CGFloat = 8     // legacy alias of xs
     static let md: CGFloat = 12
-    static let lg: CGFloat = 16
-    static let xl: CGFloat = 20
+    static let lg: CGFloat = 16    // legacy lg (old AppRadius.lg = 16)
+    static let xl: CGFloat = 28
+    /// "2xl" — Swift identifiers can't start with a digit, hence `r2xl`.
+    static let r2xl: CGFloat = 36
+    /// Pill / fully-rounded — call sites typically clamp to `bounds.height/2`,
+    /// but this constant keeps intent explicit and matches `tokens.css`.
+    static let pill: CGFloat = 999
 
     /// Canonical card corner radius — every standalone surface should round to
     /// this value so cards on different screens read as the same primitive.
     static let card: CGFloat = md
 }
 
-/// Typography tokens. Section headers had three slightly-different recipes
-/// across `SettingsVC` / `CreateAlarmVC` / `StatisticsVC`; route every site
-/// through these so future copy / weight changes happen in one place.
+/// Typography roles from `tokens.css`. Each role returns a configured `UIFont`
+/// resolved via `AppFonts` (currently falls back to system fonts; see
+/// `AppFonts` doc comment for the migration plan).
+///
+/// Mono roles (`moneyXl`/`moneyLg`/`moneyMd`/`moneySm`/`clockXl`/`clockLg`)
+/// use JetBrains Mono so digits column-align across rows.
 enum AppTypography {
-    /// Font for table-view section headers and any "ВЕРХНИЙ ТЕКСТ"-style
-    /// uppercase label.
+
+    // MARK: - Display & headings (Manrope)
+
+    /// Hero number / display metric — 88pt heavy.
+    static var display: UIFont { AppFonts.sans(.extrabold, 88) }
+    /// h1 — 32pt extrabold.
+    static var h1: UIFont { AppFonts.sans(.extrabold, 32) }
+    /// h2 — 24pt bold.
+    static var h2: UIFont { AppFonts.sans(.bold, 24) }
+    /// h3 — 20pt bold.
+    static var h3: UIFont { AppFonts.sans(.bold, 20) }
+    /// h4 — 17pt bold.
+    static var h4: UIFont { AppFonts.sans(.bold, 17) }
+
+    // MARK: - Body (Manrope)
+
+    /// Large body — 17pt medium.
+    static var bodyLg: UIFont { AppFonts.sans(.medium, 17) }
+    /// Body — 15pt medium.
+    static var body: UIFont { AppFonts.sans(.medium, 15) }
+    /// Meta / secondary — 13pt medium.
+    static var meta: UIFont { AppFonts.sans(.medium, 13) }
+    /// Caps label — 12pt bold uppercase. Tracking applied per-attributedString
+    /// (see `capsKerning`).
+    static var caps: UIFont { AppFonts.sans(.bold, 12) }
+    /// Letter-spacing for `caps` (matches `+0.12em` in `tokens.css`).
+    static let capsKerning: CGFloat = 12 * 0.12
+
+    // MARK: - Buttons (Manrope)
+
+    /// Primary button label — 16pt bold.
+    static var button: UIFont { AppFonts.sans(.bold, 16) }
+    /// Compact button label — 14pt bold.
+    static var buttonSm: UIFont { AppFonts.sans(.bold, 14) }
+
+    // MARK: - Money / numeric (JetBrains Mono)
+
+    /// Hero balance — 56pt mono bold.
+    static var moneyXl: UIFont { AppFonts.mono(.bold, 56) }
+    /// Section balance — 32pt mono bold.
+    static var moneyLg: UIFont { AppFonts.mono(.bold, 32) }
+    /// Inline amount — 20pt mono bold.
+    static var moneyMd: UIFont { AppFonts.mono(.bold, 20) }
+    /// Caption amount / row total — 14pt mono semibold.
+    static var moneySm: UIFont { AppFonts.mono(.semibold, 14) }
+
+    // MARK: - Clock (JetBrains Mono)
+
+    /// Alarm-firing clock — 96pt mono ultralight.
+    static var clockXl: UIFont { AppFonts.mono(.ultralight, 96) }
+    /// Card clock — 64pt mono light.
+    static var clockLg: UIFont { AppFonts.mono(.light, 64) }
+
+    // MARK: - Legacy section header
+    //
+    // Pre-token "ВЕРХНИЙ ТЕКСТ" recipe used by SettingsVC / CreateAlarmVC /
+    // StatisticsVC. Kept as-is so those screens keep rendering identically
+    // until each one migrates onto `caps` in its own UI issue.
+
+    /// Font for table-view section headers. Use `caps` instead in new code.
     static let sectionHeader: UIFont = .preferredFont(forTextStyle: .footnote)
     static let sectionHeaderColor: UIColor = .secondaryLabel
     /// Letter-spacing applied to uppercase headers (matches iOS system grouped
     /// table-view header tracking).
     static let sectionHeaderKerning: CGFloat = 0.5
+}
+
+// MARK: - UIColor hex helper
+
+private extension UIColor {
+    /// Convenience initializer for `0xRRGGBB` literals so the brand-token
+    /// constants above read as in `tokens.css`. Alpha defaults to 1.
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        let red = CGFloat((hex >> 16) & 0xFF) / 255.0
+        let green = CGFloat((hex >> 8) & 0xFF) / 255.0
+        let blue = CGFloat(hex & 0xFF) / 255.0
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
+    }
 }
