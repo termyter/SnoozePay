@@ -2,69 +2,209 @@ import UIKit
 import StoreKit
 import os
 
-/// Top-up balance screen with balance card, 5 IAP packages, and restore button.
+/// Wallet / Top-up screen rebuilt under the SP design system (#148).
+///
+/// Layout, top-down:
+///   1. `SPBalanceCard` — current balance + week-delta arrow (sum of
+///      `charge` transactions in the last 7 days).
+///   2. Caps section header "СУММА ДЛЯ ПОПОЛНЕНИЯ".
+///   3. 2×2 grid of `SPAmountPreset` tiles: 49 / 149 (popular) / 299 / 999 ₽
+///      with localised "~N откладываний" labels. The 149 ₽ tile is selected
+///      by default per spec.
+///   4. Apple Pay primary CTA — `SPButton` `.money .lg fullWidth` with the
+///      Apple Pay glyph and a dynamic "Пополнить N ₽" title that follows
+///      the active preset.
+///   5. SPRow `.quiet` "Восстановить покупки" trigger.
+///   6. Footer hint inside an `SPCard` `.outline` ("средства начисляются
+///      мгновенно. Неиспользованный баланс не сгорает").
+///
+/// Success state: when `purchaseCompletedNotification` fires the form
+/// area crossfades into a centred green checkmark + "+N ₽" headline.
+/// The controller auto-dismisses after 2 s so the user lands back on
+/// the alarms list without having to tap anything.
+///
+/// VISA / МИР card visuals were removed entirely — Apple Pay is the
+/// only payment surface the wallet supports per PM directive.
+///
+/// Layout / setup helpers live in `TopUpViewController+Layout.swift`;
+/// restore-purchases support lives in `TopUpViewController+Restore.swift`
+/// so this primary file stays focused on state + lifecycle.
 class TopUpViewController: UIViewController {
 
-    // MARK: - Package Data
+    // MARK: - Preset model
 
-    /// Local copy ("~N откладываний") and styling per row. Price text comes from
-    /// StoreKit's `Product.displayPrice` (#75) — we no longer hardcode amounts here.
-    /// Each row binds to its `Product` by `productID`; if App Store Connect ever
-    /// reorders, drops, or A/B-prices a product, the subtitle stays paired with
-    /// the right price instead of silently desyncing.
-    private struct Package {
+    /// One top-up tile. The amount is shown directly; the StoreKit
+    /// product is resolved by `productID` once `loadProducts()` finishes.
+    /// We do not surface `Product.displayPrice` here because the spec
+    /// pins each tile to a fixed RUB amount — non-RU storefronts go
+    /// through the same product list and are not a supported wallet
+    /// topology yet.
+    struct Preset {
+        let amount: Int
+        let label: String
         let productID: String
-        let subtitle: String
-        let isPopular: Bool
+        let popular: Bool
     }
 
-    private let packages: [Package] = [
-        Package(productID: "com.snooze_pay.balance.49", subtitle: "~1 откладывание", isPopular: false),
-        Package(productID: "com.snooze_pay.balance.149", subtitle: "~3 откладывания", isPopular: true),
-        Package(productID: "com.snooze_pay.balance.299", subtitle: "~6 откладываний", isPopular: false),
-        Package(productID: "com.snooze_pay.balance.499", subtitle: "~10 откладываний", isPopular: false),
-        Package(productID: "com.snooze_pay.balance.999", subtitle: "~20 откладываний", isPopular: false)
+    /// Spec calls for 4 tiles: 49 / 149 / 299 / 999 ₽. The 149 ₽ tile
+    /// is the popular default. The 499 ₽ product still exists in App
+    /// Store Connect (kept for the firing-time bottom sheet) but is
+    /// intentionally not exposed in the wallet grid.
+    static let walletPresets: [Preset] = [
+        Preset(amount: 49, label: "~1 откладывание", productID: "com.snooze_pay.balance.49", popular: false),
+        Preset(amount: 149, label: "~3 откладывания", productID: "com.snooze_pay.balance.149", popular: true),
+        Preset(amount: 299, label: "~6 откладываний", productID: "com.snooze_pay.balance.299", popular: false),
+        Preset(amount: 999, label: "~20 откладываний", productID: "com.snooze_pay.balance.999", popular: false)
     ]
 
-    /// `true` once `loadProducts()` has finished at least once (regardless of success).
-    /// Lets the data source distinguish "still loading" from "load failed / product absent".
-    private var didFinishInitialLoad = false
+    /// Default-selected preset value. Spec: 149 ₽.
+    static let defaultSelectedAmount: Int = 149
 
-    // MARK: - UI
+    // MARK: - State
 
-    private let tableView: UITableView = {
-        let table = UITableView(frame: .zero, style: .insetGrouped)
-        table.translatesAutoresizingMaskIntoConstraints = false
-        return table
+    /// Currently selected preset value. Mirrored into the `SPAmountPreset`
+    /// tiles + the Apple Pay button title via `selectAmount(_:)`.
+    var selectedAmount: Int = TopUpViewController.defaultSelectedAmount
+
+    /// `true` once `loadProducts()` has finished at least once. Used to
+    /// disable the Apple Pay CTA until the resolved StoreKit product is
+    /// known — we never want a tap to silently fall through to a
+    /// "магазин недоступен" alert when the user has no other signal.
+    var didFinishInitialLoad = false
+
+    /// Set once a successful purchase resolves. Drives the success-state
+    /// swap + 2-second auto-dismiss timer. Guards against the same
+    /// notification arriving twice (foreground purchase + background
+    /// `Transaction.updates` listener can both post `purchaseCompletedNotification`).
+    var successAmount: Int?
+
+    /// `true` while `purchase(_:)` is awaiting StoreKit. Suppresses
+    /// re-taps on the Apple Pay button so we don't queue a second
+    /// transaction on top of the first.
+    var purchaseInFlight: Bool = false
+
+    let storeService = StoreKitService.shared
+    let balanceService = BalanceService.shared
+    let transactionRepository = TransactionRepository.shared
+
+    /// Notification observer tokens — torn down in `deinit`.
+    var purchaseFailedObserver: NSObjectProtocol?
+    var purchasePendingObserver: NSObjectProtocol?
+    var purchaseCompletedObserver: NSObjectProtocol?
+    var balanceChangedObserver: NSObjectProtocol?
+
+    // MARK: - Subviews
+
+    /// Vertical scroll container so the form stays reachable when the
+    /// success state inflates the layout (and on smaller devices).
+    let scrollView: UIScrollView = {
+        let view = UIScrollView()
+        view.alwaysBounceVertical = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }()
 
-    private let storeService = StoreKitService.shared
-    private var loadingProductID: String?
+    let contentStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = AppSpacing.sp5
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
 
-    /// NotificationCenter tokens — removed in `deinit`.
-    private var purchaseFailedObserver: NSObjectProtocol?
-    /// Single stable observer registered in `viewDidLoad`. Previously this was
-    /// re-registered per-purchase, which raced when the user tapped a second
-    /// package while the first purchase was still in flight (#120).
-    private var purchasePendingObserver: NSObjectProtocol?
-    /// Observes `BalanceService.balanceChangedNotification` so the header card
-    /// refreshes when a deferred (Ask-to-Buy) purchase resolves through the
-    /// `Transaction.updates` listener while this screen is on-screen (#120).
-    private var balanceChangedObserver: NSObjectProtocol?
+    let balanceCard: SPBalanceCard
 
-    // MARK: - Sections
+    let presetsSectionHeader: UILabel = TopUpViewControllerFactory.capsLabel(text: "СУММА ДЛЯ ПОПОЛНЕНИЯ")
 
-    private enum Section: Int, CaseIterable {
-        case packages
-        case restore
+    /// 2-column × 2-row grid of preset tiles. Built as a vertical stack
+    /// of horizontal stacks (`.fillEqually`) so each row's two tiles
+    /// share the available width without an extra UICollectionView dependency.
+    var presetTiles: [SPAmountPreset] = []
+    let presetGrid: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = AppSpacing.sp3
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
+
+    /// Primary Apple Pay CTA. The title is rebuilt whenever the preset
+    /// selection changes — `SPButton` doesn't expose a public title
+    /// setter, so we replace the button instance per tap. Cheap (≤ one
+    /// alloc per preset switch) and keeps the gradient + shadow recipe
+    /// in one place.
+    var applePayButton: SPButton
+
+    let restoreRow: SPRow
+
+    let footerCard: SPCard
+    let footerCapsLabel: UILabel = TopUpViewControllerFactory.capsLabel(text: "ПОЛЕЗНО ЗНАТЬ")
+    let footerBodyLabel: UILabel = TopUpViewControllerFactory.bodyLabel(
+        text: "Средства добавляются на ваш баланс мгновенно. Неиспользованный баланс не сгорает."
+    )
+
+    /// Success-state overlay. Hidden until `successAmount` is set. Sized
+    /// to match the scroll content area so it covers the form during
+    /// the cross-fade.
+    let successContainer: UIView = {
+        let view = UIView()
+        view.isHidden = true
+        view.alpha = 0
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    let successCheck: UIImageView = TopUpViewControllerFactory.successCheckImageView()
+    let successAmountLabel: UILabel = TopUpViewControllerFactory.successAmountLabel()
+
+    /// Gradient layer masked onto `successAmountLabel`'s rendered text.
+    /// Mirrors the `SPBalanceCard.applyValueGradient(...)` recipe so the
+    /// "+N ₽" headline reads as a brand surface, not a flat tint.
+    let successAmountGradient = CAGradientLayer()
+    let successCaption: UILabel = TopUpViewControllerFactory.successCaptionLabel()
+
+    // MARK: - Init
+
+    init() {
+        let initialBalance = Decimal(BalanceService.shared.balance)
+        self.balanceCard = SPBalanceCard(balance: initialBalance, delta: nil, hint: nil)
+        self.applePayButton = TopUpViewControllerFactory.applePayButton(
+            amount: TopUpViewController.defaultSelectedAmount
+        )
+        self.restoreRow = SPRow(
+            title: "Восстановить покупки",
+            subtitle: nil,
+            leading: nil,
+            trailing: nil,
+            divider: false
+        )
+        self.footerCard = SPCard(tone: .outline, padding: AppSpacing.sp4)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        let center = NotificationCenter.default
+        for token in [
+            purchaseFailedObserver,
+            purchasePendingObserver,
+            purchaseCompletedObserver,
+            balanceChangedObserver
+        ].compactMap({ $0 }) {
+            center.removeObserver(token)
+        }
     }
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Пополнить баланс"
-        view.backgroundColor = .systemGroupedBackground
+        title = "Кошелёк"
+        view.backgroundColor = AppColors.bg0
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
@@ -72,548 +212,60 @@ class TopUpViewController: UIViewController {
             action: #selector(cancelTapped)
         )
 
-        setupTableView()
+        setupLayout()
+        setupPresetTiles()
+        setupRestoreRow()
+        setupFooter()
+        setupSuccessOverlay()
         wireStoreCallbacks()
+        refreshBalanceCard()
+        rebuildApplePayButton()
         loadStoreProducts()
     }
 
-    private func wireStoreCallbacks() {
-        // loadProducts() and the foreground purchase path post `purchaseFailedNotification`
-        // when the store is unreachable or a verification/cancel error occurs.
-        // Without this wiring, the user-visible error message added in IOS-032
-        // would silently drop on the floor.
-        purchaseFailedObserver = NotificationCenter.default.addObserver(
-            forName: StoreKitService.purchaseFailedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            guard let self,
-                  let message = note.userInfo?[StoreKitService.messageUserInfoKey] as? String else { return }
-            self.presentErrorAlert(message)
-        }
-
-        // Single stable pending observer (#120). Previously this was registered
-        // and torn down inside the per-purchase Task, which dropped or duplicated
-        // alerts when the user tapped a second package mid-purchase. Now the
-        // observer lives for the lifetime of the VC and is removed in `deinit`.
-        purchasePendingObserver = NotificationCenter.default.addObserver(
-            forName: StoreKitService.purchasePendingNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.presentPendingAlert()
-        }
-
-        // Refresh the balance header card when BalanceService broadcasts a
-        // change. This catches deferred (Ask-to-Buy) credits resolved via the
-        // `Transaction.updates` listener while TopUp is on-screen — without
-        // this, the service's balance grows but the header shows the stale
-        // pre-purchase amount until the screen is reopened (#120).
-        balanceChangedObserver = NotificationCenter.default.addObserver(
-            forName: BalanceService.balanceChangedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            self.tableView.tableHeaderView = self.makeBalanceHeader()
-        }
-    }
-
-    deinit {
-        if let token = purchaseFailedObserver {
-            NotificationCenter.default.removeObserver(token)
-        }
-        if let token = purchasePendingObserver {
-            NotificationCenter.default.removeObserver(token)
-        }
-        if let token = balanceChangedObserver {
-            NotificationCenter.default.removeObserver(token)
-        }
-    }
-
-    private func presentErrorAlert(_ message: String) {
-        let alert = UIAlertController(title: "Ошибка", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-
-    // MARK: - Setup
-
-    private func setupTableView() {
-        view.addSubview(tableView)
-        tableView.delegate = self
-        tableView.dataSource = self
-        tableView.register(TopUpPackageCell.self, forCellReuseIdentifier: TopUpPackageCell.reuseID)
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "restore")
-
-        NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-
-        tableView.tableHeaderView = makeBalanceHeader()
-    }
-
-    // MARK: - Balance Header
-
-    private func makeBalanceHeader() -> UIView {
-        let headerHeight: CGFloat = 140
-        let header = UIView(frame: CGRect(x: 0, y: 0, width: view.bounds.width, height: headerHeight))
-
-        // Use the shared `CardView` so the header card lifts off the
-        // `systemGroupedBackground` page in light mode with the same shadow +
-        // border treatment as the rest of the app's cards. `CardView` rasterises
-        // its own shadow path on layout.
-        let card = CardView()
-        card.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(card)
-
-        let titleLabel = UILabel()
-        titleLabel.text = "Текущий баланс"
-        titleLabel.font = UIFont.systemFont(ofSize: 14)
-        titleLabel.textColor = .secondaryLabel
-        titleLabel.textAlignment = .center
-
-        let balanceLabel = UILabel()
-        balanceLabel.text = "₽\(Int(BalanceService.shared.balance))"
-        balanceLabel.font = UIFont.systemFont(ofSize: 42, weight: .bold)
-        balanceLabel.textColor = AppColors.accentBlue
-        balanceLabel.textAlignment = .center
-
-        let stack = UIStackView(arrangedSubviews: [titleLabel, balanceLabel])
-        stack.axis = .vertical
-        stack.spacing = 4
-        stack.alignment = .center
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: AppSpacing.xl),
-            card.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -AppSpacing.xl),
-            card.topAnchor.constraint(equalTo: header.topAnchor, constant: AppSpacing.lg),
-            card.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -AppSpacing.sm),
-
-            stack.centerXAnchor.constraint(equalTo: card.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: card.centerYAnchor)
-        ])
-
-        return header
-    }
-
-    private func loadStoreProducts() {
-        Task { [weak self] in
-            await self?.storeService.loadProducts()
-            self?.didFinishInitialLoad = true
-            self?.tableView.reloadData()
-        }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applySuccessGradient()
     }
 
     // MARK: - Actions
 
-    @objc private func cancelTapped() {
+    @objc func cancelTapped() {
         dismiss(animated: true)
     }
 
-    private func purchaseProduct(at index: Int) {
-        guard index < packages.count,
-              let product = product(for: packages[index]) else {
-            let alert = UIAlertController(
-                title: "Недоступно",
-                message: "Магазин временно недоступен. Попробуйте позже.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+    @objc func restoreTapped() {
+        performRestorePurchases()
+    }
+
+    @objc func applePayTapped() {
+        guard !purchaseInFlight, didFinishInitialLoad else { return }
+        guard let preset = TopUpViewController.walletPresets.first(where: { $0.amount == selectedAmount }) else {
             return
         }
 
-        // `[weak self]` so dismissing the screen mid-purchase doesn't keep the VC
-        // alive across `await`. Re-resolve `self?` after each suspension point —
-        // without this, `tableView` access could fire on a VC whose view is no
-        // longer in the hierarchy (#120). The pending alert is no longer raced
-        // here: it lives on a single stable observer registered in `viewDidLoad`.
-        Task { [weak self] in
-            self?.loadingProductID = product.id
-            self?.tableView.reloadData()
+        purchaseInFlight = true
+        applePayButton.isEnabled = false
 
-            // Capture the service reference before the await so we don't need
-            // `self` just to reach it. If `self` is gone after the suspension,
-            // the purchase still completes and `Transaction.updates` will credit
-            // the wallet — we simply skip the UI refresh.
+        guard let product = storeService.products.first(where: { $0.id == preset.productID }) else {
+            purchaseInFlight = false
+            applePayButton.isEnabled = true
+            presentErrorAlert("Магазин временно недоступен. Попробуйте позже.")
+            return
+        }
+
+        Task { [weak self] in
             guard let service = self?.storeService else { return }
             await service.purchase(product)
-
-            guard let self else { return }
-            self.loadingProductID = nil
-            self.tableView.tableHeaderView = self.makeBalanceHeader()
-            self.tableView.reloadData()
-        }
-    }
-
-    private func presentPendingAlert() {
-        let alert = UIAlertController(
-            title: "Ожидаем подтверждения",
-            message: "Покупка ожидает одобрения родителя. Баланс пополнится автоматически.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-}
-
-// MARK: - UITableViewDataSource
-
-extension TopUpViewController: UITableViewDataSource {
-
-    func numberOfSections(in tableView: UITableView) -> Int {
-        Section.allCases.count
-    }
-
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        guard let sec = Section(rawValue: section) else { return 0 }
-        switch sec {
-        case .packages: return packages.count
-        case .restore: return 1
-        }
-    }
-
-    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard let sec = Section(rawValue: section) else { return nil }
-        switch sec {
-        case .packages: return "ВЫБЕРИТЕ ПАКЕТ"
-        case .restore: return nil
-        }
-    }
-
-    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        guard let sec = Section(rawValue: section) else { return nil }
-        switch sec {
-        case .packages:
-            return "Средства добавляются на ваш баланс мгновенно. Неиспользованный баланс не сгорает."
-        case .restore: return nil
-        }
-    }
-
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let section = Section(rawValue: indexPath.section) else { return UITableViewCell() }
-
-        switch section {
-        case .restore:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: "restore")
-            cell.textLabel?.text = "Восстановить покупки"
-            cell.textLabel?.textColor = .systemBlue
-            cell.textLabel?.textAlignment = .center
-            cell.backgroundColor = .secondarySystemBackground
-            return cell
-
-        case .packages:
-            guard let cell = tableView.dequeueReusableCell(
-                withIdentifier: TopUpPackageCell.reuseID, for: indexPath
-            ) as? TopUpPackageCell else {
-                assertionFailure("dequeueReusableCell returned wrong type for \(TopUpPackageCell.reuseID)")
-                return UITableViewCell()
-            }
-
-            let pkg = packages[indexPath.row]
-            let matchedProduct = product(for: pkg)
-            let isLoading = matchedProduct?.id == loadingProductID
-            // Prefer StoreKit's localized displayPrice (respects user's storefront/currency)
-            // over a hardcoded "₽<int>" string. The hardcoded form is wrong for non-RU
-            // storefronts and lies about what Apple Pay will actually charge (see #75).
-            // Three states: loading ("…"), loaded with product (displayPrice), loaded
-            // without product ("Недоступно") — never silently mask a load failure.
-            let priceText: String
-            if let matchedProduct {
-                priceText = matchedProduct.displayPrice
-            } else if didFinishInitialLoad {
-                priceText = "Недоступно"
-            } else {
-                priceText = "…"
-            }
-            cell.configure(
-                priceText: priceText,
-                subtitle: pkg.subtitle,
-                isPopular: pkg.isPopular,
-                isLoading: isLoading
-            )
-            // Disable selection on rows whose product never loaded — prevents the
-            // "tap shows alert that contradicts the visible price text" path.
-            cell.selectionStyle = matchedProduct == nil && didFinishInitialLoad ? .none : .default
-            cell.isUserInteractionEnabled = !(matchedProduct == nil && didFinishInitialLoad)
-            return cell
-        }
-    }
-
-    /// Map a package row to its `Product` by `productID` (not by array index).
-    /// Returns `nil` if StoreKit hasn't loaded that product (network down,
-    /// pulled from sale, etc) — caller decides UI treatment.
-    private func product(for package: Package) -> Product? {
-        storeService.products.first { $0.id == package.productID }
-    }
-}
-
-// MARK: - UITableViewDelegate
-
-extension TopUpViewController: UITableViewDelegate {
-
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard let sec = Section(rawValue: indexPath.section) else { return 44 }
-        switch sec {
-        case .packages: return 64
-        case .restore: return 48
-        }
-    }
-
-    /// Lift each `.insetGrouped` section off the page with the shared
-    /// card-style background — same recipe as Settings + CreateAlarm.
-    func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        let totalRows = self.tableView(tableView, numberOfRowsInSection: indexPath.section)
-        let position = CardRowPosition.resolve(row: indexPath.row, totalRows: totalRows)
-        cell.styleAsCardRow(position: position)
-    }
-
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        guard let sec = Section(rawValue: indexPath.section) else { return }
-
-        switch sec {
-        case .restore:
-            performRestorePurchases()
-        case .packages:
-            purchaseProduct(at: indexPath.row)
-        }
-    }
-}
-
-// MARK: - Restore Purchases
-
-extension TopUpViewController {
-
-    /// Wraps `AppStore.sync()` and surfaces typed errors instead of swallowing them
-    /// with `try?`. A silent failure here would let the user think no past purchases
-    /// exist and re-buy a package — a real financial loss path (#71).
-    fileprivate func performRestorePurchases() {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await AppStore.sync()
-                self.tableView.tableHeaderView = self.makeBalanceHeader()
-                // Don't predict success/no-purchases from a balance delta — the
-                // `Transaction.updates` listener that actually credits the wallet
-                // runs asynchronously and the await may return before it fires,
-                // producing a false "Покупок не найдено" when покупки really existed.
-                self.presentRestoreSuccess()
-            } catch is CancellationError {
-                // Screen dismissed mid-restore. Not a real failure — don't alert.
-                return
-            } catch {
-                if (error as NSError).code == NSUserCancelledError {
-                    return
+            await MainActor.run {
+                guard let self else { return }
+                // Re-enable the button only on the failure path — the
+                // success path tears down the form via `handlePurchaseSuccess`.
+                if self.successAmount == nil {
+                    self.purchaseInFlight = false
+                    self.applePayButton.isEnabled = true
                 }
-                AppLogger.storeKit.error("performRestorePurchases failed: \(error.localizedDescription, privacy: .public)")
-                self.presentRestoreError(error)
             }
         }
-    }
-
-    private func presentRestoreSuccess() {
-        let alert = UIAlertController(
-            title: "Запрос отправлен",
-            message: "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение нескольких секунд.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-
-    private func presentRestoreError(_ error: Error) {
-        let alert = UIAlertController(
-            title: "Не удалось восстановить покупки",
-            message: restoreErrorMessage(for: error),
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-
-    /// Maps StoreKit / URLError failures to actionable Russian copy. Generic errors
-    /// fall back to the underlying `localizedDescription` plus support hint so the
-    /// user is never left with a silent button tap.
-    private func restoreErrorMessage(for error: Error) -> String {
-        // Typed StoreKit cases first — these match by code, not by locale-dependent
-        // string. `localizedDescription` substring matching would silently miss on
-        // any non-English iOS UI.
-        if let storeKitError = error as? StoreKitError {
-            switch storeKitError {
-            case .userCancelled:
-                return "Действие отменено."
-            case .networkError:
-                return "Проверьте подключение к интернету и попробуйте снова."
-            case .notAvailableInStorefront:
-                return "Покупки временно недоступны в вашем регионе."
-            case .notEntitled:
-                return "Войдите в Apple ID в Настройках и попробуйте снова."
-            default:
-                break
-            }
-        }
-
-        // SKError covers older / lower-level paths during restore.
-        if let skError = error as? SKError {
-            switch skError.code {
-            case .paymentNotAllowed:
-                return "В вашем Apple ID запрещены покупки. Проверьте настройки экранного времени."
-            case .cloudServiceNetworkConnectionFailed, .cloudServicePermissionDenied, .cloudServiceRevoked:
-                return "Проверьте подключение к интернету и доступ к iCloud в Настройках."
-            default:
-                break
-            }
-        }
-
-        let nsError = error as NSError
-
-        // Network reachability — URLError or NSURLErrorDomain bubbles up here.
-        if nsError.domain == NSURLErrorDomain {
-            return "Проверьте подключение к интернету и попробуйте снова."
-        }
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost:
-                return "Проверьте подключение к интернету и попробуйте снова."
-            default:
-                break
-            }
-        }
-
-        return "\(error.localizedDescription)\n\nЕсли проблема повторяется, свяжитесь с поддержкой."
-    }
-}
-
-// MARK: - Top-Up Package Cell
-
-final class TopUpPackageCell: UITableViewCell {
-
-    static let reuseID = "TopUpPackageCell"
-
-    // MARK: - UI
-
-    private let coinIcon: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "rublesign.circle.fill")?.withConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 28, weight: .medium)
-        )
-        imageView.tintColor = AppColors.accentOrange
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-
-    private let amountLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 18, weight: .bold)
-        label.textColor = .label
-        return label
-    }()
-
-    private let subtitleLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 13)
-        label.textColor = .secondaryLabel
-        return label
-    }()
-
-    private let popularBadge: UILabel = {
-        let label = UILabel()
-        label.text = "Популярный"
-        label.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
-        label.textColor = .white
-        label.backgroundColor = AppColors.accentBlue
-        label.layer.cornerRadius = 8
-        label.layer.masksToBounds = true
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    private let spinner: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        return indicator
-    }()
-
-    // MARK: - Init
-
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        setupUI()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    // MARK: - Setup
-
-    private func setupUI() {
-        backgroundColor = .secondarySystemBackground
-
-        let textStack = UIStackView(arrangedSubviews: [amountLabel, subtitleLabel])
-        textStack.axis = .vertical
-        textStack.spacing = 2
-
-        let leftStack = UIStackView(arrangedSubviews: [coinIcon, textStack])
-        leftStack.axis = .horizontal
-        leftStack.spacing = AppSpacing.md
-        leftStack.alignment = .center
-        leftStack.translatesAutoresizingMaskIntoConstraints = false
-
-        contentView.addSubview(leftStack)
-        contentView.addSubview(popularBadge)
-
-        NSLayoutConstraint.activate([
-            coinIcon.widthAnchor.constraint(equalToConstant: 36),
-            coinIcon.heightAnchor.constraint(equalToConstant: 36),
-
-            leftStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            leftStack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-
-            popularBadge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -40),
-            popularBadge.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            popularBadge.widthAnchor.constraint(equalToConstant: 86),
-            popularBadge.heightAnchor.constraint(equalToConstant: 22)
-        ])
-
-        accessoryType = .disclosureIndicator
-    }
-
-    // MARK: - Configure
-
-    /// Configures the cell with a pre-formatted, localized price string.
-    /// Pass `Product.displayPrice` from StoreKit so we never hardcode a currency symbol
-    /// or assume a storefront — see #75. The caller may pass a placeholder ("…")
-    /// while products are still loading.
-    func configure(priceText: String, subtitle: String, isPopular: Bool, isLoading: Bool) {
-        amountLabel.text = priceText
-        subtitleLabel.text = subtitle
-        popularBadge.isHidden = !isPopular
-
-        if isLoading {
-            spinner.startAnimating()
-            accessoryView = spinner
-        } else {
-            spinner.stopAnimating()
-            accessoryView = nil
-            accessoryType = .disclosureIndicator
-        }
-    }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        popularBadge.isHidden = true
-        spinner.stopAnimating()
-        accessoryView = nil
-        accessoryType = .disclosureIndicator
     }
 }
