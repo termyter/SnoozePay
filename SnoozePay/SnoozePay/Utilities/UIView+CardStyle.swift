@@ -22,23 +22,34 @@ extension UIView {
         backgroundColor = AppColors.surface
         layer.cornerRadius = cornerRadius
         layer.masksToBounds = false
-        // Drop shadow lifts the card off the background. Light values keep it
-        // subtle so we don't read as elevated above accent banners.
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.06
-        layer.shadowRadius = 4
-        layer.shadowOffset = CGSize(width: 0, height: 1)
-        // Hairline border reinforces the edge in light mode (UIColor.separator
-        // is fully opaque grey in light, very faint in dark — auto-adapts).
-        layer.borderWidth = 0.5
-        layer.borderColor = UIColor.separator.cgColor
+        // Brand `shadow1` is theme-aware: dark mode gets a single deep stop
+        // (`rgba(0,0,0,.35)`); light mode gets a wider, softer stop pulled
+        // from the two-stop `0 1px 3px / 0 4px 14px` recipe in `tokens.css`
+        // so cards lift cleanly off the near-white surface instead of
+        // reading as a flat slab.
+        AppShadow.shadow1(for: traitCollection).apply(to: layer)
+        // Hairline border reinforces the edge — `stroke1` is theme-aware
+        // (8% white on dark, 8% near-black ink on light), so the border has
+        // visible weight in light mode where the system's grey separator
+        // washes out against the brand ink.
+        // Hairline width — `traitCollection.displayScale` resolves to the
+        // current screen's scale (1×, 2× or 3×). Falls back to 1× if the
+        // view isn't yet in a window (`displayScale == 0`).
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+        layer.borderWidth = 1.0 / scale
+        layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
     }
 
-    /// Refresh the cached `cgColor` border with the current trait collection so
-    /// dynamic colours re-resolve after a light/dark switch. Call from
-    /// `traitCollectionDidChange` or via `registerForTraitChanges` on iOS 17+.
+    /// Refresh the cached `cgColor` border + shadow with the current trait
+    /// collection so dynamic colours re-resolve after a light/dark switch.
+    /// Call from `traitCollectionDidChange` or via `registerForTraitChanges`
+    /// on iOS 17+.
     func refreshCardBorderForTraitChange() {
-        layer.borderColor = UIColor.separator.resolvedColor(with: traitCollection).cgColor
+        layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
+        // Re-resolve the shadow recipe — dark and light use different
+        // colours, opacities, offsets and radii (single-stop deep shadow vs
+        // wider soft shadow), so it isn't enough to just refresh `cgColor`.
+        AppShadow.shadow1(for: traitCollection).apply(to: layer)
     }
 
     /// Pre-rasterise the shadow against the rounded card frame so scrolling
@@ -146,11 +157,10 @@ extension UITableViewCell {
 
         // Drop shadow only on the rows that paint the section's outer top or
         // bottom — middle rows would otherwise overlap into neighbours.
+        // Re-uses the theme-aware brand `shadow1` so the row lift matches
+        // free-standing CardViews on the same screen.
         if position != .middle {
-            surface.layer.shadowColor = UIColor.black.cgColor
-            surface.layer.shadowOpacity = 0.05
-            surface.layer.shadowRadius = 4
-            surface.layer.shadowOffset = CGSize(width: 0, height: 1)
+            AppShadow.shadow1(for: traitCollection).apply(to: surface.layer)
         }
 
         backgroundView = surface

@@ -169,6 +169,12 @@ class AlarmFiringViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Per `tokens.css` lines 109–112: the firing screen is intentionally
+        // exempt from the brand light theme. The decorative purple gradient
+        // circles, blurred lock-screen-style backdrop and the white-on-dark
+        // numerals are designed against `--sp-grad-night`, so we pin
+        // `.dark` here rather than letting the system theme bleed through.
+        overrideUserInterfaceStyle = .dark
         setupUI()
         bindViewModel()
         observeAudioState()

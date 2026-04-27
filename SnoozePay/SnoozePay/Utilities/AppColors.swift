@@ -38,6 +38,81 @@ enum AppColors {
     static let warn500 = UIColor(hex: 0xF59E0B)
     static let warn600 = UIColor(hex: 0xC97A06)
 
+    // MARK: - Brand · Info
+    /// Informational links only — `--sp-info-500` in `tokens.css`.
+    static let info500 = UIColor(hex: 0x4F8BFF)
+
+    // MARK: - Theme-aware surfaces (`bg0`...`bg4`)
+    //
+    // Five-step surface elevation per `tokens.css`. `bg0` is the deepest /
+    // app background, `bg4` the top hover/focus surface. Values resolve via
+    // `UIColor(dynamicProvider:)` so each token auto-adapts when the system
+    // toggles between light and dark, *and* when a single VC overrides its
+    // `userInterfaceStyle` (e.g. AlarmFiringViewController forcing dark).
+    /// App background — deepest. Dark `#060912`, Light `#F4F6FB`.
+    static let bg0 = dynamicColor(dark: 0x060912, light: 0xF4F6FB)
+    /// Card / sheet base. Dark `#0E1320`, Light `#FFFFFF`.
+    static let bg1 = dynamicColor(dark: 0x0E1320, light: 0xFFFFFF)
+    /// Raised card. Dark `#161C2E`, Light `#ECEEF6`.
+    static let bg2 = dynamicColor(dark: 0x161C2E, light: 0xECEEF6)
+    /// Active chip / sheet header. Dark `#1F2740`, Light `#DFE3F0`.
+    static let bg3 = dynamicColor(dark: 0x1F2740, light: 0xDFE3F0)
+    /// Hover / focus surface. Dark `#2A3354`, Light `#C9D0E3`.
+    static let bg4 = dynamicColor(dark: 0x2A3354, light: 0xC9D0E3)
+
+    // MARK: - Theme-aware foregrounds (`fg1`...`fg4`)
+    //
+    // Primary → disabled scale. Dark mode tints `#EBEDF5` (near-white) at
+    // 1.0 / 0.86 / 0.58 / 0.32 alpha; light mode tints `#0A0F1F` (brand
+    // near-black ink) at 1.0 / 0.82 / 0.56 / 0.32. Step scale matches
+    // `tokens.css`.
+    /// Primary headings & hero numbers.
+    static let fg1 = foreground(darkAlpha: 1.0, lightAlpha: 1.0, darkIsPureWhite: true)
+    /// Body copy. Dark 86% white-ish, Light 82% near-black.
+    static let fg2 = foreground(darkAlpha: 0.86, lightAlpha: 0.82)
+    /// Meta. Dark 58%, Light 56%.
+    static let fg3 = foreground(darkAlpha: 0.58, lightAlpha: 0.56)
+    /// Disabled / placeholder. Dark 32%, Light 32%.
+    static let fg4 = foreground(darkAlpha: 0.32, lightAlpha: 0.32)
+
+    /// Text rendered ON top of `money500` fills. Dark mint hue.
+    static let fgOnMoney = UIColor(hex: 0x052016)
+    /// Text rendered ON top of `pain500` fills.
+    static let fgOnPain = UIColor.white
+    /// Text rendered ON top of `warn500` fills.
+    static let fgOnWarn = UIColor(hex: 0x1A0F00)
+
+    // MARK: - Theme-aware overlays (alpha on white / near-black ink)
+    //
+    // Dark mode lays white over surfaces (`rgba(255,255,255,X)`); light mode
+    // lays the near-black ink (`#080E1E`) at the same alpha so an overlay
+    // chip "darkens" on light and "brightens" on dark.
+    static let whiteOverlay04 = overlay(alpha: 0.04)
+    static let whiteOverlay06 = overlay(alpha: 0.06)
+    static let whiteOverlay08 = overlay(alpha: 0.08)
+    static let whiteOverlay12 = overlay(alpha: 0.12)
+    static let whiteOverlay16 = overlay(alpha: 0.16)
+    static let whiteOverlay24 = overlay(alpha: 0.24)
+
+    // MARK: - Theme-aware strokes
+    //
+    // 1px hairlines for cards and dividers. Same alpha values, opposite ink:
+    // white on dark / near-black on light.
+    /// 8% hairline.
+    static let stroke1 = overlay(alpha: 0.08)
+    /// 14% stronger hairline (active state, focus ring).
+    static let stroke2 = overlay(alpha: 0.14)
+    /// Money-tinted stroke. Dark 45% / Light 55% (per `tokens.css`).
+    static let strokeMoney = UIColor { trait in
+        let alpha: CGFloat = trait.userInterfaceStyle == .light ? 0.55 : 0.45
+        return UIColor(red: 46.0 / 255.0, green: 219.0 / 255.0, blue: 159.0 / 255.0, alpha: alpha)
+    }
+    /// Pain-tinted stroke. Dark 45% / Light 55%.
+    static let strokePain = UIColor { trait in
+        let alpha: CGFloat = trait.userInterfaceStyle == .light ? 0.55 : 0.45
+        return UIColor(red: 244.0 / 255.0, green: 82.0 / 255.0, blue: 63.0 / 255.0, alpha: alpha)
+    }
+
     // MARK: - Separator
     static let separator = UIColor.separator
 
@@ -69,6 +144,50 @@ enum AppColors {
     /// slightly warmer hue than `warn500` (#79); migrating it onto a brand
     /// token is its own UI-issue decision.
     static let alarmFiringSnooze = UIColor(red: 0.91, green: 0.66, blue: 0.22, alpha: 1) // #E8A838
+
+    // MARK: - Theme-aware helpers
+
+    /// Resolve a token to either the light or dark hex literal based on the
+    /// current trait collection. Used for the surface scale.
+    private static func dynamicColor(dark: UInt32, light: UInt32) -> UIColor {
+        UIColor { trait in
+            trait.userInterfaceStyle == .light ? UIColor(hex: light) : UIColor(hex: dark)
+        }
+    }
+
+    /// Resolve a foreground token. Dark mode tints `#EBEDF5` (or pure white
+    /// for `fg1`) at `darkAlpha`; light mode tints the brand near-black ink
+    /// `#0A0F1F` at `lightAlpha`. Pure white in dark is needed only for
+    /// `fg1` so hero numbers don't acquire a slight off-white cast against
+    /// the deepest `bg0` surface.
+    private static func foreground(
+        darkAlpha: CGFloat,
+        lightAlpha: CGFloat,
+        darkIsPureWhite: Bool = false
+    ) -> UIColor {
+        UIColor { trait in
+            if trait.userInterfaceStyle == .light {
+                return UIColor(red: 10.0 / 255.0, green: 15.0 / 255.0, blue: 31.0 / 255.0, alpha: lightAlpha)
+            }
+            if darkIsPureWhite {
+                return UIColor(white: 1.0, alpha: darkAlpha)
+            }
+            return UIColor(red: 235.0 / 255.0, green: 237.0 / 255.0, blue: 245.0 / 255.0, alpha: darkAlpha)
+        }
+    }
+
+    /// Tint overlay used for `whiteOverlayXX` and `strokeN`. Dark mode lays
+    /// `rgba(255,255,255,alpha)`; light mode lays `rgba(10,15,31,alpha)`
+    /// (the near-black brand ink) so the same call produces a "darkening"
+    /// chip on light and a "brightening" chip on dark.
+    private static func overlay(alpha: CGFloat) -> UIColor {
+        UIColor { trait in
+            if trait.userInterfaceStyle == .light {
+                return UIColor(red: 10.0 / 255.0, green: 15.0 / 255.0, blue: 31.0 / 255.0, alpha: alpha)
+            }
+            return UIColor(white: 1.0, alpha: alpha)
+        }
+    }
 }
 
 /// App-wide spacing constants. The 4px grid (`sp1`...`sp10`) is the underlying
