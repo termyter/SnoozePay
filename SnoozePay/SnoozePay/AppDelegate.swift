@@ -14,12 +14,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // Register notification categories and request permission
+        // Register notification categories on every cold launch so the alarm
+        // notification's actions stay wired up regardless of permission state.
         AlarmScheduler.shared.registerCategories()
-        AlarmScheduler.shared.requestPermission { [weak self] granted in
-            if !granted {
-                AppLogger.appDelegate.notice("notification permission denied — alarms may not fire")
-                self?.presentNotificationsDisabledAlert()
+        // Defer the notification permission prompt until the dedicated
+        // PermissionsViewController has had a chance to drive it (#149) —
+        // otherwise the OS dialog would race the splash → onboarding →
+        // permissions UI and the user sees the system prompt before the
+        // explanatory screen. Once Permissions has been shown at least once,
+        // the auto-request resumes for subsequent launches so the existing
+        // "permission revoked from Settings" alert keeps firing.
+        if PermissionsViewController.hasBeenShown {
+            AlarmScheduler.shared.requestPermission { [weak self] granted in
+                if !granted {
+                    AppLogger.appDelegate.notice("notification permission denied — alarms may not fire")
+                    self?.presentNotificationsDisabledAlert()
+                }
             }
         }
 
