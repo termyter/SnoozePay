@@ -217,6 +217,128 @@ final class StatisticsViewModel {
         }
     }
 
+    // MARK: - Heatmap
+
+    /// Single square in the GitHub-style heatmap calendar.
+    /// `intensity` is bucketed 0..4 (5 buckets) so the view can pick a tint
+    /// from the money palette without re-running the bucket logic per cell.
+    struct HeatmapCell {
+        let date: Date
+        let amount: Double
+        let intensity: Int
+    }
+
+    /// 7-column grid of squares spanning the selected period. The order is
+    /// chronological (oldest → newest) so a flow-layout collection view fills
+    /// rows top-to-bottom, left-to-right with weekday alignment.
+    ///
+    /// Period sizing:
+    /// - `.week` → 7 cells (1 row).
+    /// - `.month` → ~35 cells (5 rows of 7).
+    /// - `.allTime` → 12 weeks back from today (84 cells).
+    /// The grid always begins on the configured calendar's "first weekday"
+    /// preceding the start date so columns line up with weekday labels.
+    var heatmapCells: [HeatmapCell] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // How many calendar days does the heatmap span?
+        let dayCount: Int
+        switch selectedPeriod {
+        case .week:
+            dayCount = 7
+        case .month:
+            dayCount = 35
+        case .allTime:
+            dayCount = 84
+        }
+
+        // Per-day total, keyed by startOfDay so look-ups are O(1).
+        var totalByDay: [Date: Double] = [:]
+        for charge in charges {
+            let day = calendar.startOfDay(for: charge.createdAt)
+            totalByDay[day, default: 0] += charge.amount
+        }
+
+        // Pick a sensible bucket cap: highest single-day spend, fallback to 1
+        // so a flat-empty period doesn't divide by zero.
+        let maxDayTotal = max(totalByDay.values.max() ?? 0, 1)
+
+        return (0..<dayCount).reversed().map { daysAgo -> HeatmapCell in
+            let date = calendar.date(byAdding: .day, value: -daysAgo, to: today) ?? today
+            let amount = totalByDay[date] ?? 0
+            return HeatmapCell(
+                date: date,
+                amount: amount,
+                intensity: Self.bucketIntensity(amount: amount, max: maxDayTotal)
+            )
+        }
+    }
+
+    /// Buckets a per-day amount onto a 0..4 scale. 0 is reserved for the
+    /// "no penalty today" empty cell so the view can hand back the
+    /// `whiteOverlay06` token without a separate branch. The remaining
+    /// 1..4 buckets are evenly split across the observed range.
+    private static func bucketIntensity(amount: Double, max maxValue: Double) -> Int {
+        guard amount > 0 else { return 0 }
+        let ratio = amount / maxValue
+        if ratio < 0.25 { return 1 }
+        if ratio < 0.5 { return 2 }
+        if ratio < 0.75 { return 3 }
+        return 4
+    }
+
+    // MARK: - Bar chart by weekday
+
+    /// Single bar in the weekday chart.
+    struct WeekdayBar {
+        /// Short localised weekday label (e.g. `"Пн"`).
+        let label: String
+        /// Average penalty across all matching weekdays in the selected period.
+        let amount: Double
+        /// Calendar weekday (1 = Sunday … 7 = Saturday) so the view can sort
+        /// without re-deriving the order from the label.
+        let weekday: Int
+    }
+
+    /// Returns 7 bars in Mon → Sun order, each carrying the average penalty
+    /// for that weekday across the selected period. Empty days surface as 0
+    /// so the chart still renders 7 axis ticks.
+    var weekdayBars: [WeekdayBar] {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "EEEEEE" // "Пн", "Вт", ...
+
+        // Group charges by Calendar weekday (1-based Sun=1 … Sat=7).
+        var bucketTotals: [Int: Double] = [:]
+        var bucketDays: [Int: Set<Date>] = [:]
+        for charge in charges {
+            let weekday = calendar.component(.weekday, from: charge.createdAt)
+            let day = calendar.startOfDay(for: charge.createdAt)
+            bucketTotals[weekday, default: 0] += charge.amount
+            bucketDays[weekday, default: []].insert(day)
+        }
+
+        // Render Monday-first regardless of the user's locale calendar so the
+        // chart matches the heatmap column order in the spec.
+        let mondayFirst: [Int] = [2, 3, 4, 5, 6, 7, 1]
+        return mondayFirst.map { weekday -> WeekdayBar in
+            let total = bucketTotals[weekday] ?? 0
+            let dayCount = bucketDays[weekday]?.count ?? 0
+            let average = dayCount > 0 ? total / Double(dayCount) : 0
+            // Build a label off a known sample date that falls on this weekday.
+            // Calendar weekday 1 = Sunday → 2024-01-07, etc.
+            let sample = calendar.date(from: DateComponents(year: 2024, month: 1, day: 6 + weekday)) ?? Date()
+            return WeekdayBar(label: formatter.string(from: sample), amount: average, weekday: weekday)
+        }
+    }
+
+    /// `true` when there are no charge transactions in the selected period.
+    /// View uses this to swap the chart/heatmap stack for the empty-state
+    /// column.
+    var hasData: Bool { !charges.isEmpty }
+
     // MARK: - Helpers
 
     private func startDate(for period: Period) -> Date {
