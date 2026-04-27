@@ -26,6 +26,11 @@ final class CreateAlarmViewModel {
 
     // MARK: - Init
 
+    /// Allowed range for `snoozeMinutes`. The form's slider exposes 1...15 only
+    /// (#143); editing legacy alarms persisted with values outside that range
+    /// must clamp on load so the slider can render the value without crashing.
+    static let snoozeMinutesRange: ClosedRange<Int> = 1...15
+
     init(alarm: Alarm? = nil, repository: AlarmRepository = .shared) {
         self.alarmRepository = repository
         self.existingID = alarm?.id
@@ -36,7 +41,10 @@ final class CreateAlarmViewModel {
         self.name = alarm?.name ?? "Будильник"
         self.soundID = alarm?.soundID ?? "radar"
         self.vibrationEnabled = alarm?.vibrationEnabled ?? true
-        self.snoozeMinutes = alarm?.snoozeMinutes ?? 9
+        // Clamp legacy values silently — pre-#143 alarms could store up to 30
+        // minutes (old stepper range). The form's slider now caps at 15.
+        let rawSnooze = alarm?.snoozeMinutes ?? 9
+        self.snoozeMinutes = min(max(rawSnooze, Self.snoozeMinutesRange.lowerBound), Self.snoozeMinutesRange.upperBound)
         self.penaltyAmount = alarm?.penaltyAmount ?? 50
         self.progressiveScale = alarm?.progressiveScale ?? false
         self.enabled = alarm?.enabled ?? true
@@ -173,4 +181,12 @@ final class CreateAlarmViewModel {
         guard let systemID = Self.systemSoundMap[soundID] else { return }
         AudioServicesPlaySystemSound(systemID)
     }
+
+    // MARK: - Alarm theme (placeholder for #151)
+
+    /// Display name of the alarm-firing-screen theme. The picker that lets
+    /// the user change it lands in #151 — until then we surface the default
+    /// "Рассвет" label so the row in the create/edit form renders the same
+    /// row chrome as Sound / Vibration.
+    var alarmThemeName: String { "Рассвет" }
 }
