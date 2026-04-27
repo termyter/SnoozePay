@@ -24,25 +24,46 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - Background layers
 
-    /// Dawn 180° gradient sourced from `--sp-grad-dawn` in `tokens.css`:
-    /// #14122A → #0F1A2E (40%) → #0A1320 (70%) → #050912.
-    private let dawnGradientLayer: CAGradientLayer = {
+    /// Theme-driven gradient layer. For `.dawn` this matches the original
+    /// `--sp-grad-dawn` recipe (#138); other built-in themes pull their stops
+    /// from `AlarmThemeRendering`. The layer is replaced/recoloured in
+    /// `installThemedBackground` based on `viewModel.alarm.theme` (#151).
+    /// `internal` so the +Theme extension in the sibling file can configure it.
+    let themeGradientLayer: CAGradientLayer = {
         let gradient = CAGradientLayer()
-        gradient.colors = [
-            UIColor(rgb: 0x14122A).cgColor,
-            UIColor(rgb: 0x0F1A2E).cgColor,
-            UIColor(rgb: 0x0A1320).cgColor,
-            UIColor(rgb: 0x050912).cgColor
-        ]
-        gradient.locations = [0.0, 0.4, 0.7, 1.0]
         gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
         gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
         return gradient
     }()
 
+    /// Image view used when `viewModel.alarm.theme == .custom(_)`. Lives on
+    /// the layer tree even when not in use (hidden) so the theme swap is a
+    /// single visibility flip rather than a rebuild. `internal` so the
+    /// +Theme extension can configure it.
+    let themeImageView: UIImageView = {
+        let view = UIImageView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentMode = .scaleAspectFill
+        view.clipsToBounds = true
+        view.isHidden = true
+        return view
+    }()
+
+    /// Translucent dim layer drawn over `.custom` photo backgrounds so the
+    /// 96pt mono clock + warn snooze CTA keep enough contrast to remain
+    /// legible against arbitrary user-picked imagery.
+    let themeImageDimView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        view.isHidden = true
+        return view
+    }()
+
     /// Warm radial glow anchored below the bottom edge — a warn500-flavoured
-    /// halo that "breathes" via a 4s opacity animation.
-    private let warmGlowLayer: CAGradientLayer = {
+    /// halo that "breathes" via a 4s opacity animation. `internal` so the
+    /// +Theme extension can hide it for `.custom` photo backgrounds.
+    let warmGlowLayer: CAGradientLayer = {
         let gradient = CAGradientLayer()
         gradient.type = .radial
         gradient.colors = [
@@ -286,8 +307,7 @@ class AlarmFiringViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = UIColor(rgb: 0x050912)
-        view.layer.insertSublayer(dawnGradientLayer, at: 0)
-        view.layer.insertSublayer(warmGlowLayer, at: 1)
+        installThemedBackground()
 
         // VM exposes `currentPenalty` as `Double`; wrap in `Decimal` so
         // `SPSnoozePrice.formattedRubles()` does the locale-aware format.
@@ -373,7 +393,7 @@ class AlarmFiringViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        dawnGradientLayer.frame = view.bounds
+        themeGradientLayer.frame = view.bounds
 
         // Glow anchored below the bottom edge — only the upper hemisphere
         // of the radial bleeds into view.

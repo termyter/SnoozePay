@@ -407,11 +407,7 @@ extension CreateAlarmViewController: UITableViewDelegate {
         case .volume:
             showVolumePicker()
         case .theme:
-            // The full theme picker (`AlarmThemePickerViewController`) is
-            // tracked by #151. Until it lands the row is a no-op so the form
-            // doesn't push an empty placeholder VC. The chevron + value
-            // chrome still surfaces the row's intent.
-            break
+            showThemePicker()
         case .deleteAction:
             confirmDelete()
         default:
@@ -451,6 +447,25 @@ extension CreateAlarmViewController: UITableViewDelegate {
             popover.permittedArrowDirections = []
         }
         present(alert, animated: true)
+    }
+
+    private func showThemePicker() {
+        let picker = AlarmThemePickerViewController(
+            currentTheme: viewModel.theme,
+            onSelect: { [weak self] theme in
+                guard let self else { return }
+                self.viewModel.theme = theme
+                // Update the trailing-value label inline so the user sees
+                // the new theme name without waiting for `viewWillAppear`'s
+                // section reload (which doesn't fire for the in-place update
+                // that follows the imperative pop).
+                let indexPath = IndexPath(row: 0, section: Section.theme.rawValue)
+                if let cell = self.tableView.cellForRow(at: indexPath) as? ThemeRowCell {
+                    cell.configure(themeName: self.viewModel.alarmThemeName)
+                }
+            }
+        )
+        navigationController?.pushViewController(picker, animated: true)
     }
 
     private func showSoundPicker() {

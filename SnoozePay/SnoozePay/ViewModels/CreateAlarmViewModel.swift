@@ -23,6 +23,7 @@ final class CreateAlarmViewModel {
     var volume: Float
     /// Per-alarm "ramp from 0 → volume over 30 seconds" toggle (#150).
     var volumeFadeIn: Bool
+    var theme: AlarmTheme
 
     private let existingID: UUID?
 
@@ -54,6 +55,7 @@ final class CreateAlarmViewModel {
         self.enabled = alarm?.enabled ?? true
         self.volume = alarm?.volume ?? 1.0
         self.volumeFadeIn = alarm?.volumeFadeIn ?? false
+        self.theme = alarm?.theme ?? .dawn
     }
 
     // MARK: - Save
@@ -116,7 +118,8 @@ final class CreateAlarmViewModel {
             progressiveScale: progressiveScale,
             enabled: enabled,
             volume: volume,
-            volumeFadeIn: volumeFadeIn
+            volumeFadeIn: volumeFadeIn,
+            theme: theme
         )
     }
 
@@ -190,11 +193,10 @@ final class CreateAlarmViewModel {
         AudioServicesPlaySystemSound(systemID)
     }
 
-    // MARK: - Alarm theme (placeholder for #151)
+    // MARK: - Alarm theme (#151)
 
-    /// Display name of the alarm-firing-screen theme. The picker that lets
-    /// the user change it lands in #151 — until then we surface the default
-    /// "Рассвет" label so the row in the create/edit form renders the same
-    /// row chrome as Sound / Vibration.
-    var alarmThemeName: String { "Рассвет" }
+    /// Display name of the currently selected theme. Surfaced in the
+    /// `ThemeRowCell` trailing label and refreshed by the controller after
+    /// the picker pops back.
+    var alarmThemeName: String { theme.displayName }
 }

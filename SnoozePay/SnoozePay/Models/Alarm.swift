@@ -19,6 +19,11 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// firing time so the user is woken gently. Default `false` preserves the
     /// pre-#150 instant-on behaviour.
     var volumeFadeIn: Bool
+    /// Visual theme used for the alarm-card background strip and the firing
+    /// screen background (#151). Defaults to `.dawn` for both new alarms and
+    /// legacy alarms persisted before the theme picker landed — see the
+    /// custom `init(from:)` below for the migration path.
+    var theme: AlarmTheme
 
     init(
         id: UUID = UUID(),
@@ -32,7 +37,8 @@ struct Alarm: Identifiable, Equatable, Codable {
         progressiveScale: Bool = false,
         enabled: Bool = true,
         volume: Float = 1.0,
-        volumeFadeIn: Bool = false
+        volumeFadeIn: Bool = false,
+        theme: AlarmTheme = .dawn
     ) {
         self.id = id
         self.time = time
@@ -46,19 +52,24 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.enabled = enabled
         self.volume = min(max(volume, 0), 1)
         self.volumeFadeIn = volumeFadeIn
+        self.theme = theme
     }
 
     // MARK: - Codable (backwards-compatible decode)
     //
-    // `volume` + `volumeFadeIn` were added in #150. Pre-#150 stored alarms do
-    // not carry these keys — `decodeIfPresent` plus the documented defaults
-    // keeps existing JSON readable without forcing a migration step. The
-    // default encode path is fine because new keys are simply additive.
+    // `volume` + `volumeFadeIn` were added in #150 and `theme` in #151.
+    // Pre-#150 / pre-#151 stored alarms do not carry these keys —
+    // `decodeIfPresent` plus the documented defaults keeps existing JSON
+    // readable without forcing a migration step. Synthesized Codable would
+    // throw `keyNotFound`, which `AlarmRepository.readAll()` propagates as
+    // a fatal `decodeFailure` (issue #117 / #72 lock the entire store).
+    // Adding a field MUST be backward-compatible — this initializer is the
+    // contract that ships safely on top of #143.
 
     private enum CodingKeys: String, CodingKey {
         case id, time, repeatDays, name, soundID, vibrationEnabled
         case snoozeMinutes, penaltyAmount, progressiveScale, enabled
-        case volume, volumeFadeIn
+        case volume, volumeFadeIn, theme
     }
 
     init(from decoder: Decoder) throws {
@@ -78,6 +89,8 @@ struct Alarm: Identifiable, Equatable, Codable {
         let rawVolume = try container.decodeIfPresent(Float.self, forKey: .volume) ?? 1.0
         self.volume = min(max(rawVolume.isFinite ? rawVolume : 1.0, 0), 1)
         self.volumeFadeIn = try container.decodeIfPresent(Bool.self, forKey: .volumeFadeIn) ?? false
+        // Migration: pre-#151 alarms have no `theme` field — default to .dawn.
+        self.theme = try container.decodeIfPresent(AlarmTheme.self, forKey: .theme) ?? .dawn
     }
 
     /// Human-readable repeat days string (e.g. "Пн, Вт, Пт")
