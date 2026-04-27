@@ -153,7 +153,7 @@ final class AlarmScheduler: AlarmScheduling {
         // Snooze action title is updated dynamically in the notification content
         let snoozeAction = UNNotificationAction(
             identifier: snoozeActionID,
-            title: "Отложить",
+            title: "Поспать ещё",
             options: [.foreground]
         )
 
@@ -382,7 +382,7 @@ final class AlarmScheduler: AlarmScheduling {
         content.body = "Время вставать!"
 
         let penalty = alarm.penalty(forSnoozeCount: snoozeCount + 1)
-        content.subtitle = "Отложить · \(Int(penalty)) ₽"
+        content.subtitle = "+\(alarm.snoozeMinutes) минут · −\(Int(penalty)) ₽"
 
         // Use critical sound if entitled, otherwise fall back to standard sound.
         // Critical alerts bypass DND and silent mode (requires Apple approval).

@@ -139,7 +139,7 @@ enum AppColors {
     static let dismissButton = money500
     static let disabledButton = UIColor.systemGray
 
-    /// Warm gold used for the active "Отложить" pill on the alarm-firing
+    /// Warm gold used for the active "Поспать ещё" pill on the alarm-firing
     /// screen (#E8A838). Kept as its own literal because the firing UI uses a
     /// slightly warmer hue than `warn500` (#79); migrating it onto a brand
     /// token is its own UI-issue decision.

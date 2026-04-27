@@ -182,7 +182,7 @@ class AlarmFiringViewController: UIViewController {
     /// entirely — they never enter the layout pass.
     var progressiveStack: UIStackView?
 
-    /// "Прогрессив · N-й снуз" pill above the snooze CTA. Re-titled on every
+    /// "Прогрессив · N-е откладывание" pill above the snooze CTA. Re-titled on every
     /// `updateUI()` so the label tracks `snoozeCount + 1` (the next snooze).
     var progressivePill: SPPill?
 
@@ -564,7 +564,7 @@ class AlarmFiringViewController: UIViewController {
     ) {
         let detail = error.errorDescription ?? error.localizedDescription
         let alert = UIAlertController(
-            title: "Снуз не запланирован",
+            title: "Откладывание не запланировано",
             message: "\(detail) Будильник не зазвенит повторно — установите запасной.",
             preferredStyle: .alert
         )

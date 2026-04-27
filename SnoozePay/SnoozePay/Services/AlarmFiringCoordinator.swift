@@ -189,8 +189,8 @@ final class AlarmFiringCoordinator {
                 // (charge recorded, refund didn't land — typically because
                 // the ledger is locked from a corrupt blob, see #72/#119).
                 // Distinct outcome so AppDelegate can post a stronger banner
-                // ("обратитесь в поддержку") rather than the standard "снуз
-                // не запланирован" message that implies money was returned.
+                // ("обратитесь в поддержку") rather than the standard
+                // "Откладывание не запланировано" message that implies money was returned.
                 AppLogger.coordinator.fault(
                     """
                     snooze: schedule failed alarm=\(alarmID, privacy: .private) \

@@ -89,7 +89,7 @@ final class SPPill: UIView {
 
     /// Update the pill's caps label in place. Used by callers that re-title
     /// a long-lived pill instance (e.g. the progressive-snooze indicator on
-    /// the firing screen counts up "1-й снуз" → "2-й снуз" → ...).
+    /// the firing screen counts up "1-е откладывание" → "2-е откладывание" → ...).
     func setText(_ text: String) {
         // CSS pairs caps tracking (.14em ≈ 12 * 0.14 = 1.68pt) with the
         // bold 12pt size; bake that into an attributed string so the label

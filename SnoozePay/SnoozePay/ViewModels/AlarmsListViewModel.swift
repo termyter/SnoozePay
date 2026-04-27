@@ -318,9 +318,9 @@ final class AlarmsListViewModel {
         return "\(alarm.name) \u{2022} \(alarm.repeatDaysDescription)"
     }
 
-    /// Penalty line for alarm card (e.g. "▲ ОТЛОЖИТЬ: 50 ₽")
+    /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return "▲ ОТЛОЖИТЬ: \(Int(alarms[index].penaltyAmount)) ₽"
+        return "▲ ПОСПАТЬ ЕЩЁ: −\(Int(alarms[index].penaltyAmount)) ₽"
     }
 }
