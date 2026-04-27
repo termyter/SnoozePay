@@ -207,6 +207,93 @@ final class AlarmsListViewModel {
         "\(Int(balance)) ₽"
     }
 
+    // MARK: - Affordability hint
+
+    /// Default penalty used when the user hasn't created any alarms yet
+    /// (or every alarm has a non-positive penalty). Matches the
+    /// `Alarm.init` default and the IAP "~N откладываний" copy in
+    /// `TopUpViewController`. Kept as a constant so a single tweak
+    /// covers both the empty-list hint and the topup subtitles.
+    static let defaultPenaltyAmount: Double = 50
+
+    /// Average penalty across all alarms, falling back to
+    /// `defaultPenaltyAmount` when no alarms exist or every alarm has a
+    /// non-positive penalty. Used by the alarms list balance card to
+    /// render "Хватит на ~N откладываний". The mode (most-frequent
+    /// penalty) is preferred over the arithmetic mean because the
+    /// design hint reads more accurately when alarms are clustered
+    /// around a single value (e.g. four alarms at 50 ₽ + one outlier
+    /// at 200 ₽ should report "~50" not "~80").
+    var averagePenalty: Double {
+        let positives = alarms.map { $0.penaltyAmount }.filter { $0 > 0 }
+        guard !positives.isEmpty else { return Self.defaultPenaltyAmount }
+        // Mode — pick the penalty value that appears most often. Ties
+        // resolve to the largest penalty (so the hint stays
+        // conservative — it under-reports the snooze count rather than
+        // promising more than the user can actually afford).
+        var counts: [Double: Int] = [:]
+        for value in positives {
+            counts[value, default: 0] += 1
+        }
+        guard let mode = counts.max(by: { lhs, rhs in
+            if lhs.value != rhs.value { return lhs.value < rhs.value }
+            return lhs.key < rhs.key
+        }) else {
+            return Self.defaultPenaltyAmount
+        }
+        return mode.key
+    }
+
+    /// Number of snoozes the user can currently afford given the
+    /// current `balance` and `averagePenalty`. Floored — the list hint
+    /// never advertises a fractional snooze. Returns 0 when the user is
+    /// out of money so the warning banner can still fire.
+    var affordableSnoozeCount: Int {
+        let penalty = averagePenalty
+        guard penalty > 0, balance > 0 else { return 0 }
+        return Int(floor(balance / penalty))
+    }
+
+    /// Localised hint shown under the balance number on the alarms
+    /// list: "Хватит на ~5 откладываний". Pluralisation follows
+    /// Russian rules (1 / 2-4 / 5-20 buckets); the "~" prefix mirrors
+    /// the topup-row copy.
+    var affordabilityHint: String {
+        let count = affordableSnoozeCount
+        return "Хватит на ~\(count) \(Self.snoozeWord(for: count))"
+    }
+
+    /// `true` when the balance is at or below the low-balance
+    /// threshold. The list shows a warning banner whenever this is
+    /// true on view appear (see issue #142).
+    var isLowBalance: Bool {
+        balance <= Self.lowBalanceThreshold
+    }
+
+    /// Threshold for the low-balance warning banner. Matched against
+    /// the raw `balance` (₽). 100 ₽ chosen because it's roughly 2
+    /// snoozes at the default penalty — the warning gives the user
+    /// runway to top up before the next charge fails.
+    static let lowBalanceThreshold: Double = 100
+
+    /// Russian pluralisation for "откладывание" — picks between
+    /// `откладывание` (n=1, 21, 31…), `откладывания` (2-4, 22-24…) and
+    /// `откладываний` (everything else, including 0 and 5-20). Local to
+    /// this VM because the only consumer is the affordability hint;
+    /// promote to a shared utility once a second screen needs it.
+    private static func snoozeWord(for count: Int) -> String {
+        let normalisedCount = abs(count)
+        let mod10 = normalisedCount % 10
+        let mod100 = normalisedCount % 100
+        if mod10 == 1 && mod100 != 11 {
+            return "откладывание"
+        }
+        if (2...4).contains(mod10) && !(12...14).contains(mod100) {
+            return "откладывания"
+        }
+        return "откладываний"
+    }
+
     // MARK: - Helpers for cell display
 
     /// Cached formatter — avoids ~1ms per-call allocation that adds up in lists.
