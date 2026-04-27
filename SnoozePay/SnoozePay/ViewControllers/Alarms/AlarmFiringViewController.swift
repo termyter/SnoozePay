@@ -18,7 +18,9 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - ViewModel
 
-    private let viewModel: AlarmFiringViewModel
+    /// `internal` so the +Audio and +Progressive extensions in sibling files
+    /// can read VM state during their UI updates.
+    let viewModel: AlarmFiringViewModel
 
     // MARK: - Background layers
 
@@ -81,9 +83,11 @@ class AlarmFiringViewController: UIViewController {
 
     /// Big snooze CTA. Built in `setupUI` because its constructor needs
     /// VM-derived price + minutes that aren't valid at property-init time.
-    /// Tone is `.warn` for the default path; the progressive `.pain`
-    /// variant ships in #139.
-    private var snoozeCTA: SPSnoozePrice?
+    /// Tone defaults to `.warn`; for `progressiveScale == true` alarms the
+    /// VC swaps it to `.progressive(intensity:)` and bumps the intensity on
+    /// every snooze tap (#139). `internal` so the +Progressive extension
+    /// can re-tone it on `updateUI()`.
+    var snoozeCTA: SPSnoozePrice?
 
     private let dismissButton = SPButton(
         title: "Я встал",
@@ -91,6 +95,30 @@ class AlarmFiringViewController: UIViewController {
         size: .lg,
         fullWidth: true
     )
+
+    // MARK: - Progressive UI (#139) — only mounted when `alarm.progressiveScale`.
+    //
+    // Layout + animation logic lives in `AlarmFiringViewController+Progressive.swift`;
+    // these stored handles are accessed from the extension via `internal` so the
+    // type body of the main VC stays under SwiftLint's `type_body_length` cap.
+
+    /// Container holding the indicator pill + history ticker. Built lazily
+    /// inside `setupUI` so the default firing flow (#138) skips both views
+    /// entirely — they never enter the layout pass.
+    var progressiveStack: UIStackView?
+
+    /// "Прогрессив · N-й снуз" pill above the snooze CTA. Re-titled on every
+    /// `updateUI()` so the label tracks `snoozeCount + 1` (the next snooze).
+    var progressivePill: SPPill?
+
+    /// Pulsing dot rendered inside `progressivePill`. CABasicAnimation lives
+    /// on its `layer.opacity` (autoreverse, infinite, 900ms — `--sp-dur-anxious`).
+    var progressivePulseDot: UIView?
+
+    /// Single-line ticker rendered between the pill and the snooze CTA.
+    /// `meta` typography, fg-3, mono digits — "сегодня: −50 → −100 → ..."
+    /// Hidden when `snoozeCount == 0` (no history to show yet).
+    var historyTicker: UILabel?
 
     /// Banner shown when AudioService falls back to vibration / silent mode.
     /// Hidden by default; surfaces only on `.silentBecauseConfigFailed` or `.vibrationOnly`.
@@ -199,10 +227,16 @@ class AlarmFiringViewController: UIViewController {
 
         // VM exposes `currentPenalty` as `Double`; wrap in `Decimal` so
         // `SPSnoozePrice.formattedRubles()` does the locale-aware format.
+        // Pick the initial tone based on the alarm config — progressive
+        // alarms start at intensity 0 (still pure warn) and ramp up as the
+        // user snoozes.
+        let initialTone: SPSnoozePrice.Tone = viewModel.isProgressiveActive
+            ? .progressive(intensity: viewModel.progressiveIntensity)
+            : .warn
         let snooze = SPSnoozePrice(
             price: Decimal(viewModel.currentPenalty),
             minutes: viewModel.alarm.snoozeMinutes,
-            tone: .warn,
+            tone: initialTone,
             hint: nil
         )
         snooze.translatesAutoresizingMaskIntoConstraints = false
@@ -221,6 +255,21 @@ class AlarmFiringViewController: UIViewController {
         let inset: CGFloat = AppSpacing.sp5      // 20pt — Dawn spec
         let gap: CGFloat = AppSpacing.sp3         // 12pt — Dawn spec
 
+        // Progressive escalation chrome — only mounted for alarms with the
+        // doubling-penalty toggle. The default flow stays exactly as #138.
+        // Anchor the audio-fallback banner to the chrome's top so the banner
+        // never overlaps the indicator when both are on screen.
+        let bannerBottomAnchor: NSLayoutYAxisAnchor
+        if viewModel.isProgressiveActive {
+            let stack = installProgressiveStack(inset: inset)
+            NSLayoutConstraint.activate([
+                stack.bottomAnchor.constraint(equalTo: snooze.topAnchor, constant: -AppSpacing.sp3)
+            ])
+            bannerBottomAnchor = stack.topAnchor
+        } else {
+            bannerBottomAnchor = snooze.topAnchor
+        }
+
         NSLayoutConstraint.activate([
             timeLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             timeLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -80),
@@ -234,7 +283,7 @@ class AlarmFiringViewController: UIViewController {
 
             audioWarningBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             audioWarningBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-            audioWarningBanner.bottomAnchor.constraint(equalTo: snooze.topAnchor, constant: -AppSpacing.sp4),
+            audioWarningBanner.bottomAnchor.constraint(equalTo: bannerBottomAnchor, constant: -AppSpacing.sp4),
 
             snooze.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             snooze.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
@@ -273,7 +322,7 @@ class AlarmFiringViewController: UIViewController {
         }
     }
 
-    private func updateUI() {
+    func updateUI() {
         nameLabel.text = viewModel.alarmName
 
         // Refresh snooze CTA — VM may have bumped `snoozeCount` (progressive
@@ -285,6 +334,16 @@ class AlarmFiringViewController: UIViewController {
                 hint: nil
             )
             snooze.isEnabled = viewModel.canSnooze
+            if viewModel.isProgressiveActive {
+                // Cross-fade the gradient toward pain as snoozeCount climbs.
+                // SPSnoozePrice.setTone is a no-op when intensity hasn't
+                // moved, so calling it on every updateUI() is cheap.
+                snooze.setTone(.progressive(intensity: viewModel.progressiveIntensity))
+            }
+        }
+
+        if viewModel.isProgressiveActive {
+            updateProgressiveChrome()
         }
     }
 

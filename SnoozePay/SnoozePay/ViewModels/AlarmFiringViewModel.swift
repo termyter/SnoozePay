@@ -42,6 +42,35 @@ final class AlarmFiringViewModel {
         alarm.penalty(forSnoozeCount: snoozeCount + 1)
     }
 
+    // MARK: - Progressive escalation (#139)
+
+    /// `true` when the firing screen should render the progressive escalation
+    /// chrome: the warn → pain gradient cross-fade on the snooze CTA, the
+    /// "Прогрессив · N-й снуз" indicator pill, and the history ticker.
+    /// Mirrors the underlying alarm setting so default alarms keep the plain
+    /// warn-tone Dawn treatment from #138.
+    var isProgressiveActive: Bool { alarm.progressiveScale }
+
+    /// Cross-fade weight between the warn and pain gradient stops. `0.0` on
+    /// the very first snooze (snoozeCount == 0), reaching `1.0` once the
+    /// user has hit the 6th snooze of the morning. Linear ramp because the
+    /// PM brief reads as "gradually redden" — easing curves muddied which
+    /// snooze count produced which colour during prototyping.
+    var progressiveIntensity: Double {
+        guard isProgressiveActive else { return 0 }
+        return max(0.0, min(1.0, Double(snoozeCount) / 5.0))
+    }
+
+    /// Past penalty amounts charged today, in chronological order, derived
+    /// from the same doubling rule as `currentPenalty`. Used by the firing
+    /// screen's history ticker to render "сегодня: −50 → −100 → ..." without
+    /// hitting the balance ledger (the in-VC string is purely informational).
+    /// Returns `[]` until the user has snoozed at least once.
+    var pastPenalties: [Double] {
+        guard snoozeCount > 0 else { return [] }
+        return (1...snoozeCount).map { alarm.penalty(forSnoozeCount: $0) }
+    }
+
     var canSnooze: Bool {
         balanceService.canAfford(currentPenalty)
     }

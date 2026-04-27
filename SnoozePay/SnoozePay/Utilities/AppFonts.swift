@@ -134,3 +134,32 @@ enum AppFonts {
         return UIFont(name: name, size: size)
     }
 }
+
+// MARK: - Tabular numeric helper
+
+extension UIFont {
+    /// Tabular-figures variant of the font — every digit glyph occupies the
+    /// same advance width, so columns of numbers (clock ticks, balance
+    /// rows, the firing-screen history ticker) stop reflowing every time a
+    /// `1` swaps with a `4`. Mirrors SwiftUI's `Font.monospacedDigit()`
+    /// using the UIKit feature-settings descriptor (Apple flags
+    /// `kNumberSpacingType` + `kMonospacedNumbersSelector`).
+    ///
+    /// Lives in `AppFonts.swift` because the design-system fonts compose
+    /// into UIFont via `AppFonts.font(...)`, and several call sites
+    /// (`AlarmFiringViewController.timeLabel`, the new `historyTicker`
+    /// in #139, future money-row labels) chain `.monospacedDigit()` on
+    /// the resulting `UIFont`. `UIFont` itself does not ship the SwiftUI
+    /// instance method, so we add it here.
+    func monospacedDigit() -> UIFont {
+        let descriptor = fontDescriptor.addingAttributes([
+            .featureSettings: [
+                [
+                    UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                    UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector
+                ]
+            ]
+        ])
+        return UIFont(descriptor: descriptor, size: pointSize)
+    }
+}

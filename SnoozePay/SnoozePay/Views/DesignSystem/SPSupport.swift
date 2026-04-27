@@ -48,6 +48,41 @@ enum SPSupport {
     }
     static let warnGradientLocations: [NSNumber] = [0.0, 0.6, 1.0]
 
+    // MARK: - Progressive (warn → pain) interpolation
+
+    /// Linear-interpolate between the warn and pain gradient stops to render
+    /// the "the human keeps snoozing, surface keeps reddening" treatment
+    /// from #139. `intensity` 0 returns pure warn, 1 returns pure pain; the
+    /// shared `warnGradientLocations` are reused so the visual rhythm of the
+    /// stops doesn't shift mid-fade.
+    static func progressiveGradientColors(intensity: Double) -> [CGColor] {
+        let clamped = max(0.0, min(1.0, intensity))
+        return [
+            lerpColor(AppColors.warn300, AppColors.pain300, progress: clamped).cgColor,
+            lerpColor(AppColors.warn500, AppColors.pain500, progress: clamped).cgColor,
+            lerpColor(AppColors.warn600, AppColors.pain600, progress: clamped).cgColor
+        ]
+    }
+
+    /// Linear interpolation between two `UIColor` instances in sRGB.
+    /// `t` is clamped to `0...1` — out-of-range inputs collapse to the
+    /// nearest endpoint. Internal helper for the progressive snooze treatment;
+    /// also re-used by the on-fill text colour so the typography contrast
+    /// tracks the gradient.
+    static func lerpColor(_ from: UIColor, _ toColor: UIColor, progress: Double) -> UIColor {
+        let clamped = CGFloat(max(0.0, min(1.0, progress)))
+        var fromR: CGFloat = 0, fromG: CGFloat = 0, fromB: CGFloat = 0, fromA: CGFloat = 0
+        var toR: CGFloat = 0, toG: CGFloat = 0, toB: CGFloat = 0, toA: CGFloat = 0
+        from.getRed(&fromR, green: &fromG, blue: &fromB, alpha: &fromA)
+        toColor.getRed(&toR, green: &toG, blue: &toB, alpha: &toA)
+        return UIColor(
+            red: fromR + (toR - fromR) * clamped,
+            green: fromG + (toG - fromG) * clamped,
+            blue: fromB + (toB - fromB) * clamped,
+            alpha: fromA + (toA - fromA) * clamped
+        )
+    }
+
     // MARK: - Motion (`tokens.css` durations + easings)
 
     /// `--sp-dur-quick: 140ms` — press/release scale animations.
@@ -56,6 +91,10 @@ enum SPSupport {
     static let durationBase: TimeInterval = 0.220
     /// `--sp-dur-slow: 420ms`.
     static let durationSlow: TimeInterval = 0.420
+    /// `--sp-dur-anxious: 900ms` — pulse cadence for "things are escalating"
+    /// affordances (progressive-snooze indicator dot, low-balance flicker).
+    /// Slower than a heartbeat so it reads as worry, not panic.
+    static let durationAnxious: TimeInterval = 0.900
 
     /// Approximation of `cubic-bezier(.2,.8,.2,1)` used by `--sp-ease-out`.
     /// `UIView.animate(...)` doesn't accept arbitrary cubic-beziers; the
