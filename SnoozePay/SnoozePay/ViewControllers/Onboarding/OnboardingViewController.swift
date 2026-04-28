@@ -18,12 +18,14 @@ final class OnboardingViewController: UIViewController {
 
     // MARK: - Persistence keys
 
-    private static let completedKey = "onboarding_completed"
+    /// `internal` so the cross-file `+Pages` extension can write the
+    /// onboarding-completion flag from its tap handlers (#182).
+    static let completedKey = "onboarding_completed"
     /// Set to `false` when the user finishes step 3 via "Позже" so future
     /// analytics / re-engagement can distinguish "user opted out of the
     /// first deposit" from "user paid". Stays absent until the user actually
     /// reaches step 3.
-    private static let firstTopUpDoneKey = "first_top_up_done"
+    static let firstTopUpDoneKey = "first_top_up_done"
 
     /// `true` once the user has finished onboarding (either Apple Pay path
     /// or "Позже" path). Read by `SceneDelegate` to decide whether to mount
@@ -34,12 +36,18 @@ final class OnboardingViewController: UIViewController {
 
     // MARK: - Page Data
 
-    private struct Page {
+    /// `internal` so the `+Pages` extension's page-builder helpers (which
+    /// receive `title` + `body` as plain strings) keep their parent type
+    /// visible from the cross-file extension (#182).
+    struct Page {
         let title: String
         let body: String
     }
 
-    private let pages: [Page] = [
+    /// `internal` so the cross-file `+Pages` extension can iterate this list
+    /// when computing pager state and the page count for the deposit page
+    /// (#182).
+    let pages: [Page] = [
         Page(
             title: "Что такое SnoozePay",
             body: """
@@ -67,8 +75,10 @@ final class OnboardingViewController: UIViewController {
     ]
 
     /// Preset amounts on step 3. Default selection is the middle tile (500 ₽).
-    private let presetAmounts: [Decimal] = [200, 500, 1000]
-    private let defaultPresetIndex: Int = 1
+    /// `internal` so the cross-file `+Pages` extension can build the preset
+    /// stack from this list (#182).
+    let presetAmounts: [Decimal] = [200, 500, 1000]
+    let defaultPresetIndex: Int = 1
 
     // MARK: - Callback
 
@@ -97,7 +107,9 @@ final class OnboardingViewController: UIViewController {
 
     // MARK: - UI Elements
 
-    private let scrollView: UIScrollView = {
+    /// `internal` so the `+Pages` extension can drive page-snap from the
+    /// "Далее" CTA tap handler (#182).
+    let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.isPagingEnabled = true
         scrollView.showsHorizontalScrollIndicator = false
@@ -110,8 +122,9 @@ final class OnboardingViewController: UIViewController {
     /// Page dots — kept as `UIPageControl` so the existing test
     /// (`OnboardingTests.testOnboardingPages_count`) keeps reaching for the
     /// same view kind. Tinted with brand tokens: `money500` for the active
-    /// dot (matches the deposit hero), `fg3` for the rest.
-    private let pageControl: UIPageControl = {
+    /// dot (matches the deposit hero), `fg3` for the rest. `internal` so
+    /// the `+Pages` extension can flip its visibility / index (#182).
+    let pageControl: UIPageControl = {
         let pageControl = UIPageControl()
         pageControl.currentPageIndicatorTintColor = AppColors.money500
         pageControl.pageIndicatorTintColor = AppColors.fg3
@@ -121,7 +134,8 @@ final class OnboardingViewController: UIViewController {
     }()
 
     /// Top-right "Пропустить" — restyled as `SPButton(.quiet, .sm)`.
-    private let skipButton = SPButton(
+    /// `internal` so `+Pages.updatePagerState` can flip its hidden flag.
+    let skipButton = SPButton(
         title: "Пропустить",
         variant: .quiet,
         size: .sm
@@ -130,8 +144,9 @@ final class OnboardingViewController: UIViewController {
     /// Primary CTA. On steps 1-2 this reads "Далее" and advances the pager;
     /// on step 3 the VC swaps it for an Apple Pay-flavoured money button
     /// (`actionButton` is the step-1/2 instance only; step-3 uses
-    /// `applePayButton` mounted inside the page).
-    private let actionButton = SPButton(
+    /// `applePayButton` mounted inside the page). `internal` so
+    /// `+Pages.updatePagerState` can flip its hidden flag (#182).
+    let actionButton = SPButton(
         title: "Далее",
         variant: .money,
         size: .lg,
@@ -141,8 +156,10 @@ final class OnboardingViewController: UIViewController {
     /// Step-3 Apple Pay primary CTA — mounted inside the third page so it
     /// scrolls in/out with the page. SPButton has no public title setter, so
     /// the title-change-on-preset-change path replaces the whole button via
-    /// `rebuildApplePayButton()` (same pattern as FiringTopUpBottomSheet).
-    private var applePayButton: SPButton = SPButton(
+    /// `updateApplePayTitle()` (same pattern as FiringTopUpBottomSheet).
+    /// `internal` so the cross-file `+Pages.updateApplePayTitle` can swap
+    /// the instance (#182).
+    var applePayButton: SPButton = SPButton(
         title: "Начать с 500 ₽",
         variant: .money,
         size: .lg,
@@ -162,8 +179,9 @@ final class OnboardingViewController: UIViewController {
 
     /// CTA stack on step 3 — owns the (re-creatable) Apple Pay button as its
     /// first arranged subview so `rebuildApplePayButton()` can swap the
-    /// instance without re-pinning constraints.
-    private let ctaStack: UIStackView = {
+    /// instance without re-pinning constraints. `internal` so the `+Pages`
+    /// extension can mount it inside the deposit page (#182).
+    let ctaStack: UIStackView = {
         let stackView = UIStackView()
         stackView.axis = .vertical
         stackView.spacing = AppSpacing.sp3
@@ -173,12 +191,15 @@ final class OnboardingViewController: UIViewController {
     }()
 
     private var pageViews: [UIView] = []
-    private var presetTiles: [SPAmountPreset] = []
+    /// `internal` so the `+Pages` extension can append to the same array
+    /// during the page-build pass (#182).
+    var presetTiles: [SPAmountPreset] = []
 
     /// Currently-selected preset index on step 3. Initialised to
     /// `defaultPresetIndex` (500 ₽). Drives both the Apple Pay CTA title and
-    /// which tile renders selected.
-    private lazy var selectedPresetIndex: Int = defaultPresetIndex
+    /// which tile renders selected. `internal` so the cross-file `+Pages`
+    /// extension can read the current selection inside `updateApplePayTitle`.
+    lazy var selectedPresetIndex: Int = defaultPresetIndex
 
     // MARK: - Lifecycle
 
@@ -232,6 +253,15 @@ final class OnboardingViewController: UIViewController {
         pageControl.numberOfPages = pages.count
         pageControl.currentPage = 0
 
+        activateChromeConstraints()
+        wireActionTargets()
+        buildPageStack()
+    }
+
+    /// Pin skip button, scroll view, action button, and page control to the
+    /// view edges. Split off `setupUI` so the function body stays under
+    /// SwiftLint's `function_body_length` cap (#182).
+    private func activateChromeConstraints() {
         NSLayoutConstraint.activate([
             // Skip button — top right.
             skipButton.topAnchor.constraint(
@@ -270,7 +300,11 @@ final class OnboardingViewController: UIViewController {
                 constant: -AppSpacing.sp4
             )
         ])
+    }
 
+    /// Wire scrollView delegate + every CTA's target/action. Pulled out of
+    /// `setupUI` so its body fits SwiftLint's function-length cap (#182).
+    private func wireActionTargets() {
         scrollView.delegate = self
         skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
         actionButton.addTarget(self, action: #selector(actionTapped), for: .touchUpInside)
@@ -279,209 +313,26 @@ final class OnboardingViewController: UIViewController {
 
         ctaStack.addArrangedSubview(applePayButton)
         ctaStack.addArrangedSubview(laterButton)
+    }
 
-        // Build page content — first two pages share one layout, step 3 is a
-        // bespoke "deposit" page with preset tiles + dual CTAs.
+    /// Build page content — first two pages share one layout, step 3 is a
+    /// bespoke "deposit" page with preset tiles + dual CTAs. Page builders
+    /// live in `OnboardingViewController+Pages.swift` (#182).
+    private func buildPageStack() {
         for (index, page) in pages.enumerated() {
             let pageView: UIView
             if index == pages.count - 1 {
-                pageView = makeDepositPageView(page: page)
+                pageView = makeDepositPageView(title: page.title, body: page.body)
             } else {
-                pageView = makeTextPageView(page: page)
+                pageView = makeTextPageView(title: page.title, body: page.body)
             }
             scrollView.addSubview(pageView)
             pageViews.append(pageView)
         }
     }
 
-    /// Steps 1 & 2 — `h1` heading + `bodyLg` body, vertically centred and
-    /// inset by 32pt so the text wraps naturally without hugging the edges.
-    private func makeTextPageView(page: Page) -> UIView {
-        let container = UIView()
-        let stack = makeCopyStack(title: page.title, body: page.body)
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            // Slightly above centre so the action button + page dots don't
-            // optically crowd the body copy.
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -AppSpacing.sp9),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: AppSpacing.sp7),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -AppSpacing.sp7)
-        ])
-        return container
-    }
-
-    /// Step 3 — heading, body, three preset tiles, Apple Pay CTA, ghost
-    /// "Позже". The CTAs live inside the page (rather than the shared
-    /// `actionButton`) so the page-3 controls feel cohesive with the preset
-    /// tiles instead of appearing detached at the screen bottom.
-    private func makeDepositPageView(page: Page) -> UIView {
-        let container = UIView()
-        let copyStack = makeCopyStack(title: page.title, body: page.body)
-        let presetsStack = makePresetsStack()
-        container.addSubview(copyStack)
-        container.addSubview(presetsStack)
-        container.addSubview(ctaStack)
-        let inset = AppSpacing.screenInset
-        let outerInset = AppSpacing.sp7
-        NSLayoutConstraint.activate([
-            copyStack.topAnchor.constraint(
-                equalTo: container.safeAreaLayoutGuide.topAnchor,
-                constant: AppSpacing.sp10
-            ),
-            copyStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: outerInset),
-            copyStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -outerInset),
-
-            presetsStack.topAnchor.constraint(equalTo: copyStack.bottomAnchor, constant: outerInset),
-            presetsStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: inset),
-            presetsStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -inset),
-
-            ctaStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: inset),
-            ctaStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -inset),
-            ctaStack.bottomAnchor.constraint(
-                equalTo: container.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
-            )
-        ])
-        return container
-    }
-
-    private func makeCopyStack(title: String, body: String) -> UIStackView {
-        let titleLabel = UILabel()
-        titleLabel.text = title
-        titleLabel.font = AppTypography.h1
-        titleLabel.textColor = AppColors.fg1
-        titleLabel.textAlignment = .center
-        titleLabel.numberOfLines = 0
-
-        let bodyLabel = UILabel()
-        bodyLabel.text = body
-        bodyLabel.font = AppTypography.bodyLg
-        bodyLabel.textColor = AppColors.fg2
-        bodyLabel.textAlignment = .center
-        bodyLabel.numberOfLines = 0
-
-        let stack = UIStackView(arrangedSubviews: [titleLabel, bodyLabel])
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.sp4
-        stack.alignment = .fill
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
-    }
-
-    private func makePresetsStack() -> UIStackView {
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.alignment = .fill
-        stack.distribution = .fillEqually
-        stack.spacing = AppSpacing.sp3
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        for (index, amount) in presetAmounts.enumerated() {
-            let tile = SPAmountPreset(value: amount, selected: index == defaultPresetIndex)
-            tile.onTap = { [weak self] in self?.handlePresetTap(index: index) }
-            presetTiles.append(tile)
-            stack.addArrangedSubview(tile)
-        }
-        return stack
-    }
-
-    // MARK: - Actions
-
-    @objc
-    private func actionTapped() {
-        // `actionTapped` only fires while the shared CTA is visible (steps
-        // 1-2). Step 3 uses `applePayButton` / `laterButton` instead.
-        let currentPage = pageControl.currentPage
-        guard currentPage < pages.count - 1 else { return }
-        let nextPage = currentPage + 1
-        let offsetX = scrollView.bounds.width * CGFloat(nextPage)
-        scrollView.setContentOffset(CGPoint(x: offsetX, y: 0), animated: true)
-        pageControl.currentPage = nextPage
-        updatePagerState(forPage: nextPage)
-    }
-
-    @objc
-    private func applePayTapped() {
-        // Apple Pay path — mark onboarding completed and let the parent
-        // SceneDelegate swap the root. The actual IAP is handled from the
-        // main app's TopUp flow; the onboarding stays a pure UI layer so the
-        // SceneDelegate transition isn't blocked on a StoreKit round-trip.
-        // (PR #145 ships the visual + flag wiring; the StoreKit hook-up is a
-        // follow-up issue.)
-        UserDefaults.standard.set(true, forKey: Self.completedKey)
-        UserDefaults.standard.set(false, forKey: Self.firstTopUpDoneKey)
-        onFinished?()
-    }
-
-    @objc
-    private func laterTapped() {
-        // "Позже" path — finish without IAP. Same persistence as the Apple
-        // Pay path so SceneDelegate doesn't re-mount onboarding next launch.
-        UserDefaults.standard.set(true, forKey: Self.completedKey)
-        UserDefaults.standard.set(false, forKey: Self.firstTopUpDoneKey)
-        onFinished?()
-    }
-
-    @objc
-    private func skipTapped() {
-        // Top-right "Пропустить" — completes onboarding from any page; balance
-        // stays at 0 (the existing default in `BalanceService`).
-        UserDefaults.standard.set(true, forKey: Self.completedKey)
-        onFinished?()
-    }
-
-    // MARK: - State
-
-    private func handlePresetTap(index: Int) {
-        guard index < presetTiles.count else { return }
-        selectedPresetIndex = index
-        for (tileIndex, tile) in presetTiles.enumerated() {
-            tile.isSelected = tileIndex == index
-        }
-        updateApplePayTitle()
-    }
-
-    /// Replace the Apple Pay button instance with a fresh one whose title
-    /// reflects the currently-selected preset amount. SPButton has no public
-    /// title setter (its label is private), so the cheapest faithful path is
-    /// a full re-create — same trade-off `FiringTopUpBottomSheet` accepts
-    /// (one extra alloc per preset tap; max 3 swaps).
-    private func updateApplePayTitle() {
-        guard let oldButton = ctaStack.arrangedSubviews.first as? SPButton else { return }
-        let amount = presetAmounts[selectedPresetIndex]
-        let newButton = SPButton(
-            title: "Начать с \(amount.formattedRubles())",
-            variant: .money,
-            size: .lg,
-            fullWidth: true
-        )
-        newButton.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
-        ctaStack.removeArrangedSubview(oldButton)
-        oldButton.removeFromSuperview()
-        ctaStack.insertArrangedSubview(newButton, at: 0)
-        applePayButton = newButton
-    }
-
-    /// Drive the shared CTA (steps 1-2) and page-control state on every
-    /// scroll settle. Step 3 hides the shared CTA + page dots so the
-    /// page-3 layout owns the bottom edge.
-    private func updatePagerState(forPage page: Int) {
-        let isLastPage = page == pages.count - 1
-
-        // Hide the shared action button on step 3 — that page mounts its own
-        // Apple Pay + "Позже" CTAs inside its content view. Likewise hide the
-        // page dots so they don't visually compete with the preset tiles.
-        actionButton.isHidden = isLastPage
-        pageControl.isHidden = isLastPage
-
-        // Step 3 controls focus on the deposit decision; "Пропустить" stays
-        // visible everywhere (including step 3) per spec — it's the global
-        // escape hatch, distinct from "Позже" which still records the
-        // first-top-up flag.
-        skipButton.isHidden = false
-
-        // The shared action button title is always "Далее" on steps 1-2 (no
-        // per-page copy) so there's nothing to update beyond visibility.
-    }
+    // Actions, preset-tap handler, and pager state live in
+    // `OnboardingViewController+Pages.swift` (#182).
 }
 
 // MARK: - UIScrollViewDelegate
