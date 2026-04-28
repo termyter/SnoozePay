@@ -200,11 +200,11 @@ class AlarmFiringViewController: UIViewController {
     /// `internal` so the AudioState extension in the sibling file can update it.
     let audioWarningBanner: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        label.font = AppTypography.meta
         label.textColor = .white
         label.textAlignment = .center
         label.numberOfLines = 0
-        label.backgroundColor = UIColor(red: 0.86, green: 0.27, blue: 0.27, alpha: 0.85)
+        label.backgroundColor = AppColors.pain500.withAlphaComponent(0.85)
         label.layer.cornerRadius = 10
         label.layer.masksToBounds = true
         label.translatesAutoresizingMaskIntoConstraints = false

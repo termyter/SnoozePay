@@ -21,6 +21,11 @@ final class SnoozeSliderCell: UITableViewCell {
         let view = UISlider()
         view.minimumValue = Float(SnoozeSliderCell.minMinutes)
         view.maximumValue = Float(SnoozeSliderCell.maxMinutes)
+        // Brand-tint the track to match the volume slider on the same screen
+        // (#179) — the system blue clashes with the SP money palette.
+        view.minimumTrackTintColor = AppColors.money500
+        view.setThumbImage(SnoozeSliderCell.makeThumb(diameter: 28), for: .normal)
+        view.setThumbImage(SnoozeSliderCell.makeThumb(diameter: 30), for: .highlighted)
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -102,5 +107,33 @@ final class SnoozeSliderCell: UITableViewCell {
         slider.value = Float(clamped)
         valueLabel.text = "\(clamped) мин"
         onValueChanged?(clamped)
+    }
+
+    // MARK: - Thumb image
+
+    /// Render a money-tinted circle into a UIImage for use as the slider
+    /// thumb. Sizing the thumb via `setThumbImage` is the only supported
+    /// path on `UISlider` — there's no `thumbDiameter` knob. Mirrors the
+    /// recipe in `VolumePickerViewController` so the two sliders that sit
+    /// on the CreateAlarm screen render with visual parity (#179).
+    private static func makeThumb(diameter: CGFloat) -> UIImage {
+        let size = CGSize(width: diameter, height: diameter)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { context in
+            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+            // Soft ring shadow so the thumb lifts off the track in light mode.
+            context.cgContext.setShadow(
+                offset: CGSize(width: 0, height: 1),
+                blur: 2,
+                color: UIColor.black.withAlphaComponent(0.25).cgColor
+            )
+            AppColors.money500.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+            // White inner dot so the thumb reads on dark + light alike.
+            context.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
+            UIColor.white.withAlphaComponent(0.35).setFill()
+            let inner = rect.insetBy(dx: rect.width * 0.32, dy: rect.height * 0.32)
+            UIBezierPath(ovalIn: inner).fill()
+        }
     }
 }
