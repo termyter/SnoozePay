@@ -153,14 +153,30 @@ private final class HeatmapCellView: UICollectionViewCell {
         contentView.layer.cornerRadius = StatisticsHeatmapView.cellCornerRadius
         contentView.layer.cornerCurve = .continuous
         contentView.layer.masksToBounds = true
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
+        // closure-based observer when available; the legacy override below
+        // remains as a fallback for older runtimes.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: HeatmapCellView, _) in
+                view.refreshDynamicColors()
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        // iOS 17+ runtimes get the refresh through the registered observer
+        // (see init); skip here so we don't refresh twice.
+        if #available(iOS 17.0, *) { return }
+        refreshDynamicColors()
+    }
+
+    private func refreshDynamicColors() {
         // Re-resolve dynamic colours so a light/dark switch re-tints buckets
         // 0 (whiteOverlay06) without leaving the previous theme baked in.
         contentView.backgroundColor = contentView.backgroundColor?.resolvedColor(with: traitCollection)

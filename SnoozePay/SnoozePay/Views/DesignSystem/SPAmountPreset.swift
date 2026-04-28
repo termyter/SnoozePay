@@ -67,6 +67,14 @@ final class SPAmountPreset: UIControl {
         applySelectionState(animated: false)
         popularBadge.isHidden = !popular
         addTarget(self, action: #selector(handleTap), for: .touchUpInside)
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
+        // closure-based observer when available; the legacy override below
+        // stays as a fallback for older runtimes.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPAmountPreset, _) in
+                view.applySelectionState(animated: false)
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -86,8 +94,12 @@ final class SPAmountPreset: UIControl {
         ).cgPath
     }
 
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        // iOS 17+ runtimes get the refresh through the registered observer
+        // (see init); skip here so we don't refresh twice.
+        if #available(iOS 17.0, *) { return }
         applySelectionState(animated: false)
     }
 

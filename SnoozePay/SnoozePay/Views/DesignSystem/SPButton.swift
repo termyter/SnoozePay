@@ -146,6 +146,14 @@ final class SPButton: UIControl {
         }
         applyVariant()
         refreshDisabledAppearance()
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
+        // closure-based observer when available; the legacy override below
+        // remains as a fallback for older runtimes.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPButton, _) in
+                view.applyVariant()
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -179,8 +187,12 @@ final class SPButton: UIControl {
         ).cgPath
     }
 
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        // iOS 17+ runtimes get the same callback through the registered
+        // trait observer (see init); skip here so we don't refresh twice.
+        if #available(iOS 17.0, *) { return }
         applyVariant()
     }
 

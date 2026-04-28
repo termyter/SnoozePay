@@ -65,6 +65,7 @@ final class SPCard: UIView {
         self.cardCornerRadius = cornerRadius
         super.init(frame: .zero)
         configure()
+        registerTraitObserver()
     }
 
     required init?(coder: NSCoder) {
@@ -96,10 +97,24 @@ final class SPCard: UIView {
         }
     }
 
+    /// iOS 17 deprecated `traitCollectionDidChange(_:)` in favour of the
+    /// closure-based `registerForTraitChanges(_:handler:)` API. Register
+    /// the handler when available; on iOS 15/16 fall back to the legacy
+    /// override so light/dark switches still re-resolve dynamic colours.
+    /// CALayer's `cgColor` properties don't auto-resolve dynamic UIColors,
+    /// so the refresh installs the recipe again on every theme flip.
+    private func registerTraitObserver() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPCard, _) in
+                view.refreshDynamicColors()
+            }
+        }
+    }
+
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        // CALayer's `cgColor` properties don't auto-resolve dynamic UIColors,
-        // so refresh the border + shadow whenever the trait collection flips.
+        if #available(iOS 17.0, *) { return }
         refreshDynamicColors()
     }
 

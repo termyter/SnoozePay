@@ -70,6 +70,14 @@ final class SoundPickerRowCell: UITableViewCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
+        // closure-based observer when available; the legacy override below
+        // remains as a fallback for older runtimes.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SoundPickerRowCell, _) in
+                view.refreshChromeColors()
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -131,8 +139,12 @@ final class SoundPickerRowCell: UITableViewCell {
         ])
     }
 
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        // iOS 17+ runtimes get the refresh through the registered observer
+        // (see init); skip here so we don't refresh twice.
+        if #available(iOS 17.0, *) { return }
         // CALayer cgColor doesn't auto-resolve dynamic UIColors — refresh
         // border / shadow on system theme flips.
         refreshChromeColors()

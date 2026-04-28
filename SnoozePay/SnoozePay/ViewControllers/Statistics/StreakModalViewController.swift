@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import UIKit
 
 /// Streak celebration modal — section "28 · Streak модалка" in
@@ -349,6 +350,13 @@ private final class DaySquareView: UIView {
             label.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
         applyKind()
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` in favour of the
+        // closure-based observer below — legacy override stays as fallback.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: DaySquareView, _) in
+                view.applyKind()
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -360,11 +368,13 @@ private final class DaySquareView: UIView {
         gradientLayer?.frame = bounds
     }
 
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        if #available(iOS 17.0, *) { return }   // iOS 17 uses the registered observer.
         // Strokes / overlays are dynamic colours — re-resolve their cgColor
-        // representations for the current trait so a light/dark switch
-        // doesn't leave the previous theme's hex baked into CALayer.
+        // for the current trait on iOS 15/16 so a theme flip doesn't leave
+        // the previous theme baked into CALayer.
         applyKind()
     }
 
