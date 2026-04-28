@@ -47,31 +47,40 @@ final class AlarmCell: UITableViewCell {
 
     private let timeLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.monospacedDigitSystemFont(ofSize: 52, weight: .medium)
-        label.textColor = .label
+        // Brand clock face — 64pt JetBrainsMono Light per `tokens.css` `clockLg`.
+        // 64pt at JBM Light easily exceeds the available width on a 393pt screen
+        // for "23:58"-class strings, so allow auto-shrink down to 85% to keep
+        // the row from clipping or wrapping.
+        label.font = AppTypography.clockLg.monospacedDigit()
+        label.textColor = AppColors.fg1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.85
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     private let detailLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 13, weight: .regular)
-        label.textColor = .secondaryLabel
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     private let penaltyLabel: UILabel = {
+        // Warn-toned penalty caption. Using `caps` (12pt bold + 0.12em kerning
+        // applied per-text in `configure`) and the brand `warn400` foreground
+        // tone instead of the legacy `accentOrange` alias.
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
-        label.textColor = AppColors.accentOrange
+        label.font = AppTypography.caps
+        label.textColor = AppColors.warn400
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     let toggleSwitch: UISwitch = {
         let sw = UISwitch()
-        sw.onTintColor = AppColors.accentGreen
+        sw.onTintColor = AppColors.money500
         sw.translatesAutoresizingMaskIntoConstraints = false
         return sw
     }()
@@ -95,7 +104,7 @@ final class AlarmCell: UITableViewCell {
         // CALayer's `cgColor` properties don't auto-resolve dynamic UIColors,
         // so refresh the border whenever the trait collection (light/dark) flips.
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: AlarmCell, _) in
-            cell.cardView.layer.borderColor = UIColor.separator.resolvedColor(
+            cell.cardView.layer.borderColor = AppColors.stroke1.resolvedColor(
                 with: cell.traitCollection
             ).cgColor
         }
@@ -191,7 +200,7 @@ final class AlarmCell: UITableViewCell {
         ).cgPath
         // Keep the border colour in sync with the current trait collection
         // (cgColor doesn't auto-update for dynamic UIColors).
-        cardView.layer.borderColor = UIColor.separator.resolvedColor(
+        cardView.layer.borderColor = AppColors.stroke1.resolvedColor(
             with: traitCollection
         ).cgColor
 
@@ -206,7 +215,13 @@ final class AlarmCell: UITableViewCell {
     func configure(time: String, detail: String, penalty: String, enabled: Bool, theme: AlarmTheme) {
         timeLabel.text = time
         detailLabel.text = detail
-        penaltyLabel.text = penalty
+        // `caps` role pairs the 12pt bold font with +0.12em tracking per
+        // `tokens.css`. Apply via attributedText so the kerning stays in lock-
+        // step with the font role no matter where the string is set from.
+        penaltyLabel.attributedText = NSAttributedString(
+            string: penalty,
+            attributes: [.kern: AppTypography.capsKerning]
+        )
         toggleSwitch.isOn = enabled
         setEnabledAppearance(enabled)
         applyTheme(theme)
