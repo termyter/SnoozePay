@@ -23,11 +23,17 @@ extension UIView {
         layer.cornerRadius = cornerRadius
         layer.masksToBounds = false
         // Brand `shadow1` is theme-aware: dark mode gets a single deep stop
-        // (`rgba(0,0,0,.35)`); light mode gets a wider, softer stop pulled
-        // from the two-stop `0 1px 3px / 0 4px 14px` recipe in `tokens.css`
-        // so cards lift cleanly off the near-white surface instead of
-        // reading as a flat slab.
+        // (`rgba(0,0,0,.35)`); light mode gets a two-stop recipe — the wider
+        // `0 4px 14px` stop renders here on `view.layer`, and the narrower
+        // `0 1px 3px` ambient stop is added as a sibling sublayer by
+        // `updateCardShadowPath` so cards lift cleanly off the near-white
+        // surface instead of reading as a flat slab.
         AppShadow.shadow1(for: traitCollection).apply(to: layer)
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: cornerRadius,
+            trait: traitCollection
+        )
         // Hairline border reinforces the edge — `stroke1` is theme-aware
         // (8% white on dark, 8% near-black ink on light), so the border has
         // visible weight in light mode where the system's grey separator
@@ -50,6 +56,15 @@ extension UIView {
         // colours, opacities, offsets and radii (single-stop deep shadow vs
         // wider soft shadow), so it isn't enough to just refresh `cgColor`.
         AppShadow.shadow1(for: traitCollection).apply(to: layer)
+        // Light mode adds a second narrow ambient stop via a sibling
+        // sublayer; dark mode removes it. Pass through the host's current
+        // corner radius so the ambient shadow path matches the visible
+        // rounded shape.
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: layer.cornerRadius,
+            trait: traitCollection
+        )
     }
 
     /// Pre-rasterise the shadow against the rounded card frame so scrolling
@@ -60,6 +75,16 @@ extension UIView {
             roundedRect: bounds,
             cornerRadius: cornerRadius
         ).cgPath
+        // The two-stop `shadow1` recipe in light mode owns a sibling
+        // ambient layer that needs its frame + path resized whenever the
+        // host's bounds change. `installAmbientShadow1Layer` is idempotent
+        // and short-circuits on dark mode, so we can safely fan it out
+        // from every layoutSubviews-driven update path.
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: cornerRadius,
+            trait: traitCollection
+        )
     }
 }
 
