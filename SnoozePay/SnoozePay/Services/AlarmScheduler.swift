@@ -461,16 +461,12 @@ final class AlarmScheduler: AlarmScheduling {
     /// Returns nil if no matching file is found (falls back to default critical sound).
     func alarmSoundFileName(for soundID: String) -> String? {
         let extensions = ["caf", "m4a", "wav", "mp3"]
-        for ext in extensions {
-            if Bundle.main.url(forResource: soundID, withExtension: ext) != nil {
-                return "\(soundID).\(ext)"
-            }
+        for ext in extensions where Bundle.main.url(forResource: soundID, withExtension: ext) != nil {
+            return "\(soundID).\(ext)"
         }
         // Try default alarm sound
-        for ext in extensions {
-            if Bundle.main.url(forResource: "default_alarm", withExtension: ext) != nil {
-                return "default_alarm.\(ext)"
-            }
+        for ext in extensions where Bundle.main.url(forResource: "default_alarm", withExtension: ext) != nil {
+            return "default_alarm.\(ext)"
         }
         return nil
     }

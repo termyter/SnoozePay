@@ -63,11 +63,11 @@ final class SPSegmented: UIControl {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        layer.cornerRadius = AppRadius.md
-        track.layer.cornerRadius = AppRadius.md
+        layer.cornerRadius = AppRadius.sm
+        track.layer.cornerRadius = AppRadius.sm
         // Indicator slides into place via constraints; corner radius scales
         // with track padding so it visually nests.
-        indicator.layer.cornerRadius = AppRadius.md - 4
+        indicator.layer.cornerRadius = AppRadius.sm - 4
         // Re-position indicator after layout cycle resolves geometries.
         positionIndicator(animated: false)
     }

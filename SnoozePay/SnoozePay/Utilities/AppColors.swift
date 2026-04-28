@@ -232,14 +232,15 @@ enum AppSpacing {
     static let cardHorizontalPadding: CGFloat = lg
 }
 
-/// App-wide corner radius constants. `xs`/`sm`/`md`/`lg` are pre-token aliases;
-/// `xl`/`r2xl`/`pill` are new design-token additions matching `tokens.css`.
+/// App-wide corner radius constants — names aligned with `tokens.css`
+/// (`--sp-r-xs/sm/md/lg/xl/2xl/pill`). All call sites use the spec naming so
+/// a `tokens.css` bump touches one line here.
 enum AppRadius {
     static let xs: CGFloat = 8
-    static let sm: CGFloat = 8     // legacy alias of xs
-    static let md: CGFloat = 12
-    static let lg: CGFloat = 16    // legacy lg (old AppRadius.lg = 16)
-    static let xl: CGFloat = 28
+    static let sm: CGFloat = 12    // matches --sp-r-sm
+    static let md: CGFloat = 16    // matches --sp-r-md
+    static let lg: CGFloat = 20    // matches --sp-r-lg
+    static let xl: CGFloat = 28    // matches --sp-r-xl
     /// "2xl" — Swift identifiers can't start with a digit, hence `r2xl`.
     static let r2xl: CGFloat = 36
     /// Pill / fully-rounded — call sites typically clamp to `bounds.height/2`,

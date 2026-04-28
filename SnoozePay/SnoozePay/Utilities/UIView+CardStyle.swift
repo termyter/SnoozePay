@@ -15,10 +15,10 @@ extension UIView {
     /// (the shadow needs to render outside `bounds`); subviews should be
     /// constrained inside the card via Auto Layout instead of being clipped.
     ///
-    /// Use `cornerRadius` to override the default `AppRadius.md` (e.g. 8pt for
+    /// Use `cornerRadius` to override the default `AppRadius.sm` (e.g. 8pt for
     /// individual table-view cells nested inside `.insetGrouped` sections that
     /// already provide outer rounding).
-    func applyCardStyle(cornerRadius: CGFloat = AppRadius.md) {
+    func applyCardStyle(cornerRadius: CGFloat = AppRadius.sm) {
         backgroundColor = AppColors.surface
         layer.cornerRadius = cornerRadius
         layer.masksToBounds = false
@@ -70,7 +70,7 @@ extension UIView {
     /// Pre-rasterise the shadow against the rounded card frame so scrolling
     /// doesn't pay the per-pixel offscreen pass cost. Call from
     /// `layoutSubviews()`.
-    func updateCardShadowPath(cornerRadius: CGFloat = AppRadius.md) {
+    func updateCardShadowPath(cornerRadius: CGFloat = AppRadius.sm) {
         layer.shadowPath = UIBezierPath(
             roundedRect: bounds,
             cornerRadius: cornerRadius
@@ -97,7 +97,7 @@ final class CardView: UIView {
 
     private let cardCornerRadius: CGFloat
 
-    init(cornerRadius: CGFloat = AppRadius.md) {
+    init(cornerRadius: CGFloat = AppRadius.sm) {
         self.cardCornerRadius = cornerRadius
         super.init(frame: .zero)
         applyCardStyle(cornerRadius: cornerRadius)
@@ -168,7 +168,7 @@ extension UITableViewCell {
     /// In light mode this gives `.insetGrouped` sections the same lift as the
     /// alarm card on the home screen, without fighting the system's free
     /// row separators.
-    func styleAsCardRow(position: CardRowPosition, cornerRadius: CGFloat = AppRadius.md) {
+    func styleAsCardRow(position: CardRowPosition, cornerRadius: CGFloat = AppRadius.sm) {
         // The system's default `backgroundColor` already paints
         // `secondarySystemBackground`. Wrap that in a custom `backgroundView`
         // so we can draw the rounded corners + shadow ourselves.

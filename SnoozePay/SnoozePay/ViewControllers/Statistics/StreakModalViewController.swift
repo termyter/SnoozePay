@@ -334,7 +334,7 @@ private final class DaySquareView: UIView {
     init(kind: Kind) {
         self.kind = kind
         super.init(frame: .zero)
-        layer.cornerRadius = AppRadius.md
+        layer.cornerRadius = AppRadius.sm
         layer.masksToBounds = true
         translatesAutoresizingMaskIntoConstraints = false
         // Square via 1:1 aspect — fill-equally distribution sets the width.

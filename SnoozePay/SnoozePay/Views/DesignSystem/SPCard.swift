@@ -53,12 +53,12 @@ final class SPCard: UIView {
     ///   - padding: Uniform inset for `layoutMarginsGuide`. Defaults to 20pt
     ///     (matching the JSX spec `padding = 20`).
     ///   - cornerRadius: Corner radius. Defaults to `AppRadius.lg` (20pt) —
-    ///     larger than the legacy 12pt `AppRadius.md` so SPCards read as a
+    ///     larger than the legacy 12pt `AppRadius.sm` so SPCards read as a
     ///     visibly different primitive from `applyCardStyle()` cards.
     init(
         tone: Tone = .surface,
         padding: CGFloat = AppSpacing.sp5,
-        cornerRadius: CGFloat = 20
+        cornerRadius: CGFloat = AppRadius.lg
     ) {
         self.tone = tone
         self.cardPadding = padding

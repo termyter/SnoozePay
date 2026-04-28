@@ -5,7 +5,7 @@ import UIKit
 /// Top of the tile previews the theme (gradient layer for built-ins, photo
 /// or "+ icon" for `.custom`); the footer band carries the uppercased name
 /// and a checkmark when selected. The tile uses `SPCard(tone: .surface,
-/// padding: 0, cornerRadius: AppRadius.lg)` so it shares the design system's
+/// padding: 0, cornerRadius: AppRadius.md)` so it shares the design system's
 /// shadow + stroke recipe with the rest of the create-form surfaces.
 final class AlarmThemeTileCell: UICollectionViewCell {
 
@@ -14,7 +14,7 @@ final class AlarmThemeTileCell: UICollectionViewCell {
     // MARK: - UI
 
     private let card: SPCard = {
-        let card = SPCard(tone: .surface, padding: 0, cornerRadius: AppRadius.lg)
+        let card = SPCard(tone: .surface, padding: 0, cornerRadius: AppRadius.md)
         card.translatesAutoresizingMaskIntoConstraints = false
         card.clipsToBounds = true
         return card

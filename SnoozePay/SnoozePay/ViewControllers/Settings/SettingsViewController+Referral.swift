@@ -230,7 +230,7 @@ extension SettingsViewController {
         toast.textColor = .white
         toast.backgroundColor = UIColor.label.withAlphaComponent(0.9)
         toast.textAlignment = .center
-        toast.layer.cornerRadius = AppRadius.md
+        toast.layer.cornerRadius = AppRadius.sm
         toast.layer.masksToBounds = true
         toast.alpha = 0
         toast.translatesAutoresizingMaskIntoConstraints = false

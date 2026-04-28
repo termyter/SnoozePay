@@ -173,7 +173,7 @@ final class AlarmCell: UITableViewCell {
             penaltyLabel.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: AppSpacing.sm),
             penaltyLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: timeLeading),
             penaltyLabel.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -AppSpacing.lg),
-            penaltyLabel.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -AppSpacing.md),
+            penaltyLabel.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -AppSpacing.md)
         ])
     }
 
@@ -196,7 +196,7 @@ final class AlarmCell: UITableViewCell {
         // doesn't pay the per-pixel offscreen pass cost.
         cardView.layer.shadowPath = UIBezierPath(
             roundedRect: cardView.bounds,
-            cornerRadius: AppRadius.md
+            cornerRadius: AppRadius.sm
         ).cgPath
         // Keep the border colour in sync with the current trait collection
         // (cgColor doesn't auto-update for dynamic UIColors).

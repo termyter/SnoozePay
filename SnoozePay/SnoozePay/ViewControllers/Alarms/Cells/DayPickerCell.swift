@@ -51,7 +51,7 @@ final class DayPickerCell: UITableViewCell {
             button.setTitle(Self.dayNames[index], for: .normal)
             button.tag = index
             button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-            button.layer.cornerRadius = AppRadius.sm
+            button.layer.cornerRadius = AppRadius.xs
             button.layer.masksToBounds = true
             button.addTarget(self, action: #selector(dayTapped(_:)), for: .touchUpInside)
             dayButtons.append(button)

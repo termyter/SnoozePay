@@ -93,7 +93,7 @@ final class StatisticsViewController: UIViewController {
         label.font = AppTypography.body
         label.textColor = AppColors.fg1
         label.backgroundColor = AppColors.bg2
-        label.layer.cornerRadius = AppRadius.md
+        label.layer.cornerRadius = AppRadius.sm
         label.layer.masksToBounds = true
         label.textAlignment = .center
         label.numberOfLines = 0

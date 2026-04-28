@@ -109,7 +109,7 @@ final class SPInput: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        fieldContainer.layer.cornerRadius = AppRadius.lg     // matches sp-r-md
+        fieldContainer.layer.cornerRadius = AppRadius.md     // matches sp-r-md
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
@@ -139,7 +139,7 @@ final class SPInput: UIView {
 
         fieldContainer.translatesAutoresizingMaskIntoConstraints = false
         fieldContainer.backgroundColor = AppColors.bg2
-        fieldContainer.layer.cornerRadius = AppRadius.lg
+        fieldContainer.layer.cornerRadius = AppRadius.md
         fieldContainer.layer.borderWidth = 1.5
         // Pre-configure the focus glow so editingDidBegin only has to flip
         // shadowOpacity. Kept off by default (opacity 0) so the field reads
