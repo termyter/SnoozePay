@@ -7,6 +7,16 @@ import UIKit
 import UserNotifications
 import os
 
+/// Reference-typed holder for an `NSObjectProtocol` observer token so a
+/// `@Sendable` notification closure can read/clear it without the captured
+/// variable being mutated after capture (Swift 6 strict-concurrency warning).
+/// The observer token itself is only ever touched on the main queue (the
+/// observer is added with `queue: .main` and only the closure mutates the
+/// field), so `@unchecked Sendable` is sound here.
+private final class ObserverBox: @unchecked Sendable {
+    var token: NSObjectProtocol?
+}
+
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
@@ -81,14 +91,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func deferNotificationsDisabledAlertUntilSceneActive() {
-        var observer: NSObjectProtocol?
-        observer = NotificationCenter.default.addObserver(
+        // The observer token must be assigned AFTER `addObserver` returns, but
+        // the closure also needs to read it to call `removeObserver` on first
+        // fire. Capturing a `var` directly trips Swift's sendable-closure
+        // diagnostic ("'observer' mutated after capture by sendable closure"),
+        // which is a real race-condition signal under strict concurrency. We
+        // route the token through a tiny reference box so the closure captures
+        // the box (immutable reference) and reads/writes the field at fire
+        // time — no captured-var mutation, semantically identical lifecycle.
+        let box = ObserverBox()
+        box.token = NotificationCenter.default.addObserver(
             forName: UIScene.didActivateNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            if let observer = observer {
-                NotificationCenter.default.removeObserver(observer)
+            if let token = box.token {
+                NotificationCenter.default.removeObserver(token)
+                box.token = nil
             }
             self?.presentNotificationsDisabledAlert()
         }
