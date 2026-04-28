@@ -84,6 +84,16 @@ final class SPCard: UIView {
                 cornerRadius: cardCornerRadius
             ).cgPath
         }
+        // Surface tone uses the two-stop `shadow1` recipe in light mode; the
+        // narrow ambient stop lives on a sibling sublayer that needs its
+        // frame + path resized whenever the host's bounds change.
+        if tone == .surface {
+            AppShadow.installAmbientShadow1Layer(
+                on: layer,
+                cornerRadius: cardCornerRadius,
+                trait: traitCollection
+            )
+        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -127,8 +137,14 @@ final class SPCard: UIView {
             applyShadow1()
         case .raised:
             backgroundColor = AppColors.bg2
-            // No hairline on `.raised` — bg2 has enough contrast against bg0
-            // that a stroke would read as a double-edge in dark mode.
+            // Light mode: bg2 (#ECEEF6) vs bg0 (#F4F6FB) is only ~5%
+            // luminance — the card visually merges with the page without a
+            // stroke. Memory `feedback_design_system_consistency.md`
+            // requires "shadow + border" on light cards, so add a hairline
+            // there. Dark mode keeps the stroke off — bg2 already has
+            // enough contrast against bg0 and a border would read as a
+            // double-edge.
+            applyRaisedHairlineIfLight()
             applyShadow2()
         case .outline:
             backgroundColor = .clear
@@ -170,7 +186,28 @@ final class SPCard: UIView {
     }
 
     private func applyShadow1() {
+        // Wider/key stop on the host layer; the narrow ambient stop is
+        // installed as a sibling sublayer in `layoutSubviews` (ambient layer
+        // also needs its frame to track host bounds, so layout is the
+        // canonical owner). `installAmbientShadow1Layer` is also called here
+        // so a theme flip immediately removes/re-adds the ambient sublayer
+        // without waiting for the next layout pass.
         AppShadow.shadow1(for: traitCollection).apply(to: layer)
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: cardCornerRadius,
+            trait: traitCollection
+        )
+    }
+
+    private func applyRaisedHairlineIfLight() {
+        guard traitCollection.userInterfaceStyle != .dark else {
+            layer.borderWidth = 0
+            return
+        }
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+        layer.borderWidth = 1.0 / scale
+        layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
     }
 
     private func applyShadow2() {
@@ -214,6 +251,7 @@ final class SPCard: UIView {
             applyHairlineStroke()
             applyShadow1()
         case .raised:
+            applyRaisedHairlineIfLight()
             applyShadow2()
         case .outline:
             applyOutlineStroke()
