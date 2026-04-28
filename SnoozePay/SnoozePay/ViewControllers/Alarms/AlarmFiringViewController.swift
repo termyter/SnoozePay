@@ -28,7 +28,8 @@ class AlarmFiringViewController: UIViewController {
     /// `--sp-grad-dawn` recipe (#138); other built-in themes pull their stops
     /// from `AlarmThemeRendering`. The layer is replaced/recoloured in
     /// `installThemedBackground` based on `viewModel.alarm.theme` (#151).
-    /// `internal` so the +Theme extension in the sibling file can configure it.
+    /// `internal` so the +Theme / +Layout extensions in sibling files can
+    /// configure it.
     let themeGradientLayer: CAGradientLayer = {
         let gradient = CAGradientLayer()
         gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
@@ -80,8 +81,9 @@ class AlarmFiringViewController: UIViewController {
     // MARK: - Content
 
     /// 96pt mono clock — `AppTypography.clockXl` with `.monospacedDigit()`
-    /// so digit columns don't reflow on each tick.
-    private let timeLabel: UILabel = {
+    /// so digit columns don't reflow on each tick. `internal` so the
+    /// `+Layout` / `+ViewLifecycle` extensions can pin + update it (#182).
+    let timeLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.clockXl.monospacedDigit()
         label.textColor = AppColors.fg1
@@ -92,7 +94,8 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    private let nameLabel: UILabel = {
+    /// `internal` so the `+Layout` extension can pin it next to the clock.
+    let nameLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg2
@@ -214,7 +217,9 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    private var clockTimer: Timer?
+    /// `internal` so the `+ViewLifecycle.startClockTicker` can own the timer
+    /// instance and `viewDidDisappear` can invalidate it.
+    var clockTimer: Timer?
 
     /// Observer token for `AudioService.stateChangedNotification`. Removed
     /// in `deinit` so blocks don't leak across screen presentations.
@@ -254,11 +259,11 @@ class AlarmFiringViewController: UIViewController {
         // screen is intentionally exempt from the brand light theme. Pin
         // `.dark` so the system theme can't bleed through.
         overrideUserInterfaceStyle = .dark
-        setupUI()
+        buildFiringLayout()
         bindViewModel()
         observeAudioState()
         observeBalanceForNoBalanceState()
-        startClock()
+        startClockTicker()
         startGlowBreathing()
 
         // Pass `alarmID` so a stacking-replace race (#116) does not silence
@@ -300,107 +305,18 @@ class AlarmFiringViewController: UIViewController {
     override var prefersHomeIndicatorAutoHidden: Bool { true }
 
     // MARK: - Setup
-
-    private func setupUI() {
-        view.backgroundColor = UIColor(rgb: 0x050912)
-        installThemedBackground()
-
-        // VM exposes `currentPenalty` as `Double`; wrap in `Decimal` so
-        // `SPSnoozePrice.formattedRubles()` does the locale-aware format.
-        // Pick the initial tone based on the alarm config — progressive
-        // alarms start at intensity 0 (still pure warn) and ramp up as the
-        // user snoozes.
-        let initialTone: SPSnoozePrice.Tone = viewModel.isProgressiveActive
-            ? .progressive(intensity: viewModel.progressiveIntensity)
-            : .warn
-        let snooze = SPSnoozePrice(
-            price: Decimal(viewModel.currentPenalty),
-            minutes: viewModel.alarm.snoozeMinutes,
-            tone: initialTone,
-            hint: nil
-        )
-        snooze.translatesAutoresizingMaskIntoConstraints = false
-        snooze.onTap = { [weak self] in self?.snoozeTapped() }
-        view.addSubview(snooze)
-        snoozeCTA = snooze
-
-        view.addSubview(timeLabel)
-        view.addSubview(nameLabel)
-
-        dismissButton.translatesAutoresizingMaskIntoConstraints = false
-        dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
-        view.addSubview(dismissButton)
-        view.addSubview(audioWarningBanner)
-
-        let inset: CGFloat = AppSpacing.sp5      // 20pt — Dawn spec
-        let gap: CGFloat = AppSpacing.sp3         // 12pt — Dawn spec
-
-        // Progressive escalation chrome — only mounted for alarms with the
-        // doubling-penalty toggle. The default flow stays exactly as #138.
-        // Anchor the audio-fallback banner to the chrome's top so the banner
-        // never overlaps the indicator when both are on screen.
-        let bannerBottomAnchor: NSLayoutYAxisAnchor
-        if viewModel.isProgressiveActive {
-            let stack = installProgressiveStack(inset: inset)
-            NSLayoutConstraint.activate([
-                stack.bottomAnchor.constraint(equalTo: snooze.topAnchor, constant: -AppSpacing.sp3)
-            ])
-            bannerBottomAnchor = stack.topAnchor
-        } else {
-            bannerBottomAnchor = snooze.topAnchor
-        }
-
-        NSLayoutConstraint.activate([
-            timeLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            timeLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -80),
-            timeLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            timeLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-
-            nameLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: AppSpacing.sp2),
-            nameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            nameLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset),
-
-            audioWarningBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            audioWarningBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-            audioWarningBanner.bottomAnchor.constraint(equalTo: bannerBottomAnchor, constant: -AppSpacing.sp4),
-
-            snooze.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            snooze.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-            snooze.bottomAnchor.constraint(equalTo: dismissButton.topAnchor, constant: -gap),
-
-            dismissButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            dismissButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-            dismissButton.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
-            )
-        ])
-
-        // No-balance stack overlays the same bottom area as the snooze CTA +
-        // dismiss group. Initially hidden — `updateUI()` flips visibility
-        // based on `viewModel.canSnooze`. Building it eagerly keeps the
-        // affordability swap a single property toggle (no constraint churn)
-        // when the user tops up mid-firing and crosses the threshold.
-        installNoBalanceStack(inset: inset, gap: gap)
-
-        updateUI()
-    }
+    //
+    // The view-stack + constraint composition lives in
+    // `AlarmFiringViewController+Layout.swift` so this file stays under
+    // SwiftLint's `file_length` cap (#182). `viewDidLoad` calls
+    // `buildFiringLayout()` which is the verbatim former `setupUI()`.
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         themeGradientLayer.frame = view.bounds
-
         // Glow anchored below the bottom edge — only the upper hemisphere
         // of the radial bleeds into view.
-        let bounds = view.bounds
-        let glowSize = CGSize(width: bounds.width * 1.2, height: bounds.height * 0.6)
-        warmGlowLayer.frame = CGRect(
-            x: -(glowSize.width - bounds.width) / 2,
-            y: bounds.height - glowSize.height * 0.55,
-            width: glowSize.width,
-            height: glowSize.height
-        )
+        updateGlowFrame()
     }
 
     private func bindViewModel() {
@@ -444,44 +360,6 @@ class AlarmFiringViewController: UIViewController {
         refreshNoBalanceVisibility()
     }
 
-    // MARK: - Clock
-
-    private func startClock() {
-        updateTime()
-        clockTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.updateTime()
-        }
-    }
-
-    /// Cached formatter — `updateTime()` runs once per second; rebuilding a
-    /// DateFormatter each tick is ~1ms wasted. Locale fixed to `en_US_POSIX`
-    /// so `HH:mm` is honoured regardless of the user's region.
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
-    private func updateTime() {
-        timeLabel.text = Self.timeFormatter.string(from: Date())
-    }
-
-    // MARK: - Glow breathing
-
-    /// 4s ease-in-out autoreverse opacity pulse on the warm glow. Driven via
-    /// CABasicAnimation because the glow is a CAGradientLayer (not a view).
-    private func startGlowBreathing() {
-        let animation = CABasicAnimation(keyPath: "opacity")
-        animation.fromValue = 0.55
-        animation.toValue = 1.0
-        animation.duration = 4.0
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        animation.autoreverses = true
-        animation.repeatCount = .infinity
-        warmGlowLayer.add(animation, forKey: "breathing")
-    }
-
     // MARK: - Actions
 
     /// `internal` so the +NoBalance extension can wire its big ghost
@@ -491,52 +369,20 @@ class AlarmFiringViewController: UIViewController {
         dismiss(animated: true)
     }
 
-    private func snoozeTapped() {
-        // scheduleCompletion surfaces a notification-center failure (revoked
-        // permission, 64-pending-limit, malformed trigger) so the user
-        // doesn't pay for a snooze that will never re-fire (#127 finding).
-        let success = viewModel.snooze { [weak self] result in
-            guard let self else { return }
-            if case let .failure(error) = result {
-                self.presentSnoozeScheduleFailureAlert(error: error)
-            }
-        }
-        if success {
-            dismiss(animated: true)
-        }
-    }
-
-    // MARK: - Top-up sheet (#141)
-
-    /// Present the firing-time top-up bottom sheet. Public entry point so the
-    /// no-balance UX (#140) can wire it into the snooze affordance once the
-    /// firing VC rewrite (#138) lands. Pause/resume of the alarm audio +
-    /// escalation is owned by the sheet itself via `AlarmFiringCoordinator
-    /// .pauseEscalation()`, so callers don't need to coordinate audio state.
-    func presentTopUpSheet() {
-        let sheet = FiringTopUpBottomSheetViewController()
-        present(sheet, animated: true)
-    }
-
-    private func presentSnoozeScheduleFailureAlert(
-        error: AlarmScheduler.SchedulingError
-    ) {
-        let detail = error.errorDescription ?? error.localizedDescription
-        let alert = UIAlertController(
-            title: "Откладывание не запланировано",
-            message: "\(detail) Будильник не зазвенит повторно — установите запасной.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Ок", style: .default))
-        present(alert, animated: true)
-    }
+    // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and
+    // the snooze-failure alert live in
+    // `AlarmFiringViewController+ViewLifecycle.swift` (#182).
 }
 
 // MARK: - Hex helper
 
 private extension UIColor {
     /// `0xRRGGBB` literal initializer so the Dawn gradient stops read as in
-    /// `tokens.css`. Local copy mirroring the (private) helper in AppColors.
+    /// `tokens.css`. File-local copy mirroring the (private) helper in
+    /// AppColors — duplicated as `fileprivate` in
+    /// `AlarmFiringViewController+Layout.swift` because `private` means
+    /// file-scope, not type-scope, and the +Layout extension also needs the
+    /// helper for `UIColor(rgb: 0x050912)` in its background fill.
     convenience init(rgb: UInt32, alpha: CGFloat = 1) {
         let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
         let green = CGFloat((rgb >> 8) & 0xFF) / 255.0

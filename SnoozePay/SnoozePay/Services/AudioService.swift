@@ -128,28 +128,7 @@ final class AudioService {
         // `.vibrationOnly` and `.silentBecauseConfigFailed` so we don't try to
         // restart on top of a partial fallback either.
         guard state == .stopped else {
-            // We're already playing — but the *caller* may be a new alarm taking
-            // over (stacking-replace path #116). Update ownership so the previous
-            // VC's `viewDidDisappear` correctly recognises the session no longer
-            // belongs to it and skips `stopAlarmSound()`.
-            if let alarmID {
-                let previous = currentAlarmID
-                currentAlarmID = alarmID
-                let prevDesc = String(describing: previous)
-                let stateDesc = String(describing: self.state)
-                AppLogger.audio.notice(
-                    "ownership transfer \(prevDesc, privacy: .private) → \(alarmID, privacy: .private), state=\(stateDesc, privacy: .public)"
-                )
-            } else {
-                // No alarmID provided while audio is already playing means the
-                // existing owner is preserved. Log so a regression where a new
-                // call site forgets to pass alarmID is diagnosable in Console.
-                let stateDesc = String(describing: self.state)
-                let ownerDesc = String(describing: self.currentAlarmID)
-                AppLogger.audio.error(
-                    "missing alarmID while state=\(stateDesc, privacy: .public) — ownership NOT transferred, owner=\(ownerDesc, privacy: .private)"
-                )
-            }
+            handleStartWhileNonStopped(alarmID: alarmID)
             return
         }
 
@@ -165,32 +144,7 @@ final class AudioService {
             return
         }
 
-        // Try to find the sound file in the bundle
-        let url: URL? = Bundle.main.url(forResource: soundID, withExtension: "caf")
-            ?? Bundle.main.url(forResource: soundID, withExtension: "m4a")
-            ?? Bundle.main.url(forResource: soundID, withExtension: "wav")
-            ?? Bundle.main.url(forResource: soundID, withExtension: "mp3")
-            ?? Bundle.main.url(forResource: "default_alarm", withExtension: "caf")
-            ?? Bundle.main.url(forResource: "default_alarm", withExtension: "m4a")
-
-        // Try the bundled file first; fall back to synthetic tone if the file
-        // is missing or AVAudioPlayer rejects it (corrupt / format mismatch).
-        var player: AVAudioPlayer?
-        if let soundURL = url {
-            do {
-                player = try AVAudioPlayer(contentsOf: soundURL)
-            } catch {
-                let name = soundURL.lastPathComponent
-                let desc = error.localizedDescription
-                AppLogger.audio.error(
-                    "AVAudioPlayer init failed for \(name, privacy: .public): \(desc, privacy: .public)"
-                )
-                player = nil
-            }
-        }
-        if player == nil {
-            player = Self.generateAlarmTone()
-        }
+        let player = resolveAlarmPlayer(soundID: soundID)
 
         guard let player else {
             // Neither bundled file nor synthetic tone available — refuse to claim
@@ -203,21 +157,7 @@ final class AudioService {
         }
 
         audioPlayer = player
-        player.numberOfLoops = -1
-        // Honour the per-alarm volume (#150). Clamp defensively even though
-        // the call sites + Alarm initializer already do so — a corrupt
-        // payload should still produce a playable alarm rather than crash
-        // here.
-        let clampedVolume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
-        if fadeIn {
-            // Start at 0 and ramp up so the user is woken gently. AVAudio
-            // schedules the ramp on the audio thread and survives screen
-            // lock — no Timer needed.
-            player.volume = 0
-            player.setVolume(clampedVolume, fadeDuration: Self.fadeInDuration)
-        } else {
-            player.volume = clampedVolume
-        }
+        configurePlayerVolume(player, target: volume, fadeIn: fadeIn)
 
         // prepareToPlay returns Bool but does not throw; play() does not throw
         // either, but its return value indicates whether the queue accepted the
@@ -240,6 +180,81 @@ final class AudioService {
         currentAlarmID = alarmID
         state = .playing
         startVibration()
+    }
+
+    /// Handle an `.startAlarmSound` call while the service is already in a
+    /// non-stopped state. Either transfers ownership to the new caller's
+    /// `alarmID` (stacking-replace path #116) or logs a regression when no
+    /// `alarmID` was passed. Pulled out of `startAlarmSound` so its body
+    /// stays under SwiftLint's `function_body_length` cap (#182).
+    private func handleStartWhileNonStopped(alarmID: UUID?) {
+        // We're already playing — but the *caller* may be a new alarm taking
+        // over (stacking-replace path #116). Update ownership so the previous
+        // VC's `viewDidDisappear` correctly recognises the session no longer
+        // belongs to it and skips `stopAlarmSound()`.
+        if let alarmID {
+            let previous = currentAlarmID
+            currentAlarmID = alarmID
+            let prevDesc = String(describing: previous)
+            let stateDesc = String(describing: self.state)
+            AppLogger.audio.notice(
+                "ownership transfer \(prevDesc, privacy: .private) → \(alarmID, privacy: .private), state=\(stateDesc, privacy: .public)"
+            )
+        } else {
+            // No alarmID provided while audio is already playing means the
+            // existing owner is preserved. Log so a regression where a new
+            // call site forgets to pass alarmID is diagnosable in Console.
+            let stateDesc = String(describing: self.state)
+            let ownerDesc = String(describing: self.currentAlarmID)
+            AppLogger.audio.error(
+                "missing alarmID while state=\(stateDesc, privacy: .public) — ownership NOT transferred, owner=\(ownerDesc, privacy: .private)"
+            )
+        }
+    }
+
+    /// Locate the bundled alarm sound (caf/m4a/wav/mp3 — in that order, with a
+    /// `default_alarm` fallback) and try to wrap it in `AVAudioPlayer`. If the
+    /// bundle hit fails or AVAudioPlayer rejects the file we fall back to the
+    /// in-memory synthetic tone so the user still hears *something*.
+    private func resolveAlarmPlayer(soundID: String) -> AVAudioPlayer? {
+        let url: URL? = Bundle.main.url(forResource: soundID, withExtension: "caf")
+            ?? Bundle.main.url(forResource: soundID, withExtension: "m4a")
+            ?? Bundle.main.url(forResource: soundID, withExtension: "wav")
+            ?? Bundle.main.url(forResource: soundID, withExtension: "mp3")
+            ?? Bundle.main.url(forResource: "default_alarm", withExtension: "caf")
+            ?? Bundle.main.url(forResource: "default_alarm", withExtension: "m4a")
+
+        var player: AVAudioPlayer?
+        if let soundURL = url {
+            do {
+                player = try AVAudioPlayer(contentsOf: soundURL)
+            } catch {
+                let name = soundURL.lastPathComponent
+                let desc = error.localizedDescription
+                AppLogger.audio.error(
+                    "AVAudioPlayer init failed for \(name, privacy: .public): \(desc, privacy: .public)"
+                )
+                player = nil
+            }
+        }
+        return player ?? Self.generateAlarmTone()
+    }
+
+    /// Apply per-alarm volume + optional fade-in. Defensive `min/max` clamp
+    /// preserves the historical behaviour even when the caller hands us a
+    /// NaN/Inf value (a corrupt payload still produces a playable alarm).
+    private func configurePlayerVolume(_ player: AVAudioPlayer, target volume: Float, fadeIn: Bool) {
+        player.numberOfLoops = -1
+        let clampedVolume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
+        if fadeIn {
+            // Start at 0 and ramp up so the user is woken gently. AVAudio
+            // schedules the ramp on the audio thread and survives screen
+            // lock — no Timer needed.
+            player.volume = 0
+            player.setVolume(clampedVolume, fadeDuration: Self.fadeInDuration)
+        } else {
+            player.volume = clampedVolume
+        }
     }
 
     /// Stop alarm sound and vibration immediately.
@@ -312,79 +327,10 @@ final class AudioService {
     }
 
     // MARK: - Tone Generation
-
-    /// Generate a 440 Hz sine wave alarm tone as in-memory WAV data.
-    /// Returns an AVAudioPlayer ready to loop, or nil on failure.
-    private static func generateAlarmTone() -> AVAudioPlayer? {
-        let sampleRate: Double = 44100
-        let duration: Double = 1.5 // seconds per loop cycle
-        let frequency: Double = 880 // A5 — prominent alarm frequency
-        let totalSamples = Int(sampleRate * duration)
-
-        // Build interleaved 16-bit PCM samples with amplitude envelope
-        var samples = [Int16]()
-        samples.reserveCapacity(totalSamples)
-
-        for sampleIndex in 0..<totalSamples {
-            let timeSeconds = Double(sampleIndex) / sampleRate
-            // Dual-tone: 880 Hz + 660 Hz for recognizable alarm character
-            let wave = sin(2.0 * .pi * frequency * timeSeconds)
-                + 0.6 * sin(2.0 * .pi * 660.0 * timeSeconds)
-            // Amplitude envelope: short fade-in/out to avoid click
-            let envelope: Double
-            let fadeFrames = Int(sampleRate * 0.02)
-            if sampleIndex < fadeFrames {
-                envelope = Double(sampleIndex) / Double(fadeFrames)
-            } else if sampleIndex > totalSamples - fadeFrames {
-                envelope = Double(totalSamples - sampleIndex) / Double(fadeFrames)
-            } else {
-                // Pulse pattern: 0.3s on, 0.2s off
-                let cyclePos = timeSeconds.truncatingRemainder(dividingBy: 0.5)
-                envelope = cyclePos < 0.3 ? 1.0 : 0.0
-            }
-            let amplitude = wave * envelope * 0.7
-            let sample = Int16(clamping: Int(amplitude * Double(Int16.max)))
-            samples.append(sample)
-        }
-
-        // Build WAV header + data
-        let dataSize = totalSamples * 2 // 16-bit = 2 bytes per sample
-        var wavData = Data()
-        wavData.append(contentsOf: [0x52, 0x49, 0x46, 0x46]) // "RIFF"
-        wavData.append(contentsOf: UInt32(36 + dataSize).littleEndianBytes)
-        wavData.append(contentsOf: [0x57, 0x41, 0x56, 0x45]) // "WAVE"
-        wavData.append(contentsOf: [0x66, 0x6D, 0x74, 0x20]) // "fmt "
-        wavData.append(contentsOf: UInt32(16).littleEndianBytes)           // chunk size
-        wavData.append(contentsOf: UInt16(1).littleEndianBytes)            // PCM format
-        wavData.append(contentsOf: UInt16(1).littleEndianBytes)            // mono
-        wavData.append(contentsOf: UInt32(44100).littleEndianBytes)        // sample rate
-        wavData.append(contentsOf: UInt32(44100 * 2).littleEndianBytes)    // byte rate
-        wavData.append(contentsOf: UInt16(2).littleEndianBytes)            // block align
-        wavData.append(contentsOf: UInt16(16).littleEndianBytes)           // bits per sample
-        wavData.append(contentsOf: [0x64, 0x61, 0x74, 0x61]) // "data"
-        wavData.append(contentsOf: UInt32(dataSize).littleEndianBytes)
-
-        samples.withUnsafeBytes { rawBuffer in
-            wavData.append(contentsOf: rawBuffer)
-        }
-
-        return try? AVAudioPlayer(data: wavData)
-    }
-}
-
-// MARK: - Binary helpers
-
-private extension UInt32 {
-    var littleEndianBytes: [UInt8] {
-        let value = self.littleEndian
-        return [UInt8(value & 0xFF), UInt8((value >> 8) & 0xFF),
-                UInt8((value >> 16) & 0xFF), UInt8((value >> 24) & 0xFF)]
-    }
-}
-
-private extension UInt16 {
-    var littleEndianBytes: [UInt8] {
-        let value = self.littleEndian
-        return [UInt8(value & 0xFF), UInt8((value >> 8) & 0xFF)]
-    }
+    //
+    // The synthetic-tone generator + WAV packer + binary helpers live in
+    // `AudioService+Tone.swift` (#182) so this file stays under SwiftLint's
+    // `file_length` cap. `resolveAlarmPlayer` calls
+    // `Self.generateAlarmTone()` exactly as before — only the physical
+    // location moved.
 }

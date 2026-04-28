@@ -18,11 +18,15 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Dependencies
 
-    private let viewModel: CreateAlarmViewModel
+    /// `internal` so the cross-file `+Sections` extension can read VM state
+    /// inside the row factory helpers (#182).
+    let viewModel: CreateAlarmViewModel
 
     // MARK: - UI
 
-    private let tableView: UITableView = {
+    /// `internal` so the cross-file `+Pickers` extension can mutate the
+    /// theme row in place after the picker pops (#182).
+    let tableView: UITableView = {
         let view = UITableView(frame: .zero, style: .insetGrouped)
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -34,7 +38,10 @@ final class CreateAlarmViewController: UIViewController {
     /// create), then time picker, repeat days, snooze slider, penalty,
     /// progressive scale, sound, vibration, theme, and finally the
     /// destructive delete action (edit-mode only).
-    private enum Section: Int, CaseIterable {
+    /// `internal` so the cross-file `+Pickers` extension can resolve
+    /// `Section.theme.rawValue` for the imperative cell refresh after the
+    /// picker pops (#182).
+    enum Section: Int, CaseIterable {
         case name = 0
         case timePicker
         case repeatDays
@@ -48,6 +55,10 @@ final class CreateAlarmViewController: UIViewController {
         /// Destructive "Удалить будильник" row — only visible in edit mode.
         case deleteAction
     }
+
+    /// Convenience accessor used by `+Pickers.showThemePicker` so that file
+    /// does not have to depend on `Section.rawValue` directly.
+    var themeSectionIndex: Int { Section.theme.rawValue }
 
     // MARK: - Init
 
@@ -118,18 +129,7 @@ final class CreateAlarmViewController: UIViewController {
         view.addSubview(tableView)
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.register(TimePickerCell.self, forCellReuseIdentifier: TimePickerCell.reuseID)
-        tableView.register(DayPickerCell.self, forCellReuseIdentifier: DayPickerCell.reuseID)
-        tableView.register(NameCell.self, forCellReuseIdentifier: NameCell.reuseID)
-        tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
-        tableView.register(VolumeCell.self, forCellReuseIdentifier: VolumeCell.reuseID)
-        tableView.register(VibrationCell.self, forCellReuseIdentifier: VibrationCell.reuseID)
-        tableView.register(PenaltyCell.self, forCellReuseIdentifier: PenaltyCell.reuseID)
-        tableView.register(ProgressiveScaleCell.self, forCellReuseIdentifier: ProgressiveScaleCell.reuseID)
-        tableView.register(ProgressivePreviewCell.self, forCellReuseIdentifier: ProgressivePreviewCell.reuseID)
-        tableView.register(SnoozeSliderCell.self, forCellReuseIdentifier: SnoozeSliderCell.reuseID)
-        tableView.register(ThemeRowCell.self, forCellReuseIdentifier: ThemeRowCell.reuseID)
-        tableView.register(DeleteActionCell.self, forCellReuseIdentifier: DeleteActionCell.reuseID)
+        registerSectionCells(in: tableView)
 
         // Pin to safe area on top so the first section's "ПОВТОР" header is
         // not clipped under the navigation bar.
@@ -181,8 +181,9 @@ final class CreateAlarmViewController: UIViewController {
 
     /// Inline alert for repository or scheduler failures that block the
     /// save flow. Kept generic so the same call site can present any
-    /// `LocalizedError` (issues #72, #118).
-    private func presentSaveError(title: String, error: LocalizedError) {
+    /// `LocalizedError` (issues #72, #118). `internal` so the `+Pickers`
+    /// extension can surface a delete failure (#182).
+    func presentSaveError(title: String, error: LocalizedError) {
         let alert = UIAlertController(
             title: title,
             message: error.errorDescription ?? "Попробуйте ещё раз.",
@@ -194,7 +195,9 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - View-model bridges
 
-    private func setProgressiveScale(_ isOn: Bool) {
+    /// `internal` so `+Sections.makeProgressiveScaleToggleCell` can wire the
+    /// toggle callback (#182).
+    func setProgressiveScale(_ isOn: Bool) {
         viewModel.progressiveScale = isOn
 
         guard view.window != nil else {
@@ -214,7 +217,9 @@ final class CreateAlarmViewController: UIViewController {
         })
     }
 
-    private func setPenaltyAmount(_ amount: Double) {
+    /// `internal` so `+Sections.makePenaltyCell` can wire the slider callback
+    /// (#182).
+    func setPenaltyAmount(_ amount: Double) {
         viewModel.penaltyAmount = amount
         // Refresh the preview row's text if it's currently visible.
         guard viewModel.progressiveScale else { return }
@@ -279,97 +284,25 @@ extension CreateAlarmViewController: UITableViewDataSource {
         return UITableView.automaticDimension
     }
 
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
+    // swiftlint:disable:next cyclomatic_complexity
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let section = Section(rawValue: indexPath.section) else {
             return UITableViewCell()
         }
         switch section {
-        case .timePicker:
-            let cell = tableView.dequeueReusableCell(withIdentifier: TimePickerCell.reuseID, for: indexPath)
-            if let cell = cell as? TimePickerCell {
-                cell.configure(time: viewModel.time)
-                cell.onTimeChanged = { [weak self] date in self?.viewModel.time = date }
-            }
-            return cell
-        case .repeatDays:
-            let cell = tableView.dequeueReusableCell(withIdentifier: DayPickerCell.reuseID, for: indexPath)
-            if let cell = cell as? DayPickerCell {
-                cell.configure(selectedDays: viewModel.repeatDays)
-                cell.onDayToggled = { [weak self, weak cell] day in
-                    guard let self else { return }
-                    self.viewModel.toggleDay(day)
-                    cell?.configure(selectedDays: self.viewModel.repeatDays)
-                }
-            }
-            return cell
-        case .name:
-            let cell = tableView.dequeueReusableCell(withIdentifier: NameCell.reuseID, for: indexPath)
-            if let cell = cell as? NameCell {
-                cell.configure(name: viewModel.name)
-                cell.onNameChanged = { [weak self] text in self?.viewModel.name = text }
-            }
-            return cell
-        case .sound:
-            let cell = tableView.dequeueReusableCell(withIdentifier: SoundCell.reuseID, for: indexPath)
-            if let cell = cell as? SoundCell {
-                let soundName = viewModel.availableSounds
-                    .first(where: { $0.id == viewModel.soundID })?.name ?? "По умолчанию"
-                cell.configure(soundName: soundName)
-                cell.onPreviewTapped = { [weak self] in
-                    guard let self else { return }
-                    self.viewModel.previewSound(self.viewModel.soundID)
-                }
-            }
-            return cell
-        case .volume:
-            let cell = tableView.dequeueReusableCell(withIdentifier: VolumeCell.reuseID, for: indexPath)
-            if let cell = cell as? VolumeCell {
-                cell.configure(volume: viewModel.volume, fadeIn: viewModel.volumeFadeIn)
-            }
-            return cell
-        case .vibration:
-            let cell = tableView.dequeueReusableCell(withIdentifier: VibrationCell.reuseID, for: indexPath)
-            if let cell = cell as? VibrationCell {
-                cell.configure(isOn: viewModel.vibrationEnabled)
-                cell.onToggled = { [weak self] isOn in self?.viewModel.vibrationEnabled = isOn }
-            }
-            return cell
-        case .penalty:
-            let cell = tableView.dequeueReusableCell(withIdentifier: PenaltyCell.reuseID, for: indexPath)
-            if let cell = cell as? PenaltyCell {
-                cell.configure(amount: viewModel.penaltyAmount)
-                cell.onValueChanged = { [weak self] amount in self?.setPenaltyAmount(amount) }
-            }
-            return cell
+        case .timePicker:        return makeTimePickerCell(tableView, at: indexPath)
+        case .repeatDays:        return makeRepeatDaysCell(tableView, at: indexPath)
+        case .name:              return makeNameCell(tableView, at: indexPath)
+        case .sound:             return makeSoundCell(tableView, at: indexPath)
+        case .volume:            return makeVolumeCell(tableView, at: indexPath)
+        case .vibration:         return makeVibrationCell(tableView, at: indexPath)
+        case .penalty:           return makePenaltyCell(tableView, at: indexPath)
         case .progressiveScale where indexPath.row == 0:
-            let cell = tableView.dequeueReusableCell(withIdentifier: ProgressiveScaleCell.reuseID, for: indexPath)
-            if let cell = cell as? ProgressiveScaleCell {
-                cell.configure(isOn: viewModel.progressiveScale)
-                cell.onToggled = { [weak self] isOn in self?.setProgressiveScale(isOn) }
-            }
-            return cell
-        case .progressiveScale:
-            let cell = tableView.dequeueReusableCell(withIdentifier: ProgressivePreviewCell.reuseID, for: indexPath)
-            if let cell = cell as? ProgressivePreviewCell {
-                cell.configure(text: viewModel.progressiveScalePreview)
-            }
-            return cell
-        case .snoozeTime:
-            let cell = tableView.dequeueReusableCell(withIdentifier: SnoozeSliderCell.reuseID, for: indexPath)
-            if let cell = cell as? SnoozeSliderCell {
-                cell.configure(minutes: viewModel.snoozeMinutes)
-                cell.onValueChanged = { [weak self] minutes in self?.viewModel.snoozeMinutes = minutes }
-            }
-            return cell
-        case .theme:
-            let cell = tableView.dequeueReusableCell(withIdentifier: ThemeRowCell.reuseID, for: indexPath)
-            if let cell = cell as? ThemeRowCell {
-                cell.configure(themeName: viewModel.alarmThemeName)
-            }
-            return cell
-        case .deleteAction:
-            return tableView.dequeueReusableCell(withIdentifier: DeleteActionCell.reuseID, for: indexPath)
+            return makeProgressiveScaleToggleCell(tableView, at: indexPath)
+        case .progressiveScale:  return makeProgressivePreviewCell(tableView, at: indexPath)
+        case .snoozeTime:        return makeSnoozeTimeCell(tableView, at: indexPath)
+        case .theme:             return makeThemeCell(tableView, at: indexPath)
+        case .deleteAction:      return makeDeleteActionCell(tableView, at: indexPath)
         }
     }
 }
@@ -415,121 +348,8 @@ extension CreateAlarmViewController: UITableViewDelegate {
         }
     }
 
-    private func confirmDelete() {
-        let alert = UIAlertController(
-            title: "Удалить будильник?",
-            message: "Это действие нельзя отменить.",
-            preferredStyle: .actionSheet
-        )
-        alert.addAction(UIAlertAction(title: "Удалить", style: .destructive) { [weak self] _ in
-            guard let self else { return }
-            // ViewModel.delete forwards to AlarmRepository.delete, which itself
-            // cancels the scheduled UNNotificationRequests via AlarmScheduler.
-            // Returns false when the store is locked due to a corrupt blob
-            // (issue #72) — surface the failure rather than dismiss the
-            // sheet on a no-op delete.
-            let didDelete = self.viewModel.delete()
-            guard didDelete else {
-                self.presentSaveError(
-                    title: "Не удалось сохранить",
-                    error: AlarmRepository.RepositoryError.persistBlocked
-                )
-                return
-            }
-            self.onDelete?()
-            self.dismiss(animated: true)
-        })
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
-        // Without a sourceView the action sheet crashes on iPad popovers.
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-        present(alert, animated: true)
-    }
-
-    private func showThemePicker() {
-        let picker = AlarmThemePickerViewController(
-            currentTheme: viewModel.theme,
-            onSelect: { [weak self] theme in
-                guard let self else { return }
-                self.viewModel.theme = theme
-                // Update the trailing-value label inline so the user sees
-                // the new theme name without waiting for `viewWillAppear`'s
-                // section reload (which doesn't fire for the in-place update
-                // that follows the imperative pop).
-                let indexPath = IndexPath(row: 0, section: Section.theme.rawValue)
-                if let cell = self.tableView.cellForRow(at: indexPath) as? ThemeRowCell {
-                    cell.configure(themeName: self.viewModel.alarmThemeName)
-                }
-            }
-        )
-        navigationController?.pushViewController(picker, animated: true)
-    }
-
-    private func showSoundPicker() {
-        let picker = SoundPickerViewController(
-            sounds: viewModel.availableSounds,
-            selectedID: viewModel.soundID,
-            onSelect: { [weak self] soundID in
-                self?.viewModel.soundID = soundID
-            },
-            previewSound: { [weak self] soundID in
-                self?.viewModel.previewSound(soundID)
-            }
-        )
-        navigationController?.pushViewController(picker, animated: true)
-    }
-
-    /// Push the new `VolumePickerViewController` (#150). The picker reports
-    /// every slider / switch change live so dismissing on the back chevron
-    /// is "auto-save" — the parent's `viewWillAppear` then refreshes the
-    /// volume row to render the new value.
-    private func showVolumePicker() {
-        let picker = VolumePickerViewController(
-            volume: viewModel.volume,
-            fadeIn: viewModel.volumeFadeIn
-        ) { [weak self] volume, fadeIn in
-            self?.viewModel.volume = volume
-            self?.viewModel.volumeFadeIn = fadeIn
-        }
-        navigationController?.pushViewController(picker, animated: true)
-    }
 }
 
-// MARK: - Section header
-
-/// Custom section-header view rendered above each `.insetGrouped` group on
-/// the create/edit form. Replaces the default footnote-cased header with the
-/// design-system `caps` role + tracking so headers read at the same weight
-/// as the rest of the brand-refreshed surfaces (#143, builds on #135).
-private final class SectionHeaderView: UIView {
-
-    init(text: String) {
-        super.init(frame: .zero)
-        backgroundColor = .clear
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.attributedText = NSAttributedString(
-            string: text.uppercased(),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: layoutMarginsGuide.trailingAnchor),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.lg),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sm)
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-}
+// `SectionHeaderView` lives in `Views/DesignSystem/SectionHeaderView.swift` so
+// the same caps-styled header can be reused by Settings + Transaction history
+// without copy-paste (#182).
