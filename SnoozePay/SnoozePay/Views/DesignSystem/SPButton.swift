@@ -59,9 +59,9 @@ final class SPButton: UIControl {
 
         var cornerRadius: CGFloat {
             switch self {
-            case .lg: return AppRadius.lg          // 16pt — matches sp-r-md
-            case .md: return AppRadius.lg
-            case .sm: return AppRadius.md          // 12pt — matches sp-r-sm
+            case .lg: return AppRadius.md          // 16pt — matches sp-r-md
+            case .md: return AppRadius.md
+            case .sm: return AppRadius.sm          // 12pt — matches sp-r-sm
             }
         }
 

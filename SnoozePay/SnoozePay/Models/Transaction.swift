@@ -9,9 +9,9 @@ import Foundation
 /// stay segregated from purchases the user actually paid for. `charge` is a
 /// debit (snooze penalty).
 enum TransactionType: String, Codable {
-    case topup = "topup"
-    case charge = "charge"
-    case promotion = "promotion"
+    case topup
+    case charge
+    case promotion
 }
 
 /// Domain model for a balance transaction

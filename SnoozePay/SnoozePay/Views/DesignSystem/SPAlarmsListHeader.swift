@@ -89,7 +89,7 @@ final class SPAlarmsListHeader: UIView {
     private let radialOverlay = AlarmsHeaderRadialOverlayView()
 
     // Warning banner
-    private let warningBanner = SPCard(tone: .warn, padding: AppSpacing.sp4, cornerRadius: AppRadius.lg)
+    private let warningBanner = SPCard(tone: .warn, padding: AppSpacing.sp4, cornerRadius: AppRadius.md)
     private let warningCapsLabel = UILabel()
     private let warningMetaLabel = UILabel()
     private let warningTopUpButton = SPButton(

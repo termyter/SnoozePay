@@ -1,0 +1,62 @@
+# SwiftLint configuration for SnoozePay
+#
+# Goal: keep linting useful for real bugs while quieting purely-stylistic noise
+# from intentional design-token naming (Tailwind-style xs/sm/md/lg/xl, h1-h4).
+# Token enums are wrapped in `// swiftlint:disable identifier_name` blocks
+# directly, since SwiftLint 0.52 has no per-rule `excluded_files` for
+# `identifier_name`.
+
+included:
+  - SnoozePay/SnoozePay
+  - SnoozePay/SnoozePayTests
+
+excluded:
+  - SnoozePay/SnoozePay.xcodeproj
+  - .build
+  - DerivedData
+
+# Rules disabled because they fire on intentional design-token short
+# identifiers (`xs`, `sm`, `md`, `lg`, `xl`, `h1`-`h4`, `ui`, `sw`).
+# Token files explicitly opt back in via `swiftlint:enable` markers if needed.
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  max_length:
+    warning: 50
+    error: 60
+  excluded:
+    - id
+    - h1
+    - h2
+    - h3
+    - h4
+    - sm
+    - md
+    - lg
+    - xl
+    - xs
+    - ui
+    - sw
+
+line_length:
+  warning: 120
+  error: 200
+  ignores_comments: true
+  ignores_urls: true
+
+type_body_length:
+  warning: 400
+  error: 600
+
+function_body_length:
+  warning: 60
+  error: 120
+
+file_length:
+  warning: 600
+  error: 1000
+  ignore_comment_only_lines: true
+
+# Reporter for CI-friendly output.
+reporter: "xcode"

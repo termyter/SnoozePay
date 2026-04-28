@@ -93,7 +93,7 @@ final class SoundPickerRowCell: UITableViewCell {
         selectionStyle = .none
 
         cardContainer.translatesAutoresizingMaskIntoConstraints = false
-        cardContainer.layer.cornerRadius = AppRadius.md
+        cardContainer.layer.cornerRadius = AppRadius.sm
         cardContainer.layer.masksToBounds = false
         contentView.addSubview(cardContainer)
 

@@ -1,3 +1,4 @@
+// swiftlint:disable todo
 import UIKit
 
 /// Brand font families for SnoozePay.
@@ -163,3 +164,4 @@ extension UIFont {
         return UIFont(descriptor: descriptor, size: pointSize)
     }
 }
+// swiftlint:enable todo

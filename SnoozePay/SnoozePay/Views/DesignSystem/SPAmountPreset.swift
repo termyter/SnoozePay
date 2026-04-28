@@ -85,12 +85,12 @@ final class SPAmountPreset: UIControl {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        layer.cornerRadius = AppRadius.lg     // 16pt — matches sp-r-md
+        layer.cornerRadius = AppRadius.md     // 16pt — matches sp-r-md
         // Outer ring is faked via shadow when selected — pre-rasterise the
         // path so it tracks the rounded corners cleanly.
         layer.shadowPath = UIBezierPath(
             roundedRect: bounds,
-            cornerRadius: AppRadius.lg
+            cornerRadius: AppRadius.md
         ).cgPath
     }
 
@@ -121,7 +121,7 @@ final class SPAmountPreset: UIControl {
 
     private func configure() {
         backgroundColor = AppColors.bg1
-        layer.cornerRadius = AppRadius.lg
+        layer.cornerRadius = AppRadius.md
         layer.masksToBounds = false
         layer.borderWidth = 1.5
 
