@@ -115,11 +115,18 @@ final class SPBalanceCard: UIView {
         )
 
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
-        valueLabel.font = AppTypography.moneyLg
+        // Hero balance uses `moneyXl` (56pt mono bold) per `tokens.css` L168
+        // — `--sp-t-money-xl: 700 56px/60px var(--sp-font-mono)`. The bigger
+        // glyphs can overflow on narrow devices for large balances
+        // ("1 234 567 ₽"), so we let UIKit shrink to 75% before clipping.
+        valueLabel.font = AppTypography.moneyXl
         // Set a neutral text colour as a safety net — `applyValueGradient`
         // promotes this to a gradient mask once layout resolves.
         valueLabel.textColor = AppColors.fg1
         valueLabel.adjustsFontForContentSizeCategory = false
+        valueLabel.numberOfLines = 1
+        valueLabel.adjustsFontSizeToFitWidth = true
+        valueLabel.minimumScaleFactor = 0.75
 
         deltaLabel.translatesAutoresizingMaskIntoConstraints = false
         deltaLabel.font = AppTypography.moneySm
