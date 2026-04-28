@@ -9,6 +9,7 @@ final class AlarmsListViewModel {
 
     private let alarmRepository: AlarmRepository
     private let balanceService: BalanceService
+    private let transactionRepository: TransactionRepository
 
     // MARK: - State
 
@@ -36,10 +37,12 @@ final class AlarmsListViewModel {
 
     init(
         alarmRepository: AlarmRepository = .shared,
-        balanceService: BalanceService = .shared
+        balanceService: BalanceService = .shared,
+        transactionRepository: TransactionRepository = .shared
     ) {
         self.alarmRepository = alarmRepository
         self.balanceService = balanceService
+        self.transactionRepository = transactionRepository
 
         balanceObserver = NotificationCenter.default.addObserver(
             forName: BalanceService.balanceChangedNotification,
@@ -261,6 +264,28 @@ final class AlarmsListViewModel {
     var affordabilityHint: String {
         let count = affordableSnoozeCount
         return "Хватит на ~\(count) \(Self.snoozeWord(for: count))"
+    }
+
+    /// Weekly net delta surfaced in the sticky header beneath the balance
+    /// (#175). Charge transactions are penalty deductions stored as
+    /// positive `Double`s with `type == .charge`, so the user-facing net
+    /// change versus a week ago is `-sum(charges)`. Returns `nil` when
+    /// there are no charges in the last 7 days so the header hides the
+    /// row entirely (matches `components.css` L163-165 — `.is-up` /
+    /// `.is-down` are opt-in via `setBalance`).
+    var weeklyDelta: Decimal? {
+        // Anchor against `now - 7 days` rather than the start of an ISO
+        // week — the user reads "за неделю" as a rolling 7-day window,
+        // and an ISO-week boundary would make Monday morning's header
+        // briefly show "0 ₽" until the first charge of the new week.
+        guard let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) else {
+            return nil
+        }
+        let charges = transactionRepository.fetchCharges(since: weekAgo)
+        guard !charges.isEmpty else { return nil }
+        let totalCharged = charges.reduce(0.0) { $0 + $1.amount }
+        guard totalCharged > 0 else { return nil }
+        return -Decimal(totalCharged)
     }
 
     /// `true` when the balance is at or below the low-balance

@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import UIKit
 
 /// Sticky header for the alarms list — composes a balance card and an
@@ -8,11 +9,12 @@ import UIKit
 /// Visual recipe:
 /// - **Balance card**: same SPBalanceCard chrome (`bg2` raised surface,
 ///   28pt vertical / 24pt horizontal padding, 28pt corner radius). Caps
-///   header "БАЛАНС", `moneyLg` value, a centered "Хватит на ~N
-///   откладываний" hint **below** the value, and a trailing
-///   `SPButton(.money, .sm)` "Пополнить" placed to the right of the
-///   value row. The centered hint placement is a direct fix for PM
-///   feedback (chat1.md line 971) — the previous layout put the hint
+///   header "БАЛАНС", `moneyXl` value (56pt mono — see #175), an
+///   optional weekly delta line (`↑/↓ amount за неделю`), a centered
+///   "Хватит на ~N откладываний" hint **below** the value, and a
+///   trailing `SPButton(.money, .sm)` "Пополнить" placed to the right
+///   of the value row. The centered hint placement is a direct fix for
+///   PM feedback (chat1.md line 971) — the previous layout put the hint
 ///   inline with the value and PM called it out as misaligned.
 /// - **Warning banner**: `SPCard(.warn)` shown when balance ≤ 100. Caps
 ///   "БАЛАНС ПОЧТИ ПУСТ", current balance meta, and a small
@@ -36,14 +38,24 @@ final class SPAlarmsListHeader: UIView {
     var onWarnTopUpTap: (() -> Void)?
 
     /// Update the balance card. `hint` is rendered as a centered line
-    /// below the balance number — pass `nil` to hide.
-    func setBalance(_ balance: Decimal, hint: String?) {
+    /// below the balance number — pass `nil` to hide. `delta` is the
+    /// optional weekly net change rendered between the value and hint;
+    /// positive values get the up arrow + money tint, negative the down
+    /// arrow + pain tint, `nil` or zero hides the row (per `components.css`
+    /// L163-165 — `.sp-balance__delta { is-up | is-down }`).
+    func setBalance(_ balance: Decimal, hint: String?, delta: Decimal? = nil) {
         balanceValueLabel.text = balance.formattedRubles()
         if let hint = hint, !hint.isEmpty {
             balanceHintLabel.text = hint
             balanceHintLabel.isHidden = false
         } else {
             balanceHintLabel.isHidden = true
+        }
+        if let delta = delta, delta != 0 {
+            balanceDeltaLabel.attributedText = Self.renderDelta(delta)
+            balanceDeltaLabel.isHidden = false
+        } else {
+            balanceDeltaLabel.isHidden = true
         }
         // Remask the gradient on the value once layout reflows so the
         // mask tracks the new digit width (#137 SPBalanceCard pattern).
@@ -66,6 +78,7 @@ final class SPAlarmsListHeader: UIView {
     private let balanceCapsLabel = UILabel()
     private let balanceValueLabel = UILabel()
     private let balanceValueGradient = CAGradientLayer()
+    private let balanceDeltaLabel = UILabel()
     private let balanceHintLabel = UILabel()
     private let balanceTopUpButton = SPButton(
         title: "Пополнить",
@@ -164,9 +177,16 @@ final class SPAlarmsListHeader: UIView {
         )
 
         balanceValueLabel.translatesAutoresizingMaskIntoConstraints = false
-        balanceValueLabel.font = AppTypography.moneyLg
+        // Hero balance: `moneyXl` (56pt mono bold) per `tokens.css` L168.
+        // 56pt glyphs can overflow on narrow devices when the balance grows
+        // past "999 999 ₽" alongside the trailing top-up pill, so we let
+        // UIKit shrink to 75% before clipping (matches SPBalanceCard).
+        balanceValueLabel.font = AppTypography.moneyXl
         balanceValueLabel.textColor = AppColors.fg1
         balanceValueLabel.adjustsFontForContentSizeCategory = false
+        balanceValueLabel.numberOfLines = 1
+        balanceValueLabel.adjustsFontSizeToFitWidth = true
+        balanceValueLabel.minimumScaleFactor = 0.75
         balanceValueLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         balanceTopUpButton.translatesAutoresizingMaskIntoConstraints = false
@@ -189,18 +209,28 @@ final class SPAlarmsListHeader: UIView {
         balanceHintLabel.numberOfLines = 1
         balanceHintLabel.isHidden = true
 
-        // Caps + value row + centered hint — vertical stack inside the
-        // card. Custom spacing keeps the hint visually separate from the
-        // value (matches the JSX `gap-y-2` after value).
+        // Weekly delta: `moneySm` mono with arrow + tint per
+        // `components.css` L163-165. Hidden by default — `setBalance(_:hint:delta:)`
+        // flips the visibility once the controller pipes the computed
+        // delta from `AlarmsListViewModel`.
+        balanceDeltaLabel.translatesAutoresizingMaskIntoConstraints = false
+        balanceDeltaLabel.font = AppTypography.moneySm
+        balanceDeltaLabel.numberOfLines = 1
+        balanceDeltaLabel.isHidden = true
+
+        // Caps + value row + delta + centered hint — vertical stack inside
+        // the card. Custom spacing keeps the hint visually separate from
+        // the value (matches the JSX `gap-y-2` after value).
         let innerStack = UIStackView(arrangedSubviews: [
-            balanceCapsLabel, valueRow, balanceHintLabel
+            balanceCapsLabel, valueRow, balanceDeltaLabel, balanceHintLabel
         ])
         innerStack.translatesAutoresizingMaskIntoConstraints = false
         innerStack.axis = .vertical
         innerStack.alignment = .fill
         innerStack.spacing = 8
         innerStack.setCustomSpacing(8, after: balanceCapsLabel)
-        innerStack.setCustomSpacing(10, after: valueRow)
+        innerStack.setCustomSpacing(6, after: valueRow)
+        innerStack.setCustomSpacing(10, after: balanceDeltaLabel)
         balanceCard.addSubview(innerStack)
 
         NSLayoutConstraint.activate([
@@ -321,6 +351,27 @@ final class SPAlarmsListHeader: UIView {
 
     @objc private func warnTopUpTapped() {
         onWarnTopUpTap?()
+    }
+
+    // MARK: - Delta rendering
+
+    /// Build the weekly delta line. Mirrors `SPBalanceCard.renderDelta`
+    /// (#137) — kept local to the sticky header so the two surfaces stay
+    /// visually identical without a shared helper coupling these
+    /// component files together. Format: `↑ 240 ₽ за неделю` /
+    /// `↓ 130 ₽ за неделю` with U+2191 / U+2193 arrows.
+    private static func renderDelta(_ delta: Decimal) -> NSAttributedString {
+        let arrow = delta < 0 ? "\u{2193}" : "\u{2191}"
+        let absValue = NSDecimalNumber(decimal: delta < 0 ? -delta : delta).decimalValue
+        let str = "\(arrow) \(absValue.formattedRubles()) за неделю"
+        let color = delta < 0 ? AppColors.pain400 : AppColors.money400
+        return NSAttributedString(
+            string: str,
+            attributes: [
+                .font: AppTypography.moneySm,
+                .foregroundColor: color
+            ]
+        )
     }
 }
 

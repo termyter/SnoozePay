@@ -230,10 +230,16 @@ class AlarmsListViewController: UIViewController {
     /// Push the latest balance / hint / warning state into the sticky
     /// header. Called both from `onBalanceUpdated` (BalanceService
     /// notification) and `onAlarmsUpdated` (alarm-set change shifts the
-    /// average penalty).
+    /// average penalty). Also pipes the rolling weekly delta from the
+    /// transaction ledger (#175) so the sticky header echoes the
+    /// `.sp-balance__delta` row from the design spec.
     private func refreshHeader() {
         let balance = Decimal(viewModel.balance)
-        header.setBalance(balance, hint: viewModel.affordabilityHint)
+        header.setBalance(
+            balance,
+            hint: viewModel.affordabilityHint,
+            delta: viewModel.weeklyDelta
+        )
         header.setWarning(visible: viewModel.isLowBalance, balance: balance)
     }
 
