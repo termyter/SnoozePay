@@ -83,7 +83,7 @@ final class SplashViewController: UIViewController {
         super.viewDidLoad()
         // Solid base under the gradient so any flash before CALayer commits
         // matches the bottom stop instead of the system bg.
-        view.backgroundColor = UIColor(splashRGB: 0x050912)
+        view.backgroundColor = AppColors.bg0
         view.layer.insertSublayer(dawnGradientLayer, at: 0)
         view.addSubview(wordmarkLabel)
         NSLayoutConstraint.activate([

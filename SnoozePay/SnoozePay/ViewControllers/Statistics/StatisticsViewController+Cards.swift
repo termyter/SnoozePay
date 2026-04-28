@@ -134,7 +134,7 @@ extension StatisticsViewController {
 
         let flameConfig = UIImage.SymbolConfiguration(pointSize: 24, weight: .semibold)
         let flameView = UIImageView(image: UIImage(systemName: "flame.fill", withConfiguration: flameConfig))
-        flameView.tintColor = AppColors.warn500
+        flameView.tintColor = AppColors.money500
         flameView.translatesAutoresizingMaskIntoConstraints = false
         flameView.setContentHuggingPriority(.required, for: .horizontal)
 

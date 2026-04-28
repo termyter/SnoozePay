@@ -205,7 +205,7 @@ final class OnboardingViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(rgb: 0x050912)
+        view.backgroundColor = AppColors.bg0
         view.layer.insertSublayer(dawnGradientLayer, at: 0)
         setupUI()
         updatePagerState(forPage: 0)

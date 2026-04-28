@@ -141,6 +141,14 @@ final class SPInput: UIView {
         fieldContainer.backgroundColor = AppColors.bg2
         fieldContainer.layer.cornerRadius = AppRadius.lg
         fieldContainer.layer.borderWidth = 1.5
+        // Pre-configure the focus glow so editingDidBegin only has to flip
+        // shadowOpacity. Kept off by default (opacity 0) so the field reads
+        // flat at rest.
+        fieldContainer.layer.shadowColor = AppColors.money500.cgColor
+        fieldContainer.layer.shadowRadius = 4
+        fieldContainer.layer.shadowOpacity = 0
+        fieldContainer.layer.shadowOffset = .zero
+        fieldContainer.layer.masksToBounds = false
 
         textField.translatesAutoresizingMaskIntoConstraints = false
         textField.font = AppTypography.bodyLg
@@ -213,6 +221,10 @@ final class SPInput: UIView {
             fieldContainer.layer.borderColor = AppColors.stroke1
                 .resolvedColor(with: traitCollection).cgColor
         }
+        // Re-resolve the focus glow tint so a light/dark switch keeps
+        // the ring colour in sync with the active border.
+        fieldContainer.layer.shadowColor = AppColors.money500
+            .resolvedColor(with: traitCollection).cgColor
     }
 
     private func applyError() {
@@ -241,6 +253,10 @@ final class SPInput: UIView {
     private func handleEditingDidBegin() {
         UIView.animate(withDuration: SPSupport.durationQuick) {
             self.applyBorder()
+            // Soft money500 glow on focus — matches `.sp-input:focus`
+            // ring in components.css. Skipped while in error state so
+            // the pain border keeps its priority.
+            self.fieldContainer.layer.shadowOpacity = self.error == nil ? 0.12 : 0
         }
     }
 
@@ -248,6 +264,7 @@ final class SPInput: UIView {
     private func handleEditingDidEnd() {
         UIView.animate(withDuration: SPSupport.durationQuick) {
             self.applyBorder()
+            self.fieldContainer.layer.shadowOpacity = 0
         }
     }
 

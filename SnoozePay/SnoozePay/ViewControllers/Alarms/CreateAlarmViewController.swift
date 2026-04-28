@@ -76,7 +76,7 @@ final class CreateAlarmViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = viewModel.isEditing ? "Редактировать" : "Новый будильник"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.bg0
         setupNavigationBar()
         setupTableView()
     }

@@ -188,12 +188,14 @@ private final class HeatmapCellView: UICollectionViewCell {
 
     /// Map a 0..4 bucket onto the money palette. 0 is the empty cell —
     /// `whiteOverlay06` so it matches the streak-modal "future / muted"
-    /// affordance. 1..4 lerp between `money300` and `money700` so the
-    /// gradient reads as "more saved → deeper green".
+    /// affordance. Bucket 1 is `money300` at 25% alpha so the lightest
+    /// "some activity" tier reads as a faint hint rather than competing
+    /// with bucket 2 — 2..4 lerp between solid `money300` and `money700`
+    /// so the gradient reads as "more saved → deeper green".
     private static func color(for intensity: Int) -> UIColor {
         switch intensity {
         case 0: return AppColors.whiteOverlay06
-        case 1: return SPSupport.lerpColor(AppColors.money300, AppColors.money700, progress: 0.0)
+        case 1: return AppColors.money300.withAlphaComponent(0.25)
         case 2: return SPSupport.lerpColor(AppColors.money300, AppColors.money700, progress: 0.33)
         case 3: return SPSupport.lerpColor(AppColors.money300, AppColors.money700, progress: 0.66)
         default: return AppColors.money700
