@@ -73,6 +73,14 @@ final class SPInput: UIView {
     ) {
         super.init(frame: .zero)
         configure()
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
+        // closure-based observer when available, fall back to the override
+        // below on older runtimes.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPInput, _) in
+                view.applyBorder()
+            }
+        }
         if let label = label {
             labelView.attributedText = NSAttributedString(
                 string: label.uppercased(),
@@ -104,8 +112,12 @@ final class SPInput: UIView {
         fieldContainer.layer.cornerRadius = AppRadius.lg     // matches sp-r-md
     }
 
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        // iOS 17+ runtimes get the same callback through the registered
+        // trait observer (see init); skip here so we don't refresh twice.
+        if #available(iOS 17.0, *) { return }
         applyBorder()
     }
 

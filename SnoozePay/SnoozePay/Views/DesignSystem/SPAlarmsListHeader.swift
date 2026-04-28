@@ -103,6 +103,14 @@ final class SPAlarmsListHeader: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure()
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
+        // closure-based observer when available; the legacy override below
+        // remains as a fallback for older runtimes.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPAlarmsListHeader, _) in
+                view.refreshOverlay()
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -117,8 +125,16 @@ final class SPAlarmsListHeader: UIView {
         applyValueGradient()
     }
 
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        // iOS 17+ runtimes are notified via the registered trait observer
+        // (see init); skip here to avoid double-refreshing the overlay.
+        if #available(iOS 17.0, *) { return }
+        refreshOverlay()
+    }
+
+    private func refreshOverlay() {
         radialOverlay.setNeedsDisplay()
     }
 
