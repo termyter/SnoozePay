@@ -15,7 +15,7 @@ final class ThemeSegmentCell: UITableViewCell {
 
     private let iconContainer: UIView = {
         let view = UIView()
-        view.backgroundColor = UIColor.systemIndigo
+        view.backgroundColor = AppColors.info500
         view.layer.cornerRadius = 7
         view.layer.masksToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -36,15 +36,15 @@ final class ThemeSegmentCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = "Тема"
-        label.font = UIFont.systemFont(ofSize: 17)
-        label.textColor = .label
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     private let segmentControl: UISegmentedControl = {
         let segment = UISegmentedControl(items: ["Системная", "Светлая", "Тёмная"])
-        segment.selectedSegmentTintColor = AppColors.accentBlue
+        segment.selectedSegmentTintColor = AppColors.info500
         segment.translatesAutoresizingMaskIntoConstraints = false
         return segment
     }()
@@ -66,7 +66,7 @@ final class ThemeSegmentCell: UITableViewCell {
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = .secondarySystemBackground
+        backgroundColor = AppColors.bg1
         selectionStyle = .none
 
         iconContainer.addSubview(iconImageView)

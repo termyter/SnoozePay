@@ -28,12 +28,12 @@ extension SettingsViewController {
     /// hit area falls out for free).
     func makeMyCodeCell() -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = .secondarySystemBackground
+        cell.backgroundColor = AppColors.bg1
 
         let titleLabel = UILabel()
         titleLabel.text = "Ваш код"
-        titleLabel.font = UIFont.systemFont(ofSize: 17)
-        titleLabel.textColor = .label
+        titleLabel.font = AppTypography.bodyLg
+        titleLabel.textColor = AppColors.fg1
 
         let codeLabel = UILabel()
         codeLabel.text = referralService.getMyCode()
@@ -42,7 +42,7 @@ extension SettingsViewController {
         codeLabel.setContentHuggingPriority(.required, for: .horizontal)
 
         let copyIcon = UIImageView(image: UIImage(systemName: "doc.on.clipboard"))
-        copyIcon.tintColor = .secondaryLabel
+        copyIcon.tintColor = AppColors.fg3
         copyIcon.contentMode = .scaleAspectFit
         copyIcon.translatesAutoresizingMaskIntoConstraints = false
         copyIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
@@ -82,7 +82,7 @@ extension SettingsViewController {
     /// text field.
     func makeFriendInputCell() -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = .secondarySystemBackground
+        cell.backgroundColor = AppColors.bg1
         cell.selectionStyle = .none
 
         let input = SPInput(
@@ -149,13 +149,13 @@ extension SettingsViewController {
     /// `willDisplay`.
     func makeReferralCaptionCell() -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = .secondarySystemBackground
+        cell.backgroundColor = AppColors.bg1
         cell.selectionStyle = .none
 
         let label = UILabel()
         label.text = "За каждого друга — +200 ₽ на ваш баланс"
         label.font = AppTypography.meta
-        label.textColor = .secondaryLabel
+        label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         cell.contentView.addSubview(label)

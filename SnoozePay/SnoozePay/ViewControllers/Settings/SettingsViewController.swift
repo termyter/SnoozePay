@@ -71,7 +71,7 @@ class SettingsViewController: UIViewController {
         super.viewDidLoad()
         title = "Настройки"
         navigationController?.navigationBar.prefersLargeTitles = true
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.bg0
         setupUI()
         observeBalanceChanges()
     }
@@ -173,6 +173,25 @@ extension SettingsViewController: UITableViewDataSource {
         }
     }
 
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        // Custom header view so each section uses the design-system caps role
+        // + tracking instead of the default footnote font (mirrors
+        // CreateAlarmViewController's pattern for cross-screen consistency).
+        guard let title = self.tableView(tableView, titleForHeaderInSection: section) else {
+            return nil
+        }
+        return SettingsSectionHeaderView(text: title)
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        guard self.tableView(tableView, titleForHeaderInSection: section) != nil else {
+            return .leastNonzeroMagnitude
+        }
+        // Match the system's default grouped section header height so the
+        // custom typography swap doesn't shift the form's vertical rhythm.
+        return UITableView.automaticDimension
+    }
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let section = Section(rawValue: indexPath.section) else { return UITableViewCell() }
 
@@ -181,22 +200,22 @@ extension SettingsViewController: UITableViewDataSource {
             if indexPath.row == 0 {
                 return makeIconRow(
                     systemName: "list.bullet.rectangle",
-                    iconColor: AppColors.accentBlue,
+                    iconColor: AppColors.info500,
                     title: "История транзакций",
                     accessory: .disclosureIndicator
                 )
             } else {
                 let cell = makeIconRow(
                     systemName: "dollarsign.circle",
-                    iconColor: AppColors.accentGreen,
+                    iconColor: AppColors.money500,
                     title: "Баланс",
                     accessory: .none
                 )
 
                 let balanceAmount = UILabel()
                 balanceAmount.text = "₽\(Int(BalanceService.shared.balance))"
-                balanceAmount.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-                balanceAmount.textColor = AppColors.accentBlue
+                balanceAmount.font = AppTypography.moneyMd
+                balanceAmount.textColor = AppColors.money500
                 balanceAmount.translatesAutoresizingMaskIntoConstraints = false
                 balanceAmount.setContentHuggingPriority(.required, for: .horizontal)
                 cell.contentView.addSubview(balanceAmount)
@@ -251,16 +270,16 @@ extension SettingsViewController: UITableViewDataSource {
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
             cell.backgroundColor = .secondarySystemBackground
 
-            let icon = makeSettingsIcon(systemName: "envelope", backgroundColor: AppColors.accentOrange)
+            let icon = makeSettingsIcon(systemName: "envelope", backgroundColor: AppColors.warn500)
             let titleLabel = UILabel()
             titleLabel.text = "Связаться с нами"
-            titleLabel.font = UIFont.systemFont(ofSize: 17)
-            titleLabel.textColor = .label
+            titleLabel.font = AppTypography.bodyLg
+            titleLabel.textColor = AppColors.fg1
 
             let detailLabel = UILabel()
             detailLabel.text = "support@alarmcash.app"
-            detailLabel.font = UIFont.systemFont(ofSize: 13)
-            detailLabel.textColor = .secondaryLabel
+            detailLabel.font = AppTypography.meta
+            detailLabel.textColor = AppColors.fg3
 
             let textStack = UIStackView(arrangedSubviews: [titleLabel, detailLabel])
             textStack.axis = .vertical
@@ -304,8 +323,8 @@ extension SettingsViewController: UITableViewDataSource {
         let icon = makeSettingsIcon(systemName: systemName, backgroundColor: iconColor)
         let label = UILabel()
         label.text = title
-        label.font = UIFont.systemFont(ofSize: 17)
-        label.textColor = .label
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg1
 
         let stack = UIStackView(arrangedSubviews: [icon, label])
         stack.axis = .horizontal
@@ -450,7 +469,7 @@ final class TransactionHistoryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "История транзакций"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.bg0
         setupTableView()
         loadTransactions()
     }
@@ -549,6 +568,17 @@ extension TransactionHistoryViewController: UITableViewDataSource, UITableViewDe
         "ИСТОРИЯ"
     }
 
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard let title = self.tableView(tableView, titleForHeaderInSection: section) else {
+            return nil
+        }
+        return SettingsSectionHeaderView(text: title)
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        UITableView.automaticDimension
+    }
+
     /// Mirror SettingsViewController so the transaction list reads as a card
     /// in light mode rather than blending into the page.
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
@@ -584,21 +614,21 @@ final class TransactionCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        label.textColor = .label
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg1
         return label
     }()
 
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 13)
-        label.textColor = .secondaryLabel
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
         return label
     }()
 
     private let amountLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        label.font = AppTypography.moneyMd
         label.textAlignment = .right
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -658,7 +688,7 @@ final class TransactionCell: UITableViewCell {
         // Icon — credits (topup, promotion) read green/up; charges red/down.
         // Promotion gets a distinct gift glyph so the user can tell a
         // referral bonus apart from an IAP top-up at a glance (issue #144).
-        iconContainer.backgroundColor = isCredit ? AppColors.accentGreen : AppColors.destructiveRed
+        iconContainer.backgroundColor = isCredit ? AppColors.money500 : AppColors.pain500
         let iconName: String
         switch transaction.type {
         case .topup:     iconName = "arrow.up"
@@ -690,10 +720,10 @@ final class TransactionCell: UITableViewCell {
         let amount = Int(transaction.amount)
         if isCredit {
             amountLabel.text = "+₽\(amount)"
-            amountLabel.textColor = AppColors.accentGreen
+            amountLabel.textColor = AppColors.money500
         } else {
             amountLabel.text = "₽\(amount)"
-            amountLabel.textColor = AppColors.destructiveRed
+            amountLabel.textColor = AppColors.pain500
         }
     }
 
@@ -708,6 +738,42 @@ final class TransactionCell: UITableViewCell {
 
     private static func formatDate(_ date: Date) -> String {
         dateFormatter.string(from: date)
+    }
+}
+
+// MARK: - Section header
+
+/// Caps-styled section header used by both `SettingsViewController` and the
+/// nested `TransactionHistoryViewController`. Mirrors `CreateAlarmViewController`'s
+/// private `SectionHeaderView` so the brand `caps` role + 0.12em tracking lands
+/// consistently across the Settings stack (#177).
+private final class SettingsSectionHeaderView: UIView {
+
+    init(text: String) {
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.attributedText = NSAttributedString(
+            string: text.uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: layoutMarginsGuide.trailingAnchor),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.lg),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sm)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 
@@ -729,12 +795,12 @@ final class LegalViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = legalTitle
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppColors.bg0
 
         let textView = UITextView()
         textView.text = "\(legalTitle)\n\nДокумент будет добавлен перед публикацией в App Store."
-        textView.font = UIFont.systemFont(ofSize: 15)
-        textView.textColor = .label
+        textView.font = AppTypography.body
+        textView.textColor = AppColors.fg1
         textView.backgroundColor = .clear
         textView.isEditable = false
         textView.translatesAutoresizingMaskIntoConstraints = false
