@@ -8,8 +8,8 @@ import UIKit
 /// and pain (progressive / expensive snooze) gradients.
 ///
 /// Min height 80pt so the touch target reads as a primary action even on
-/// the smallest device. Press scale 0.98 (a notch shallower than SPButton's
-/// 0.96) because the surface is bigger and 0.96 feels twitchy.
+/// the smallest device. Press scale 0.97 — unified with SPButton +
+/// SPAmountPreset so the whole design system pulses by the same delta.
 final class SPSnoozePrice: UIControl {
 
     enum Tone: Equatable {
@@ -46,7 +46,7 @@ final class SPSnoozePrice: UIControl {
                 options: [.allowUserInteraction, .beginFromCurrentState, .curveEaseOut],
                 animations: {
                     self.transform = self.isHighlighted
-                        ? CGAffineTransform(scaleX: 0.98, y: 0.98)
+                        ? CGAffineTransform(scaleX: 0.97, y: 0.97)
                         : .identity
                 },
                 completion: nil

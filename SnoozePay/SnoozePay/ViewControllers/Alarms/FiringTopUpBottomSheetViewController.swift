@@ -357,7 +357,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             // Pause row + close button
             pauseRow.topAnchor.constraint(equalTo: dragHandle.bottomAnchor, constant: AppSpacing.sp4),
             pauseRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            pauseRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset + 4),
+            pauseRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
             pauseDot.widthAnchor.constraint(equalToConstant: 8),
             pauseDot.heightAnchor.constraint(equalToConstant: 8),
             closeButton.widthAnchor.constraint(equalToConstant: 32),

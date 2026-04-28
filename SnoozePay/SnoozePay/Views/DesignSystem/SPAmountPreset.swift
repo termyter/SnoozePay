@@ -179,11 +179,14 @@ final class SPAmountPreset: UIControl {
             if self.isSelected {
                 self.backgroundColor = AppColors.money500.withAlphaComponent(0.10)
                 self.layer.borderColor = AppColors.money500.cgColor
-                // Outer 4pt glow recipe: spread shadow at the brand colour.
+                // Tight selection ring: 4pt radius / 0.10 opacity reads as a
+                // crisp brand outline rather than a diffuse glow that bled
+                // into adjacent presets at radius 8 / opacity 0.18.
                 self.layer.shadowColor = AppColors.money500.cgColor
-                self.layer.shadowOpacity = 0.18
+                self.layer.shadowOpacity = 0.10
                 self.layer.shadowOffset = .zero
-                self.layer.shadowRadius = 8
+                self.layer.shadowRadius = 4
+                self.layer.masksToBounds = false
             } else {
                 self.backgroundColor = AppColors.bg1
                 self.layer.borderColor = AppColors.stroke1

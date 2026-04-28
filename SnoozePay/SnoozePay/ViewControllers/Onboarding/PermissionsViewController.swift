@@ -132,7 +132,7 @@ final class PermissionsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(permRGB: 0x050912)
+        view.backgroundColor = AppColors.bg0
         view.layer.insertSublayer(dawnGradientLayer, at: 0)
         setupUI()
         // Detect whether the Critical Alerts entitlement is even present

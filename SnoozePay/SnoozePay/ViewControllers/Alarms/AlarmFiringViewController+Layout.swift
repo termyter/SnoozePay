@@ -14,7 +14,7 @@ extension AlarmFiringViewController {
     /// Called once from `viewDidLoad`. Behaviour mirrors the original
     /// `setupUI()` — only the location moved.
     func buildFiringLayout() {
-        view.backgroundColor = UIColor(rgb: 0x050912)
+        view.backgroundColor = AppColors.bg0
         installThemedBackground()
 
         // VM exposes `currentPenalty` as `Double`; wrap in `Decimal` so

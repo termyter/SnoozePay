@@ -105,17 +105,18 @@ enum SPSupport {
 
     // MARK: - Press feedback
 
-    /// Animate a 0.96 scale press (or restore to identity) on a view.
+    /// Animate a 0.97 scale press (or restore to identity) on a view.
     /// Matches the `.sp-btn:active { transform: scale(.97) }` recipe from
-    /// `components.css` (rounded to 0.96 for a slightly more tactile feel
-    /// on touch devices).
+    /// `components.css`. Unified across SPButton + SPSnoozePrice +
+    /// SPAmountPreset so the whole design system pulses by the same delta
+    /// instead of each component picking its own scale.
     static func animatePress(_ view: UIView, pressed: Bool) {
         UIView.animate(
             withDuration: durationQuick,
             delay: 0,
             options: [.allowUserInteraction, .beginFromCurrentState, .curveEaseOut],
             animations: {
-                view.transform = pressed ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
+                view.transform = pressed ? CGAffineTransform(scaleX: 0.97, y: 0.97) : .identity
             },
             completion: nil
         )
