@@ -274,10 +274,6 @@ class AlarmFiringViewController: UIViewController {
         // Initial transition may have happened synchronously inside
         // `startAlarmSound` before our observer is wired — sync now.
         applyAudioState(AudioService.shared.state)
-
-        #if DEBUG
-        installDebugTopUpButton()
-        #endif
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -521,43 +517,6 @@ class AlarmFiringViewController: UIViewController {
         let sheet = FiringTopUpBottomSheetViewController()
         present(sheet, animated: true)
     }
-
-    #if DEBUG
-    /// Debug-only floating button for manually triggering the top-up sheet
-    /// during development. Wired in `viewDidLoad` behind `#if DEBUG`. Removed
-    /// once #140 hooks the trigger to the real "balance < snooze price" UX.
-    private lazy var debugTopUpButton: UIButton = {
-        var config = UIButton.Configuration.filled()
-        config.title = "DEBUG: Top-up"
-        config.baseBackgroundColor = UIColor.systemPurple.withAlphaComponent(0.6)
-        config.baseForegroundColor = .white
-        config.cornerStyle = .capsule
-        let button = UIButton(configuration: config)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(debugTopUpTapped), for: .touchUpInside)
-        return button
-    }()
-
-    @objc private func debugTopUpTapped() {
-        presentTopUpSheet()
-    }
-
-    /// Installs the debug top-up button. Called from `viewDidLoad` only in
-    /// DEBUG builds so the production binary never carries the affordance.
-    private func installDebugTopUpButton() {
-        view.addSubview(debugTopUpButton)
-        NSLayoutConstraint.activate([
-            debugTopUpButton.topAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: 8
-            ),
-            debugTopUpButton.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -16
-            )
-        ])
-    }
-    #endif
 
     private func presentSnoozeScheduleFailureAlert(
         error: AlarmScheduler.SchedulingError
