@@ -136,14 +136,18 @@ final class TransactionRepository {
     /// and `currentStreak(from:)` cannot drift apart. Lives as `static` so
     /// it can't accidentally read instance state and reintroduce the silent
     /// decode the caller-supplied variant exists to avoid.
+    ///
+    /// Refunded charges (those whose ID appears in another row's
+    /// `refundsTransactionID`) are excluded — a snooze that failed to
+    /// schedule and was rolled back must not break the streak (issue #133).
     private static func computeStreak(from transactions: [Transaction]) -> Int {
         guard !transactions.isEmpty else { return 0 }
 
         let calendar = Calendar.current
         var streak = 0
         var checkDate = calendar.startOfDay(for: Date())
-        let allCharges = transactions.filter { $0.type == .charge }
-        let chargeDates = Set(allCharges.map { calendar.startOfDay(for: $0.createdAt) })
+        let realCharges = realCharges(from: transactions)
+        let chargeDates = Set(realCharges.map { calendar.startOfDay(for: $0.createdAt) })
 
         let firstTransactionDate = calendar.startOfDay(
             for: transactions.map { $0.createdAt }.min() ?? Date()
@@ -156,6 +160,14 @@ final class TransactionRepository {
         }
 
         return streak
+    }
+
+    /// Returns the subset of `transactions` that represent real (non-refunded)
+    /// charges. Used by streak computation and by `StatisticsViewModel` so the
+    /// two sites can never drift on what counts as "the user actually snoozed".
+    static func realCharges(from transactions: [Transaction]) -> [Transaction] {
+        let refundedIDs = Set(transactions.compactMap { $0.refundsTransactionID })
+        return transactions.filter { $0.type == .charge && !refundedIDs.contains($0.id) }
     }
 
     // MARK: - Recovery

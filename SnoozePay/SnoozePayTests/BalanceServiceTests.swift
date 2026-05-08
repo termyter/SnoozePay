@@ -189,6 +189,73 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertEqual(service.balance, 149)
     }
 
+    // MARK: - Refund linkage (issue #133)
+
+    /// `chargeWithReceipt` returns the persisted Transaction so a subsequent
+    /// refund can target it by ID. Without the receipt the coordinator would
+    /// have to look up the most recent charge by alarmID/timestamp — a
+    /// race-prone heuristic that breaks under concurrent snoozes.
+    func testChargeWithReceipt_returnsPersistedTransaction() {
+        let alarmID = UUID()
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 200, notificationCenter: NotificationCenter()
+        )
+
+        let receipt = service.chargeWithReceipt(amount: 75, alarmID: alarmID)
+
+        XCTAssertNotNil(receipt)
+        XCTAssertEqual(receipt?.type, .charge)
+        XCTAssertEqual(receipt?.amount, 75)
+        XCTAssertEqual(receipt?.alarmID, alarmID.uuidString)
+
+        let stored = ledger.fetchAll().first { $0.id == receipt?.id }
+        XCTAssertNotNil(stored,
+            "Receipt's id must match the persisted Transaction so the caller can later refund by ID")
+    }
+
+    /// Insufficient-funds returns `nil` from `chargeWithReceipt` and does not
+    /// touch the ledger — same contract as `charge(...) -> Bool`.
+    func testChargeWithReceipt_insufficientFunds_returnsNil() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 10, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertNil(service.chargeWithReceipt(amount: 50, alarmID: UUID()))
+        XCTAssertTrue(ledger.fetchAll().isEmpty)
+        XCTAssertEqual(service.balance, 10)
+    }
+
+    /// `topUp(amount:refundsTransactionID:)` records the link in the ledger
+    /// row so stats can pair the refund with its original charge.
+    func testTopUp_withRefundsTransactionID_persistsLink() {
+        let originalChargeID = UUID()
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertTrue(service.topUp(amount: 50, refundsTransactionID: originalChargeID))
+
+        let txs = ledger.fetchAll()
+        XCTAssertEqual(txs.count, 1)
+        XCTAssertEqual(txs[0].type, .topup)
+        XCTAssertEqual(txs[0].refundsTransactionID, originalChargeID,
+            "Refund link must round-trip through persistence so stats consumers can pair charge + refund")
+    }
+
+    /// Backward compatibility: `topUp(amount:)` (legacy signature) writes a
+    /// Transaction with `refundsTransactionID == nil`. Organic IAP top-ups
+    /// must not be misclassified as refunds.
+    func testTopUp_organic_hasNilRefundLink() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        service.topUp(amount: 100)
+
+        XCTAssertNil(ledger.fetchAll().first?.refundsTransactionID,
+            "Organic top-ups must not look like refunds")
+    }
+
     /// Boundary: balance == amount must satisfy `canAfford` (>=, not >).
     /// A subtle off-by-one here would silently disable the user's last snooze.
     func testCanAfford_boundaryAtExactEquality() {

@@ -77,11 +77,15 @@ final class StatisticsViewModel {
         // banner and the streak number consistent.
         do {
             let allTransactions = try transactionRepository.fetchAllChecked()
+            // Exclude charges that were refunded by an offsetting top-up so a
+            // snooze that failed to schedule (#130) doesn't count as a real
+            // snooze in either total spend or count (issue #133). Same source
+            // of truth as `computeStreak` — `realCharges` is the shared filter.
+            let realCharges = TransactionRepository.realCharges(from: allTransactions)
             if period == .allTime {
-                charges = allTransactions.filter { $0.type == .charge }
+                charges = realCharges
             } else {
-                charges = allTransactions
-                    .filter { $0.type == .charge && $0.createdAt >= since }
+                charges = realCharges.filter { $0.createdAt >= since }
             }
             streak = transactionRepository.currentStreak(from: allTransactions)
         } catch let error as TransactionRepository.RepositoryError {
