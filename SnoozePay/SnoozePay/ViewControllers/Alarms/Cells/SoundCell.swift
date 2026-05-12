@@ -1,41 +1,40 @@
 import UIKit
 
-/// Sound row: title on the left, current sound name + play button + chevron
-/// disclosure on the right. Tapping the row pushes `SoundPickerViewController`
-/// (handled by the controller's `didSelectRowAt`); tapping the play button
-/// fires a preview without leaving the screen.
+/// V2 "Звук" row: leading sound icon + title + trailing sound name (meta) +
+/// chevron. The inline preview play button is dropped — the dedicated
+/// `SoundPickerViewController` exposes per-row previews so the form-level
+/// row stays clean. Matches `SPScreensV2.jsx` lines 574-578.
 final class SoundCell: UITableViewCell {
 
     static let reuseID = "SoundCell"
 
     // MARK: - UI
 
+    private let iconView: UIImageView = {
+        let image = UIImage(systemName: "speaker.wave.2.fill")?.withConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        )
+        let view = UIImageView(image: image)
+        view.tintColor = AppColors.fg3
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = "Звук"
-        label.font = UIFont.systemFont(ofSize: 17)
-        label.textColor = .label
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     private let soundNameLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 17)
-        label.textColor = .secondaryLabel
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
-    }()
-
-    private let playButton: UIButton = {
-        let button = UIButton(type: .system)
-        let image = UIImage(systemName: "play.circle.fill")?.withConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 24, weight: .medium)
-        )
-        button.setImage(image, for: .normal)
-        button.tintColor = AppColors.accentBlue
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
     }()
 
     private let chevronView: UIImageView = {
@@ -43,13 +42,15 @@ final class SoundCell: UITableViewCell {
             UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
         )
         let view = UIImageView(image: image)
-        view.tintColor = .tertiaryLabel
+        view.tintColor = AppColors.fg3
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
 
     // MARK: - Callbacks
 
+    /// Retained for backwards compatibility — preview now ships on the
+    /// dedicated picker screen, so this fires only if the host wires it.
     var onPreviewTapped: (() -> Void)?
 
     // MARK: - Init
@@ -57,7 +58,6 @@ final class SoundCell: UITableViewCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
-        playButton.addTarget(self, action: #selector(previewTapped), for: .touchUpInside)
     }
 
     required init?(coder: NSCoder) {
@@ -67,35 +67,33 @@ final class SoundCell: UITableViewCell {
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = .secondarySystemBackground
-        // Use the system selection so the row briefly highlights on tap before
-        // navigating to the sound picker.
+        backgroundColor = AppColors.bg1
         selectionStyle = .default
 
+        contentView.addSubview(iconView)
         contentView.addSubview(titleLabel)
         contentView.addSubview(chevronView)
-        contentView.addSubview(playButton)
         contentView.addSubview(soundNameLabel)
 
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp4),
+            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 24),
+            iconView.heightAnchor.constraint(equalToConstant: 24),
+
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: AppSpacing.sp3),
             titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp4),
             chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            playButton.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sm),
-            playButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-
-            soundNameLabel.trailingAnchor.constraint(
-                equalTo: playButton.leadingAnchor, constant: -AppSpacing.sm
-            ),
+            soundNameLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sp2),
             soundNameLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             soundNameLabel.leadingAnchor.constraint(
-                greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: AppSpacing.sm
+                greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: AppSpacing.sp2
             ),
 
-            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 48)
         ])
     }
 
@@ -108,11 +106,5 @@ final class SoundCell: UITableViewCell {
 
     func configure(soundName: String) {
         soundNameLabel.text = soundName
-    }
-
-    // MARK: - Actions
-
-    @objc private func previewTapped() {
-        onPreviewTapped?()
     }
 }

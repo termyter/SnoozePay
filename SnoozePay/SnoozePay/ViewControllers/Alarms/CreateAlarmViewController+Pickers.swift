@@ -8,22 +8,21 @@ import UIKit
 
 extension CreateAlarmViewController {
 
-    /// Action-sheet confirmation before destroying the alarm being edited.
-    /// Mirrors the original `confirmDelete()` verbatim — including the iPad
-    /// popover sourceView dance that prevents the crash on regular size class.
+    /// V2 bottom-sheet confirmation before destroying the alarm being edited
+    /// (#163). Replaces the pre-refresh `UIAlertController.actionSheet` flow
+    /// with the brand-aligned `ConfirmDeleteAlarmViewController` so the
+    /// destructive copy reads in the same caps/h2/pain typography ramp as the
+    /// rest of the V2 surfaces. The actual `viewModel.delete()` + onDelete
+    /// + dismiss chain is unchanged — only the surface that asks "are you
+    /// sure?" moved.
     func confirmDelete() {
-        let alert = UIAlertController(
-            title: "Удалить будильник?",
-            message: "Это действие нельзя отменить.",
-            preferredStyle: .actionSheet
-        )
-        alert.addAction(UIAlertAction(title: "Удалить", style: .destructive) { [weak self] _ in
+        let sheet = ConfirmDeleteAlarmViewController { [weak self] in
             guard let self else { return }
-            // ViewModel.delete forwards to AlarmRepository.delete, which itself
+            // ViewModel.delete forwards to AlarmRepository.delete, which
             // cancels the scheduled UNNotificationRequests via AlarmScheduler.
             // Returns false when the store is locked due to a corrupt blob
             // (issue #72) — surface the failure rather than dismiss the
-            // sheet on a no-op delete.
+            // create-alarm form on a no-op delete.
             let didDelete = self.viewModel.delete()
             guard didDelete else {
                 self.presentSaveError(
@@ -34,15 +33,8 @@ extension CreateAlarmViewController {
             }
             self.onDelete?()
             self.dismiss(animated: true)
-        })
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
-        // Without a sourceView the action sheet crashes on iPad popovers.
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
         }
-        present(alert, animated: true)
+        present(sheet, animated: true)
     }
 
     func showThemePicker() {
@@ -57,7 +49,7 @@ extension CreateAlarmViewController {
                 // that follows the imperative pop).
                 let indexPath = IndexPath(row: 0, section: themeSectionIndex)
                 if let cell = self.tableView.cellForRow(at: indexPath) as? ThemeRowCell {
-                    cell.configure(themeName: self.viewModel.alarmThemeName)
+                    cell.configure(theme: self.viewModel.theme, themeName: self.viewModel.alarmThemeName)
                 }
             }
         )

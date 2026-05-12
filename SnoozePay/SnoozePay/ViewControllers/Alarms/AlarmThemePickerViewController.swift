@@ -36,6 +36,58 @@ final class AlarmThemePickerViewController: UIViewController {
 
     private var collectionView: UICollectionView!
 
+    /// V2 firing-screen preview block — sits above the grid and tracks the
+    /// currently-selected theme so the user sees a 180pt-tall stamp of what
+    /// the alarm-firing screen will look like before they pick. Matches
+    /// `SPMore2.jsx` lines 274-285.
+    private let previewContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = AppRadius.lg
+        view.layer.masksToBounds = true
+        return view
+    }()
+
+    private var previewGradient: CAGradientLayer?
+
+    private let previewImageView: UIImageView = {
+        let view = UIImageView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentMode = .scaleAspectFill
+        view.clipsToBounds = true
+        view.isHidden = true
+        return view
+    }()
+
+    private let previewClockLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "7:00"
+        label.font = AppFonts.mono(.ultralight, 56)
+        label.textColor = .white
+        label.textAlignment = .center
+        // Subtle shadow so the clock stays legible against any gradient stop.
+        label.layer.shadowColor = UIColor.black.cgColor
+        label.layer.shadowOpacity = 0.4
+        label.layer.shadowOffset = .zero
+        label.layer.shadowRadius = 8
+        return label
+    }()
+
+    private let previewCapsLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.attributedText = NSAttributedString(
+            string: "ПРЕВЬЮ FIRING-SCREEN",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        return label
+    }()
+
     // MARK: - Init
 
     /// - Parameters:
@@ -62,30 +114,101 @@ final class AlarmThemePickerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Тема"
         view.backgroundColor = AppColors.bg0
+        // V2 caps title — matches `SPMore2.jsx` lines 269 recipe.
+        let titleLabel = UILabel()
+        titleLabel.attributedText = NSAttributedString(
+            string: "Тема будильника".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        titleLabel.accessibilityLabel = "Тема будильника"
+        navigationItem.titleView = titleLabel
         setupCollectionView()
     }
 
     // MARK: - Setup
 
     private func setupCollectionView() {
+        // V2: preview block + grid, stacked vertically. The preview reflects
+        // the live `currentTheme` so the user gets a 180pt-tall sample of
+        // the firing screen as they cycle through tiles below.
+        previewContainer.addSubview(previewImageView)
+        previewContainer.addSubview(previewClockLabel)
+
+        view.addSubview(previewCapsLabel)
+        view.addSubview(previewContainer)
+
         let layout = makeLayout()
-        let view = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .clear
-        view.alwaysBounceVertical = true
-        view.dataSource = self
-        view.delegate = self
-        view.register(AlarmThemeTileCell.self, forCellWithReuseIdentifier: AlarmThemeTileCell.reuseID)
-        self.view.addSubview(view)
+        let grid = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.backgroundColor = .clear
+        grid.alwaysBounceVertical = true
+        grid.dataSource = self
+        grid.delegate = self
+        grid.register(AlarmThemeTileCell.self, forCellWithReuseIdentifier: AlarmThemeTileCell.reuseID)
+        self.view.addSubview(grid)
+
         NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor),
-            view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
-            view.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
+            previewCapsLabel.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor, constant: AppSpacing.sp4
+            ),
+            previewCapsLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp4),
+            previewCapsLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp4),
+
+            previewContainer.topAnchor.constraint(equalTo: previewCapsLabel.bottomAnchor, constant: AppSpacing.sp2),
+            previewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp4),
+            previewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp4),
+            previewContainer.heightAnchor.constraint(equalToConstant: 180),
+
+            previewImageView.topAnchor.constraint(equalTo: previewContainer.topAnchor),
+            previewImageView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            previewImageView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            previewImageView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+
+            previewClockLabel.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
+            previewClockLabel.centerYAnchor.constraint(equalTo: previewContainer.centerYAnchor),
+
+            grid.topAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: AppSpacing.sp3),
+            grid.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            grid.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+            grid.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
         ])
-        self.collectionView = view
+        self.collectionView = grid
+        renderPreview(for: currentTheme)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewGradient?.frame = previewContainer.bounds
+    }
+
+    /// Re-render the preview block with the given theme's gradient or photo.
+    /// Called once on setup and again every time the user taps a tile.
+    private func renderPreview(for theme: AlarmTheme) {
+        previewGradient?.removeFromSuperlayer()
+        previewGradient = nil
+        previewImageView.image = nil
+        previewImageView.isHidden = true
+
+        if case .custom(let url) = theme, let image = AlarmThemeImageStore.loadImage(at: url) {
+            previewImageView.image = image
+            previewImageView.isHidden = false
+            return
+        }
+
+        guard let colors = AlarmThemeRendering.gradientColors(for: theme) else { return }
+        let gradient = CAGradientLayer()
+        gradient.colors = colors
+        gradient.locations = AlarmThemeRendering.gradientLocations(for: theme)
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
+        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
+        gradient.frame = previewContainer.bounds
+        previewContainer.layer.insertSublayer(gradient, at: 0)
+        previewGradient = gradient
     }
 
     /// Two-column compositional grid. Item ratio is 16:9 — width is whatever
@@ -127,11 +250,14 @@ final class AlarmThemePickerViewController: UIViewController {
     // MARK: - Selection
 
     /// Apply the selection and pop back. Built-in themes commit immediately;
-    /// `.custom` routes through the photo picker first.
+    /// `.custom` routes through the photo picker first. The preview block
+    /// refreshes inline so the user sees the firing-screen sample update
+    /// before the pop animation completes.
     private func selectItem(at indexPath: IndexPath) {
         switch items[indexPath.item] {
         case .theme(let theme):
             currentTheme = theme
+            renderPreview(for: theme)
             onSelect(theme)
             navigationController?.popViewController(animated: true)
         case .customSlot:

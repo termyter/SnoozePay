@@ -112,17 +112,51 @@ final class CreateAlarmViewController: UIViewController {
     // MARK: - Setup
 
     private func setupNavigationBar() {
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .cancel,
-            target: self,
-            action: #selector(cancelTapped)
+        // V2 nav bar — left X close chip, centered caps title, right `Готово`
+        // SPButton(.money, .sm). The UIKit navigation bar still owns layout
+        // (we keep `title` set on viewDidLoad for accessibility), but the
+        // left/right items are custom views so the brand styling sticks.
+        // Matches `SPScreensV2.jsx` lines 496-502.
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(
+            UIImage(systemName: "xmark")?.withConfiguration(
+                UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+            ),
+            for: .normal
         )
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Сохранить",
-            style: .plain,
-            target: self,
-            action: #selector(saveTapped)
+        closeButton.tintColor = AppColors.fg1
+        closeButton.backgroundColor = AppColors.whiteOverlay06
+        closeButton.layer.cornerRadius = 18
+        closeButton.layer.masksToBounds = true
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
+        closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        closeButton.accessibilityLabel = "Закрыть"
+        navigationItem.leftBarButtonItem = UIBarButtonItem(customView: closeButton)
+
+        let saveButton = SPButton(
+            title: "Готово",
+            variant: .money,
+            size: .sm
         )
+        saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: saveButton)
+
+        // V2 title sits in caps + tracking. UIKit nav titles don't support
+        // attributed text directly via `navigationItem.title`, so install a
+        // custom title view label.
+        let titleLabel = UILabel()
+        titleLabel.attributedText = NSAttributedString(
+            string: (viewModel.isEditing ? "Редактировать" : "Новый будильник").uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        titleLabel.textAlignment = .center
+        navigationItem.titleView = titleLabel
     }
 
     private func setupTableView() {
@@ -316,7 +350,9 @@ extension CreateAlarmViewController: UITableViewDelegate {
         switch section {
         case .timePicker: return 200
         case .repeatDays: return 60
-        case .penalty: return 60
+        // V2 penalty row stacks a moneyMd value label above a 40pt chip row
+        // — the prior 60pt height clipped the chip ladder, so bump to 96pt.
+        case .penalty: return 96
         default: return UITableView.automaticDimension
         }
     }

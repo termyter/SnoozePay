@@ -1,17 +1,34 @@
 import UIKit
 
-/// Toggle row for the "Вибрация" setting.
+/// V2 "Вибрация" toggle row. Uses the brand `SPSwitch` so the on-state reads
+/// money-tinted instead of the platform green, matching the V2 settings group
+/// in `SPScreensV2.jsx` lines 585-590.
 final class VibrationCell: UITableViewCell {
 
     static let reuseID = "VibrationCell"
 
     // MARK: - UI
 
-    private let toggle: UISwitch = {
-        let view = UISwitch()
-        view.onTintColor = AppColors.accentGreen
+    private let iconView: UIImageView = {
+        let image = UIImage(systemName: "bell")?.withConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        )
+        let view = UIImageView(image: image)
+        view.tintColor = AppColors.fg3
+        view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
+
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Вибрация"
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg1
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private let toggle = SPSwitch()
 
     // MARK: - Callbacks
 
@@ -21,15 +38,37 @@ final class VibrationCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        textLabel?.text = "Вибрация"
-        backgroundColor = .secondarySystemBackground
-        selectionStyle = .none
-        accessoryView = toggle
+        setupUI()
         toggle.addTarget(self, action: #selector(toggled), for: .valueChanged)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupUI() {
+        backgroundColor = AppColors.bg1
+        selectionStyle = .none
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+
+        contentView.addSubview(iconView)
+        contentView.addSubview(titleLabel)
+        contentView.addSubview(toggle)
+
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp4),
+            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 24),
+            iconView.heightAnchor.constraint(equalToConstant: 24),
+
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: AppSpacing.sp3),
+            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+
+            toggle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp4),
+            toggle.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+
+            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 48)
+        ])
     }
 
     override func prepareForReuse() {
