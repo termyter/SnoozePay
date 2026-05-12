@@ -1,33 +1,30 @@
-// swiftlint:disable file_length
 import UIKit
 
-/// Streak celebration modal — section "28 · Streak модалка" in
-/// `docs/design/snoozepay-2026-04-27/project/SnoozePay - All Screens.html`.
+/// Streak celebration modal — V2 design (`docs/design/v2-handoff/components/`
+/// `SPScreensV2.jsx` lines 653-732, `StreakModalV2()`).
 ///
 /// Visual recipe:
-/// - `pageSheet` with a medium detent (~440pt) and a 28pt top corner radius
-///   so the sheet reads as one of the brand `r-sheet` surfaces (matches
-///   `--sp-radius-xl` from `tokens.css`).
-/// - 🔥 flame icon with the money tint at the top.
-/// - Big amount line ("+350 ₽") drawn at `AppTypography.moneyXl` and masked
-///   with the money gradient, reusing the same CALayer + image-mask trick
-///   from `SPBalanceCard.applyValueGradient(...)` so the gradient tracks
-///   the rendered glyph outlines.
-/// - Caption "{D} дней без откладываний" in `AppTypography.body` / `fg2`.
-/// - 7-day visualizer: a horizontal stack of 7 squares.
-///   * `completed` days are filled with the money gradient.
-///   * `today` is outline-only with a 2pt money stroke and the day number
-///     drawn in money tint.
-///   * `future` days fall back to `whiteOverlay08` so they read as muted.
-/// - A primary `SPButton(.money, .lg, fullWidth: true)` "Отлично, продолжаю"
-///   dismisses the sheet.
+/// - Black 92% overlay + radial money green glow background painted over the
+///   underlying screen. Implemented with a custom-presentation host: backdrop
+///   view + sheet card on top.
+/// - Sheet anchored to the bottom with `bg2` fill, 28pt corners, 1pt
+///   `strokeMoney` border, money-tinted glow shadow.
+/// - 96×96 rounded-rect (28pt radius) with the money gradient and a flame
+///   icon — sits centered at the top of the sheet.
+/// - Caps "Серия · N дней без откладываний" in `money300`.
+/// - Hero amount "+350 ₽" at `moneyXl` masked with the money gradient via
+///   the shared `UILabel.applyGradientMask(_:)` helper.
+/// - h3 "Сэкономили за неделю" in `fg1`.
+/// - Body — "Деньги вернули на баланс. Потратьте их на следующей слабой
+///   неделе." in `fg3`.
+/// - 7 day-pip row with the money gradient (numbered 1-7) below the body.
+/// - Primary `SPButton(.money, .lg, fullWidth: true)` "Поделиться победой"
+///   that pops a `UIActivityViewController` so the streak goes onto socials.
+/// - Secondary `SPButton(.quiet, .md, fullWidth: true)` "Закрыть" that
+///   dismisses.
 ///
-/// The "saved" amount on the hero number is the sum of penalties the user
-/// did NOT pay during the streak window. Computing that exactly would require
-/// knowing the would-have-fired schedule for each alarm in the window — too
-/// much for one PR. Until a follow-up wires up `expectedPenalty * snoozesSaved`,
-/// we approximate with `streakDays * defaultPenalty` (50 ₽/day fallback when
-/// no alarms exist) so the modal still tells a coherent story.
+/// Saved amount carries the same estimation caveat as before — see
+/// `estimatedSavings(for:alarms:)`.
 final class StreakModalViewController: UIViewController {
 
     // MARK: - Configuration
@@ -37,20 +34,39 @@ final class StreakModalViewController: UIViewController {
     private let streakDays: Int
 
     /// Approximate roubles saved across the streak — the value the hero
-    /// number renders. See class doc comment for the approximation caveat.
+    /// number renders.
     private let savedAmount: Decimal
 
     // MARK: - Subviews
 
+    /// Sheet card — contains every visible widget. Anchored to the bottom
+    /// of the screen, padded by safe-area + screenInset.
+    private let sheet = UIView()
+    private let backdrop = UIView()
+    private let backdropGlow = CAGradientLayer()
+
+    private let flameBadge = UIView()
+    private let flameBadgeGradient = CAGradientLayer()
     private let flameIcon = UIImageView()
+
+    private let capsLabel = UILabel()
     private let amountLabel = UILabel()
     private let amountGradient = CAGradientLayer()
-    private let captionLabel = UILabel()
-    private let dayStrip = UIStackView()
+    private let headlineLabel = UILabel()
+    private let bodyLabel = UILabel()
+
+    private let pipStrip = UIStackView()
+
     private let primaryButton = SPButton(
-        title: "Отлично, продолжаю",
+        title: "Поделиться победой",
         variant: .money,
         size: .lg,
+        fullWidth: true
+    )
+    private let secondaryButton = SPButton(
+        title: "Закрыть",
+        variant: .quiet,
+        size: .md,
         fullWidth: true
     )
 
@@ -69,16 +85,10 @@ final class StreakModalViewController: UIViewController {
         self.streakDays = streakDays
         self.savedAmount = savedAmount
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .pageSheet
-        if let sheet = sheetPresentationController {
-            // Medium detent ≈ 440pt — close enough to the spec without
-            // pinning a brittle .custom() resolver. Top-corner radius
-            // matches `--sp-radius-xl` so the sheet reads as one of the
-            // existing `r-sheet` surfaces.
-            sheet.detents = [.medium()]
-            sheet.preferredCornerRadius = AppRadius.xl
-            sheet.prefersGrabberVisible = true
-        }
+        // Custom overlay presentation so we can paint our own backdrop with
+        // a money-tinted radial glow.
+        modalPresentationStyle = .overFullScreen
+        modalTransitionStyle = .crossDissolve
     }
 
     required init?(coder: NSCoder) {
@@ -89,37 +99,123 @@ final class StreakModalViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = AppColors.bg1
-        configureFlameIcon()
-        configureAmountLabel()
-        configureCaptionLabel()
-        configureDayStrip()
-        configureButton()
+        view.backgroundColor = .clear
+        configureBackdrop()
+        configureSheet()
+        configureFlameBadge()
+        configureLabels()
+        configurePipStrip()
+        configureButtons()
         layout()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        applyAmountGradient()
+        backdropGlow.frame = view.bounds
+        flameBadgeGradient.frame = flameBadge.bounds
+        amountLabel.applyGradientMask(amountGradient)
+        // Shadow path tracks the sheet's rounded rect so the soft glow doesn't
+        // pay an offscreen pass on every layout while the sheet animates in.
+        sheet.layer.shadowPath = UIBezierPath(
+            roundedRect: sheet.bounds,
+            cornerRadius: AppRadius.xl
+        ).cgPath
     }
 
     // MARK: - Configuration
 
-    private func configureFlameIcon() {
-        let config = UIImage.SymbolConfiguration(pointSize: 56, weight: .semibold)
-        flameIcon.image = UIImage(systemName: "flame.fill", withConfiguration: config)
-        flameIcon.tintColor = AppColors.money500
-        flameIcon.contentMode = .scaleAspectFit
-        flameIcon.translatesAutoresizingMaskIntoConstraints = false
+    private func configureBackdrop() {
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.92)
+        view.addSubview(backdrop)
+        NSLayoutConstraint.activate([
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+
+        // Radial money glow as a CAGradientLayer (.radial) above the dim.
+        backdropGlow.type = .radial
+        backdropGlow.colors = [
+            AppColors.money400.withAlphaComponent(0.30).cgColor,
+            UIColor.clear.cgColor
+        ]
+        backdropGlow.locations = [0.0, 1.0]
+        backdropGlow.startPoint = CGPoint(x: 0.5, y: 0.75)
+        backdropGlow.endPoint = CGPoint(x: 1.1, y: 1.35)
+        view.layer.addSublayer(backdropGlow)
+
+        // Tap on the backdrop dismisses.
+        let tap = UITapGestureRecognizer(target: self, action: #selector(dismissTapped))
+        backdrop.addGestureRecognizer(tap)
     }
 
-    private func configureAmountLabel() {
+    private func configureSheet() {
+        sheet.translatesAutoresizingMaskIntoConstraints = false
+        sheet.backgroundColor = AppColors.bg2
+        sheet.layer.cornerRadius = AppRadius.xl
+        sheet.layer.cornerCurve = .continuous
+        sheet.layer.borderColor = AppColors.strokeMoney
+            .resolvedColor(with: traitCollection).cgColor
+        sheet.layer.borderWidth = 1
+        sheet.layer.shadowColor = AppColors.money500.cgColor
+        sheet.layer.shadowOpacity = 0.30
+        sheet.layer.shadowOffset = CGSize(width: 0, height: -12)
+        sheet.layer.shadowRadius = 32
+        view.addSubview(sheet)
+    }
+
+    private func configureFlameBadge() {
+        flameBadge.translatesAutoresizingMaskIntoConstraints = false
+        flameBadge.layer.cornerRadius = AppRadius.xl
+        flameBadge.layer.cornerCurve = .continuous
+        flameBadge.layer.shadowColor = AppColors.money500.cgColor
+        flameBadge.layer.shadowOpacity = 0.40
+        flameBadge.layer.shadowOffset = CGSize(width: 0, height: 12)
+        flameBadge.layer.shadowRadius = 24
+
+        flameBadgeGradient.colors = SPSupport.moneyGradientColors
+        flameBadgeGradient.locations = SPSupport.moneyGradientLocations
+        flameBadgeGradient.startPoint = SPSupport.gradientStart
+        flameBadgeGradient.endPoint = SPSupport.gradientEnd
+        flameBadgeGradient.cornerRadius = AppRadius.xl
+        flameBadge.layer.insertSublayer(flameBadgeGradient, at: 0)
+
+        let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .bold)
+        flameIcon.image = UIImage(systemName: "flame.fill", withConfiguration: config)
+        flameIcon.tintColor = AppColors.fgOnMoney
+        flameIcon.contentMode = .scaleAspectFit
+        flameIcon.translatesAutoresizingMaskIntoConstraints = false
+        flameBadge.addSubview(flameIcon)
+
+        NSLayoutConstraint.activate([
+            flameBadge.widthAnchor.constraint(equalToConstant: 96),
+            flameBadge.heightAnchor.constraint(equalToConstant: 96),
+            flameIcon.centerXAnchor.constraint(equalTo: flameBadge.centerXAnchor),
+            flameIcon.centerYAnchor.constraint(equalTo: flameBadge.centerYAnchor)
+        ])
+    }
+
+    private func configureLabels() {
+        let capsText = "СЕРИЯ · \(streakDays) \(Self.dayWord(for: streakDays).uppercased()) "
+            + "БЕЗ ОТКЛАДЫВАНИЙ"
+        capsLabel.attributedText = NSAttributedString(
+            string: capsText,
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.money300
+            ]
+        )
+        capsLabel.textAlignment = .center
+        capsLabel.numberOfLines = 0
+        capsLabel.translatesAutoresizingMaskIntoConstraints = false
+
         amountLabel.font = AppTypography.moneyXl
         amountLabel.textAlignment = .center
         amountLabel.adjustsFontForContentSizeCategory = false
-        // Neutral colour as a safety net — `applyAmountGradient` promotes
-        // this to a gradient text mask once layout resolves.
-        amountLabel.textColor = AppColors.fg1
+        amountLabel.textColor = AppColors.money400   // safety-net pre-mask
         amountLabel.text = Self.formatSavedAmount(savedAmount)
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -127,87 +223,155 @@ final class StreakModalViewController: UIViewController {
         amountGradient.locations = SPSupport.moneyGradientLocations
         amountGradient.startPoint = SPSupport.gradientStart
         amountGradient.endPoint = SPSupport.gradientEnd
+
+        headlineLabel.text = "Сэкономили за неделю"
+        headlineLabel.font = AppTypography.h3
+        headlineLabel.textColor = AppColors.fg1
+        headlineLabel.textAlignment = .center
+        headlineLabel.numberOfLines = 0
+        headlineLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        bodyLabel.text = "Деньги вернули на баланс. Потратьте их на следующей слабой неделе."
+        bodyLabel.font = AppTypography.body
+        bodyLabel.textColor = AppColors.fg3
+        bodyLabel.textAlignment = .center
+        bodyLabel.numberOfLines = 0
+        bodyLabel.translatesAutoresizingMaskIntoConstraints = false
     }
 
-    private func configureCaptionLabel() {
-        captionLabel.text = "\(streakDays) \(Self.dayWord(for: streakDays)) без откладываний"
-        captionLabel.font = AppTypography.body
-        captionLabel.textColor = AppColors.fg2
-        captionLabel.textAlignment = .center
-        captionLabel.translatesAutoresizingMaskIntoConstraints = false
-    }
-
-    private func configureDayStrip() {
-        dayStrip.axis = .horizontal
-        dayStrip.distribution = .fillEqually
-        dayStrip.alignment = .fill
-        dayStrip.spacing = AppSpacing.sp2
-        dayStrip.translatesAutoresizingMaskIntoConstraints = false
-        // Render 7 squares — clamped to [0, 7] for visualisation. Streaks
-        // longer than 7 days still show a fully-filled strip; the hero
-        // number carries the absolute count.
-        let completed = max(0, min(7, streakDays - 1))
-        let todayIndex = max(0, min(6, streakDays - 1))
+    private func configurePipStrip() {
+        pipStrip.axis = .horizontal
+        pipStrip.distribution = .fillEqually
+        pipStrip.spacing = AppSpacing.sp1
+        pipStrip.alignment = .fill
+        pipStrip.translatesAutoresizingMaskIntoConstraints = false
+        // 7 numbered green pips. Streaks < 7 fade out future pips by lowering
+        // their alpha; streaks ≥ 7 keep all seven at full intensity.
+        let completed = max(0, min(7, streakDays))
         for index in 0..<7 {
-            let kind: DaySquareView.Kind
-            if index < completed {
-                kind = .completed
-            } else if index == todayIndex && streakDays >= 1 && streakDays <= 7 {
-                kind = .today(dayNumber: index + 1)
-            } else {
-                kind = .future
-            }
-            let square = DaySquareView(kind: kind)
-            dayStrip.addArrangedSubview(square)
+            let pip = makePip(number: index + 1, lit: index < completed)
+            pipStrip.addArrangedSubview(pip)
         }
     }
 
-    private func configureButton() {
+    private func makePip(number: Int, lit: Bool) -> UIView {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = AppRadius.sm
+        view.layer.cornerCurve = .continuous
+        view.layer.masksToBounds = true
+        view.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        view.widthAnchor.constraint(equalToConstant: 32).isActive = true
+
+        if lit {
+            let gradient = CAGradientLayer()
+            gradient.colors = SPSupport.moneyGradientColors
+            gradient.locations = SPSupport.moneyGradientLocations
+            gradient.startPoint = SPSupport.gradientStart
+            gradient.endPoint = SPSupport.gradientEnd
+            gradient.cornerRadius = AppRadius.sm
+            // Defer the frame assignment to the next runloop so the sublayer
+            // tracks the resolved bounds set by the 32×32 anchors above.
+            DispatchQueue.main.async {
+                gradient.frame = view.bounds
+            }
+            view.layer.insertSublayer(gradient, at: 0)
+        } else {
+            view.backgroundColor = AppColors.whiteOverlay08
+        }
+
+        let label = UILabel()
+        label.text = "\(number)"
+        label.font = AppFonts.mono(.bold, 13)
+        label.textColor = lit ? AppColors.fgOnMoney : AppColors.fg3
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+        return view
+    }
+
+    private func configureButtons() {
         primaryButton.translatesAutoresizingMaskIntoConstraints = false
-        primaryButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
+        primaryButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
+        secondaryButton.translatesAutoresizingMaskIntoConstraints = false
+        secondaryButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
     }
 
     private func layout() {
+        let pipWrap = UIView()
+        pipWrap.translatesAutoresizingMaskIntoConstraints = false
+        pipWrap.addSubview(pipStrip)
+        NSLayoutConstraint.activate([
+            pipStrip.centerXAnchor.constraint(equalTo: pipWrap.centerXAnchor),
+            pipStrip.topAnchor.constraint(equalTo: pipWrap.topAnchor),
+            pipStrip.bottomAnchor.constraint(equalTo: pipWrap.bottomAnchor),
+            pipStrip.leadingAnchor.constraint(greaterThanOrEqualTo: pipWrap.leadingAnchor),
+            pipStrip.trailingAnchor.constraint(lessThanOrEqualTo: pipWrap.trailingAnchor)
+        ])
+
+        let buttonsStack = UIStackView(arrangedSubviews: [primaryButton, secondaryButton])
+        buttonsStack.axis = .vertical
+        buttonsStack.spacing = AppSpacing.sp2
+        buttonsStack.alignment = .fill
+        buttonsStack.translatesAutoresizingMaskIntoConstraints = false
+
         let stack = UIStackView(arrangedSubviews: [
-            flameIcon,
+            flameBadge,
+            capsLabel,
             amountLabel,
-            captionLabel,
-            dayStrip,
-            primaryButton
+            headlineLabel,
+            bodyLabel,
+            pipWrap,
+            buttonsStack
         ])
         stack.axis = .vertical
         stack.alignment = .center
-        stack.spacing = AppSpacing.sp4
-        stack.setCustomSpacing(AppSpacing.sp2, after: flameIcon)
-        stack.setCustomSpacing(AppSpacing.sp5, after: captionLabel)
-        stack.setCustomSpacing(AppSpacing.sp6, after: dayStrip)
+        stack.spacing = AppSpacing.sp3
+        stack.setCustomSpacing(AppSpacing.sp5, after: flameBadge)
+        stack.setCustomSpacing(AppSpacing.sp2, after: capsLabel)
+        stack.setCustomSpacing(AppSpacing.sp2, after: amountLabel)
+        stack.setCustomSpacing(AppSpacing.sp2, after: headlineLabel)
+        stack.setCustomSpacing(AppSpacing.sp6, after: bodyLabel)
+        stack.setCustomSpacing(AppSpacing.sp6, after: pipWrap)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
+        sheet.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            flameIcon.heightAnchor.constraint(equalToConstant: 56),
-            flameIcon.widthAnchor.constraint(equalToConstant: 56),
-            dayStrip.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
-            dayStrip.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+            // Sheet anchored to the bottom with screen-inset margins.
+            sheet.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp3),
+            sheet.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp3),
+            sheet.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -AppSpacing.sp4
+            ),
+
+            // Stack inside sheet, 28pt padded.
+            stack.topAnchor.constraint(equalTo: sheet.topAnchor, constant: AppSpacing.sp6),
+            stack.bottomAnchor.constraint(equalTo: sheet.bottomAnchor, constant: -AppSpacing.sp6),
+            stack.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: AppSpacing.sp6),
+            stack.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -AppSpacing.sp6),
+
+            // Buttons stretch to the full stack width.
             primaryButton.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
             primaryButton.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+            secondaryButton.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            secondaryButton.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
 
-            stack.topAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: AppSpacing.sp6
-            ),
-            stack.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
-                constant: AppSpacing.screenInset
-            ),
-            stack.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -AppSpacing.screenInset
-            ),
-            stack.bottomAnchor.constraint(
-                lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp5
-            )
+            // Pip wrap row stretches but the strip itself centres inside.
+            pipWrap.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            pipWrap.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+
+            // Headline + body stretch full-width so multi-line centres.
+            capsLabel.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            capsLabel.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+            headlineLabel.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            headlineLabel.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+            bodyLabel.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            bodyLabel.trailingAnchor.constraint(equalTo: stack.trailingAnchor)
         ])
     }
 
@@ -217,50 +381,19 @@ final class StreakModalViewController: UIViewController {
         dismiss(animated: true)
     }
 
-    // MARK: - Gradient text mask
-    //
-    // Same recipe as `SPBalanceCard.applyValueGradient(...)` — install the
-    // money gradient as a sublayer of the label and mask it with a raster
-    // of the rendered glyphs. CoreText doesn't expose CSS's
-    // `-webkit-background-clip: text` so the mask trick is the cheapest
-    // way to keep the gradient tracking the digit baseline across font /
-    // size / theme transitions.
-
-    private func applyAmountGradient() {
-        let textBounds = amountLabel.bounds
-        guard textBounds.width > 0, textBounds.height > 0 else { return }
-        if amountGradient.superlayer !== amountLabel.layer {
-            amountLabel.layer.addSublayer(amountGradient)
-        }
-        amountGradient.frame = textBounds
-
-        let renderer = UIGraphicsImageRenderer(size: textBounds.size)
-        let mask = renderer.image { _ in
-            (amountLabel.text ?? "").draw(
-                in: textBounds,
-                withAttributes: [
-                    .font: amountLabel.font as Any,
-                    .foregroundColor: UIColor.white,
-                    .paragraphStyle: { () -> NSParagraphStyle in
-                        let style = NSMutableParagraphStyle()
-                        style.alignment = .center
-                        return style
-                    }()
-                ]
-            )
-        }
-        let maskLayer = CALayer()
-        maskLayer.frame = textBounds
-        maskLayer.contents = mask.cgImage
-        amountGradient.mask = maskLayer
-        amountLabel.textColor = .clear
+    @objc private func shareTapped() {
+        let text = "SnoozePay: \(streakDays) \(Self.dayWord(for: streakDays)) подряд без откладываний — "
+            + "сэкономлено \(Self.formatSavedAmount(savedAmount))."
+        let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        // iPad popover anchor — the system picker insists on a source view.
+        activity.popoverPresentationController?.sourceView = primaryButton
+        activity.popoverPresentationController?.sourceRect = primaryButton.bounds
+        present(activity, animated: true)
     }
 
     // MARK: - Helpers
 
     /// Format the saved amount as `+1 234 ₽` with the brand thousand separator.
-    /// Reuses `Decimal.formattedRubles()` to stay consistent with the balance
-    /// card and the firing top-up sheet.
     static func formatSavedAmount(_ amount: Decimal) -> String {
         "+\(amount.formattedRubles())"
     }
@@ -309,100 +442,5 @@ final class StreakModalViewController: UIViewController {
             dailyPenalty = rounded
         }
         return dailyPenalty * Decimal(streakDays)
-    }
-}
-
-// MARK: - Day square
-
-/// One of the seven squares rendered above the primary CTA. The visual
-/// recipe maps 1:1 onto the design spec:
-/// - `.completed` → money-gradient fill, no text.
-/// - `.today` → transparent fill with a 2pt money stroke and the day
-///   number drawn in money tint.
-/// - `.future` → `whiteOverlay08` fill so future days read as muted.
-private final class DaySquareView: UIView {
-    enum Kind {
-        case completed
-        case today(dayNumber: Int)
-        case future
-    }
-
-    private let kind: Kind
-    private let label = UILabel()
-    private var gradientLayer: CAGradientLayer?
-
-    init(kind: Kind) {
-        self.kind = kind
-        super.init(frame: .zero)
-        layer.cornerRadius = AppRadius.sm
-        layer.masksToBounds = true
-        translatesAutoresizingMaskIntoConstraints = false
-        // Square via 1:1 aspect — fill-equally distribution sets the width.
-        widthAnchor.constraint(equalTo: heightAnchor).isActive = true
-        heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
-
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.textAlignment = .center
-        label.font = AppFonts.mono(.bold, 14)
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
-        applyKind()
-        // iOS 17 deprecated `traitCollectionDidChange(_:)` in favour of the
-        // closure-based observer below — legacy override stays as fallback.
-        if #available(iOS 17.0, *) {
-            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: DaySquareView, _) in
-                view.applyKind()
-            }
-        }
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        gradientLayer?.frame = bounds
-    }
-
-    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        if #available(iOS 17.0, *) { return }   // iOS 17 uses the registered observer.
-        // Strokes / overlays are dynamic colours — re-resolve their cgColor
-        // for the current trait on iOS 15/16 so a theme flip doesn't leave
-        // the previous theme baked into CALayer.
-        applyKind()
-    }
-
-    private func applyKind() {
-        gradientLayer?.removeFromSuperlayer()
-        gradientLayer = nil
-        layer.borderWidth = 0
-        backgroundColor = .clear
-        label.text = nil
-
-        switch kind {
-        case .completed:
-            let gradient = CAGradientLayer()
-            gradient.colors = SPSupport.moneyGradientColors
-            gradient.locations = SPSupport.moneyGradientLocations
-            gradient.startPoint = SPSupport.gradientStart
-            gradient.endPoint = SPSupport.gradientEnd
-            gradient.frame = bounds
-            layer.insertSublayer(gradient, at: 0)
-            gradientLayer = gradient
-        case .today(let dayNumber):
-            backgroundColor = .clear
-            layer.borderWidth = 2
-            layer.borderColor = AppColors.money500.cgColor
-            label.text = "\(dayNumber)"
-            label.textColor = AppColors.money500
-        case .future:
-            backgroundColor = AppColors.whiteOverlay08
-        }
     }
 }
