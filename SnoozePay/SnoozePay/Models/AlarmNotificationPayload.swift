@@ -77,9 +77,16 @@ struct AlarmNotificationPayload: Equatable {
     // MARK: - userInfo bridge
 
     /// Decode from a `UNNotificationContent.userInfo` dictionary. Returns `nil`
-    /// if any required field is missing or has the wrong type — callers MUST
-    /// surface this as a typed error path (log + early return), never proceed
-    /// with synthesised defaults.
+    /// if any required field is missing, has the wrong type, OR is out of
+    /// range — callers MUST surface this as a typed error path (log + early
+    /// return), never proceed with synthesised defaults.
+    ///
+    /// Range validation matters because `userInfo` is a `[AnyHashable: Any]`
+    /// dict that arrives from the notification daemon and could in principle
+    /// carry tampered or schema-drifted values. Without these guards
+    /// `AlarmFiringCoordinator` would compute `pow(2.0, negativeCount)` for
+    /// a progressive penalty, schedule a 0-minute snooze trigger, or attempt
+    /// to charge a `NaN` penalty (issue #208).
     init?(userInfo: [AnyHashable: Any]) {
         guard
             let alarmIDString = userInfo[Key.alarmID] as? String,
@@ -89,6 +96,13 @@ struct AlarmNotificationPayload: Equatable {
             let snoozeCount = userInfo[Key.snoozeCount] as? Int,
             let snoozeMinutes = userInfo[Key.snoozeMinutes] as? Int,
             let soundID = userInfo[Key.soundID] as? String
+        else {
+            return nil
+        }
+        guard
+            penaltyAmount.isFinite, penaltyAmount >= 0,
+            snoozeCount >= 0,
+            snoozeMinutes >= 1, snoozeMinutes <= 60
         else {
             return nil
         }
