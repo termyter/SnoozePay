@@ -348,4 +348,94 @@ final class AlarmsListViewModel {
         guard index < alarms.count else { return "" }
         return "▲ ПОСПАТЬ ЕЩЁ: −\(Int(alarms[index].penaltyAmount)) ₽"
     }
+
+    // MARK: - V2 cell helpers
+
+    /// Caps-styled day label for the V2 card top row.
+    /// Examples:
+    ///  - `[0,1,2,3,4]`             → `БУДНИ · ПН–ПТ`
+    ///  - `[5,6]`                   → `ВЫХОДНЫЕ`
+    ///  - `[0,1,2,3,4,5,6]`         → `КАЖДЫЙ ДЕНЬ`
+    ///  - `[]`                      → `ЕДИНОЖДЫ`
+    ///  - `[1,3]`, with name "Спорт" → `СПОРТ · ВТ, ЧТ`
+    ///  - `[0]`, name empty/default → `ПН`
+    ///
+    /// Combines the alarm's user-set `name` with the weekday set when the
+    /// name is non-default — otherwise renders the weekday phrase alone. The
+    /// alarm-list spec line "Спорт · Вт, Чт" lives here so the cell can stay
+    /// a passive renderer.
+    func alarmDaysCaps(at index: Int) -> String {
+        guard index < alarms.count else { return "" }
+        let alarm = alarms[index]
+        let daysPhrase = Self.weekdayPhrase(for: alarm.repeatDays).uppercased()
+        let trimmed = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Default name "Будильник" is suppressed in the caps row — it's the
+        // boilerplate label every freshly-created alarm carries and would
+        // crowd the caps line.
+        let nameIsDefault = trimmed.isEmpty || trimmed.lowercased() == "будильник"
+        if nameIsDefault {
+            return daysPhrase
+        }
+        return "\(trimmed.uppercased()) · \(daysPhrase)"
+    }
+
+    /// Weekday set rendered as a humanised Russian phrase. Mirrors
+    /// `Alarm.repeatDaysDescription` shape but always returns a Russian
+    /// label suitable for the caps line (no "Единожды" en dash collapsing
+    /// the alarm into an unintelligible "·" pair when there's no name).
+    private static func weekdayPhrase(for days: [Int]) -> String {
+        guard !days.isEmpty else { return "Единожды" }
+        let names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        let sorted = days.sorted()
+        if sorted == Array(0...6) { return "Каждый день" }
+        if sorted == [0, 1, 2, 3, 4] { return "Будни · Пн–Пт" }
+        if sorted == [5, 6] { return "Выходные" }
+        return sorted.compactMap { index -> String? in
+            guard index >= 0, index < names.count else { return nil }
+            return names[index]
+        }.joined(separator: ", ")
+    }
+
+    /// Price pill text — bare "50 ₽" formatted via `Decimal.formattedRubles`
+    /// so digit grouping matches the balance display.
+    func alarmPriceText(at index: Int) -> String {
+        guard index < alarms.count else { return "" }
+        return Decimal(alarms[index].penaltyAmount).formattedRubles()
+    }
+
+    /// Progressive-pain multiplier label. Returns `"×2"` when the alarm has
+    /// the progressive scale toggle on, else `nil` so the cell hides the
+    /// pill. The exact factor is informational — the firing screen
+    /// computes the actual penalty per snooze count.
+    func alarmMultiplierText(at index: Int) -> String? {
+        guard index < alarms.count else { return nil }
+        return alarms[index].progressiveScale ? "×2" : nil
+    }
+
+    /// Human-readable name of the alarm's picked sound (e.g. "Рассвет",
+    /// "Радар"). Falls back to the raw `soundID` when the id isn't in the
+    /// known catalogue (custom file or new sound not yet added to the
+    /// lookup table).
+    func alarmSoundName(at index: Int) -> String? {
+        guard index < alarms.count else { return nil }
+        let soundID = alarms[index].soundID
+        return Self.soundDisplayNames[soundID] ?? soundID
+    }
+
+    /// Sound-id → Russian display-name lookup. Mirrors the
+    /// `CreateAlarmViewModel.availableSounds` list so cells render the same
+    /// label the user picked in the editor without coupling the alarms-list
+    /// VM to the editor VM.
+    private static let soundDisplayNames: [String: String] = [
+        "dawn": "Рассвет",
+        "radar": "Радар",
+        "drops": "Капли",
+        "piano": "Пиано",
+        "guitar": "Гитара",
+        "bell": "Колокольчик",
+        "waves": "Волны",
+        "birds": "Птицы",
+        "classic": "Классика",
+        "jazz": "Джаз"
+    ]
 }

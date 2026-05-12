@@ -1,6 +1,28 @@
 import UIKit
 
-/// Table view cell styled as a dark card for displaying a single alarm in the list.
+/// Alarm row card — V2 design.
+///
+/// Visual recipe (matches `docs/design/v2-handoff/components/SPScreensV2.jsx`
+/// L357-404):
+/// ```
+///  ┌──────────────────────────────────────────────────────────┐
+///  │ БУДНИ · ПН–ПТ                              [ ●   ]      │
+///  │                                                          │
+///  │ 7:00                                                     │
+///  │                                                          │
+///  │ ┌──────┐  ┌──────┐  ┌─────────────┐                    │
+///  │ │ 50 ₽ │  │  ×2  │  │  Soft Dawn  │                    │
+///  │ └──────┘  └──────┘  └─────────────┘                    │
+///  └──────────────────────────────────────────────────────────┘
+/// ```
+///
+/// Three tonal states, all 20pt internal padding / 20pt corner radius:
+/// - **enabled**:  `bg2` raised surface, `fg1` clock + `fg3` caps.
+/// - **disabled**: `bg1` surface, `fg3` clock + `fg4` caps.
+/// - **selected**: handled by `setHighlighted(_:)` press feedback.
+///
+/// The caps row uses an attributed string with `AppTypography.capsKerning`
+/// so tracking stays in lock-step with the global caps recipe.
 final class AlarmCell: UITableViewCell {
 
     static let reuseID = "AlarmCell"
@@ -9,87 +31,55 @@ final class AlarmCell: UITableViewCell {
 
     private let cardView: UIView = {
         let view = UIView()
-        // Shared card recipe: rounded corners, hairline border, soft drop shadow.
-        // See `UIView.applyCardStyle()` for the full rationale (light-mode
-        // contrast). The `shadowRadius` is bumped slightly here (8pt) compared
-        // to the default to keep the historical look of the alarm-row cards;
-        // tweak via direct `layer` access after applying the helper.
-        view.applyCardStyle()
-        view.layer.shadowRadius = 8
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.clipsToBounds = false
         view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = AppRadius.lg  // 20pt
+        view.layer.masksToBounds = true
+        view.layer.borderWidth = 1
         return view
     }()
 
-    /// Leading 6pt vertical strip painted with the alarm's theme gradient
-    /// (or thumbnail for `.custom`) so the user can spot which theme each
-    /// row uses without opening the editor (#151). Lives inside the card
-    /// view so it inherits the card's clip + corner radius.
-    private let themeStripContainer: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.clipsToBounds = true
-        return view
-    }()
-
-    private let themeStripImageView: UIImageView = {
-        let view = UIImageView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentMode = .scaleAspectFill
-        view.clipsToBounds = true
-        view.layer.cornerRadius = 3
-        view.isHidden = true
-        return view
-    }()
-
-    private var themeStripGradient: CAGradientLayer?
-
-    private let timeLabel: UILabel = {
+    private let capsLabel: UILabel = {
         let label = UILabel()
-        // Brand clock face — 64pt JetBrainsMono Light per `tokens.css` `clockLg`.
-        // 64pt at JBM Light easily exceeds the available width on a 393pt screen
-        // for "23:58"-class strings, so allow auto-shrink down to 85% to keep
-        // the row from clipping or wrapping.
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.85
+        return label
+    }()
+
+    let toggleSwitch: SPSwitch = {
+        let sw = SPSwitch()
+        sw.translatesAutoresizingMaskIntoConstraints = false
+        return sw
+    }()
+
+    private let clockLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        // 64pt mono light `clockLg` with tabular nums.
         label.font = AppTypography.clockLg.monospacedDigit()
         label.textColor = AppColors.fg1
         label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.85
-        label.translatesAutoresizingMaskIntoConstraints = false
+        label.minimumScaleFactor = 0.7
         return label
     }()
 
-    private let detailLabel: UILabel = {
-        let label = UILabel()
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    private let penaltyLabel: UILabel = {
-        // Warn-toned penalty caption. Using `caps` (12pt bold + 0.12em kerning
-        // applied per-text in `configure`) and the brand `warn400` foreground
-        // tone instead of the legacy `accentOrange` alias.
-        let label = UILabel()
-        label.font = AppTypography.caps
-        label.textColor = AppColors.warn400
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    let toggleSwitch: UISwitch = {
-        let sw = UISwitch()
-        sw.onTintColor = AppColors.money500
-        sw.translatesAutoresizingMaskIntoConstraints = false
-        return sw
+    /// Horizontal stack of SPPills (price / multiplier / sound). Re-built on
+    /// every `configure(...)` since the pill set is data-dependent and SPPill
+    /// instances aren't designed for in-place mutation.
+    private let pillsStack: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .horizontal
+        stack.alignment = .center
+        stack.spacing = 6
+        stack.distribution = .fill
+        return stack
     }()
 
     // MARK: - Callbacks
 
     /// Invoked when the user flips the toggle. Set by the controller in `cellForRowAt`.
-    /// Capturing the alarm's id (not row index or `tag`) lets the controller resolve
-    /// the right alarm even after deletion or reordering.
     var onToggle: ((Bool) -> Void)?
 
     // MARK: - Init
@@ -97,21 +87,28 @@ final class AlarmCell: UITableViewCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
-        // Wire the target once at cell creation so re-configuration in
-        // `cellForRowAt` never accumulates duplicate handlers.
         toggleSwitch.addTarget(self, action: #selector(toggleSwitchChanged), for: .valueChanged)
-
-        // CALayer's `cgColor` properties don't auto-resolve dynamic UIColors,
-        // so refresh the border whenever the trait collection (light/dark) flips.
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: AlarmCell, _) in
-            cell.cardView.layer.borderColor = AppColors.stroke1.resolvedColor(
-                with: cell.traitCollection
-            ).cgColor
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: AlarmCell, _) in
+                cell.refreshDynamicColors()
+            }
         }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if #available(iOS 17.0, *) { return }
+        refreshDynamicColors()
+    }
+
+    private func refreshDynamicColors() {
+        // CALayer cgColor doesn't auto-resolve dynamic UIColors.
+        cardView.layer.borderColor = AppColors.whiteOverlay08.cgColor
     }
 
     // MARK: - Setup
@@ -122,155 +119,163 @@ final class AlarmCell: UITableViewCell {
         selectionStyle = .none
 
         contentView.addSubview(cardView)
-        cardView.addSubview(themeStripContainer)
-        themeStripContainer.addSubview(themeStripImageView)
-        cardView.addSubview(timeLabel)
-        cardView.addSubview(detailLabel)
-        cardView.addSubview(penaltyLabel)
+        cardView.addSubview(capsLabel)
         cardView.addSubview(toggleSwitch)
+        cardView.addSubview(clockLabel)
+        cardView.addSubview(pillsStack)
 
-        // 6pt theme strip pinned to the leading edge, shifted in 6pt from the
-        // card edge so it doesn't sit flush against the rounded corner. The
-        // strip's height fills the card minus 8pt top/bottom insets so it
-        // reads as a deliberate accent rather than a clipped fill.
-        let stripLeading = AppSpacing.sm
-        let stripWidth: CGFloat = 6
-        let timeLeading = stripLeading + stripWidth + AppSpacing.md // 8 + 6 + 12 = 26
+        let pad = AppSpacing.sp5 // 20pt
+        // Outer card insets within the cell — horizontal screen inset, small
+        // vertical breathing so consecutive cards have visible separation
+        // without an explicit divider line. Bottom is half so the scroll
+        // gap between cards lands at `AppSpacing.sp3` (12pt) per the spec.
+        let outerH = AppSpacing.screenInset
+        let outerV: CGFloat = 6
 
         NSLayoutConstraint.activate([
-            // Card with horizontal and vertical insets
-            cardView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm / 2),
-            cardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            cardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            cardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sm / 2),
+            cardView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: outerV),
+            cardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: outerH),
+            cardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -outerH),
+            cardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -outerV),
 
-            // Theme strip — leading edge of the card, full height minus padding.
-            themeStripContainer.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: stripLeading),
-            themeStripContainer.topAnchor.constraint(equalTo: cardView.topAnchor, constant: AppSpacing.sm),
-            themeStripContainer.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -AppSpacing.sm),
-            themeStripContainer.widthAnchor.constraint(equalToConstant: stripWidth),
+            // Caps top-leading, switch top-trailing — aligned by centerY.
+            capsLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: pad),
+            capsLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: pad),
+            capsLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: toggleSwitch.leadingAnchor,
+                constant: -AppSpacing.sp3
+            ),
 
-            themeStripImageView.topAnchor.constraint(equalTo: themeStripContainer.topAnchor),
-            themeStripImageView.leadingAnchor.constraint(equalTo: themeStripContainer.leadingAnchor),
-            themeStripImageView.trailingAnchor.constraint(equalTo: themeStripContainer.trailingAnchor),
-            themeStripImageView.bottomAnchor.constraint(equalTo: themeStripContainer.bottomAnchor),
+            toggleSwitch.centerYAnchor.constraint(equalTo: capsLabel.centerYAnchor),
+            toggleSwitch.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -pad),
 
-            // Toggle in top-right corner of card
-            toggleSwitch.topAnchor.constraint(equalTo: cardView.topAnchor, constant: AppSpacing.lg),
-            toggleSwitch.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -AppSpacing.lg),
+            // Clock below the caps row.
+            clockLabel.topAnchor.constraint(equalTo: capsLabel.bottomAnchor, constant: 4),
+            clockLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: pad),
+            clockLabel.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -pad),
 
-            // Time label (large, top-left) — left-padded to leave room for the strip.
-            timeLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: AppSpacing.md),
-            timeLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: timeLeading),
-            timeLabel.trailingAnchor.constraint(lessThanOrEqualTo: toggleSwitch.leadingAnchor, constant: -AppSpacing.sm),
-
-            // Detail line: "Name - Days"
-            detailLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: AppSpacing.xs),
-            detailLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: timeLeading),
-            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -AppSpacing.lg),
-
-            // Penalty line at the bottom
-            penaltyLabel.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: AppSpacing.sm),
-            penaltyLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: timeLeading),
-            penaltyLabel.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -AppSpacing.lg),
-            penaltyLabel.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -AppSpacing.md)
+            // Pill row at the bottom — 14pt gap below the clock.
+            pillsStack.topAnchor.constraint(equalTo: clockLabel.bottomAnchor, constant: 14),
+            pillsStack.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: pad),
+            pillsStack.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -pad),
+            pillsStack.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -pad)
         ])
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        // The closure captures the previous row's identity — drop it so the
-        // recycled cell never fires the wrong alarm before the next configure.
         onToggle = nil
-        // Reset the theme strip so the next row's gradient doesn't briefly
-        // show the previous row's colours before configure() reapplies.
-        themeStripGradient?.removeFromSuperlayer()
-        themeStripGradient = nil
-        themeStripImageView.image = nil
-        themeStripImageView.isHidden = true
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        // Pre-rasterize the shadow against the rounded card frame so scrolling
-        // doesn't pay the per-pixel offscreen pass cost.
-        cardView.layer.shadowPath = UIBezierPath(
-            roundedRect: cardView.bounds,
-            cornerRadius: AppRadius.sm
-        ).cgPath
-        // Keep the border colour in sync with the current trait collection
-        // (cgColor doesn't auto-update for dynamic UIColors).
-        cardView.layer.borderColor = AppColors.stroke1.resolvedColor(
-            with: traitCollection
-        ).cgColor
-
-        // Round the strip and its gradient sublayer to a soft pill so it
-        // reads as an accent rather than a hard rectangle.
-        themeStripContainer.layer.cornerRadius = 3
-        themeStripGradient?.frame = themeStripContainer.bounds
+        // Pills are data-dependent — wipe them so reuse doesn't render the
+        // previous alarm's pills for a frame before configure() re-fills.
+        pillsStack.arrangedSubviews.forEach { view in
+            pillsStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
     }
 
     // MARK: - Configure
 
-    func configure(time: String, detail: String, penalty: String, enabled: Bool, theme: AlarmTheme) {
-        timeLabel.text = time
-        detailLabel.text = detail
-        // `caps` role pairs the 12pt bold font with +0.12em tracking per
-        // `tokens.css`. Apply via attributedText so the kerning stays in lock-
-        // step with the font role no matter where the string is set from.
-        penaltyLabel.attributedText = NSAttributedString(
-            string: penalty,
-            attributes: [.kern: AppTypography.capsKerning]
+    /// Configure the row's content. Inputs:
+    /// - `time`: pre-formatted "HH:mm".
+    /// - `daysCaps`: caps string for the top-left ("БУДНИ · ПН–ПТ" /
+    ///   "ВЫХОДНЫЕ" / "ПН, ВТ, СР").
+    /// - `priceText`: e.g. "50 ₽".
+    /// - `multiplier`: optional progressive-pain pill label ("×2" / "×4"
+    ///   / etc.). `nil` hides the pill.
+    /// - `soundName`: optional neutral pill — display name of the picked
+    ///   sound. `nil` hides the pill.
+    /// - `enabled`: drives the tonal switch between bg2 / bg1 surfaces.
+    func configure(
+        time: String,
+        daysCaps: String,
+        priceText: String,
+        multiplier: String?,
+        soundName: String?,
+        enabled: Bool
+    ) {
+        clockLabel.text = time
+        capsLabel.attributedText = NSAttributedString(
+            string: daysCaps,
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: enabled ? AppColors.fg3 : AppColors.fg4
+            ]
         )
         toggleSwitch.isOn = enabled
-        setEnabledAppearance(enabled)
-        applyTheme(theme)
+        applyEnabledTone(enabled)
+        rebuildPills(price: priceText, multiplier: multiplier, soundName: soundName, enabled: enabled)
     }
 
-    /// Paint the leading 6pt strip with the alarm's theme. Built-in themes
-    /// install a vertical gradient layer; `.custom` swaps to the picked
-    /// thumbnail image, falling back to the Dawn gradient when the file is
-    /// gone (Caches purge).
-    private func applyTheme(_ theme: AlarmTheme) {
-        themeStripGradient?.removeFromSuperlayer()
-        themeStripGradient = nil
-        themeStripImageView.image = nil
-        themeStripImageView.isHidden = true
+    /// Legacy-style call site preserved for migration. Forwards to the
+    /// V2 signature with empty pill set so callers that haven't been
+    /// updated yet still compile. New code should use `configure(time:
+    /// daysCaps: priceText: multiplier: soundName: enabled:)`.
+    func configure(time: String, detail: String, penalty: String, enabled: Bool, theme: AlarmTheme) {
+        _ = theme // theme strip retired in V2 layout.
+        configure(
+            time: time,
+            daysCaps: detail.uppercased(),
+            priceText: penalty,
+            multiplier: nil,
+            soundName: nil,
+            enabled: enabled
+        )
+    }
 
-        if case .custom(let url) = theme, let image = AlarmThemeImageStore.loadImage(at: url) {
-            themeStripImageView.image = image
-            themeStripImageView.isHidden = false
-            return
+    private func rebuildPills(price: String, multiplier: String?, soundName: String?, enabled: Bool) {
+        pillsStack.arrangedSubviews.forEach { view in
+            pillsStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
         }
+        // Price pill — warn-tone when enabled, neutral when disabled so a
+        // dimmed row doesn't shout "50 ₽" at the user.
+        let pricePill = SPPill(text: price, tone: enabled ? .warn : .neutral)
+        pillsStack.addArrangedSubview(pricePill)
 
-        let resolvedTheme: AlarmTheme = {
-            if case .custom = theme { return .dawn }
-            return theme
-        }()
-        guard let colors = AlarmThemeRendering.gradientColors(for: resolvedTheme) else { return }
-        let gradient = CAGradientLayer()
-        gradient.colors = colors
-        gradient.locations = AlarmThemeRendering.gradientLocations(for: resolvedTheme)
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
-        gradient.frame = themeStripContainer.bounds
-        gradient.cornerRadius = 3
-        themeStripContainer.layer.insertSublayer(gradient, at: 0)
-        themeStripGradient = gradient
+        if let multiplier = multiplier {
+            let mult = SPPill(text: multiplier, tone: enabled ? .pain : .neutral)
+            pillsStack.addArrangedSubview(mult)
+        }
+        if let soundName = soundName, !soundName.isEmpty {
+            let sound = SPPill(text: soundName, tone: .neutral)
+            pillsStack.addArrangedSubview(sound)
+        }
+        // Trailing spacer so pills don't stretch.
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        pillsStack.addArrangedSubview(spacer)
     }
 
-    /// Updates the dim/full opacity of text labels to match enabled state.
-    /// Called both during initial configuration and live from the toggle handler.
-    func setEnabledAppearance(_ enabled: Bool) {
-        let alpha: CGFloat = enabled ? 1.0 : 0.4
-        timeLabel.alpha = alpha
-        detailLabel.alpha = alpha
-        penaltyLabel.alpha = alpha
+    private func applyEnabledTone(_ enabled: Bool) {
+        cardView.backgroundColor = enabled ? AppColors.bg2 : AppColors.bg1
+        clockLabel.textColor = enabled ? AppColors.fg1 : AppColors.fg3
+        cardView.layer.borderColor = AppColors.whiteOverlay08.cgColor
     }
 
     @objc private func toggleSwitchChanged() {
         let isOn = toggleSwitch.isOn
-        setEnabledAppearance(isOn)
+        applyEnabledTone(isOn)
+        // Recolour the caps + pill set to track the new tone.
+        if let attributed = capsLabel.attributedText?.string {
+            capsLabel.attributedText = NSAttributedString(
+                string: attributed,
+                attributes: [
+                    .font: AppTypography.caps,
+                    .kern: AppTypography.capsKerning,
+                    .foregroundColor: isOn ? AppColors.fg3 : AppColors.fg4
+                ]
+            )
+        }
         onToggle?(isOn)
+    }
+
+    /// Press-feedback scale. Mirrors the design-system 0.97 scale used by
+    /// SPButton / SPAmountPreset so cards pulse on the same delta as
+    /// every other tappable surface.
+    override func setHighlighted(_ highlighted: Bool, animated: Bool) {
+        super.setHighlighted(highlighted, animated: animated)
+        SPSupport.animatePress(cardView, pressed: highlighted)
     }
 }

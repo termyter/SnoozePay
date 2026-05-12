@@ -1,25 +1,24 @@
 import UIKit
 
-/// Main screen — alarm list with a sticky balance header that stays pinned
-/// above the scroll, an optional low-balance warning banner under it, the
-/// alarm list itself, and an empty-state column that overlays the table when
-/// there are no alarms yet.
+/// V2 alarms list screen.
 ///
 /// Layout (top → bottom inside `view`):
 /// ```
 /// safeArea.top
 ///   ├─ SPAlarmsListHeader (sticky)
-///   │     ├─ balance card (caps + value + centered hint + trailing pill)
-///   │     └─ optional low-balance warning banner
+///   │     ├─ title row "Будильники" + 40×40 "+" button
+///   │     └─ compact balance pill (auto-warn-tint when balance < 100)
 ///   └─ UITableView (scrolls)
+///         ├─ tableHeaderView: AlarmsStreakBannerView (when streak > 0)
+///         └─ rows: AlarmCell
 ///         └─ overlay: SPAlarmsListEmptyState (when alarms.isEmpty)
 /// safeArea.bottom
 /// ```
 ///
-/// The header is pinned to the safe area — it does NOT live as
-/// `tableView.tableHeaderView` so it can't scroll away with the list. The
-/// table is anchored beneath the header with a small gap so the warning
-/// banner shadow can breathe before the list begins.
+/// The big balance card + amber "БАЛАНС ПОЧТИ ПУСТ" banner from the V1 header
+/// are gone — the compact pill folds urgency into a single line. The nav-bar
+/// "+" button is suppressed because the header carries its own 40×40 plus;
+/// the gear and DEBUG entries are preserved as required by the design brief.
 class AlarmsListViewController: UIViewController {
 
     // MARK: - ViewModel
@@ -30,12 +29,6 @@ class AlarmsListViewController: UIViewController {
 
     private let header: SPAlarmsListHeader = {
         let view = SPAlarmsListHeader()
-        view.directionalLayoutMargins = NSDirectionalEdgeInsets(
-            top: AppSpacing.sp3,
-            leading: AppSpacing.screenInset,
-            bottom: AppSpacing.sp3,
-            trailing: AppSpacing.screenInset
-        )
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -45,7 +38,21 @@ class AlarmsListViewController: UIViewController {
         table.backgroundColor = .clear
         table.separatorStyle = .none
         table.translatesAutoresizingMaskIntoConstraints = false
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = 160
+        table.contentInset = UIEdgeInsets(
+            top: AppSpacing.sp4,
+            left: 0,
+            bottom: AppSpacing.sp4,
+            right: 0
+        )
         return table
+    }()
+
+    private let streakBanner: AlarmsStreakBannerView = {
+        let view = AlarmsStreakBannerView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }()
 
     private let emptyStateView: SPAlarmsListEmptyState = {
@@ -70,29 +77,17 @@ class AlarmsListViewController: UIViewController {
         super.viewWillAppear(animated)
         viewModel.loadData()
         tableView.reloadData()
+        refreshStreakBanner()
         presentStreakModalIfNeeded()
     }
 
     // MARK: - Streak modal
 
-    /// Streak milestones that fire the celebratory modal exactly once each.
-    /// 3 / 7 / 14 / 30 days are the milestones called out in #146; once a
-    /// milestone has fired we record it in `streakMilestonesShownKey` so the
-    /// user never sees the same modal twice for the same achievement.
     private static let streakMilestoneDays: [Int] = [3, 7, 14, 30]
-    /// UserDefaults key that stores `[Int]` of milestones already shown.
     private static let streakMilestonesShownKey = "streak_milestones_shown"
 
-    /// Presents `StreakModalViewController` over `viewController` (defaults
-    /// to `self`) when:
-    ///   - the current streak hits one of the milestone values, AND
-    ///   - that milestone has not been shown for this install yet, AND
-    ///   - no other modal is already on screen.
-    /// Wiring this into `viewWillAppear` keeps the trigger close to a state
-    /// observation point (alarms list refresh) without coupling the modal
-    /// to the firing flow. PM follow-up: replace the static milestone list
-    /// with a dedicated trigger service so notifications and the modal can
-    /// share one source of truth.
+    /// Presents `StreakModalViewController` when the current streak hits a
+    /// new milestone. Preserved from V1.
     func presentStreakModalIfNeeded(in viewController: UIViewController? = nil) {
         let host = viewController ?? self
         guard host.presentedViewController == nil else { return }
@@ -105,10 +100,6 @@ class AlarmsListViewController: UIViewController {
         presentStreakModal(streakDays: streak, on: host)
     }
 
-    /// Direct entry point — used by the DEBUG trigger button below and
-    /// available to other controllers that want to celebrate an arbitrary
-    /// streak. Bypasses the milestone gate but still respects the
-    /// "no double-presentation" guard.
     func presentStreakModal(streakDays: Int, on viewController: UIViewController? = nil) {
         let host = viewController ?? self
         guard host.presentedViewController == nil else { return }
@@ -123,20 +114,17 @@ class AlarmsListViewController: UIViewController {
     // MARK: - Setup
 
     private func setupNavigationBar() {
-        navigationItem.title = "Будильники"
+        // V2 header carries its own title — suppress the nav bar's title so
+        // the screen doesn't render the word twice.
+        navigationItem.title = ""
         navigationController?.navigationBar.prefersLargeTitles = false
 
-        let addButton = UIBarButtonItem(
-            image: UIImage(systemName: "plus.circle.fill"),
-            style: .plain,
-            target: self,
-            action: #selector(addAlarmTapped)
-        )
-        navigationItem.rightBarButtonItem = addButton
+        // V1 had a "+" button on the right edge of the nav bar; the V2 header
+        // moves that affordance into the title row so the user always sees
+        // the CTA near the balance. Drop the nav-bar plus to avoid two CTAs.
+        navigationItem.rightBarButtonItem = nil
 
-        // Settings moved out of the tab bar per V2 design — entry point is
-        // the gear icon on the Alarms header (matches "more / account"
-        // pattern used in Wallet header).
+        // Gear icon — preserved entry point for Settings.
         let settingsButton = UIBarButtonItem(
             image: UIImage(systemName: "gearshape"),
             style: .plain,
@@ -145,8 +133,8 @@ class AlarmsListViewController: UIViewController {
         )
         navigationItem.leftBarButtonItem = settingsButton
 
-        // DEBUG-only entries — streak modal trigger and onboarding reset so
-        // designers / QA can iterate without manufacturing real state.
+        // DEBUG-only entries — streak modal trigger + onboarding reset.
+        // Required to stay functional after the V2 rewrite.
         #if DEBUG
         let streakButton = UIBarButtonItem(
             image: UIImage(systemName: "flame.fill"),
@@ -172,17 +160,10 @@ class AlarmsListViewController: UIViewController {
 
     #if DEBUG
     @objc private func debugTriggerStreakModal() {
-        // Skip the milestone gate and the no-double-show flag — debug button
-        // should always render the modal regardless of how many times PM has
-        // already opened it this session. 7 days matches the spec screenshot.
         presentStreakModal(streakDays: 7)
     }
 
     @objc private func debugResetOnboarding() {
-        // Clears the onboarding-completed + permissions-shown flags so the
-        // next cold launch walks through Splash → Onboarding → Permissions
-        // again. Lets PM verify the V2 onboarding redesign without
-        // re-installing the app.
         UserDefaults.standard.removeObject(forKey: OnboardingViewController.completedKey)
         UserDefaults.standard.removeObject(forKey: PermissionsViewController.hasBeenShownKey)
         let alert = UIAlertController(
@@ -196,9 +177,6 @@ class AlarmsListViewController: UIViewController {
     #endif
 
     private func setupLayout() {
-        // Order matters — header is added LAST so it draws on top of the
-        // table content shadow if any of the alarm cards bleed under the
-        // safe-area inset during scroll.
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         view.addSubview(header)
@@ -208,20 +186,15 @@ class AlarmsListViewController: UIViewController {
         tableView.register(AlarmCell.self, forCellReuseIdentifier: AlarmCell.reuseID)
 
         NSLayoutConstraint.activate([
-            // Sticky header pinned to safe-area top.
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            // Table flows beneath the header.
             tableView.topAnchor.constraint(equalTo: header.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            // Empty state overlays the same area as the table so the
-            // sticky header still shows the user their balance even
-            // when the list is empty.
             emptyStateView.topAnchor.constraint(equalTo: tableView.topAnchor),
             emptyStateView.leadingAnchor.constraint(equalTo: tableView.leadingAnchor),
             emptyStateView.trailingAnchor.constraint(equalTo: tableView.trailingAnchor),
@@ -230,11 +203,20 @@ class AlarmsListViewController: UIViewController {
     }
 
     private func setupCallbacks() {
+        header.onAddTap = { [weak self] in
+            self?.addAlarmTapped()
+        }
         header.onBalanceTopUpTap = { [weak self] in
             self?.presentTopUp()
         }
         header.onWarnTopUpTap = { [weak self] in
             self?.presentTopUp()
+        }
+        streakBanner.onTap = { [weak self] in
+            guard let self else { return }
+            let streak = TransactionRepository.shared.currentStreak()
+            guard streak > 0 else { return }
+            self.presentStreakModal(streakDays: streak)
         }
         emptyStateView.onAddAlarmTap = { [weak self] in
             self?.addAlarmTapped()
@@ -248,11 +230,8 @@ class AlarmsListViewController: UIViewController {
             let isEmpty = self.viewModel.alarms.isEmpty
             self.emptyStateView.isHidden = !isEmpty
             self.tableView.isHidden = isEmpty
-            // Refresh the affordability hint — it depends on the
-            // current alarm set's average penalty, so a delete /
-            // create can change the snooze count even when the
-            // balance hasn't moved.
             self.refreshHeader()
+            self.refreshStreakBanner()
         }
 
         viewModel.onBalanceUpdated = { [weak self] _ in
@@ -264,12 +243,7 @@ class AlarmsListViewController: UIViewController {
         }
     }
 
-    /// Push the latest balance / hint / warning state into the sticky
-    /// header. Called both from `onBalanceUpdated` (BalanceService
-    /// notification) and `onAlarmsUpdated` (alarm-set change shifts the
-    /// average penalty). Also pipes the rolling weekly delta from the
-    /// transaction ledger (#175) so the sticky header echoes the
-    /// `.sp-balance__delta` row from the design spec.
+    /// Push the latest balance / hint state into the sticky header.
     private func refreshHeader() {
         let balance = Decimal(viewModel.balance)
         header.setBalance(
@@ -277,15 +251,52 @@ class AlarmsListViewController: UIViewController {
             hint: viewModel.affordabilityHint,
             delta: viewModel.weeklyDelta
         )
+        // Legacy method preserved for source-compat — the V2 pill already
+        // self-toggles its tone from `setBalance` based on the threshold.
         header.setWarning(visible: viewModel.isLowBalance, balance: balance)
     }
 
-    /// Shows a non-blocking alert when the repository couldn't load or
-    /// persist data. Without this the user would see an empty list and
-    /// assume the app wiped their alarms — then recreate them, and the
-    /// next save would clobber the recoverable corrupt JSON for good
-    /// (issue #72). Guarded against double-presentation so a load failure
-    /// followed quickly by a persist failure doesn't stack alerts.
+    /// Mount / dismount the streak banner above the alarm rows. When the
+    /// current streak is 0, the banner is removed entirely so the empty
+    /// state column doesn't collide with a stale header view.
+    private func refreshStreakBanner() {
+        let streak = TransactionRepository.shared.currentStreak()
+        guard streak > 0 else {
+            tableView.tableHeaderView = nil
+            return
+        }
+        let saved = StreakModalViewController.estimatedSavings(
+            for: streak,
+            alarms: viewModel.alarms
+        )
+        streakBanner.configure(streakDays: streak, savedAmount: saved)
+        // Size the table header view with a layout pass — UITableView's
+        // tableHeaderView requires a non-zero frame to render at all.
+        let targetWidth = tableView.bounds.width > 0 ? tableView.bounds.width : view.bounds.width
+        if targetWidth > 0 {
+            streakBanner.translatesAutoresizingMaskIntoConstraints = true
+            streakBanner.frame = CGRect(x: 0, y: 0, width: targetWidth, height: 84)
+            let fittingSize = streakBanner.systemLayoutSizeFitting(
+                CGSize(width: targetWidth, height: UIView.layoutFittingCompressedSize.height),
+                withHorizontalFittingPriority: .required,
+                verticalFittingPriority: .fittingSizeLevel
+            )
+            streakBanner.frame = CGRect(x: 0, y: 0, width: targetWidth, height: fittingSize.height)
+        }
+        if tableView.tableHeaderView !== streakBanner {
+            tableView.tableHeaderView = streakBanner
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // The banner's width depends on the live table-view width, so re-
+        // measure on every layout pass (rotation, split-view resize).
+        if tableView.tableHeaderView === streakBanner {
+            refreshStreakBanner()
+        }
+    }
+
     private func presentRepositoryError(_ error: LocalizedError) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
@@ -335,14 +346,13 @@ extension AlarmsListViewController: UITableViewDataSource {
         let alarm = viewModel.alarms[indexPath.row]
         cell.configure(
             time: viewModel.alarmTimeString(at: indexPath.row),
-            detail: viewModel.alarmDetail(at: indexPath.row),
-            penalty: viewModel.alarmPenaltyString(at: indexPath.row),
-            enabled: alarm.enabled,
-            theme: alarm.theme
+            daysCaps: viewModel.alarmDaysCaps(at: indexPath.row),
+            priceText: viewModel.alarmPriceText(at: indexPath.row),
+            multiplier: viewModel.alarmMultiplierText(at: indexPath.row),
+            soundName: viewModel.alarmSoundName(at: indexPath.row),
+            enabled: alarm.enabled
         )
 
-        // Capture the alarm's stable UUID rather than the row index — the
-        // index becomes invalid after delete/reorder, but the id never does.
         let alarmID = alarm.id
         cell.onToggle = { [weak self] isOn in
             self?.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
@@ -363,9 +373,6 @@ extension AlarmsListViewController: UITableViewDelegate {
         editVC.onSave = { [weak self] in
             self?.viewModel.loadData()
         }
-        // Re-fetch from the source of truth instead of mutating by row index —
-        // the row that was tapped may have shifted after another in-flight
-        // delete (e.g. swipe + detail open near-simultaneously).
         editVC.onDelete = { [weak self] in
             self?.viewModel.loadData()
         }
@@ -382,12 +389,6 @@ extension AlarmsListViewController: UITableViewDelegate {
                 completion(false)
                 return
             }
-            // Capture the alarm id before the action fires so a concurrent mutation
-            // that re-orders rows (delete from detail, programmatic reload) cannot
-            // make us delete the wrong alarm. Index-based delete would silently
-            // drop whichever alarm now sits at the swiped row, with no feedback
-            // to the user. Identity-based delete short-circuits if the alarm has
-            // already been removed and triggers a full reload to resync the UI.
             guard indexPath.row < self.viewModel.alarms.count else {
                 self.viewModel.loadData()
                 completion(false)
@@ -402,9 +403,6 @@ extension AlarmsListViewController: UITableViewDelegate {
             tableView.deleteRows(at: [indexPath], with: .automatic)
             completion(true)
         }
-        // SF Symbol gives the action a recognisable affordance even before the
-        // user has read the title — addresses the PM feedback that the swipe
-        // gesture was not obvious.
         delete.image = UIImage(systemName: "trash")
         delete.backgroundColor = .systemRed
         return UISwipeActionsConfiguration(actions: [delete])
