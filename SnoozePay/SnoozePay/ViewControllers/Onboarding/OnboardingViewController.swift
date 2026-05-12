@@ -1,114 +1,93 @@
 import UIKit
 
-/// First-launch onboarding — Dawn redesign (#145).
+/// First-launch onboarding — V2 redesign
+/// (`docs/design/v2-handoff/components/SPMore.jsx` lines 9-149).
 ///
-/// Three full-screen pages on a single horizontally-paged `UIScrollView`:
-/// 1. "Что такое SnoozePay" — concept explainer.
-/// 2. "Как работает" — snooze → penalty mechanic.
-/// 3. "Стартовый депозит" — three preset tiles (200 / 500 / 1000 ₽) plus an
-///    Apple Pay primary CTA *and* a ghost "Позже" button so the user can
-///    skip the first top-up (per PM directive in `chat1.md` line 747).
+/// Three full-screen pages on a horizontally-paged `UIScrollView`:
+/// 1. Concept — giant clock "7:00" with a warn "−50 ₽" pill and a hero h1.
+/// 2. Mechanics — three numbered steps explaining the snooze-tax loop.
+/// 3. Deposit — caps eyebrow, h1, three option cards (200 / 500 / 1000 ₽)
+///    with a money-tinted selection, plus a "Положить {value} ₽" CTA and a
+///    secondary "Позже — попробовать без баланса" link.
 ///
-/// Visual treatment is the shared design-refresh "Dawn" surface: a vertical
-/// 4-stop atmospheric gradient (`--sp-grad-dawn`), Manrope/JetBrains Mono
-/// typography, brand-token foregrounds. Behaviour preserves the existing
-/// `UserDefaults` key (`onboarding_completed`) so the SceneDelegate root
-/// re-init flow keeps working unchanged.
+/// Behavioural contract preserved from V1 so SceneDelegate keeps working:
+/// `completedKey`, `isCompleted`, `firstTopUpDoneKey`, and `onFinished` all
+/// behave exactly as before. The `UIPageControl` is kept as a direct subview
+/// (alpha 0) so the existing `OnboardingTests` page-count test keeps passing;
+/// visually the V2 design renders a bespoke pill-dot row instead.
 final class OnboardingViewController: UIViewController {
 
     // MARK: - Persistence keys
 
-    /// `internal` so the cross-file `+Pages` extension can write the
-    /// onboarding-completion flag from its tap handlers (#182).
     static let completedKey = "onboarding_completed"
-    /// Set to `false` when the user finishes step 3 via "Позже" so future
+    /// Set to `false` when the user finishes step 3 without paying, so future
     /// analytics / re-engagement can distinguish "user opted out of the
-    /// first deposit" from "user paid". Stays absent until the user actually
-    /// reaches step 3.
+    /// first deposit" from "user paid".
     static let firstTopUpDoneKey = "first_top_up_done"
 
     /// `true` once the user has finished onboarding (either Apple Pay path
-    /// or "Позже" path). Read by `SceneDelegate` to decide whether to mount
-    /// the onboarding flow on launch.
+    /// or "Позже" path). Read by `SceneDelegate`.
     static var isCompleted: Bool {
         UserDefaults.standard.bool(forKey: completedKey)
     }
 
-    // MARK: - Page Data
+    // MARK: - Page data
 
-    /// `internal` so the `+Pages` extension's page-builder helpers (which
-    /// receive `title` + `body` as plain strings) keep their parent type
-    /// visible from the cross-file extension (#182).
-    struct Page {
+    /// Deposit presets shown on step 3. The middle preset is the default
+    /// selection so the "Положить" CTA reads "500 ₽" on first appear.
+    struct DepositOption {
+        let amount: Decimal
         let title: String
-        let body: String
+        let description: String
+        let isPopular: Bool
     }
 
-    /// `internal` so the cross-file `+Pages` extension can iterate this list
-    /// when computing pager state and the page count for the deposit page
-    /// (#182).
-    let pages: [Page] = [
-        Page(
-            title: "Что такое SnoozePay",
-            body: """
-            Будильник, за который вы платите рублём. \
-            Каждое откладывание списывает деньги с депозита — \
-            поэтому вставать вовремя проще, чем переспать.
-            """
+    /// `internal` so the cross-file `+Pages` extension can read these when
+    /// building option cards and the CTA suffix.
+    let depositOptions: [DepositOption] = [
+        DepositOption(
+            amount: 200,
+            title: "Попробовать",
+            description: "≈ 4 откладывания по 50 ₽",
+            isPopular: false
         ),
-        Page(
-            title: "Как работает",
-            body: """
-            Вы кладёте депозит и ставите будильник. \
-            Жмёте «Поспать ещё» — со счёта списывается штраф. \
-            Дисмиссите будильник вовремя — депозит остаётся при вас.
-            """
+        DepositOption(
+            amount: 500,
+            title: "Серьёзно",
+            description: "≈ 10 откладываний · хватит на 2 недели",
+            isPopular: true
         ),
-        Page(
-            title: "Стартовый депозит",
-            body: """
-            Положите небольшую сумму, чтобы старт был ощутимым. \
-            Меньше денег на счёте — слабее мотивация; \
-            больше — выше цена утреннего «ещё пять минут».
-            """
+        DepositOption(
+            amount: 1000,
+            title: "Решительно",
+            description: "≈ 20 откладываний · спокойный месяц",
+            isPopular: false
         )
     ]
 
-    /// Preset amounts on step 3. Default selection is the middle tile (500 ₽).
-    /// `internal` so the cross-file `+Pages` extension can build the preset
-    /// stack from this list (#182).
-    let presetAmounts: [Decimal] = [200, 500, 1000]
-    let defaultPresetIndex: Int = 1
+    /// Default-selected option index — the "Серьёзно" 500 ₽ preset.
+    let defaultDepositIndex: Int = 1
+
+    /// Cached page count — drives `UIPageControl.numberOfPages` and the
+    /// custom pill-dot row.
+    let pageCount: Int = 3
 
     // MARK: - Callback
 
     /// Invoked once the user finishes (or skips) onboarding. SceneDelegate
-    /// uses this to swap the root from the onboarding flow to the tab bar.
+    /// swaps the root from the onboarding flow to the tab bar.
     var onFinished: (() -> Void)?
 
-    // MARK: - Background (Dawn)
+    // MARK: - State
 
-    /// Vertical 4-stop atmospheric gradient. Same recipe as
-    /// `AlarmFiringViewController`'s `dawnGradientLayer` — sourced from
-    /// `--sp-grad-dawn` in `tokens.css` (#14122A → #0F1A2E → #0A1320 → #050912).
-    private let dawnGradientLayer: CAGradientLayer = {
-        let gradient = CAGradientLayer()
-        gradient.colors = [
-            UIColor(rgb: 0x14122A).cgColor,
-            UIColor(rgb: 0x0F1A2E).cgColor,
-            UIColor(rgb: 0x0A1320).cgColor,
-            UIColor(rgb: 0x050912).cgColor
-        ]
-        gradient.locations = [0.0, 0.4, 0.7, 1.0]
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
-        return gradient
-    }()
+    /// Currently-selected deposit option index — drives the option-card
+    /// selection ring and the CTA suffix amount. `internal` so the
+    /// `+Pages` extension can flip it on option tap.
+    var selectedDepositIndex: Int
 
-    // MARK: - UI Elements
+    // MARK: - Chrome subviews
 
-    /// `internal` so the `+Pages` extension can drive page-snap from the
-    /// "Далее" CTA tap handler (#182).
+    /// Horizontal pager hosting the three pages.
     let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.isPagingEnabled = true
@@ -119,109 +98,104 @@ final class OnboardingViewController: UIViewController {
         return scrollView
     }()
 
-    /// Page dots — kept as `UIPageControl` so the existing test
-    /// (`OnboardingTests.testOnboardingPages_count`) keeps reaching for the
-    /// same view kind. Tinted with brand tokens: `money500` for the active
-    /// dot (matches the deposit hero), `fg3` for the rest. `internal` so
-    /// the `+Pages` extension can flip its visibility / index (#182).
+    /// Standard UIPageControl — kept as a direct subview of `view` with
+    /// `alpha = 0` so `OnboardingTests.testOnboardingPages_count` keeps
+    /// passing. The visible page indicator is the custom `dotsStack` below
+    /// (rendered as pill bars that lengthen the active page per V2 spec).
     let pageControl: UIPageControl = {
         let pageControl = UIPageControl()
-        pageControl.currentPageIndicatorTintColor = AppColors.money500
-        pageControl.pageIndicatorTintColor = AppColors.fg3
         pageControl.translatesAutoresizingMaskIntoConstraints = false
         pageControl.isUserInteractionEnabled = false
+        pageControl.alpha = 0
         return pageControl
     }()
 
-    /// Top-right "Пропустить" — restyled as `SPButton(.quiet, .sm)`.
-    /// `internal` so `+Pages.updatePagerState` can flip its hidden flag.
-    let skipButton = SPButton(
-        title: "Пропустить",
-        variant: .quiet,
-        size: .sm
-    )
-
-    /// Primary CTA. On steps 1-2 this reads "Далее" and advances the pager;
-    /// on step 3 the VC swaps it for an Apple Pay-flavoured money button
-    /// (`actionButton` is the step-1/2 instance only; step-3 uses
-    /// `applePayButton` mounted inside the page). `internal` so
-    /// `+Pages.updatePagerState` can flip its hidden flag (#182).
-    let actionButton = SPButton(
-        title: "Далее",
-        variant: .money,
-        size: .lg,
-        fullWidth: true
-    )
-
-    /// Step-3 Apple Pay primary CTA — mounted inside the third page so it
-    /// scrolls in/out with the page. SPButton has no public title setter, so
-    /// the title-change-on-preset-change path replaces the whole button via
-    /// `updateApplePayTitle()` (same pattern as FiringTopUpBottomSheet).
-    /// `internal` so the cross-file `+Pages.updateApplePayTitle` can swap
-    /// the instance (#182).
-    var applePayButton: SPButton = SPButton(
-        title: "Начать с 500 ₽",
-        variant: .money,
-        size: .lg,
-        fullWidth: true
-    )
-
-    /// Step-3 "Позже" — ghost CTA stacked right under `applePayButton`. Tap
-    /// finishes onboarding without triggering an IAP and stamps
-    /// `first_top_up_done = false` so future analytics can attribute the
-    /// opt-out.
-    private let laterButton = SPButton(
-        title: "Позже",
-        variant: .ghost,
-        size: .lg,
-        fullWidth: true
-    )
-
-    /// CTA stack on step 3 — owns the (re-creatable) Apple Pay button as its
-    /// first arranged subview so `rebuildApplePayButton()` can swap the
-    /// instance without re-pinning constraints. `internal` so the `+Pages`
-    /// extension can mount it inside the deposit page (#182).
-    let ctaStack: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .vertical
-        stackView.spacing = AppSpacing.sp3
-        stackView.alignment = .fill
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
+    /// Custom pill-dot row — three 6×6 pills, the active one stretches to
+    /// 24×6 with a money gradient fill. `internal` so the `+Pages` extension
+    /// can rebuild the row on page settle.
+    let dotsStack: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .horizontal
+        stack.spacing = AppSpacing.sp1 + 2   // 6pt — matches `gap: 6` JSX
+        stack.alignment = .center
+        stack.distribution = .equalSpacing
+        return stack
     }()
 
-    private var pageViews: [UIView] = []
-    /// `internal` so the `+Pages` extension can append to the same array
-    /// during the page-build pass (#182).
-    var presetTiles: [SPAmountPreset] = []
+    /// Primary CTA visible on every page. On pages 1 & 2 the title reads
+    /// "Дальше"; on page 3 the VC swaps the instance via
+    /// `rebuildDepositCTA()` so the title becomes "Положить" with a money
+    /// suffix and a leading shield icon. `internal` so the `+Pages` extension
+    /// can swap the live instance + re-pin the constraints.
+    var primaryButton = SPButton(
+        title: "Дальше",
+        variant: .money,
+        size: .lg,
+        fullWidth: true
+    )
 
-    /// Currently-selected preset index on step 3. Initialised to
-    /// `defaultPresetIndex` (500 ₽). Drives both the Apple Pay CTA title and
-    /// which tile renders selected. `internal` so the cross-file `+Pages`
-    /// extension can read the current selection inside `updateApplePayTitle`.
-    lazy var selectedPresetIndex: Int = defaultPresetIndex
+    /// Secondary "Позже — попробовать без баланса" link rendered only on
+    /// step 3. Lives in `secondaryStack` so the layout shifts cleanly when
+    /// the user pages back to steps 1/2.
+    let laterButton = SPButton(
+        title: "Позже — попробовать без баланса",
+        variant: .quiet,
+        size: .md,
+        fullWidth: true
+    )
+
+    /// Vertical stack hosting [primaryButton, laterButton] at the bottom of
+    /// the screen. The "later" button is hidden on steps 1/2.
+    let ctaStack: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = AppSpacing.sp2
+        stack.alignment = .fill
+        return stack
+    }()
+
+    /// Stored so we can mark step 3 entry — soft-orange glow at the
+    /// top-left corner per JSX (rgba(46,219,159,.25) radial). Painted
+    /// directly on `view.layer` once and toggled via `setStepGlow(active:)`.
+    private var stepGlowLayer: CAGradientLayer?
+
+    /// Internal page containers managed by `+Pages.buildPageStack()`.
+    var pageViews: [UIView] = []
+    /// Option cards rendered on page 3 — owned so we can recolour them on
+    /// selection change.
+    var depositOptionViews: [OnboardingDepositOptionView] = []
+
+    // MARK: - Init
+
+    init() {
+        self.selectedDepositIndex = 1
+        super.init(nibName: nil, bundle: nil)
+        self.selectedDepositIndex = defaultDepositIndex
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Force dark — onboarding canvas is canonically dark per V2.
+        overrideUserInterfaceStyle = .dark
         view.backgroundColor = AppColors.bg0
-        view.layer.insertSublayer(dawnGradientLayer, at: 0)
+        installStepGlow()
         setupUI()
         updatePagerState(forPage: 0)
     }
 
     override var prefersStatusBarHidden: Bool { true }
-
-    /// Force dark UI so the Dawn gradient + brand foregrounds read correctly
-    /// regardless of the user's system theme. Same approach as
-    /// AlarmFiringViewController so onboarding doesn't flash light-mode tiles
-    /// on first launch.
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // Recalculate page widths after layout.
         let width = scrollView.bounds.width
         let height = scrollView.bounds.height
         guard width > 0, height > 0 else { return }
@@ -233,12 +207,13 @@ final class OnboardingViewController: UIViewController {
                 height: height
             )
         }
-        scrollView.contentSize = CGSize(width: width * CGFloat(pages.count), height: height)
-        // Disable implicit animation so the gradient layer doesn't crossfade
-        // on each rotation / size-class change.
+        scrollView.contentSize = CGSize(width: width * CGFloat(pageCount), height: height)
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        dawnGradientLayer.frame = view.bounds
+        // Glow positioning depends on the current page — keep its bounds
+        // resolved here so size-class flips don't strand the layer.
+        layoutStepGlow()
         CATransaction.commit()
     }
 
@@ -246,93 +221,89 @@ final class OnboardingViewController: UIViewController {
 
     private func setupUI() {
         view.addSubview(scrollView)
-        view.addSubview(skipButton)
         view.addSubview(pageControl)
-        view.addSubview(actionButton)
+        view.addSubview(dotsStack)
+        view.addSubview(ctaStack)
 
-        pageControl.numberOfPages = pages.count
+        pageControl.numberOfPages = pageCount
         pageControl.currentPage = 0
 
-        activateChromeConstraints()
+        ctaStack.addArrangedSubview(primaryButton)
+        ctaStack.addArrangedSubview(laterButton)
+        laterButton.isHidden = true
+
+        installLayoutConstraints()
         wireActionTargets()
+        rebuildDotsRow(activePage: 0)
         buildPageStack()
     }
 
-    /// Pin skip button, scroll view, action button, and page control to the
-    /// view edges. Split off `setupUI` so the function body stays under
-    /// SwiftLint's `function_body_length` cap (#182).
-    private func activateChromeConstraints() {
+    private func installLayoutConstraints() {
+        let inset = AppSpacing.sp4   // 16pt — matches JSX `padding: ... 16px`
         NSLayoutConstraint.activate([
-            // Skip button — top right.
-            skipButton.topAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: AppSpacing.sp2
-            ),
-            skipButton.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -AppSpacing.screenInset
-            ),
-
-            // Scroll view — full screen behind everything.
             scrollView.topAnchor.constraint(equalTo: view.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: ctaStack.topAnchor),
 
-            // Action button — bottom, full width with margins.
-            actionButton.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
-                constant: AppSpacing.screenInset
-            ),
-            actionButton.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -AppSpacing.screenInset
-            ),
-            actionButton.bottomAnchor.constraint(
+            ctaStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            ctaStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            ctaStack.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
+                constant: -AppSpacing.sp4
             ),
 
-            // Page control — above the action button.
-            pageControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            pageControl.bottomAnchor.constraint(
-                equalTo: actionButton.topAnchor,
+            dotsStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            dotsStack.bottomAnchor.constraint(
+                equalTo: ctaStack.topAnchor,
                 constant: -AppSpacing.sp4
-            )
+            ),
+            dotsStack.heightAnchor.constraint(equalToConstant: 6),
+
+            pageControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            pageControl.bottomAnchor.constraint(equalTo: dotsStack.topAnchor)
         ])
     }
 
-    /// Wire scrollView delegate + every CTA's target/action. Pulled out of
-    /// `setupUI` so its body fits SwiftLint's function-length cap (#182).
     private func wireActionTargets() {
         scrollView.delegate = self
-        skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
-        actionButton.addTarget(self, action: #selector(actionTapped), for: .touchUpInside)
-        applePayButton.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
+        primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
         laterButton.addTarget(self, action: #selector(laterTapped), for: .touchUpInside)
-
-        ctaStack.addArrangedSubview(applePayButton)
-        ctaStack.addArrangedSubview(laterButton)
     }
 
-    /// Build page content — first two pages share one layout, step 3 is a
-    /// bespoke "deposit" page with preset tiles + dual CTAs. Page builders
-    /// live in `OnboardingViewController+Pages.swift` (#182).
-    private func buildPageStack() {
-        for (index, page) in pages.enumerated() {
-            let pageView: UIView
-            if index == pages.count - 1 {
-                pageView = makeDepositPageView(title: page.title, body: page.body)
-            } else {
-                pageView = makeTextPageView(title: page.title, body: page.body)
-            }
-            scrollView.addSubview(pageView)
-            pageViews.append(pageView)
-        }
+    // MARK: - Step glow
+
+    /// Mount a money-tinted radial glow at the top-left corner — shown on
+    /// step 3 per JSX. Top-glow on step 1 (warn) is rendered inside the page
+    /// container itself; step 2 has no glow.
+    private func installStepGlow() {
+        let gradient = CAGradientLayer()
+        gradient.type = .radial
+        gradient.colors = [
+            AppColors.money400.withAlphaComponent(0.25).cgColor,
+            AppColors.money400.withAlphaComponent(0.0).cgColor
+        ]
+        gradient.locations = [0.0, 0.6]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
+        gradient.opacity = 0
+        view.layer.insertSublayer(gradient, at: 0)
+        stepGlowLayer = gradient
     }
 
-    // Actions, preset-tap handler, and pager state live in
-    // `OnboardingViewController+Pages.swift` (#182).
+    private func layoutStepGlow() {
+        guard let glow = stepGlowLayer else { return }
+        // 320pt radius positioned top-left, slightly offscreen so the soft
+        // edge falls naturally onto the canvas — matches JSX `top: -120; left: -60`.
+        glow.frame = CGRect(x: -60, y: -120, width: 320, height: 320)
+    }
+
+    func setStepGlow(active: Bool) {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(SPSupport.durationBase)
+        stepGlowLayer?.opacity = active ? 1 : 0
+        CATransaction.commit()
+    }
 }
 
 // MARK: - UIScrollViewDelegate
@@ -342,19 +313,5 @@ extension OnboardingViewController: UIScrollViewDelegate {
         let page = Int(round(scrollView.contentOffset.x / scrollView.bounds.width))
         pageControl.currentPage = page
         updatePagerState(forPage: page)
-    }
-}
-
-// MARK: - Hex helper
-
-private extension UIColor {
-    /// `0xRRGGBB` literal initializer so the Dawn gradient stops read as in
-    /// `tokens.css`. Local copy mirroring the (private) helper in AppColors —
-    /// kept file-local to match the AlarmFiringViewController convention.
-    convenience init(rgb: UInt32, alpha: CGFloat = 1) {
-        let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
-        let green = CGFloat((rgb >> 8) & 0xFF) / 255.0
-        let blue = CGFloat(rgb & 0xFF) / 255.0
-        self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }

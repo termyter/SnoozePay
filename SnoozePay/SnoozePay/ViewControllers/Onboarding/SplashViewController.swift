@@ -1,173 +1,192 @@
 import UIKit
 
-/// First-frame splash — covers the gap between `LaunchScreen.storyboard` (which
-/// is the system-controlled static frame iOS shows during process bring-up) and
-/// the real root SceneDelegate installs (Onboarding / Permissions / TabBar).
+/// First-frame splash — V2 redesign. Covers the gap between
+/// `LaunchScreen.storyboard` (signing-bound) and the real root SceneDelegate
+/// installs (Onboarding / Permissions / TabBar).
 ///
-/// Visual: full-screen Dawn gradient (`--sp-grad-dawn`) with the SnoozePay text
-/// logo masked by the money brand gradient, mirroring the
-/// `SPBalanceCard.applyValueGradient` recipe so the wordmark reads as the same
-/// "money-glow" primitive used on the balance hero.
+/// Visual (V2, `docs/design/v2-handoff/components/SPMore2.jsx` lines 6-23):
+/// dark `bg0` background, soft radial warm glow at centre, 96×96 rounded-rect
+/// (radius 28) painted with the warn gradient and overlaid by a bell icon
+/// (`bell.fill` tinted `fgOnWarn`), "SnoozePay" h1 white below, "Будильник со
+/// ставкой" meta caption underneath.
 ///
-/// We deliberately keep `LaunchScreen.storyboard` unchanged (it is part of the
-/// signing/Info.plist contract and the no-touch contract treats storyboard +
-/// signing related files as PM-owned). Instead this VC is shown for ~`displayDuration`
-/// before SceneDelegate calls `onFinished` and crossfades to the real root.
-/// That keeps the "branded launch" outcome without touching the static
-/// storyboard.
+/// `displayDuration` + `onFinished` semantics are preserved from V1 so
+/// SceneDelegate keeps working unchanged.
 final class SplashViewController: UIViewController {
 
     // MARK: - Configuration
 
-    /// How long the splash is shown after the scene becomes active before the
-    /// root is replaced. 200ms matches the spec; long enough for the gradient
-    /// + wordmark to register, short enough not to feel like an explicit
-    /// loading screen.
+    /// Display interval before the handoff fires. 200ms matches the original
+    /// spec — long enough for the glyph + glow to register, short enough not
+    /// to read as a "loading" screen.
     private static let displayDuration: TimeInterval = 0.20
 
-    /// Invoked after `displayDuration` elapses. SceneDelegate uses this to
-    /// crossfade into Onboarding / Permissions / TabBar depending on user
-    /// state. `nil` is safe — without a callback the splash simply sits.
+    /// Invoked once `displayDuration` elapses. SceneDelegate uses this to
+    /// crossfade into Onboarding / Permissions / TabBar.
     var onFinished: (() -> Void)?
 
-    // MARK: - Background (Dawn)
+    // MARK: - Layers
 
-    /// Same 4-stop atmospheric gradient as `OnboardingViewController` so the
-    /// crossfade between the two screens has no perceptible seam.
-    private let dawnGradientLayer: CAGradientLayer = {
+    /// Soft 480pt radial glow (warn 30% → transparent) centred behind the
+    /// brand glyph. CSS equivalent: `radial-gradient(circle, rgba(255,184,77,
+    /// .30) 0%, transparent 60%) blur(40px)`.
+    private let glowLayer: CAGradientLayer = {
         let gradient = CAGradientLayer()
+        gradient.type = .radial
         gradient.colors = [
-            UIColor(splashRGB: 0x14122A).cgColor,
-            UIColor(splashRGB: 0x0F1A2E).cgColor,
-            UIColor(splashRGB: 0x0A1320).cgColor,
-            UIColor(splashRGB: 0x050912).cgColor
+            UIColor(red: 1.0, green: 184.0 / 255.0, blue: 77.0 / 255.0, alpha: 0.30).cgColor,
+            UIColor(red: 1.0, green: 184.0 / 255.0, blue: 77.0 / 255.0, alpha: 0.0).cgColor
         ]
-        gradient.locations = [0.0, 0.4, 0.7, 1.0]
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
+        gradient.locations = [0.0, 0.6]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
         return gradient
     }()
 
-    // MARK: - Wordmark
+    /// 135° warn gradient on the 96×96 brand tile (`--sp-grad-warn`).
+    private let tileGradient: CAGradientLayer = {
+        let gradient = CAGradientLayer()
+        gradient.colors = SPSupport.warnGradientColors
+        gradient.locations = SPSupport.warnGradientLocations
+        gradient.startPoint = SPSupport.gradientStart
+        gradient.endPoint = SPSupport.gradientEnd
+        gradient.cornerRadius = AppRadius.xl  // 28pt — matches JSX
+        return gradient
+    }()
 
-    /// "SnoozePay" rendered with the money gradient mask. The label paints
-    /// `clear` once `applyWordmarkGradient()` runs (same pattern as
-    /// `SPBalanceCard.applyValueGradient`) so we don't double-stack the
-    /// solid label colour under the gradient.
-    private let wordmarkLabel: UILabel = {
+    // MARK: - Subviews
+
+    /// 96×96 rounded-rect tile that hosts the bell glyph. Background paints
+    /// clear because `tileGradient` is inserted at the bottom of its layer
+    /// tree by `viewDidLoad` and resized in `viewDidLayoutSubviews`.
+    private let tileView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .clear
+        view.layer.cornerRadius = AppRadius.xl
+        view.layer.masksToBounds = false
+        // Warm-tinted shadow so the tile pops off the dark surface — matches
+        // `boxShadow: 0 16px 48px rgba(245,158,11,.40)` from JSX.
+        view.layer.shadowColor = AppColors.warn500.cgColor
+        view.layer.shadowOpacity = 0.40
+        view.layer.shadowOffset = CGSize(width: 0, height: 16)
+        view.layer.shadowRadius = 24
+        return view
+    }()
+
+    /// Bell icon centred inside `tileView`. SF Symbol so the tile reads
+    /// crisply at any scale; size 48pt per JSX spec, tinted `fgOnWarn`.
+    private let bellIconView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        let configuration = UIImage.SymbolConfiguration(pointSize: 44, weight: .semibold)
+        imageView.image = UIImage(systemName: "bell.fill", withConfiguration: configuration)?
+            .withRenderingMode(.alwaysTemplate)
+        imageView.tintColor = AppColors.fgOnWarn
+        imageView.contentMode = .scaleAspectFit
+        return imageView
+    }()
+
+    private let titleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.text = "SnoozePay"
         label.font = AppTypography.h1
-        label.textColor = AppColors.fg1
+        label.textColor = .white
         label.textAlignment = .center
         label.adjustsFontForContentSizeCategory = false
         return label
     }()
 
-    /// Gradient layer that the wordmark glyphs mask — installed as a sublayer
-    /// of `wordmarkLabel.layer` once layout resolves so size / theme switches
-    /// re-rasterise cheaply.
-    private let wordmarkGradient: CAGradientLayer = {
-        let gradient = CAGradientLayer()
-        gradient.colors = SPSupport.moneyGradientColors
-        gradient.locations = SPSupport.moneyGradientLocations
-        gradient.startPoint = SPSupport.gradientStart
-        gradient.endPoint = SPSupport.gradientEnd
-        return gradient
+    private let subtitleLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "Будильник со ставкой"
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
+        label.textAlignment = .center
+        label.adjustsFontForContentSizeCategory = false
+        return label
     }()
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Solid base under the gradient so any flash before CALayer commits
-        // matches the bottom stop instead of the system bg.
+        // Force dark — splash is always rendered against the dark canvas
+        // regardless of the system theme, so the glow + tile read consistently.
+        overrideUserInterfaceStyle = .dark
         view.backgroundColor = AppColors.bg0
-        view.layer.insertSublayer(dawnGradientLayer, at: 0)
-        view.addSubview(wordmarkLabel)
+        view.layer.insertSublayer(glowLayer, at: 0)
+        tileView.layer.insertSublayer(tileGradient, at: 0)
+
+        view.addSubview(tileView)
+        view.addSubview(titleLabel)
+        view.addSubview(subtitleLabel)
+        tileView.addSubview(bellIconView)
+
         NSLayoutConstraint.activate([
-            wordmarkLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            wordmarkLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            wordmarkLabel.leadingAnchor.constraint(
+            tileView.widthAnchor.constraint(equalToConstant: 96),
+            tileView.heightAnchor.constraint(equalToConstant: 96),
+            tileView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            // Stack lives optically centred — nudge slightly above geometric
+            // centre so the subtitle has breathing room above the home indicator.
+            tileView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -AppSpacing.sp7),
+
+            bellIconView.centerXAnchor.constraint(equalTo: tileView.centerXAnchor),
+            bellIconView.centerYAnchor.constraint(equalTo: tileView.centerYAnchor),
+            bellIconView.widthAnchor.constraint(equalToConstant: 48),
+            bellIconView.heightAnchor.constraint(equalToConstant: 48),
+
+            titleLabel.topAnchor.constraint(equalTo: tileView.bottomAnchor, constant: AppSpacing.sp5),
+            titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            titleLabel.leadingAnchor.constraint(
                 greaterThanOrEqualTo: view.leadingAnchor,
                 constant: AppSpacing.screenInset
             ),
-            wordmarkLabel.trailingAnchor.constraint(
+            titleLabel.trailingAnchor.constraint(
                 lessThanOrEqualTo: view.trailingAnchor,
                 constant: -AppSpacing.screenInset
-            )
+            ),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sp3),
+            subtitleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
     }
 
     override var prefersStatusBarHidden: Bool { true }
-
-    /// Force light status bar so the dark Dawn gradient reads correctly
-    /// regardless of the user's system appearance.
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // Disable implicit animation so size / orientation changes don't
+        // Disable implicit animation so size/orientation changes don't
         // crossfade the gradient stops.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        dawnGradientLayer.frame = view.bounds
+        // Position the radial glow centred on the screen; 480pt diameter
+        // matches JSX so the falloff reaches roughly the upper third / lower
+        // third boundary on a standard iPhone 6.1" canvas.
+        let glowSize: CGFloat = 480
+        glowLayer.frame = CGRect(
+            x: view.bounds.midX - glowSize / 2,
+            y: view.bounds.midY - glowSize / 2,
+            width: glowSize,
+            height: glowSize
+        )
+        tileGradient.frame = tileView.bounds
+        tileView.layer.shadowPath = UIBezierPath(
+            roundedRect: tileView.bounds,
+            cornerRadius: AppRadius.xl
+        ).cgPath
         CATransaction.commit()
-        applyWordmarkGradient()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // Schedule the handoff once the view is on-screen — viewDidLoad would
-        // fire `onFinished` before the user's first frame has even composited.
+        // fire `onFinished` before the user's first frame has composited.
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.displayDuration) { [weak self] in
             self?.onFinished?()
         }
-    }
-
-    // MARK: - Wordmark gradient mask
-
-    /// Mask `wordmarkGradient` to the rendered glyph outline — CSS equivalent
-    /// of `-webkit-background-clip: text`. Lifted from
-    /// `SPBalanceCard.applyValueGradient` so the visual treatment between the
-    /// hero balance and the splash wordmark stays in sync.
-    private func applyWordmarkGradient() {
-        let textBounds = wordmarkLabel.bounds
-        guard textBounds.width > 0, textBounds.height > 0 else { return }
-        if wordmarkGradient.superlayer !== wordmarkLabel.layer {
-            wordmarkLabel.layer.addSublayer(wordmarkGradient)
-        }
-        wordmarkGradient.frame = textBounds
-
-        let renderer = UIGraphicsImageRenderer(size: textBounds.size)
-        let mask = renderer.image { _ in
-            (wordmarkLabel.text ?? "").draw(
-                in: textBounds,
-                withAttributes: [
-                    .font: wordmarkLabel.font as Any,
-                    .foregroundColor: UIColor.white
-                ]
-            )
-        }
-        let maskLayer = CALayer()
-        maskLayer.frame = textBounds
-        maskLayer.contents = mask.cgImage
-        wordmarkGradient.mask = maskLayer
-        wordmarkLabel.textColor = .clear
-    }
-}
-
-// MARK: - Hex helper
-
-private extension UIColor {
-    /// `0xRRGGBB` literal initialiser — local copy mirroring the (private)
-    /// helpers in AppColors / OnboardingViewController. File-prefixed so it
-    /// can't collide with the other private extensions in the module.
-    convenience init(splashRGB: UInt32, alpha: CGFloat = 1) {
-        let red = CGFloat((splashRGB >> 16) & 0xFF) / 255.0
-        let green = CGFloat((splashRGB >> 8) & 0xFF) / 255.0
-        let blue = CGFloat(splashRGB & 0xFF) / 255.0
-        self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
