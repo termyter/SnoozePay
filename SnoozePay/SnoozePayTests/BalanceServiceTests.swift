@@ -326,6 +326,87 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertEqual(receivedRaw, -42.5, "Notification must carry the raw negative value")
     }
 
+    /// NaN in `user_balance` (extremely rare, but reachable via concurrent
+    /// race writing arbitrary `Double` bits or external defaults tampering)
+    /// MUST trigger corruption detection. Without this guard `current >= amount`
+    /// is always false for NaN, silently disabling every charge with no signal
+    /// to the user (issue #201).
+    func testNaNStoredBalance_flipsCorruptedFlagAndBroadcasts() {
+        let center = NotificationCenter()
+        testDefaults.set(Double.nan, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        let exp = expectation(description: "corruption notification fires")
+        var receivedRaw: Double?
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            receivedRaw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double
+            exp.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        XCTAssertEqual(service.balance, 0,
+                       "NaN-corrupt balance must be reported as 0 to downstream math")
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertTrue(receivedRaw?.isNaN == true,
+                      "Notification must carry the raw NaN value so support tooling sees what was found")
+    }
+
+    /// Positive infinity in storage MUST flip corruption — same reasoning as
+    /// NaN. `current >= amount` is true for Infinity, which would let the
+    /// charge pass and then subtract from `+inf`, silently producing more
+    /// infinity (not a real failure, but a corrupt state must not propagate).
+    func testPositiveInfinityStoredBalance_flipsCorruptedFlagAndBroadcasts() {
+        let center = NotificationCenter()
+        testDefaults.set(Double.infinity, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        let exp = expectation(description: "corruption notification fires")
+        var receivedRaw: Double?
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            receivedRaw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double
+            exp.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        XCTAssertEqual(service.balance, 0)
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertEqual(receivedRaw, .infinity)
+    }
+
+    /// Negative infinity in storage MUST flip corruption — caught by both the
+    /// `isFinite` guard and the `>= 0` guard, but the test pins the path so a
+    /// refactor relaxing either guard cannot silently regress.
+    func testNegativeInfinityStoredBalance_flipsCorruptedFlagAndBroadcasts() {
+        let center = NotificationCenter()
+        testDefaults.set(-Double.infinity, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        let exp = expectation(description: "corruption notification fires")
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in exp.fulfill() }
+        defer { center.removeObserver(token) }
+
+        XCTAssertEqual(service.balance, 0)
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(service.balanceCorrupted)
+    }
+
     /// Under corruption, `charge` must refuse and return `false` — mirrors the
     /// locked-ledger gate from #72 so we don't silently mutate a corrupt store.
     func testCharge_refusedUnderCorruption() {
