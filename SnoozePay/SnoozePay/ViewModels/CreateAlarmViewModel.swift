@@ -1,5 +1,6 @@
 import Foundation
 import AudioToolbox
+import os
 
 /// ViewModel for create/edit alarm screen.
 final class CreateAlarmViewModel {
@@ -170,7 +171,13 @@ final class CreateAlarmViewModel {
 
     /// Play a preview of the given sound using system sounds
     func previewSound(_ soundID: String) {
-        guard let systemID = Self.systemSoundMap[soundID] else { return }
+        guard let systemID = Self.systemSoundMap[soundID] else {
+            // Silent no-op was the original behaviour, but if `availableSounds`
+            // ever drifts from `systemSoundMap` every preview tap is a dead
+            // button with no signal. Log so the regression surfaces.
+            AppLogger.audio.error("previewSound: unknown soundID \(soundID, privacy: .public)")
+            return
+        }
         AudioServicesPlaySystemSound(systemID)
     }
 }

@@ -4,6 +4,7 @@
 //
 
 import UIKit
+import os
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
@@ -40,7 +41,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // MARK: - Onboarding transition
 
     private func transitionToMainApp() {
-        guard let window = window else { return }
+        guard let window = window else {
+            AppLogger.appDelegate.error(
+                "transitionToMainApp: window is nil — onboarding ack was set but the user is stuck on the old root"
+            )
+            return
+        }
         let tabBar = makeRootViewController()
         UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
             window.rootViewController = tabBar

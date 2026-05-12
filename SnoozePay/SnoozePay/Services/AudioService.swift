@@ -300,7 +300,14 @@ final class AudioService {
             wavData.append(contentsOf: rawBuffer)
         }
 
-        return try? AVAudioPlayer(data: wavData)
+        do {
+            return try AVAudioPlayer(data: wavData)
+        } catch {
+            AppLogger.audio.error(
+                "generateAlarmTone: AVAudioPlayer init failed — \(String(describing: error), privacy: .public)"
+            )
+            return nil
+        }
     }
 }
 
