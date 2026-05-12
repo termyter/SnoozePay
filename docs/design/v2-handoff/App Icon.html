@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1600" />
+  <title>SnoozePay · Иконка приложения</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <style>
+    body { background: #0a0d18; margin: 0; font-family: Manrope, system-ui, sans-serif; color: #fff; }
+    .wrap { max-width: 1480px; margin: 0 auto; padding: 56px 40px 96px; }
+    .hdr { margin-bottom: 48px; }
+    .hdr h1 { font: 800 36px/40px Manrope; letter-spacing: -.02em; margin: 0 0 8px; }
+    .hdr p { font: 400 16px/24px Manrope; color: rgba(255,255,255,.6); margin: 0; max-width: 720px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 24px; }
+    .card { background: #11162a; border: 1px solid rgba(255,255,255,.06); border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 18px; }
+    .card-head { display: flex; align-items: baseline; justify-content: space-between; }
+    .card-head .tag { font: 700 11px/14px Manrope; letter-spacing: .14em; color: rgba(255,255,255,.45); text-transform: uppercase; }
+    .card-head .name { font: 700 18px/22px Manrope; letter-spacing: -.01em; }
+    .card-row { display: flex; align-items: center; gap: 24px; }
+    .icon-large { width: 240px; height: 240px; flex-shrink: 0; border-radius: 54px; overflow: hidden; box-shadow: 0 30px 60px -20px rgba(0,0,0,.55); }
+    .scale-row { display: flex; align-items: center; gap: 14px; flex: 1; flex-wrap: wrap; }
+    .icon-mid { width: 88px; height: 88px; border-radius: 20px; overflow: hidden; box-shadow: 0 6px 16px -4px rgba(0,0,0,.5); }
+    .icon-sm { width: 56px; height: 56px; border-radius: 13px; overflow: hidden; box-shadow: 0 4px 10px -2px rgba(0,0,0,.5); }
+    .icon-xs { width: 32px; height: 32px; border-radius: 7px; overflow: hidden; }
+    .scale-label { font: 500 11px/14px Manrope; color: rgba(255,255,255,.4); display: block; margin-top: 6px; text-align: center; }
+    .scale-cell { display: flex; flex-direction: column; align-items: center; }
+    .desc { font: 400 13px/19px Manrope; color: rgba(255,255,255,.62); }
+    .desc b { color: #fff; font-weight: 600; }
+
+    /* Home-screen mock */
+    .home { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px 18px; padding: 32px 28px 48px;
+      background: linear-gradient(180deg, #1a2340 0%, #2c1f4a 50%, #1a1430 100%); border-radius: 36px; max-width: 360px; }
+    .home-row { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .home-row .icon-mid { width: 64px; height: 64px; border-radius: 14px; }
+    .home-row .lbl { font: 500 11px/13px Manrope; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+    .home-section { display: flex; flex-direction: column; gap: 18px; align-items: flex-start; }
+    .home-title { font: 700 13px/18px Manrope; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.5); margin-bottom: 8px; }
+
+    .layout { display: grid; grid-template-columns: 1fr 380px; gap: 48px; align-items: flex-start; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hdr">
+      <h1>Иконка приложения SnoozePay</h1>
+      <p>6 направлений на одной странице. Каждая иконка показана в трёх размерах — 240, 88, 56, 32 px — чтобы видно было, что она читается и в App Library, и на маленькой 32-px плашке в уведомлении.</p>
+    </div>
+
+    <div class="layout">
+      <div class="grid" id="grid"></div>
+
+      <!-- Home screen mock (показываем как иконки смотрятся вместе) -->
+      <div class="home-section">
+        <div class="home-title">Home screen · превью</div>
+        <div class="home" id="home"></div>
+        <div class="desc" style="max-width: 320px; margin-top: 12px;">Иконки подложены поверх ярких обоев — так станет видно, какие из вариантов «прилипают» взгляду на главном экране, а какие тонут.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ===========================================================
+       BRAND
+       =========================================================== */
+    const C = {
+      money300: "#5EEAB8",
+      money400: "#2EDB9F",
+      money500: "#10B981",
+      money600: "#0E9D6E",
+      money700: "#0B7A56",
+      money900: "#052016",
+
+      warn300:  "#FFD479",
+      warn400:  "#FFB84D",
+      warn500:  "#F59E0B",
+      warn600:  "#C97A06",
+      warn900:  "#1A0F00",
+
+      pain400:  "#FF7A6B",
+      pain500:  "#F4523F",
+
+      night0:   "#060912",
+      night1:   "#0E1320",
+      night2:   "#161C2E",
+      night3:   "#1F2740",
+      dawn1:    "#14122A",
+      dawn2:    "#0F1A2E",
+
+      ink:      "#0A0F1F",
+    };
+
+    /* ===========================================================
+       Иконка-обёртка: 1024×1024 viewBox с фоном-градиентом.
+       Внутри — конкретный концепт.
+       =========================================================== */
+    function iconShell(id, bgStops, content, defs = "") {
+      return `
+        <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:100%">
+          <defs>
+            <linearGradient id="bg-${id}" x1="0" y1="0" x2="0" y2="1">${bgStops}</linearGradient>
+            ${defs}
+          </defs>
+          <rect width="1024" height="1024" fill="url(#bg-${id})"/>
+          ${content}
+        </svg>`;
+    }
+
+    /* === A · Coin-Z (главный кандидат) =====================
+       Z, образованный гранями монеты в 3/4 ракурсе.
+       Передаёт «откладывание (Z = sleep) стоит денег». */
+    const ICON_A = iconShell(
+      "a",
+      `<stop offset="0%" stop-color="#1B2238"/><stop offset="100%" stop-color="#070B16"/>`,
+      `
+        <!-- мягкое световое пятно -->
+        <circle cx="512" cy="380" r="420" fill="url(#a-glow)" opacity=".55"/>
+        <!-- стек монет (намёк на баланс) -->
+        <g transform="translate(512 560)">
+          <ellipse cx="0" cy="170" rx="240" ry="56" fill="#0A1322" opacity=".7"/>
+          <!-- coin 3 -->
+          <ellipse cx="0" cy="100" rx="220" ry="56" fill="${C.money700}"/>
+          <ellipse cx="0" cy="92"  rx="220" ry="56" fill="${C.money600}"/>
+          <!-- coin 2 -->
+          <ellipse cx="0" cy="40"  rx="230" ry="58" fill="${C.money700}"/>
+          <ellipse cx="0" cy="32"  rx="230" ry="58" fill="${C.money500}"/>
+          <!-- top coin (главная) -->
+          <ellipse cx="0" cy="-30" rx="240" ry="62" fill="${C.money700}"/>
+          <ellipse cx="0" cy="-38" rx="240" ry="62" fill="url(#a-coin)"/>
+          <!-- символ ₽ на верхней монете -->
+          <g transform="translate(-46 -78)" fill="${C.money900}">
+            <path d="M16 0 H68 a44 44 0 0 1 0 88 H44 V124 H88 V146 H44 V172 H16 V146 H0 V124 H16 V0 Z M44 22 V66 H68 a22 22 0 0 0 0 -44 Z"/>
+          </g>
+        </g>
+        <!-- большая Z — главный знак -->
+        <g transform="translate(252 200)">
+          <path d="M0 0 H520 V100 L160 360 H520 V460 H0 V360 L360 100 H0 Z"
+                fill="url(#a-z)" />
+          <!-- subtle highlight -->
+          <path d="M0 0 H520 V100 L160 360 H520 V460 H0 V360 L360 100 H0 Z"
+                fill="none" stroke="${C.money300}" stroke-width="3" opacity=".3"/>
+        </g>`,
+      `
+        <radialGradient id="a-glow" cx=".5" cy=".5" r=".5">
+          <stop offset="0%" stop-color="${C.money500}" stop-opacity=".55"/>
+          <stop offset="100%" stop-color="${C.money500}" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="a-coin" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${C.money300}"/>
+          <stop offset="100%" stop-color="${C.money500}"/>
+        </linearGradient>
+        <linearGradient id="a-z" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${C.money300}"/>
+          <stop offset="100%" stop-color="${C.money500}"/>
+        </linearGradient>
+      `
+    );
+
+    /* === B · Coin-Moon (поэтичный) ============================
+       Полумесяц — это монета сбоку, обнимающая центральный ₽. */
+    const ICON_B = iconShell(
+      "b",
+      `<stop offset="0%" stop-color="#1A1530"/><stop offset="60%" stop-color="#0E1226"/><stop offset="100%" stop-color="#04060F"/>`,
+      `
+        <!-- звёзды -->
+        <g fill="#fff">
+          <circle cx="180" cy="220" r="3" opacity=".7"/>
+          <circle cx="850" cy="160" r="2" opacity=".5"/>
+          <circle cx="820" cy="340" r="3" opacity=".8"/>
+          <circle cx="180" cy="780" r="2" opacity=".5"/>
+          <circle cx="900" cy="700" r="2" opacity=".6"/>
+          <circle cx="140" cy="520" r="3" opacity=".5"/>
+        </g>
+
+        <!-- полумесяц-монета: большой круг минус smaller offset круг.
+             Крестент в форме «C» обнимает центр иконки. -->
+        <mask id="b-mask">
+          <rect width="1024" height="1024" fill="black"/>
+          <circle cx="512" cy="512" r="400" fill="white"/>
+          <circle cx="640" cy="512" r="340" fill="black"/>
+        </mask>
+        <rect width="1024" height="1024" fill="url(#b-coin)" mask="url(#b-mask)"/>
+
+        <!-- ₽ — отцентрированный, тёплый золотой цвет монеты.
+             Глиф ~196×346. Центр в (512,512) → translate(414, 339). -->
+        <g transform="translate(414 339)" fill="url(#b-pi)">
+          <path d="M40 0 H160 a96 96 0 0 1 0 192 H100 V250 H192 V292 H100 V346 H40 V292 H0 V250 H40 V0 Z M100 50 V142 H160 a46 46 0 0 0 0 -92 Z"/>
+        </g>
+      `,
+      `
+        <linearGradient id="b-coin" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${C.money300}"/>
+          <stop offset="100%" stop-color="${C.money600}"/>
+        </linearGradient>
+        <linearGradient id="b-pi" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#FFE9B0"/>
+          <stop offset="100%" stop-color="${C.warn400}"/>
+        </linearGradient>
+      `
+    );
+
+    /* === C · Bell + ₽ (функциональный) ========================
+       Силуэт колокольчика будильника с ₽ в центре. */
+    const ICON_C = iconShell(
+      "c",
+      `<stop offset="0%" stop-color="#0F2A52"/><stop offset="60%" stop-color="#0A1832"/><stop offset="100%" stop-color="#050B1C"/>`,
+      `
+        <!-- soft glow -->
+        <ellipse cx="512" cy="500" rx="380" ry="380" fill="url(#c-glow)" opacity=".6"/>
+        <!-- колокол -->
+        <g transform="translate(512 540)">
+          <!-- корпус -->
+          <path d="M -260 80
+                   C -260 -160 -180 -300 0 -300
+                   C  180 -300 260 -160 260 80
+                   L  290 130
+                   L -290 130 Z"
+                fill="url(#c-bell)"/>
+          <!-- основание -->
+          <rect x="-180" y="135" width="360" height="36" rx="12" fill="${C.warn600}"/>
+          <!-- молоточек / ножка -->
+          <circle cx="0" cy="200" r="36" fill="${C.warn600}"/>
+          <!-- две "ушки" сверху -->
+          <path d="M -28 -302 L -90 -360 L -110 -345 L -55 -290 Z" fill="${C.warn500}"/>
+          <path d="M  28 -302 L  90 -360 L  110 -345 L  55 -290 Z" fill="${C.warn500}"/>
+          <!-- ₽ на корпусе -->
+          <g transform="translate(-72 -160)" fill="${C.warn900}">
+            <path d="M 24 0 H 110 a 70 70 0 0 1 0 140 H 70 V 184 H 144 V 220 H 70 V 252 H 24 V 220 H 0 V 184 H 24 V 0 Z M 70 36 V 104 H 110 a 34 34 0 0 0 0 -68 Z"/>
+          </g>
+        </g>
+      `,
+      `
+        <radialGradient id="c-glow" cx=".5" cy=".5" r=".5">
+          <stop offset="0%" stop-color="${C.warn500}" stop-opacity=".55"/>
+          <stop offset="100%" stop-color="${C.warn500}" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="c-bell" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${C.warn300}"/>
+          <stop offset="60%" stop-color="${C.warn500}"/>
+          <stop offset="100%" stop-color="${C.warn600}"/>
+        </linearGradient>
+      `
+    );
+
+    /* === D · Pillow-Coin (мягкий, character) =================
+       Подушка вид сверху, в центре ₽-кнопка. */
+    const ICON_D = iconShell(
+      "d",
+      `<stop offset="0%" stop-color="#152130"/><stop offset="100%" stop-color="#08111B"/>`,
+      `
+        <!-- soft pillow shape, чуть наклонена -->
+        <g transform="translate(512 512) rotate(-6)">
+          <path d="M -340 -260
+                   C -370 -300 -370 -340 -300 -340
+                   L 300 -340
+                   C 370 -340 370 -300 340 -260
+                   L 340 260
+                   C 370 300 370 340 300 340
+                   L -300 340
+                   C -370 340 -370 300 -340 260 Z"
+                fill="url(#d-pillow)"/>
+          <!-- складка -->
+          <path d="M -340 -260
+                   C -290 -240 -290 240 -340 260" fill="none" stroke="rgba(0,0,0,.10)" stroke-width="6"/>
+          <path d="M  340 -260
+                   C  290 -240  290 240  340 260" fill="none" stroke="rgba(0,0,0,.10)" stroke-width="6"/>
+
+          <!-- центральная "пуговица"-монета -->
+          <circle r="160" fill="url(#d-coin-back)"/>
+          <circle r="148" fill="url(#d-coin)"/>
+          <circle r="148" fill="none" stroke="${C.money700}" stroke-width="6" opacity=".5"/>
+          <g transform="translate(-44 -76)" fill="${C.money900}">
+            <path d="M 14 0 H 64 a 42 42 0 0 1 0 84 H 42 V 118 H 86 V 140 H 42 V 162 H 14 V 140 H 0 V 118 H 14 V 0 Z M 42 22 V 62 H 64 a 20 20 0 0 0 0 -40 Z"/>
+          </g>
+        </g>
+      `,
+      `
+        <linearGradient id="d-pillow" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".96"/>
+          <stop offset="100%" stop-color="#D8DEEC"/>
+        </linearGradient>
+        <radialGradient id="d-coin" cx=".4" cy=".35" r=".7">
+          <stop offset="0%" stop-color="${C.money300}"/>
+          <stop offset="100%" stop-color="${C.money600}"/>
+        </radialGradient>
+        <linearGradient id="d-coin-back" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${C.money700}"/>
+          <stop offset="100%" stop-color="#052216"/>
+        </linearGradient>
+      `
+    );
+
+    /* === E · Clock + ₽ (явный «время = деньги») ================
+       Циферблат, в центре ₽; стрелки показывают «9:00». */
+    const ICON_E = iconShell(
+      "e",
+      `<stop offset="0%" stop-color="#10331E"/><stop offset="60%" stop-color="#08200E"/><stop offset="100%" stop-color="#040E07"/>`,
+      `
+        <!-- внешнее кольцо -->
+        <circle cx="512" cy="512" r="380" fill="url(#e-ring)"/>
+        <circle cx="512" cy="512" r="380" fill="none" stroke="${C.money700}" stroke-width="2" opacity=".7"/>
+        <!-- циферблат -->
+        <circle cx="512" cy="512" r="328" fill="${C.night1}"/>
+        <!-- метки: 12, 3, 6, 9 -->
+        <g fill="${C.money300}">
+          <rect x="504" y="208" width="16" height="44" rx="4"/>
+          <rect x="772" y="504" width="44" height="16" rx="4"/>
+          <rect x="504" y="772" width="16" height="44" rx="4"/>
+          <rect x="208" y="504" width="44" height="16" rx="4"/>
+        </g>
+        <!-- мелкие метки -->
+        <g fill="${C.money700}">
+          ${Array.from({length: 60}, (_, i) => {
+            if (i % 5 === 0) return "";
+            const a = (i / 60) * Math.PI * 2 - Math.PI/2;
+            const x1 = 512 + Math.cos(a) * 322;
+            const y1 = 512 + Math.sin(a) * 322;
+            const x2 = 512 + Math.cos(a) * 304;
+            const y2 = 512 + Math.sin(a) * 304;
+            return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${C.money700}" stroke-width="3"/>`;
+          }).join("")}
+        </g>
+        <!-- ₽ в центре, заменяет стрелки -->
+        <g transform="translate(440 380)" fill="${C.money400}">
+          <path d="M 22 0 H 116 a 76 76 0 0 1 0 152 H 76 V 200 H 156 V 236 H 76 V 272 H 22 V 236 H 0 V 200 H 22 V 0 Z M 76 38 V 114 H 116 a 38 38 0 0 0 0 -76 Z"/>
+        </g>
+      `,
+      `
+        <radialGradient id="e-ring" cx=".5" cy=".5" r=".5">
+          <stop offset="80%" stop-color="${C.money600}"/>
+          <stop offset="100%" stop-color="${C.money700}"/>
+        </radialGradient>
+      `
+    );
+
+    /* === F · Wave-Z (минималистичный) ==========================
+       Z, плавно перетекающая в волну/sleep wave. Монохром mint. */
+    const ICON_F = iconShell(
+      "f",
+      `<stop offset="0%" stop-color="${C.money500}"/><stop offset="100%" stop-color="${C.money700}"/>`,
+      `
+        <!-- glow -->
+        <circle cx="512" cy="512" r="500" fill="url(#f-glow)" opacity=".6"/>
+        <!-- крупная мягкая Z -->
+        <g transform="translate(232 252)">
+          <path d="M 60 0
+                   H 500
+                   C 560 0 580 50 540 90
+                   L 200 420
+                   C 180 442 200 460 220 460
+                   H 540
+                   C 580 460 580 520 540 520
+                   H 100
+                   C 40 520 20 470 60 430
+                   L 400 100
+                   C 420 78 400 60 380 60
+                   H 60
+                   C 20 60 20 0 60 0 Z"
+                fill="${C.money900}" opacity=".95"/>
+        </g>
+        <!-- маленькая ₽-точка как акцент в правом углу -->
+        <g transform="translate(740 720)">
+          <circle r="80" fill="${C.money900}"/>
+          <g transform="translate(-30 -52)" fill="${C.money300}">
+            <path d="M 12 0 H 50 a 32 32 0 0 1 0 64 H 32 V 90 H 64 V 110 H 32 V 130 H 12 V 110 H 0 V 90 H 12 V 0 Z M 32 18 V 50 H 50 a 16 16 0 0 0 0 -32 Z"/>
+          </g>
+        </g>
+      `,
+      `
+        <radialGradient id="f-glow" cx=".5" cy=".4" r=".7">
+          <stop offset="0%" stop-color="${C.money300}" stop-opacity=".5"/>
+          <stop offset="100%" stop-color="${C.money300}" stop-opacity="0"/>
+        </radialGradient>
+      `
+    );
+
+    /* ===========================================================
+       Описания каждого направления
+       =========================================================== */
+    const VARIANTS = [
+      { id: "a", tag: "A · Coin-Z",     name: "Coin-Z — стек монет под Z",
+        desc: "<b>Z = sleep, монеты = деньги.</b> Самый прямой перевод метафоры. Сильно работает в большом размере, на маленьком стек монет упрощается до одной — всё ещё читается «деньги + сон».",
+        svg: ICON_A },
+      { id: "b", tag: "B · Crescent ₽",  name: "Полумесяц-монета",
+        desc: "<b>Поэтичный.</b> Полумесяц одновременно про ночь и про монету сбоку. Самый «премиум» из шести — но требует тёмного фона ОС, чтобы не теряться. Подходит, если в позиционировании есть «спокойствие».",
+        svg: ICON_B },
+      { id: "c", tag: "C · Bell + ₽",   name: "Колокольчик с рублём",
+        desc: "<b>Самый функциональный.</b> Колокол — универсальный язык будильника, ₽ внутри — финансовый твист. Янтарный — отсылает к цене снуза. Минус: колокольчик уже занят кучей будильников в App Store, нужно сильно отстроиться формой.",
+        svg: ICON_C },
+      { id: "d", tag: "D · Pillow-Coin", name: "Подушка с монетой",
+        desc: "<b>Тёплый, character-driven.</b> Подушка вид сверху, монета как пуговица. Намекает на «удобство стоит денег». Хорошо отстраивается от тысяч будильников. Минус: белая подушка может смотреться не айдентично остальной dark-системе.",
+        svg: ICON_D },
+      { id: "e", tag: "E · Clock + ₽",  name: "Часы со знаком рубля",
+        desc: "<b>Время = деньги, дословно.</b> Циферблат, ₽ вместо стрелок. Очень гик-френдли. Минус: на 32-px тёмные деления забиваются, остаётся просто кружок с ₽.",
+        svg: ICON_E },
+      { id: "f", tag: "F · Wave-Z",     name: "Минималистичная Z",
+        desc: "<b>Самый чистый.</b> Одна большая Z на ярком mint-градиенте, ₽-точка как акцент. Лучше всего на главном экране и в App Library — узнаётся даже на 16 px. Риск: почти как Zelle, нужно проверить юр. различия.",
+        svg: ICON_F },
+    ];
+
+    /* ===========================================================
+       Render
+       =========================================================== */
+    const grid = document.getElementById("grid");
+    grid.innerHTML = VARIANTS.map(v => `
+      <div class="card">
+        <div class="card-head">
+          <span class="tag">${v.tag.split(" · ")[0]}</span>
+          <span class="name">${v.name}</span>
+        </div>
+        <div class="card-row">
+          <div class="icon-large">${v.svg}</div>
+          <div class="scale-row">
+            <div class="scale-cell"><div class="icon-mid">${v.svg}</div><span class="scale-label">88</span></div>
+            <div class="scale-cell"><div class="icon-sm">${v.svg}</div><span class="scale-label">56</span></div>
+            <div class="scale-cell"><div class="icon-xs">${v.svg}</div><span class="scale-label">32</span></div>
+          </div>
+        </div>
+        <div class="desc">${v.desc}</div>
+      </div>
+    `).join("");
+
+    /* Home screen mock — 8 ячеек: 6 наших + 2 декоративных */
+    const home = document.getElementById("home");
+    const cells = [
+      { kind: "icon", v: VARIANTS[0], label: "SnoozePay" },
+      { kind: "icon", v: VARIANTS[1], label: "SnoozePay" },
+      { kind: "icon", v: VARIANTS[2], label: "SnoozePay" },
+      { kind: "fake", color: "#3478F6", label: "Карты", glyph: "M" },
+      { kind: "icon", v: VARIANTS[3], label: "SnoozePay" },
+      { kind: "icon", v: VARIANTS[4], label: "SnoozePay" },
+      { kind: "icon", v: VARIANTS[5], label: "SnoozePay" },
+      { kind: "fake", color: "#FF3B30", label: "Music", glyph: "♪" },
+    ];
+    home.innerHTML = cells.map(c => {
+      if (c.kind === "icon") {
+        return `
+          <div class="home-row">
+            <div class="icon-mid">${c.v.svg}</div>
+            <div class="lbl">${c.label}</div>
+          </div>`;
+      }
+      return `
+        <div class="home-row">
+          <div class="icon-mid" style="background: ${c.color}; display:flex; align-items:center; justify-content:center; color:#fff; font: 700 28px Manrope;">${c.glyph}</div>
+          <div class="lbl">${c.label}</div>
+        </div>`;
+    }).join("");
+  </script>
+</body>
+</html>

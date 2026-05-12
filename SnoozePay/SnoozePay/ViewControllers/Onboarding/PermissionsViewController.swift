@@ -26,13 +26,17 @@ final class PermissionsViewController: UIViewController {
 
     // MARK: - Persistence keys
 
-    private static let shownKey = "permissions_screen_shown"
+    /// `UserDefaults` key tracking whether the permissions screen has been
+    /// dismissed at least once. Exposed at module-level so the debug "reset
+    /// onboarding" entry in AlarmsListVC can clear it alongside the
+    /// onboarding-completed flag.
+    static let hasBeenShownKey = "permissions_screen_shown"
 
     /// `true` once the user has dismissed the permissions screen at least
     /// once (either by granting or via "Позже"). Read by SceneDelegate to
     /// decide whether to present the screen on a given launch.
     static var hasBeenShown: Bool {
-        UserDefaults.standard.bool(forKey: shownKey)
+        UserDefaults.standard.bool(forKey: hasBeenShownKey)
     }
 
     // MARK: - Callback
@@ -330,7 +334,7 @@ final class PermissionsViewController: UIViewController {
     }
 
     private func finish() {
-        UserDefaults.standard.set(true, forKey: Self.shownKey)
+        UserDefaults.standard.set(true, forKey: Self.hasBeenShownKey)
         onFinished?()
     }
 }

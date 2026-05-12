@@ -110,6 +110,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             selectedImage: UIImage(systemName: "alarm.fill")
         )
 
+        // Wallet tab — replaces the legacy Settings tab per V2 design
+        // (Settings moved behind a gear icon on Alarms / Wallet headers).
+        let walletVC = WalletViewController()
+        let walletNav = UINavigationController(rootViewController: walletVC)
+        walletNav.tabBarItem = UITabBarItem(
+            title: "Кошелёк",
+            image: UIImage(systemName: "creditcard"),
+            selectedImage: UIImage(systemName: "creditcard.fill")
+        )
+
         // Statistics tab
         let statsVC = StatisticsViewController()
         let statsNav = UINavigationController(rootViewController: statsVC)
@@ -119,16 +129,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             selectedImage: UIImage(systemName: "chart.bar.fill")
         )
 
-        // Settings tab
-        let settingsVC = SettingsViewController()
-        let settingsNav = UINavigationController(rootViewController: settingsVC)
-        settingsNav.tabBarItem = UITabBarItem(
-            title: "Настройки",
-            image: UIImage(systemName: "gearshape"),
-            selectedImage: UIImage(systemName: "gearshape.fill")
-        )
-
-        tabBar.viewControllers = [alarmsNav, statsNav, settingsNav]
+        tabBar.viewControllers = [alarmsNav, walletNav, statsNav]
         return tabBar
     }
 

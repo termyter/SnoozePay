@@ -1,0 +1,249 @@
+/* ============================================================
+   SNOOZEPAY — Design tokens
+   Будильник, где откладывание стоит денег.
+   Адаптировано из Protrainer DS под платёжно-будильничную метафорику.
+   Поддержка: dark (default) + light. iOS-first, 393×852.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root,
+[data-theme="dark"] {
+  /* ───── BRAND ─────
+     Money-mint → cash-green. Деньги — основной CTA.
+     Warning-amber  — цена снуза.
+     Pain-coral     — прогрессивный режим, потери, дорогой штраф.
+     Success-mint   — заработанные/сэкономленные деньги, streak. */
+  --sp-money-300:    #5EEAB8;
+  --sp-money-400:    #2EDB9F;
+  --sp-money-500:    #10B981;   /* primary */
+  --sp-money-600:    #0E9D6E;
+  --sp-money-700:    #0B7A56;
+
+  --sp-pain-300:     #FFB4A8;
+  --sp-pain-400:     #FF7A6B;
+  --sp-pain-500:     #F4523F;   /* progressive snooze, expensive */
+  --sp-pain-600:     #D43A28;
+
+  --sp-warn-300:     #FFD479;
+  --sp-warn-400:     #FFB84D;
+  --sp-warn-500:     #F59E0B;   /* default snooze price */
+  --sp-warn-600:     #C97A06;
+
+  --sp-info-500:     #4F8BFF;   /* informational links only */
+
+  /* Сигнатурные градиенты */
+  --sp-grad-money:   linear-gradient(135deg, #2EDB9F 0%, #10B981 60%, #0B7A56 100%);
+  --sp-grad-pain:    linear-gradient(135deg, #FFB4A8 0%, #F4523F 55%, #D43A28 100%);
+  --sp-grad-warn:    linear-gradient(135deg, #FFD479 0%, #F59E0B 60%, #C97A06 100%);
+  --sp-grad-night:   radial-gradient(120% 80% at 50% 0%, #1B2030 0%, #0E1320 55%, #060912 100%);
+  --sp-grad-dawn:    linear-gradient(180deg, #14122A 0%, #0F1A2E 40%, #0A1320 70%, #050912 100%);
+
+  /* ───── SURFACES (DARK) ───── */
+  --sp-bg-0:         #060912;   /* app bg deepest */
+  --sp-bg-1:         #0E1320;   /* card */
+  --sp-bg-2:         #161C2E;   /* raised card */
+  --sp-bg-3:         #1F2740;   /* active chip, sheet header */
+  --sp-bg-4:         #2A3354;   /* hover/focus surface */
+
+  --sp-white-04:     rgba(255,255,255,.04);
+  --sp-white-06:     rgba(255,255,255,.06);
+  --sp-white-08:     rgba(255,255,255,.08);
+  --sp-white-12:     rgba(255,255,255,.12);
+  --sp-white-16:     rgba(255,255,255,.16);
+  --sp-white-24:     rgba(255,255,255,.24);
+
+  /* ───── TEXT (DARK) ───── */
+  --sp-fg-1:         #FFFFFF;                      /* primary headings & hero numbers */
+  --sp-fg-2:         rgba(235,237,245,.86);        /* body */
+  --sp-fg-3:         rgba(235,237,245,.58);        /* meta */
+  --sp-fg-4:         rgba(235,237,245,.32);        /* disabled / placeholder */
+  --sp-fg-on-money:  #052016;                      /* text ON money green */
+  --sp-fg-on-pain:   #FFFFFF;
+  --sp-fg-on-warn:   #1A0F00;
+
+  /* ───── STROKES ───── */
+  --sp-stroke-1:     rgba(255,255,255,.08);
+  --sp-stroke-2:     rgba(255,255,255,.14);
+  --sp-stroke-money: rgba(46,219,159,.45);
+  --sp-stroke-pain:  rgba(244,82,63,.45);
+
+  /* ───── ELEVATION (coloured shadows) ───── */
+  --sp-shadow-1:     0 2px 8px rgba(0,0,0,.35);
+  --sp-shadow-2:     0 8px 24px rgba(0,0,0,.45);
+  --sp-shadow-money: 0 8px 22px -6px rgba(16,185,129,.40);
+  --sp-shadow-pain:  0 8px 22px -6px rgba(244,82,63,.45);
+  --sp-shadow-warn:  0 8px 22px -6px rgba(245,158,11,.40);
+}
+
+[data-theme="light"] {
+  --sp-bg-0:         #F4F6FB;
+  --sp-bg-1:         #FFFFFF;
+  --sp-bg-2:         #ECEEF6;
+  --sp-bg-3:         #DFE3F0;
+  --sp-bg-4:         #C9D0E3;
+
+  --sp-white-04:     rgba(8,14,30,.04);
+  --sp-white-06:     rgba(8,14,30,.06);
+  --sp-white-08:     rgba(8,14,30,.08);
+  --sp-white-12:     rgba(8,14,30,.12);
+  --sp-white-16:     rgba(8,14,30,.16);
+  --sp-white-24:     rgba(8,14,30,.24);
+
+  --sp-fg-1:         #0A0F1F;
+  --sp-fg-2:         rgba(10,15,31,.82);
+  --sp-fg-3:         rgba(10,15,31,.56);
+  --sp-fg-4:         rgba(10,15,31,.32);
+
+  --sp-stroke-1:     rgba(10,15,31,.08);
+  --sp-stroke-2:     rgba(10,15,31,.14);
+  --sp-stroke-money: rgba(16,185,129,.55);
+  --sp-stroke-pain:  rgba(244,82,63,.55);
+
+  --sp-shadow-1:     0 1px 3px rgba(8,14,30,.06), 0 4px 14px rgba(8,14,30,.06);
+  --sp-shadow-2:     0 6px 20px rgba(8,14,30,.10);
+  --sp-shadow-money: 0 8px 20px -6px rgba(16,185,129,.30);
+  --sp-shadow-pain:  0 8px 20px -6px rgba(244,82,63,.32);
+  --sp-shadow-warn:  0 8px 20px -6px rgba(245,158,11,.30);
+
+  /* В light режиме alarm-firing экран остаётся тёмным
+     — это намеренное исключение, описано в гайдлайнах. */
+  --sp-grad-night:   radial-gradient(120% 80% at 50% 0%, #1B2030 0%, #0E1320 55%, #060912 100%);
+  --sp-grad-dawn:    linear-gradient(180deg, #14122A 0%, #0F1A2E 40%, #0A1320 70%, #050912 100%);
+}
+
+:root {
+  /* ───── RADII ───── */
+  --sp-r-xs:         8px;
+  --sp-r-sm:         12px;
+  --sp-r-md:         16px;
+  --sp-r-lg:         20px;
+  --sp-r-xl:         28px;
+  --sp-r-2xl:        36px;
+  --sp-r-pill:       999px;
+  --sp-r-sheet:      28px 28px 0 0;
+
+  /* ───── SPACING (4px base) ───── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-7:  32px;
+  --sp-8:  40px;
+  --sp-9:  56px;
+  --sp-10: 72px;
+
+  /* ───── MOTION ───── */
+  --sp-ease-out:     cubic-bezier(.2,.8,.2,1);
+  --sp-ease-in-out:  cubic-bezier(.4,0,.2,1);
+  --sp-ease-spring:  cubic-bezier(.34,1.56,.64,1);
+  --sp-dur-quick:    140ms;
+  --sp-dur-base:     220ms;
+  --sp-dur-slow:     420ms;
+  --sp-dur-anxious:  900ms;   /* alarm pulse */
+
+  /* ───── TYPE — families ───── */
+  --sp-font-display: "Manrope", system-ui, sans-serif;
+  --sp-font-body:    "Manrope", system-ui, sans-serif;
+  --sp-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+
+  /* ───── TYPE — roles
+     Display — экран «BIG MOMENT» (firing screen, streak modal).
+     Mono — суммы, таймеры, цены. Деньги читаются монотипично. */
+  --sp-t-display:    800 88px/92px var(--sp-font-display);
+  --sp-t-h1:         800 32px/40px var(--sp-font-display);
+  --sp-t-h2:         700 24px/32px var(--sp-font-display);
+  --sp-t-h3:         700 20px/28px var(--sp-font-display);
+  --sp-t-h4:         700 17px/24px var(--sp-font-display);
+  --sp-t-body-lg:    500 17px/26px var(--sp-font-body);
+  --sp-t-body:       500 15px/22px var(--sp-font-body);
+  --sp-t-meta:       500 13px/18px var(--sp-font-body);
+  --sp-t-caps:       700 12px/16px var(--sp-font-body);
+  --sp-t-button:     700 16px/22px var(--sp-font-body);
+  --sp-t-button-sm:  700 14px/20px var(--sp-font-body);
+
+  /* Mono — для денег и времени */
+  --sp-t-money-xl:   700 56px/60px var(--sp-font-mono);   /* Deposit hero, streak num */
+  --sp-t-money-lg:   700 32px/36px var(--sp-font-mono);   /* main balance card */
+  --sp-t-money-md:   700 20px/26px var(--sp-font-mono);   /* row sums */
+  --sp-t-money-sm:   600 14px/20px var(--sp-font-mono);   /* meta */
+  --sp-t-clock-xl:   200 96px/96px var(--sp-font-mono);   /* firing screen time */
+  --sp-t-clock-lg:   300 64px/64px var(--sp-font-mono);   /* alarm card time */
+}
+
+/* ============================================================ */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font: var(--sp-t-body);
+  color: var(--sp-fg-2);
+  background: var(--sp-bg-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.sp-display    { font: var(--sp-t-display); color: var(--sp-fg-1); letter-spacing: -.025em; }
+.sp-h1         { font: var(--sp-t-h1); color: var(--sp-fg-1); letter-spacing: -.01em; margin: 0; }
+.sp-h2         { font: var(--sp-t-h2); color: var(--sp-fg-1); letter-spacing: -.01em; margin: 0; }
+.sp-h3         { font: var(--sp-t-h3); color: var(--sp-fg-1); margin: 0; }
+.sp-h4         { font: var(--sp-t-h4); color: var(--sp-fg-1); margin: 0; }
+.sp-body       { font: var(--sp-t-body); color: var(--sp-fg-2); margin: 0; }
+.sp-body-lg    { font: var(--sp-t-body-lg); color: var(--sp-fg-2); margin: 0; }
+.sp-meta       { font: var(--sp-t-meta); color: var(--sp-fg-3); margin: 0; }
+.sp-caps       { font: var(--sp-t-caps); letter-spacing: .12em; text-transform: uppercase; color: var(--sp-fg-3); }
+.sp-mono       { font: var(--sp-t-money-sm); color: var(--sp-fg-2); }
+
+.sp-money-text { background: var(--sp-grad-money); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sp-pain-text  { background: var(--sp-grad-pain);  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sp-warn-text  { background: var(--sp-grad-warn);  -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* ============================================================
+   Демонстрационная оболочка для всего HTML-документа аудита
+   ============================================================ */
+.doc {
+  background: var(--sp-bg-0);
+  color: var(--sp-fg-2);
+  min-height: 100vh;
+}
+.doc--surface { background: var(--sp-bg-1); }
+
+/* iPhone-like phone frame для макетов */
+.phone {
+  width: 393px;
+  height: 852px;
+  border-radius: 50px;
+  background: #000;
+  padding: 9px;
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);
+  flex-shrink: 0;
+  position: relative;
+}
+.phone__screen {
+  width: 100%; height: 100%;
+  border-radius: 42px;
+  overflow: hidden;
+  position: relative;
+  background: var(--sp-bg-0);
+}
+.phone__notch {
+  position: absolute;
+  top: 18px; left: 50%;
+  transform: translateX(-50%);
+  width: 124px; height: 36px;
+  background: #000;
+  border-radius: 20px;
+  z-index: 50;
+}
+.phone__home {
+  position: absolute;
+  bottom: 17px; left: 50%;
+  transform: translateX(-50%);
+  width: 134px; height: 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,.45);
+  z-index: 50;
+}
+.phone--light .phone__home { background: rgba(0,0,0,.35); }

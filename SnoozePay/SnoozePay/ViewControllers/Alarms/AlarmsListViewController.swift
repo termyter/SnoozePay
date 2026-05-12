@@ -134,10 +134,19 @@ class AlarmsListViewController: UIViewController {
         )
         navigationItem.rightBarButtonItem = addButton
 
-        // DEBUG-only entry to surface the streak modal so PM and the design
-        // team can iterate on the visual treatment without manufacturing a
-        // 3-day streak in a fresh install. Stripped from release builds so
-        // the production toolbar stays a single "+" button.
+        // Settings moved out of the tab bar per V2 design — entry point is
+        // the gear icon on the Alarms header (matches "more / account"
+        // pattern used in Wallet header).
+        let settingsButton = UIBarButtonItem(
+            image: UIImage(systemName: "gearshape"),
+            style: .plain,
+            target: self,
+            action: #selector(openSettings)
+        )
+        navigationItem.leftBarButtonItem = settingsButton
+
+        // DEBUG-only entries — streak modal trigger and onboarding reset so
+        // designers / QA can iterate without manufacturing real state.
         #if DEBUG
         let streakButton = UIBarButtonItem(
             image: UIImage(systemName: "flame.fill"),
@@ -145,8 +154,20 @@ class AlarmsListViewController: UIViewController {
             target: self,
             action: #selector(debugTriggerStreakModal)
         )
-        navigationItem.leftBarButtonItem = streakButton
+        let resetButton = UIBarButtonItem(
+            image: UIImage(systemName: "arrow.counterclockwise"),
+            style: .plain,
+            target: self,
+            action: #selector(debugResetOnboarding)
+        )
+        navigationItem.leftBarButtonItems = [settingsButton, streakButton, resetButton]
         #endif
+    }
+
+    @objc private func openSettings() {
+        let settingsVC = SettingsViewController()
+        let nav = UINavigationController(rootViewController: settingsVC)
+        present(nav, animated: true)
     }
 
     #if DEBUG
@@ -155,6 +176,22 @@ class AlarmsListViewController: UIViewController {
         // should always render the modal regardless of how many times PM has
         // already opened it this session. 7 days matches the spec screenshot.
         presentStreakModal(streakDays: 7)
+    }
+
+    @objc private func debugResetOnboarding() {
+        // Clears the onboarding-completed + permissions-shown flags so the
+        // next cold launch walks through Splash → Onboarding → Permissions
+        // again. Lets PM verify the V2 onboarding redesign without
+        // re-installing the app.
+        UserDefaults.standard.removeObject(forKey: OnboardingViewController.completedKey)
+        UserDefaults.standard.removeObject(forKey: PermissionsViewController.hasBeenShownKey)
+        let alert = UIAlertController(
+            title: "Онбординг сброшен",
+            message: "Закройте приложение и запустите заново — увидите экран приветствия.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
     #endif
 

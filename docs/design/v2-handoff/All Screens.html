@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1600" />
+  <title>SnoozePay · 30 экранов</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <link rel="stylesheet" href="components/components.css" />
+
+  <style>
+    body { background: #060912; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body data-theme="dark">
+  <div id="root"></div>
+
+  <script type="text/babel" src="components/SPComponents.jsx"></script>
+  <script type="text/babel" src="components/SPScreens.jsx"></script>
+  <script type="text/babel" src="components/SPScreensV2.jsx"></script>
+  <script type="text/babel" src="components/SPDawnV3.jsx"></script>
+  <script type="text/babel" src="components/SPMore.jsx"></script>
+  <script type="text/babel" src="components/SPMore2.jsx"></script>
+  <script type="text/babel" src="components/SPMore3.jsx"></script>
+  <script type="text/babel" src="components/SPMore4.jsx"></script>
+  <script type="text/babel" src="components/SPTopUp.jsx"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    function App() {
+      return (
+        <DesignCanvas
+          title="SnoozePay · Все экраны"
+          subtitle="30 экранов: вход, основной флоу, состояния, настройки, финансы, эмоциональные моменты."
+        >
+          {/* === ВХОД В ПРИЛОЖЕНИЕ === */}
+          <DCSection id="entry" title="Вход в приложение">
+            <DCArtboard id="01-splash" label="01 · Splash" width={420} height={900}>
+              <Phone theme="dark"><Splash /></Phone>
+            </DCArtboard>
+            <DCArtboard id="02-onboarding-1" label="02 · Onboarding 1/3 — что это" width={420} height={900}>
+              <Phone theme="dark"><Onboarding1 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="03-onboarding-2" label="03 · Onboarding 2/3 — как работает" width={420} height={900}>
+              <Phone theme="dark"><Onboarding2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="04-onboarding-3" label="04 · Onboarding 3/3 — стартовый депозит" width={420} height={900}>
+              <Phone theme="dark"><Onboarding3 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="05-permissions" label="05 · Разрешения" width={420} height={900}>
+              <Phone theme="dark"><Permissions /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === ОСНОВНОЙ ФЛОУ === */}
+          <DCSection id="main" title="Основной флоу">
+            <DCArtboard id="06-alarms-list" label="06 · Главный — список будильников" width={420} height={900}>
+              <Phone theme="dark"><AlarmsListV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="07-empty-alarms" label="07 · Пустой список (новый юзер)" width={420} height={900}>
+              <Phone theme="dark"><EmptyAlarms /></Phone>
+            </DCArtboard>
+            <DCArtboard id="08-create-alarm" label="08 · Создание будильника" width={420} height={900}>
+              <Phone theme="dark"><CreateAlarmV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="10-alarm-edit" label="09 · Редактирование будильника (имя · время · длительность)" width={420} height={900}>
+              <Phone theme="dark"><AlarmEdit /></Phone>
+            </DCArtboard>
+            <DCArtboard id="11-confirm-delete" label="11 · Подтверждение удаления" width={420} height={900}>
+              <Phone theme="dark"><ConfirmDelete /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === FIRING — будильник срабатывает (интерактивный прототип + состояние без баланса) === */}
+          <DCSection id="firing" title="Будильник срабатывает">
+            <DCArtboard id="firing-interactive" label="Будильник срабатывает — интерактивный прототип (жми «Поспать ещё»)" width={420} height={900}>
+              <Phone theme="dark"><FiringDawnV3 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-no-balance" label="Баланс закончился — только встать" width={420} height={900}>
+              <Phone theme="dark"><FiringNoBalanceV2 /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === ФИНАНСЫ === */}
+          <DCSection id="money" title="Финансы">
+            <DCArtboard id="18-wallet" label="18 · Кошелёк / баланс" width={420} height={900}>
+              <Phone theme="dark"><WalletV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="19-deposit" label="19 · Пополнить баланс" width={420} height={900}>
+              <Phone theme="dark"><Deposit /></Phone>
+            </DCArtboard>
+            <DCArtboard id="20-withdraw" label="20 · Вывести с баланса" width={420} height={900}>
+              <Phone theme="dark"><Withdraw /></Phone>
+            </DCArtboard>
+            <DCArtboard id="21-tx-history" label="21 · История операций" width={420} height={900}>
+              <Phone theme="dark"><TxHistory /></Phone>
+            </DCArtboard>
+            <DCArtboard id="22-payment-methods" label="22 · Способы оплаты" width={420} height={900}>
+              <Phone theme="dark"><PaymentMethods /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === НАСТРОЙКИ === */}
+          <DCSection id="settings" title="Настройки и кастомизация">
+            <DCArtboard id="23-settings" label="23 · Настройки (профиль)" width={420} height={900}>
+              <Phone theme="dark"><SettingsV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="24-sound-picker" label="24 · Выбор звука будильника" width={420} height={900}>
+              <Phone theme="dark"><SoundPicker /></Phone>
+            </DCArtboard>
+            <DCArtboard id="25-volume" label="25 · Громкость" width={420} height={900}>
+              <Phone theme="dark"><VolumeSetting /></Phone>
+            </DCArtboard>
+            <DCArtboard id="26-theme-picker" label="26 · Тема (картинка для будильника)" width={420} height={900}>
+              <Phone theme="dark"><ThemePicker /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === TOP-UP FLOW (баланс кончился во время звонка) === */}
+          <DCSection id="topup" title="Пополнение во время звонка">
+            <DCArtboard id="tu-presets" label="Bottom sheet с пресетами — Apple Pay одной кнопкой" width={420} height={900}>
+              <Phone theme="dark"><FiringTopUpPresets /></Phone>
+            </DCArtboard>
+            <DCArtboard id="tu-success" label="Баланс пополнен — возврат к будильнику" width={420} height={900}>
+              <Phone theme="dark"><FiringTopUpSuccess /></Phone>
+            </DCArtboard>
+            <DCArtboard id="tu-low-balance" label="Low-balance warning на главном (баланс ≤ 100 ₽)" width={420} height={900}>
+              <Phone theme="dark"><AlarmsListLowBalance /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === АНАЛИТИКА И ЭМОЦИИ === */}          <DCSection id="moments" title="Аналитика и эмоциональные моменты">
+            <DCArtboard id="27-stats" label="27 · Статистика (heatmap + графики)" width={420} height={900}>
+              <Phone theme="dark"><Stats /></Phone>
+            </DCArtboard>
+            <DCArtboard id="28-streak" label="28 · Streak — 7 дней без откладываний" width={420} height={900}>
+              <Phone theme="dark"><StreakModalV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="29-referral" label="29 · Пригласить друга" width={420} height={900}>
+              <Phone theme="dark"><Referral /></Phone>
+            </DCArtboard>
+            <DCArtboard id="30-alarm-off-warning" label="30 · Срыв 3 раза подряд — забота" width={420} height={900}>
+              <Phone theme="dark"><AlarmOffWarning /></Phone>
+            </DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1600" />
+  <title>SnoozePay · Dawn — финальный</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <link rel="stylesheet" href="components/components.css" />
+
+  <style>
+    body { background: #060912; }
+    .phone { transform: scale(.85); transform-origin: top center; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body data-theme="dark">
+  <div id="root"></div>
+
+  <script type="text/babel" src="components/SPComponents.jsx"></script>
+  <script type="text/babel" src="components/SPScreensV2.jsx"></script>
+  <script type="text/babel" src="components/SPDawnV3.jsx"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    function App() {
+      return (
+        <DesignCanvas
+          title="SnoozePay · Dawn (финальная итерация)"
+          subtitle="Кнопка снуза остаётся золотой на всех ступенях. Прогрессив подсвечивается отдельным индикатором, а не цветом CTA. Жмите snooze в первом артборде — оно интерактивно: списывает залог, добавляет в тиккер, появляется индикатор прогрессива."
+        >
+          <DCSection id="firing" title="Будильник срабатывает — интерактивный прототип">
+            <DCArtboard id="firing-live" label="Live · нажимайте «Спать ещё 5 мин»" width={420} height={900}>
+              <Phone theme="dark"><FiringDawnV3 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-static-calm" label="Статика · обычный снуз 50 ₽" width={420} height={900}>
+              <Phone theme="dark"><FiringDawn /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-static-prog" label="Статика · прогрессив, кнопка остаётся золотой" width={420} height={900}>
+              <Phone theme="dark"><FiringDawn progressive /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-no-balance" label="Залог закончился — только встать" width={420} height={900}>
+              <Phone theme="dark"><FiringNoBalanceV2 /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="main-flow" title="Основной флоу — Dawn-семья">
+            <DCArtboard id="alarms-list" label="Главный · список будильников" width={420} height={900}>
+              <Phone theme="dark"><AlarmsListDawn /></Phone>
+            </DCArtboard>
+            <DCArtboard id="create-alarm" label="Создание будильника" width={420} height={900}>
+              <Phone theme="dark"><CreateAlarmDawn /></Phone>
+            </DCArtboard>
+            <DCArtboard id="wallet" label="Кошелёк / залог + пополнение" width={420} height={900}>
+              <Phone theme="dark"><WalletDawn /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="moments" title="Эмоциональные моменты">
+            <DCArtboard id="streak" label="Streak — 7 дней без снуза" width={420} height={900}>
+              <Phone theme="dark"><StreakModalDawn /></Phone>
+            </DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
