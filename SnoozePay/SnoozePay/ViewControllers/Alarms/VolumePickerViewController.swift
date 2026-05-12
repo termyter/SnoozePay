@@ -107,8 +107,19 @@ final class VolumePickerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Громкость"
         view.backgroundColor = AppColors.bg0
+        // V2 caps title — matches `SPMore2.jsx` "Громкость" recipe.
+        let titleLabel = UILabel()
+        titleLabel.attributedText = NSAttributedString(
+            string: "Громкость".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        titleLabel.accessibilityLabel = "Громкость"
+        navigationItem.titleView = titleLabel
         setupUI()
         applyVolumeToUI()
         applyFadeToUI()

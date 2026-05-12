@@ -77,8 +77,21 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Выбор звука"
         view.backgroundColor = AppColors.bg0
+        // V2 caps title — accessibility label keeps the long "Выбор звука"
+        // string so VoiceOver still announces the screen purpose, while the
+        // visible label collapses to the JSX caps recipe.
+        let titleLabel = UILabel()
+        titleLabel.attributedText = NSAttributedString(
+            string: "Звук".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        titleLabel.accessibilityLabel = "Выбор звука"
+        navigationItem.titleView = titleLabel
         setupTableView()
     }
 

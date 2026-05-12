@@ -1,32 +1,39 @@
 import UIKit
 
-/// "Громкость" row on the create / edit alarm form (#150).
-///
-/// Mirrors the chrome of `SoundCell` so the new row reads as the same
-/// primitive — title on the left, current volume + optional fade-in label
-/// on the right, chevron disclosure. Tapping pushes the
-/// `VolumePickerViewController` (handled by the parent `didSelectRowAt`).
+/// V2 "Громкость" row: leading volume icon + title + trailing "{N}%" meta +
+/// chevron. Matches the settings-group row pattern from `SPScreensV2.jsx`.
+/// Tapping pushes `VolumePickerViewController` (wired by the parent).
 final class VolumeCell: UITableViewCell {
 
     static let reuseID = "VolumeCell"
 
     // MARK: - UI
 
+    private let iconView: UIImageView = {
+        let image = UIImage(systemName: "speaker.wave.3.fill")?.withConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        )
+        let view = UIImageView(image: image)
+        view.tintColor = AppColors.fg3
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = "Громкость"
-        label.font = UIFont.systemFont(ofSize: 17)
-        label.textColor = .label
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     private let valueLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 17)
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
         label.textAlignment = .right
+        label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
@@ -35,7 +42,7 @@ final class VolumeCell: UITableViewCell {
             UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
         )
         let view = UIImageView(image: image)
-        view.tintColor = .tertiaryLabel
+        view.tintColor = AppColors.fg3
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -53,27 +60,33 @@ final class VolumeCell: UITableViewCell {
     }
 
     private func setupUI() {
-        backgroundColor = .secondarySystemBackground
+        backgroundColor = AppColors.bg1
         selectionStyle = .default
 
+        contentView.addSubview(iconView)
         contentView.addSubview(titleLabel)
         contentView.addSubview(chevronView)
         contentView.addSubview(valueLabel)
 
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp4),
+            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 24),
+            iconView.heightAnchor.constraint(equalToConstant: 24),
+
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: AppSpacing.sp3),
             titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp4),
             chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            valueLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sm),
+            valueLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sp2),
             valueLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             valueLabel.leadingAnchor.constraint(
-                greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: AppSpacing.sm
+                greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: AppSpacing.sp2
             ),
 
-            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 48)
         ])
     }
 

@@ -1,13 +1,16 @@
 import UIKit
 
-/// Horizontal Пн-Вс day toggle row. Each weekday is rendered as a square button
-/// that toggles its selection state independently. The cell owns its buttons
-/// internally; the controller only supplies the current selection set.
+/// V2 horizontal Пн-Вс day toggle row. Each weekday button is a 36×36 round
+/// chip — selected = `money500` flat fill + `fgOnMoney` text (the JSX uses
+/// the money gradient; we collapse to the dominant stop because `UIButton`
+/// doesn't render a gradient inline). Unselected = `whiteOverlay06` chip with
+/// `fg3` text. Matches `SPScreensV2.jsx` lines 528-541.
 final class DayPickerCell: UITableViewCell {
 
     static let reuseID = "DayPickerCell"
 
     private static let dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    private static let buttonDiameter: CGFloat = 36
 
     // MARK: - UI
 
@@ -15,7 +18,7 @@ final class DayPickerCell: UITableViewCell {
         let stack = UIStackView()
         stack.axis = .horizontal
         stack.distribution = .fillEqually
-        stack.spacing = AppSpacing.sm
+        stack.spacing = AppSpacing.sp2
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
@@ -44,27 +47,27 @@ final class DayPickerCell: UITableViewCell {
 
     private func setupUI() {
         selectionStyle = .none
-        backgroundColor = .secondarySystemBackground
+        backgroundColor = AppColors.bg1
 
         for index in 0..<Self.dayNames.count {
             let button = UIButton(type: .system)
             button.setTitle(Self.dayNames[index], for: .normal)
             button.tag = index
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-            button.layer.cornerRadius = AppRadius.xs
+            button.titleLabel?.font = AppTypography.buttonSm
+            button.layer.cornerRadius = Self.buttonDiameter / 2
             button.layer.masksToBounds = true
             button.addTarget(self, action: #selector(dayTapped(_:)), for: .touchUpInside)
+            button.heightAnchor.constraint(equalToConstant: Self.buttonDiameter).isActive = true
             dayButtons.append(button)
             stackView.addArrangedSubview(button)
         }
 
         contentView.addSubview(stackView)
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
-            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sm),
-            stackView.heightAnchor.constraint(equalToConstant: 44)
+            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp4),
+            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp4),
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp2),
+            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp2)
         ])
     }
 
@@ -82,22 +85,17 @@ final class DayPickerCell: UITableViewCell {
         }
     }
 
-    /// Selected — filled accent + white text, no border. Unselected — clear fill +
-    /// hairline `UIColor.separator` border + secondary label colour. Borders give
-    /// each weekday pill a visible affordance in light mode where a flat
-    /// `tertiarySystemBackground` was reading as one undifferentiated grey block.
+    /// V2: selected → `money500` fill + `fgOnMoney` text; unselected →
+    /// `whiteOverlay06` chip + `fg3` text. No border in either state.
     private func applyStyle(_ button: UIButton, isSelected: Bool) {
         if isSelected {
-            button.backgroundColor = AppColors.accentBlue
-            button.setTitleColor(.white, for: .normal)
-            button.layer.borderWidth = 0
-            button.layer.borderColor = UIColor.clear.cgColor
+            button.backgroundColor = AppColors.money500
+            button.setTitleColor(AppColors.fgOnMoney, for: .normal)
         } else {
-            button.backgroundColor = .clear
-            button.setTitleColor(AppColors.textSecondary, for: .normal)
-            button.layer.borderWidth = 1
-            button.layer.borderColor = UIColor.separator.cgColor
+            button.backgroundColor = AppColors.whiteOverlay06
+            button.setTitleColor(AppColors.fg3, for: .normal)
         }
+        button.layer.borderWidth = 0
         button.accessibilityValue = isSelected ? "выбрано" : "не выбрано"
     }
 

@@ -132,7 +132,9 @@ extension CreateAlarmViewController {
     func makeThemeCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ThemeRowCell.reuseID, for: indexPath)
         if let cell = cell as? ThemeRowCell {
-            cell.configure(themeName: viewModel.alarmThemeName)
+            // V2 thumbnail variant: pass the live theme so the leading 28pt
+            // tile renders the matching gradient/photo (#163).
+            cell.configure(theme: viewModel.theme, themeName: viewModel.alarmThemeName)
         }
         return cell
     }

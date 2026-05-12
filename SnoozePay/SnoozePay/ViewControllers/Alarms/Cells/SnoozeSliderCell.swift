@@ -21,9 +21,10 @@ final class SnoozeSliderCell: UITableViewCell {
         let view = UISlider()
         view.minimumValue = Float(SnoozeSliderCell.minMinutes)
         view.maximumValue = Float(SnoozeSliderCell.maxMinutes)
-        // Brand-tint the track to match the volume slider on the same screen
-        // (#179) — the system blue clashes with the SP money palette.
-        view.minimumTrackTintColor = AppColors.money500
+        // V2: tint the track `warn500` so the snooze-duration slider reads
+        // as "amber affordance" matching the JSX recipe in `SPScreensV2.jsx`
+        // line 563.
+        view.minimumTrackTintColor = AppColors.warn500
         view.setThumbImage(SnoozeSliderCell.makeThumb(diameter: 28), for: .normal)
         view.setThumbImage(SnoozeSliderCell.makeThumb(diameter: 30), for: .highlighted)
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -32,7 +33,9 @@ final class SnoozeSliderCell: UITableViewCell {
 
     private let valueLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.body
+        // V2: mono `moneyMd` so the "{N} мин" reading column-aligns with the
+        // penalty preset row's amount on the same screen.
+        label.font = AppTypography.moneyMd
         label.textColor = AppColors.fg1
         label.textAlignment = .right
         label.translatesAutoresizingMaskIntoConstraints = false

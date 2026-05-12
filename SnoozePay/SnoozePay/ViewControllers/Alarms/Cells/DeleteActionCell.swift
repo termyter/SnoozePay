@@ -1,9 +1,9 @@
 import UIKit
 
-/// Centred red "Удалить будильник" row, shown only in edit mode.
-/// Mirrors the iOS Settings destructive-row pattern (e.g. Calendar's
-/// "Delete Event" — selectionStyle = .default gives tactile feedback before
-/// the confirmation sheet appears).
+/// V2 destructive "Удалить будильник" row. Tinted `pain400` so the row reads
+/// as the same intent as the dedicated `ConfirmDeleteAlarmViewController` it
+/// presents on tap. Selection is left enabled so the user gets a brief
+/// highlight before the confirmation sheet animates up from the bottom.
 final class DeleteActionCell: UITableViewCell {
 
     static let reuseID = "DeleteActionCell"
@@ -11,10 +11,10 @@ final class DeleteActionCell: UITableViewCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         textLabel?.text = "Удалить будильник"
-        textLabel?.textColor = .systemRed
+        textLabel?.textColor = AppColors.pain400
         textLabel?.textAlignment = .center
-        textLabel?.font = UIFont.systemFont(ofSize: 17, weight: .regular)
-        backgroundColor = .secondarySystemBackground
+        textLabel?.font = AppFonts.sans(.semibold, 17)
+        backgroundColor = AppColors.bg1
         selectionStyle = .default
     }
 
