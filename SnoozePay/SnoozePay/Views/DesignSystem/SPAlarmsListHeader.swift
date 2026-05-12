@@ -1,49 +1,58 @@
-// swiftlint:disable file_length
 import UIKit
 
-/// Sticky header for the alarms list — composes a balance card and an
-/// optional low-balance warning banner. Lives at the top of the screen
-/// above the scrolling table view; pinned to the safe-area so it never
-/// scrolls away.
+/// V2 sticky header for the alarms list — title row + compact balance pill.
 ///
-/// Visual recipe:
-/// - **Balance card**: same SPBalanceCard chrome (`bg2` raised surface,
-///   28pt vertical / 24pt horizontal padding, 28pt corner radius). Caps
-///   header "БАЛАНС", `moneyXl` value (56pt mono — see #175), an
-///   optional weekly delta line (`↑/↓ amount за неделю`), a centered
-///   "Хватит на ~N откладываний" hint **below** the value, and a
-///   trailing `SPButton(.money, .sm)` "Пополнить" placed to the right
-///   of the value row. The centered hint placement is a direct fix for
-///   PM feedback (chat1.md line 971) — the previous layout put the hint
-///   inline with the value and PM called it out as misaligned.
-/// - **Warning banner**: `SPCard(.warn)` shown when balance ≤ 100. Caps
-///   "БАЛАНС ПОЧТИ ПУСТ", current balance meta, and a small
-///   `SPButton(.warn, .sm)` "Пополнить". Slot collapses (`isHidden`)
-///   when balance > 100; the surrounding stack absorbs the gap.
+/// Layout (top → bottom):
+/// ```
+///  ┌────────────────────────────────────────────────────────┐
+///  │ Будильники                                      ⊕(40)  │   <- title row
+///  │ ┌────────────────────────────────────────────────────┐ │
+///  │ │ [wallet]  БАЛАНС 840 ₽           [Пополнить]      │ │   <- pill
+///  │ │           Хватит на ~16 откладываний              │ │
+///  │ └────────────────────────────────────────────────────┘ │
+///  └────────────────────────────────────────────────────────┘
+///  ── 1pt whiteOverlay06 hairline ──
+/// ```
 ///
-/// The view exposes two callbacks (`onBalanceTopUpTap` and
-/// `onWarnTopUpTap`) so the controller can wire whichever destination
-/// it wants — callers don't need to know about the internal SPButton
-/// instances.
+/// Replaces the legacy big-balance-card + amber "БАЛАНС ПОЧТИ ПУСТ" banner —
+/// the urgency is now folded directly into the pill: when balance drops below
+/// `SPAlarmsListHeader.lowBalanceThreshold` the pill switches its background
+/// to a soft warn tint + warn-stroke and the hint copy reflects the warning.
+///
+/// The 40×40 circular "+" button on the right is the only entry point for
+/// "create new alarm" on this screen — the legacy nav-bar plus button is
+/// suppressed by the host controller.
 final class SPAlarmsListHeader: UIView {
 
     // MARK: - Public API
 
     /// Triggered when the user taps the "Пополнить" pill on the balance
-    /// card.
+    /// card. Kept named the same as the legacy header so the controller
+    /// wiring doesn't need to change.
     var onBalanceTopUpTap: (() -> Void)?
 
-    /// Triggered when the user taps the "Пополнить" pill on the
-    /// low-balance warning banner.
+    /// Triggered when the user taps the 40×40 "+" button. Distinct from
+    /// `onBalanceTopUpTap` so the controller can route them to different
+    /// flows (create-alarm vs top-up).
+    var onAddTap: (() -> Void)?
+
+    /// Kept for binary-compatibility with the legacy header — the V2
+    /// pill folds the warning state into itself, so this callback now
+    /// routes through the same "Пополнить" tap path.
     var onWarnTopUpTap: (() -> Void)?
 
-    /// Update the balance card. `hint` is rendered as a centered line
-    /// below the balance number — pass `nil` to hide. `delta` is the
-    /// optional weekly net change rendered between the value and hint;
-    /// positive values get the up arrow + money tint, negative the down
-    /// arrow + pain tint, `nil` or zero hides the row (per `components.css`
-    /// L163-165 — `.sp-balance__delta { is-up | is-down }`).
+    /// Update the balance pill in place. The pill auto-switches into its
+    /// warn-tint variant when `balance.doubleValue ≤ lowBalanceThreshold`.
+    /// `hint` and `delta` are accepted for source-compat with the legacy
+    /// header; `delta` is currently ignored in the V2 pill layout (the
+    /// rolling-week change rendered as `↑/↓ amount` migrates onto the
+    /// Wallet screen). Pass through unchanged so existing call sites
+    /// keep compiling.
     func setBalance(_ balance: Decimal, hint: String?, delta: Decimal? = nil) {
+        _ = delta // accepted for API compat; pill omits the delta row.
+        currentBalance = balance
+        let isLow = (NSDecimalNumber(decimal: balance).doubleValue) <= Self.lowBalanceThreshold
+        applyTone(isLow: isLow)
         balanceValueLabel.text = balance.formattedRubles()
         if let hint = hint, !hint.isEmpty {
             balanceHintLabel.text = hint
@@ -51,64 +60,177 @@ final class SPAlarmsListHeader: UIView {
         } else {
             balanceHintLabel.isHidden = true
         }
-        if let delta = delta, delta != 0 {
-            balanceDeltaLabel.attributedText = Self.renderDelta(delta)
-            balanceDeltaLabel.isHidden = false
-        } else {
-            balanceDeltaLabel.isHidden = true
-        }
-        // Remask the gradient on the value once layout reflows so the
-        // mask tracks the new digit width (#137 SPBalanceCard pattern).
-        setNeedsLayout()
     }
 
-    /// Toggle the low-balance warning banner. When `visible == true`
-    /// the banner shows the supplied `balance` in its meta line.
+    /// Kept for source-compat with the legacy header. The V2 pill folds
+    /// the warning into its own tone, so this method now just routes the
+    /// state through `setBalance(_:hint:)`'s low-balance branch — the
+    /// controller already calls both methods on refresh.
     func setWarning(visible: Bool, balance: Decimal) {
-        warningBanner.isHidden = !visible
-        warningMetaLabel.text = "Сейчас: \(balance.formattedRubles())"
+        // `applyTone` is driven by `setBalance`; this method is preserved
+        // so the controller doesn't need to be rewritten to drop the
+        // call. The `visible` flag is implied by the balance value.
+        _ = (visible, balance)
     }
+
+    // MARK: - Tokens
+
+    /// Pill bg switches to warn-tint at or below this threshold (₽).
+    /// Matches `AlarmsListViewModel.lowBalanceThreshold` so the view and
+    /// the model agree on what "low" means without coupling them through
+    /// an import.
+    static let lowBalanceThreshold: Double = 100
 
     // MARK: - Subviews
 
-    private let stack = UIStackView()
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        // h1 32pt extrabold with -0.02em kerning per `tokens.css` L80.
+        label.font = AppTypography.h1
+        label.textColor = AppColors.fg1
+        label.attributedText = NSAttributedString(
+            string: "Будильники",
+            attributes: [
+                .font: AppTypography.h1,
+                .kern: -32 * 0.01, // ~ -0.32 — matches `letterSpacing: -.02em` doubled-down
+                .foregroundColor: AppColors.fg1
+            ]
+        )
+        return label
+    }()
 
-    // Balance card
-    private let balanceCard = SPCard(tone: .raised, padding: 24, cornerRadius: AppRadius.xl)
-    private let balanceCapsLabel = UILabel()
-    private let balanceValueLabel = UILabel()
-    private let balanceValueGradient = CAGradientLayer()
-    private let balanceDeltaLabel = UILabel()
-    private let balanceHintLabel = UILabel()
-    private let balanceTopUpButton = SPButton(
+    private let addButton: UIControl = {
+        let view = UIControl()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 20
+        view.layer.masksToBounds = false
+        // Money-tinted drop shadow — matches `--sp-shadow-money`.
+        view.layer.shadowColor = AppColors.money500.cgColor
+        view.layer.shadowOpacity = 0.35
+        view.layer.shadowRadius = 14
+        view.layer.shadowOffset = CGSize(width: 0, height: 6)
+        return view
+    }()
+
+    /// Gradient layer sits behind the plus glyph inside `addButton`.
+    private let addButtonGradient: SPGradientView = {
+        let view = SPGradientView(
+            colors: SPSupport.moneyGradientColors,
+            locations: SPSupport.moneyGradientLocations
+        )
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = false
+        view.layer.cornerRadius = 20
+        view.layer.masksToBounds = true
+        return view
+    }()
+
+    private let addIconView: UIImageView = {
+        let view = UIImageView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentMode = .scaleAspectFit
+        view.tintColor = AppColors.fgOnMoney
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)
+        view.image = UIImage(systemName: "plus", withConfiguration: config)
+        view.isUserInteractionEnabled = false
+        return view
+    }()
+
+    private let pillButton: UIControl = {
+        let view = UIControl()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 14
+        view.layer.masksToBounds = true
+        view.layer.borderWidth = 1
+        return view
+    }()
+
+    /// Money-gradient 40×40 rounded square left of the balance text.
+    private let walletIconHost: SPGradientView = {
+        let view = SPGradientView(
+            colors: SPSupport.moneyGradientColors,
+            locations: SPSupport.moneyGradientLocations
+        )
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 10
+        view.layer.masksToBounds = true
+        view.isUserInteractionEnabled = false
+        return view
+    }()
+
+    private let walletIconImageView: UIImageView = {
+        let view = UIImageView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentMode = .scaleAspectFit
+        view.tintColor = AppColors.fgOnMoney
+        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+        view.image = UIImage(systemName: "creditcard.fill", withConfiguration: config)
+        return view
+    }()
+
+    private let balanceCapsLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.attributedText = NSAttributedString(
+            string: "БАЛАНС",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        return label
+    }()
+
+    private let balanceValueLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        // 20pt mono bold — `moneyMd`. Tabular nums via the mono font.
+        label.font = AppTypography.moneyMd
+        label.textColor = AppColors.fg1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.6
+        label.numberOfLines = 1
+        return label
+    }()
+
+    private let balanceHintLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.8
+        return label
+    }()
+
+    private let topUpButton = SPButton(
         title: "Пополнить",
         variant: .money,
-        size: .sm,
-        icon: UIImage(systemName: "plus.circle.fill")
-    )
-    private let radialOverlay = AlarmsHeaderRadialOverlayView()
-
-    // Warning banner
-    private let warningBanner = SPCard(tone: .warn, padding: AppSpacing.sp4, cornerRadius: AppRadius.md)
-    private let warningCapsLabel = UILabel()
-    private let warningMetaLabel = UILabel()
-    private let warningTopUpButton = SPButton(
-        title: "Пополнить",
-        variant: .warn,
         size: .sm
     )
+
+    private let bottomHairline: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = AppColors.whiteOverlay06
+        return view
+    }()
+
+    // MARK: - State
+
+    private var currentBalance: Decimal = 0
 
     // MARK: - Init
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure()
-        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
-        // closure-based observer when available; the legacy override below
-        // remains as a fallback for older runtimes.
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPAlarmsListHeader, _) in
-                view.refreshOverlay()
+                view.refreshDynamicColors()
             }
         }
     }
@@ -117,317 +239,170 @@ final class SPAlarmsListHeader: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: - Layout
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        radialOverlay.frame = balanceCard.bounds
-        applyValueGradient()
-    }
-
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        // iOS 17+ runtimes are notified via the registered trait observer
-        // (see init); skip here to avoid double-refreshing the overlay.
         if #available(iOS 17.0, *) { return }
-        refreshOverlay()
+        refreshDynamicColors()
     }
 
-    private func refreshOverlay() {
-        radialOverlay.setNeedsDisplay()
+    private func refreshDynamicColors() {
+        // CALayer cgColors don't auto-resolve dynamic UIColors.
+        bottomHairline.backgroundColor = AppColors.whiteOverlay06
+        let isLow = NSDecimalNumber(decimal: currentBalance).doubleValue <= Self.lowBalanceThreshold
+        applyTone(isLow: isLow)
     }
 
     // MARK: - Configuration
 
-    private func configure() {
-        // Outer stack — vertical, 12pt gap between balance card and the
-        // optional warning banner. Pinned to the view's layoutMargins so
-        // the screen edges resolve to AppSpacing.screenInset (16pt) by
-        // default — the controller assigns directionalLayoutMargins to
-        // override.
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.sp3
-        stack.alignment = .fill
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: layoutMarginsGuide.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: layoutMarginsGuide.bottomAnchor)
-        ])
-
-        configureBalanceCard()
-        configureWarningBanner()
-
-        stack.addArrangedSubview(balanceCard)
-        stack.addArrangedSubview(warningBanner)
-        // Hidden by default — controller flips on view appear.
-        warningBanner.isHidden = true
-    }
-
     // swiftlint:disable:next function_body_length
-    private func configureBalanceCard() {
-        // Internal layout:
-        //   ┌─────────────────────────────────┐
-        //   │ БАЛАНС                          │
-        //   │ 1 234 ₽           [+ Пополнить] │
-        //   │       ~5 откладываний (centered)│
-        //   └─────────────────────────────────┘
-        balanceCard.translatesAutoresizingMaskIntoConstraints = false
+    private func configure() {
+        backgroundColor = AppColors.bg0
 
-        // Radial overlay sits behind content so subviews stack above it.
-        radialOverlay.translatesAutoresizingMaskIntoConstraints = false
-        radialOverlay.isUserInteractionEnabled = false
-        balanceCard.insertSubview(radialOverlay, at: 0)
+        addSubview(titleLabel)
+        addSubview(addButton)
+        addButton.addSubview(addButtonGradient)
+        addButton.addSubview(addIconView)
 
-        balanceCapsLabel.translatesAutoresizingMaskIntoConstraints = false
-        balanceCapsLabel.attributedText = NSAttributedString(
-            string: "БАЛАНС",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
+        addSubview(pillButton)
+        pillButton.addSubview(walletIconHost)
+        walletIconHost.addSubview(walletIconImageView)
+        pillButton.addSubview(balanceCapsLabel)
+        pillButton.addSubview(balanceValueLabel)
+        pillButton.addSubview(balanceHintLabel)
+        pillButton.addSubview(topUpButton)
+        topUpButton.translatesAutoresizingMaskIntoConstraints = false
+        topUpButton.isUserInteractionEnabled = true
 
-        balanceValueLabel.translatesAutoresizingMaskIntoConstraints = false
-        // Hero balance: `moneyXl` (56pt mono bold) per `tokens.css` L168.
-        // 56pt glyphs can overflow on narrow devices when the balance grows
-        // past "999 999 ₽" alongside the trailing top-up pill, so we let
-        // UIKit shrink to 75% before clipping (matches SPBalanceCard).
-        balanceValueLabel.font = AppTypography.moneyXl
-        balanceValueLabel.textColor = AppColors.fg1
-        balanceValueLabel.adjustsFontForContentSizeCategory = false
-        balanceValueLabel.numberOfLines = 1
-        balanceValueLabel.adjustsFontSizeToFitWidth = true
-        balanceValueLabel.minimumScaleFactor = 0.75
-        balanceValueLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        addSubview(bottomHairline)
 
-        balanceTopUpButton.translatesAutoresizingMaskIntoConstraints = false
-        balanceTopUpButton.addTarget(
-            self,
-            action: #selector(balanceTopUpTapped),
-            for: .touchUpInside
-        )
+        addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
+        pillButton.addTarget(self, action: #selector(pillTapped), for: .touchUpInside)
+        topUpButton.addTarget(self, action: #selector(topUpTapped), for: .touchUpInside)
 
-        // Value row — value pinned leading, top-up button trailing.
-        let valueRow = UIView()
-        valueRow.translatesAutoresizingMaskIntoConstraints = false
-        valueRow.addSubview(balanceValueLabel)
-        valueRow.addSubview(balanceTopUpButton)
-
-        balanceHintLabel.translatesAutoresizingMaskIntoConstraints = false
-        balanceHintLabel.font = AppTypography.meta
-        balanceHintLabel.textColor = AppColors.fg3
-        balanceHintLabel.textAlignment = .center
-        balanceHintLabel.numberOfLines = 1
-        balanceHintLabel.isHidden = true
-
-        // Weekly delta: `moneySm` mono with arrow + tint per
-        // `components.css` L163-165. Hidden by default — `setBalance(_:hint:delta:)`
-        // flips the visibility once the controller pipes the computed
-        // delta from `AlarmsListViewModel`.
-        balanceDeltaLabel.translatesAutoresizingMaskIntoConstraints = false
-        balanceDeltaLabel.font = AppTypography.moneySm
-        balanceDeltaLabel.numberOfLines = 1
-        balanceDeltaLabel.isHidden = true
-
-        // Caps + value row + delta + centered hint — vertical stack inside
-        // the card. Custom spacing keeps the hint visually separate from
-        // the value (matches the JSX `gap-y-2` after value).
-        let innerStack = UIStackView(arrangedSubviews: [
-            balanceCapsLabel, valueRow, balanceDeltaLabel, balanceHintLabel
-        ])
-        innerStack.translatesAutoresizingMaskIntoConstraints = false
-        innerStack.axis = .vertical
-        innerStack.alignment = .fill
-        innerStack.spacing = 8
-        innerStack.setCustomSpacing(8, after: balanceCapsLabel)
-        innerStack.setCustomSpacing(6, after: valueRow)
-        innerStack.setCustomSpacing(10, after: balanceDeltaLabel)
-        balanceCard.addSubview(innerStack)
+        let inset = AppSpacing.screenInset
 
         NSLayoutConstraint.activate([
-            innerStack.topAnchor.constraint(equalTo: balanceCard.layoutMarginsGuide.topAnchor),
-            innerStack.bottomAnchor.constraint(equalTo: balanceCard.layoutMarginsGuide.bottomAnchor),
-            innerStack.leadingAnchor.constraint(equalTo: balanceCard.layoutMarginsGuide.leadingAnchor),
-            innerStack.trailingAnchor.constraint(equalTo: balanceCard.layoutMarginsGuide.trailingAnchor),
+            // ── Title row ─────────────────────────────────────────────
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.sp2),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            titleLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: addButton.leadingAnchor,
+                constant: -AppSpacing.sp3
+            ),
 
-            balanceValueLabel.leadingAnchor.constraint(equalTo: valueRow.leadingAnchor),
-            balanceValueLabel.topAnchor.constraint(equalTo: valueRow.topAnchor),
-            balanceValueLabel.bottomAnchor.constraint(equalTo: valueRow.bottomAnchor),
+            addButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            addButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            addButton.widthAnchor.constraint(equalToConstant: 40),
+            addButton.heightAnchor.constraint(equalToConstant: 40),
 
-            balanceTopUpButton.trailingAnchor.constraint(equalTo: valueRow.trailingAnchor),
-            balanceTopUpButton.centerYAnchor.constraint(equalTo: balanceValueLabel.centerYAnchor),
-            balanceTopUpButton.leadingAnchor.constraint(
-                greaterThanOrEqualTo: balanceValueLabel.trailingAnchor,
+            addButtonGradient.topAnchor.constraint(equalTo: addButton.topAnchor),
+            addButtonGradient.leadingAnchor.constraint(equalTo: addButton.leadingAnchor),
+            addButtonGradient.trailingAnchor.constraint(equalTo: addButton.trailingAnchor),
+            addButtonGradient.bottomAnchor.constraint(equalTo: addButton.bottomAnchor),
+
+            addIconView.centerXAnchor.constraint(equalTo: addButton.centerXAnchor),
+            addIconView.centerYAnchor.constraint(equalTo: addButton.centerYAnchor),
+
+            // ── Balance pill ──────────────────────────────────────────
+            pillButton.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sp3),
+            pillButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            pillButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            pillButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sp4),
+
+            // Wallet icon — 40×40 leading.
+            walletIconHost.leadingAnchor.constraint(equalTo: pillButton.leadingAnchor, constant: 12),
+            walletIconHost.centerYAnchor.constraint(equalTo: pillButton.centerYAnchor),
+            walletIconHost.widthAnchor.constraint(equalToConstant: 40),
+            walletIconHost.heightAnchor.constraint(equalToConstant: 40),
+
+            walletIconImageView.centerXAnchor.constraint(equalTo: walletIconHost.centerXAnchor),
+            walletIconImageView.centerYAnchor.constraint(equalTo: walletIconHost.centerYAnchor),
+
+            // Top-up button — sm, trailing.
+            topUpButton.trailingAnchor.constraint(equalTo: pillButton.trailingAnchor, constant: -12),
+            topUpButton.centerYAnchor.constraint(equalTo: pillButton.centerYAnchor),
+
+            // Balance value row — baseline-aligned caps "БАЛАНС" + amount.
+            balanceCapsLabel.leadingAnchor.constraint(
+                equalTo: walletIconHost.trailingAnchor,
                 constant: AppSpacing.sp3
-            )
+            ),
+            balanceCapsLabel.topAnchor.constraint(equalTo: pillButton.topAnchor, constant: 12),
+
+            balanceValueLabel.leadingAnchor.constraint(
+                equalTo: balanceCapsLabel.trailingAnchor,
+                constant: AppSpacing.sp2
+            ),
+            balanceValueLabel.firstBaselineAnchor.constraint(equalTo: balanceCapsLabel.firstBaselineAnchor),
+            balanceValueLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: topUpButton.leadingAnchor,
+                constant: -AppSpacing.sp3
+            ),
+
+            // Meta hint — below the value row.
+            balanceHintLabel.leadingAnchor.constraint(
+                equalTo: walletIconHost.trailingAnchor,
+                constant: AppSpacing.sp3
+            ),
+            balanceHintLabel.topAnchor.constraint(equalTo: balanceValueLabel.bottomAnchor, constant: 2),
+            balanceHintLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: topUpButton.leadingAnchor,
+                constant: -AppSpacing.sp3
+            ),
+            balanceHintLabel.bottomAnchor.constraint(
+                lessThanOrEqualTo: pillButton.bottomAnchor,
+                constant: -12
+            ),
+
+            // ── Bottom hairline ───────────────────────────────────────
+            bottomHairline.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bottomHairline.trailingAnchor.constraint(equalTo: trailingAnchor),
+            bottomHairline.bottomAnchor.constraint(equalTo: bottomAnchor),
+            bottomHairline.heightAnchor.constraint(equalToConstant: 1)
         ])
 
-        // Wire the gradient layer to the value label — masked to glyph
-        // outlines on every layout pass.
-        balanceValueGradient.colors = SPSupport.moneyGradientColors
-        balanceValueGradient.locations = SPSupport.moneyGradientLocations
-        balanceValueGradient.startPoint = SPSupport.gradientStart
-        balanceValueGradient.endPoint = SPSupport.gradientEnd
+        applyTone(isLow: false)
     }
 
-    private func configureWarningBanner() {
-        warningBanner.translatesAutoresizingMaskIntoConstraints = false
-
-        warningCapsLabel.translatesAutoresizingMaskIntoConstraints = false
-        warningCapsLabel.attributedText = NSAttributedString(
-            string: "БАЛАНС ПОЧТИ ПУСТ",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fgOnWarn
-            ]
-        )
-
-        warningMetaLabel.translatesAutoresizingMaskIntoConstraints = false
-        warningMetaLabel.font = AppTypography.meta
-        warningMetaLabel.textColor = AppColors.fgOnWarn.withAlphaComponent(0.85)
-        warningMetaLabel.numberOfLines = 1
-
-        warningTopUpButton.translatesAutoresizingMaskIntoConstraints = false
-        warningTopUpButton.addTarget(
-            self,
-            action: #selector(warnTopUpTapped),
-            for: .touchUpInside
-        )
-
-        let textStack = UIStackView(arrangedSubviews: [warningCapsLabel, warningMetaLabel])
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-        textStack.axis = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 4
-
-        let row = UIStackView(arrangedSubviews: [textStack, warningTopUpButton])
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = AppSpacing.sp3
-        row.distribution = .fill
-
-        warningBanner.addSubview(row)
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: warningBanner.layoutMarginsGuide.topAnchor),
-            row.bottomAnchor.constraint(equalTo: warningBanner.layoutMarginsGuide.bottomAnchor),
-            row.leadingAnchor.constraint(equalTo: warningBanner.layoutMarginsGuide.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: warningBanner.layoutMarginsGuide.trailingAnchor)
-        ])
-
-        textStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        warningTopUpButton.setContentHuggingPriority(.required, for: .horizontal)
-        warningTopUpButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-    }
-
-    // MARK: - Gradient masking
-
-    private func applyValueGradient() {
-        // Same recipe as SPBalanceCard.applyValueGradient — render the
-        // glyph outlines into an offscreen image and use it as the
-        // gradient layer's mask. Re-runs every layout so font / size
-        // changes refresh the mask.
-        let textBounds = balanceValueLabel.bounds
-        guard textBounds.width > 0, textBounds.height > 0 else { return }
-        if balanceValueGradient.superlayer !== balanceValueLabel.layer {
-            balanceValueLabel.layer.addSublayer(balanceValueGradient)
+    /// Switch the pill chrome between the neutral (bg2 + whiteOverlay08
+    /// stroke) and warn (warn500@12% + warn500@45% stroke) variants. The
+    /// hint copy + colour also shift so the low-balance state stays legible
+    /// at a glance without an extra banner row.
+    private func applyTone(isLow: Bool) {
+        if isLow {
+            pillButton.backgroundColor = AppColors.warn500.withAlphaComponent(0.12)
+            pillButton.layer.borderColor = AppColors.warn500.withAlphaComponent(0.45).cgColor
+            balanceHintLabel.textColor = AppColors.warn300
+        } else {
+            pillButton.backgroundColor = AppColors.bg2
+            pillButton.layer.borderColor = AppColors.whiteOverlay08.cgColor
+            balanceHintLabel.textColor = AppColors.fg3
         }
-        balanceValueGradient.frame = textBounds
-
-        let renderer = UIGraphicsImageRenderer(size: textBounds.size)
-        let mask = renderer.image { ctx in
-            ctx.cgContext.setFillColor(UIColor.white.cgColor)
-            (balanceValueLabel.text ?? "").draw(
-                in: textBounds,
-                withAttributes: [
-                    .font: balanceValueLabel.font as Any,
-                    .foregroundColor: UIColor.white
-                ]
-            )
-        }
-        let maskLayer = CALayer()
-        maskLayer.frame = textBounds
-        maskLayer.contents = mask.cgImage
-        balanceValueGradient.mask = maskLayer
-        // Hide the label paint so we don't double-render.
-        balanceValueLabel.textColor = .clear
     }
 
     // MARK: - Actions
 
-    @objc private func balanceTopUpTapped() {
-        onBalanceTopUpTap?()
+    @objc private func addTapped() {
+        SPSupport.animatePress(addButton, pressed: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + SPSupport.durationQuick) { [weak self] in
+            guard let self else { return }
+            SPSupport.animatePress(self.addButton, pressed: false)
+        }
+        onAddTap?()
     }
 
-    @objc private func warnTopUpTapped() {
+    @objc private func pillTapped() {
+        // Tapping the body of the pill (anywhere except the explicit
+        // "Пополнить" CTA) is a shortcut to the same destination — keeps
+        // the surface "all top-up" instead of forcing the user to hit a
+        // small button.
+        onBalanceTopUpTap?()
         onWarnTopUpTap?()
     }
 
-    // MARK: - Delta rendering
-
-    /// Build the weekly delta line. Mirrors `SPBalanceCard.renderDelta`
-    /// (#137) — kept local to the sticky header so the two surfaces stay
-    /// visually identical without a shared helper coupling these
-    /// component files together. Format: `↑ 240 ₽ за неделю` /
-    /// `↓ 130 ₽ за неделю` with U+2191 / U+2193 arrows.
-    private static func renderDelta(_ delta: Decimal) -> NSAttributedString {
-        let arrow = delta < 0 ? "\u{2193}" : "\u{2191}"
-        let absValue = NSDecimalNumber(decimal: delta < 0 ? -delta : delta).decimalValue
-        let str = "\(arrow) \(absValue.formattedRubles()) за неделю"
-        let color = delta < 0 ? AppColors.pain400 : AppColors.money400
-        return NSAttributedString(
-            string: str,
-            attributes: [
-                .font: AppTypography.moneySm,
-                .foregroundColor: color
-            ]
-        )
-    }
-}
-
-// MARK: - Radial overlay
-
-/// Reuses the SPBalanceCard radial-highlight recipe (80% × 60% money tint
-/// at top-right). Kept private to this file so the SP* primitive isn't
-/// touched.
-private final class AlarmsHeaderRadialOverlayView: UIView {
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isUserInteractionEnabled = false
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func draw(_ rect: CGRect) {
-        guard let context = UIGraphicsGetCurrentContext() else { return }
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let colors = [
-            AppColors.money400.withAlphaComponent(0.18).cgColor,
-            UIColor.clear.cgColor
-        ]
-        guard let gradient = CGGradient(
-            colorsSpace: colorSpace,
-            colors: colors as CFArray,
-            locations: [0.0, 1.0]
-        ) else { return }
-        let centerPoint = CGPoint(x: rect.maxX, y: rect.minY)
-        let radius = max(rect.width, rect.height) * 0.6
-        context.drawRadialGradient(
-            gradient,
-            startCenter: centerPoint,
-            startRadius: 0,
-            endCenter: centerPoint,
-            endRadius: radius,
-            options: []
-        )
+    @objc private func topUpTapped() {
+        onBalanceTopUpTap?()
+        onWarnTopUpTap?()
     }
 }
