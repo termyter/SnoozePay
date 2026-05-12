@@ -2,55 +2,44 @@ import StoreKit
 import UIKit
 import os
 
-/// No-balance ("Баланс закончился") state for the firing screen — issue #140,
-/// closes the silent-failure UX from #26.
+/// No-balance ("Баланса не осталось") state for the firing screen — V2 spec.
 ///
-/// When `viewModel.canSnooze == false` the snooze CTA + dismiss group is
-/// swapped for a four-row stack:
-/// 1. Disabled `SPSnoozePrice` (warn tone, alpha 0.45) with the hint
-///    "Баланса не хватает · нужно ≥ N ₽" — keeps the visual continuity so
-///    the user sees what they were trying to do.
-/// 2. `SPButton(.money, .lg, fullWidth)` "Apple Pay · 500 ₽" — single-tap
-///    purchase via `StoreKitService.purchase` against SKU
-///    `com.snooze_pay.balance.499`. Falls back to `BalanceService.topUp`
-///    when the StoreKit product list hasn't loaded (debug / unit-test
-///    paths) so the wallet still credits end-to-end. PM directive
-///    (`Questions answered: no_balance_button`) was an explicit
-///    "Apple Pay в один тап на дефолтную сумму (500 ₽), без выбора".
-/// 3. `SPButton(.ghost, .lg, fullWidth)` "Я встал — выключить" — BIG
-///    button per PM directive (chat1.md line 1180): "должна быть большой",
-///    not a small text link. Reuses the host VC's `dismissTapped` so the
-///    repeat-day disable + scheduler.cancel paths are identical.
-/// 4. `SPButton(.quiet, .sm, fullWidth)` "Выбрать другую сумму" — opens
-///    the bottom sheet from #141 for users who want a different amount.
+/// V2 (`SPScreensV2.jsx` lines 228–276, `FiringNoBalanceV2`):
+/// - Background tone flips to "drained" (handled by the host VC's
+///   `updateAtmosphereTone`).
+/// - Top-right balance pill switches to pain (also host-handled).
+/// - Center adds a pain-tinted shield pill "БАЛАНСА НЕ ОСТАЛОСЬ" plus the
+///   body "Откладывать больше не получится. Только встать." (lines 239–251).
+/// - Bottom CTAs:
+///   1. Disabled `SPSnoozePrice` (hint "Недостаточно средств") — visual
+///      continuity so the user sees what they wanted to tap.
+///   2. `SPButton(.money, .lg, fullWidth)` "Apple Pay · 500 ₽" — single-tap
+///      purchase via StoreKitService.
+///   3. `SPButton(.ghost, .lg, fullWidth)` "Я встал — выключить".
 ///
 /// Auto-recovery: `BalanceService.balanceChangedNotification` triggers a
 /// `refreshNoBalanceVisibility()` flip back to the normal Dawn snooze CTA
-/// once the user crosses the affordability threshold (purchase success,
-/// external charge in another tab, manual debug top-up).
+/// once the user crosses the affordability threshold.
 extension AlarmFiringViewController {
 
     /// SKU resolved by the no-balance Apple Pay tap. Hard-coded to the
     /// 499 ₽ tier rather than a 500 ₽ SKU because the latter doesn't yet
-    /// exist in App Store Connect. PM follow-up tracked: register an exact
-    /// `com.snooze_pay.balance.500` SKU and swap this constant when it's
-    /// ready (mirrors the same caveat documented in
-    /// `FiringTopUpBottomSheetViewController.Preset.productID`).
+    /// exist in App Store Connect.
     static var noBalanceProductID: String { "com.snooze_pay.balance.499" }
 
-    /// Display amount (₽) for the no-balance Apple Pay button title. Kept
-    /// separate from the SKU because the SKU and the UI label diverge
-    /// today (499 SKU surfaced as "500 ₽" copy per PM spec) and we don't
-    /// want the title to drift if the SKU mapping changes.
+    /// Display amount (₽) for the no-balance Apple Pay button title.
     static var noBalanceDisplayAmount: Int { 500 }
 
     // MARK: - Setup
 
-    /// Build the four-row no-balance stack and pin it to the bottom of the
-    /// screen using the same insets / gap as the normal snooze CTA. The
-    /// stack starts hidden — `refreshNoBalanceVisibility()` toggles it
+    /// Build the no-balance stack and the center "Баланса не осталось" block.
+    /// All views start hidden; `refreshNoBalanceVisibility()` toggles them
     /// based on `viewModel.canSnooze`.
     func installNoBalanceStack(inset: CGFloat, gap: CGFloat) {
+        // Center pain pill + body — anchored to the hero name label so it
+        // tucks under the clock when the no-balance state is on.
+        installNoBalanceCenterPill(inset: inset)
+
         let disabledCard = makeNoBalanceDisabledCard()
         let payButton = makeNoBalanceApplePayButton()
         let ghostDismiss = makeNoBalanceGhostDismissButton()
@@ -66,10 +55,9 @@ extension AlarmFiringViewController {
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
-        // Custom spacing per pair so the disabled card → Apple Pay gap
-        // matches the spec's 12pt while the Apple Pay → ghost gap also
-        // reads as 12pt and the ghost → quiet link tightens to 8pt
-        // (the link is intentionally subordinate to the ghost CTA).
+        // 12pt gap between primary stack items, tightened to 8pt before the
+        // quiet "choose amount" link so the link reads as subordinate to the
+        // ghost dismiss CTA.
         stack.spacing = gap
         stack.setCustomSpacing(AppSpacing.sp2, after: ghostDismiss)
         stack.alignment = .fill
@@ -77,17 +65,51 @@ extension AlarmFiringViewController {
         view.addSubview(stack)
         noBalanceContainer = stack
 
-        // Pin to the same bottom anchor as the normal-state dismissButton
-        // so the stack lands in the same screen region. Leading/trailing
-        // pinned to the same insets so the disabled card and Apple Pay
-        // button visually inherit the snooze CTA's footprint.
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
             stack.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
+                constant: -AppSpacing.sp7   // 32pt bottom inset per V2 spec
             )
+        ])
+    }
+
+    /// Build the center "БАЛАНСА НЕ ОСТАЛОСЬ" pill + body text. Pinned below
+    /// the hero name label so it slots into the centered column when the
+    /// no-balance state activates. Mirrors `SPScreensV2.jsx` lines 239–251.
+    private func installNoBalanceCenterPill(inset: CGFloat) {
+        // Pain-tinted shield pill — wider than a stock SPPill (custom padding)
+        // so the V2 spec's "10px 18px" reads correctly.
+        let shieldPill = SPPill(
+            text: "Баланса не осталось",
+            tone: .pain,
+            icon: UIImage(systemName: "shield.fill")
+        )
+        shieldPill.translatesAutoresizingMaskIntoConstraints = false
+
+        let body = UILabel()
+        body.translatesAutoresizingMaskIntoConstraints = false
+        body.font = AppTypography.bodyLg
+        body.textColor = UIColor.white.withAlphaComponent(0.7)
+        body.textAlignment = .center
+        body.numberOfLines = 0
+        body.text = "Откладывать больше не получится. Только встать."
+
+        let block = UIStackView(arrangedSubviews: [shieldPill, body])
+        block.translatesAutoresizingMaskIntoConstraints = false
+        block.axis = .vertical
+        block.alignment = .center
+        block.spacing = AppSpacing.sp4
+        block.isHidden = true
+        view.addSubview(block)
+        noBalanceCenterBlock = block
+
+        NSLayoutConstraint.activate([
+            block.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            block.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: AppSpacing.sp6),
+            block.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
+            block.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset)
         ])
     }
 
@@ -96,7 +118,7 @@ extension AlarmFiringViewController {
             price: Decimal(viewModel.currentPenalty),
             minutes: viewModel.alarm.snoozeMinutes,
             tone: .warn,
-            hint: noBalanceHintText()
+            hint: "Недостаточно средств"
         )
         card.translatesAutoresizingMaskIntoConstraints = false
         card.isEnabled = false
@@ -109,11 +131,15 @@ extension AlarmFiringViewController {
     }
 
     private func makeNoBalanceApplePayButton() -> SPButton {
+        // V2 spec line 258–266: money variant with apple-logo icon, "Apple Pay"
+        // title, suffix "500 ₽". The suffix uses the mono font so the amount
+        // reads as a money column.
         let button = SPButton(
-            title: "Apple Pay · \(Self.noBalanceDisplayAmount) ₽",
+            title: "Apple Pay",
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "applelogo"),
+            suffix: "\(Self.noBalanceDisplayAmount) ₽",
             fullWidth: true
         )
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -169,16 +195,17 @@ extension AlarmFiringViewController {
     func refreshNoBalanceVisibility() {
         let needsNoBalance = !viewModel.canSnooze
         // Refresh the disabled card's hint + price each pass so progressive
-        // alarms (#139) show the correct "нужно ≥ N ₽" amount even after
-        // snoozeCount has bumped the next penalty.
+        // alarms show the correct disabled value even after snoozeCount has
+        // bumped the next penalty.
         if let card = noBalanceSnoozeCard {
             card.update(
                 price: Decimal(viewModel.currentPenalty),
                 minutes: viewModel.alarm.snoozeMinutes,
-                hint: noBalanceHintText()
+                hint: "Недостаточно средств"
             )
         }
         noBalanceContainer?.isHidden = !needsNoBalance
+        noBalanceCenterBlock?.isHidden = !needsNoBalance
         // Hide the normal-state group when the no-balance stack takes over.
         // The progressive stack is also hidden (it sits above the snooze
         // CTA and would orphan above a hidden card otherwise).
@@ -208,9 +235,8 @@ extension AlarmFiringViewController {
             self.applePayNoBalanceButton?.isEnabled = true
         }
         // Surface StoreKit failures (Ask-to-Buy declined, purchase cancelled
-        // by parent, ledger locked) as a UIAlert so the user knows the tap
-        // didn't actually credit. Success is implicit — the balanceChanged
-        // observer above handles UI recovery for that path.
+        // by parent, ledger locked) as a UIAlert. Success is implicit — the
+        // balanceChanged observer above handles UI recovery for that path.
         let messageKey = StoreKitService.messageUserInfoKey
         purchaseFailedObserver = NotificationCenter.default.addObserver(
             forName: StoreKitService.purchaseFailedNotification,
@@ -245,21 +271,14 @@ extension AlarmFiringViewController {
             return
         }
 
-        // Product list hasn't loaded yet — fall back to a direct top-up so
-        // we still recover the user's flow. The fallback amount mirrors
-        // the displayed copy (500 ₽), not the underlying SKU price (499 ₽),
-        // because that's what the user agreed to in the button label.
+        // Product list hasn't loaded yet — fall back to a direct top-up.
         AppLogger.storeKit.notice(
             "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — fallback to topUp"
         )
         let amount = Double(Self.noBalanceDisplayAmount)
         if BalanceService.shared.topUp(amount: amount) {
-            // BalanceService posts `balanceChangedNotification` synchronously
-            // here, which trips the observer and resets in-flight state.
             return
         }
-        // Ledger locked / corrupt — surface the same copy StoreKitService
-        // would post so the user gets a consistent error message.
         noBalancePurchaseInFlight = false
         applePayNoBalanceButton?.isEnabled = true
         presentNoBalancePurchaseFailureAlert(
@@ -267,20 +286,12 @@ extension AlarmFiringViewController {
         )
     }
 
-    /// "Выбрать другую сумму" tap. Routes to the existing #141 bottom
-    /// sheet so the rich preset / Apple Pay flow handles the choice.
+    /// "Выбрать другую сумму" tap. Routes to the presets bottom sheet.
     @objc func noBalanceChooseAmountTapped() {
         presentTopUpSheet()
     }
 
     // MARK: - Helpers
-
-    /// Hint copy for the disabled snooze card. Uses the current penalty so
-    /// progressive alarms surface the doubled amount they actually need.
-    private func noBalanceHintText() -> String {
-        let needed = Int(viewModel.currentPenalty.rounded())
-        return "Баланса не хватает · нужно ≥ \(needed) ₽"
-    }
 
     private func presentNoBalancePurchaseFailureAlert(message: String?) {
         let alert = UIAlertController(
@@ -290,5 +301,35 @@ extension AlarmFiringViewController {
         )
         alert.addAction(UIAlertAction(title: "Ок", style: .default))
         present(alert, animated: true)
+    }
+}
+
+// MARK: - Center block storage
+//
+// Extending the host VC with a stored property is illegal in Swift, so we
+// route the "Баланса не осталось" center block through an associated-object
+// keyed accessor. Single storage slot keyed by a unique pointer; reads /
+// writes happen on the main thread only (firing screen is main-only).
+
+private var noBalanceCenterBlockKey: UInt8 = 0
+
+extension AlarmFiringViewController {
+    /// Reference to the center "Баланса не осталось" pill + body stack. We
+    /// store it via associated objects rather than a stored property because
+    /// the main VC body is already on the SwiftLint type_body_length limit;
+    /// adding another property would push it over and the file split has
+    /// been the recurring fix for this VC.
+    var noBalanceCenterBlock: UIStackView? {
+        get {
+            objc_getAssociatedObject(self, &noBalanceCenterBlockKey) as? UIStackView
+        }
+        set {
+            objc_setAssociatedObject(
+                self,
+                &noBalanceCenterBlockKey,
+                newValue,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
     }
 }

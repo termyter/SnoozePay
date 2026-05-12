@@ -4,10 +4,11 @@ import UIKit
 /// `AlarmFiringViewController` so the main type stays under SwiftLint's
 /// `type_body_length` cap (mirrors the same pattern used by the +Audio file).
 ///
-/// Issue #139 — when `alarm.progressiveScale == true` the firing screen mounts
-/// an indicator pill ("Прогрессив · N-е откладывание") above the snooze CTA, a single
-/// line history ticker ("сегодня: −50 → −100 → −200 ₽") below it, and
-/// cross-fades the snooze gradient from warn → pain as the user keeps
+/// V2 spec (`SPDawnV3.jsx` lines 215–225): when `alarm.progressiveScale ==
+/// true` the firing screen mounts an indicator pill ("Прогрессив · N-е
+/// откладывание") above the snooze CTA, with a pain300 PulseDot to its left,
+/// and a single-line history ticker ("сегодня: −50 → −100 → −200 ₽") below.
+/// The snooze CTA itself cross-fades from warn → pain as the user keeps
 /// snoozing. None of this is touched for default alarms — the +Progressive
 /// installer is a no-op via guard at the call site.
 extension AlarmFiringViewController {
@@ -17,17 +18,18 @@ extension AlarmFiringViewController {
     /// dot is started here once — no need to restart on `updateUI()`.
     /// Returns the stack so `setupUI` can wire it into the bottom layout.
     func installProgressiveStack(inset: CGFloat) -> UIStackView {
-        // Pill: caps text. The leading dot is drawn as a sibling 8pt circle
-        // view inside a horizontal wrapper rather than via `SPPill(icon:)`,
-        // because we need the dot to host its own pulse animation while the
-        // pill keeps its background/text styling.
-        let pill = SPPill(text: "Прогрессив · 1-е откладывание", tone: .warn)
+        // Pill: pain-toned per V2 spec line 217–222. Caps text re-titled on
+        // every updateUI. The leading dot is drawn as a sibling 8pt circle
+        // view rather than via `SPPill(icon:)` because we need the dot to
+        // host its own pulse animation while the pill keeps its background
+        // / text styling untouched.
+        let pill = SPPill(text: "Прогрессив · 1-е откладывание", tone: .pain)
         pill.translatesAutoresizingMaskIntoConstraints = false
         progressivePill = pill
 
         let dot = UIView()
         dot.translatesAutoresizingMaskIntoConstraints = false
-        dot.backgroundColor = AppColors.warn300
+        dot.backgroundColor = AppColors.pain300
         dot.layer.cornerRadius = 4
         dot.isUserInteractionEnabled = false
         progressivePulseDot = dot

@@ -1,19 +1,20 @@
 import UIKit
 import os
 
-/// Fullscreen alarm firing screen — Dawn redesign (#138).
+/// Fullscreen alarm firing screen — V2 Dawn redesign.
 ///
-/// Replaces the previous iOS-blur + decorative purple circles with the
-/// design-refresh "Dawn" treatment: a vertical 4-stop atmospheric gradient
-/// (`--sp-grad-dawn`), a slow-breathing warm radial glow at the bottom, a
-/// 96pt mono clock, and a large warn-toned snooze CTA backed by
-/// `SPSnoozePrice`. The dismiss action degrades to a ghost button below
-/// the snooze so the visual hierarchy steers the half-asleep user toward
-/// the paid action while keeping "Я встал" reachable.
+/// V2 (`docs/design/v2-handoff/components/SPDawnV3.jsx` + `SPScreensV2.jsx`
+/// `FiringDawn`) elevates the original Dawn treatment with a three-layer
+/// atmospheric background (base gradient + radial overlay + breathing sun)
+/// plus a top header that surfaces the date and balance pill, and a centered
+/// hero block with a 96pt mono clock and a "Подъём" caps label. The bottom
+/// CTAs preserve the warn-tone snooze + ghost dismiss pair from #138 with a
+/// tighter 10pt gap and 32pt bottom inset.
 ///
-/// Existing audio + coordinator wiring (AudioService stacking guard,
-/// vibration-fallback banner, snooze schedule failure alert) is preserved
-/// verbatim — this PR is a visual rework, not a behaviour change.
+/// All existing audio + coordinator wiring (AudioService stacking guard,
+/// vibration-fallback banner, snooze schedule failure alert, no-balance
+/// recovery observer) is preserved verbatim from the V1 implementation —
+/// this rewrite is the visual layer only, not a behaviour change.
 class AlarmFiringViewController: UIViewController {
 
     // MARK: - ViewModel
@@ -22,20 +23,14 @@ class AlarmFiringViewController: UIViewController {
     /// can read VM state during their UI updates.
     let viewModel: AlarmFiringViewModel
 
-    // MARK: - Background layers
+    // MARK: - Background
 
-    /// Theme-driven gradient layer. For `.dawn` this matches the original
-    /// `--sp-grad-dawn` recipe (#138); other built-in themes pull their stops
-    /// from `AlarmThemeRendering`. The layer is replaced/recoloured in
-    /// `installThemedBackground` based on `viewModel.alarm.theme` (#151).
-    /// `internal` so the +Theme / +Layout extensions in sibling files can
-    /// configure it.
-    let themeGradientLayer: CAGradientLayer = {
-        let gradient = CAGradientLayer()
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
-        return gradient
-    }()
+    /// V2 atmospheric background — three CAGradientLayers (base, overlay,
+    /// breathing sun). Replaces the V1 `themeGradientLayer` + `warmGlowLayer`
+    /// pair. `internal` so the +Theme extension can swap its tone when the
+    /// alarm has a custom theme, and so +ViewLifecycle can attach the
+    /// 4-second opacity breathing animation to the sun layer.
+    let dawnBackgroundView = SPDawnBackgroundView(tone: .calm)
 
     /// Image view used when `viewModel.alarm.theme == .custom(_)`. Lives on
     /// the layer tree even when not in use (hidden) so the theme swap is a
@@ -61,36 +56,70 @@ class AlarmFiringViewController: UIViewController {
         return view
     }()
 
-    /// Warm radial glow anchored below the bottom edge — a warn500-flavoured
-    /// halo that "breathes" via a 4s opacity animation. `internal` so the
-    /// +Theme extension can hide it for `.custom` photo backgrounds.
-    let warmGlowLayer: CAGradientLayer = {
-        let gradient = CAGradientLayer()
-        gradient.type = .radial
-        gradient.colors = [
-            UIColor(rgb: 0xF59E0B, alpha: 0.22).cgColor,
-            UIColor(rgb: 0xF59E0B, alpha: 0.10).cgColor,
-            UIColor(rgb: 0xF59E0B, alpha: 0.0).cgColor
-        ]
-        gradient.locations = [0.0, 0.5, 1.0]
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
-        gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
-        return gradient
+    // MARK: - Top header (V2)
+
+    /// Top-bar caps label "Пт · 27 апр" rendered left of the balance pill.
+    /// Date is computed once on `viewDidLoad` (per spec — the firing screen
+    /// is a snapshot of "when the alarm rang", not a live tick).
+    let dateLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.caps
+        label.textColor = UIColor.white.withAlphaComponent(0.55)
+        label.numberOfLines = 1
+        return label
     }()
 
-    // MARK: - Content
+    /// "Баланс N ₽" pill on the right side of the top bar. Tone flips between
+    /// `.money` (positive) and `.pain` (balance == 0). Re-rendered on every
+    /// `updateUI()` because the balance is decremented mid-firing when the
+    /// user snoozes (the firing flow dismisses on success, but for the
+    /// progressive path the count climbs in place).
+    var balancePill: SPPill?
 
-    /// 96pt mono clock — `AppTypography.clockXl` with `.monospacedDigit()`
-    /// so digit columns don't reflow on each tick. `internal` so the
-    /// `+Layout` / `+ViewLifecycle` extensions can pin + update it (#182).
+    /// Container holding `dateLabel` + `balancePill`. `internal` so the
+    /// +Theme extension can hide it when a `.custom` photo background is in
+    /// use (the user picked a hero image; we don't want chrome over it).
+    let topHeaderRow: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .horizontal
+        stack.alignment = .center
+        stack.distribution = .equalSpacing
+        return stack
+    }()
+
+    // MARK: - Center hero
+
+    /// 96pt mono clock — `AppTypography.clockXl` ultralight. `tabular-nums`
+    /// equivalent applied via `.monospacedDigit()` so digit columns don't
+    /// reflow on each tick. `internal` so the `+Layout` / `+ViewLifecycle`
+    /// extensions can pin + update it.
     let timeLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.clockXl.monospacedDigit()
-        label.textColor = AppColors.fg1
+        label.textColor = .white
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.7
         label.translatesAutoresizingMaskIntoConstraints = false
+        // Text shadow ≈ "0 4px 60px rgba(255,184,77,.20)" warm halo.
+        label.layer.shadowColor = UIColor(red: 1.0, green: 184.0 / 255.0, blue: 77.0 / 255.0, alpha: 1).cgColor
+        label.layer.shadowOpacity = 0.20
+        label.layer.shadowRadius = 30
+        label.layer.shadowOffset = CGSize(width: 0, height: 4)
+        label.layer.masksToBounds = false
+        return label
+    }()
+
+    /// Caps "Подъём" subtitle below the clock. Hidden when the alarm name is
+    /// non-empty (the V1 nameLabel handled that case); the V2 layout still
+    /// surfaces the alarm name underneath the caps row when present.
+    let wakeUpCapsLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textAlignment = .center
+        label.numberOfLines = 1
         return label
     }()
 
@@ -98,7 +127,7 @@ class AlarmFiringViewController: UIViewController {
     let nameLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.bodyLg
-        label.textColor = AppColors.fg2
+        label.textColor = UIColor.white.withAlphaComponent(0.55)
         label.textAlignment = .center
         label.numberOfLines = 1
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -109,27 +138,29 @@ class AlarmFiringViewController: UIViewController {
     /// VM-derived price + minutes that aren't valid at property-init time.
     /// Tone defaults to `.warn`; for `progressiveScale == true` alarms the
     /// VC swaps it to `.progressive(intensity:)` and bumps the intensity on
-    /// every snooze tap (#139). `internal` so the +Progressive extension
-    /// can re-tone it on `updateUI()`.
+    /// every snooze tap. `internal` so the +Progressive extension can re-tone
+    /// it on `updateUI()`.
     var snoozeCTA: SPSnoozePrice?
 
     /// `internal` so the +NoBalance extension can hide / show this when
     /// swapping between the normal (balance OK) and no-balance layouts.
+    /// V2 spec calls for the full "Я встал — выключить" copy, ghost variant,
+    /// lg size, full-width — matches `SPScreensV2.jsx` line 98.
     let dismissButton = SPButton(
-        title: "Я встал",
+        title: "Я встал — выключить",
         variant: .ghost,
         size: .lg,
         fullWidth: true
     )
 
-    // MARK: - No-balance UI (#140) — shown when `viewModel.canSnooze == false`.
+    // MARK: - No-balance UI — shown when `viewModel.canSnooze == false`.
     //
     // The no-balance state replaces the snooze CTA + dismiss group with a
-    // disabled snooze card on top, an Apple Pay 500 ₽ primary CTA, a big
-    // ghost "Я встал" secondary, and a small "Выбрать другую сумму" link.
-    // All four are mounted unconditionally so swapping is just a visibility
-    // flip — saves us from rebuilding constraints when the user tops up
-    // mid-firing and crosses the affordability threshold (#26 silent UX).
+    // disabled snooze card on top, an Apple Pay 500 ₽ primary CTA, and a big
+    // ghost "Я встал — выключить" secondary. All three are mounted
+    // unconditionally so swapping is just a visibility flip — saves us from
+    // rebuilding constraints when the user tops up mid-firing and crosses
+    // the affordability threshold.
 
     /// Disabled snooze card shown above the Apple Pay CTA. Mirrors the
     /// `.warn` tone of the live card so the visual continuity reads as
@@ -143,19 +174,19 @@ class AlarmFiringViewController: UIViewController {
     var applePayNoBalanceButton: SPButton?
 
     /// Big ghost "Я встал — выключить" secondary. Calls `viewModel.dismiss()`
-    /// the same way the normal-state dismissButton does — PM directive
-    /// (chat1.md line 1180) was that this MUST be a full-width lg button,
-    /// not a small text link, so the half-asleep user can find it.
+    /// the same way the normal-state dismissButton does — PM directive was
+    /// that this MUST be a full-width lg button, not a small text link, so
+    /// the half-asleep user can find it.
     var noBalanceDismissButton: SPButton?
 
-    /// Small `.quiet/.sm` link "Выбрать другую сумму" rendered below the
-    /// ghost dismiss. Routes to the existing `presentTopUpSheet()` from #141
-    /// for users who want a different amount than the 500 ₽ default.
+    /// Small quiet/sm link "Выбрать другую сумму" rendered below the ghost
+    /// dismiss. Routes to the existing `presentTopUpSheet()` for users who
+    /// want a different amount than the 500 ₽ default.
     var chooseAmountLink: SPButton?
 
-    /// Container stacking the four no-balance views vertically. Hidden when
-    /// the user can afford the next snooze; shown otherwise. Membership lets
-    /// the +NoBalance extension hide a single view rather than four.
+    /// Container stacking the no-balance views vertically. Hidden when the
+    /// user can afford the next snooze; shown otherwise. Membership lets the
+    /// +NoBalance extension hide a single view rather than four.
     var noBalanceContainer: UIStackView?
 
     /// Observer token for `BalanceService.balanceChangedNotification`. Drives
@@ -170,27 +201,24 @@ class AlarmFiringViewController: UIViewController {
     var purchaseFailedObserver: NSObjectProtocol?
 
     /// Re-entrancy guard for the Apple Pay tap so a double-tap can't kick
-    /// off two purchases (StoreKit would reject the second, but the UI
-    /// would briefly look like two purchases were attempted).
+    /// off two purchases.
     var noBalancePurchaseInFlight: Bool = false
 
-    // MARK: - Progressive UI (#139) — only mounted when `alarm.progressiveScale`.
-    //
-    // Layout + animation logic lives in `AlarmFiringViewController+Progressive.swift`;
-    // these stored handles are accessed from the extension via `internal` so the
-    // type body of the main VC stays under SwiftLint's `type_body_length` cap.
+    // MARK: - Progressive UI — only mounted when `alarm.progressiveScale`.
 
     /// Container holding the indicator pill + history ticker. Built lazily
-    /// inside `setupUI` so the default firing flow (#138) skips both views
+    /// inside `setupUI` so the default firing flow skips both views
     /// entirely — they never enter the layout pass.
     var progressiveStack: UIStackView?
 
-    /// "Прогрессив · N-е откладывание" pill above the snooze CTA. Re-titled on every
-    /// `updateUI()` so the label tracks `snoozeCount + 1` (the next snooze).
+    /// "Прогрессив · N-е откладывание" pill above the snooze CTA. Re-titled
+    /// on every `updateUI()` so the label tracks `snoozeCount + 1`. V2 spec
+    /// uses pain tone with an inline pulsing dot.
     var progressivePill: SPPill?
 
-    /// Pulsing dot rendered inside `progressivePill`. CABasicAnimation lives
-    /// on its `layer.opacity` (autoreverse, infinite, 900ms — `--sp-dur-anxious`).
+    /// Pulsing dot rendered to the left of `progressivePill`. CABasicAnimation
+    /// drives a 0.4 → 1.0 opacity autoreverse pulse on 900ms cadence
+    /// (`durationAnxious`).
     var progressivePulseDot: UIView?
 
     /// Single-line ticker rendered between the pill and the snooze CTA.
@@ -199,8 +227,9 @@ class AlarmFiringViewController: UIViewController {
     var historyTicker: UILabel?
 
     /// Banner shown when AudioService falls back to vibration / silent mode.
-    /// Hidden by default; surfaces only on `.silentBecauseConfigFailed` or `.vibrationOnly`.
-    /// `internal` so the AudioState extension in the sibling file can update it.
+    /// Hidden by default; surfaces only on `.silentBecauseConfigFailed` or
+    /// `.vibrationOnly`. `internal` so the AudioState extension in the
+    /// sibling file can update it.
     let audioWarningBanner: UILabel = {
         let label = UILabel()
         label.font = AppTypography.meta
@@ -255,9 +284,9 @@ class AlarmFiringViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Per `tokens.css` lines 109–112 and reaffirmed by #136: the firing
-        // screen is intentionally exempt from the brand light theme. Pin
-        // `.dark` so the system theme can't bleed through.
+        // Per `tokens.css` and the V2 spec: the firing screen is intentionally
+        // exempt from the brand light theme. Pin `.dark` so the system theme
+        // can't bleed through.
         overrideUserInterfaceStyle = .dark
         buildFiringLayout()
         bindViewModel()
@@ -266,9 +295,9 @@ class AlarmFiringViewController: UIViewController {
         startClockTicker()
         startGlowBreathing()
 
-        // Pass `alarmID` so a stacking-replace race (#116) does not silence
-        // the next alarm when this VC's `viewDidDisappear` fires.
-        // Volume + fade-in honour the per-alarm settings introduced in #150.
+        // Pass `alarmID` so a stacking-replace race does not silence the next
+        // alarm when this VC's `viewDidDisappear` fires. Volume + fade-in
+        // honour the per-alarm settings.
         AudioService.shared.startAlarmSound(
             soundID: viewModel.alarm.soundID,
             alarmID: viewModel.alarm.id,
@@ -284,11 +313,11 @@ class AlarmFiringViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         clockTimer?.invalidate()
-        warmGlowLayer.removeAllAnimations()
+        dawnBackgroundView.sunLayer.removeAllAnimations()
 
         // Stop alarm sound only if AudioService still belongs to *this*
         // alarm. Stacking handoff (alarm B fires while A is on-screen)
-        // could otherwise silence B (#116).
+        // could otherwise silence B.
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
         } else {
@@ -308,16 +337,8 @@ class AlarmFiringViewController: UIViewController {
     //
     // The view-stack + constraint composition lives in
     // `AlarmFiringViewController+Layout.swift` so this file stays under
-    // SwiftLint's `file_length` cap (#182). `viewDidLoad` calls
+    // SwiftLint's `file_length` cap. `viewDidLoad` calls
     // `buildFiringLayout()` which is the verbatim former `setupUI()`.
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        themeGradientLayer.frame = view.bounds
-        // Glow anchored below the bottom edge — only the upper hemisphere
-        // of the radial bleeds into view.
-        updateGlowFrame()
-    }
 
     private func bindViewModel() {
         viewModel.onStateChanged = { [weak self] in
@@ -330,11 +351,13 @@ class AlarmFiringViewController: UIViewController {
 
         // Refresh snooze CTA — VM may have bumped `snoozeCount` (progressive
         // scaling) since the last update, which changes `currentPenalty`.
+        // The hint surfaces "Следующее откладывание: N ₽" when progressive
+        // is active and not at max, mirroring `SPScreensV2.jsx` line 96.
         if let snooze = snoozeCTA {
             snooze.update(
                 price: Decimal(viewModel.currentPenalty),
                 minutes: viewModel.alarm.snoozeMinutes,
-                hint: nil
+                hint: snoozeHintText()
             )
             snooze.isEnabled = viewModel.canSnooze
             if viewModel.isProgressiveActive {
@@ -349,15 +372,93 @@ class AlarmFiringViewController: UIViewController {
             updateProgressiveChrome()
         }
 
+        updateBalancePill()
+        updateAtmosphereTone()
+
         // Swap between the normal snooze + dismiss group and the no-balance
         // (Apple Pay 500 ₽) stack based on affordability. `canSnooze` is
-        // the single source of truth — it accounts for both insufficient
-        // funds AND a corrupted balance latch (#119), so the no-balance
-        // path also catches the corruption case (the price hint then reads
-        // "Баланса не хватает · нужно ≥ N ₽" which is technically wrong for
-        // corruption but the corruption alert from BalanceService is its
-        // own modal that supersedes; not blocking #140).
+        // the single source of truth.
         refreshNoBalanceVisibility()
+    }
+
+    /// Build the "Подъём" / "только встать" caps copy below the clock.
+    /// Mirrors `SPScreensV2.jsx` line 81 (normal) + `SPDawnV3.jsx` line 212
+    /// (no-balance drops to "только встать").
+    func wakeUpCapsText() -> String {
+        viewModel.canSnooze ? "Подъём" : "Только встать"
+    }
+
+    /// Snooze CTA hint — "Следующее откладывание: N ₽" when progressive is
+    /// active and not at the price ceiling. Mirrors `SPScreensV2.jsx` line 96.
+    /// V1 passed nil here; V2 surfaces the escalating cost so the user can
+    /// see what they're agreeing to.
+    func snoozeHintText() -> String? {
+        guard viewModel.isProgressiveActive else { return nil }
+        // Probe the alarm's penalty schedule one step ahead. The double-snooze
+        // rule produces `currentPenalty * 2`, but we route through the model
+        // so caps / custom schedules pick up the right "next" value.
+        let next = viewModel.alarm.penalty(forSnoozeCount: viewModel.snoozeCount + 2)
+        let nextInt = Int(next.rounded())
+        return "Следующее откладывание: \(nextInt) ₽"
+    }
+
+    /// Refresh the top-right balance pill so the displayed amount + tone
+    /// track the live balance. Called from `updateUI` (every VM tick) and
+    /// implicitly from the balance observer (which calls `updateUI`).
+    private func updateBalancePill() {
+        let balance = Int(viewModel.balance.rounded())
+        let tone: SPPill.Tone = balance == 0 ? .pain : .money
+        guard let pill = balancePill else { return }
+        pill.setText("Баланс \(balance) ₽")
+        // SPPill's `tone` is `let` (constructor-only), so we re-build when
+        // the tone needs to flip between money and pain. Cheap — pill is a
+        // 26pt-tall capsule with two labels.
+        if pill.tone != tone {
+            rebuildBalancePill(tone: tone, text: "Баланс \(balance) ₽")
+        }
+    }
+
+    /// Replace the existing balance pill with a new instance using the
+    /// supplied tone. Used when the balance crosses the 0 ↔ positive
+    /// boundary and the chip needs to flip from money → pain or back.
+    private func rebuildBalancePill(tone: SPPill.Tone, text: String) {
+        guard let old = balancePill else { return }
+        let new = SPPill(text: text, tone: tone)
+        new.translatesAutoresizingMaskIntoConstraints = false
+        if let index = topHeaderRow.arrangedSubviews.firstIndex(of: old) {
+            topHeaderRow.removeArrangedSubview(old)
+            old.removeFromSuperview()
+            topHeaderRow.insertArrangedSubview(new, at: index)
+        }
+        balancePill = new
+    }
+
+    /// Sync the Dawn background tone with the current VM state. Drained when
+    /// the user can't afford the next snooze; tense when the snooze price
+    /// has escalated past the warn → pain threshold; calm otherwise.
+    private func updateAtmosphereTone() {
+        let tone: SPDawnBackgroundView.Tone
+        if !viewModel.canSnooze {
+            tone = .drained
+        } else if viewModel.isProgressiveActive && viewModel.progressiveIntensity >= 0.5 {
+            tone = .tense
+        } else {
+            tone = .calm
+        }
+        dawnBackgroundView.setTone(tone)
+
+        // The "Подъём" caps colour flips with the tone — pain300 when drained
+        // (matches the SPDawnV3 spec line 212).
+        wakeUpCapsLabel.attributedText = NSAttributedString(
+            string: wakeUpCapsText().uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: viewModel.canSnooze
+                    ? UIColor.white.withAlphaComponent(0.5)
+                    : AppColors.pain300
+            ]
+        )
     }
 
     // MARK: - Actions
@@ -371,7 +472,7 @@ class AlarmFiringViewController: UIViewController {
 
     // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and
     // the snooze-failure alert live in
-    // `AlarmFiringViewController+ViewLifecycle.swift` (#182).
+    // `AlarmFiringViewController+ViewLifecycle.swift`.
 }
 
 // MARK: - Hex helper
@@ -382,7 +483,7 @@ private extension UIColor {
     /// AppColors — duplicated as `fileprivate` in
     /// `AlarmFiringViewController+Layout.swift` because `private` means
     /// file-scope, not type-scope, and the +Layout extension also needs the
-    /// helper for `UIColor(rgb: 0x050912)` in its background fill.
+    /// helper for atmospheric stops in its background fill.
     convenience init(rgb: UInt32, alpha: CGFloat = 1) {
         let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
         let green = CGFloat((rgb >> 8) & 0xFF) / 255.0
