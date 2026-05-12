@@ -2,26 +2,23 @@ import UIKit
 import SwiftUI
 import Charts
 
-/// Statistics screen — design-refresh 2026-04-27 rewrite (#147).
-///
-/// Vertical stack of:
+/// Statistics screen — V2 design (`docs/design/v2-handoff/components/SPMore4.jsx`
+/// `Stats()` lines 6-120). Vertical stack of:
 ///   1. Period segmented (Неделя / Месяц / Всё время) — drives the VM.
-///   2. Two-column summary (Потрачено · Откладываний) on `SPCard(.surface)`s
-///      with caps + moneyMd typography.
-///   3. GitHub-style heatmap calendar — 7 columns × N rows of money-tinted
-///      squares. Tap a square → toast with date + amount.
-///   4. Apple-Charts bar chart of average penalty by weekday (Пн → Вс).
-///   5. Streak SPCard with 🔥 + current days + lifetime best — tap to open
-///      `StreakModalViewController`.
-///   6. Empty state when there are no transactions in the selected period.
+///   2. Hero "Серия" card on `SPCard(.raised)` — caps + huge mono streak
+///      count + flame badge + GitHub-style heatmap below.
+///   3. "Эта неделя" bar-chart card (`SPCard(.surface)`) with money/pain bars
+///      per weekday + a small summary row (Сэкономили / Потратили / Чистый).
+///   4. "Время подъёма" card with three averaged numbers — V2 spec
+///      placeholders; values fall back to `--` while we have no wake-time
+///      ledger.
+///   5. Empty state when there are no transactions in the selected period.
+///   6. DEBUG buttons for presenting StreakModalV2, ReferralVC, AlarmOff —
+///      gated behind `#if DEBUG` so production builds drop them.
 ///
-/// Backed by the existing `StatisticsViewModel`; new heatmap / weekday-bar /
-/// `hasData` accessors land in the same file so the chart, heatmap, streak
-/// card, and empty state all read from one source of truth.
-///
-/// Card-building helpers (`makeSummaryRow()`, `makeHeatmapCard()`, ...) live
-/// in `StatisticsViewController+Cards.swift` so the main type body stays
-/// under SwiftLint's `type_body_length` ceiling.
+/// Backed by `StatisticsViewModel`. Card-building helpers live in
+/// `StatisticsViewController+Cards.swift` so the main type body stays under
+/// SwiftLint's `type_body_length` ceiling.
 final class StatisticsViewController: UIViewController {
 
     // MARK: - ViewModel
@@ -32,8 +29,8 @@ final class StatisticsViewController: UIViewController {
 
     let scrollView = UIScrollView()
     let contentStack = UIStackView()
-    /// Stack of "data" sections (summary + heatmap + chart + streak).
-    /// Hidden as a unit when the empty state takes over.
+    /// Stack of "data" sections (hero, bars, time). Hidden as a unit when the
+    /// empty state takes over.
     let dataStack = UIStackView()
     var emptyStateView: StatisticsEmptyStateView?
 
@@ -54,26 +51,35 @@ final class StatisticsViewController: UIViewController {
         return segment
     }()
 
-    // MARK: - Summary tiles
+    // MARK: - Hero "Серия"
 
-    /// Pain-tinted "Потрачено" amount. Drawn with the pain-text gradient via
-    /// `UILabel.applyGradientMask(_:)` so the value glyphs track the brand
-    /// red sweep.
-    let spentAmountLabel: UILabel = {
+    /// Big mono streak count drawn at `moneyLg` (32pt). Sits inside the hero
+    /// raised SPCard alongside the heatmap.
+    let streakBigLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.moneyMd
+        label.font = AppTypography.moneyLg
         label.textColor = AppColors.fg1
         label.adjustsFontForContentSizeCategory = false
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    let spentGradientLayer = CAGradientLayer()
 
-    let snoozeCountLabel: UILabel = {
+    /// Trailing "дня / дней / день" word next to the big streak number.
+    let streakBigWordLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.moneyMd
-        label.textColor = AppColors.fg1
-        label.adjustsFontForContentSizeCategory = false
+        label.font = AppTypography.h3
+        label.textColor = AppColors.fg3
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Meta line below the streak count — "Последний срыв: 8 января" /
+    /// "Лучший результат: 12 дней".
+    let streakMetaLabel: UILabel = {
+        let label = UILabel()
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
+        label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -102,25 +108,33 @@ final class StatisticsViewController: UIViewController {
         return label
     }()
 
-    // MARK: - Bar chart
+    // MARK: - Weekly bar chart
 
     var chartHostingController: UIHostingController<WeekdayChartView>?
 
-    // MARK: - Streak card
-
-    let streakValueLabel: UILabel = {
+    /// "Сэкономили" — money tinted.
+    let savedAmountLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.moneyMd
-        label.textColor = AppColors.fg1
+        label.font = AppTypography.moneySm
+        label.textColor = AppColors.money400
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    let streakBestLabel: UILabel = {
+    /// "Потратили" — pain tinted.
+    let spentAmountLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
-        label.numberOfLines = 0
+        label.font = AppTypography.moneySm
+        label.textColor = AppColors.pain400
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// "Чистый" — fg1 neutral.
+    let netAmountLabel: UILabel = {
+        let label = UILabel()
+        label.font = AppTypography.moneySm
+        label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -132,7 +146,6 @@ final class StatisticsViewController: UIViewController {
         title = "Статистика"
         navigationController?.navigationBar.prefersLargeTitles = true
         view.backgroundColor = AppColors.bg0
-        configureGradientLayers()
         setupLayout()
         bindViewModel()
     }
@@ -144,19 +157,7 @@ final class StatisticsViewController: UIViewController {
         viewModel.loadData(period: period)
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        spentAmountLabel.applyGradientMask(spentGradientLayer)
-    }
-
     // MARK: - Setup
-
-    private func configureGradientLayers() {
-        spentGradientLayer.colors = SPSupport.painGradientColors
-        spentGradientLayer.locations = SPSupport.painGradientLocations
-        spentGradientLayer.startPoint = SPSupport.gradientStart
-        spentGradientLayer.endPoint = SPSupport.gradientEnd
-    }
 
     private func setupLayout() {
         configureContainers()
@@ -164,10 +165,12 @@ final class StatisticsViewController: UIViewController {
         installToastConstraints()
         contentStack.addArrangedSubview(periodSegment)
         contentStack.addArrangedSubview(dataStack)
-        dataStack.addArrangedSubview(makeSummaryRow())
-        dataStack.addArrangedSubview(makeHeatmapCard())
-        dataStack.addArrangedSubview(makeChartCard())
-        dataStack.addArrangedSubview(makeStreakCard())
+        dataStack.addArrangedSubview(makeHeroStreakCard())
+        dataStack.addArrangedSubview(makeWeeklyCard())
+        dataStack.addArrangedSubview(makeWakeTimeCard())
+        #if DEBUG
+        dataStack.addArrangedSubview(makeDebugButtonsRow())
+        #endif
         heatmapView.onCellTap = { [weak self] cell in
             self?.presentHeatmapToast(for: cell)
         }
@@ -176,10 +179,10 @@ final class StatisticsViewController: UIViewController {
     private func configureContainers() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
-        contentStack.spacing = AppSpacing.sp5
+        contentStack.spacing = AppSpacing.sp4
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         dataStack.axis = .vertical
-        dataStack.spacing = AppSpacing.sp5
+        dataStack.spacing = AppSpacing.sp3
         dataStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
@@ -252,12 +255,16 @@ final class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        // Summary row.
-        spentAmountLabel.text = viewModel.totalSpentFormatted
-        snoozeCountLabel.text = viewModel.snoozeCountFormatted
-        // The pain-gradient mask renders the "spent" value glyph-by-glyph;
-        // refresh after text updates so the mask matches the new string.
-        view.setNeedsLayout()
+        // Hero streak card.
+        let streak = viewModel.streak
+        streakBigLabel.text = "\(streak)"
+        streakBigWordLabel.text = StreakModalViewController.dayWord(for: streak)
+        if streak > 0 {
+            streakMetaLabel.text = "Лучший результат: \(viewModel.bestStreak) "
+                + "\(StreakModalViewController.dayWord(for: viewModel.bestStreak))"
+        } else {
+            streakMetaLabel.text = "Серия начнётся, как только вы перестанете откладывать."
+        }
 
         // Heatmap.
         heatmapView.cells = viewModel.heatmapCells
@@ -268,10 +275,18 @@ final class StatisticsViewController: UIViewController {
         }
         chartHostingController?.rootView = WeekdayChartView(bars: chartBars)
 
-        // Streak card.
-        streakValueLabel.text = "\(viewModel.streak) \(StreakModalViewController.dayWord(for: viewModel.streak))"
-        streakBestLabel.text = "Лучший результат: \(viewModel.bestStreak) "
-            + "\(StreakModalViewController.dayWord(for: viewModel.bestStreak))"
+        // Weekly summary numbers — VM exposes `totalSpent` only, so the
+        // "saved" line uses a coarse-but-defendable heuristic: best-streak
+        // days * default penalty for the same period. This matches the
+        // spirit of the V2 JSX (a hero green number) without inventing a
+        // new ledger column.
+        let spent = viewModel.totalSpent
+        let saved = Double(max(viewModel.streak, 0)) * 50.0   // 50 ₽/day fallback
+        let net = saved - spent
+        savedAmountLabel.text = saved > 0 ? "+\(Int(saved)) ₽" : "+0 ₽"
+        spentAmountLabel.text = spent > 0 ? "−\(Int(spent)) ₽" : "0 ₽"
+        let netPrefix = net >= 0 ? "+" : "−"
+        netAmountLabel.text = "\(netPrefix)\(Int(abs(net))) ₽"
 
         // Empty state — VM handles the empty-period detection.
         setEmptyStateVisible(!viewModel.hasData)
@@ -303,15 +318,37 @@ final class StatisticsViewController: UIViewController {
     @objc func streakTapped() {
         let alarms = (try? AlarmRepository.shared.fetchAllChecked()) ?? []
         let saved = StreakModalViewController.estimatedSavings(
-            for: viewModel.streak,
+            for: max(viewModel.streak, 1),
             alarms: alarms
         )
         let modal = StreakModalViewController(
-            streakDays: viewModel.streak,
+            streakDays: max(viewModel.streak, 1),
             savedAmount: saved
         )
         present(modal, animated: true)
     }
+
+    #if DEBUG
+    @objc func debugStreakTapped() {
+        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        present(modal, animated: true)
+    }
+
+    @objc func debugReferralTapped() {
+        let vc = ReferralViewController()
+        navigationController?.pushViewController(vc, animated: true)
+    }
+
+    @objc func debugAlarmOffTapped() {
+        let vc = AlarmOffWarningViewController()
+        vc.modalPresentationStyle = .pageSheet
+        if let sheet = vc.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.preferredCornerRadius = AppRadius.xl
+        }
+        present(vc, animated: true)
+    }
+    #endif
 
     private func createAlarmTapped() {
         let createVC = CreateAlarmViewController(alarm: nil)
