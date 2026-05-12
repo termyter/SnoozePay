@@ -1,205 +1,363 @@
 import UIKit
 
-// MARK: - Page content builders
+// MARK: - Page builders + state for OnboardingViewController (V2)
 //
-// Extracted from `OnboardingViewController.swift` (#182) so the host file
-// stays under SwiftLint's `file_length` and `type_body_length` caps. The
-// helpers below previously lived as `private` instance methods on the main
-// type — only the physical location moved; behaviour is verbatim.
+// Split out so the host VC stays under SwiftLint's `file_length` cap. The
+// helpers here own:
+//   - per-page content builders (`makePage1` / `makePage2` / `makePage3`),
+//   - the bespoke pill-dot row used in place of `UIPageControl`,
+//   - the action handlers wired from the primary / "Позже" CTAs,
+//   - the CTA-rebuild that swaps "Дальше" → "Положить" on step 3.
+//
+// Single-purpose helper view classes (glow host, penalty pill, numbered step
+// row, page dot, deposit option card) live in `OnboardingComponents.swift`.
 
 extension OnboardingViewController {
 
-    /// Steps 1 & 2 — `h1` heading + `bodyLg` body, vertically centred and
-    /// inset by 32pt so the text wraps naturally without hugging the edges.
-    func makeTextPageView(title: String, body: String) -> UIView {
+    // MARK: - Page stack
+
+    func buildPageStack() {
+        scrollView.subviews.forEach { $0.removeFromSuperview() }
+        pageViews.removeAll()
+        depositOptionViews.removeAll()
+
+        let page1 = makePage1()
+        let page2 = makePage2()
+        let page3 = makePage3()
+        for page in [page1, page2, page3] {
+            scrollView.addSubview(page)
+            pageViews.append(page)
+        }
+    }
+
+    // MARK: - Page 1 — concept
+
+    func makePage1() -> UIView {
         let container = UIView()
-        let stack = makeCopyStack(title: title, body: body)
+        let glowHost = makePage1Glow()
+        container.addSubview(glowHost)
+        let clockLabel = makePage1Clock()
+        let pill = OnboardingPenaltyPill()
+        let titleLabel = makePage1Title()
+        let bodyLabel = makePage1Body()
+
+        let stack = UIStackView(arrangedSubviews: [clockLabel, pill, titleLabel, bodyLabel])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.setCustomSpacing(AppSpacing.sp5, after: clockLabel)
+        stack.setCustomSpacing(AppSpacing.sp7 + 4, after: pill)
+        stack.setCustomSpacing(AppSpacing.sp3 + 2, after: titleLabel)
         container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            // Slightly above centre so the action button + page dots don't
-            // optically crowd the body copy.
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -AppSpacing.sp9),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: AppSpacing.sp7),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -AppSpacing.sp7)
-        ])
-        return container
-    }
 
-    /// Step 3 — heading, body, three preset tiles, Apple Pay CTA, ghost
-    /// "Позже". The CTAs live inside the page (rather than the shared
-    /// `actionButton`) so the page-3 controls feel cohesive with the preset
-    /// tiles instead of appearing detached at the screen bottom.
-    func makeDepositPageView(title: String, body: String) -> UIView {
-        let container = UIView()
-        let copyStack = makeCopyStack(title: title, body: body)
-        let presetsStack = makePresetsStack()
-        container.addSubview(copyStack)
-        container.addSubview(presetsStack)
-        container.addSubview(ctaStack)
-        let inset = AppSpacing.screenInset
-        let outerInset = AppSpacing.sp7
         NSLayoutConstraint.activate([
-            copyStack.topAnchor.constraint(
-                equalTo: container.safeAreaLayoutGuide.topAnchor,
-                constant: AppSpacing.sp10
+            glowHost.topAnchor.constraint(equalTo: container.topAnchor, constant: 60),
+            glowHost.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            glowHost.widthAnchor.constraint(equalToConstant: 420),
+            glowHost.heightAnchor.constraint(equalToConstant: 420),
+
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            stack.leadingAnchor.constraint(
+                greaterThanOrEqualTo: container.leadingAnchor,
+                constant: AppSpacing.sp4
             ),
-            copyStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: outerInset),
-            copyStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -outerInset),
-
-            presetsStack.topAnchor.constraint(equalTo: copyStack.bottomAnchor, constant: outerInset),
-            presetsStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: inset),
-            presetsStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -inset),
-
-            ctaStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: inset),
-            ctaStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -inset),
-            ctaStack.bottomAnchor.constraint(
-                equalTo: container.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
-            )
+            stack.trailingAnchor.constraint(
+                lessThanOrEqualTo: container.trailingAnchor,
+                constant: -AppSpacing.sp4
+            ),
+            stack.widthAnchor.constraint(lessThanOrEqualToConstant: 320),
+            bodyLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
         ])
         return container
     }
 
-    func makeCopyStack(title: String, body: String) -> UIStackView {
+    // MARK: - Page 1 helpers
+
+    private func makePage1Glow() -> OnboardingGlowHostView {
+        let glow = CAGradientLayer()
+        glow.type = .radial
+        glow.colors = [
+            UIColor(red: 1.0, green: 184.0 / 255.0, blue: 77.0 / 255.0, alpha: 0.25).cgColor,
+            UIColor(red: 1.0, green: 184.0 / 255.0, blue: 77.0 / 255.0, alpha: 0.0).cgColor
+        ]
+        glow.locations = [0.0, 0.6]
+        glow.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glow.endPoint = CGPoint(x: 1.0, y: 1.0)
+        let host = OnboardingGlowHostView(layer: glow, size: 420)
+        host.translatesAutoresizingMaskIntoConstraints = false
+        return host
+    }
+
+    private func makePage1Clock() -> UILabel {
+        let label = UILabel()
+        label.text = "7:00"
+        label.font = AppTypography.clockXl
+        label.textColor = .white
+        label.textAlignment = .center
+        label.adjustsFontForContentSizeCategory = false
+        // Tabular numbers so digits column-align across glyphs.
+        let descriptor = label.font.fontDescriptor.addingAttributes([
+            .featureSettings: [
+                [
+                    UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                    UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector
+                ]
+            ]
+        ])
+        label.font = UIFont(descriptor: descriptor, size: label.font.pointSize)
+        return label
+    }
+
+    private func makePage1Title() -> UILabel {
+        let label = UILabel()
+        label.attributedText = NSAttributedString(
+            string: "Будильник\nсо ставкой",
+            attributes: [
+                .font: AppTypography.h1,
+                .kern: -0.32,
+                .foregroundColor: UIColor.white
+            ]
+        )
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        return label
+    }
+
+    private func makePage1Body() -> UILabel {
+        let label = UILabel()
+        label.text = "Каждое откладывание стоит денег. Деньги не вернутся. Зато вы встанете."
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg2
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        return label
+    }
+
+    // MARK: - Page 2 — mechanics
+
+    func makePage2() -> UIView {
+        let container = UIView()
+
+        let caps = UILabel()
+        caps.attributedText = NSAttributedString(
+            string: "КАК ЭТО РАБОТАЕТ",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.warn300
+            ]
+        )
+
         let titleLabel = UILabel()
-        titleLabel.text = title
-        titleLabel.font = AppTypography.h1
-        titleLabel.textColor = AppColors.fg1
-        titleLabel.textAlignment = .center
+        titleLabel.attributedText = NSAttributedString(
+            string: "Положи баланс.\nОткладывай — теряй.",
+            attributes: [
+                .font: AppTypography.h1,
+                .kern: -0.32,
+                .foregroundColor: UIColor.white
+            ]
+        )
         titleLabel.numberOfLines = 0
 
-        let bodyLabel = UILabel()
-        bodyLabel.text = body
-        bodyLabel.font = AppTypography.bodyLg
-        bodyLabel.textColor = AppColors.fg2
-        bodyLabel.textAlignment = .center
-        bodyLabel.numberOfLines = 0
+        let rows = [
+            ("1", "Положили 500 ₽", "Это запас, из которого спишутся штрафы."),
+            ("2", "Поспать ещё в 7:00 → −50 ₽", "Каждый раз когда вы тянете, деньги уходят."),
+            ("3", "Встали с первого раза → ничего", "Баланс продолжает лежать. Готов к завтрашнему утру.")
+        ].map { OnboardingStepRow(number: $0.0, title: $0.1, body: $0.2) }
 
-        let stack = UIStackView(arrangedSubviews: [titleLabel, bodyLabel])
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.sp4
-        stack.alignment = .fill
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
+        let rowsStack = UIStackView(arrangedSubviews: rows)
+        rowsStack.axis = .vertical
+        rowsStack.spacing = AppSpacing.sp3 + 2     // 14pt — matches JSX `gap: 14`
+        rowsStack.alignment = .fill
+
+        let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, rowsStack])
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.axis = .vertical
+        mainStack.alignment = .fill
+        mainStack.setCustomSpacing(AppSpacing.sp2, after: caps)
+        mainStack.setCustomSpacing(AppSpacing.sp7, after: titleLabel)
+
+        container.addSubview(mainStack)
+        NSLayoutConstraint.activate([
+            mainStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: AppSpacing.sp4),
+            mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -AppSpacing.sp4)
+        ])
+        return container
     }
 
-    /// Replace the Apple Pay button instance with a fresh one whose title
-    /// reflects the currently-selected preset amount. SPButton has no public
-    /// title setter (its label is private), so the cheapest faithful path is
-    /// a full re-create — same trade-off `FiringTopUpBottomSheet` accepts
-    /// (one extra alloc per preset tap; max 3 swaps).
-    func updateApplePayTitle() {
-        guard let oldButton = ctaStack.arrangedSubviews.first as? SPButton else { return }
-        let amount = presetAmounts[selectedPresetIndex]
+    // MARK: - Page 3 — deposit
+
+    func makePage3() -> UIView {
+        let container = UIView()
+
+        let caps = UILabel()
+        caps.attributedText = NSAttributedString(
+            string: "БАЛАНС · СКОЛЬКО ПОЛОЖИТЬ",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.money300
+            ]
+        )
+
+        let titleLabel = UILabel()
+        titleLabel.attributedText = NSAttributedString(
+            string: "Сколько ставите\nна свою дисциплину?",
+            attributes: [
+                .font: AppTypography.h1,
+                .kern: -0.32,
+                .foregroundColor: UIColor.white
+            ]
+        )
+        titleLabel.numberOfLines = 0
+
+        let optionsStack = UIStackView()
+        optionsStack.axis = .vertical
+        optionsStack.spacing = AppSpacing.sp2
+        optionsStack.alignment = .fill
+
+        for (index, option) in depositOptions.enumerated() {
+            let optionView = OnboardingDepositOptionView(option: option)
+            optionView.isSelectedOption = index == defaultDepositIndex
+            optionView.onTap = { [weak self] in self?.handleDepositOptionTap(at: index) }
+            depositOptionViews.append(optionView)
+            optionsStack.addArrangedSubview(optionView)
+        }
+
+        let footer = UILabel()
+        footer.font = AppTypography.meta
+        footer.text = "Можно поменять в любой момент"
+        footer.textColor = AppColors.fg4
+        footer.textAlignment = .center
+
+        let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, optionsStack, footer])
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.axis = .vertical
+        mainStack.alignment = .fill
+        mainStack.setCustomSpacing(AppSpacing.sp2, after: caps)
+        mainStack.setCustomSpacing(AppSpacing.sp6, after: titleLabel)
+        mainStack.setCustomSpacing(AppSpacing.sp4, after: optionsStack)
+
+        container.addSubview(mainStack)
+        NSLayoutConstraint.activate([
+            mainStack.topAnchor.constraint(
+                equalTo: container.safeAreaLayoutGuide.topAnchor,
+                constant: AppSpacing.sp9      // 56pt — matches JSX `paddingTop: 54`
+            ),
+            mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: AppSpacing.sp4),
+            mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -AppSpacing.sp4)
+        ])
+        return container
+    }
+
+    // MARK: - Pager state
+
+    /// Rebuild the pill-dot row — the active page gets a 24×6 money-gradient
+    /// pill, the rest stay 6×6 with `whiteOverlay12`.
+    func rebuildDotsRow(activePage: Int) {
+        dotsStack.arrangedSubviews.forEach {
+            dotsStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        for index in 0..<pageCount {
+            let dot = OnboardingPageDot(isActive: index == activePage)
+            dotsStack.addArrangedSubview(dot)
+        }
+    }
+
+    /// Pager state — toggles glow, the "Позже" secondary, and the primary
+    /// button (which transforms into the deposit CTA on step 3).
+    func updatePagerState(forPage page: Int) {
+        rebuildDotsRow(activePage: page)
+        let isDepositPage = page == pageCount - 1
+        setStepGlow(active: isDepositPage)
+        laterButton.isHidden = !isDepositPage
+        if isDepositPage {
+            rebuildDepositCTA()
+        } else {
+            rebuildAdvanceCTA()
+        }
+    }
+
+    // MARK: - CTA rebuilds
+
+    /// Replace the primary button with the "Дальше" advance variant. Cheap
+    /// (≤ 2 swaps over the user's onboarding lifetime).
+    func rebuildAdvanceCTA() {
+        guard primaryButton.allTargets.isEmpty == false || primaryButton.superview != nil else { return }
+        let newButton = SPButton(title: "Дальше", variant: .money, size: .lg, fullWidth: true)
+        swapPrimary(with: newButton)
+    }
+
+    /// Replace the primary button with the deposit CTA — title "Положить",
+    /// suffix `{value} ₽`, leading shield icon. Re-run on every option-tap
+    /// so the suffix tracks the selection.
+    func rebuildDepositCTA() {
+        let amount = depositOptions[selectedDepositIndex].amount
+        let configuration = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        let shield = UIImage(systemName: "shield.fill", withConfiguration: configuration)
         let newButton = SPButton(
-            title: "Начать с \(amount.formattedRubles())",
+            title: "Положить",
             variant: .money,
             size: .lg,
+            icon: shield,
+            suffix: amount.formattedRubles(),
             fullWidth: true
         )
-        newButton.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
-        ctaStack.removeArrangedSubview(oldButton)
-        oldButton.removeFromSuperview()
-        ctaStack.insertArrangedSubview(newButton, at: 0)
-        applePayButton = newButton
+        swapPrimary(with: newButton)
+    }
+
+    private func swapPrimary(with newButton: SPButton) {
+        let oldButton = primaryButton
+        newButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
+        if let index = ctaStack.arrangedSubviews.firstIndex(of: oldButton) {
+            ctaStack.removeArrangedSubview(oldButton)
+            oldButton.removeFromSuperview()
+            ctaStack.insertArrangedSubview(newButton, at: index)
+        } else {
+            ctaStack.insertArrangedSubview(newButton, at: 0)
+        }
+        primaryButton = newButton
     }
 
     // MARK: - Actions
 
     @objc
-    func applePayTapped() {
-        // Apple Pay path — mark onboarding completed and let the parent
-        // SceneDelegate swap the root. The actual IAP is handled from the
-        // main app's TopUp flow; the onboarding stays a pure UI layer so the
-        // SceneDelegate transition isn't blocked on a StoreKit round-trip.
-        // (PR #145 ships the visual + flag wiring; the StoreKit hook-up is a
-        // follow-up issue.)
-        UserDefaults.standard.set(true, forKey: Self.completedKey)
-        UserDefaults.standard.set(false, forKey: Self.firstTopUpDoneKey)
-        onFinished?()
-    }
-
-    @objc
-    func actionTapped() {
-        // `actionTapped` only fires while the shared CTA is visible (steps
-        // 1-2). Step 3 uses `applePayButton` / `laterButton` instead.
+    func primaryTapped() {
         let currentPage = pageControl.currentPage
-        guard currentPage < pages.count - 1 else { return }
-        let nextPage = currentPage + 1
-        let offsetX = scrollView.bounds.width * CGFloat(nextPage)
-        scrollView.setContentOffset(CGPoint(x: offsetX, y: 0), animated: true)
-        pageControl.currentPage = nextPage
-        updatePagerState(forPage: nextPage)
+        if currentPage < pageCount - 1 {
+            let nextPage = currentPage + 1
+            let offsetX = scrollView.bounds.width * CGFloat(nextPage)
+            scrollView.setContentOffset(CGPoint(x: offsetX, y: 0), animated: true)
+            pageControl.currentPage = nextPage
+            updatePagerState(forPage: nextPage)
+        } else {
+            // Step 3 — deposit CTA tapped. The actual IAP / StoreKit hookup
+            // ships separately; for now we mark onboarding done + first-top-up
+            // pending so the SceneDelegate transition isn't blocked on a
+            // network round-trip.
+            UserDefaults.standard.set(true, forKey: Self.completedKey)
+            UserDefaults.standard.set(false, forKey: Self.firstTopUpDoneKey)
+            onFinished?()
+        }
     }
 
     @objc
     func laterTapped() {
-        // "Позже" path — finish without IAP. Same persistence as the Apple
-        // Pay path so SceneDelegate doesn't re-mount onboarding next launch.
         UserDefaults.standard.set(true, forKey: Self.completedKey)
         UserDefaults.standard.set(false, forKey: Self.firstTopUpDoneKey)
         onFinished?()
     }
 
-    @objc
-    func skipTapped() {
-        // Top-right "Пропустить" — completes onboarding from any page; balance
-        // stays at 0 (the existing default in `BalanceService`).
-        UserDefaults.standard.set(true, forKey: Self.completedKey)
-        onFinished?()
-    }
+    // MARK: - Deposit option taps
 
-    // MARK: - State
-
-    /// Wired to each `SPAmountPreset.onTap` from `makePresetsStack`. Picks
-    /// the new index, recolours the tile row, and rebuilds the Apple Pay
-    /// CTA so its title shows the freshly-selected amount.
-    func handlePresetTap(index: Int) {
-        guard index < presetTiles.count else { return }
-        selectedPresetIndex = index
-        for (tileIndex, tile) in presetTiles.enumerated() {
-            tile.isSelected = tileIndex == index
+    func handleDepositOptionTap(at index: Int) {
+        guard index < depositOptionViews.count else { return }
+        selectedDepositIndex = index
+        for (viewIndex, view) in depositOptionViews.enumerated() {
+            view.isSelectedOption = viewIndex == index
         }
-        updateApplePayTitle()
-    }
-
-    /// Drive the shared CTA (steps 1-2) and page-control state on every
-    /// scroll settle. Step 3 hides the shared CTA + page dots so the
-    /// page-3 layout owns the bottom edge.
-    func updatePagerState(forPage page: Int) {
-        let isLastPage = page == pages.count - 1
-
-        // Hide the shared action button on step 3 — that page mounts its own
-        // Apple Pay + "Позже" CTAs inside its content view. Likewise hide the
-        // page dots so they don't visually compete with the preset tiles.
-        actionButton.isHidden = isLastPage
-        pageControl.isHidden = isLastPage
-
-        // Step 3 controls focus on the deposit decision; "Пропустить" stays
-        // visible everywhere (including step 3) per spec — it's the global
-        // escape hatch, distinct from "Позже" which still records the
-        // first-top-up flag.
-        skipButton.isHidden = false
-
-        // The shared action button title is always "Далее" on steps 1-2 (no
-        // per-page copy) so there's nothing to update beyond visibility.
-    }
-
-    // MARK: - Page builders
-
-    func makePresetsStack() -> UIStackView {
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.alignment = .fill
-        stack.distribution = .fillEqually
-        stack.spacing = AppSpacing.sp3
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        for (index, amount) in presetAmounts.enumerated() {
-            let tile = SPAmountPreset(value: amount, selected: index == defaultPresetIndex)
-            tile.onTap = { [weak self] in self?.handlePresetTap(index: index) }
-            presetTiles.append(tile)
-            stack.addArrangedSubview(tile)
-        }
-        return stack
+        rebuildDepositCTA()
     }
 }

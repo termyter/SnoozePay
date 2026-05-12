@@ -1,39 +1,39 @@
 import UIKit
 import UserNotifications
 
-/// Permissions screen — shown once after Onboarding finishes, before the main
-/// alarms list. Three permission cards (Notifications, Critical Alerts, Sound
-/// in silent mode) plus a "Позже" footer.
+/// Permissions screen — V2 redesign (`docs/design/v2-handoff/components/SPMore2.jsx`
+/// lines 26-65). Shown once after Onboarding finishes, before the main alarms
+/// list. Caps "последний шаг" eyebrow → h1 "Чтобы будильник работал" → body
+/// copy → three permission cards (Notifications, Critical Alerts, Background)
+/// → "Готово" CTA.
 ///
-/// Flow:
-/// 1. Notifications card → tapping "Разрешить" calls
-///    `UNUserNotificationCenter.requestAuthorization` with the same option set
-///    `AlarmScheduler.requestPermission` uses (`alert + sound + badge +
-///    criticalAlert`). On result the cards refresh.
-/// 2. Critical Alerts — hard-gated on the entitlement living in
+/// Flow preserves the V1 wiring:
+/// 1. Notifications card → tapping the card calls
+///    `AlarmScheduler.requestPermission` with the same option ladder used at
+///    AppDelegate launch.
+/// 2. Critical Alerts — hard-gated on the entitlement in
 ///    `SnoozePay.entitlements`. The entitlement is currently commented out
-///    (PM-only), so the card surfaces a neutral "Недоступно" pill until it
-///    lands. Once flipped, the same notification authorisation grant covers
-///    both, so this card mirrors notifications status.
-/// 3. Sound — `AVAudioSession` `.playback + .duckOthers`, no system permission
-///    needed. `AudioService.configureAudioSession` already installs that
-///    recipe on every alarm, so this card is informational ("Включено").
+///    (PM-only edit), so the card surfaces a neutral "Недоступно" caption
+///    until it lands. Once flipped, this card mirrors the notification grant.
+/// 3. Background — `UIBackgroundModes` is declared in Info.plist for the
+///    audio playback / processing categories, so this card is informational
+///    and renders as granted.
 ///
 /// Persistence: `permissions_screen_shown` UserDefaults key prevents re-show
-/// on subsequent launches even when the user picks "Позже". Future grants /
-/// revocations happen through Settings; the screen does not nag.
+/// on subsequent launches even when the user picks "Готово" without granting
+/// anything. Future grants / revocations happen through Settings; the screen
+/// does not nag.
 final class PermissionsViewController: UIViewController {
 
     // MARK: - Persistence keys
 
-    /// `UserDefaults` key tracking whether the permissions screen has been
-    /// dismissed at least once. Exposed at module-level so the debug "reset
-    /// onboarding" entry in AlarmsListVC can clear it alongside the
-    /// onboarding-completed flag.
+    /// Tracks whether the permissions screen has been dismissed at least
+    /// once. Exposed at module-level so the debug "reset onboarding" entry in
+    /// AlarmsListVC can clear it alongside the onboarding-completed flag.
     static let hasBeenShownKey = "permissions_screen_shown"
 
     /// `true` once the user has dismissed the permissions screen at least
-    /// once (either by granting or via "Позже"). Read by SceneDelegate to
+    /// once (either by granting or via "Готово"). Read by SceneDelegate to
     /// decide whether to present the screen on a given launch.
     static var hasBeenShown: Bool {
         UserDefaults.standard.bool(forKey: hasBeenShownKey)
@@ -41,89 +41,75 @@ final class PermissionsViewController: UIViewController {
 
     // MARK: - Callback
 
-    /// Invoked once the user finishes (grant complete or "Позже"). SceneDelegate
+    /// Invoked once the user finishes (grant complete or "Готово"). SceneDelegate
     /// uses this to swap the root from this VC to the tab bar.
     var onFinished: (() -> Void)?
 
-    // MARK: - Background (Dawn)
-
-    private let dawnGradientLayer: CAGradientLayer = {
-        let gradient = CAGradientLayer()
-        gradient.colors = [
-            UIColor(permRGB: 0x14122A).cgColor,
-            UIColor(permRGB: 0x0F1A2E).cgColor,
-            UIColor(permRGB: 0x0A1320).cgColor,
-            UIColor(permRGB: 0x050912).cgColor
-        ]
-        gradient.locations = [0.0, 0.4, 0.7, 1.0]
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
-        return gradient
-    }()
-
     // MARK: - State
 
-    /// Latest `UNNotificationSettings.authorizationStatus`. Drives the
-    /// Notifications + Critical Alerts cards. Refreshed in `viewWillAppear`
-    /// so a return-from-Settings flips the cards without manual re-launch.
     private var notificationStatus: UNAuthorizationStatus = .notDetermined
-
-    /// Whether the Critical Alerts entitlement is *available* at all (i.e.
-    /// the entitlement key is present in `.entitlements`). Detected via the
-    /// `criticalAlertSetting` field on `UNNotificationSettings` — `.notSupported`
-    /// means the entitlement isn't there, anything else means it is.
-    ///
-    /// Currently the entitlement is commented out in `SnoozePay.entitlements`
-    /// (PM-only edit), so we expect `.notSupported` at runtime. Once PM
-    /// uncomments the key, this will start tracking the actual grant state.
     private var criticalAlertsAvailable: Bool = false
     private var criticalAlertsGranted: Bool = false
 
-    // MARK: - UI Elements
+    // MARK: - Subviews
 
-    private let scrollView: UIScrollView = {
-        let scrollView = UIScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.alwaysBounceVertical = true
-        scrollView.showsVerticalScrollIndicator = false
-        return scrollView
-    }()
-
-    private let contentStack: UIStackView = {
-        let stack = UIStackView()
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.sp4
-        stack.alignment = .fill
-        return stack
+    private let capsLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.attributedText = NSAttributedString(
+            string: "ПОСЛЕДНИЙ ШАГ",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.warn300
+            ]
+        )
+        return label
     }()
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Разрешения"
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "Чтобы будильник работал"
         label.font = AppTypography.h1
-        label.textColor = AppColors.fg1
-        label.textAlignment = .left
+        label.textColor = .white
         label.numberOfLines = 0
+        label.adjustsFontForContentSizeCategory = false
+        // -0.02em at 32pt ≈ -0.64; clamp to -0.32 per spec direction so it
+        // tightens without bleeding into adjacent glyphs.
+        label.attributedText = NSAttributedString(
+            string: "Чтобы будильник работал",
+            attributes: [
+                .font: AppTypography.h1,
+                .kern: -0.32,
+                .foregroundColor: UIColor.white
+            ]
+        )
         return label
     }()
 
-    private let subtitleLabel: UILabel = {
+    private let bodyLabel: UILabel = {
         let label = UILabel()
-        label.text = "Чтобы будильник работал — нужны несколько разрешений"
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "Без этих разрешений iOS не разбудит вас в нужное время — даже если телефон беззвучный."
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg2
-        label.textAlignment = .left
         label.numberOfLines = 0
         return label
     }()
 
-    /// Footer "Позже" — keeps the screen escapable even if the user never
-    /// grants. Same persistence as the grant path so the screen does not
-    /// re-show on next launch.
-    private let laterButton = SPButton(
-        title: "Позже",
-        variant: .ghost,
+    private let cardsStack: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = AppSpacing.sp3
+        stack.alignment = .fill
+        return stack
+    }()
+
+    private let ctaButton = SPButton(
+        title: "Готово",
+        variant: .money,
         size: .lg,
         fullWidth: true
     )
@@ -136,14 +122,13 @@ final class PermissionsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Force dark — onboarding flow is canonically dark regardless of the
+        // system theme so the warn / money brand stops read consistently.
+        overrideUserInterfaceStyle = .dark
         view.backgroundColor = AppColors.bg0
-        view.layer.insertSublayer(dawnGradientLayer, at: 0)
         setupUI()
-        // Detect whether the Critical Alerts entitlement is even present
-        // before we start fetching settings — `criticalAlertSetting` on a
-        // missing entitlement is `.notSupported`.
         refreshNotificationSettings()
-        laterButton.addTarget(self, action: #selector(laterTapped), for: .touchUpInside)
+        ctaButton.addTarget(self, action: #selector(ctaTapped), for: .touchUpInside)
     }
 
     override var prefersStatusBarHidden: Bool { false }
@@ -156,74 +141,53 @@ final class PermissionsViewController: UIViewController {
         refreshNotificationSettings()
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        dawnGradientLayer.frame = view.bounds
-        CATransaction.commit()
-    }
-
     // MARK: - Setup
 
     private func setupUI() {
-        view.addSubview(scrollView)
-        scrollView.addSubview(contentStack)
-        view.addSubview(laterButton)
-        laterButton.translatesAutoresizingMaskIntoConstraints = false
-        installLayoutConstraints()
-        populateContent()
-    }
+        view.addSubview(capsLabel)
+        view.addSubview(titleLabel)
+        view.addSubview(bodyLabel)
+        view.addSubview(cardsStack)
+        view.addSubview(ctaButton)
+        ctaButton.translatesAutoresizingMaskIntoConstraints = false
 
-    private func installLayoutConstraints() {
-        let inset = AppSpacing.sp5
+        let inset = AppSpacing.sp4   // 16pt — matches JSX `padding: 54px 16px 32px`
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: laterButton.topAnchor, constant: -AppSpacing.sp4),
-
-            contentStack.topAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.topAnchor,
+            capsLabel.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor,
                 constant: AppSpacing.sp6
             ),
-            contentStack.leadingAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.leadingAnchor,
-                constant: inset
-            ),
-            contentStack.trailingAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.trailingAnchor,
+            capsLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            capsLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: view.trailingAnchor,
                 constant: -inset
-            ),
-            contentStack.bottomAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
-            ),
-            contentStack.widthAnchor.constraint(
-                equalTo: scrollView.frameLayoutGuide.widthAnchor,
-                constant: -inset * 2
             ),
 
-            laterButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            laterButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-            laterButton.bottomAnchor.constraint(
+            titleLabel.topAnchor.constraint(equalTo: capsLabel.bottomAnchor, constant: AppSpacing.sp2),
+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+
+            bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sp3),
+            bodyLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            bodyLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+
+            cardsStack.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: AppSpacing.sp7),
+            cardsStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            cardsStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+
+            ctaButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            ctaButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            ctaButton.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -inset
+                constant: -AppSpacing.sp6
             )
         ])
-    }
-
-    private func populateContent() {
-        contentStack.addArrangedSubview(titleLabel)
-        contentStack.addArrangedSubview(subtitleLabel)
-        contentStack.setCustomSpacing(AppSpacing.sp2, after: titleLabel)
-        contentStack.setCustomSpacing(AppSpacing.sp6, after: subtitleLabel)
 
         for kind in [PermissionKind.notifications, .criticalAlerts, .sound] {
             let card = PermissionCardView(kind: kind)
             card.onPrimaryTap = { [weak self] in self?.handleGrantTap(for: kind) }
             cardViews[kind] = card
-            contentStack.addArrangedSubview(card)
+            cardsStack.addArrangedSubview(card)
         }
     }
 
@@ -238,9 +202,8 @@ final class PermissionsViewController: UIViewController {
                 guard let self = self else { return }
                 self.notificationStatus = settings.authorizationStatus
                 // `.notSupported` means the Critical Alerts entitlement is
-                // absent (e.g. it's commented out in `.entitlements`). Any
-                // other value means the capability is wired and reflects the
-                // actual user-grant state.
+                // absent (commented out in `.entitlements`). Any other value
+                // means the capability is wired and reflects the user-grant.
                 self.criticalAlertsAvailable = settings.criticalAlertSetting != .notSupported
                 self.criticalAlertsGranted = settings.criticalAlertSetting == .enabled
                 self.applyStatusToCards()
@@ -258,12 +221,9 @@ final class PermissionsViewController: UIViewController {
         switch notificationStatus {
         case .authorized, .provisional, .ephemeral:
             return .granted
-        case .denied:
-            // Once denied, the OS won't show the prompt again — the user
-            // must flip the toggle in Settings. Surface the "Разрешить"
-            // affordance anyway; the tap handler routes to Settings.
-            return .actionable
-        case .notDetermined:
+        case .denied, .notDetermined:
+            // Once denied, iOS won't show the prompt again — the tap handler
+            // routes the user to Settings instead.
             return .actionable
         @unknown default:
             return .actionable
@@ -273,17 +233,16 @@ final class PermissionsViewController: UIViewController {
     private func criticalAlertsStatus() -> PermissionStatus {
         guard criticalAlertsAvailable else {
             // Entitlement is missing from `.entitlements` — user cannot grant
-            // this from the app. Documented in the PR description as a
-            // follow-up for PM to flip the entitlement key.
+            // this from the app. Documented as a follow-up for PM to flip the
+            // entitlement key once Critical Alerts is approved.
             return .unavailable
         }
         return criticalAlertsGranted ? .granted : .actionable
     }
 
     private func soundStatus() -> PermissionStatus {
-        // `AudioService.configureAudioSession` installs `.playback` +
-        // `.duckOthers` every time an alarm starts ringing, so this is
-        // always-on for the user. No system permission lives behind it.
+        // `UIBackgroundModes` is declared in Info.plist for audio playback /
+        // processing — the system grants it implicitly. No user action exists.
         .enabled
     }
 
@@ -294,29 +253,23 @@ final class PermissionsViewController: UIViewController {
         case .notifications, .criticalAlerts:
             handleNotificationsTap()
         case .sound:
-            // Sound card is informational — no tap path. `actionable` never
-            // resolves for `.sound`, but guard defensively.
+            // Background mode card is informational — no tap path.
             break
         }
     }
 
     private func handleNotificationsTap() {
-        // If the user already denied once, iOS won't re-prompt — open
-        // Settings instead so they have a way to flip the toggle.
         if notificationStatus == .denied {
             openAppSettings()
             return
         }
-
         // Route through `AlarmScheduler.requestPermission` so the same
         // critical-alert-with-fallback request ladder runs as on AppDelegate
-        // launch — and the `AlarmScheduler.criticalAlertsAvailable` static
-        // flag stays in sync (it's `private(set)` so only the scheduler can
-        // mutate it).
+        // launch — keeping `AlarmScheduler.criticalAlertsAvailable` in sync.
         AlarmScheduler.shared.requestPermission { [weak self] _ in
             // Refresh from settings rather than trusting the `granted` flag
-            // alone — `criticalAlertSetting` may resolve differently from
-            // the headline grant on legacy iOS versions.
+            // alone — `criticalAlertSetting` may resolve differently on
+            // legacy iOS versions.
             self?.refreshNotificationSettings()
         }
     }
@@ -326,28 +279,11 @@ final class PermissionsViewController: UIViewController {
         UIApplication.shared.open(url)
     }
 
-    // MARK: - Footer actions
+    // MARK: - CTA
 
     @objc
-    private func laterTapped() {
-        finish()
-    }
-
-    private func finish() {
+    private func ctaTapped() {
         UserDefaults.standard.set(true, forKey: Self.hasBeenShownKey)
         onFinished?()
-    }
-}
-
-// MARK: - Hex helper
-
-private extension UIColor {
-    /// `0xRRGGBB` literal initialiser, file-prefixed name to avoid collisions
-    /// with the same helper inside Onboarding / Splash.
-    convenience init(permRGB: UInt32, alpha: CGFloat = 1) {
-        let red = CGFloat((permRGB >> 16) & 0xFF) / 255.0
-        let green = CGFloat((permRGB >> 8) & 0xFF) / 255.0
-        let blue = CGFloat(permRGB & 0xFF) / 255.0
-        self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
