@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// Value type for monetary amounts.
 ///
@@ -29,6 +30,14 @@ struct Money: Equatable, Hashable, Codable {
         self.amount = amount
     }
 
+    /// Internal init used by constants and arithmetic operators where the
+    /// invariant is already established by the caller (e.g. literal `0`, or
+    /// the sum of two already-validated `Money` values). Stays `private` so
+    /// only `Money` itself can bypass validation.
+    private init(unchecked amount: Decimal) {
+        self.amount = amount
+    }
+
     /// Convenience bridge from `Double`. Rejects NaN / infinite / negative
     /// before the conversion can silently round-trip into `Decimal`.
     init?(_ amount: Double) {
@@ -43,7 +52,12 @@ struct Money: Equatable, Hashable, Codable {
     }
 
     /// The additive identity. Useful as a starting accumulator.
-    static let zero: Money = Money(Decimal(0))!
+    static let zero: Money = Money(unchecked: Decimal(0))
+
+    private static let log = OSLog(
+        subsystem: "Ivan-Emelyanov.SnoozePay",
+        category: "Money"
+    )
 
     // MARK: - Bridges
 
@@ -55,11 +69,23 @@ struct Money: Equatable, Hashable, Codable {
 
     // MARK: - Arithmetic
 
-    /// Sum of two monetary amounts. Always non-negative since both operands are.
+    /// Sum of two monetary amounts. Mathematically always non-negative since
+    /// both operands are. Returns `.zero` and logs once if the underlying
+    /// `Decimal` addition produces a non-finite result (only possible at the
+    /// extreme `Decimal.greatestFiniteMagnitude` boundary — unreachable for
+    /// real wallet balances, but force-unwrapping here would crash a release
+    /// build rather than degrade gracefully).
     static func + (lhs: Money, rhs: Money) -> Money {
-        // Forced unwrap is safe: the sum of two non-negative non-NaN Decimals
-        // is itself a non-negative non-NaN Decimal.
-        Money(lhs.amount + rhs.amount)!
+        let sum = lhs.amount + rhs.amount
+        if let result = Money(sum) {
+            return result
+        }
+        os_log(
+            "Money.+ produced invalid Decimal (overflow?); clamping to .zero. lhs=%{public}@ rhs=%{public}@",
+            log: Self.log, type: .fault,
+            String(describing: lhs.amount), String(describing: rhs.amount)
+        )
+        return .zero
     }
 
     /// Subtraction with saturating semantics — returns `nil` if the result
