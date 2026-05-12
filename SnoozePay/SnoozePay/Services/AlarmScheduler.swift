@@ -91,8 +91,26 @@ final class AlarmScheduler: AlarmScheduling {
     private let dismissActionID = "DISMISS_ACTION"
     private let snoozeActionID = "SNOOZE_ACTION"
 
-    /// Whether the app has the critical alerts entitlement (set after permission request)
-    private(set) static var criticalAlertsAvailable = false
+    /// Whether the app has the critical alerts entitlement (set after permission request).
+    ///
+    /// Writes come from the UN-delegate background thread (`requestAuthorization`
+    /// callback), reads come from `makeContent` on whatever thread is scheduling.
+    /// Without synchronization there was a brief window after permission grant
+    /// where a parallel `schedule` call read a stale `false` and built a
+    /// non-critical alert content (issue #204). `os_unfair_lock` is enough
+    /// here — both halves are constant-time and contention is rare.
+    private static let criticalAlertsLock = NSLock()
+    private static var _criticalAlertsAvailable = false
+    static var criticalAlertsAvailable: Bool {
+        criticalAlertsLock.lock()
+        defer { criticalAlertsLock.unlock() }
+        return _criticalAlertsAvailable
+    }
+    private static func setCriticalAlertsAvailable(_ value: Bool) {
+        criticalAlertsLock.lock()
+        _criticalAlertsAvailable = value
+        criticalAlertsLock.unlock()
+    }
 
     private init() {
         self.notificationCenter = UNUserNotificationCenter.current()
@@ -116,10 +134,10 @@ final class AlarmScheduler: AlarmScheduling {
                 AppLogger.scheduler.error(
                     "critical-alert request failed: \(desc, privacy: .public). Falling back to standard."
                 )
-                Self.criticalAlertsAvailable = false
+                Self.setCriticalAlertsAvailable(false)
                 let standardOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
                 self.notificationCenter.requestAuthorization(options: standardOptions) { granted, fallbackError in
-                    Self.criticalAlertsAvailable = false
+                    Self.setCriticalAlertsAvailable(false)
                     if let fallbackError = fallbackError {
                         let fallbackDesc = fallbackError.localizedDescription
                         AppLogger.scheduler.error(
@@ -133,7 +151,7 @@ final class AlarmScheduler: AlarmScheduling {
                     DispatchQueue.main.async { completion(granted) }
                 }
             } else {
-                Self.criticalAlertsAvailable = granted
+                Self.setCriticalAlertsAvailable(granted)
                 AppLogger.scheduler.notice(
                     "resolved path=primary granted=\(granted, privacy: .public) critical=\(granted, privacy: .public)"
                 )
