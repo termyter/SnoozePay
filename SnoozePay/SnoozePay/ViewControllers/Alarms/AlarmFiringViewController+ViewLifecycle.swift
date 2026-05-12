@@ -25,8 +25,10 @@ extension AlarmFiringViewController {
 
     // MARK: Glow breathing
 
-    /// 4s ease-in-out autoreverse opacity pulse on the warm glow. Driven via
-    /// CABasicAnimation because the glow is a CAGradientLayer (not a view).
+    /// 4s ease-in-out autoreverse opacity pulse on the Dawn background's sun
+    /// layer. Driven via CABasicAnimation because the sun is a CAGradientLayer
+    /// (not a view). V2 spec retains the "breathing" character from V1 — the
+    /// warm radial just lives inside `SPDawnBackgroundView.sunLayer` now.
     func startGlowBreathing() {
         let animation = CABasicAnimation(keyPath: "opacity")
         animation.fromValue = 0.55
@@ -35,7 +37,7 @@ extension AlarmFiringViewController {
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         animation.autoreverses = true
         animation.repeatCount = .infinity
-        warmGlowLayer.add(animation, forKey: "breathing")
+        dawnBackgroundView.sunLayer.add(animation, forKey: "breathing")
     }
 
     // MARK: Actions

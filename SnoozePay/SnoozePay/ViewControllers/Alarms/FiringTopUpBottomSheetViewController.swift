@@ -5,11 +5,11 @@ import os
 /// Bottom-sheet presented over `AlarmFiringViewController` when the user wants
 /// to top up the wallet mid-alarm so they can keep snoozing.
 ///
-/// Spec: `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx`
-/// (variant `B · Bottom sheet с пресетами`) and the matching section in
-/// `SnoozePay - All Screens.html`. Three preset tiles (200 / 500 / 1000 ₽)
-/// drive a single Apple Pay primary CTA; the secondary "Отменить" ghost
-/// button dismisses without charging.
+/// V2 spec: `docs/design/v2-handoff/components/SPTopUp.jsx`
+/// `FiringTopUpPresets` (lines 103–197). Three preset rows (200 / 500 popular
+/// / 1000 ₽) feed a single Apple Pay primary CTA. Visuals match the V2 design
+/// system — bg2 surface, 28pt top corners, caps "ПОПОЛНИТЬ" + close X header,
+/// SPAmountPreset row, money-toned Apple Pay button, footer meta.
 ///
 /// Side effects beyond pixel layout:
 /// - On `viewWillAppear` the alarm audio + escalation timer are paused via
@@ -19,47 +19,40 @@ import os
 ///   "+N ₽" success state and auto-dismisses after 2 seconds.
 /// - On dismissal (any path: cancel, success-auto, 60s-timeout) the audio
 ///   resumes unless the alarm was already stopped externally.
-///
-/// `FiringTopUpBottomSheetPresetIDs` exposes the StoreKit product IDs the
-/// presets currently map to so tests can assert the wiring without parsing
-/// the controller's private state.
 final class FiringTopUpBottomSheetViewController: UIViewController {
 
     // MARK: - Preset model
 
     /// One of the three top-up tiles. `productID` points at the closest existing
     /// IAP SKU in StoreKitService (149 / 499 / 999) — once PM registers exact
-    /// 200 / 500 / 1000 ₽ SKUs in App Store Connect, swap these mappings to
-    /// the matching product IDs (tracked as a follow-up in #141 description).
+    /// 200 / 500 / 1000 ₽ SKUs in App Store Connect, swap these mappings.
     struct Preset {
         let amount: Int
         let label: String
-        /// StoreKit product ID. Resolved against `StoreKitService.shared.products`
-        /// when the user taps Apple Pay. If the product hasn't been loaded yet
-        /// the controller falls back to `BalanceService.topUp(amount:)` so the
-        /// debug flow still credits the wallet end-to-end.
+        let popular: Bool
+        /// StoreKit product ID. Falls back to `BalanceService.topUp(amount:)`
+        /// when not loaded so debug paths still credit the wallet.
         let productID: String
     }
 
     /// Default preset list — see `Preset.productID` for the SKU mapping caveat.
     static let defaultPresets: [Preset] = [
-        Preset(amount: 200, label: "ровно на сейчас", productID: "com.snooze_pay.balance.149"),
-        Preset(amount: 500, label: "на пару дней", productID: "com.snooze_pay.balance.499"),
-        Preset(amount: 1000, label: "забыть про баланс", productID: "com.snooze_pay.balance.999")
+        Preset(amount: 200, label: "ровно на сейчас", popular: false, productID: "com.snooze_pay.balance.149"),
+        Preset(amount: 500, label: "на пару дней", popular: true, productID: "com.snooze_pay.balance.499"),
+        Preset(amount: 1000, label: "забыть про баланс", popular: false, productID: "com.snooze_pay.balance.999")
     ]
 
     // MARK: - Configuration
 
     private let presets: [Preset]
 
-    /// Auto-resume timeout. Spec is 60 seconds (#141). Exposed as a stored
-    /// property so the controller doesn't re-read a magic literal in three
-    /// places (timer setup, label seed, countdown formatting).
+    /// Auto-resume timeout. Spec is 60 seconds. Stored as a constant so the
+    /// controller doesn't re-read a magic literal across timer setup, label
+    /// seed, and countdown formatting.
     private let autoResumeTimeout: TimeInterval = 60
 
-    /// Fired when the sheet is dismissed for any reason. Owner (the firing VC
-    /// presenter) uses this to resume the escalation timer / refresh snooze
-    /// affordance once the wallet has settled.
+    /// Fired when the sheet is dismissed for any reason. Owner uses this to
+    /// resume the escalation timer / refresh snooze affordance.
     var onDismiss: (() -> Void)?
 
     // MARK: - State
@@ -70,7 +63,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// doesn't yank the sheet out from under the StoreKit dialog.
     private var purchaseInFlight: Bool = false
 
-    /// Flips when StoreKit reports a successful credit. Drives the success-
+    /// Flips when StoreKit reports a successful credit. Drives the success
     /// state UI swap + the 2-second auto-dismiss timer.
     private var successAmount: Int?
 
@@ -85,7 +78,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// 1Hz countdown timer feeding `pauseLabel`.
     private var countdownTimer: Timer?
 
-    /// Notification observer tokens so we tear them down in `deinit`.
+    /// Notification observer tokens torn down in `deinit`.
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
 
@@ -99,28 +92,19 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return view
     }()
 
-    private let pauseDot: UIView = {
-        let view = UIView()
-        view.backgroundColor = AppColors.warn400
-        view.layer.cornerRadius = 4
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-
-    private let pauseLabel: UILabel = {
+    /// Caps "ПОПОЛНИТЬ" header — fg3 colour matches `SPTopUp.jsx` line 137.
+    private let titleCapsLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.caps
-        label.textColor = AppColors.warn300
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    private let titleLabel: UILabel = {
+    /// Optional pause countdown label "Будильник на паузе · 00:54". Rendered
+    /// inline with the title row. Mirrors SPTopUp line 137.
+    private let pauseLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.h2
-        label.textColor = AppColors.fg1
-        label.text = "Пополнить баланс"
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.numberOfLines = 1
         return label
     }()
 
@@ -144,7 +128,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return label
     }()
 
-    /// Three-tile horizontal stack of `SPAmountPreset`s.
+    /// Horizontal row of `SPAmountPreset` tiles. V2 spec arranges three
+    /// presets edge-to-edge with equal width — `distribution = .fillEqually`.
     private var presetTiles: [SPAmountPreset] = []
     private let presetStack: UIStackView = {
         let stack = UIStackView()
@@ -155,34 +140,26 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return stack
     }()
 
-    /// Apple Pay primary CTA. Title is rebuilt whenever selection changes.
-    private lazy var applePayButton: SPButton = {
-        let button = SPButton(
-            title: "Apple Pay · \(selectedAmount) ₽",
-            variant: .money,
-            size: .lg,
-            icon: UIImage(systemName: "applelogo"),
-            fullWidth: true
-        )
-        button.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
+    /// Apple Pay primary CTA. Money tone with applelogo icon + suffix that
+    /// tracks the selected preset. Rebuilt on every selection because
+    /// SPButton title/suffix is immutable post-init.
+    private lazy var applePayButton: SPButton = makeApplePayButton(amount: selectedAmount)
+
+    /// Footer meta line — "Зачислится мгновенно. Откладывание будет доступно
+    /// сразу." Replaces the V1 cancel button (the close X in the header
+    /// covers the same affordance).
+    private let footerMetaLabel: UILabel = {
+        let label = UILabel()
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.text = "Зачислится мгновенно. Откладывание будет доступно сразу."
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
-    private lazy var cancelButton: SPButton = {
-        let button = SPButton(
-            title: "Отменить",
-            variant: .ghost,
-            size: .lg,
-            fullWidth: true
-        )
-        button.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-
-    /// Full-screen overlay shown after a successful purchase. Holds the green
-    /// checkmark + "+N ₽" copy. Hidden until `successAmount` is set.
+    /// Full-screen overlay shown after a successful purchase.
     private let successContainer: UIView = {
         let view = UIView()
         view.isHidden = true
@@ -227,25 +204,26 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     init(presets: [Preset] = defaultPresets) {
         self.presets = presets
-        // Default-select the cheapest preset (200 ₽ — minimum cost of a single
-        // snooze per the spec's "amount_default" copy).
-        self.selectedAmount = presets.first?.amount ?? 200
+        // Default-select the "popular" preset (500 ₽) per V2 spec line 107;
+        // fall back to the first preset if none are marked popular.
+        self.selectedAmount = presets.first(where: { $0.popular })?.amount
+            ?? presets.first?.amount ?? 200
         self.remainingSeconds = 60
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
         if let sheet = sheetPresentationController {
-            // Custom ~360pt detent matches the design comp height. Falls back
-            // to the system `.medium` detent on iOS < 16 so we don't crash on
-            // older devices that the project still supports (15.1+).
+            // Custom ~440pt detent matches the design comp height (header +
+            // preset row + apple pay + footer). Falls back to .medium on
+            // older runtimes.
             if #available(iOS 16.0, *) {
                 let custom = UISheetPresentationController.Detent.custom(
                     identifier: UISheetPresentationController.Detent.Identifier("snoozepay.topup")
-                ) { _ in 360 }
+                ) { _ in 440 }
                 sheet.detents = [custom, .large()]
             } else {
                 sheet.detents = [.medium(), .large()]
             }
-            sheet.prefersGrabberVisible = false  // We render our own drag handle
+            sheet.prefersGrabberVisible = false  // we render our own drag handle
             sheet.preferredCornerRadius = AppRadius.xl
         }
     }
@@ -269,10 +247,10 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = AppColors.bg1
+        view.backgroundColor = AppColors.bg2
         // Per the spec the firing screen overlay is dark; pin the sheet to
-        // dark so the SPAmountPreset / SPButton tokens resolve against the
-        // same palette as the host VC.
+        // dark so SPAmountPreset / SPButton tokens resolve against the same
+        // palette as the host VC.
         overrideUserInterfaceStyle = .dark
         setupUI()
         setupPresetTiles()
@@ -281,8 +259,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Pause audio + escalation as soon as the sheet is about to render so
-        // the user isn't fighting the alarm sound while choosing a preset.
+        // Pause audio + escalation immediately so the user isn't fighting
+        // the alarm sound while choosing a preset.
         AudioService.shared.pauseAlarmSound()
         AlarmFiringCoordinator.shared.pauseEscalation()
         startAutoResumeTimer()
@@ -297,9 +275,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         countdownTimer?.invalidate()
         countdownTimer = nil
 
-        // If the user dismissed without buying — resume audio + escalation so
-        // the alarm picks up where it left off. Skip resume on success path
-        // because the host VC may have already torn down the firing flow.
+        // Resume audio + escalation unless we got here via success path —
+        // the host VC may have already torn down the firing flow on success.
         if successAmount == nil {
             AudioService.shared.resumeAlarmSound()
             AlarmFiringCoordinator.shared.resumeEscalation()
@@ -310,42 +287,50 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        let contentStack = UIStackView()
-        contentStack.axis = .vertical
-        contentStack.spacing = AppSpacing.sp4
-        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        // Header row: caps title + pause countdown stacked vertically on
+        // the left, close X on the right.
+        titleCapsLabel.attributedText = NSAttributedString(
+            string: "ПОПОЛНИТЬ",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+
+        let headerLeftStack = UIStackView(arrangedSubviews: [titleCapsLabel, pauseLabel])
+        headerLeftStack.translatesAutoresizingMaskIntoConstraints = false
+        headerLeftStack.axis = .vertical
+        headerLeftStack.spacing = 2
+        headerLeftStack.alignment = .leading
+
+        let headerRow = UIStackView(arrangedSubviews: [headerLeftStack, closeButton])
+        headerRow.translatesAutoresizingMaskIntoConstraints = false
+        headerRow.axis = .horizontal
+        headerRow.alignment = .top
+        headerRow.distribution = .equalSpacing
 
         view.addSubview(dragHandle)
-
-        // Header row: pause indicator on the left, close button on the right.
-        let pauseRow = UIStackView()
-        pauseRow.axis = .horizontal
-        pauseRow.alignment = .center
-        pauseRow.spacing = AppSpacing.sp2
-        pauseRow.translatesAutoresizingMaskIntoConstraints = false
-        pauseRow.addArrangedSubview(pauseDot)
-        pauseRow.addArrangedSubview(pauseLabel)
-        let spacer = UIView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        pauseRow.addArrangedSubview(spacer)
-        pauseRow.addArrangedSubview(closeButton)
-
-        view.addSubview(pauseRow)
-        view.addSubview(titleLabel)
+        view.addSubview(headerRow)
         view.addSubview(subtitleLabel)
         view.addSubview(presetStack)
         view.addSubview(applePayButton)
-        view.addSubview(cancelButton)
+        view.addSubview(footerMetaLabel)
         view.addSubview(successContainer)
 
-        // Success overlay — same surface, hidden until a purchase completes.
         successContainer.addSubview(successCheck)
         successContainer.addSubview(successAmountLabel)
         successContainer.addSubview(successCaption)
 
-        closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
-        let inset = AppSpacing.sp5
+        activateConstraints(headerRow: headerRow)
+    }
+
+    /// Pin every subview to its final geometry. Split out of `setupUI` so
+    /// neither function trips SwiftLint's `function_body_length` cap.
+    private func activateConstraints(headerRow: UIStackView) {
+        let inset = AppSpacing.sp5  // 20pt
 
         NSLayoutConstraint.activate([
             // Drag handle
@@ -354,22 +339,16 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             dragHandle.widthAnchor.constraint(equalToConstant: 36),
             dragHandle.heightAnchor.constraint(equalToConstant: 4),
 
-            // Pause row + close button
-            pauseRow.topAnchor.constraint(equalTo: dragHandle.bottomAnchor, constant: AppSpacing.sp4),
-            pauseRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            pauseRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-            pauseDot.widthAnchor.constraint(equalToConstant: 8),
-            pauseDot.heightAnchor.constraint(equalToConstant: 8),
+            // Header row
+            headerRow.topAnchor.constraint(equalTo: dragHandle.bottomAnchor, constant: AppSpacing.sp4),
+            headerRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            headerRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+
             closeButton.widthAnchor.constraint(equalToConstant: 32),
             closeButton.heightAnchor.constraint(equalToConstant: 32),
 
-            // Title
-            titleLabel.topAnchor.constraint(equalTo: pauseRow.bottomAnchor, constant: AppSpacing.sp2),
-            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-
             // Subtitle
-            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sp1),
+            subtitleLabel.topAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: AppSpacing.sp2),
             subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
 
@@ -383,12 +362,20 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             applePayButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             applePayButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
 
-            // Cancel
-            cancelButton.topAnchor.constraint(equalTo: applePayButton.bottomAnchor, constant: AppSpacing.sp2),
-            cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            cancelButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            // Footer meta
+            footerMetaLabel.topAnchor.constraint(equalTo: applePayButton.bottomAnchor, constant: AppSpacing.sp3),
+            footerMetaLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            footerMetaLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset)
+        ])
 
-            // Success overlay
+        activateSuccessConstraints(inset: inset)
+    }
+
+    /// Pin the post-purchase success overlay. Kept separate so the main
+    /// constraint activation reads top-to-bottom without intermixing the
+    /// always-mounted overlay block.
+    private func activateSuccessConstraints(inset: CGFloat) {
+        NSLayoutConstraint.activate([
             successContainer.topAnchor.constraint(equalTo: view.topAnchor),
             successContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             successContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -414,13 +401,31 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             let tile = SPAmountPreset(
                 value: Decimal(preset.amount),
                 label: preset.label,
-                selected: preset.amount == selectedAmount
+                selected: preset.amount == selectedAmount,
+                popular: preset.popular
             ) { [weak self] in
                 self?.selectAmount(preset.amount)
             }
             presetStack.addArrangedSubview(tile)
             presetTiles.append(tile)
         }
+    }
+
+    /// Build a fresh Apple Pay button for the supplied amount. SPButton's
+    /// title / suffix are immutable post-init, so selection changes rebuild
+    /// the button instance. Cheap — three presets, max three swaps.
+    private func makeApplePayButton(amount: Int) -> SPButton {
+        let button = SPButton(
+            title: "Apple Pay",
+            variant: .money,
+            size: .lg,
+            icon: UIImage(systemName: "applelogo"),
+            suffix: "\(amount) ₽",
+            fullWidth: true
+        )
+        button.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }
 
     // MARK: - StoreKit observers
@@ -464,33 +469,20 @@ extension FiringTopUpBottomSheetViewController {
         for (tile, preset) in zip(presetTiles, presets) {
             tile.isSelected = preset.amount == amount
         }
-        // Rebuild the Apple Pay title — SPButton doesn't expose a setter so we
-        // re-create the button title via configuration on its private label
-        // path. Cheapest path: replace the button entirely. Tradeoff: a tiny
-        // extra alloc per tap. Acceptable here (3 presets, max 3 swaps).
         rebuildApplePayButton()
     }
 
     private func rebuildApplePayButton() {
         let oldButton = applePayButton
-        let newButton = SPButton(
-            title: "Apple Pay · \(selectedAmount) ₽",
-            variant: .money,
-            size: .lg,
-            icon: UIImage(systemName: "applelogo"),
-            fullWidth: true
-        )
-        newButton.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
-        newButton.translatesAutoresizingMaskIntoConstraints = false
+        let newButton = makeApplePayButton(amount: selectedAmount)
         view.insertSubview(newButton, aboveSubview: oldButton)
         NSLayoutConstraint.activate([
             newButton.topAnchor.constraint(equalTo: presetStack.bottomAnchor, constant: AppSpacing.sp4),
             newButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp5),
             newButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp5)
         ])
-        // Re-pin cancel button below the replacement so the layout stays
-        // anchored to it.
-        cancelButton.topAnchor.constraint(equalTo: newButton.bottomAnchor, constant: AppSpacing.sp2).isActive = true
+        // Re-pin the footer meta below the replacement so it stays anchored.
+        footerMetaLabel.topAnchor.constraint(equalTo: newButton.bottomAnchor, constant: AppSpacing.sp3).isActive = true
         oldButton.removeFromSuperview()
         applePayButton = newButton
     }
@@ -508,10 +500,6 @@ extension FiringTopUpBottomSheetViewController {
             return
         }
 
-        // Resolve the StoreKit product if it's already loaded; otherwise fall
-        // back to a direct top-up so the debug flow still credits the wallet
-        // end-to-end (production path goes through StoreKitService once PM
-        // registers the exact 200/500/1000 SKUs in App Store Connect).
         if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
             Task { @MainActor in
                 await StoreKitService.shared.purchase(product)
@@ -530,7 +518,7 @@ extension FiringTopUpBottomSheetViewController {
         }
     }
 
-    @objc private func cancelTapped() {
+    @objc private func closeTapped() {
         dismiss(animated: true)
     }
 
@@ -546,14 +534,13 @@ extension FiringTopUpBottomSheetViewController {
 
         successAmountLabel.text = "+\(amount) ₽"
         successContainer.isHidden = false
-        // Cross-fade the form out so the success card reads as a swap rather
-        // than a stack.
         UIView.animate(withDuration: SPSupport.durationBase) {
-            self.titleLabel.alpha = 0
+            self.titleCapsLabel.alpha = 0
+            self.pauseLabel.alpha = 0
             self.subtitleLabel.alpha = 0
             self.presetStack.alpha = 0
             self.applePayButton.alpha = 0
-            self.cancelButton.alpha = 0
+            self.footerMetaLabel.alpha = 0
         }
 
         autoResumeTimer?.invalidate()
@@ -615,10 +602,9 @@ extension FiringTopUpBottomSheetViewController {
         let seconds = remainingSeconds % 60
         let countdown = String(format: "%02d:%02d", minutes, seconds)
         let attributed = NSAttributedString(
-            string: "БУДИЛЬНИК НА ПАУЗЕ · \(countdown)",
+            string: "На паузе · \(countdown)",
             attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
+                .font: AppTypography.meta.monospacedDigit(),
                 .foregroundColor: AppColors.warn300
             ]
         )
