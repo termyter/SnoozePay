@@ -2,10 +2,9 @@ import UIKit
 
 /// Single-line text input cell for the alarm's display name.
 ///
-/// Refresh per #143: dropped the muted "Название" placeholder + label
-/// header pairing in favour of an iOS Reminders–style large placeholder
-/// "Будильник" with no inline header, and exposes `beginEditing()` so the
-/// host controller can auto-focus on appear in create-mode.
+/// Refresh per #143/#231: iOS Reminders–style large placeholder "Название"
+/// with no inline header, and exposes `beginEditing()` so the host
+/// controller can auto-focus on appear in create-mode.
 final class NameCell: UITableViewCell {
 
     static let reuseID = "NameCell"
@@ -17,10 +16,11 @@ final class NameCell: UITableViewCell {
         field.font = AppTypography.h3
         field.textColor = AppColors.fg1
         field.translatesAutoresizingMaskIntoConstraints = false
-        // Large attributed placeholder ("Будильник") tinted with the disabled
-        // foreground role so the field still reads as empty without a label.
+        // Large attributed placeholder ("Название", #231) tinted with the
+        // disabled foreground role so the field still reads as empty without
+        // a label.
         field.attributedPlaceholder = NSAttributedString(
-            string: "Будильник",
+            string: "Название",
             attributes: [
                 .font: AppTypography.h3,
                 .foregroundColor: AppColors.fg4

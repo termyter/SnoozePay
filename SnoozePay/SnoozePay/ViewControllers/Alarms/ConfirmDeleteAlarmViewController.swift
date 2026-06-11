@@ -1,13 +1,15 @@
 import UIKit
 
-/// Bottom-sheet confirmation for destructive "Удалить будильник" (#163 / V2).
+/// Bottom-sheet confirmation for destructive "Удалить будильник" (#163 /
+/// #231 / V2).
 ///
-/// Replaces the UIAlertController-based action sheet so the destructive flow
-/// matches the SP design system (caps + h2 + meta + pain CTA). Presented
-/// modally with `.pageSheet` / `.formSheet` detents so the card slides up
-/// from the bottom edge of the create-alarm form.
+/// Presented `.overFullScreen` so the alarm-edit form stays visible — and
+/// dimmed — underneath, exactly like the `ConfirmDelete()` artboard in
+/// `SPMore2.jsx`: a `rgba(0,0,0,.55)` scrim with a subtle blur, and the
+/// sheet floating at the bottom with a `0 −24 64` upward shadow. Tapping the
+/// scrim cancels.
 ///
-/// Layout mirrors `SPMore2.jsx` lines 224-248 (`ConfirmDelete()`):
+/// Sheet layout mirrors `SPMore2.jsx` (`ConfirmDelete()`):
 ///   - 64×64 pain-tinted square with X icon
 ///   - h2 "Удалить будильник?" title
 ///   - body copy line
@@ -30,9 +32,33 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
 
     // MARK: - UI
 
+    /// Subtle backdrop blur under the scrim — the artboard's
+    /// `backdrop-filter: blur(2px)`.
+    private let blurView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    /// Translucent black scrim so the edit screen below reads as "present
+    /// but inert" — `rgba(0,0,0,.55)` per the artboard.
+    private let scrimView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        return view
+    }()
+
     private let card: SPCard = {
         let card = SPCard(tone: .raised, padding: AppSpacing.sp6, cornerRadius: AppRadius.xl)
         card.translatesAutoresizingMaskIntoConstraints = false
+        // Upward sheet shadow `0 -24px 64px rgba(0,0,0,.5)` — overrides the
+        // tone's default downward shadow2 so the sheet reads as a layer
+        // lifting off the dimmed screen below.
+        card.layer.shadowColor = UIColor.black.cgColor
+        card.layer.shadowOpacity = 0.5
+        card.layer.shadowOffset = CGSize(width: 0, height: -24)
+        card.layer.shadowRadius = 32
         return card
     }()
 
@@ -107,14 +133,11 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
         self.bodyCopy = body
         self.onConfirm = onConfirm
         super.init(nibName: nil, bundle: nil)
-        // Custom presentation — slide up from the bottom on phones, render as
-        // a centred form sheet on iPad / large screens.
-        modalPresentationStyle = .pageSheet
-        if let sheet = sheetPresentationController {
-            sheet.detents = [.medium()]
-            sheet.preferredCornerRadius = AppRadius.xl
-            sheet.prefersGrabberVisible = true
-        }
+        // Overlay presentation (#231): the edit screen must stay visible,
+        // dimmed, behind the sheet — `.pageSheet` would push it back and
+        // shrink it instead.
+        modalPresentationStyle = .overFullScreen
+        modalTransitionStyle = .crossDissolve
     }
 
     @available(*, unavailable)
@@ -126,16 +149,21 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = AppColors.bg0
+        view.backgroundColor = .clear
         bodyLabel.text = bodyCopy
         setupUI()
         deleteButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        scrimView.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(cancelTapped))
+        )
     }
 
     // MARK: - Setup
 
     private func setupUI() {
+        view.addSubview(blurView)
+        view.addSubview(scrimView)
         view.addSubview(card)
 
         iconBadge.addSubview(iconView)
@@ -146,9 +174,24 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
         card.addSubview(cancelButton)
 
         NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: AppSpacing.sp3),
-            card.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -AppSpacing.sp3),
-            card.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
+            blurView.topAnchor.constraint(equalTo: view.topAnchor),
+            blurView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            blurView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            blurView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            scrimView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrimView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrimView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrimView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            // Bottom-floating sheet — `padding: 0 12px 16px` per the
+            // artboard, anchored above the home indicator.
+            card.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp3),
+            card.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp3),
+            card.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -AppSpacing.sp2
+            ),
 
             iconBadge.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
             iconBadge.centerXAnchor.constraint(equalTo: card.centerXAnchor),

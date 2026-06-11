@@ -90,8 +90,10 @@ final class ThemeRowCell: UITableViewCell {
         contentView.addSubview(chevronView)
         contentView.addSubview(valueLabel)
 
+        // 20pt horizontal insets — the V2 list-row rule `padding="4px 20px"`
+        // (#231).
         NSLayoutConstraint.activate([
-            thumbnail.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp4),
+            thumbnail.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
             thumbnail.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             thumbnail.widthAnchor.constraint(equalToConstant: 28),
             thumbnail.heightAnchor.constraint(equalToConstant: 28),
@@ -104,7 +106,7 @@ final class ThemeRowCell: UITableViewCell {
             titleLabel.leadingAnchor.constraint(equalTo: thumbnail.trailingAnchor, constant: AppSpacing.sp3),
             titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp4),
+            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
             chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             valueLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sp2),

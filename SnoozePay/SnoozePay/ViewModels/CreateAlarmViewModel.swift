@@ -44,7 +44,10 @@ final class CreateAlarmViewModel {
         // Seed from existing alarm or defaults
         self.time = alarm?.time ?? Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
         self.repeatDays = alarm?.repeatDays ?? []
-        self.name = alarm?.name ?? "Будильник"
+        // New alarms start with an empty name so the form shows the
+        // "Название" placeholder (#231); `makeAlarmFromCurrentState` falls
+        // back to "Будильник" when the user saves without typing one.
+        self.name = alarm?.name ?? ""
         self.soundID = alarm?.soundID ?? "radar"
         self.vibrationEnabled = alarm?.vibrationEnabled ?? true
         // Clamp legacy values silently — pre-#143 alarms could store up to 30
@@ -162,10 +165,19 @@ final class CreateAlarmViewModel {
 
     // MARK: - Progressive scale preview text
 
+    /// The four doubling steps of the progressive penalty in roubles —
+    /// `[base, ×2, ×4, ×8]`. Drives the `50 → 100 → 200 → 400 ₽` chain on
+    /// the progressive card (#231). Non-finite penalty input degrades to the
+    /// default 50 ₽ base, mirroring `makeAlarmFromCurrentState`.
+    var progressiveChain: [Int] {
+        let base = penaltyAmount.isFinite ? Int(max(penaltyAmount, 0)) : 50
+        return (0..<4).map { base << $0 }
+    }
+
+    /// Spoken/long form of `progressiveChain` — used as the chain row's
+    /// accessibility label.
     var progressiveScalePreview: String {
-        let base = Int(penaltyAmount)
-        let values = (0..<4).map { base * Int(pow(2.0, Double($0))) }
-        return values.enumerated()
+        progressiveChain.enumerated()
             .map { "\($0.offset + 1)-е: \(MoneyFormatter.string($0.element))" }
             .joined(separator: " → ")
     }

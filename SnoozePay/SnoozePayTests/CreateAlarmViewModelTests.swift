@@ -78,7 +78,9 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     func testDefaultValues_areCorrect() {
         let vm = CreateAlarmViewModel(repository: repo)
 
-        XCTAssertEqual(vm.name, "Будильник")
+        // New alarms seed an empty name so the form shows the "Название"
+        // placeholder (#231); the save path falls back to "Будильник".
+        XCTAssertEqual(vm.name, "")
         XCTAssertEqual(vm.penaltyAmount, 50)
         XCTAssertEqual(vm.snoozeMinutes, 9)
         XCTAssertEqual(vm.soundID, "radar")
@@ -131,6 +133,40 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
             vm.toggleDay(day)
         }
         XCTAssertEqual(vm.repeatDays, [0, 1, 2, 3, 4, 5, 6])
+    }
+
+    // MARK: - Progressive chain (#231)
+
+    func testProgressiveChain_doublesBaseFourTimes() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = 50
+        XCTAssertEqual(vm.progressiveChain, [50, 100, 200, 400])
+    }
+
+    func testProgressiveChain_tracksPenaltyChanges() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = 10
+        XCTAssertEqual(vm.progressiveChain, [10, 20, 40, 80])
+
+        vm.penaltyAmount = 200
+        XCTAssertEqual(vm.progressiveChain, [200, 400, 800, 1600])
+    }
+
+    func testProgressiveChain_nonFinitePenaltyFallsBackToDefaultBase() {
+        // Mirrors makeAlarmFromCurrentState's sanitation (#207): garbage
+        // penalty input degrades to the 50 ₽ default instead of trapping.
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = .nan
+        XCTAssertEqual(vm.progressiveChain, [50, 100, 200, 400])
+
+        vm.penaltyAmount = .infinity
+        XCTAssertEqual(vm.progressiveChain, [50, 100, 200, 400])
+    }
+
+    func testProgressiveChain_negativePenaltyClampsToZero() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = -25
+        XCTAssertEqual(vm.progressiveChain, [0, 0, 0, 0])
     }
 
     // MARK: - Progressive scale preview
