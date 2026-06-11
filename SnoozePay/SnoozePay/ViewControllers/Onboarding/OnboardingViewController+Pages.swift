@@ -6,8 +6,8 @@ import UIKit
 // helpers here own:
 //   - per-page content builders (`makePage1` / `makePage2` / `makePage3`),
 //   - the bespoke pill-dot row used in place of `UIPageControl`,
-//   - the action handlers wired from the primary / "Позже" CTAs,
-//   - the CTA-rebuild that swaps "Дальше" → "Положить" on step 3.
+//   - the action handlers wired from the primary / "Позже" / "Пропустить" CTAs,
+//   - the CTA-rebuild that swaps "Дальше" → "Пополнить" on step 3.
 //
 // Single-purpose helper view classes (glow host, penalty pill, numbered step
 // row, page dot, deposit option card) live in `OnboardingComponents.swift`.
@@ -225,26 +225,19 @@ extension OnboardingViewController {
             optionsStack.addArrangedSubview(optionView)
         }
 
-        let footer = UILabel()
-        footer.font = AppTypography.meta
-        footer.text = "Можно поменять в любой момент"
-        footer.textColor = AppColors.fg4
-        footer.textAlignment = .center
-
-        let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, optionsStack, footer])
+        // V3: no "Можно поменять в любой момент" footer — the deposit column
+        // ends with the option cards; the content block centres vertically
+        // like pages 1/2 (JSX `flex: 1; justify-content: center`).
+        let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, optionsStack])
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         mainStack.axis = .vertical
         mainStack.alignment = .fill
         mainStack.setCustomSpacing(AppSpacing.sp2, after: caps)
         mainStack.setCustomSpacing(AppSpacing.sp6, after: titleLabel)
-        mainStack.setCustomSpacing(AppSpacing.sp4, after: optionsStack)
 
         container.addSubview(mainStack)
         NSLayoutConstraint.activate([
-            mainStack.topAnchor.constraint(
-                equalTo: container.safeAreaLayoutGuide.topAnchor,
-                constant: AppSpacing.sp9      // 56pt — matches JSX `paddingTop: 54`
-            ),
+            mainStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: AppSpacing.sp4),
             mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -AppSpacing.sp4)
         ])
@@ -268,11 +261,23 @@ extension OnboardingViewController {
 
     /// Pager state — toggles glow, the "Позже" secondary, and the primary
     /// button (which transforms into the deposit CTA on step 3).
+    ///
+    /// The "Позже" slot is alpha-faded rather than `isHidden`-collapsed so
+    /// the green primary button bottoms out at the same Y on every page —
+    /// the V3 CTA-anchor rule (`SPMore.jsx` keeps a 20pt spacer under the
+    /// "Дальше" button for the same effect).
     func updatePagerState(forPage page: Int) {
         rebuildDotsRow(activePage: page)
         let isDepositPage = page == pageCount - 1
         setStepGlow(active: isDepositPage)
-        laterButton.isHidden = !isDepositPage
+        laterButton.alpha = isDepositPage ? 1 : 0
+        laterButton.isUserInteractionEnabled = isDepositPage
+        laterButton.isAccessibilityElement = isDepositPage
+        // Dots sit 14pt above the CTA group on the deposit page
+        // (JSX `marginBottom: 14`), 16pt elsewhere.
+        dotsGapConstraint?.constant = isDepositPage
+            ? -(AppSpacing.sp3 + 2)   // 14pt
+            : -AppSpacing.sp4         // 16pt
         if isDepositPage {
             rebuildDepositCTA()
         } else {
@@ -290,18 +295,17 @@ extension OnboardingViewController {
         swapPrimary(with: newButton)
     }
 
-    /// Replace the primary button with the deposit CTA — title "Положить",
-    /// suffix `{value} ₽`, leading shield icon. Re-run on every option-tap
-    /// so the suffix tracks the selection.
+    /// Replace the primary button with the deposit CTA — title "Пополнить",
+    /// suffix `{value} ₽`, leading wallet icon (V3 reads as "put money in",
+    /// matching the Wallet deposit sheet). Re-run on every option-tap so the
+    /// suffix tracks the selection.
     func rebuildDepositCTA() {
         let amount = depositOptions[selectedDepositIndex].amount
-        let configuration = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-        let shield = UIImage(systemName: "shield.fill", withConfiguration: configuration)
         let newButton = SPButton(
-            title: "Положить",
+            title: "Пополнить",
             variant: .money,
             size: .lg,
-            icon: shield,
+            icon: UIImage(systemName: "wallet.pass"),
             suffix: amount.formattedRubles(),
             fullWidth: true
         )
@@ -348,6 +352,13 @@ extension OnboardingViewController {
         UserDefaults.standard.set(true, forKey: Self.completedKey)
         UserDefaults.standard.set(false, forKey: Self.firstTopUpDoneKey)
         onFinished?()
+    }
+
+    /// Top-right "Пропустить" pill — available on every page; semantically
+    /// identical to "Позже" (finish onboarding without a first top-up).
+    @objc
+    func skipTapped() {
+        laterTapped()
     }
 
     // MARK: - Deposit option taps

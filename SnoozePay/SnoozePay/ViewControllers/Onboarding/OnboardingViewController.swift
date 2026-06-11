@@ -6,9 +6,16 @@ import UIKit
 /// Three full-screen pages on a horizontally-paged `UIScrollView`:
 /// 1. Concept — giant clock "07:00" with a warn "−50 ₽" pill and a hero h1.
 /// 2. Mechanics — three numbered steps explaining the snooze-tax loop.
-/// 3. Deposit — caps eyebrow, h1, three option cards (200 / 500 / 1000 ₽)
-///    with a money-tinted selection, plus a "Положить {value} ₽" CTA and a
+/// 3. Deposit — caps eyebrow, h1, three option cards (250 / 500 / 1000 ₽)
+///    with a money-tinted selection, plus a "Пополнить {value} ₽" CTA and a
 ///    secondary "Позже — попробовать без баланса" link.
+///
+/// V3 (2026-06 handoff, `docs/design/v2-handoff/components/SPMore.jsx`):
+/// a "Пропустить" pill floats top-right on every page, the deposit page
+/// content centres vertically like pages 1/2, and the green CTA keeps the
+/// same bottom Y on all pages (the secondary "Позже" slot stays in the
+/// layout on pages 1/2 at alpha 0 — the UIKit equivalent of the JSX's
+/// 20pt CTA-anchor spacer).
 ///
 /// Behavioural contract preserved from V1 so SceneDelegate keeps working:
 /// `completedKey`, `isCompleted`, `firstTopUpDoneKey`, and `onFinished` all
@@ -34,7 +41,7 @@ final class OnboardingViewController: UIViewController {
     // MARK: - Page data
 
     /// Deposit presets shown on step 3. The middle preset is the default
-    /// selection so the "Положить" CTA reads "500 ₽" on first appear.
+    /// selection so the "Пополнить" CTA reads "500 ₽" on first appear.
     struct DepositOption {
         let amount: Decimal
         let title: String
@@ -46,9 +53,9 @@ final class OnboardingViewController: UIViewController {
     /// building option cards and the CTA suffix.
     let depositOptions: [DepositOption] = [
         DepositOption(
-            amount: 200,
+            amount: 250,
             title: "Попробовать",
-            description: "≈ 4 откладывания по \(MoneyFormatter.string(50))",
+            description: "≈ 5 откладываний по \(MoneyFormatter.string(50))",
             isPopular: false
         ),
         DepositOption(
@@ -123,10 +130,36 @@ final class OnboardingViewController: UIViewController {
         return stack
     }()
 
+    /// "Пропустить" escape hatch floating top-right on every page
+    /// (`SPMore.jsx OnboardingSkip` — pill 16pt below the status bar, 16pt
+    /// from the trailing edge, `whiteOverlay06` fill + `whiteOverlay08`
+    /// hairline, `fg3` buttonSm label). Completes onboarding exactly like
+    /// the "Позже" secondary.
+    let skipButton: UIButton = {
+        var configuration = UIButton.Configuration.plain()
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 6, leading: 14, bottom: 6, trailing: 14
+        )
+        configuration.attributedTitle = AttributedString(
+            "Пропустить",
+            attributes: AttributeContainer([
+                .font: AppTypography.buttonSm,
+                .foregroundColor: AppColors.fg3
+            ])
+        )
+        let button = UIButton(configuration: configuration)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.backgroundColor = AppColors.whiteOverlay06
+        button.layer.borderWidth = 1
+        button.layer.borderColor = AppColors.whiteOverlay08.cgColor
+        button.layer.masksToBounds = true
+        return button
+    }()
+
     /// Primary CTA visible on every page. On pages 1 & 2 the title reads
     /// "Дальше"; on page 3 the VC swaps the instance via
-    /// `rebuildDepositCTA()` so the title becomes "Положить" with a money
-    /// suffix and a leading shield icon. `internal` so the `+Pages` extension
+    /// `rebuildDepositCTA()` so the title becomes "Пополнить" with a money
+    /// suffix and a leading wallet icon. `internal` so the `+Pages` extension
     /// can swap the live instance + re-pin the constraints.
     var primaryButton = SPButton(
         title: "Дальше",
@@ -135,9 +168,12 @@ final class OnboardingViewController: UIViewController {
         fullWidth: true
     )
 
-    /// Secondary "Позже — попробовать без баланса" link rendered only on
-    /// step 3. Lives in `secondaryStack` so the layout shifts cleanly when
-    /// the user pages back to steps 1/2.
+    /// Secondary "Позже — попробовать без баланса" link visible only on
+    /// step 3. Always part of `ctaStack`'s layout — on steps 1/2 it fades to
+    /// alpha 0 (interaction off) instead of collapsing, so the green primary
+    /// CTA keeps the exact same bottom Y across all pages (the JSX mockup
+    /// approximates this with a 20pt spacer; the shared-stack layout makes
+    /// the alignment exact).
     let laterButton = SPButton(
         title: "Позже — попробовать без баланса",
         variant: .quiet,
@@ -160,6 +196,11 @@ final class OnboardingViewController: UIViewController {
     /// top-left corner per JSX (rgba(46,219,159,.25) radial). Painted
     /// directly on `view.layer` once and toggled via `setStepGlow(active:)`.
     private var stepGlowLayer: CAGradientLayer?
+
+    /// Bottom gap between the pill-dot row and the CTA stack — 14pt on the
+    /// deposit page (`SPMore.jsx` Onboarding3 `marginBottom: 14`), 16pt on
+    /// pages 1/2. `internal` so `+Pages.updatePagerState` can retune it.
+    var dotsGapConstraint: NSLayoutConstraint?
 
     /// Internal page containers managed by `+Pages.buildPageStack()`.
     var pageViews: [UIView] = []
@@ -208,6 +249,7 @@ final class OnboardingViewController: UIViewController {
             )
         }
         scrollView.contentSize = CGSize(width: width * CGFloat(pageCount), height: height)
+        skipButton.layer.cornerRadius = skipButton.bounds.height / 2   // pill
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -224,13 +266,13 @@ final class OnboardingViewController: UIViewController {
         view.addSubview(pageControl)
         view.addSubview(dotsStack)
         view.addSubview(ctaStack)
+        view.addSubview(skipButton)
 
         pageControl.numberOfPages = pageCount
         pageControl.currentPage = 0
 
         ctaStack.addArrangedSubview(primaryButton)
         ctaStack.addArrangedSubview(laterButton)
-        laterButton.isHidden = true
 
         installLayoutConstraints()
         wireActionTargets()
@@ -240,6 +282,11 @@ final class OnboardingViewController: UIViewController {
 
     private func installLayoutConstraints() {
         let inset = AppSpacing.sp4   // 16pt — matches JSX `padding: ... 16px`
+        let dotsGap = dotsStack.bottomAnchor.constraint(
+            equalTo: ctaStack.topAnchor,
+            constant: -AppSpacing.sp4
+        )
+        dotsGapConstraint = dotsGap
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -254,14 +301,22 @@ final class OnboardingViewController: UIViewController {
             ),
 
             dotsStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dotsStack.bottomAnchor.constraint(
-                equalTo: ctaStack.topAnchor,
-                constant: -AppSpacing.sp4
-            ),
+            dotsGap,
             dotsStack.heightAnchor.constraint(equalToConstant: 6),
 
             pageControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            pageControl.bottomAnchor.constraint(equalTo: dotsStack.topAnchor)
+            pageControl.bottomAnchor.constraint(equalTo: dotsStack.topAnchor),
+
+            // "Пропустить" pill — JSX `top: 70; right: 16` on a 54pt-status-bar
+            // frame ⇒ 16pt below the safe-area top, 16pt from the trailing edge.
+            skipButton.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor,
+                constant: AppSpacing.sp4
+            ),
+            skipButton.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor,
+                constant: -AppSpacing.sp4
+            )
         ])
     }
 
@@ -269,6 +324,7 @@ final class OnboardingViewController: UIViewController {
         scrollView.delegate = self
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
         laterButton.addTarget(self, action: #selector(laterTapped), for: .touchUpInside)
+        skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
     }
 
     // MARK: - Step glow
