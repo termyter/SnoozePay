@@ -18,6 +18,9 @@ import UIKit
 /// the urgency is now folded directly into the pill: when balance drops below
 /// `SPAlarmsListHeader.lowBalanceThreshold` the pill switches its background
 /// to a soft warn tint + warn-stroke and the hint copy reflects the warning.
+/// At exactly 0 ₽ the pill escalates further into the pain (zero-balance)
+/// variant — red stroke, reddish gradient wash, crossed-out coin tile and a
+/// pain-300 amount (#232); the "Пополнить" CTA stays money-green throughout.
 ///
 /// The 40×40 circular "+" button on the right is the only entry point for
 /// "create new alarm" on this screen — the legacy nav-bar plus button is
@@ -41,8 +44,10 @@ final class SPAlarmsListHeader: UIView {
     /// routes through the same "Пополнить" tap path.
     var onWarnTopUpTap: (() -> Void)?
 
-    /// Update the balance pill in place. The pill auto-switches into its
-    /// warn-tint variant when `balance.doubleValue ≤ lowBalanceThreshold`.
+    /// Update the balance pill in place. The pill auto-switches between
+    /// three tones based on the amount: pain when the balance is 0 ₽
+    /// (zero-balance state, #232), warn-tint when
+    /// `balance.doubleValue ≤ lowBalanceThreshold`, neutral otherwise.
     /// `hint` and `delta` are accepted for source-compat with the legacy
     /// header; `delta` is currently ignored in the V2 pill layout (the
     /// rolling-week change rendered as `↑/↓ amount` migrates onto the
@@ -51,10 +56,14 @@ final class SPAlarmsListHeader: UIView {
     func setBalance(_ balance: Decimal, hint: String?, delta: Decimal? = nil) {
         _ = delta // accepted for API compat; pill omits the delta row.
         currentBalance = balance
-        let isLow = (NSDecimalNumber(decimal: balance).doubleValue) <= Self.lowBalanceThreshold
-        applyTone(isLow: isLow)
+        let tone = Self.tone(for: balance)
+        applyTone(tone)
         balanceValueLabel.attributedText = MoneyFormatter.attributed(
-            balance, digitsFont: AppTypography.moneyMd
+            balance,
+            digitsFont: AppTypography.moneyMd,
+            // 0 ₽ renders in pain-300 per SPScreensV2.jsx L369; the
+            // non-zero tones keep the label's fg1 textColor.
+            color: tone == .zero ? AppColors.pain300 : nil
         )
         if let hint = hint, !hint.isEmpty {
             balanceHintLabel.text = hint
@@ -82,6 +91,24 @@ final class SPAlarmsListHeader: UIView {
     /// the model agree on what "low" means without coupling them through
     /// an import.
     static let lowBalanceThreshold: Double = 100
+
+    /// Visual tone of the balance pill (#232). `zero` (pain chrome +
+    /// IconCoinOff) outranks `low` (warn chrome) — both can't show at
+    /// once and an empty wallet is the more urgent story. The alarms in
+    /// the list stay visually active in every tone: at 0 ₽ they still
+    /// fire, the user just can't pay to snooze them.
+    private enum PillTone {
+        case normal
+        case low
+        case zero
+    }
+
+    private static func tone(for balance: Decimal) -> PillTone {
+        let value = NSDecimalNumber(decimal: balance).doubleValue
+        if value <= 0 { return .zero }
+        if value <= lowBalanceThreshold { return .low }
+        return .normal
+    }
 
     // MARK: - Subviews
 
@@ -145,6 +172,24 @@ final class SPAlarmsListHeader: UIView {
         view.layer.cornerRadius = 14
         view.layer.masksToBounds = true
         view.layer.borderWidth = 1
+        return view
+    }()
+
+    /// Reddish wash behind the pill content in the zero-balance state —
+    /// `linear-gradient(135deg, pain@.10 → pain@.02)` per SPScreensV2.jsx
+    /// L346-347. Hidden in the neutral / warn tones, where the flat
+    /// `backgroundColor` carries the surface instead.
+    private let zeroTintGradient: SPGradientView = {
+        let view = SPGradientView(
+            colors: [
+                AppColors.pain500.withAlphaComponent(0.10).cgColor,
+                AppColors.pain500.withAlphaComponent(0.02).cgColor
+            ],
+            locations: [0.0, 1.0]
+        )
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = false
+        view.isHidden = true
         return view
     }()
 
@@ -251,8 +296,7 @@ final class SPAlarmsListHeader: UIView {
     private func refreshDynamicColors() {
         // CALayer cgColors don't auto-resolve dynamic UIColors.
         bottomHairline.backgroundColor = AppColors.whiteOverlay06
-        let isLow = NSDecimalNumber(decimal: currentBalance).doubleValue <= Self.lowBalanceThreshold
-        applyTone(isLow: isLow)
+        applyTone(Self.tone(for: currentBalance))
     }
 
     // MARK: - Configuration
@@ -267,6 +311,7 @@ final class SPAlarmsListHeader: UIView {
         addButton.addSubview(addIconView)
 
         addSubview(pillButton)
+        pillButton.addSubview(zeroTintGradient)
         pillButton.addSubview(walletIconHost)
         walletIconHost.addSubview(walletIconImageView)
         pillButton.addSubview(balanceCapsLabel)
@@ -311,6 +356,12 @@ final class SPAlarmsListHeader: UIView {
             pillButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             pillButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
             pillButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sp4),
+
+            // Zero-balance pain wash fills the pill behind the content.
+            zeroTintGradient.topAnchor.constraint(equalTo: pillButton.topAnchor),
+            zeroTintGradient.leadingAnchor.constraint(equalTo: pillButton.leadingAnchor),
+            zeroTintGradient.trailingAnchor.constraint(equalTo: pillButton.trailingAnchor),
+            zeroTintGradient.bottomAnchor.constraint(equalTo: pillButton.bottomAnchor),
 
             // Wallet icon — 40×40 leading.
             walletIconHost.leadingAnchor.constraint(equalTo: pillButton.leadingAnchor, constant: 12),
@@ -364,23 +415,54 @@ final class SPAlarmsListHeader: UIView {
             bottomHairline.heightAnchor.constraint(equalToConstant: 1)
         ])
 
-        applyTone(isLow: false)
+        applyTone(.normal)
     }
 
     /// Switch the pill chrome between the neutral (bg2 + whiteOverlay08
-    /// stroke) and warn (warn500@12% + warn500@45% stroke) variants. The
-    /// hint copy + colour also shift so the low-balance state stays legible
-    /// at a glance without an extra banner row.
-    private func applyTone(isLow: Bool) {
-        if isLow {
+    /// stroke), warn (warn500@12% + warn500@45% stroke) and zero-balance
+    /// pain (pain gradient wash + pain500@30% stroke + IconCoinOff tile,
+    /// #232) variants. The hint colour also shifts so the state stays
+    /// legible at a glance without an extra banner row. The "Пополнить"
+    /// CTA keeps its money variant in every tone — topping up is a
+    /// positive action even when the wallet is empty.
+    private func applyTone(_ tone: PillTone) {
+        zeroTintGradient.isHidden = tone != .zero
+        switch tone {
+        case .zero:
+            // The pain wash gradient carries the surface; flat bg clears.
+            pillButton.backgroundColor = .clear
+            pillButton.layer.borderColor = AppColors.pain500.withAlphaComponent(0.30).cgColor
+            balanceHintLabel.textColor = AppColors.pain300
+            walletIconHost.refresh(
+                colors: SPSupport.painGradientColors,
+                locations: SPSupport.painGradientLocations
+            )
+            // Crossed-out coin on the pain tile, white ink per the JSX.
+            walletIconImageView.image = SPIcons.coinOff(size: 18)
+            walletIconImageView.tintColor = .white
+        case .low:
             pillButton.backgroundColor = AppColors.warn500.withAlphaComponent(0.12)
             pillButton.layer.borderColor = AppColors.warn500.withAlphaComponent(0.45).cgColor
             balanceHintLabel.textColor = AppColors.warn300
-        } else {
+            restoreWalletTile()
+        case .normal:
             pillButton.backgroundColor = AppColors.bg2
             pillButton.layer.borderColor = AppColors.whiteOverlay08.cgColor
             balanceHintLabel.textColor = AppColors.fg3
+            restoreWalletTile()
         }
+    }
+
+    /// Reset the 40×40 leading tile back to its money-gradient wallet
+    /// recipe after a visit to the zero-balance pain variant.
+    private func restoreWalletTile() {
+        walletIconHost.refresh(
+            colors: SPSupport.moneyGradientColors,
+            locations: SPSupport.moneyGradientLocations
+        )
+        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+        walletIconImageView.image = UIImage(systemName: "creditcard.fill", withConfiguration: config)
+        walletIconImageView.tintColor = AppColors.fgOnMoney
     }
 
     // MARK: - Actions
