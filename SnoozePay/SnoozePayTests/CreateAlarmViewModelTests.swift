@@ -159,10 +159,18 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
         vm.progressiveScale = true
         vm.save()
-        XCTAssertTrue(repo.fetchAll().first?.progressiveScale ?? false)
+        let saved = repo.fetchAll().first
+        XCTAssertTrue(saved?.progressiveScale ?? false)
 
-        vm.progressiveScale = false
-        vm.save()
+        // A non-editing VM mints a fresh UUID per save, so a second save()
+        // on the SAME VM would create a second alarm instead of updating the
+        // first. Re-open the persisted alarm in edit mode — that is the flow
+        // the #51 toggle actually runs through on the edit screen.
+        let editVM = CreateAlarmViewModel(alarm: saved, repository: repo)
+        XCTAssertTrue(editVM.progressiveScale, "Edit VM must pick up the persisted toggle state")
+        editVM.progressiveScale = false
+        editVM.save()
+        XCTAssertEqual(repo.fetchAll().count, 1, "Edit-mode save must update, not append")
         XCTAssertFalse(repo.fetchAll().first?.progressiveScale ?? true)
     }
 

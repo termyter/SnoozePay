@@ -547,6 +547,10 @@ final class AlarmsListViewModelTests: XCTestCase {
 
         let vm = makeViewModel()
         vm.loadData()
+        // `repo.save(enabled alarm)` above already scheduled once — that is
+        // by design. Snapshot the count so the assertion below catches only
+        // NEW schedule calls made by the toggle itself.
+        let preToggleScheduleCount = stubScheduler.scheduledIDs.count
         // Pre-arm the stub with a failure — disabling MUST NOT consult it.
         stubScheduler.scheduleResult = .failure(.system(message: "should not fire"))
 
@@ -556,7 +560,8 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.toggleAlarm(id: alarm.id, enabled: false)
 
         XCTAssertNil(receivedError, "Disabling must skip the scheduler — no failure path")
-        XCTAssertTrue(stubScheduler.scheduledIDs.isEmpty, "schedule() must not run for enabled=false")
+        XCTAssertEqual(stubScheduler.scheduledIDs.count, preToggleScheduleCount,
+                       "schedule() must not run for enabled=false")
         XCTAssertFalse(vm.alarms[0].enabled, "In-memory state must reflect disable")
     }
 }

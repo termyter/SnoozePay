@@ -9,12 +9,41 @@ final class AlarmSchedulerTests: XCTestCase {
 
     // MARK: - Notification content
 
-    func testNotificationContent_hasCriticalInterruptionLevel() {
+    /// The interruption level must follow the resolved permission state:
+    /// `.critical` only when the critical-alert grant succeeded, `.timeSensitive`
+    /// otherwise. The old version asserted `.critical` unconditionally, which
+    /// only passed on simulators where a previous run had already granted the
+    /// permission — on a fresh CI simulator the flag is false and the test
+    /// went red. Driving the flag through `requestPermission` with a stub
+    /// center makes both branches deterministic in any environment.
+    func testNotificationContent_interruptionLevelFollowsCriticalGrant() {
         let alarm = Alarm(penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
 
-        XCTAssertEqual(content.interruptionLevel, .critical,
-                       "Alarm notifications must use critical interruption level to bypass DND")
+        // Granted critical-alert permission → .critical (bypasses DND).
+        let granting = PermissionStubCenter(grant: true)
+        let grantedScheduler = AlarmScheduler(notificationCenter: granting)
+        let grantedExp = expectation(description: "granted permission resolves")
+        grantedScheduler.requestPermission { _ in grantedExp.fulfill() }
+        wait(for: [grantedExp], timeout: 2.0)
+        XCTAssertEqual(
+            grantedScheduler.makeContent(for: alarm, snoozeCount: 0).interruptionLevel,
+            .critical,
+            "With critical-alert grant the alarm must bypass DND"
+        )
+
+        // Denied → degrade to .timeSensitive, never silently `.active`.
+        // Running this branch LAST also restores the static flag to false so
+        // no state leaks into other tests.
+        let denying = PermissionStubCenter(grant: false)
+        let deniedScheduler = AlarmScheduler(notificationCenter: denying)
+        let deniedExp = expectation(description: "denied permission resolves")
+        deniedScheduler.requestPermission { _ in deniedExp.fulfill() }
+        wait(for: [deniedExp], timeout: 2.0)
+        XCTAssertEqual(
+            deniedScheduler.makeContent(for: alarm, snoozeCount: 0).interruptionLevel,
+            .timeSensitive,
+            "Without the critical grant the alarm must degrade to time-sensitive"
+        )
     }
 
     func testNotificationContent_includesSoundIDInUserInfo() {
@@ -146,20 +175,19 @@ final class AlarmSchedulerTests: XCTestCase {
 
     // MARK: - Permission / scheduling smoke
     //
-    // NOTE: AlarmScheduler depends on UNUserNotificationCenter.current() which is a
-    // process-wide singleton and cannot be DI'd without a refactor (extracting a
-    // protocol seam). Until that refactor lands, we cannot mock notification-center
-    // failures to assert that errors are logged. The smoke test below verifies that
-    // requesting permission does not crash and invokes its completion handler in a
-    // reasonable time — which at minimum guards against regressions in the
-    // permission dispatch flow added in IOS-033.
+    // Uses the `init(notificationCenter:)` seam with a stub center. The old
+    // version called the REAL UNUserNotificationCenter through
+    // `AlarmScheduler.shared` — on CI simulators the permission daemon never
+    // answers, the completion never fires and the test died on its 5s timeout.
 
     func testRequestPermission_invokesCompletionWithoutCrash() {
+        let scheduler = AlarmScheduler(notificationCenter: PermissionStubCenter(grant: false))
         let expectation = expectation(description: "requestPermission completes")
-        AlarmScheduler.shared.requestPermission { _ in
+        scheduler.requestPermission { granted in
+            XCTAssertFalse(granted, "Stub denies — completion must carry the denial through")
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 5.0)
+        wait(for: [expectation], timeout: 2.0)
     }
 
     // MARK: - Cancel covers all trigger variants (regression for IOS-070)
@@ -233,4 +261,43 @@ final class AlarmSchedulerTests: XCTestCase {
         XCTAssertTrue(remainingIDs.isEmpty,
                       "cancel(_:) must remove every notification for the alarm — leaked: \(remainingIDs)")
     }
+}
+
+// MARK: - Test double
+
+/// Minimal `NotificationScheduling` stub for the permission-path tests:
+/// answers `requestAuthorization` synchronously with the configured grant
+/// and treats every other member as a no-op. Keeps the permission tests
+/// deterministic on simulators where the real daemon never answers (CI).
+private final class PermissionStubCenter: NotificationScheduling {
+    private let grant: Bool
+    init(grant: Bool) { self.grant = grant }
+
+    func requestAuthorization(
+        options: UNAuthorizationOptions,
+        completionHandler: @escaping (Bool, Error?) -> Void
+    ) {
+        completionHandler(grant, nil)
+    }
+
+    func add(
+        _ request: UNNotificationRequest,
+        withCompletionHandler completion: ((Error?) -> Void)?
+    ) {
+        completion?(nil)
+    }
+    func getPendingNotificationRequests(
+        completionHandler: @escaping ([UNNotificationRequest]) -> Void
+    ) {
+        completionHandler([])
+    }
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
+    func getDeliveredNotifications(
+        completionHandler: @escaping ([UNNotification]) -> Void
+    ) {
+        completionHandler([])
+    }
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {}
+    func removeAllPendingNotificationRequests() {}
 }

@@ -116,7 +116,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
 
         XCTAssertEqual(vm.snoozeCount, 3)
-        XCTAssertEqual(vm.snoozeCountFormatted, "3 раз")
+        XCTAssertEqual(vm.snoozeCountFormatted, "3", "V2: bare digits — the caption carries the word")
     }
 
     // MARK: - Motivational messages
@@ -134,7 +134,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        XCTAssertTrue(vm.motivationalMessage.contains("2 чашек кофе"))
+        XCTAssertTrue(vm.motivationalMessage.contains("2 кофе"), "V2 copy: 'N кофе', got: \(vm.motivationalMessage)")
         XCTAssertTrue(vm.motivationalMessage.contains("☕"))
     }
 
@@ -154,7 +154,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        XCTAssertTrue(vm.motivationalMessage.contains("1 чашек кофе"))
+        XCTAssertTrue(vm.motivationalMessage.contains("1 кофе"), "V2 copy: 'N кофе', got: \(vm.motivationalMessage)")
     }
 
     // MARK: - Streak message
@@ -167,7 +167,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
 
         if vm.streak > 0 {
-            XCTAssertTrue(vm.streakMessage.contains("без откладывания"))
+            XCTAssertTrue(vm.streakMessage.contains("без откладываний"), "V2 copy plural, got: \(vm.streakMessage)")
             XCTAssertTrue(vm.streakMessage.contains("\(vm.streak)"))
         }
     }
