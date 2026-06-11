@@ -45,6 +45,19 @@ final class BalanceService {
     private var _balanceCorrupted: Bool = false
     var balanceCorrupted: Bool { queue.sync { _balanceCorrupted } }
 
+    /// The raw invalid value that latched `balanceCorrupted`, kept until the
+    /// user acknowledges via `acknowledgeCorruption()`. `nil` while healthy.
+    ///
+    /// `balanceCorruptedNotification` is posted once per process and
+    /// `NotificationCenter` does not retro-deliver: when corruption is
+    /// detected by the init-time probe (cold start, before any UI exists)
+    /// the event is dropped for late subscribers. This queryable seam lets a
+    /// late-registering observer (e.g. `AlarmsListViewModel.loadData()`) pull
+    /// the pending corruption state after attaching, so the user-facing alert
+    /// still fires (#206).
+    private var _corruptedRawValue: Double?
+    var corruptedRawValue: Double? { queue.sync { _corruptedRawValue } }
+
     /// Production code MUST use `BalanceService.shared` to avoid creating
     /// isolated instances with separate serial queues (which reintroduces the
     /// race this class exists to prevent).
@@ -221,6 +234,7 @@ final class BalanceService {
             guard _balanceCorrupted else { return false }
             defaults.set(0.0, forKey: balanceKey)
             _balanceCorrupted = false
+            _corruptedRawValue = nil
             return true
         }
         if cleared {
@@ -318,6 +332,10 @@ final class BalanceService {
         // acknowledges via `acknowledgeCorruption()`.
         let firstObservation = !_balanceCorrupted
         _balanceCorrupted = true
+        // Keep the offending value queryable for late subscribers — the
+        // one-shot notification below is dropped when corruption latches at
+        // init time before any UI observer is attached (#206).
+        _corruptedRawValue = raw
         if firstObservation {
             os_log(
                 "Corrupted balance observed in storage: %{public}f — gating mutations until acknowledged",
