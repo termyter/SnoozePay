@@ -1,25 +1,23 @@
 import UIKit
 
-/// Wallet tab — root of the V2 design (see
-/// `docs/design/v2-handoff/components/SPScreensV2.jsx` L416-481). Hosts:
+/// Wallet tab — V3 informational layout (issue #233, artboard 18 in
+/// `docs/design/v2-handoff/components/SPScreensV2.jsx` `WalletV2`). Hosts:
 ///
+/// - Page-title header: h1 «Кошелёк» + small money "Пополнить" pill +
+///   bottom hairline (same pattern as `SPAlarmsListHeader`)
 /// - SPBalanceCard hero with live weekly delta + affordability hint
-/// - 3×2 preset grid binding to `WalletPresets`
 /// - 7-day mini chart (`WalletWeeklyChartView`) summing pain transactions
-/// - Primary "Положить" CTA which presents `TopUpViewController` modally
-/// - "Все операции" link → `WalletTransactionHistoryViewController`
-/// - "Способы оплаты" row → `PaymentMethodsViewController`
+/// - "История операций" preview — last 3 transactions + "Все операции →"
+///   link into `WalletTransactionHistoryViewController`
+/// - Quiet footer disclaimer
 ///
-/// Layout helpers live in `WalletViewController+Layout.swift`; preset data
-/// lives in `WalletViewController+Presets.swift`. Keeping the VC at ≤ 400
-/// lines is a lint rule, not just preference — split builders here as the
-/// design grows.
+/// Amount selection moved into `DepositBottomSheetViewController`
+/// (artboard 19) — the preset grid, bottom CTA and the "Способы оплаты"
+/// row were removed from this tab per #233.
+///
+/// Layout helpers live in `WalletViewController+Layout.swift`; balance
+/// hints live in `WalletHints.swift`.
 final class WalletViewController: UIViewController {
-
-    // MARK: - State
-
-    private(set) var selectedAmount: Decimal = WalletPresets.defaultAmount
-    var presetButtons: [SPAmountPreset] = []
 
     // MARK: - Subviews
 
@@ -27,13 +25,19 @@ final class WalletViewController: UIViewController {
     private let contentStack = UIStackView()
     private let balanceCard: SPBalanceCard
     private let weeklyChart = WalletWeeklyChartView()
-    private let depositButton = SPButton(
-        title: "Положить",
-        variant: .money,
-        size: .lg,
-        icon: UIImage(systemName: "shield"),
-        suffix: WalletPresets.defaultAmount.formattedRubles(),
-        fullWidth: true
+
+    /// Single-child host whose transaction-preview card is rebuilt on every
+    /// refresh — transactions change behind this screen's back (snoozes,
+    /// firing-time top-ups), so the rows can't be static.
+    private let txPreviewHost: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        return stack
+    }()
+
+    private lazy var pageHeader = makePageHeader(
+        target: self,
+        action: #selector(presentDepositSheet)
     )
 
     // MARK: - Init
@@ -43,7 +47,7 @@ final class WalletViewController: UIViewController {
         balanceCard = SPBalanceCard(
             balance: initialBalance,
             delta: nil,
-            hint: WalletPresets.defaultBalanceHint()
+            hint: WalletHints.defaultBalanceHint()
         )
         super.init(nibName: nil, bundle: nil)
     }
@@ -61,9 +65,9 @@ final class WalletViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
-        title = "Кошелёк"
-        // V2 disables large titles for the wallet tab — the SPBalanceCard
-        // hero already supplies the visual weight a large title would add.
+        // The custom page header carries the h1 — suppress the nav-bar title
+        // so the word doesn't render twice (same as the Alarms tab).
+        navigationItem.title = ""
         navigationController?.navigationBar.prefersLargeTitles = false
         navigationItem.largeTitleDisplayMode = .never
 
@@ -76,7 +80,6 @@ final class WalletViewController: UIViewController {
         navigationItem.rightBarButtonItem = settingsButton
 
         setupLayout()
-        depositButton.addTarget(self, action: #selector(presentTopUp), for: .touchUpInside)
 
         NotificationCenter.default.addObserver(
             self,
@@ -94,6 +97,9 @@ final class WalletViewController: UIViewController {
     // MARK: - Layout
 
     private func setupLayout() {
+        pageHeader.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pageHeader)
+
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.alwaysBounceVertical = true
         view.addSubview(scrollView)
@@ -113,18 +119,16 @@ final class WalletViewController: UIViewController {
 
         balanceCard.translatesAutoresizingMaskIntoConstraints = false
         contentStack.addArrangedSubview(balanceCard)
-        contentStack.addArrangedSubview(makePresetsSection())
         contentStack.addArrangedSubview(makeWeeklyChartSection())
-        contentStack.addArrangedSubview(makeTransactionsLink(target: self, action: #selector(openHistory)))
-        contentStack.addArrangedSubview(depositButton)
+        contentStack.addArrangedSubview(makeTxPreviewSection())
         contentStack.addArrangedSubview(makeFooterCaption())
-        contentStack.addArrangedSubview(makePaymentMethodsRow(
-            target: self,
-            action: #selector(openPaymentMethods)
-        ))
 
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            pageHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            pageHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            pageHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            scrollView.topAnchor.constraint(equalTo: pageHeader.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -135,23 +139,8 @@ final class WalletViewController: UIViewController {
             contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
             contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
 
-            depositButton.heightAnchor.constraint(equalToConstant: 56),
             weeklyChart.heightAnchor.constraint(equalToConstant: 80)
         ])
-
-        contentStack.setCustomSpacing(AppSpacing.sp2, after: depositButton)
-        contentStack.setCustomSpacing(AppSpacing.sp6, after: makeFooterCaption())
-    }
-
-    private func makePresetsSection() -> UIView {
-        let header = makePresetsHeader()
-        let grid = makePresetGrid(targets: &presetButtons) { [weak self] index in
-            self?.selectPreset(at: index)
-        }
-        let stack = UIStackView(arrangedSubviews: [header, grid])
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.sp3
-        return stack
     }
 
     private func makeWeeklyChartSection() -> UIView {
@@ -162,28 +151,12 @@ final class WalletViewController: UIViewController {
         return stack
     }
 
-    // MARK: - Preset selection
-
-    private func selectPreset(at index: Int) {
-        let presets = WalletPresets.presets
-        guard index >= 0, index < presets.count else { return }
-        let preset = presets[index]
-        selectedAmount = preset.value
-        for (idx, button) in presetButtons.enumerated() {
-            button.isSelected = (idx == index)
-        }
-        rebuildDepositButtonSuffix()
-    }
-
-    private func rebuildDepositButtonSuffix() {
-        // SPButton doesn't expose a setter for the suffix label after init —
-        // rebuilding the title with the rouble suffix via accessibility
-        // identifiers would be invasive. We instead toggle via the public
-        // affordance: setTitle. The actual rouble suffix lives in the
-        // private `suffixLabel`, but for V2 a re-rendered title preserves
-        // the gradient + chrome cheaply. Future: extend SPButton with a
-        // `setSuffix(_:)` API if more screens need this.
-        depositButton.accessibilityLabel = "Положить \(selectedAmount.formattedRubles())"
+    private func makeTxPreviewSection() -> UIView {
+        let header = makeTxPreviewHeader(target: self, action: #selector(openHistory))
+        let stack = UIStackView(arrangedSubviews: [header, txPreviewHost])
+        stack.axis = .vertical
+        stack.spacing = AppSpacing.sp3
+        return stack
     }
 
     // MARK: - Refresh
@@ -198,17 +171,28 @@ final class WalletViewController: UIViewController {
         let balance = BalanceService.shared.balance
         let decimal = Decimal(balance)
         let delta = WalletStats.weeklyDelta()
-        let hint = WalletPresets.affordHint(forBalance: balance, averagePrice: 50)
+        let hint = WalletHints.affordHint(forBalance: balance, averagePrice: 50)
         balanceCard.update(balance: decimal, delta: delta, hint: hint)
         weeklyChart.update(values: WalletStats.weeklyPenaltyTotals())
+        rebuildTxPreview()
+    }
+
+    private func rebuildTxPreview() {
+        for sub in txPreviewHost.arrangedSubviews {
+            txPreviewHost.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+        let items = WalletTransactionPreview.items(
+            from: TransactionRepository.shared.fetchAll()
+        )
+        txPreviewHost.addArrangedSubview(makeTxPreviewCard(items: items))
     }
 
     // MARK: - Navigation
 
-    @objc private func presentTopUp() {
-        let topUp = TopUpViewController()
-        let nav = UINavigationController(rootViewController: topUp)
-        present(nav, animated: true)
+    @objc private func presentDepositSheet() {
+        let sheet = DepositBottomSheetViewController()
+        present(sheet, animated: true)
     }
 
     @objc private func openSettings() {
@@ -221,11 +205,6 @@ final class WalletViewController: UIViewController {
     @objc private func openHistory() {
         let history = WalletTransactionHistoryViewController()
         navigationController?.pushViewController(history, animated: true)
-    }
-
-    @objc private func openPaymentMethods() {
-        let methods = PaymentMethodsViewController()
-        navigationController?.pushViewController(methods, animated: true)
     }
 }
 
