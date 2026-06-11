@@ -52,7 +52,7 @@ final class WalletTransactionPreviewTests: XCTestCase {
         XCTAssertEqual(item.title, "Поспать ещё")
         XCTAssertTrue(item.isDebit)
         XCTAssertEqual(item.iconSystemName, "flame")
-        XCTAssertEqual(item.amountText, "−50 ₽")
+        XCTAssertEqual(item.amountText, "−50\u{202F}₽")
     }
 
     func testTopupItem_isGreenPlusWithPlusAmount() {
@@ -62,7 +62,7 @@ final class WalletTransactionPreviewTests: XCTestCase {
         XCTAssertEqual(item.title, "Пополнение баланса")
         XCTAssertFalse(item.isDebit)
         XCTAssertEqual(item.iconSystemName, "plus")
-        XCTAssertEqual(item.amountText, "+500 ₽")
+        XCTAssertEqual(item.amountText, "+500\u{202F}₽")
     }
 
     func testPromotionItem_isGreenGiftWithPlusAmount() {
@@ -72,7 +72,7 @@ final class WalletTransactionPreviewTests: XCTestCase {
         XCTAssertEqual(item.title, "Промо-зачисление")
         XCTAssertFalse(item.isDebit)
         XCTAssertEqual(item.iconSystemName, "gift")
-        XCTAssertEqual(item.amountText, "+200 ₽")
+        XCTAssertEqual(item.amountText, "+200\u{202F}₽")
     }
 
     func testAmountText_usesRussianThousandsSeparator() {
@@ -81,7 +81,7 @@ final class WalletTransactionPreviewTests: XCTestCase {
         )
         // `Decimal.formattedRubles()` inserts the ru_RU group separator —
         // never a hand-rolled "1500 ₽".
-        XCTAssertEqual(item.amountText, "+1\u{00a0}500 ₽")
+        XCTAssertEqual(item.amountText, "+1\u{00a0}500\u{202F}₽")
     }
 
     // MARK: - Relative timestamps
