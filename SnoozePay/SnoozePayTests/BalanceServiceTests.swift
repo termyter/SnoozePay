@@ -335,6 +335,46 @@ final class BalanceServiceTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(service.balance, 0)
     }
+
+    // MARK: - Cold-start corruption queryable by late observers (#206)
+
+    /// The init-time probe posts `balanceCorruptedNotification` BEFORE any UI
+    /// observer can exist (cold start: AppDelegate materializes the shared
+    /// instance first). NotificationCenter does not retro-deliver, so the
+    /// corruption state MUST stay queryable — `balanceCorrupted` +
+    /// `corruptedRawValue` — for the late subscriber to pull.
+    func testColdStartCorruption_stateQueryableByLateObserver() {
+        let center = NotificationCenter()
+        testDefaults.set(-77.25, forKey: "user_balance")
+        // Init probe latches corruption and posts with NO observer attached —
+        // the notification is dropped, simulating the cold-start race.
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        // A late observer arrives — no notification will ever replay, but the
+        // queryable seam must expose the full pending corruption state.
+        XCTAssertTrue(service.balanceCorrupted,
+                      "Init-time probe must latch the corruption flag")
+        XCTAssertEqual(service.corruptedRawValue, -77.25,
+                       "Raw corrupt value must stay queryable for late observers")
+    }
+
+    /// `corruptedRawValue` must be `nil` while the store is healthy and must
+    /// clear together with the flag on `acknowledgeCorruption()`.
+    func testCorruptedRawValue_nilWhenHealthyAndClearedAfterAcknowledge() {
+        let center = NotificationCenter()
+        let healthy = makeService(balance: 100, notificationCenter: center)
+        XCTAssertNil(healthy.corruptedRawValue,
+                     "Healthy store must not report a pending corrupt value")
+
+        testDefaults.set(-1.0, forKey: "user_balance")
+        let corrupt = BalanceService(defaults: testDefaults, notificationCenter: center)
+        XCTAssertEqual(corrupt.corruptedRawValue, -1.0)
+
+        corrupt.acknowledgeCorruption()
+        XCTAssertNil(corrupt.corruptedRawValue,
+                     "Acknowledgement must clear the pending corrupt value")
+        XCTAssertFalse(corrupt.balanceCorrupted)
+    }
 }
 
 /// Tests for AlarmFiringViewModel — snooze/balance deduction edge cases.

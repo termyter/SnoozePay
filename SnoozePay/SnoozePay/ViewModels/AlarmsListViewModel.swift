@@ -10,6 +10,7 @@ final class AlarmsListViewModel {
     private let alarmRepository: AlarmRepository
     private let balanceService: BalanceService
     private let transactionRepository: TransactionRepository
+    private let notificationCenter: NotificationCenter
 
     // MARK: - State
 
@@ -25,6 +26,14 @@ final class AlarmsListViewModel {
     /// their alarms (issue #72). Carries a `LocalizedError` whose
     /// `errorDescription` is already user-facing Russian copy.
     var onLoadError: ((LocalizedError) -> Void)?
+    /// Fired (once per corruption episode) when the stored balance is
+    /// corrupt — negative / NaN / infinite `user_balance` (#119). Carries the
+    /// raw offending value. The VC presents an alert offering to wipe the
+    /// corrupt value via `acknowledgeBalanceCorruption()`. Covers BOTH the
+    /// live notification AND corruption latched at cold start before this VM
+    /// existed — `loadData()` pulls the latched state from the service, since
+    /// `NotificationCenter` does not retro-deliver to late subscribers (#206).
+    var onBalanceCorrupted: ((Double) -> Void)?
 
     // MARK: - Errors
 
@@ -52,18 +61,33 @@ final class AlarmsListViewModel {
     /// (the ViewController owning it may outlive the VM in edge cases).
     private var balanceObserver: NSObjectProtocol?
 
+    /// Observer token for `balanceCorruptedNotification` — covers corruption
+    /// that latches while this VM is alive. Cold-start corruption (latched in
+    /// `BalanceService.init` before any observer exists) is instead pulled in
+    /// `loadData()` via `surfacePendingBalanceCorruption()` (#206).
+    private var corruptionObserver: NSObjectProtocol?
+
+    /// Dedupe latch so the corruption alert fires once per episode even
+    /// though `loadData()` runs on every `viewWillAppear` (and the live
+    /// notification + the pulled state could otherwise double-fire). Reset
+    /// in `acknowledgeBalanceCorruption()` so a future re-corruption is
+    /// surfaced again.
+    private var hasSurfacedBalanceCorruption = false
+
     // MARK: - Init
 
     init(
         alarmRepository: AlarmRepository = .shared,
         balanceService: BalanceService = .shared,
-        transactionRepository: TransactionRepository = .shared
+        transactionRepository: TransactionRepository = .shared,
+        notificationCenter: NotificationCenter = .default
     ) {
         self.alarmRepository = alarmRepository
         self.balanceService = balanceService
         self.transactionRepository = transactionRepository
+        self.notificationCenter = notificationCenter
 
-        balanceObserver = NotificationCenter.default.addObserver(
+        balanceObserver = notificationCenter.addObserver(
             forName: BalanceService.balanceChangedNotification,
             object: nil,
             queue: .main
@@ -73,11 +97,24 @@ final class AlarmsListViewModel {
             self.balance = newBalance
             self.onBalanceUpdated?(newBalance)
         }
+
+        corruptionObserver = notificationCenter.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let raw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double else { return }
+            self.surfaceBalanceCorruption(rawValue: raw)
+        }
     }
 
     deinit {
         if let token = balanceObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
+        }
+        if let token = corruptionObserver {
+            notificationCenter.removeObserver(token)
         }
     }
 
@@ -99,6 +136,36 @@ final class AlarmsListViewModel {
         balance = balanceService.balance
         onAlarmsUpdated?()
         onBalanceUpdated?(balance)
+        surfacePendingBalanceCorruption()
+    }
+
+    // MARK: - Balance corruption (#119 / #206)
+
+    /// Pulls corruption state latched BEFORE this VM registered its observer
+    /// (cold start: AppDelegate materializes `BalanceService.shared`, whose
+    /// init-time probe posts `balanceCorruptedNotification` with no listener
+    /// attached — the event is dropped, see #206). Called from `loadData()`,
+    /// which the VC invokes after binding callbacks, so the alert is
+    /// guaranteed a live `onBalanceCorrupted` handler.
+    private func surfacePendingBalanceCorruption() {
+        guard balanceService.balanceCorrupted else { return }
+        surfaceBalanceCorruption(rawValue: balanceService.corruptedRawValue ?? balance)
+    }
+
+    private func surfaceBalanceCorruption(rawValue: Double) {
+        guard !hasSurfacedBalanceCorruption else { return }
+        hasSurfacedBalanceCorruption = true
+        onBalanceCorrupted?(rawValue)
+    }
+
+    /// Wipes the corrupt `user_balance` (resets to 0) after the user
+    /// confirmed in the alert. `BalanceService` broadcasts
+    /// `balanceChangedNotification` on success, which refreshes this VM's
+    /// `balance` via the regular observer. The dedupe latch is reset so a
+    /// future corruption episode surfaces a fresh alert.
+    func acknowledgeBalanceCorruption() {
+        balanceService.acknowledgeCorruption()
+        hasSurfacedBalanceCorruption = false
     }
 
     // MARK: - Toggle
