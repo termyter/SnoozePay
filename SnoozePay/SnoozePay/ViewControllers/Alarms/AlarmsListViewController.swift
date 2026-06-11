@@ -103,11 +103,8 @@ class AlarmsListViewController: UIViewController {
     func presentStreakModal(streakDays: Int, on viewController: UIViewController? = nil) {
         let host = viewController ?? self
         guard host.presentedViewController == nil else { return }
-        let saved = StreakModalViewController.estimatedSavings(
-            for: streakDays,
-            alarms: viewModel.alarms
-        )
-        let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved)
+        // V3 modal (#236) is de-monetized — no saved-amount input anymore.
+        let modal = StreakModalViewController(streakDays: streakDays)
         host.present(modal, animated: true)
     }
 
