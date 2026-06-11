@@ -1,5 +1,6 @@
 import Foundation
 import AudioToolbox
+import os
 
 /// ViewModel for create/edit alarm screen.
 final class CreateAlarmViewModel {
@@ -187,10 +188,19 @@ final class CreateAlarmViewModel {
         "jazz": 1026
     ]
 
-    /// Play a preview of the given sound using system sounds
-    func previewSound(_ soundID: String) {
-        guard let systemID = Self.systemSoundMap[soundID] else { return }
+    /// Play a preview of the given sound using system sounds.
+    /// - Returns: `false` when `soundID` has no entry in `systemSoundMap` —
+    ///   the tap is a no-op, which previously happened silently (#210). The
+    ///   result is discardable for UI callers but lets tests pin the map
+    ///   against `availableSounds` so they can't drift apart.
+    @discardableResult
+    func previewSound(_ soundID: String) -> Bool {
+        guard let systemID = Self.systemSoundMap[soundID] else {
+            AppLogger.audio.error("previewSound: unknown soundID \(soundID, privacy: .public)")
+            return false
+        }
         AudioServicesPlaySystemSound(systemID)
+        return true
     }
 
     // MARK: - Alarm theme (#151)

@@ -47,17 +47,30 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let vm = CreateAlarmViewModel(repository: repo)
         // Calling previewSound with a valid ID should not crash.
         // AudioServicesPlaySystemSound may be a no-op in test environment.
-        vm.previewSound("dawn")
-        vm.previewSound("radar")
-        vm.previewSound("drops")
+        XCTAssertTrue(vm.previewSound("dawn"))
+        XCTAssertTrue(vm.previewSound("radar"))
+        XCTAssertTrue(vm.previewSound("drops"))
     }
 
     func testPreviewSound_withInvalidID_doesNotCrash() {
         let vm = CreateAlarmViewModel(repository: repo)
-        // Invalid IDs should be silently ignored (guard let returns)
-        vm.previewSound("nonexistent_sound")
-        vm.previewSound("")
-        vm.previewSound("🎵")
+        // Unknown IDs are a no-op — previewSound reports it via the
+        // Bool result (and logs) instead of failing silently (#210).
+        XCTAssertFalse(vm.previewSound("nonexistent_sound"))
+        XCTAssertFalse(vm.previewSound(""))
+        XCTAssertFalse(vm.previewSound("🎵"))
+    }
+
+    /// Drift guard (#210): every sound offered in the picker must have a
+    /// preview mapping, otherwise the preview tap is dead for that row.
+    func testPreviewSound_coversAllAvailableSounds() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        for sound in vm.availableSounds {
+            XCTAssertTrue(
+                vm.previewSound(sound.id),
+                "Sound '\(sound.id)' is listed in availableSounds but has no systemSoundMap entry"
+            )
+        }
     }
 
     // MARK: - Default values
