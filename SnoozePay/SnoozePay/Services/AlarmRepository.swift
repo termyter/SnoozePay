@@ -77,6 +77,10 @@ final class AlarmRepository {
 
     // MARK: - Read
 
+    /// Lossy read: a decode failure is indistinguishable from "no alarms"
+    /// (#210). Prefer `fetchAllChecked()` in production paths that render
+    /// state to the user — this variant is kept for tests and callers that
+    /// genuinely cannot surface an error.
     func fetchAll() -> [Alarm] {
         queue.sync { (try? readAll()) ?? [] }
     }
@@ -88,6 +92,9 @@ final class AlarmRepository {
         try queue.sync { try readAll() }
     }
 
+    /// Lossy read: a decode failure is indistinguishable from "alarm doesn't
+    /// exist" (#210). Prefer `fetchChecked(id:)` on hot paths — this variant
+    /// is kept for tests and callers that cannot surface an error.
     func fetch(id: UUID) -> Alarm? {
         queue.sync { (try? readAll())?.first { $0.id == id } }
     }

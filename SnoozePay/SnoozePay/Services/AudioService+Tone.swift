@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 // MARK: - Synthetic alarm tone generation
 //
@@ -25,7 +26,16 @@ extension AudioService {
         )
 
         let wavData = packWAV(samples: samples, totalSamples: totalSamples)
-        return try? AVAudioPlayer(data: wavData)
+        do {
+            return try AVAudioPlayer(data: wavData)
+        } catch {
+            // Last-resort fallback failed — the alarm fires with vibration
+            // only. Log it so "why no tone" is diagnosable from Console
+            // instead of requiring a source read (#210).
+            let desc = String(describing: error)
+            AppLogger.audio.error("generateAlarmTone: AVAudioPlayer init failed: \(desc, privacy: .public)")
+            return nil
+        }
     }
 
     /// Build interleaved 16-bit PCM samples with the dual-tone amplitude
