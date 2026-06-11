@@ -212,9 +212,10 @@ final class WalletViewController: UIViewController {
     }
 
     @objc private func openSettings() {
+        // Child screen with a back arrow (#237) — pushed onto the tab's
+        // existing navigation stack instead of a standalone modal.
         let settings = SettingsViewController()
-        let nav = UINavigationController(rootViewController: settings)
-        present(nav, animated: true)
+        navigationController?.pushViewController(settings, animated: true)
     }
 
     @objc private func openHistory() {

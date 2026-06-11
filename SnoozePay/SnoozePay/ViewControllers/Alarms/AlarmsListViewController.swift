@@ -153,9 +153,10 @@ class AlarmsListViewController: UIViewController {
     }
 
     @objc private func openSettings() {
+        // Child screen with a back arrow (#237) — pushed onto the tab's
+        // existing navigation stack instead of a standalone modal.
         let settingsVC = SettingsViewController()
-        let nav = UINavigationController(rootViewController: settingsVC)
-        present(nav, animated: true)
+        navigationController?.pushViewController(settingsVC, animated: true)
     }
 
     #if DEBUG

@@ -39,6 +39,7 @@ class SettingsViewController: UIViewController {
     /// call (issue #144).
     enum Section: Int, CaseIterable {
         case account    // Transaction history + Balance
+        case finance    // Default snooze price (display-only, no PaymentMethods in MVP — #237)
         case referral   // My code (copyable) + friend's code input + caption
         case appearance // Theme selector (system / light / dark)
         case info       // Privacy policy + Terms
@@ -66,7 +67,11 @@ class SettingsViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Настройки"
-        navigationController?.navigationBar.prefersLargeTitles = true
+        // Settings is a child screen pushed from the gear icon on
+        // AlarmsList/Wallet (#237) — inline title keeps the standard back
+        // arrow visible and avoids flipping the shared nav bar into
+        // large-title mode for the parent screen.
+        navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = AppColors.bg0
         setupUI()
         observeBalanceChanges()
@@ -165,6 +170,7 @@ extension SettingsViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return 0 }
         switch sec {
         case .account: return 2    // Transaction history, Balance
+        case .finance: return 1    // Default snooze price
         case .referral: return ReferralRow.allCases.count
         case .appearance: return 1 // Dark theme
         case .info: return 2       // Privacy, Terms
@@ -176,6 +182,7 @@ extension SettingsViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
         case .account: return "АККАУНТ"
+        case .finance: return "ФИНАНСЫ"
         case .referral: return "ПРИГЛАСИТЬ ДРУГА"
         case .appearance: return "ОФОРМЛЕНИЕ"
         case .info: return "ИНФОРМАЦИЯ"
@@ -207,6 +214,7 @@ extension SettingsViewController: UITableViewDataSource {
 
         switch section {
         case .account:    return makeAccountCell(at: indexPath)
+        case .finance:    return makeDefaultPriceRow(at: indexPath)
         case .referral:   return makeReferralCell(at: indexPath)
         case .appearance: return makeAppearanceCell(tableView, at: indexPath)
         case .info:       return makeInfoRow(at: indexPath)
@@ -307,7 +315,7 @@ extension SettingsViewController: UITableViewDelegate {
                 copyMyCodeToPasteboard()
             }
 
-        case .appearance:
+        case .finance, .appearance:
             break
 
         case .info:

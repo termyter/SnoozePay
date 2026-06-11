@@ -29,11 +29,32 @@ extension SettingsViewController {
         // current when it (re-)enters the viewport; live updates while the
         // row is visible arrive via the balance observer's `reloadRows`.
         cell.configure(
-            systemName: "dollarsign.circle",
+            systemName: "rublesign.circle",
             iconColor: AppColors.money500,
             title: "Баланс",
             trailingText: MoneyFormatter.string(BalanceService.shared.balance),
             trailingColor: AppColors.money500,
+            accessory: .none,
+            selectionStyle: .none
+        )
+        return cell
+    }
+
+    // MARK: Finance section
+
+    /// Display-only "Цена откладывания по умолчанию · 50 ₽" row (#237).
+    /// The value mirrors `AlarmsListViewModel.defaultPenaltyAmount` (the
+    /// `Alarm.init` default applied to new alarms); per-alarm price editing
+    /// lives on the Create/Edit screen, so this row carries no navigation.
+    /// "Способы оплаты" is intentionally absent — PaymentMethods is V2.
+    func makeDefaultPriceRow(at indexPath: IndexPath) -> UITableViewCell {
+        let cell = dequeueIconRowCell(at: indexPath)
+        cell.configure(
+            systemName: "rublesign.circle",
+            iconColor: AppColors.warn500,
+            title: "Цена откладывания по умолчанию",
+            trailingText: Decimal(AlarmsListViewModel.defaultPenaltyAmount).formattedRubles(),
+            trailingColor: AppColors.warn500,
             accessory: .none,
             selectionStyle: .none
         )
