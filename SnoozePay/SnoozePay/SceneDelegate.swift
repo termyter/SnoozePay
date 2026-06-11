@@ -25,6 +25,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // would skip it.
         ThemeService.shared.apply(to: window)
 
+        #if DEBUG
+        // Visual-audit hook: `-uitour <screen>` mounts the requested screen
+        // directly, bypassing splash/onboarding (see UITourLauncher).
+        if let tourScreen = UITourLauncher.requestedScreen {
+            UITourLauncher.mount(tourScreen, in: window)
+            window.makeKeyAndVisible()
+            return
+        }
+        #endif
+
         // Always mount the branded Splash first — it owns the first ~200ms of
         // perceived launch and crossfades into whichever real root the user
         // state requires (Onboarding → Permissions → TabBar).
@@ -63,7 +73,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if !PermissionsViewController.hasBeenShown {
             return makePermissionsViewController()
         }
-        return makeTabBarController()
+        return Self.makeMainTabBar()
     }
 
     private func makePermissionsViewController() -> UIViewController {
@@ -82,7 +92,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // fresh install. If for some reason the flag was already flipped
         // (e.g. test fixture), fall straight through to the tab bar.
         let nextRoot: UIViewController = PermissionsViewController.hasBeenShown
-            ? makeTabBarController()
+            ? Self.makeMainTabBar()
             : makePermissionsViewController()
         UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
             window.rootViewController = nextRoot
@@ -96,7 +106,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             AppLogger.appDelegate.error("transitionToMainApp: window nil — user stuck on onboarding")
             return
         }
-        let tabBar = makeTabBarController()
+        let tabBar = Self.makeMainTabBar()
         UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
             window.rootViewController = tabBar
         }
@@ -104,7 +114,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     // MARK: - Root UI setup
 
-    private func makeTabBarController() -> UIViewController {
+    /// Static so the DEBUG `UITourLauncher` can mount the same tab bar the
+    /// production flow uses — duplicating the tab setup would let the audit
+    /// build drift from what users actually see.
+    static func makeMainTabBar() -> UIViewController {
         let tabBar = UITabBarController()
 
         // Alarms tab
