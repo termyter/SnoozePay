@@ -45,11 +45,10 @@ final class AlarmRepositoryTests: XCTestCase {
     }
 
     func testSave_updatesExistingAlarm() {
-        var alarm = makeAlarm(name: "Original")
+        let alarm = makeAlarm(name: "Original")
         repo.save(alarm)
 
-        alarm.name = "Updated"
-        repo.save(alarm)
+        repo.save(alarm.with(name: "Updated"))
 
         XCTAssertEqual(repo.fetchAll().count, 1)
         XCTAssertEqual(repo.fetch(id: alarm.id)?.name, "Updated")
@@ -304,11 +303,10 @@ final class AlarmRepositoryTests: XCTestCase {
     /// invariant so a future regression that switched to "always append" would
     /// fail loudly here even if the last-write-wins on the field comparison.
     func testSave_upsertsExistingAlarmInPlace() {
-        var alarm = makeAlarm(name: "v1")
+        let alarm = makeAlarm(name: "v1")
         repo.save(alarm)
         repo.save(alarm) // same id, second time
-        alarm.name = "v2"
-        repo.save(alarm) // mutated, same id
+        repo.save(alarm.with(name: "v2")) // changed copy, same id
 
         let stored = repo.fetchAll()
         XCTAssertEqual(stored.count, 1, "Repeated saves of the same id must NOT duplicate the alarm")
@@ -355,9 +353,7 @@ final class AlarmRepositoryTests: XCTestCase {
             if idx % 2 == 0 {
                 self.repo.setEnabled(true, id: alarm.id)
             } else {
-                var disabled = alarm
-                disabled.enabled = false
-                self.repo.save(disabled)
+                self.repo.save(alarm.with(enabled: false))
             }
         }
 

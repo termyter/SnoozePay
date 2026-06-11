@@ -13,12 +13,17 @@ final class AlarmsListViewModelTests: XCTestCase {
         var scheduleResult: Result<Void, AlarmScheduler.SchedulingError> = .success(())
         private(set) var scheduledIDs: [UUID] = []
         private(set) var cancelledIDs: [UUID] = []
+        /// Fired synchronously inside `schedule` BEFORE the completion runs.
+        /// Lets tests sabotage the store between the optimistic persist and
+        /// the VM's failure-rollback persist (#205 rollback-fails path).
+        var onSchedule: (() -> Void)?
 
         func schedule(
             _ alarm: Alarm,
             completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
         ) {
             scheduledIDs.append(alarm.id)
+            onSchedule?()
             completion?(scheduleResult)
         }
 
@@ -95,7 +100,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.loadData()
 
         let penalty = vm.alarmPenaltyString(at: 0)
-        XCTAssertEqual(penalty, "▲ ОТЛОЖИТЬ: 50 ₽")
+        XCTAssertEqual(penalty, "▲ ПОСПАТЬ ЕЩЁ: −50\u{202F}₽")
     }
 
     func testAlarmPenaltyString_highPenalty() {
@@ -106,7 +111,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.loadData()
 
         let penalty = vm.alarmPenaltyString(at: 0)
-        XCTAssertEqual(penalty, "▲ ОТЛОЖИТЬ: 1000 ₽")
+        XCTAssertEqual(penalty, "▲ ПОСПАТЬ ЕЩЁ: −1\u{00A0}000\u{202F}₽")
     }
 
     // MARK: - Safe index handling
@@ -182,12 +187,13 @@ final class AlarmsListViewModelTests: XCTestCase {
 
     // MARK: - Coverage gaps surfaced by pr-test-analyzer (#32)
 
-    /// `toggleAlarm` rebuilds the in-memory cache via the positional `Alarm(...)`
-    /// initializer. Every non-`enabled` field MUST round-trip unchanged — if a
-    /// future model field is added but the rebuild block is not updated, that
-    /// field would silently revert to the default on toggle (the suspected
-    /// root cause of #18). This is a regression fence: any new field plus a
-    /// changed default value will trip the assertion.
+    /// `toggleAlarm` mutates the cached `Alarm` copy in place (#205) — every
+    /// non-`enabled` field MUST round-trip unchanged. The previous manual
+    /// field-by-field `Alarm(...)` rebuild silently reset any field it didn't
+    /// list (it dropped `volume`/`volumeFadeIn`/`theme` from #150/#151 back to
+    /// their defaults — the failure mode suspected in #18). Non-default values
+    /// for ALL fields keep this a regression fence: a future revert to the
+    /// rebuild style trips the assertions immediately.
     func testToggleAlarm_persistsAndRebuildsCacheCorrectly() {
         let calendar = Calendar(identifier: .gregorian)
         let time = calendar.date(from: DateComponents(hour: 7, minute: 30))!
@@ -200,7 +206,10 @@ final class AlarmsListViewModelTests: XCTestCase {
             snoozeMinutes: 7,
             penaltyAmount: 250,
             progressiveScale: true,
-            enabled: true
+            enabled: true,
+            volume: 0.4,
+            volumeFadeIn: true,
+            theme: .ocean
         )
         repo.save(original)
 
@@ -219,6 +228,9 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(cached.snoozeMinutes, original.snoozeMinutes)
         XCTAssertEqual(cached.penaltyAmount, original.penaltyAmount)
         XCTAssertEqual(cached.progressiveScale, original.progressiveScale)
+        XCTAssertEqual(cached.volume, original.volume, "#150 volume must survive a toggle")
+        XCTAssertEqual(cached.volumeFadeIn, original.volumeFadeIn, "#150 fade-in must survive a toggle")
+        XCTAssertEqual(cached.theme, original.theme, "#151 theme must survive a toggle")
         XCTAssertFalse(cached.enabled, "Only `enabled` should change")
 
         // Repository must mirror the in-memory state.
@@ -455,6 +467,51 @@ final class AlarmsListViewModelTests: XCTestCase {
         )
     }
 
+    /// Issue #205: when the schedule fails AND the disk rollback `setEnabled`
+    /// call ALSO fails (store corrupted mid-flight / alarm deleted
+    /// concurrently), the VM must not swallow the rollback boolean. In-memory
+    /// says `enabled=false` while disk still says `enabled=true` — next cold
+    /// launch re-reads enabled=true with no notification scheduled, the exact
+    /// silent regression #129 closed. The VM must surface the stronger
+    /// `ToggleError.rollbackPersistFailed` banner instead of the plain
+    /// scheduling error.
+    func testToggleAlarm_rollbackPersistFails_surfacesToggleError() {
+        let alarm = Alarm(name: "RollbackFail", penaltyAmount: 50, enabled: false)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarms.count, 1)
+
+        // The optimistic persist (enabled=true) succeeds, then `schedule`
+        // corrupts the store BEFORE failing — so the VM's rollback
+        // `setEnabled(false)` hits a locked store and returns false.
+        stubScheduler.scheduleResult = .failure(.system(message: "denied"))
+        stubScheduler.onSchedule = { [testDefaults] in
+            testDefaults?.set(Data("garbage".utf8), forKey: "stored_alarms")
+        }
+
+        var receivedError: LocalizedError?
+        var rebindFired = false
+        vm.onLoadError = { receivedError = $0 }
+        vm.onAlarmsUpdated = { rebindFired = true }
+
+        vm.toggleAlarm(id: alarm.id, enabled: true)
+
+        XCTAssertTrue(rebindFired, "Failed toggle must still trigger a UI re-bind")
+        XCTAssertFalse(vm.alarms[0].enabled, "In-memory `enabled` must still roll back")
+        guard let typed = receivedError as? AlarmsListViewModel.ToggleError else {
+            return XCTFail(
+                "Expected ToggleError.rollbackPersistFailed, got \(String(describing: receivedError))"
+            )
+        }
+        XCTAssertEqual(typed, .rollbackPersistFailed)
+        XCTAssertNotNil(
+            typed.errorDescription,
+            "Rollback-failure banner must carry user-facing copy"
+        )
+    }
+
     /// Inverse of the failure test: when the scheduler resolves successfully,
     /// the VM must NOT fire `onLoadError` and must NOT rebind — the optimistic
     /// cell flip is already correct, so a redundant table reload would drop
@@ -490,6 +547,10 @@ final class AlarmsListViewModelTests: XCTestCase {
 
         let vm = makeViewModel()
         vm.loadData()
+        // `repo.save(enabled alarm)` above already scheduled once — that is
+        // by design. Snapshot the count so the assertion below catches only
+        // NEW schedule calls made by the toggle itself.
+        let preToggleScheduleCount = stubScheduler.scheduledIDs.count
         // Pre-arm the stub with a failure — disabling MUST NOT consult it.
         stubScheduler.scheduleResult = .failure(.system(message: "should not fire"))
 
@@ -499,7 +560,128 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.toggleAlarm(id: alarm.id, enabled: false)
 
         XCTAssertNil(receivedError, "Disabling must skip the scheduler — no failure path")
-        XCTAssertTrue(stubScheduler.scheduledIDs.isEmpty, "schedule() must not run for enabled=false")
+        XCTAssertEqual(stubScheduler.scheduledIDs.count, preToggleScheduleCount,
+                       "schedule() must not run for enabled=false")
         XCTAssertFalse(vm.alarms[0].enabled, "In-memory state must reflect disable")
+    }
+}
+
+// MARK: - Balance corruption surfaced to late observer (#206)
+
+/// Tests that cold-start balance corruption (latched in `BalanceService.init`
+/// before any UI observer exists) still reaches `onBalanceCorrupted` when the
+/// VM registers late — the original notification is dropped, so the VM pulls
+/// the queryable state in `loadData()`.
+final class AlarmsListViewModelCorruptionTests: XCTestCase {
+
+    private var testDefaults: UserDefaults!
+    private var suiteName: String!
+    private var repo: AlarmRepository!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.alarmsListCorruption.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
+        repo = AlarmRepository(
+            defaults: testDefaults,
+            scheduler: AlarmsListViewModelTests.StubScheduler()
+        )
+    }
+
+    override func tearDown() {
+        testDefaults.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    /// Builds a VM wired to an isolated BalanceService + NotificationCenter
+    /// so corruption scenarios don't touch the shared singletons.
+    private func makeFixture(rawBalance: Double) -> (vm: AlarmsListViewModel, service: BalanceService) {
+        let center = NotificationCenter()
+        testDefaults.set(rawBalance, forKey: "user_balance")
+        // Service init runs its corruption probe HERE — before the VM (and
+        // its observer) exists. The posted notification is dropped, exactly
+        // like the cold-start AppDelegate access in #206.
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+        let vm = AlarmsListViewModel(
+            alarmRepository: repo,
+            balanceService: service,
+            transactionRepository: TransactionRepository(defaults: testDefaults),
+            notificationCenter: center
+        )
+        return (vm, service)
+    }
+
+    /// Cold-start scenario: corruption latches in `BalanceService.init`
+    /// (notification dropped — no observer yet), the VM registers late, the
+    /// VC binds `onBalanceCorrupted`, then `loadData()` runs. The alert
+    /// callback MUST still fire with the original raw value.
+    func testLoadData_coldStartCorruption_lateObserverStillAlerted() {
+        let (vm, _) = makeFixture(rawBalance: -42.0)
+
+        var receivedRaw: Double?
+        vm.onBalanceCorrupted = { receivedRaw = $0 }
+
+        vm.loadData()
+
+        XCTAssertEqual(receivedRaw, -42.0,
+                       "Late observer must still learn about init-time corruption")
+        XCTAssertEqual(vm.balance, 0,
+                       "Corrupt balance must be reported as 0 to the list UI")
+    }
+
+    /// The alert must fire once per corruption episode — `loadData()` runs on
+    /// every `viewWillAppear`, and the live notification + the pulled state
+    /// must not stack into duplicate alerts.
+    func testLoadData_corruptionAlertFiresOncePerEpisode() {
+        let (vm, _) = makeFixture(rawBalance: -5.0)
+
+        var fireCount = 0
+        vm.onBalanceCorrupted = { _ in fireCount += 1 }
+
+        vm.loadData()
+        vm.loadData()
+        vm.loadData()
+
+        XCTAssertEqual(fireCount, 1, "Corruption alert must be deduped per episode")
+    }
+
+    /// Healthy VM must never fire the corruption callback.
+    func testLoadData_healthyBalance_doesNotFireCorruptionCallback() {
+        let (vm, _) = makeFixture(rawBalance: 150.0)
+
+        var fired = false
+        vm.onBalanceCorrupted = { _ in fired = true }
+
+        vm.loadData()
+
+        XCTAssertFalse(fired, "Healthy balance must not surface a corruption alert")
+        XCTAssertEqual(vm.balance, 150.0)
+    }
+
+    /// `acknowledgeBalanceCorruption()` wipes the corrupt value (service
+    /// resets to 0, flag clears) and re-arms the dedupe latch so a FUTURE
+    /// corruption episode surfaces a fresh alert.
+    func testAcknowledgeBalanceCorruption_resetsServiceAndReArmsAlert() {
+        let (vm, service) = makeFixture(rawBalance: -10.0)
+
+        var fireCount = 0
+        vm.onBalanceCorrupted = { _ in fireCount += 1 }
+
+        vm.loadData()
+        XCTAssertEqual(fireCount, 1)
+
+        vm.acknowledgeBalanceCorruption()
+        XCTAssertFalse(service.balanceCorrupted, "Ack must clear the service flag")
+        XCTAssertEqual(service.balance, 0, "Ack must reset the stored balance to 0")
+
+        // Healthy reload — no new alert.
+        vm.loadData()
+        XCTAssertEqual(fireCount, 1)
+
+        // Second corruption episode (external write) must alert again.
+        testDefaults.set(-99.0, forKey: "user_balance")
+        vm.loadData()
+        XCTAssertEqual(fireCount, 2,
+                       "A fresh corruption episode after ack must re-fire the alert")
     }
 }

@@ -62,7 +62,7 @@ final class AlarmThemePickerViewController: UIViewController {
     private let previewClockLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "7:00"
+        label.text = "07:00"
         label.font = AppFonts.mono(.ultralight, 56)
         label.textColor = .white
         label.textAlignment = .center

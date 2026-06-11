@@ -236,10 +236,14 @@ final class WalletTransactionHistoryViewController: UIViewController {
         let absAmount = Int(abs(transaction.amount))
         switch transaction.type {
         case .topup, .promotion:
-            label.text = "+\(absAmount) ₽"
+            label.attributedText = MoneyFormatter.attributed(
+                Decimal(absAmount), digitsFont: AppTypography.moneySm, prefix: "+"
+            )
             label.textColor = AppColors.money400
         case .charge:
-            label.text = "−\(absAmount) ₽"
+            label.attributedText = MoneyFormatter.attributed(
+                Decimal(absAmount), digitsFont: AppTypography.moneySm, prefix: "−"
+            )
             label.textColor = AppColors.pain400
         }
         return label

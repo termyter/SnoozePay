@@ -272,13 +272,14 @@ final class TransactionCell: UITableViewCell {
             subtitleLabel.text = dateString
         }
 
-        // Amount
-        let amount = Int(transaction.amount)
+        // Amount — fmtRub trailing style with an explicit sign; abs() so a
+        // ledger that encodes debits as negative doubles can't render "−-250".
+        let amount = Int(abs(transaction.amount))
         if isCredit {
-            amountLabel.text = "+₽\(amount)"
+            amountLabel.text = "+\(MoneyFormatter.string(amount))"
             amountLabel.textColor = AppColors.money500
         } else {
-            amountLabel.text = "₽\(amount)"
+            amountLabel.text = "−\(MoneyFormatter.string(amount))"
             amountLabel.textColor = AppColors.pain500
         }
     }

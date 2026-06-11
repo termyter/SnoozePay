@@ -18,12 +18,6 @@ class SettingsViewController: UIViewController {
         return table
     }()
 
-    /// Held weakly so the cell may be recycled (and the label deallocated)
-    /// without leaving the observer with a dangling reference. `internal`
-    /// so the cross-file `+Sections.makeBalanceRow` can capture a fresh
-    /// reference each time the row is dequeued (#182).
-    weak var balanceAmountLabel: UILabel?
-
     // MARK: - Init
 
     init(themeService: ThemeService = .shared) {
@@ -45,6 +39,7 @@ class SettingsViewController: UIViewController {
     /// call (issue #144).
     enum Section: Int, CaseIterable {
         case account    // Transaction history + Balance
+        case finance    // Default snooze price (display-only, no PaymentMethods in MVP — #237)
         case referral   // My code (copyable) + friend's code input + caption
         case appearance // Theme selector (system / light / dark)
         case info       // Privacy policy + Terms
@@ -72,7 +67,11 @@ class SettingsViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Настройки"
-        navigationController?.navigationBar.prefersLargeTitles = true
+        // Settings is a child screen pushed from the gear icon on
+        // AlarmsList/Wallet (#237) — inline title keeps the standard back
+        // arrow visible and avoids flipping the shared nav bar into
+        // large-title mode for the parent screen.
+        navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = AppColors.bg0
         setupUI()
         observeBalanceChanges()
@@ -94,15 +93,23 @@ class SettingsViewController: UIViewController {
     /// Subscribe to balance changes so the row updates immediately after a
     /// top-up that happens while Settings is on-screen (e.g. another tab posts
     /// a change). Without this, the balance only refreshes on `viewWillAppear`.
+    ///
+    /// Reloading the row (rather than poking a weak label reference) keeps a
+    /// single source of truth: `makeBalanceRow` reads the fresh balance on
+    /// every dequeue, so live updates and scroll-back-into-view share one
+    /// code path and recycled cells can never show a stale amount (#203).
     private func observeBalanceChanges() {
         balanceObserver = NotificationCenter.default.addObserver(
             forName: BalanceService.balanceChangedNotification,
             object: nil,
             queue: .main
-        ) { [weak self] note in
-            guard let self,
-                  let newBalance = note.userInfo?[BalanceService.balanceUserInfoKey] as? Double else { return }
-            self.balanceAmountLabel?.text = "₽\(Int(newBalance))"
+        ) { [weak self] _ in
+            // Off-screen updates are covered by `viewWillAppear`'s
+            // `reloadData`, so only touch the table while it's in a window —
+            // this also sidesteps reload-before-initial-load edge cases.
+            guard let self, self.tableView.window != nil else { return }
+            let balanceRow = IndexPath(row: 1, section: Section.account.rawValue)
+            self.tableView.reloadRows(at: [balanceRow], with: .none)
         }
     }
 
@@ -112,8 +119,14 @@ class SettingsViewController: UIViewController {
         view.addSubview(tableView)
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+        tableView.register(SettingsIconRowCell.self, forCellReuseIdentifier: SettingsIconRowCell.reuseID)
         tableView.register(ThemeSegmentCell.self, forCellReuseIdentifier: ThemeSegmentCell.reuseID)
+        tableView.register(ReferralMyCodeCell.self, forCellReuseIdentifier: ReferralMyCodeCell.reuseID)
+        tableView.register(
+            ReferralFriendInputCell.self,
+            forCellReuseIdentifier: ReferralFriendInputCell.reuseID
+        )
+        tableView.register(ReferralCaptionCell.self, forCellReuseIdentifier: ReferralCaptionCell.reuseID)
 
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -157,6 +170,7 @@ extension SettingsViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return 0 }
         switch sec {
         case .account: return 2    // Transaction history, Balance
+        case .finance: return 1    // Default snooze price
         case .referral: return ReferralRow.allCases.count
         case .appearance: return 1 // Dark theme
         case .info: return 2       // Privacy, Terms
@@ -168,6 +182,7 @@ extension SettingsViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
         case .account: return "АККАУНТ"
+        case .finance: return "ФИНАНСЫ"
         case .referral: return "ПРИГЛАСИТЬ ДРУГА"
         case .appearance: return "ОФОРМЛЕНИЕ"
         case .info: return "ИНФОРМАЦИЯ"
@@ -199,10 +214,11 @@ extension SettingsViewController: UITableViewDataSource {
 
         switch section {
         case .account:    return makeAccountCell(at: indexPath)
+        case .finance:    return makeDefaultPriceRow(at: indexPath)
         case .referral:   return makeReferralCell(at: indexPath)
         case .appearance: return makeAppearanceCell(tableView, at: indexPath)
         case .info:       return makeInfoRow(at: indexPath)
-        case .contact:    return makeContactRow()
+        case .contact:    return makeContactRow(at: indexPath)
         }
     }
 
@@ -210,7 +226,7 @@ extension SettingsViewController: UITableViewDataSource {
     /// the Balance row (`row == 1`). Split off `cellForRowAt` so the main
     /// switch stays a one-screen overview (#182).
     private func makeAccountCell(at indexPath: IndexPath) -> UITableViewCell {
-        indexPath.row == 0 ? makeTransactionHistoryRow() : makeBalanceRow()
+        indexPath.row == 0 ? makeTransactionHistoryRow(at: indexPath) : makeBalanceRow(at: indexPath)
     }
 
     /// Dequeue + configure for the segmented Theme cell. Pulled out of
@@ -299,7 +315,7 @@ extension SettingsViewController: UITableViewDelegate {
                 copyMyCodeToPasteboard()
             }
 
-        case .appearance:
+        case .finance, .appearance:
             break
 
         case .info:

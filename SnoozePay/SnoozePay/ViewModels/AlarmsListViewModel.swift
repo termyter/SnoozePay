@@ -10,6 +10,7 @@ final class AlarmsListViewModel {
     private let alarmRepository: AlarmRepository
     private let balanceService: BalanceService
     private let transactionRepository: TransactionRepository
+    private let notificationCenter: NotificationCenter
 
     // MARK: - State
 
@@ -25,6 +26,33 @@ final class AlarmsListViewModel {
     /// their alarms (issue #72). Carries a `LocalizedError` whose
     /// `errorDescription` is already user-facing Russian copy.
     var onLoadError: ((LocalizedError) -> Void)?
+    /// Fired (once per corruption episode) when the stored balance is
+    /// corrupt — negative / NaN / infinite `user_balance` (#119). Carries the
+    /// raw offending value. The VC presents an alert offering to wipe the
+    /// corrupt value via `acknowledgeBalanceCorruption()`. Covers BOTH the
+    /// live notification AND corruption latched at cold start before this VM
+    /// existed — `loadData()` pulls the latched state from the service, since
+    /// `NotificationCenter` does not retro-deliver to late subscribers (#206).
+    var onBalanceCorrupted: ((Double) -> Void)?
+
+    // MARK: - Errors
+
+    /// Surfaced via `onLoadError` when the disk rollback after a failed
+    /// schedule also fails (#205). In-memory and persisted `enabled` state
+    /// have diverged at that point — only a relaunch (which re-reads disk)
+    /// reconciles them, so the copy tells the user to re-check the list.
+    enum ToggleError: LocalizedError {
+        case rollbackPersistFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .rollbackPersistFailed:
+                return "Не удалось включить будильник и откатить изменение — "
+                    + "данные могут быть в рассинхроне. Перезапустите приложение "
+                    + "и проверьте список будильников."
+            }
+        }
+    }
 
     // MARK: - Observers
 
@@ -33,18 +61,33 @@ final class AlarmsListViewModel {
     /// (the ViewController owning it may outlive the VM in edge cases).
     private var balanceObserver: NSObjectProtocol?
 
+    /// Observer token for `balanceCorruptedNotification` — covers corruption
+    /// that latches while this VM is alive. Cold-start corruption (latched in
+    /// `BalanceService.init` before any observer exists) is instead pulled in
+    /// `loadData()` via `surfacePendingBalanceCorruption()` (#206).
+    private var corruptionObserver: NSObjectProtocol?
+
+    /// Dedupe latch so the corruption alert fires once per episode even
+    /// though `loadData()` runs on every `viewWillAppear` (and the live
+    /// notification + the pulled state could otherwise double-fire). Reset
+    /// in `acknowledgeBalanceCorruption()` so a future re-corruption is
+    /// surfaced again.
+    private var hasSurfacedBalanceCorruption = false
+
     // MARK: - Init
 
     init(
         alarmRepository: AlarmRepository = .shared,
         balanceService: BalanceService = .shared,
-        transactionRepository: TransactionRepository = .shared
+        transactionRepository: TransactionRepository = .shared,
+        notificationCenter: NotificationCenter = .default
     ) {
         self.alarmRepository = alarmRepository
         self.balanceService = balanceService
         self.transactionRepository = transactionRepository
+        self.notificationCenter = notificationCenter
 
-        balanceObserver = NotificationCenter.default.addObserver(
+        balanceObserver = notificationCenter.addObserver(
             forName: BalanceService.balanceChangedNotification,
             object: nil,
             queue: .main
@@ -54,11 +97,24 @@ final class AlarmsListViewModel {
             self.balance = newBalance
             self.onBalanceUpdated?(newBalance)
         }
+
+        corruptionObserver = notificationCenter.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let raw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double else { return }
+            self.surfaceBalanceCorruption(rawValue: raw)
+        }
     }
 
     deinit {
         if let token = balanceObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
+        }
+        if let token = corruptionObserver {
+            notificationCenter.removeObserver(token)
         }
     }
 
@@ -80,6 +136,36 @@ final class AlarmsListViewModel {
         balance = balanceService.balance
         onAlarmsUpdated?()
         onBalanceUpdated?(balance)
+        surfacePendingBalanceCorruption()
+    }
+
+    // MARK: - Balance corruption (#119 / #206)
+
+    /// Pulls corruption state latched BEFORE this VM registered its observer
+    /// (cold start: AppDelegate materializes `BalanceService.shared`, whose
+    /// init-time probe posts `balanceCorruptedNotification` with no listener
+    /// attached — the event is dropped, see #206). Called from `loadData()`,
+    /// which the VC invokes after binding callbacks, so the alert is
+    /// guaranteed a live `onBalanceCorrupted` handler.
+    private func surfacePendingBalanceCorruption() {
+        guard balanceService.balanceCorrupted else { return }
+        surfaceBalanceCorruption(rawValue: balanceService.corruptedRawValue ?? balance)
+    }
+
+    private func surfaceBalanceCorruption(rawValue: Double) {
+        guard !hasSurfacedBalanceCorruption else { return }
+        hasSurfacedBalanceCorruption = true
+        onBalanceCorrupted?(rawValue)
+    }
+
+    /// Wipes the corrupt `user_balance` (resets to 0) after the user
+    /// confirmed in the alert. `BalanceService` broadcasts
+    /// `balanceChangedNotification` on success, which refreshes this VM's
+    /// `balance` via the regular observer. The dedupe latch is reset so a
+    /// future corruption episode surfaces a fresh alert.
+    func acknowledgeBalanceCorruption() {
+        balanceService.acknowledgeCorruption()
+        hasSurfacedBalanceCorruption = false
     }
 
     // MARK: - Toggle
@@ -106,18 +192,13 @@ final class AlarmsListViewModel {
         // mutate after `setEnabled` returns, a sync mock would fire its
         // closure first, set `.enabled = !enabled`, then the post-call
         // mutation would clobber the rollback (#129).
-        alarms[index] = Alarm(
-            id: alarms[index].id,
-            time: alarms[index].time,
-            repeatDays: alarms[index].repeatDays,
-            name: alarms[index].name,
-            soundID: alarms[index].soundID,
-            vibrationEnabled: alarms[index].vibrationEnabled,
-            snoozeMinutes: alarms[index].snoozeMinutes,
-            penaltyAmount: alarms[index].penaltyAmount,
-            progressiveScale: alarms[index].progressiveScale,
-            enabled: enabled
-        )
+        //
+        // Use `with(enabled:)` rather than rebuilding `Alarm` field-by-field —
+        // the manual rebuild silently dropped any field it didn't list (it
+        // reset `volume`/`volumeFadeIn`/`theme` from #150/#151 to their
+        // defaults) and would do the same for every future field (#205).
+        // `with` copies every other field through unchanged (#207).
+        alarms[index] = alarms[index].with(enabled: enabled)
 
         let didUpdate = alarmRepository.setEnabled(enabled, id: id) { [weak self] result in
             // Scheduling outcome only fires on the successful-persist path.
@@ -132,14 +213,34 @@ final class AlarmsListViewModel {
                     "schedule failed during toggle id=\(id, privacy: .private); rolling back UI + disk"
                 )
                 if let idx = self.alarms.firstIndex(where: { $0.id == id }) {
-                    self.alarms[idx].enabled = !enabled
+                    self.alarms[idx] = self.alarms[idx].with(enabled: !enabled)
                 }
                 // Persist the rollback. We pass `nil` completion so we don't
                 // re-trigger this closure on the rollback's own scheduler call
                 // (toggle-off does no schedule work; toggle-on rollback after
                 // a failed enable becomes a disable — also no schedule work).
-                _ = self.alarmRepository.setEnabled(!enabled, id: id, schedulingResult: nil)
-                self.onLoadError?(error)
+                let rollbackPersisted = self.alarmRepository.setEnabled(
+                    !enabled, id: id, schedulingResult: nil
+                )
+                if rollbackPersisted {
+                    self.onLoadError?(error)
+                } else {
+                    // The disk rollback itself failed (store locked mid-flight
+                    // or alarm deleted concurrently): in-memory now says
+                    // `!enabled` while UserDefaults still says `enabled`. On
+                    // the next cold launch the app re-reads enabled=true with
+                    // no notification registered — the silent regression #129
+                    // was designed to close. Surface a stronger banner than
+                    // the scheduling error alone and log at fault level so
+                    // the drift is visible in sysdiagnose (#205).
+                    AppLogger.repository.fault(
+                        """
+                        toggle rollback persist failed id=\(id, privacy: .private); \
+                        in-memory and disk enabled state diverged
+                        """
+                    )
+                    self.onLoadError?(ToggleError.rollbackPersistFailed)
+                }
                 self.onAlarmsUpdated?()
             }
         }
@@ -207,7 +308,7 @@ final class AlarmsListViewModel {
     // MARK: - Formatted balance
 
     var formattedBalance: String {
-        "\(Int(balance)) ₽"
+        MoneyFormatter.string(balance)
     }
 
     // MARK: - Affordability hint
@@ -346,7 +447,7 @@ final class AlarmsListViewModel {
     /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return "▲ ПОСПАТЬ ЕЩЁ: −\(Int(alarms[index].penaltyAmount)) ₽"
+        return "▲ ПОСПАТЬ ЕЩЁ: −\(MoneyFormatter.string(alarms[index].penaltyAmount))"
     }
 
     // MARK: - V2 cell helpers

@@ -1,30 +1,100 @@
 import Foundation
 
 /// Domain model for an alarm. Separate from Core Data entity for clean MVVM.
+///
+/// All fields are immutable (#207, interim hardening until #31 phase 2).
+/// Construction goes through one of three boundaries:
+/// - `init(validating:...)` — failable, rejects out-of-range values. Use it
+///   whenever the field values come from outside the app's bounded UI
+///   controls (imports, future deep links, manual copies).
+/// - `init(...)` — the historical default-arg initializer. Delegates to the
+///   validating one and traps on garbage, so in-app call sites (which only
+///   feed slider/toggle-bounded values) keep their non-optional ergonomics.
+/// - `init(from:)` — Codable decode. Sanitizes instead of rejecting, because
+///   throwing here would lock the entire persisted store (#72 / #117).
+///
+/// Legitimate edits produce a new value via `with(...)`.
 struct Alarm: Identifiable, Equatable, Codable {
     let id: UUID
-    var time: Date
-    var repeatDays: [Int] // 0 = Monday, 6 = Sunday
-    var name: String
-    var soundID: String
-    var vibrationEnabled: Bool
-    var snoozeMinutes: Int
-    var penaltyAmount: Double
-    var progressiveScale: Bool
-    var enabled: Bool
+    let time: Date
+    let repeatDays: [Int] // 0 = Monday, 6 = Sunday
+    let name: String
+    let soundID: String
+    let vibrationEnabled: Bool
+    let snoozeMinutes: Int
+    let penaltyAmount: Double
+    let progressiveScale: Bool
+    let enabled: Bool
     /// Per-alarm playback volume in `0.0...1.0`. Default `1.0` keeps the
     /// existing "ring at full volume" behaviour for legacy alarms (#150).
-    var volume: Float
+    let volume: Float
     /// When `true`, AudioService ramps from 0 → `volume` over 30 seconds at
     /// firing time so the user is woken gently. Default `false` preserves the
     /// pre-#150 instant-on behaviour.
-    var volumeFadeIn: Bool
+    let volumeFadeIn: Bool
     /// Visual theme used for the alarm-card background strip and the firing
     /// screen background (#151). Defaults to `.dawn` for both new alarms and
     /// legacy alarms persisted before the theme picker landed — see the
     /// custom `init(from:)` below for the migration path.
-    var theme: AlarmTheme
+    let theme: AlarmTheme
 
+    // MARK: - Validation rules (#207)
+
+    /// Spec range for snooze duration (SPEC.md says 1–30 minutes). The
+    /// create/edit form's slider exposes a narrower 1...15 — that UI bound
+    /// lives in `CreateAlarmViewModel.snoozeMinutesRange`.
+    static let snoozeMinutesRange: ClosedRange<Int> = 1...30
+    /// Legal weekday indices for `repeatDays` (0 = Monday, 6 = Sunday).
+    static let weekdayIndexRange: ClosedRange<Int> = 0...6
+
+    // MARK: - Validating failable init (#207)
+
+    /// Validating construction boundary. Returns `nil` when:
+    /// - any `repeatDays` element falls outside `weekdayIndexRange`
+    /// - `snoozeMinutes` falls outside `snoozeMinutesRange`
+    /// - `penaltyAmount` is negative or non-finite (NaN / infinity)
+    ///
+    /// `volume` is clamped into `0...1` (non-finite → full volume) rather
+    /// than rejected, preserving the historical initializer's behaviour.
+    init?(
+        validating id: UUID,
+        time: Date = Date(),
+        repeatDays: [Int] = [],
+        name: String = "Будильник",
+        soundID: String = "radar",
+        vibrationEnabled: Bool = true,
+        snoozeMinutes: Int = 9,
+        penaltyAmount: Double = 50,
+        progressiveScale: Bool = false,
+        enabled: Bool = true,
+        volume: Float = 1.0,
+        volumeFadeIn: Bool = false,
+        theme: AlarmTheme = .dawn
+    ) {
+        guard repeatDays.allSatisfy(Self.weekdayIndexRange.contains),
+              Self.snoozeMinutesRange.contains(snoozeMinutes),
+              penaltyAmount.isFinite, penaltyAmount >= 0
+        else { return nil }
+
+        self.id = id
+        self.time = time
+        self.repeatDays = repeatDays
+        self.name = name
+        self.soundID = soundID
+        self.vibrationEnabled = vibrationEnabled
+        self.snoozeMinutes = snoozeMinutes
+        self.penaltyAmount = penaltyAmount
+        self.progressiveScale = progressiveScale
+        self.enabled = enabled
+        self.volume = Self.clampedVolume(volume)
+        self.volumeFadeIn = volumeFadeIn
+        self.theme = theme
+    }
+
+    /// Historical default-arg initializer, kept for in-app call sites whose
+    /// inputs are already bounded by UI controls. Delegates to
+    /// `init(validating:...)` and traps if handed garbage — invalid values
+    /// must be rejected at the construction boundary, not stored (#207).
     init(
         id: UUID = UUID(),
         time: Date = Date(),
@@ -40,19 +110,70 @@ struct Alarm: Identifiable, Equatable, Codable {
         volumeFadeIn: Bool = false,
         theme: AlarmTheme = .dawn
     ) {
-        self.id = id
-        self.time = time
-        self.repeatDays = repeatDays
-        self.name = name
-        self.soundID = soundID
-        self.vibrationEnabled = vibrationEnabled
-        self.snoozeMinutes = snoozeMinutes
-        self.penaltyAmount = penaltyAmount
-        self.progressiveScale = progressiveScale
-        self.enabled = enabled
-        self.volume = min(max(volume, 0), 1)
-        self.volumeFadeIn = volumeFadeIn
-        self.theme = theme
+        guard let alarm = Alarm(
+            validating: id,
+            time: time,
+            repeatDays: repeatDays,
+            name: name,
+            soundID: soundID,
+            vibrationEnabled: vibrationEnabled,
+            snoozeMinutes: snoozeMinutes,
+            penaltyAmount: penaltyAmount,
+            progressiveScale: progressiveScale,
+            enabled: enabled,
+            volume: volume,
+            volumeFadeIn: volumeFadeIn,
+            theme: theme
+        ) else {
+            preconditionFailure(
+                """
+                Alarm constructed with invalid fields \
+                (repeatDays=\(repeatDays), snoozeMinutes=\(snoozeMinutes), \
+                penaltyAmount=\(penaltyAmount)). \
+                Use Alarm(validating:...) for unvalidated input.
+                """
+            )
+        }
+        self = alarm
+    }
+
+    // MARK: - with(...) mutators (#207)
+
+    /// Returns a copy with the given fields replaced; `nil` arguments keep
+    /// the current value. Identity (`id`) is intentionally not replaceable.
+    /// Delegates to the trapping initializer, so feeding it unvalidated
+    /// user input for `repeatDays` / `snoozeMinutes` / `penaltyAmount` is a
+    /// programmer error — sanitize first or construct via
+    /// `Alarm(validating:...)`.
+    func with(
+        time: Date? = nil,
+        repeatDays: [Int]? = nil,
+        name: String? = nil,
+        soundID: String? = nil,
+        vibrationEnabled: Bool? = nil,
+        snoozeMinutes: Int? = nil,
+        penaltyAmount: Double? = nil,
+        progressiveScale: Bool? = nil,
+        enabled: Bool? = nil,
+        volume: Float? = nil,
+        volumeFadeIn: Bool? = nil,
+        theme: AlarmTheme? = nil
+    ) -> Alarm {
+        Alarm(
+            id: id,
+            time: time ?? self.time,
+            repeatDays: repeatDays ?? self.repeatDays,
+            name: name ?? self.name,
+            soundID: soundID ?? self.soundID,
+            vibrationEnabled: vibrationEnabled ?? self.vibrationEnabled,
+            snoozeMinutes: snoozeMinutes ?? self.snoozeMinutes,
+            penaltyAmount: penaltyAmount ?? self.penaltyAmount,
+            progressiveScale: progressiveScale ?? self.progressiveScale,
+            enabled: enabled ?? self.enabled,
+            volume: volume ?? self.volume,
+            volumeFadeIn: volumeFadeIn ?? self.volumeFadeIn,
+            theme: theme ?? self.theme
+        )
     }
 
     // MARK: - Codable (backwards-compatible decode)
@@ -65,6 +186,13 @@ struct Alarm: Identifiable, Equatable, Codable {
     // a fatal `decodeFailure` (issue #117 / #72 lock the entire store).
     // Adding a field MUST be backward-compatible — this initializer is the
     // contract that ships safely on top of #143.
+    //
+    // Decode SANITIZES out-of-range legacy values instead of rejecting them
+    // (#207): pre-validation installs may carry snoozeMinutes outside the
+    // spec range, garbage weekday indices, or a negative penalty. Throwing
+    // would lock the whole store; trapping would crash on launch. Clamping /
+    // dropping keeps every legacy alarm readable while guaranteeing decoded
+    // values satisfy the same invariants `init(validating:...)` enforces.
 
     private enum CodingKeys: String, CodingKey {
         case id, time, repeatDays, name, soundID, vibrationEnabled
@@ -76,21 +204,37 @@ struct Alarm: Identifiable, Equatable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.time = try container.decode(Date.self, forKey: .time)
-        self.repeatDays = try container.decode([Int].self, forKey: .repeatDays)
+        // Drop illegal weekday indices from corrupt legacy storage.
+        let rawRepeatDays = try container.decode([Int].self, forKey: .repeatDays)
+        self.repeatDays = rawRepeatDays.filter(Self.weekdayIndexRange.contains)
         self.name = try container.decode(String.self, forKey: .name)
         self.soundID = try container.decode(String.self, forKey: .soundID)
         self.vibrationEnabled = try container.decode(Bool.self, forKey: .vibrationEnabled)
-        self.snoozeMinutes = try container.decode(Int.self, forKey: .snoozeMinutes)
-        self.penaltyAmount = try container.decode(Double.self, forKey: .penaltyAmount)
+        // Clamp into the spec range (pre-#143 alarms could store up to 30;
+        // anything outside 1...30 is corrupt data).
+        let rawSnooze = try container.decode(Int.self, forKey: .snoozeMinutes)
+        self.snoozeMinutes = min(
+            max(rawSnooze, Self.snoozeMinutesRange.lowerBound),
+            Self.snoozeMinutesRange.upperBound
+        )
+        // Negative / non-finite penalties from corrupt storage degrade to 0
+        // (no charge) rather than crashing or locking the store.
+        let rawPenalty = try container.decode(Double.self, forKey: .penaltyAmount)
+        self.penaltyAmount = rawPenalty.isFinite ? max(rawPenalty, 0) : 0
         self.progressiveScale = try container.decode(Bool.self, forKey: .progressiveScale)
         self.enabled = try container.decode(Bool.self, forKey: .enabled)
         // New in #150 — fall back to the "ring at full volume, no fade"
         // pre-#150 behaviour when keys are missing or out of range.
         let rawVolume = try container.decodeIfPresent(Float.self, forKey: .volume) ?? 1.0
-        self.volume = min(max(rawVolume.isFinite ? rawVolume : 1.0, 0), 1)
+        self.volume = Self.clampedVolume(rawVolume)
         self.volumeFadeIn = try container.decodeIfPresent(Bool.self, forKey: .volumeFadeIn) ?? false
         // Migration: pre-#151 alarms have no `theme` field — default to .dawn.
         self.theme = try container.decodeIfPresent(AlarmTheme.self, forKey: .theme) ?? .dawn
+    }
+
+    /// Shared volume sanitization: non-finite → full volume, then clamp 0...1.
+    private static func clampedVolume(_ raw: Float) -> Float {
+        min(max(raw.isFinite ? raw : 1.0, 0), 1)
     }
 
     /// Human-readable repeat days string (e.g. "Пн, Вт, Пт")
@@ -140,14 +284,17 @@ struct Alarm: Identifiable, Equatable, Codable {
         TimeOfDay(from: time)
     }
 
-    /// Typed view over `repeatDays`. Out-of-range integers in legacy storage
-    /// are silently skipped (existing data may contain them).
+    /// Typed view over `repeatDays`. Since #207 the construction boundary
+    /// rejects (init) or drops (decode) out-of-range indices, so this is a
+    /// straight bridge; the legacy-index skip in `Set<Weekday>` is now a
+    /// belt-and-suspenders guard.
     var weekdays: Set<Weekday> {
         Set<Weekday>(legacyMondayFirstIndices: repeatDays)
     }
 
-    /// Typed view of `penaltyAmount`. `nil` if the legacy `Double` is
-    /// negative or non-finite, which a typed setter would have refused.
+    /// Typed view of `penaltyAmount`. Since #207 every construction path
+    /// guarantees a non-negative finite amount, so this never returns `nil`
+    /// in practice; the optional shape stays until phase 2 retypes storage.
     var penaltyMoney: Money? {
         Money(penaltyAmount)
     }

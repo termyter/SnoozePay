@@ -66,7 +66,7 @@ final class OnboardingPenaltyPill: UIView {
 
     private func configureLabel() {
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "−50 ₽"
+        label.text = "−\(MoneyFormatter.string(50))"
         label.font = AppTypography.buttonSm
         label.textColor = AppColors.fgOnWarn
         addSubview(label)
@@ -271,7 +271,9 @@ final class OnboardingDepositOptionView: UIControl {
         descriptionLabel.numberOfLines = 0
 
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
-        amountLabel.text = option.amount.formattedRubles()
+        amountLabel.attributedText = MoneyFormatter.attributed(
+            option.amount, digitsFont: AppTypography.moneyMd
+        )
         amountLabel.font = AppTypography.moneyMd
         amountLabel.textColor = AppColors.fg1
         amountLabel.setContentHuggingPriority(.required, for: .horizontal)

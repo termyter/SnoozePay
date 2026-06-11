@@ -47,17 +47,30 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let vm = CreateAlarmViewModel(repository: repo)
         // Calling previewSound with a valid ID should not crash.
         // AudioServicesPlaySystemSound may be a no-op in test environment.
-        vm.previewSound("dawn")
-        vm.previewSound("radar")
-        vm.previewSound("drops")
+        XCTAssertTrue(vm.previewSound("dawn"))
+        XCTAssertTrue(vm.previewSound("radar"))
+        XCTAssertTrue(vm.previewSound("drops"))
     }
 
     func testPreviewSound_withInvalidID_doesNotCrash() {
         let vm = CreateAlarmViewModel(repository: repo)
-        // Invalid IDs should be silently ignored (guard let returns)
-        vm.previewSound("nonexistent_sound")
-        vm.previewSound("")
-        vm.previewSound("🎵")
+        // Unknown IDs are a no-op — previewSound reports it via the
+        // Bool result (and logs) instead of failing silently (#210).
+        XCTAssertFalse(vm.previewSound("nonexistent_sound"))
+        XCTAssertFalse(vm.previewSound(""))
+        XCTAssertFalse(vm.previewSound("🎵"))
+    }
+
+    /// Drift guard (#210): every sound offered in the picker must have a
+    /// preview mapping, otherwise the preview tap is dead for that row.
+    func testPreviewSound_coversAllAvailableSounds() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        for sound in vm.availableSounds {
+            XCTAssertTrue(
+                vm.previewSound(sound.id),
+                "Sound '\(sound.id)' is listed in availableSounds but has no systemSoundMap entry"
+            )
+        }
     }
 
     // MARK: - Default values
@@ -126,22 +139,25 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let vm = CreateAlarmViewModel(repository: repo)
         vm.penaltyAmount = 50
         let preview = vm.progressiveScalePreview
-        XCTAssertEqual(preview, "1-е: 50₽ → 2-е: 100₽ → 3-е: 200₽ → 4-е: 400₽")
+        XCTAssertEqual(preview, "1-е: 50\u{202F}₽ → 2-е: 100\u{202F}₽ → 3-е: 200\u{202F}₽ → 4-е: 400\u{202F}₽")
     }
 
     func testProgressiveScalePreview_withHighPenalty() {
         let vm = CreateAlarmViewModel(repository: repo)
         vm.penaltyAmount = 1000
         let preview = vm.progressiveScalePreview
-        XCTAssertEqual(preview, "1-е: 1000₽ → 2-е: 2000₽ → 3-е: 4000₽ → 4-е: 8000₽")
+        XCTAssertEqual(
+            preview,
+            "1-е: 1\u{00A0}000\u{202F}₽ → 2-е: 2\u{00A0}000\u{202F}₽ → 3-е: 4\u{00A0}000\u{202F}₽ → 4-е: 8\u{00A0}000\u{202F}₽"
+        )
     }
 
     func testProgressiveScalePreview_withMinimumPenalty() {
         let vm = CreateAlarmViewModel(repository: repo)
         vm.penaltyAmount = 10
         let preview = vm.progressiveScalePreview
-        XCTAssertTrue(preview.hasPrefix("1-е: 10₽"))
-        XCTAssertTrue(preview.contains("2-е: 20₽"))
+        XCTAssertTrue(preview.hasPrefix("1-е: 10\u{202F}₽"))
+        XCTAssertTrue(preview.contains("2-е: 20\u{202F}₽"))
     }
 
     // MARK: - Progressive scale toggle (regression for #51)
@@ -156,10 +172,18 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
         vm.progressiveScale = true
         vm.save()
-        XCTAssertTrue(repo.fetchAll().first?.progressiveScale ?? false)
+        let saved = repo.fetchAll().first
+        XCTAssertTrue(saved?.progressiveScale ?? false)
 
-        vm.progressiveScale = false
-        vm.save()
+        // A non-editing VM mints a fresh UUID per save, so a second save()
+        // on the SAME VM would create a second alarm instead of updating the
+        // first. Re-open the persisted alarm in edit mode — that is the flow
+        // the #51 toggle actually runs through on the edit screen.
+        let editVM = CreateAlarmViewModel(alarm: saved, repository: repo)
+        XCTAssertTrue(editVM.progressiveScale, "Edit VM must pick up the persisted toggle state")
+        editVM.progressiveScale = false
+        editVM.save()
+        XCTAssertEqual(repo.fetchAll().count, 1, "Edit-mode save must update, not append")
         XCTAssertFalse(repo.fetchAll().first?.progressiveScale ?? true)
     }
 
@@ -175,7 +199,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let secondPreview = vm.progressiveScalePreview
 
         XCTAssertNotEqual(firstPreview, secondPreview)
-        XCTAssertTrue(secondPreview.hasPrefix("1-е: 200₽"))
+        XCTAssertTrue(secondPreview.hasPrefix("1-е: 200\u{202F}₽"))
     }
 
     // MARK: - Save

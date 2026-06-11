@@ -233,11 +233,10 @@ final class BalanceServiceTests: XCTestCase {
     /// wallet doesn't behave as if it owes money.
     func testNegativeStoredBalance_flipsCorruptedFlagAndBroadcasts() {
         let center = NotificationCenter()
-        // Inject the corrupt value directly — the public API would never
-        // produce this state, which is the whole point of the detection.
-        testDefaults.set(-42.5, forKey: "user_balance")
-        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
-
+        // Subscribe BEFORE constructing the service: the corruption probe
+        // runs at init time (#119/#206), so a late observer would miss the
+        // one-shot notification — that cold-start gap is exactly what
+        // `corruptedRawValue` exists for, asserted below.
         let exp = expectation(description: "corruption notification fires")
         var receivedRaw: Double?
         let token = center.addObserver(
@@ -250,10 +249,16 @@ final class BalanceServiceTests: XCTestCase {
         }
         defer { center.removeObserver(token) }
 
-        // Reading triggers detection.
+        // Inject the corrupt value directly — the public API would never
+        // produce this state, which is the whole point of the detection.
+        testDefaults.set(-42.5, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
         XCTAssertEqual(service.balance, 0,
                        "Corrupt negative balance must be reported as 0 to downstream math")
         wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(service.corruptedRawValue, -42.5,
+                       "Latched raw value must stay queryable for late observers (#206)")
 
         XCTAssertTrue(service.balanceCorrupted, "balanceCorrupted flag must latch on detection")
         XCTAssertEqual(receivedRaw, -42.5, "Notification must carry the raw negative value")
@@ -312,6 +317,10 @@ final class BalanceServiceTests: XCTestCase {
         service.acknowledgeCorruption()
 
         wait(for: [changed], timeout: 1.0)
+        // The post-ack `topUp(50)` below ALSO posts balanceChanged — stop
+        // observing first or the expectation gets a second fulfill (API
+        // violation crash). The defer-removal then becomes a harmless no-op.
+        center.removeObserver(token)
         XCTAssertEqual(receivedAmount, 0)
         XCTAssertFalse(service.balanceCorrupted, "Flag must clear after acknowledgement")
         XCTAssertEqual(service.balance, 0, "Balance must be reset to 0")
@@ -334,6 +343,46 @@ final class BalanceServiceTests: XCTestCase {
         }
 
         XCTAssertGreaterThanOrEqual(service.balance, 0)
+    }
+
+    // MARK: - Cold-start corruption queryable by late observers (#206)
+
+    /// The init-time probe posts `balanceCorruptedNotification` BEFORE any UI
+    /// observer can exist (cold start: AppDelegate materializes the shared
+    /// instance first). NotificationCenter does not retro-deliver, so the
+    /// corruption state MUST stay queryable — `balanceCorrupted` +
+    /// `corruptedRawValue` — for the late subscriber to pull.
+    func testColdStartCorruption_stateQueryableByLateObserver() {
+        let center = NotificationCenter()
+        testDefaults.set(-77.25, forKey: "user_balance")
+        // Init probe latches corruption and posts with NO observer attached —
+        // the notification is dropped, simulating the cold-start race.
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        // A late observer arrives — no notification will ever replay, but the
+        // queryable seam must expose the full pending corruption state.
+        XCTAssertTrue(service.balanceCorrupted,
+                      "Init-time probe must latch the corruption flag")
+        XCTAssertEqual(service.corruptedRawValue, -77.25,
+                       "Raw corrupt value must stay queryable for late observers")
+    }
+
+    /// `corruptedRawValue` must be `nil` while the store is healthy and must
+    /// clear together with the flag on `acknowledgeCorruption()`.
+    func testCorruptedRawValue_nilWhenHealthyAndClearedAfterAcknowledge() {
+        let center = NotificationCenter()
+        let healthy = makeService(balance: 100, notificationCenter: center)
+        XCTAssertNil(healthy.corruptedRawValue,
+                     "Healthy store must not report a pending corrupt value")
+
+        testDefaults.set(-1.0, forKey: "user_balance")
+        let corrupt = BalanceService(defaults: testDefaults, notificationCenter: center)
+        XCTAssertEqual(corrupt.corruptedRawValue, -1.0)
+
+        corrupt.acknowledgeCorruption()
+        XCTAssertNil(corrupt.corruptedRawValue,
+                     "Acknowledgement must clear the pending corrupt value")
+        XCTAssertFalse(corrupt.balanceCorrupted)
     }
 }
 
@@ -407,18 +456,30 @@ final class AlarmFiringViewModelTests: XCTestCase {
 /// Tests for StatisticsViewModel — streak and period filtering.
 final class StatisticsViewModelTests: XCTestCase {
 
+    /// Both smoke tests below construct the VM on an ISOLATED store — the
+    /// previous `StatisticsViewModel()` default pulled the simulator's real
+    /// `UserDefaults.standard` transactions, so any prior app/test activity
+    /// made "empty data" assertions flake (red on CI, red locally after QA).
+    private func makeIsolatedStatisticsVM() -> StatisticsViewModel {
+        let isolated = UserDefaults(suiteName: "test.statsSmoke.\(UUID().uuidString)")!
+        return StatisticsViewModel(
+            repository: TransactionRepository(defaults: isolated),
+            defaults: isolated
+        )
+    }
+
     func testEmptyDataMotivation() {
-        let vm = StatisticsViewModel()
+        let vm = makeIsolatedStatisticsVM()
         vm.loadData(period: .week)
         // With no transactions, should show positive message
         XCTAssertEqual(vm.motivationalMessage, "Отлично! Вы не откладывали будильник.")
     }
 
     func testTotalSpentZero() {
-        let vm = StatisticsViewModel()
+        let vm = makeIsolatedStatisticsVM()
         vm.loadData(period: .allTime)
         XCTAssertEqual(vm.totalSpent, 0)
-        XCTAssertEqual(vm.totalSpentFormatted, "0 ₽")
+        XCTAssertEqual(vm.totalSpentFormatted, "0\u{202F}₽")
     }
 
     func testPeriodTitles() {
@@ -452,12 +513,13 @@ final class CreateAlarmViewModelTests: XCTestCase {
     func testProgressiveScalePreview() {
         let vm = CreateAlarmViewModel()
         vm.penaltyAmount = 50
-        // Expected: "1-е: 50₽ → 2-е: 100₽ → 3-е: 200₽ → 4-е: 400₽"
+        // Expected: "1-е: 50 ₽ → 2-е: 100 ₽ → 3-е: 200 ₽ → 4-е: 400 ₽"
+        // (fmtRub narrow no-break space before ₽)
         let preview = vm.progressiveScalePreview
-        XCTAssertTrue(preview.contains("50₽"))
-        XCTAssertTrue(preview.contains("100₽"))
-        XCTAssertTrue(preview.contains("200₽"))
-        XCTAssertTrue(preview.contains("400₽"))
+        XCTAssertTrue(preview.contains("50\u{202F}₽"))
+        XCTAssertTrue(preview.contains("100\u{202F}₽"))
+        XCTAssertTrue(preview.contains("200\u{202F}₽"))
+        XCTAssertTrue(preview.contains("400\u{202F}₽"))
     }
 
     func testDayToggleAddsAndRemoves() {

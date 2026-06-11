@@ -123,7 +123,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         label.font = AppTypography.body
         label.textColor = AppColors.fg2
         label.numberOfLines = 0
-        label.text = "Минимум — 200 ₽ на следующее откладывание. Можно больше, чтобы не возвращаться сюда."
+        label.text = "Минимум — \(MoneyFormatter.string(200)) на следующее откладывание. "
+            + "Можно больше, чтобы не возвращаться сюда."
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -420,7 +421,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "applelogo"),
-            suffix: "\(amount) ₽",
+            suffix: MoneyFormatter.string(amount),
             fullWidth: true
         )
         button.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
@@ -532,7 +533,9 @@ extension FiringTopUpBottomSheetViewController {
         successAmount = amount
         purchaseInFlight = false
 
-        successAmountLabel.text = "+\(amount) ₽"
+        successAmountLabel.attributedText = MoneyFormatter.attributed(
+            Decimal(amount), digitsFont: AppTypography.moneyXl, prefix: "+"
+        )
         successContainer.isHidden = false
         UIView.animate(withDuration: SPSupport.durationBase) {
             self.titleCapsLabel.alpha = 0

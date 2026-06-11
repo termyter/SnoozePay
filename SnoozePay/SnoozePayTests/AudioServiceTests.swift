@@ -4,6 +4,17 @@ import XCTest
 /// Unit tests for AudioService — alarm sound playback state management.
 final class AudioServiceTests: XCTestCase {
 
+    // MARK: - Synthetic tone (#210)
+
+    /// The in-memory WAV fallback must produce a ready AVAudioPlayer — if it
+    /// ever returns nil the alarm fires vibration-only, which previously
+    /// happened without a trace (`try?`). Now the failure path logs, and this
+    /// test pins the happy path so the generated WAV header stays valid.
+    func testGenerateAlarmTone_returnsPlayer() {
+        XCTAssertNotNil(AudioService.generateAlarmTone(),
+                        "Synthetic tone generation must succeed for valid in-memory WAV data")
+    }
+
     // MARK: - Start
 
     func testStartAlarmSound_setsIsPlaying() {
@@ -229,5 +240,94 @@ final class AudioServiceTests: XCTestCase {
                        "Re-entrant start must not republish the same state")
 
         service.stopAlarmSound()
+    }
+
+    // MARK: - Thread safety (#202)
+
+    /// `startAlarmSound` may be called from a UN-delegate background thread
+    /// (AppDelegate's `willPresent` is not guaranteed main). The serial-queue
+    /// hop must make the call fully synchronous and leave the service in a
+    /// consistent state observable from the main thread.
+    func testStartAlarmSound_fromBackgroundThread_reachesPlayingState() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        XCTAssertEqual(service.state, .stopped)
+
+        let alarmID = UUID()
+        let started = expectation(description: "background start completed")
+        DispatchQueue.global(qos: .userInitiated).async {
+            service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmID)
+            started.fulfill()
+        }
+        wait(for: [started], timeout: 5)
+
+        XCTAssertEqual(service.state, .playing,
+                       "Background-thread start must land in .playing like a main-thread start")
+        XCTAssertEqual(service.currentAlarmID, alarmID)
+
+        service.stopAlarmSound()
+        XCTAssertEqual(service.state, .stopped)
+        XCTAssertNil(service.currentAlarmID)
+    }
+
+    /// TSan-style stress test: hammer start/stop/reads from many threads at
+    /// once. Before the serial queue, `state` / `currentAlarmID` /
+    /// `audioPlayer` / `vibrationTimer` were mutated without synchronization
+    /// and could land in inconsistent combinations (e.g. `.playing` with a
+    /// nil player). With the queue this must never crash and must end in a
+    /// coherent state after the final stop.
+    func testConcurrentStartStop_doesNotCorruptState() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+
+        let iterations = 50
+        DispatchQueue.concurrentPerform(iterations: iterations) { index in
+            if index.isMultiple(of: 2) {
+                service.startAlarmSound(soundID: "stress_sound", alarmID: UUID())
+            } else {
+                service.stopAlarmSound()
+            }
+            // Interleave reads — these raced with the writers before #202.
+            _ = service.state
+            _ = service.isPlaying
+            _ = service.currentAlarmID
+        }
+
+        // Whatever interleaving happened, the snapshot must be one of the
+        // legal states — and a final stop must always win.
+        service.stopAlarmSound()
+        XCTAssertEqual(service.state, .stopped)
+        XCTAssertNil(service.currentAlarmID)
+        XCTAssertFalse(service.isPlaying)
+
+        // Service must remain usable after the stress run.
+        service.startAlarmSound(soundID: "nonexistent_test_sound")
+        XCTAssertTrue(service.isPlaying)
+        service.stopAlarmSound()
+        XCTAssertEqual(service.state, .stopped)
+    }
+
+    /// Pause/resume (#141) mutate the same queue-confined fields — calling
+    /// them from a background thread while the main thread reads must keep
+    /// state coherent (`.playing` is intentionally retained across pause).
+    func testPauseResume_fromBackgroundThread_keepsStateCoherent() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: UUID())
+        XCTAssertEqual(service.state, .playing)
+
+        let cycled = expectation(description: "background pause/resume completed")
+        DispatchQueue.global(qos: .userInitiated).async {
+            service.pauseAlarmSound()
+            service.resumeAlarmSound()
+            cycled.fulfill()
+        }
+        wait(for: [cycled], timeout: 5)
+
+        XCTAssertEqual(service.state, .playing,
+                       "pause+resume must preserve .playing (session ownership intact)")
+
+        service.stopAlarmSound()
+        XCTAssertEqual(service.state, .stopped)
     }
 }
