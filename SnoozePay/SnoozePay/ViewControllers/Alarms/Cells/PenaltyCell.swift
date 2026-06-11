@@ -112,7 +112,9 @@ final class PenaltyCell: UITableViewCell {
 
     func configure(amount: Double) {
         currentAmount = amount
-        valueLabel.text = "\(Int(amount)) ₽"
+        valueLabel.attributedText = MoneyFormatter.attributed(
+            Decimal(amount), digitsFont: AppTypography.moneyMd
+        )
         refreshAppearance()
     }
 

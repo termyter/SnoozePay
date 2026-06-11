@@ -307,7 +307,7 @@ final class AlarmsListViewModel {
     // MARK: - Formatted balance
 
     var formattedBalance: String {
-        "\(Int(balance)) ₽"
+        MoneyFormatter.string(balance)
     }
 
     // MARK: - Affordability hint
@@ -446,7 +446,7 @@ final class AlarmsListViewModel {
     /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return "▲ ПОСПАТЬ ЕЩЁ: −\(Int(alarms[index].penaltyAmount)) ₽"
+        return "▲ ПОСПАТЬ ЕЩЁ: −\(MoneyFormatter.string(alarms[index].penaltyAmount))"
     }
 
     // MARK: - V2 cell helpers

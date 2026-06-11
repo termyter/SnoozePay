@@ -109,7 +109,7 @@ final class AlarmSchedulerSnoozeTests: XCTestCase {
         // After 1 snooze, the next charge would be the 2nd snooze → 50 * 2 = 100
         let content = scheduler.makeContent(for: alarm, snoozeCount: 1)
 
-        XCTAssertEqual(content.subtitle, "Отложить \u{00B7} 100 ₽",
+        XCTAssertEqual(content.subtitle, "+9 минут \u{00B7} −100\u{202F}₽",
                        "Progressive scale must compound the penalty across snooze re-fires")
     }
 }

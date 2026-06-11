@@ -30,8 +30,8 @@ final class SPPill: UIView {
     ///   - text: Caps-styled label (uppercased automatically per the
     ///     `--sp-t-caps` recipe — bold 12pt + 0.14em tracking).
     ///   - tone: Background + text colour mapping. Defaults to `.neutral`.
-    ///   - icon: Optional 14pt leading icon (rendered as template, tinted
-    ///     to match the label).
+    ///   - icon: Optional 12pt leading icon (rendered as template, tinted
+    ///     to match the label) — JSX chips use `<Icon size={12} />`.
     init(text: String, tone: Tone = .neutral, icon: UIImage? = nil) {
         self.tone = tone
         super.init(frame: .zero)
@@ -80,8 +80,8 @@ final class SPPill: UIView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 14),
-            iconView.heightAnchor.constraint(equalToConstant: 14)
+            iconView.widthAnchor.constraint(equalToConstant: 12),
+            iconView.heightAnchor.constraint(equalToConstant: 12)
         ])
 
         applyTone()

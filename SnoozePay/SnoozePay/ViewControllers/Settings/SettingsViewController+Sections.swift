@@ -32,7 +32,7 @@ extension SettingsViewController {
             systemName: "dollarsign.circle",
             iconColor: AppColors.money500,
             title: "Баланс",
-            trailingText: "₽\(Int(BalanceService.shared.balance))",
+            trailingText: MoneyFormatter.string(BalanceService.shared.balance),
             trailingColor: AppColors.money500,
             accessory: .none,
             selectionStyle: .none

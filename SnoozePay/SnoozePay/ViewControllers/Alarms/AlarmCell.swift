@@ -8,7 +8,7 @@ import UIKit
 ///  ┌──────────────────────────────────────────────────────────┐
 ///  │ БУДНИ · ПН–ПТ                              [ ●   ]      │
 ///  │                                                          │
-///  │ 7:00                                                     │
+///  │ 07:00                                                    │
 ///  │                                                          │
 ///  │ ┌──────┐  ┌──────┐  ┌─────────────┐                    │
 ///  │ │ 50 ₽ │  │  ×2  │  │  Soft Dawn  │                    │
@@ -229,12 +229,23 @@ final class AlarmCell: UITableViewCell {
             view.removeFromSuperview()
         }
         // Price pill — warn-tone when enabled, neutral when disabled so a
-        // dimmed row doesn't shout "50 ₽" at the user.
-        let pricePill = SPPill(text: price, tone: enabled ? .warn : .neutral)
+        // dimmed row doesn't shout "50 ₽" at the user. Design v3 leads with
+        // the ₽-coin icon (`IconRubleCoin`, SPScreensV2.jsx L415).
+        let pricePill = SPPill(
+            text: price,
+            tone: enabled ? .warn : .neutral,
+            icon: SPIcons.rubleCoin(size: 12)
+        )
         pillsStack.addArrangedSubview(pricePill)
 
         if let multiplier = multiplier {
-            let mult = SPPill(text: multiplier, tone: enabled ? .pain : .neutral)
+            // Progressive multiplier — trend-up polyline replaced the flame
+            // glyph in design v3 (`IconTrendUp`, SPScreensV2.jsx L416).
+            let mult = SPPill(
+                text: multiplier,
+                tone: enabled ? .pain : .neutral,
+                icon: SPIcons.trendUp(size: 12)
+            )
             pillsStack.addArrangedSubview(mult)
         }
         if let soundName = soundName, !soundName.isEmpty {

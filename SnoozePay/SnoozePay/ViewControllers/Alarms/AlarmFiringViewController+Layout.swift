@@ -106,7 +106,11 @@ extension AlarmFiringViewController {
         // `updateBalancePill()` when the tone needs to flip to pain (zero).
         let balance = Int(viewModel.balance.rounded())
         let initialTone: SPPill.Tone = balance == 0 ? .pain : .money
-        let pill = SPPill(text: "Баланс \(balance) ₽", tone: initialTone)
+        let pill = SPPill(
+            text: "Баланс \(MoneyFormatter.string(balance))",
+            tone: initialTone,
+            icon: SPIcons.coin(size: 12)
+        )
         pill.translatesAutoresizingMaskIntoConstraints = false
         balancePill = pill
 

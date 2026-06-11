@@ -101,7 +101,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
 
         XCTAssertEqual(vm.totalSpent, 225)
-        XCTAssertEqual(vm.totalSpentFormatted, "225 ₽")
+        XCTAssertEqual(vm.totalSpentFormatted, "225\u{202F}₽")
     }
 
     // MARK: - Snooze count
@@ -116,7 +116,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
 
         XCTAssertEqual(vm.snoozeCount, 3)
-        XCTAssertEqual(vm.snoozeCountFormatted, "3 раз")
+        XCTAssertEqual(vm.snoozeCountFormatted, "3", "V2: bare digits — the caption carries the word")
     }
 
     // MARK: - Motivational messages
@@ -134,7 +134,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        XCTAssertTrue(vm.motivationalMessage.contains("2 чашек кофе"))
+        XCTAssertTrue(vm.motivationalMessage.contains("2 кофе"), "V2 copy: 'N кофе', got: \(vm.motivationalMessage)")
         XCTAssertTrue(vm.motivationalMessage.contains("☕"))
     }
 
@@ -154,7 +154,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        XCTAssertTrue(vm.motivationalMessage.contains("1 чашек кофе"))
+        XCTAssertTrue(vm.motivationalMessage.contains("1 кофе"), "V2 copy: 'N кофе', got: \(vm.motivationalMessage)")
     }
 
     // MARK: - Streak message
@@ -167,7 +167,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
 
         if vm.streak > 0 {
-            XCTAssertTrue(vm.streakMessage.contains("без откладывания"))
+            XCTAssertTrue(vm.streakMessage.contains("без откладываний"), "V2 copy plural, got: \(vm.streakMessage)")
             XCTAssertTrue(vm.streakMessage.contains("\(vm.streak)"))
         }
     }
@@ -413,19 +413,19 @@ final class StatisticsViewModelDataTests: XCTestCase {
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        XCTAssertEqual(vm.motivationalMessage, "450₽ на лень = 3 кофе! ☕")
+        XCTAssertEqual(vm.motivationalMessage, "450\u{202F}₽ на лень = 3 кофе! ☕")
     }
 
     // MARK: - Updated formatting properties
 
-    func testTotalSpentFormatted_rublePrefix() {
+    func testTotalSpentFormatted_rubleSuffix() {
         addCharge(amount: 250, daysAgo: 0)
 
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        // New format uses ruble sign as prefix: "₽250"
-        XCTAssertEqual(vm.totalSpentFormatted, "₽250")
+        // fmtRub suffix style with the narrow no-break space: "250 ₽"
+        XCTAssertEqual(vm.totalSpentFormatted, "250\u{202F}₽")
     }
 
     func testSnoozeCountFormatted_justNumber() {

@@ -139,7 +139,7 @@ extension AlarmFiringViewController {
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "applelogo"),
-            suffix: "\(Self.noBalanceDisplayAmount) ₽",
+            suffix: MoneyFormatter.string(Self.noBalanceDisplayAmount),
             fullWidth: true
         )
         button.translatesAutoresizingMaskIntoConstraints = false

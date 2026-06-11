@@ -99,7 +99,7 @@ final class AlarmFiringViewModel {
 
     var snoozeButtonTitle: String {
         if canSnooze {
-            return "+\(alarm.snoozeMinutes) минут · −\(Int(currentPenalty)) ₽"
+            return "+\(alarm.snoozeMinutes) минут · −\(MoneyFormatter.string(currentPenalty))"
         } else {
             return "Баланс пуст"
         }

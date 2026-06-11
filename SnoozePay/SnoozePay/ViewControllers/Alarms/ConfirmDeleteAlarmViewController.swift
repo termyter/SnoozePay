@@ -97,7 +97,7 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
 
     /// - Parameters:
     ///   - body: Subtitle copy. Defaults to the V2 spec text. Pass a tailored
-    ///     line (e.g. "Будни · Пн–Пт · 7:00") when the alarm context is rich.
+    ///     line (e.g. "Будни · Пн–Пт · 07:00") when the alarm context is rich.
     ///   - onConfirm: Closure invoked on the destructive tap. The sheet
     ///     dismisses itself before firing the callback.
     init(

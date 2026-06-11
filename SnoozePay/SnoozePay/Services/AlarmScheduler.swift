@@ -396,7 +396,7 @@ final class AlarmScheduler: AlarmScheduling {
         content.body = "Время вставать!"
 
         let penalty = alarm.penalty(forSnoozeCount: snoozeCount + 1)
-        content.subtitle = "+\(alarm.snoozeMinutes) минут · −\(Int(penalty)) ₽"
+        content.subtitle = "+\(alarm.snoozeMinutes) минут · −\(MoneyFormatter.string(penalty))"
 
         // Use critical sound if entitled, otherwise fall back to standard sound.
         // Critical alerts bypass DND and silent mode (requires Apple approval).
