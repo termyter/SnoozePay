@@ -65,12 +65,17 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "Using simulator $UDID"
 
+      # -parallel-testing-enabled NO: дефолтный параллельный прогон на клонах
+      # симулятора роняет worker-процессы на слабом CI-раннере (3-4 vCPU) —
+      # тесты массово «падают» за 0.000s, не запустившись. Последовательный
+      # прогон медленнее, но детерминированный.
       - name: Build & Test
         run: |
           xcodebuild test \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
+            -parallel-testing-enabled NO \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
 
