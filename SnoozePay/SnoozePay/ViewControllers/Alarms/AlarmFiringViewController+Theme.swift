@@ -1,19 +1,26 @@
 import UIKit
 
-/// Background recipes for the alarm-firing screen, split out by theme.
+/// Background + accent recipes for the alarm-firing screen, split by theme.
 ///
-/// V2 spec: the default Dawn flow uses `SPDawnBackgroundView` — a three-layer
-/// atmospheric composition (base + radial overlay + breathing sun). Built-in
-/// themes other than `.dawn` (Mountains, Ocean, Abstract) still ship as
-/// vertical gradient backgrounds — they fall back to a single CAGradientLayer
-/// installed in place of the Dawn view. `.custom(imagePath:)` replaces the
-/// gradient + glow with a full-bleed user photo plus a 45% black dim so the
-/// 96pt clock + warn snooze CTA stay legible against arbitrary imagery.
+/// V3 spec (#225, `SPThemedFiring.jsx`): the alarm's theme drives the firing
+/// atmosphere — full-bleed 160° gradient, radial scrim, bottom accent glow,
+/// and accent tinting on the balance pill / bell tile / eyebrow / clock halo.
+/// Layout, copy and CTAs are identical across all six stock themes.
+///
+/// `.dawn` keeps `SPDawnBackgroundView` for the background (it carries the
+/// calm / tense / drained tone transitions plus the breathing sun, which the
+/// static themed view intentionally doesn't replicate) but picks up the same
+/// accent treatment as the other themes. `.custom(imagePath:)` replaces the
+/// gradient + glow with a full-bleed user photo plus a 45% black dim and no
+/// accent tinting, so the 96pt clock + warn snooze CTA stay legible against
+/// arbitrary imagery.
 extension AlarmFiringViewController {
 
-    /// Install the background appropriate to the alarm's theme. Called once
-    /// from `buildFiringLayout`. Falls back to Dawn if `.custom`'s on-disk
-    /// file is gone (Caches purge) so the firing screen is never blank.
+    /// Install the background appropriate to the alarm's theme and resolve
+    /// `firingPalette` for the accent pass. Called once from
+    /// `buildFiringLayout` BEFORE the header / hero installers so they can
+    /// read the palette. Falls back to Dawn if `.custom`'s on-disk file is
+    /// gone (Caches purge) so the firing screen is never blank.
     func installThemedBackground() {
         let theme = viewModel.alarm.theme
 
@@ -37,65 +44,75 @@ extension AlarmFiringViewController {
 
         if case .custom(let url) = theme, let image = AlarmThemeImageStore.loadImage(at: url) {
             // Custom photo path — hide the Dawn background and surface the
-            // photo + dim. Don't install the dawnBackgroundView at all.
+            // photo + dim. No palette: chrome stays neutral white.
+            firingPalette = nil
             themeImageView.image = image
             themeImageView.isHidden = false
             themeImageDimView.isHidden = false
         } else if case .dawn = theme {
-            // Default Dawn path — install the V2 atmospheric view.
+            // Default Dawn path — tone-reactive atmospheric view + the dawn
+            // accent palette for the pill / bell / eyebrow / clock halo.
+            firingPalette = AlarmFiringThemePalette.palette(for: .dawn)
             installDawnAtmosphericBackground()
             themeImageView.isHidden = true
             themeImageDimView.isHidden = true
-        } else {
-            // Ocean / Mountains / Forest / Neon / Abstract — vertical gradient using the
-            // shared `AlarmThemeRendering` stops. Built on a plain
-            // SPGradientView-like CAGradientLayer hosted on a UIView so the
-            // +Layout subview ordering still works.
-            let gradient = CAGradientLayer()
-            gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-            gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
-            gradient.colors = AlarmThemeRendering.gradientColors(for: theme)
-                ?? AlarmThemeRendering.gradientColors(for: .dawn)
-            gradient.locations = AlarmThemeRendering.gradientLocations(for: theme)
-                ?? AlarmThemeRendering.gradientLocations(for: .dawn)
-
-            let container = ThemeGradientContainerView(gradient: gradient)
-            container.translatesAutoresizingMaskIntoConstraints = false
-            view.insertSubview(container, at: 0)
+        } else if let palette = AlarmFiringThemePalette.palette(for: theme) {
+            // Ocean / Mountains / Forest / Neon / Abstract — static themed
+            // atmosphere (160° gradient + scrim + bottom glow) per #225.
+            firingPalette = palette
+            let background = SPThemedFiringBackgroundView(palette: palette)
+            view.insertSubview(background, at: 0)
             NSLayoutConstraint.activate([
-                container.topAnchor.constraint(equalTo: view.topAnchor),
-                container.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                container.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                container.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+                background.topAnchor.constraint(equalTo: view.topAnchor),
+                background.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                background.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                background.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
             themeImageView.isHidden = true
             themeImageDimView.isHidden = true
+        } else {
+            // `.custom` whose file is no longer on disk — fall back to the
+            // full Dawn treatment so the screen is never blank.
+            firingPalette = AlarmFiringThemePalette.palette(for: .dawn)
+            installDawnAtmosphericBackground()
+            themeImageView.isHidden = true
+            themeImageDimView.isHidden = true
         }
-    }
-}
 
-// MARK: - Plain gradient host for non-Dawn built-in themes
-//
-// A minimal CALayer host so the +Theme installer can drop in a gradient that
-// fills bounds and reflows on layout. Lives in this file so it's not exposed
-// to other VCs that don't need it.
-
-final class ThemeGradientContainerView: UIView {
-    private let gradientLayer: CAGradientLayer
-
-    init(gradient: CAGradientLayer) {
-        self.gradientLayer = gradient
-        super.init(frame: .zero)
-        layer.addSublayer(gradientLayer)
-        isUserInteractionEnabled = false
+        applyThemeAccents()
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    /// Accent pass — tint the clock halo + bell tile with the resolved
+    /// palette. The balance pill and eyebrow are re-tinted on every
+    /// `updateUI()` (their colour interacts with the zero-balance state), so
+    /// they live in `applyThemeAccentToBalancePill()` /
+    /// `updateAtmosphereTone()` instead.
+    private func applyThemeAccents() {
+        guard let palette = firingPalette else {
+            // `.custom` photo — keep the neutral chrome and skip the bell
+            // tile so the user's image stays clean.
+            bellTile.isHidden = true
+            return
+        }
+        timeLabel.layer.shadowColor = palette.timeShadowColor.cgColor
+        timeLabel.layer.shadowOpacity = palette.timeShadowOpacity
+        bellTile.apply(palette: palette)
+        bellTile.isHidden = false
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        gradientLayer.frame = bounds
+    /// Re-tint the balance pill with the theme accent. The themed colours
+    /// only apply while the pill is in its normal `.money` tone — at zero
+    /// balance the stock pain (red) tint is a functional signal and stays
+    /// un-themed in every theme. Called from `updateUI()` after
+    /// `updateBalancePill()` so a tone-flip rebuild gets re-tinted too.
+    func applyThemeAccentToBalancePill() {
+        guard let palette = firingPalette,
+              let pill = balancePill,
+              pill.tone == .money else { return }
+        pill.applyCustomColors(
+            background: palette.pillBackground,
+            border: palette.pillBorder,
+            foreground: palette.accent
+        )
     }
 }

@@ -34,31 +34,35 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Sections
 
-    /// Section order matches the #143 PM spec: name first (auto-focus on
-    /// create), then time picker, repeat days, snooze slider, penalty,
-    /// progressive scale, sound, vibration, theme, and finally the
-    /// destructive delete action (edit-mode only).
-    /// `internal` so the cross-file `+Pickers` extension can resolve
-    /// `Section.theme.rawValue` for the imperative cell refresh after the
-    /// picker pops (#182).
+    /// Section order matches the V2 AlarmEdit artboard (`SPMore2.jsx` /
+    /// #231): name first (auto-focus on create), then time picker, repeat
+    /// days, snooze slider, the merged Звук/Тема/Вибрация settings card,
+    /// the snooze-price card and finally the progressive-mode card. The
+    /// destructive delete action lives in a fixed footer below the table
+    /// (edit-mode only), not in a table section.
     enum Section: Int, CaseIterable {
         case name = 0
         case timePicker
         case repeatDays
         case snoozeTime
+        /// Single card with exactly three rows: Звук / Тема / Вибрация.
+        case settings
         case penalty
         case progressiveScale
-        case sound
-        case volume
-        case vibration
+    }
+
+    /// Rows inside the merged `Section.settings` card (#231).
+    enum SettingsRow: Int, CaseIterable {
+        case sound = 0
         case theme
-        /// Destructive "Удалить будильник" row — only visible in edit mode.
-        case deleteAction
+        case vibration
     }
 
     /// Convenience accessor used by `+Pickers.showThemePicker` so that file
-    /// does not have to depend on `Section.rawValue` directly.
-    var themeSectionIndex: Int { Section.theme.rawValue }
+    /// does not have to depend on `Section`/`SettingsRow` raw values directly.
+    var themeRowIndexPath: IndexPath {
+        IndexPath(row: SettingsRow.theme.rawValue, section: Section.settings.rawValue)
+    }
 
     // MARK: - Init
 
@@ -83,12 +87,9 @@ final class CreateAlarmViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Refresh the sound + volume + theme rows in case the user picked a
-        // new value on a pushed picker and is returning here.
-        tableView.reloadSections(
-            IndexSet([Section.sound.rawValue, Section.volume.rawValue, Section.theme.rawValue]),
-            with: .none
-        )
+        // Refresh the sound + theme rows in case the user picked a new value
+        // on a pushed picker and is returning here.
+        tableView.reloadSections(IndexSet([Section.settings.rawValue]), with: .none)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -170,8 +171,47 @@ final class CreateAlarmViewController: UIViewController {
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+
+        guard viewModel.isEditing else {
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
+            return
+        }
+
+        // Edit mode: destructive "Удалить будильник" CTA lives in a fixed
+        // footer below the scrolling form — `padding: 0 16px 24px` per the
+        // V2 AlarmEdit artboard (`SPMore2.jsx`, #231). The table's bottom is
+        // pinned to the footer's top so content never hides behind the CTA.
+        let footer = UIView()
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        footer.backgroundColor = AppColors.bg0
+        view.addSubview(footer)
+
+        let deleteButton = SPButton(
+            title: "Удалить будильник",
+            variant: .pain,
+            size: .lg,
+            fullWidth: true
+        )
+        deleteButton.translatesAutoresizingMaskIntoConstraints = false
+        deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
+        footer.addSubview(deleteButton)
+
+        NSLayoutConstraint.activate([
+            tableView.bottomAnchor.constraint(equalTo: footer.topAnchor),
+
+            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            deleteButton.topAnchor.constraint(equalTo: footer.topAnchor),
+            deleteButton.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: AppSpacing.sp4),
+            deleteButton.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -AppSpacing.sp4),
+            deleteButton.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -AppSpacing.sp2
+            )
         ])
     }
 
@@ -179,6 +219,10 @@ final class CreateAlarmViewController: UIViewController {
 
     @objc private func cancelTapped() {
         dismiss(animated: true)
+    }
+
+    @objc private func deleteTapped() {
+        confirmDelete()
     }
 
     @objc private func saveTapped() {
@@ -230,36 +274,30 @@ final class CreateAlarmViewController: UIViewController {
     // MARK: - View-model bridges
 
     /// `internal` so `+Sections.makeProgressiveScaleToggleCell` can wire the
-    /// toggle callback (#182).
+    /// toggle callback (#182). The cell owns its own chain-row visibility +
+    /// pain-tint flip (#231); the controller only persists the new value and
+    /// asks the table to re-measure the now taller/shorter card.
     func setProgressiveScale(_ isOn: Bool) {
         viewModel.progressiveScale = isOn
-
-        guard view.window != nil else {
-            // Detached views can't safely run insertRows/deleteRows; reload as a
-            // safe fallback (no animation visible to the user anyway).
-            tableView.reloadSections(IndexSet(integer: Section.progressiveScale.rawValue), with: .none)
-            return
-        }
-
-        let previewIndexPath = IndexPath(row: 1, section: Section.progressiveScale.rawValue)
-        tableView.performBatchUpdates({
-            if isOn {
-                tableView.insertRows(at: [previewIndexPath], with: .fade)
-            } else {
-                tableView.deleteRows(at: [previewIndexPath], with: .fade)
-            }
-        })
+        guard view.window != nil else { return }
+        // Animate the self-sizing height change without reloading the cell —
+        // a reload would tear down the SPSwitch mid-gesture.
+        tableView.performBatchUpdates(nil)
     }
 
     /// `internal` so `+Sections.makePenaltyCell` can wire the slider callback
     /// (#182).
     func setPenaltyAmount(_ amount: Double) {
         viewModel.penaltyAmount = amount
-        // Refresh the preview row's text if it's currently visible.
-        guard viewModel.progressiveScale else { return }
-        let previewIndexPath = IndexPath(row: 1, section: Section.progressiveScale.rawValue)
-        if let cell = tableView.cellForRow(at: previewIndexPath) as? ProgressivePreviewCell {
-            cell.configure(text: viewModel.progressiveScalePreview)
+        // Refresh the progressive card's 50 → 100 → 200 → 400 ₽ chain so it
+        // tracks the new base price live.
+        let progressiveIndexPath = IndexPath(row: 0, section: Section.progressiveScale.rawValue)
+        if let cell = tableView.cellForRow(at: progressiveIndexPath) as? ProgressiveScaleCell {
+            cell.configure(
+                isOn: viewModel.progressiveScale,
+                chain: viewModel.progressiveChain,
+                accessibilityChain: viewModel.progressiveScalePreview
+            )
         }
     }
 }
@@ -275,10 +313,8 @@ extension CreateAlarmViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         guard let sec = Section(rawValue: section) else { return 0 }
         switch sec {
-        case .progressiveScale:
-            return viewModel.progressiveScale ? 2 : 1
-        case .deleteAction:
-            return viewModel.isEditing ? 1 : 0
+        case .settings:
+            return SettingsRow.allCases.count
         default:
             return 1
         }
@@ -288,12 +324,11 @@ extension CreateAlarmViewController: UITableViewDataSource {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
         case .repeatDays: return "ПОВТОР"
-        case .sound: return "ЗВУК"
         case .penalty: return "ШТРАФ ЗА ОТКЛАДЫВАНИЕ"
         case .snoozeTime: return "ВРЕМЯ ОТКЛАДЫВАНИЯ"
-        case .theme: return "ОФОРМЛЕНИЕ"
         // Name no longer carries a header — the large in-cell placeholder
-        // already reads as the field's purpose (#143).
+        // already reads as the field's purpose (#143). The settings and
+        // progressive cards are header-less per the V2 artboard (#231).
         default: return nil
         }
     }
@@ -318,7 +353,6 @@ extension CreateAlarmViewController: UITableViewDataSource {
         return UITableView.automaticDimension
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let section = Section(rawValue: indexPath.section) else {
             return UITableViewCell()
@@ -327,16 +361,10 @@ extension CreateAlarmViewController: UITableViewDataSource {
         case .timePicker:        return makeTimePickerCell(tableView, at: indexPath)
         case .repeatDays:        return makeRepeatDaysCell(tableView, at: indexPath)
         case .name:              return makeNameCell(tableView, at: indexPath)
-        case .sound:             return makeSoundCell(tableView, at: indexPath)
-        case .volume:            return makeVolumeCell(tableView, at: indexPath)
-        case .vibration:         return makeVibrationCell(tableView, at: indexPath)
+        case .settings:          return makeSettingsCell(tableView, at: indexPath)
         case .penalty:           return makePenaltyCell(tableView, at: indexPath)
-        case .progressiveScale where indexPath.row == 0:
-            return makeProgressiveScaleToggleCell(tableView, at: indexPath)
-        case .progressiveScale:  return makeProgressivePreviewCell(tableView, at: indexPath)
+        case .progressiveScale:  return makeProgressiveScaleToggleCell(tableView, at: indexPath)
         case .snoozeTime:        return makeSnoozeTimeCell(tableView, at: indexPath)
-        case .theme:             return makeThemeCell(tableView, at: indexPath)
-        case .deleteAction:      return makeDeleteActionCell(tableView, at: indexPath)
         }
     }
 }
@@ -358,10 +386,12 @@ extension CreateAlarmViewController: UITableViewDelegate {
     }
 
     /// Apply the shared card-style background so each `.insetGrouped` section
-    /// (time picker, repeat days, name, sound, vibration, penalty, …) lifts off
-    /// the page in light mode the same way the alarm-row cards do on the home
-    /// screen.
+    /// (time picker, repeat days, name, settings, penalty, …) lifts off the
+    /// page in light mode the same way the alarm-row cards do on the home
+    /// screen. The progressive card owns its background (pain-tinted gradient
+    /// when armed, #231) so the generic recipe must not stomp it.
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        if cell is ProgressiveScaleCell { return }
         let totalRows = self.tableView(tableView, numberOfRowsInSection: indexPath.section)
         let position = CardRowPosition.resolve(row: indexPath.row, totalRows: totalRows)
         cell.styleAsCardRow(position: position)
@@ -370,16 +400,13 @@ extension CreateAlarmViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let section = Section(rawValue: indexPath.section) else { return }
-        switch section {
+        guard section == .settings, let row = SettingsRow(rawValue: indexPath.row) else { return }
+        switch row {
         case .sound:
             showSoundPicker()
-        case .volume:
-            showVolumePicker()
         case .theme:
             showThemePicker()
-        case .deleteAction:
-            confirmDelete()
-        default:
+        case .vibration:
             return
         }
     }

@@ -253,7 +253,9 @@ class AlarmsListViewController: UIViewController {
         let balance = Decimal(viewModel.balance)
         header.setBalance(
             balance,
-            hint: viewModel.affordabilityHint,
+            // `balanceHint` swaps in "Откладывать не получится" at 0 ₽
+            // (#232) and falls back to the affordability line otherwise.
+            hint: viewModel.balanceHint,
             delta: viewModel.weeklyDelta
         )
         // Legacy method preserved for source-compat — the V2 pill already

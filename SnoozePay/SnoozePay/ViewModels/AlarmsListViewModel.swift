@@ -367,6 +367,30 @@ final class AlarmsListViewModel {
         return "Хватит на ~\(count) \(Self.snoozeWord(for: count))"
     }
 
+    // MARK: - Zero-balance state (#232)
+
+    /// `true` when the user has literally no money. The header pill
+    /// switches into its pain (zero) tone and the hint copy changes —
+    /// distinct from `isLowBalance`, which only warns that the runway
+    /// is short.
+    var isZeroBalance: Bool {
+        balance <= 0
+    }
+
+    /// Copy shown under the 0 ₽ figure. Deliberately "Откладывать не
+    /// получится", NOT "будильники не зазвонят" — the alarm still fires
+    /// at zero balance; the user just can't pay to snooze it (PM call,
+    /// issue #232). Alarms stay visually active for the same reason.
+    static let zeroBalanceHint = "Откладывать не получится"
+
+    /// The single hint string the alarms-list header should render under
+    /// the balance figure: zero-balance copy when the wallet is empty,
+    /// otherwise the regular "Хватит на ~N откладываний" affordability
+    /// line ("~0 откладываний" never ships — the zero branch wins first).
+    var balanceHint: String {
+        isZeroBalance ? Self.zeroBalanceHint : affordabilityHint
+    }
+
     /// Weekly net delta surfaced in the sticky header beneath the balance
     /// (#175). Charge transactions are penalty deductions stored as
     /// positive `Double`s with `type == .charge`, so the user-facing net

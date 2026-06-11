@@ -47,8 +47,7 @@ extension CreateAlarmViewController {
                 // the new theme name without waiting for `viewWillAppear`'s
                 // section reload (which doesn't fire for the in-place update
                 // that follows the imperative pop).
-                let indexPath = IndexPath(row: 0, section: themeSectionIndex)
-                if let cell = self.tableView.cellForRow(at: indexPath) as? ThemeRowCell {
+                if let cell = self.tableView.cellForRow(at: self.themeRowIndexPath) as? ThemeRowCell {
                     cell.configure(theme: self.viewModel.theme, themeName: self.viewModel.alarmThemeName)
                 }
             }
@@ -67,21 +66,6 @@ extension CreateAlarmViewController {
                 self?.viewModel.previewSound(soundID)
             }
         )
-        navigationController?.pushViewController(picker, animated: true)
-    }
-
-    /// Push the new `VolumePickerViewController` (#150). The picker reports
-    /// every slider / switch change live so dismissing on the back chevron
-    /// is "auto-save" — the parent's `viewWillAppear` then refreshes the
-    /// volume row to render the new value.
-    func showVolumePicker() {
-        let picker = VolumePickerViewController(
-            volume: viewModel.volume,
-            fadeIn: viewModel.volumeFadeIn
-        ) { [weak self] volume, fadeIn in
-            self?.viewModel.volume = volume
-            self?.viewModel.volumeFadeIn = fadeIn
-        }
         navigationController?.pushViewController(picker, animated: true)
     }
 }

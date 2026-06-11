@@ -107,7 +107,9 @@ extension AlarmFiringViewController {
 
         NSLayoutConstraint.activate([
             block.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            block.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: AppSpacing.sp6),
+            // Below the eyebrow caps — V3 moved the name label above the
+            // clock (#225), so the eyebrow is now the hero's bottom edge.
+            block.topAnchor.constraint(equalTo: wakeUpCapsLabel.bottomAnchor, constant: AppSpacing.sp6),
             block.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
             block.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset)
         ])
