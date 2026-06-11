@@ -46,10 +46,15 @@ extension AlarmFiringViewController {
         // scheduleCompletion surfaces a notification-center failure (revoked
         // permission, 64-pending-limit, malformed trigger) so the user
         // doesn't pay for a snooze that will never re-fire (#127 finding).
-        let success = viewModel.snooze { [weak self] result in
+        let success = viewModel.snooze { [weak self] outcome in
             guard let self else { return }
-            if case let .failure(error) = result {
+            switch outcome {
+            case .scheduled:
+                break
+            case .scheduleFailed(let error):
                 self.presentSnoozeScheduleFailureAlert(error: error)
+            case .scheduleFailedAndRefundFailed(let error):
+                self.presentSnoozeRefundFailedAlert(error: error)
             }
         }
         if success {
@@ -73,7 +78,26 @@ extension AlarmFiringViewController {
         let detail = error.errorDescription ?? error.localizedDescription
         let alert = UIAlertController(
             title: "Откладывание не запланировано",
-            message: "\(detail) Будильник не зазвенит повторно — установите запасной.",
+            message: "\(detail) Будильник не зазвенит повторно — установите запасной. "
+                + "Списанные деньги возвращены на баланс.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        present(alert, animated: true)
+    }
+
+    /// Stronger banner for the degraded case (#197): the snooze didn't schedule
+    /// AND the refund failed (locked ledger), so the user was billed with no
+    /// re-fire and no money back. Route them to support rather than implying
+    /// the penalty was returned.
+    func presentSnoozeRefundFailedAlert(
+        error: AlarmScheduler.SchedulingError
+    ) {
+        let detail = error.errorDescription ?? error.localizedDescription
+        let alert = UIAlertController(
+            title: "Не удалось вернуть списание",
+            message: "\(detail) Будильник не зазвенит повторно, а вернуть деньги автоматически не вышло. "
+                + "Напишите в поддержку — спишем вручную.",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "Ок", style: .default))
