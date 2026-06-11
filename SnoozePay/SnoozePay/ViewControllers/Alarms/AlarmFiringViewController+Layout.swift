@@ -12,9 +12,9 @@ extension AlarmFiringViewController {
 
     /// Build the firing-screen view stack and pin everything to the screen.
     /// Called once from `viewDidLoad`. Composes:
-    /// 1. Atmospheric `SPDawnBackgroundView` filling the bounds.
+    /// 1. Themed atmospheric background filling the bounds (#225).
     /// 2. Top header — date caps left, balance pill right.
-    /// 3. Centered hero — 96pt mono clock, "Подъём" caps, alarm name.
+    /// 3. Centered hero — bell tile, h3 name, 96pt mono clock, eyebrow caps.
     /// 4. Progressive chrome (only when alarm.progressiveScale).
     /// 5. Audio warning banner, snooze CTA, ghost dismiss.
     /// 6. No-balance stack (hidden by default).
@@ -128,12 +128,15 @@ extension AlarmFiringViewController {
         ])
     }
 
-    /// Install the centered hero: clock + "Подъём" caps + optional name.
-    /// The caps label is below the clock with 12pt gap per spec line 81.
+    /// Install the centered hero — V3 vertical order per `SPThemedFiring.jsx`
+    /// (#225): bell tile, "Будни · 07:00" h3 name, 96pt clock, eyebrow caps.
+    /// The bell tile is tinted (or hidden, for `.custom`) by the +Theme
+    /// accent pass that ran in `installThemedBackground()`.
     private func installHeroCenter() {
+        view.addSubview(bellTile)
+        view.addSubview(nameLabel)
         view.addSubview(timeLabel)
         view.addSubview(wakeUpCapsLabel)
-        view.addSubview(nameLabel)
     }
 
     /// Pin every always-mounted element. Split out of `buildFiringLayout` so
@@ -145,20 +148,26 @@ extension AlarmFiringViewController {
         gap: CGFloat
     ) {
         NSLayoutConstraint.activate([
-            // Center the clock + caps stack vertically — pull it slightly
-            // above geometric center so the bottom CTAs have generous room.
+            // Center the clock vertically — pull it slightly above geometric
+            // center so the bottom CTAs have generous room. The rest of the
+            // hero hangs off the clock: bell + name above, eyebrow below
+            // (V3 order per `SPThemedFiring.jsx` — 12pt flex gap + 4pt
+            // element margins ≈ sp4 between neighbours).
             timeLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             timeLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -60),
             timeLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             timeLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
 
-            wakeUpCapsLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: AppSpacing.sp3),
-            wakeUpCapsLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            bellTile.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            bellTile.bottomAnchor.constraint(equalTo: nameLabel.topAnchor, constant: -AppSpacing.sp4),
 
-            nameLabel.topAnchor.constraint(equalTo: wakeUpCapsLabel.bottomAnchor, constant: AppSpacing.sp2),
+            nameLabel.bottomAnchor.constraint(equalTo: timeLabel.topAnchor, constant: -AppSpacing.sp3),
             nameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             nameLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset),
+
+            wakeUpCapsLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: AppSpacing.sp3),
+            wakeUpCapsLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
 
             audioWarningBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             audioWarningBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
