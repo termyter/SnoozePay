@@ -75,8 +75,10 @@ final class SoundCell: UITableViewCell {
         contentView.addSubview(chevronView)
         contentView.addSubview(soundNameLabel)
 
+        // 20pt horizontal insets — the V2 list-row rule `padding="4px 20px"`
+        // (#231).
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp4),
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
             iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 24),
             iconView.heightAnchor.constraint(equalToConstant: 24),
@@ -84,7 +86,7 @@ final class SoundCell: UITableViewCell {
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: AppSpacing.sp3),
             titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp4),
+            chevronView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
             chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             soundNameLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sp2),

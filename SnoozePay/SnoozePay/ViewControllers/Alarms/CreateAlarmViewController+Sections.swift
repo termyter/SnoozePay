@@ -16,14 +16,22 @@ extension CreateAlarmViewController {
         tableView.register(DayPickerCell.self, forCellReuseIdentifier: DayPickerCell.reuseID)
         tableView.register(NameCell.self, forCellReuseIdentifier: NameCell.reuseID)
         tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
-        tableView.register(VolumeCell.self, forCellReuseIdentifier: VolumeCell.reuseID)
         tableView.register(VibrationCell.self, forCellReuseIdentifier: VibrationCell.reuseID)
         tableView.register(PenaltyCell.self, forCellReuseIdentifier: PenaltyCell.reuseID)
         tableView.register(ProgressiveScaleCell.self, forCellReuseIdentifier: ProgressiveScaleCell.reuseID)
-        tableView.register(ProgressivePreviewCell.self, forCellReuseIdentifier: ProgressivePreviewCell.reuseID)
         tableView.register(SnoozeSliderCell.self, forCellReuseIdentifier: SnoozeSliderCell.reuseID)
         tableView.register(ThemeRowCell.self, forCellReuseIdentifier: ThemeRowCell.reuseID)
-        tableView.register(DeleteActionCell.self, forCellReuseIdentifier: DeleteActionCell.reuseID)
+    }
+
+    /// Route a row of the merged Звук/Тема/Вибрация settings card (#231) to
+    /// its dedicated builder.
+    func makeSettingsCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        guard let row = SettingsRow(rawValue: indexPath.row) else { return UITableViewCell() }
+        switch row {
+        case .sound:     return makeSoundCell(tableView, at: indexPath)
+        case .theme:     return makeThemeCell(tableView, at: indexPath)
+        case .vibration: return makeVibrationCell(tableView, at: indexPath)
+        }
     }
 
     func makeTimePickerCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
@@ -71,14 +79,6 @@ extension CreateAlarmViewController {
         return cell
     }
 
-    func makeVolumeCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: VolumeCell.reuseID, for: indexPath)
-        if let cell = cell as? VolumeCell {
-            cell.configure(volume: viewModel.volume, fadeIn: viewModel.volumeFadeIn)
-        }
-        return cell
-    }
-
     func makeVibrationCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: VibrationCell.reuseID, for: indexPath)
         if let cell = cell as? VibrationCell {
@@ -103,19 +103,12 @@ extension CreateAlarmViewController {
     ) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ProgressiveScaleCell.reuseID, for: indexPath)
         if let cell = cell as? ProgressiveScaleCell {
-            cell.configure(isOn: viewModel.progressiveScale)
+            cell.configure(
+                isOn: viewModel.progressiveScale,
+                chain: viewModel.progressiveChain,
+                accessibilityChain: viewModel.progressiveScalePreview
+            )
             cell.onToggled = { [weak self] isOn in self?.setProgressiveScale(isOn) }
-        }
-        return cell
-    }
-
-    func makeProgressivePreviewCell(
-        _ tableView: UITableView,
-        at indexPath: IndexPath
-    ) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: ProgressivePreviewCell.reuseID, for: indexPath)
-        if let cell = cell as? ProgressivePreviewCell {
-            cell.configure(text: viewModel.progressiveScalePreview)
         }
         return cell
     }
@@ -137,9 +130,5 @@ extension CreateAlarmViewController {
             cell.configure(theme: viewModel.theme, themeName: viewModel.alarmThemeName)
         }
         return cell
-    }
-
-    func makeDeleteActionCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
-        tableView.dequeueReusableCell(withIdentifier: DeleteActionCell.reuseID, for: indexPath)
     }
 }
