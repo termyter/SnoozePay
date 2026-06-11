@@ -444,6 +444,13 @@ final class AlarmScheduler: AlarmScheduling {
             return [TriggerWithLabel(label: "once", trigger: trigger)]
         }
 
+        // One-shot mode (#229): non-repeating triggers fire once at the next
+        // occurrence of each selected weekday and are never re-armed by iOS.
+        // The alarm itself is auto-disabled on dismiss
+        // (`AlarmFiringViewModel.dismiss`), which also cancels the remaining
+        // per-day triggers via `cancel(_:)`.
+        let repeats = alarm.repeatMode == .weekly
+
         // Map our 0=Mon system to iOS weekday (1=Sun, 2=Mon, ..., 7=Sat)
         return alarm.repeatDays.map { day in
             let weekday = ((day + 1) % 7) + 1 // Convert: 0(Mon)->2, 6(Sun)->1
@@ -452,7 +459,7 @@ final class AlarmScheduler: AlarmScheduling {
             components.hour = timeComponents.hour
             components.minute = timeComponents.minute
             components.second = 0
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: repeats)
             return TriggerWithLabel(label: "day\(day)", trigger: trigger)
         }
     }

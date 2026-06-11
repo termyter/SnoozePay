@@ -37,6 +37,10 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// legacy alarms persisted before the theme picker landed — see the
     /// custom `init(from:)` below for the migration path.
     let theme: AlarmTheme
+    /// Weekly vs one-shot recurrence (#229). Defaults to `.weekly` for both
+    /// new alarms and legacy alarms persisted before the repeat-mode control
+    /// landed — see the custom `init(from:)` below for the migration path.
+    let repeatMode: AlarmRepeatMode
 
     // MARK: - Validation rules (#207)
 
@@ -69,7 +73,8 @@ struct Alarm: Identifiable, Equatable, Codable {
         enabled: Bool = true,
         volume: Float = 1.0,
         volumeFadeIn: Bool = false,
-        theme: AlarmTheme = .dawn
+        theme: AlarmTheme = .dawn,
+        repeatMode: AlarmRepeatMode = .weekly
     ) {
         guard repeatDays.allSatisfy(Self.weekdayIndexRange.contains),
               Self.snoozeMinutesRange.contains(snoozeMinutes),
@@ -89,6 +94,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.volume = Self.clampedVolume(volume)
         self.volumeFadeIn = volumeFadeIn
         self.theme = theme
+        self.repeatMode = repeatMode
     }
 
     /// Historical default-arg initializer, kept for in-app call sites whose
@@ -108,7 +114,8 @@ struct Alarm: Identifiable, Equatable, Codable {
         enabled: Bool = true,
         volume: Float = 1.0,
         volumeFadeIn: Bool = false,
-        theme: AlarmTheme = .dawn
+        theme: AlarmTheme = .dawn,
+        repeatMode: AlarmRepeatMode = .weekly
     ) {
         guard let alarm = Alarm(
             validating: id,
@@ -123,7 +130,8 @@ struct Alarm: Identifiable, Equatable, Codable {
             enabled: enabled,
             volume: volume,
             volumeFadeIn: volumeFadeIn,
-            theme: theme
+            theme: theme,
+            repeatMode: repeatMode
         ) else {
             preconditionFailure(
                 """
@@ -157,7 +165,8 @@ struct Alarm: Identifiable, Equatable, Codable {
         enabled: Bool? = nil,
         volume: Float? = nil,
         volumeFadeIn: Bool? = nil,
-        theme: AlarmTheme? = nil
+        theme: AlarmTheme? = nil,
+        repeatMode: AlarmRepeatMode? = nil
     ) -> Alarm {
         Alarm(
             id: id,
@@ -172,7 +181,8 @@ struct Alarm: Identifiable, Equatable, Codable {
             enabled: enabled ?? self.enabled,
             volume: volume ?? self.volume,
             volumeFadeIn: volumeFadeIn ?? self.volumeFadeIn,
-            theme: theme ?? self.theme
+            theme: theme ?? self.theme,
+            repeatMode: repeatMode ?? self.repeatMode
         )
     }
 
@@ -197,7 +207,7 @@ struct Alarm: Identifiable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case id, time, repeatDays, name, soundID, vibrationEnabled
         case snoozeMinutes, penaltyAmount, progressiveScale, enabled
-        case volume, volumeFadeIn, theme
+        case volume, volumeFadeIn, theme, repeatMode
     }
 
     init(from decoder: Decoder) throws {
@@ -230,6 +240,12 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.volumeFadeIn = try container.decodeIfPresent(Bool.self, forKey: .volumeFadeIn) ?? false
         // Migration: pre-#151 alarms have no `theme` field — default to .dawn.
         self.theme = try container.decodeIfPresent(AlarmTheme.self, forKey: .theme) ?? .dawn
+        // Migration: pre-#229 alarms have no `repeatMode` field — default to
+        // .weekly (the historical behaviour). Decoding the raw string keeps
+        // an unknown value (corrupt storage / rolled-back future mode) from
+        // throwing and locking the whole store — sanitize to .weekly instead.
+        let rawRepeatMode = try container.decodeIfPresent(String.self, forKey: .repeatMode)
+        self.repeatMode = rawRepeatMode.flatMap(AlarmRepeatMode.init(rawValue:)) ?? .weekly
     }
 
     /// Shared volume sanitization: non-finite → full volume, then clamp 0...1.

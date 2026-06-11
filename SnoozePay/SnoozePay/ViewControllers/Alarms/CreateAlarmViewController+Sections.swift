@@ -14,6 +14,7 @@ extension CreateAlarmViewController {
     func registerSectionCells(in tableView: UITableView) {
         tableView.register(TimePickerCell.self, forCellReuseIdentifier: TimePickerCell.reuseID)
         tableView.register(DayPickerCell.self, forCellReuseIdentifier: DayPickerCell.reuseID)
+        tableView.register(RepeatModeCell.self, forCellReuseIdentifier: RepeatModeCell.reuseID)
         tableView.register(NameCell.self, forCellReuseIdentifier: NameCell.reuseID)
         tableView.register(SoundCell.self, forCellReuseIdentifier: SoundCell.reuseID)
         tableView.register(VibrationCell.self, forCellReuseIdentifier: VibrationCell.reuseID)
@@ -51,6 +52,27 @@ extension CreateAlarmViewController {
                 guard let self else { return }
                 self.viewModel.toggleDay(day)
                 cell?.configure(selectedDays: self.viewModel.repeatDays)
+            }
+        }
+        return cell
+    }
+
+    /// Никогда / Еженедельно pill + behaviour hint under the day chips
+    /// (#229). The closure repaints the cell first and only then asks the
+    /// table to re-measure — the never/weekly hints wrap to different line
+    /// counts, so measuring against the stale hint would clip the new one.
+    func makeRepeatModeCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: RepeatModeCell.reuseID, for: indexPath)
+        if let cell = cell as? RepeatModeCell {
+            cell.configure(mode: viewModel.repeatMode, hint: viewModel.repeatModeHint)
+            cell.onModeChanged = { [weak self, weak cell] mode in
+                guard let self else { return }
+                self.viewModel.repeatMode = mode
+                cell?.configure(mode: mode, hint: self.viewModel.repeatModeHint)
+                guard self.view.window != nil else { return }
+                // Animate the self-sizing height change without reloading the
+                // cell — a reload would tear down the pill mid-gesture.
+                self.tableView.performBatchUpdates(nil)
             }
         }
         return cell

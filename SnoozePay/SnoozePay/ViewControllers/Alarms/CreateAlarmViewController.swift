@@ -58,6 +58,13 @@ final class CreateAlarmViewController: UIViewController {
         case vibration
     }
 
+    /// Rows inside `Section.repeatDays` (#229): the Пн-Вс day chips and the
+    /// Никогда / Еженедельно repeat-mode pill below them.
+    enum RepeatRow: Int, CaseIterable {
+        case days = 0
+        case mode
+    }
+
     /// Convenience accessor used by `+Pickers.showThemePicker` so that file
     /// does not have to depend on `Section`/`SettingsRow` raw values directly.
     var themeRowIndexPath: IndexPath {
@@ -315,6 +322,8 @@ extension CreateAlarmViewController: UITableViewDataSource {
         switch sec {
         case .settings:
             return SettingsRow.allCases.count
+        case .repeatDays:
+            return RepeatRow.allCases.count
         default:
             return 1
         }
@@ -323,12 +332,14 @@ extension CreateAlarmViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
-        case .repeatDays: return "ПОВТОР"
         case .penalty: return "ШТРАФ ЗА ОТКЛАДЫВАНИЕ"
         case .snoozeTime: return "ВРЕМЯ ОТКЛАДЫВАНИЯ"
         // Name no longer carries a header — the large in-cell placeholder
         // already reads as the field's purpose (#143). The settings and
         // progressive cards are header-less per the V2 artboard (#231).
+        // The repeat card's `ПОВТОР` caption moved inside `RepeatModeCell`
+        // so it sits between the day chips and the mode pill, matching the
+        // V2 RepeatSegmented layout (#229).
         default: return nil
         }
     }
@@ -359,7 +370,10 @@ extension CreateAlarmViewController: UITableViewDataSource {
         }
         switch section {
         case .timePicker:        return makeTimePickerCell(tableView, at: indexPath)
-        case .repeatDays:        return makeRepeatDaysCell(tableView, at: indexPath)
+        case .repeatDays:
+            return RepeatRow(rawValue: indexPath.row) == .mode
+                ? makeRepeatModeCell(tableView, at: indexPath)
+                : makeRepeatDaysCell(tableView, at: indexPath)
         case .name:              return makeNameCell(tableView, at: indexPath)
         case .settings:          return makeSettingsCell(tableView, at: indexPath)
         case .penalty:           return makePenaltyCell(tableView, at: indexPath)
@@ -377,7 +391,10 @@ extension CreateAlarmViewController: UITableViewDelegate {
         guard let section = Section(rawValue: indexPath.section) else { return 44 }
         switch section {
         case .timePicker: return 200
-        case .repeatDays: return 60
+        // Day-chips row keeps its fixed 60pt; the repeat-mode pill + hint
+        // below self-sizes (the hint wraps to 1–2 lines per mode, #229).
+        case .repeatDays:
+            return RepeatRow(rawValue: indexPath.row) == .days ? 60 : UITableView.automaticDimension
         // V2 penalty row stacks a moneyMd value label above a 40pt chip row
         // — the prior 60pt height clipped the chip ladder, so bump to 96pt.
         case .penalty: return 96

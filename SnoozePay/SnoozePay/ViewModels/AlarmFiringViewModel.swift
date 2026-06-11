@@ -200,7 +200,11 @@ final class AlarmFiringViewModel {
     }
 
     /// Dismiss the alarm without charge.
-    /// Non-repeating alarms are disabled after dismissal.
+    /// Non-repeating alarms — no selected days, or one-shot `repeatMode ==
+    /// .never` (#229) — are disabled after dismissal. Disabling a one-shot
+    /// alarm also drops its remaining per-day triggers via the
+    /// `scheduler.cancel` call above, so "ring once and switch off" holds
+    /// even when several weekdays were selected.
     ///
     /// `setEnabled` returns `false` when the alarm is no longer in the repository
     /// (e.g. user deleted it from another screen while the firing UI was up).
@@ -214,7 +218,7 @@ final class AlarmFiringViewModel {
         wakeStore.recordWake()
         scheduler.cancel(alarm.id)
 
-        if alarm.repeatDays.isEmpty {
+        if alarm.repeatDays.isEmpty || alarm.repeatMode == .never {
             let didUpdate = alarmRepository.setEnabled(false, id: alarm.id)
             if !didUpdate {
                 AppLogger.ui.notice("dismiss: alarm \(self.alarm.id, privacy: .private) already removed from repository")
