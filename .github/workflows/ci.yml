@@ -42,28 +42,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # На образе несколько Xcode (26.0…26.5). Дефолт — 26.4.1; этого хватает
-      # для iOS 26.2 SDK. Явно выбираем последний стабильный 26.x.
-      - name: Select Xcode 26
-        run: sudo xcode-select -switch /Applications/Xcode_26.4.1.app
+      # Выбираем Xcode 26.5 — ту же версию, что и локально. На Xcode 26.4.1 +
+      # старом iOS-runtime test host системно падал с malloc-ошибкой
+      # («pointer being freed was not allocated») на каждом тесте.
+      - name: Select Xcode 26.5
+        run: sudo xcode-select -switch /Applications/Xcode_26.5.app
 
       - name: Show toolchain
         run: |
           xcodebuild -version
           xcrun simctl list devices available | grep -E 'iPhone' || true
 
-      # Берём первый доступный на раннере iPhone-симулятор по UDID, чтобы не
-      # завязываться на конкретное имя/версию (они меняются с версией Xcode).
+      # Берём iPhone из САМОГО НОВОГО iOS-runtime на раннере (старый pick
+      # хватал первый попавшийся UDID — мог быть runtime 26.2, см. выше).
       - name: Pick a simulator
         id: sim
         run: |
-          UDID=$(xcrun simctl list devices available \
-            | grep -E 'iPhone' \
-            | grep -oE '[0-9A-Fa-f-]{36}' \
-            | head -n 1)
-          if [ -z "$UDID" ]; then echo "::error::No iPhone simulator available"; exit 1; fi
+          UDID=$(xcrun simctl list devices available -j | jq -r '
+            .devices
+            | to_entries
+            | map(select(.key | contains("iOS")))
+            | sort_by(.key)
+            | last
+            | .value
+            | map(select(.name | contains("iPhone")))
+            | first
+            | .udid')
+          if [ -z "$UDID" ] || [ "$UDID" = "null" ]; then
+            echo "::error::No iPhone simulator available"; exit 1
+          fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-          echo "Using simulator $UDID"
+          xcrun simctl list devices available | grep "$UDID"
 
       # -parallel-testing-enabled NO: дефолтный параллельный прогон на клонах
       # симулятора роняет worker-процессы на слабом CI-раннере (3-4 vCPU) —
