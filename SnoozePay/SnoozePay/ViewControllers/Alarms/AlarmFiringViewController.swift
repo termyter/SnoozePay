@@ -56,6 +56,12 @@ class AlarmFiringViewController: UIViewController {
         return view
     }()
 
+    /// Accent palette resolved from the alarm's theme (#225). Nil only for
+    /// `.custom` photo themes — every stock theme (including Dawn) maps to a
+    /// `FIRING_THEMES` entry. Written once by `installThemedBackground()`;
+    /// read by the accent helpers in +Theme and by `updateAtmosphereTone()`.
+    var firingPalette: AlarmFiringThemePalette?
+
     // MARK: - Top header (V2)
 
     /// Top-bar caps label "Пт · 27 апр" rendered left of the balance pill.
@@ -91,6 +97,11 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - Center hero
 
+    /// 72×72 bell tile above the alarm name — V3 themed firing (#225).
+    /// Gradient + ring are tinted from `firingPalette` in the +Theme accent
+    /// pass; hidden for `.custom` photo themes so the image stays clean.
+    let bellTile = SPFiringBellTile()
+
     /// 96pt mono clock — `AppTypography.clockXl` ultralight. `tabular-nums`
     /// equivalent applied via `.monospacedDigit()` so digit columns don't
     /// reflow on each tick. `internal` so the `+Layout` / `+ViewLifecycle`
@@ -112,9 +123,10 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    /// Caps "Подъём" subtitle below the clock. Hidden when the alarm name is
-    /// non-empty (the V1 nameLabel handled that case); the V2 layout still
-    /// surfaces the alarm name underneath the caps row when present.
+    /// Caps eyebrow below the clock — "Пора вставать" / "Только встать".
+    /// V3 tints it with the theme accent at 85% (`SPThemedFiring.jsx` line
+    /// 167); the colour is applied in `updateAtmosphereTone()` because it
+    /// flips to pain when the wallet drains.
     let wakeUpCapsLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -123,11 +135,13 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    /// `internal` so the `+Layout` extension can pin it next to the clock.
+    /// "Будни · 07:00" h3 title between the bell tile and the clock — V3
+    /// places the alarm identity ABOVE the live time (`SPThemedFiring.jsx`
+    /// line 147). `internal` so the `+Layout` extension can pin it.
     let nameLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.bodyLg
-        label.textColor = UIColor.white.withAlphaComponent(0.55)
+        label.font = AppTypography.h3
+        label.textColor = UIColor.white.withAlphaComponent(0.92)
         label.textAlignment = .center
         label.numberOfLines = 1
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -347,7 +361,7 @@ class AlarmFiringViewController: UIViewController {
     }
 
     func updateUI() {
-        nameLabel.text = viewModel.alarmName
+        nameLabel.text = viewModel.heroTitle
 
         // Refresh snooze CTA — VM may have bumped `snoozeCount` (progressive
         // scaling) since the last update, which changes `currentPenalty`.
@@ -373,6 +387,7 @@ class AlarmFiringViewController: UIViewController {
         }
 
         updateBalancePill()
+        applyThemeAccentToBalancePill()
         updateAtmosphereTone()
 
         // Swap between the normal snooze + dismiss group and the no-balance
@@ -381,11 +396,11 @@ class AlarmFiringViewController: UIViewController {
         refreshNoBalanceVisibility()
     }
 
-    /// Build the "Подъём" / "только встать" caps copy below the clock.
-    /// Mirrors `SPScreensV2.jsx` line 81 (normal) + `SPDawnV3.jsx` line 212
-    /// (no-balance drops to "только встать").
+    /// Build the eyebrow caps copy below the clock. Mirrors `SPDawnV3.jsx`
+    /// line 212 / `SPThemedFiring.jsx` line 172 — "пора вставать" normally,
+    /// dropping to "только встать" when the wallet can't cover a snooze.
     func wakeUpCapsText() -> String {
-        viewModel.canSnooze ? "Подъём" : "Только встать"
+        viewModel.canSnooze ? "Пора вставать" : "Только встать"
     }
 
     /// Snooze CTA hint — "Следующее откладывание: N ₽" when progressive is
@@ -447,16 +462,18 @@ class AlarmFiringViewController: UIViewController {
         }
         dawnBackgroundView.setTone(tone)
 
-        // The "Подъём" caps colour flips with the tone — pain300 when drained
-        // (matches the SPDawnV3 spec line 212).
+        // Eyebrow colour flips with the tone — theme accent at 85% normally
+        // (`SPThemedFiring.jsx` line 167; `.custom` photos keep the neutral
+        // white), pain300 when drained (SPDawnV3 spec line 212). Tracking is
+        // the wider .18em used by the firing eyebrow, not the stock caps .12em.
+        let normalColor = firingPalette?.accent.withAlphaComponent(0.85)
+            ?? UIColor.white.withAlphaComponent(0.5)
         wakeUpCapsLabel.attributedText = NSAttributedString(
             string: wakeUpCapsText().uppercased(),
             attributes: [
                 .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: viewModel.canSnooze
-                    ? UIColor.white.withAlphaComponent(0.5)
-                    : AppColors.pain300
+                .kern: 12 * 0.18,
+                .foregroundColor: viewModel.canSnooze ? normalColor : AppColors.pain300
             ]
         )
     }

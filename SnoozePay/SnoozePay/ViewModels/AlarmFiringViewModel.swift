@@ -109,6 +109,16 @@ final class AlarmFiringViewModel {
 
     var alarmName: String { alarm.name }
 
+    /// "Будни · 07:00" hero title above the big clock — alarm name plus its
+    /// scheduled time (V3 themed firing, `SPThemedFiring.jsx` line 152).
+    /// A blank / whitespace-only name degrades to just the time so the row
+    /// never renders a dangling "·" separator.
+    var heroTitle: String {
+        let time = AlarmFiringTimeFormatter.string(from: alarm.time)
+        let name = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? time : "\(name) · \(time)"
+    }
+
     // MARK: - Actions
 
     /// Deduct penalty and reschedule snooze.

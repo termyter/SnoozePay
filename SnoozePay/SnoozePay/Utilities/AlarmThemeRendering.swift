@@ -24,46 +24,12 @@ enum AlarmThemeRendering {
                 UIColor(themeRGB: 0x0A1320).cgColor,
                 UIColor(themeRGB: 0x050912).cgColor
             ]
-        case .mountains:
-            // Placeholder gradient until design ships an alpine image asset
-            // (tracked as a #151 follow-up). The deep mountain blue →
-            // near-black stops still read as "alpine night" until then.
-            return [
-                UIColor(themeRGB: 0x3D5A80).cgColor,
-                UIColor(themeRGB: 0x293241).cgColor
-            ]
-        case .ocean:
-            return [
-                UIColor(themeRGB: 0x1A659E).cgColor,
-                UIColor(themeRGB: 0x003554).cgColor
-            ]
-        case .forest:
-            // FIRING_THEMES.forest stops from the v3 handoff
-            // (`SPThemedFiring.jsx`): deep pine → moss midpoint → sage.
-            return [
-                UIColor(themeRGB: 0x0A1A0A).cgColor,
-                UIColor(themeRGB: 0x1E3823).cgColor,
-                UIColor(themeRGB: 0x4A6B3A).cgColor
-            ]
-        case .neon:
-            // FIRING_THEMES.neon stops from the v3 handoff
-            // (`SPThemedFiring.jsx`): midnight ink → violet midpoint → hot pink.
-            return [
-                UIColor(themeRGB: 0x0A0A1F).cgColor,
-                UIColor(themeRGB: 0x3D1E63).cgColor,
-                UIColor(themeRGB: 0xFF3D8A).cgColor
-            ]
-        case .abstract:
-            // Money-tinted radial vibe — dark green core fading into the
-            // brand near-black ink. Rendered as a vertical gradient here
-            // because both consumers (firing screen, picker tile) use a
-            // CAGradientLayer; the "radial" character is sold by the stop
-            // distribution rather than `.radial` type.
-            return [
-                UIColor(themeRGB: 0x10B981).cgColor,
-                UIColor(themeRGB: 0x064E3B).cgColor,
-                UIColor(themeRGB: 0x050912).cgColor
-            ]
+        case .mountains, .ocean, .forest, .neon, .abstract:
+            // FIRING_THEMES stops from the v3 handoff (`SPThemedFiring.jsx`)
+            // via `AlarmFiringThemePalette` — single table so the picker tile
+            // / alarm-cell strip and the firing background can't drift (#225).
+            return AlarmFiringThemePalette.palette(for: theme)?
+                .backgroundColors.map { $0.cgColor }
         case .custom:
             return nil
         }
@@ -76,14 +42,12 @@ enum AlarmThemeRendering {
         switch theme {
         case .dawn:
             return [0.0, 0.4, 0.7, 1.0]
-        case .abstract:
-            return [0.0, 0.55, 1.0]
-        case .forest, .neon:
-            // Midpoint pinned at 50% to match the design's
-            // `linear-gradient(160deg, … 0%, … 50%, … 100%)` recipe.
-            return [0.0, 0.5, 1.0]
-        case .mountains, .ocean:
-            return [0.0, 1.0]
+        case .mountains, .ocean, .forest, .neon, .abstract:
+            // Paired with the `AlarmFiringThemePalette` stop tables above —
+            // midpoint pinned at 50% per the design's
+            // `linear-gradient(160deg, … 0%, … 50%, … 100%)` recipe
+            // (Abstract is the lone two-stop theme).
+            return AlarmFiringThemePalette.palette(for: theme)?.backgroundLocations
         case .custom:
             return nil
         }
