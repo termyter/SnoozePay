@@ -241,6 +241,10 @@ class AlarmsListViewController: UIViewController {
         viewModel.onLoadError = { [weak self] error in
             self?.presentRepositoryError(error)
         }
+
+        viewModel.onBalanceCorrupted = { [weak self] rawValue in
+            self?.presentBalanceCorruptedAlert(rawValue: rawValue)
+        }
     }
 
     /// Push the latest balance / hint state into the sticky header.
@@ -305,6 +309,24 @@ class AlarmsListViewController: UIViewController {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    /// Corrupt `user_balance` detected (#119) — possibly at cold start before
+    /// any observer existed (#206). Pop-ups and top-ups are gated until the
+    /// user acknowledges, so the alert offers an immediate reset to 0 ₽.
+    private func presentBalanceCorruptedAlert(rawValue: Double) {
+        guard presentedViewController == nil else { return }
+        let alert = UIAlertController(
+            title: "Баланс повреждён",
+            message: "В хранилище обнаружено некорректное значение баланса (\(rawValue)). "
+                + "Пополнения и списания приостановлены. Сбросить баланс до 0 ₽?",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive) { [weak self] _ in
+            self?.viewModel.acknowledgeBalanceCorruption()
+        })
+        alert.addAction(UIAlertAction(title: "Позже", style: .cancel))
         present(alert, animated: true)
     }
 

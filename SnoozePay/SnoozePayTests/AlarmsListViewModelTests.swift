@@ -560,3 +560,123 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertFalse(vm.alarms[0].enabled, "In-memory state must reflect disable")
     }
 }
+
+// MARK: - Balance corruption surfaced to late observer (#206)
+
+/// Tests that cold-start balance corruption (latched in `BalanceService.init`
+/// before any UI observer exists) still reaches `onBalanceCorrupted` when the
+/// VM registers late — the original notification is dropped, so the VM pulls
+/// the queryable state in `loadData()`.
+final class AlarmsListViewModelCorruptionTests: XCTestCase {
+
+    private var testDefaults: UserDefaults!
+    private var suiteName: String!
+    private var repo: AlarmRepository!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.alarmsListCorruption.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
+        repo = AlarmRepository(
+            defaults: testDefaults,
+            scheduler: AlarmsListViewModelTests.StubScheduler()
+        )
+    }
+
+    override func tearDown() {
+        testDefaults.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    /// Builds a VM wired to an isolated BalanceService + NotificationCenter
+    /// so corruption scenarios don't touch the shared singletons.
+    private func makeFixture(rawBalance: Double) -> (vm: AlarmsListViewModel, service: BalanceService) {
+        let center = NotificationCenter()
+        testDefaults.set(rawBalance, forKey: "user_balance")
+        // Service init runs its corruption probe HERE — before the VM (and
+        // its observer) exists. The posted notification is dropped, exactly
+        // like the cold-start AppDelegate access in #206.
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+        let vm = AlarmsListViewModel(
+            alarmRepository: repo,
+            balanceService: service,
+            transactionRepository: TransactionRepository(defaults: testDefaults),
+            notificationCenter: center
+        )
+        return (vm, service)
+    }
+
+    /// Cold-start scenario: corruption latches in `BalanceService.init`
+    /// (notification dropped — no observer yet), the VM registers late, the
+    /// VC binds `onBalanceCorrupted`, then `loadData()` runs. The alert
+    /// callback MUST still fire with the original raw value.
+    func testLoadData_coldStartCorruption_lateObserverStillAlerted() {
+        let (vm, _) = makeFixture(rawBalance: -42.0)
+
+        var receivedRaw: Double?
+        vm.onBalanceCorrupted = { receivedRaw = $0 }
+
+        vm.loadData()
+
+        XCTAssertEqual(receivedRaw, -42.0,
+                       "Late observer must still learn about init-time corruption")
+        XCTAssertEqual(vm.balance, 0,
+                       "Corrupt balance must be reported as 0 to the list UI")
+    }
+
+    /// The alert must fire once per corruption episode — `loadData()` runs on
+    /// every `viewWillAppear`, and the live notification + the pulled state
+    /// must not stack into duplicate alerts.
+    func testLoadData_corruptionAlertFiresOncePerEpisode() {
+        let (vm, _) = makeFixture(rawBalance: -5.0)
+
+        var fireCount = 0
+        vm.onBalanceCorrupted = { _ in fireCount += 1 }
+
+        vm.loadData()
+        vm.loadData()
+        vm.loadData()
+
+        XCTAssertEqual(fireCount, 1, "Corruption alert must be deduped per episode")
+    }
+
+    /// Healthy VM must never fire the corruption callback.
+    func testLoadData_healthyBalance_doesNotFireCorruptionCallback() {
+        let (vm, _) = makeFixture(rawBalance: 150.0)
+
+        var fired = false
+        vm.onBalanceCorrupted = { _ in fired = true }
+
+        vm.loadData()
+
+        XCTAssertFalse(fired, "Healthy balance must not surface a corruption alert")
+        XCTAssertEqual(vm.balance, 150.0)
+    }
+
+    /// `acknowledgeBalanceCorruption()` wipes the corrupt value (service
+    /// resets to 0, flag clears) and re-arms the dedupe latch so a FUTURE
+    /// corruption episode surfaces a fresh alert.
+    func testAcknowledgeBalanceCorruption_resetsServiceAndReArmsAlert() {
+        let (vm, service) = makeFixture(rawBalance: -10.0)
+
+        var fireCount = 0
+        vm.onBalanceCorrupted = { _ in fireCount += 1 }
+
+        vm.loadData()
+        XCTAssertEqual(fireCount, 1)
+
+        vm.acknowledgeBalanceCorruption()
+        XCTAssertFalse(service.balanceCorrupted, "Ack must clear the service flag")
+        XCTAssertEqual(service.balance, 0, "Ack must reset the stored balance to 0")
+
+        // Healthy reload — no new alert.
+        vm.loadData()
+        XCTAssertEqual(fireCount, 1)
+
+        // Second corruption episode (external write) must alert again.
+        testDefaults.set(-99.0, forKey: "user_balance")
+        vm.loadData()
+        XCTAssertEqual(fireCount, 2,
+                       "A fresh corruption episode after ack must re-fire the alert")
+    }
+}
