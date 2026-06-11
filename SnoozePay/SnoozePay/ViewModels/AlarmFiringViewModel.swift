@@ -5,9 +5,31 @@ import os
 /// Manages penalty calculation and balance deduction logic.
 final class AlarmFiringViewModel {
 
+    // MARK: - Outcome
+
+    /// Result of the in-app (firing VC) snooze, reported asynchronously once
+    /// the scheduler confirms whether the next trigger registered. Mirrors
+    /// `AlarmFiringCoordinator.SnoozeOutcome`'s failure semantics so the
+    /// foreground path and the notification-action path surface the same UX
+    /// (issue #197 — the foreground call site had no refund-on-failure).
+    enum SnoozeScheduleOutcome: Equatable {
+        /// Charge succeeded and the next snooze trigger registered.
+        case scheduled
+        /// Charge succeeded but the scheduler rejected the trigger. The penalty
+        /// has been **refunded** before this is reported — the user is not
+        /// billed for a snooze that won't re-fire. Surface a banner so they set
+        /// a backup alarm.
+        case scheduleFailed(AlarmScheduler.SchedulingError)
+        /// Charge succeeded, schedule failed, AND the offsetting refund also
+        /// failed (locked ledger from a corrupt blob). Wallet is degraded —
+        /// money taken, no re-fire, refund didn't land. Surface a stronger
+        /// "contact support" banner.
+        case scheduleFailedAndRefundFailed(AlarmScheduler.SchedulingError)
+    }
+
     // MARK: - Dependencies
 
-    private let balanceService: BalanceService
+    private let balanceService: AlarmFiringBalancing
     private let alarmRepository: AlarmRepository
     private let scheduler: AlarmScheduler
 
@@ -25,7 +47,7 @@ final class AlarmFiringViewModel {
     init(
         alarm: Alarm,
         snoozeCount: Int = 0,
-        balanceService: BalanceService = .shared,
+        balanceService: AlarmFiringBalancing = BalanceService.shared,
         alarmRepository: AlarmRepository = .shared,
         scheduler: AlarmScheduler = .shared
     ) {
@@ -98,23 +120,70 @@ final class AlarmFiringViewModel {
     /// user knows to set a backup alarm (or contact support for refund).
     /// Without consuming this completion the original silent-failure-class
     /// from #118 reappears in the snooze flow (silent-failure-hunter #127).
+    ///
+    /// On scheduler failure the penalty is **refunded** before the outcome is
+    /// reported (issue #197) — mirroring `AlarmFiringCoordinator`'s
+    /// notification-action path so the user is never billed for a snooze that
+    /// won't re-fire. `scheduleCompletion` therefore reports a richer
+    /// `SnoozeScheduleOutcome` (not the raw scheduler `Result`) so the VC can
+    /// distinguish a clean refund from a degraded "refund also failed" wallet.
     @discardableResult
     func snooze(
-        scheduleCompletion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)? = nil
+        scheduleCompletion: ((SnoozeScheduleOutcome) -> Void)? = nil
     ) -> Bool {
         guard canSnooze else { return false }
 
-        let charged = balanceService.charge(amount: currentPenalty, alarmID: alarm.id)
+        // Capture the penalty for this snooze BEFORE bumping the count so the
+        // refund (if the schedule fails) returns the exact amount charged.
+        let penalty = currentPenalty
+        let charged = balanceService.charge(amount: penalty, alarmID: alarm.id)
         guard charged else { return false }
 
         snoozeCount += 1
-        scheduler.scheduleSnooze(
-            for: alarm,
-            snoozeCount: snoozeCount,
-            completion: scheduleCompletion
-        )
+        scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount) { [weak self] result in
+            self?.handleScheduleResult(result, penalty: penalty, completion: scheduleCompletion)
+        }
         onStateChanged?()
         return true
+    }
+
+    /// Resolves the async scheduler result, refunding the penalty on failure so
+    /// the foreground snooze path matches `AlarmFiringCoordinator
+    /// .handleScheduleResult` (issue #197). Extracted for a dedicated log seam.
+    private func handleScheduleResult(
+        _ result: Result<Void, AlarmScheduler.SchedulingError>,
+        penalty: Double,
+        completion: ((SnoozeScheduleOutcome) -> Void)?
+    ) {
+        switch result {
+        case .success:
+            completion?(.scheduled)
+        case .failure(let error):
+            // Refund via `topUp` (an offsetting ledger entry) rather than
+            // mutating storage directly, so transaction history shows both the
+            // charge and the refund and stats stay auditable.
+            let refunded = balanceService.topUp(amount: penalty)
+            let desc = error.errorDescription ?? error.localizedDescription
+            if refunded {
+                AppLogger.ui.error(
+                    """
+                    foreground snooze: schedule failed alarm=\(self.alarm.id, privacy: .private) \
+                    refunded=\(penalty, privacy: .public) reason=\(desc, privacy: .public)
+                    """
+                )
+                completion?(.scheduleFailed(error))
+            } else {
+                // Refund itself failed — wallet desync (charge recorded, refund
+                // didn't land — locked ledger from a corrupt blob, #72/#119).
+                AppLogger.ui.fault(
+                    """
+                    foreground snooze: schedule failed alarm=\(self.alarm.id, privacy: .private) \
+                    AND refund failed — wallet desync, manual reconciliation required
+                    """
+                )
+                completion?(.scheduleFailedAndRefundFailed(error))
+            }
+        }
     }
 
     /// Dismiss the alarm without charge.
@@ -136,3 +205,19 @@ final class AlarmFiringViewModel {
         }
     }
 }
+
+// MARK: - Billing seam
+
+/// The slice of `BalanceService` the firing VM depends on. Declaring it as a
+/// protocol lets tests inject a stub that can fail `topUp` independently of
+/// `charge` — the only way to exercise the `scheduleFailedAndRefundFailed`
+/// branch, since `BalanceService` / `TransactionRepository` are `final` and a
+/// locked ledger fails `charge` too (issue #197).
+protocol AlarmFiringBalancing: AnyObject {
+    var balance: Double { get }
+    func canAfford(_ amount: Double) -> Bool
+    @discardableResult func charge(amount: Double, alarmID: UUID?) -> Bool
+    @discardableResult func topUp(amount: Double) -> Bool
+}
+
+extension BalanceService: AlarmFiringBalancing {}
