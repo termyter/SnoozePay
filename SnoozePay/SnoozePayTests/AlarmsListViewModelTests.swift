@@ -13,12 +13,17 @@ final class AlarmsListViewModelTests: XCTestCase {
         var scheduleResult: Result<Void, AlarmScheduler.SchedulingError> = .success(())
         private(set) var scheduledIDs: [UUID] = []
         private(set) var cancelledIDs: [UUID] = []
+        /// Fired synchronously inside `schedule` BEFORE the completion runs.
+        /// Lets tests sabotage the store between the optimistic persist and
+        /// the VM's failure-rollback persist (#205 rollback-fails path).
+        var onSchedule: (() -> Void)?
 
         func schedule(
             _ alarm: Alarm,
             completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
         ) {
             scheduledIDs.append(alarm.id)
+            onSchedule?()
             completion?(scheduleResult)
         }
 
@@ -182,12 +187,13 @@ final class AlarmsListViewModelTests: XCTestCase {
 
     // MARK: - Coverage gaps surfaced by pr-test-analyzer (#32)
 
-    /// `toggleAlarm` rebuilds the in-memory cache via the positional `Alarm(...)`
-    /// initializer. Every non-`enabled` field MUST round-trip unchanged — if a
-    /// future model field is added but the rebuild block is not updated, that
-    /// field would silently revert to the default on toggle (the suspected
-    /// root cause of #18). This is a regression fence: any new field plus a
-    /// changed default value will trip the assertion.
+    /// `toggleAlarm` mutates the cached `Alarm` copy in place (#205) — every
+    /// non-`enabled` field MUST round-trip unchanged. The previous manual
+    /// field-by-field `Alarm(...)` rebuild silently reset any field it didn't
+    /// list (it dropped `volume`/`volumeFadeIn`/`theme` from #150/#151 back to
+    /// their defaults — the failure mode suspected in #18). Non-default values
+    /// for ALL fields keep this a regression fence: a future revert to the
+    /// rebuild style trips the assertions immediately.
     func testToggleAlarm_persistsAndRebuildsCacheCorrectly() {
         let calendar = Calendar(identifier: .gregorian)
         let time = calendar.date(from: DateComponents(hour: 7, minute: 30))!
@@ -200,7 +206,10 @@ final class AlarmsListViewModelTests: XCTestCase {
             snoozeMinutes: 7,
             penaltyAmount: 250,
             progressiveScale: true,
-            enabled: true
+            enabled: true,
+            volume: 0.4,
+            volumeFadeIn: true,
+            theme: .ocean
         )
         repo.save(original)
 
@@ -219,6 +228,9 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(cached.snoozeMinutes, original.snoozeMinutes)
         XCTAssertEqual(cached.penaltyAmount, original.penaltyAmount)
         XCTAssertEqual(cached.progressiveScale, original.progressiveScale)
+        XCTAssertEqual(cached.volume, original.volume, "#150 volume must survive a toggle")
+        XCTAssertEqual(cached.volumeFadeIn, original.volumeFadeIn, "#150 fade-in must survive a toggle")
+        XCTAssertEqual(cached.theme, original.theme, "#151 theme must survive a toggle")
         XCTAssertFalse(cached.enabled, "Only `enabled` should change")
 
         // Repository must mirror the in-memory state.
@@ -452,6 +464,51 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertFalse(
             vm.alarms[0].enabled,
             "In-memory `enabled` must roll back to the pre-toggle state on schedule failure"
+        )
+    }
+
+    /// Issue #205: when the schedule fails AND the disk rollback `setEnabled`
+    /// call ALSO fails (store corrupted mid-flight / alarm deleted
+    /// concurrently), the VM must not swallow the rollback boolean. In-memory
+    /// says `enabled=false` while disk still says `enabled=true` — next cold
+    /// launch re-reads enabled=true with no notification scheduled, the exact
+    /// silent regression #129 closed. The VM must surface the stronger
+    /// `ToggleError.rollbackPersistFailed` banner instead of the plain
+    /// scheduling error.
+    func testToggleAlarm_rollbackPersistFails_surfacesToggleError() {
+        let alarm = Alarm(name: "RollbackFail", penaltyAmount: 50, enabled: false)
+        repo.save(alarm)
+
+        let vm = makeViewModel()
+        vm.loadData()
+        XCTAssertEqual(vm.alarms.count, 1)
+
+        // The optimistic persist (enabled=true) succeeds, then `schedule`
+        // corrupts the store BEFORE failing — so the VM's rollback
+        // `setEnabled(false)` hits a locked store and returns false.
+        stubScheduler.scheduleResult = .failure(.system(message: "denied"))
+        stubScheduler.onSchedule = { [testDefaults] in
+            testDefaults?.set(Data("garbage".utf8), forKey: "stored_alarms")
+        }
+
+        var receivedError: LocalizedError?
+        var rebindFired = false
+        vm.onLoadError = { receivedError = $0 }
+        vm.onAlarmsUpdated = { rebindFired = true }
+
+        vm.toggleAlarm(id: alarm.id, enabled: true)
+
+        XCTAssertTrue(rebindFired, "Failed toggle must still trigger a UI re-bind")
+        XCTAssertFalse(vm.alarms[0].enabled, "In-memory `enabled` must still roll back")
+        guard let typed = receivedError as? AlarmsListViewModel.ToggleError else {
+            return XCTFail(
+                "Expected ToggleError.rollbackPersistFailed, got \(String(describing: receivedError))"
+            )
+        }
+        XCTAssertEqual(typed, .rollbackPersistFailed)
+        XCTAssertNotNil(
+            typed.errorDescription,
+            "Rollback-failure banner must carry user-facing copy"
         )
     }
 

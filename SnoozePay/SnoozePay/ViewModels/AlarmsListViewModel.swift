@@ -26,6 +26,25 @@ final class AlarmsListViewModel {
     /// `errorDescription` is already user-facing Russian copy.
     var onLoadError: ((LocalizedError) -> Void)?
 
+    // MARK: - Errors
+
+    /// Surfaced via `onLoadError` when the disk rollback after a failed
+    /// schedule also fails (#205). In-memory and persisted `enabled` state
+    /// have diverged at that point — only a relaunch (which re-reads disk)
+    /// reconciles them, so the copy tells the user to re-check the list.
+    enum ToggleError: LocalizedError {
+        case rollbackPersistFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .rollbackPersistFailed:
+                return "Не удалось включить будильник и откатить изменение — "
+                    + "данные могут быть в рассинхроне. Перезапустите приложение "
+                    + "и проверьте список будильников."
+            }
+        }
+    }
+
     // MARK: - Observers
 
     /// Owned observer token. Removed in `deinit` to prevent the
@@ -106,18 +125,12 @@ final class AlarmsListViewModel {
         // mutate after `setEnabled` returns, a sync mock would fire its
         // closure first, set `.enabled = !enabled`, then the post-call
         // mutation would clobber the rollback (#129).
-        alarms[index] = Alarm(
-            id: alarms[index].id,
-            time: alarms[index].time,
-            repeatDays: alarms[index].repeatDays,
-            name: alarms[index].name,
-            soundID: alarms[index].soundID,
-            vibrationEnabled: alarms[index].vibrationEnabled,
-            snoozeMinutes: alarms[index].snoozeMinutes,
-            penaltyAmount: alarms[index].penaltyAmount,
-            progressiveScale: alarms[index].progressiveScale,
-            enabled: enabled
-        )
+        //
+        // Mutate the stored value in place rather than rebuilding `Alarm`
+        // field-by-field — the manual rebuild silently dropped any field it
+        // didn't list (it reset `volume`/`volumeFadeIn`/`theme` from #150/#151
+        // to their defaults) and would do the same for every future field (#205).
+        alarms[index].enabled = enabled
 
         let didUpdate = alarmRepository.setEnabled(enabled, id: id) { [weak self] result in
             // Scheduling outcome only fires on the successful-persist path.
@@ -138,8 +151,28 @@ final class AlarmsListViewModel {
                 // re-trigger this closure on the rollback's own scheduler call
                 // (toggle-off does no schedule work; toggle-on rollback after
                 // a failed enable becomes a disable — also no schedule work).
-                _ = self.alarmRepository.setEnabled(!enabled, id: id, schedulingResult: nil)
-                self.onLoadError?(error)
+                let rollbackPersisted = self.alarmRepository.setEnabled(
+                    !enabled, id: id, schedulingResult: nil
+                )
+                if rollbackPersisted {
+                    self.onLoadError?(error)
+                } else {
+                    // The disk rollback itself failed (store locked mid-flight
+                    // or alarm deleted concurrently): in-memory now says
+                    // `!enabled` while UserDefaults still says `enabled`. On
+                    // the next cold launch the app re-reads enabled=true with
+                    // no notification registered — the silent regression #129
+                    // was designed to close. Surface a stronger banner than
+                    // the scheduling error alone and log at fault level so
+                    // the drift is visible in sysdiagnose (#205).
+                    AppLogger.repository.fault(
+                        """
+                        toggle rollback persist failed id=\(id, privacy: .private); \
+                        in-memory and disk enabled state diverged
+                        """
+                    )
+                    self.onLoadError?(ToggleError.rollbackPersistFailed)
+                }
                 self.onAlarmsUpdated?()
             }
         }
