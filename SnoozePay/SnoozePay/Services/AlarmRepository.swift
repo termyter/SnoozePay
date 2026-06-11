@@ -204,7 +204,7 @@ final class AlarmRepository {
                 return nil
             }
             guard let idx = alarms.firstIndex(where: { $0.id == id }) else { return nil }
-            alarms[idx].enabled = enabled
+            alarms[idx] = alarms[idx].with(enabled: enabled)
             guard persist(alarms) else { return nil }
             return alarms[idx]
         }

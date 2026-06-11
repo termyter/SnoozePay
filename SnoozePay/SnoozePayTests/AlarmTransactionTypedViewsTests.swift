@@ -40,10 +40,13 @@ final class AlarmTransactionTypedViewsTests: XCTestCase {
         XCTAssertTrue(alarm.weekdays.isEmpty)
     }
 
-    func testAlarmWeekdays_dropsOutOfRangeLegacyIntegers() {
-        // Corrupted legacy data (`-1`, `8`, `99`) must not crash; the bridge
-        // silently drops invalid indices, mirroring `repeatDaysDescription`.
-        let alarm = Alarm(repeatDays: [-1, 0, 8, 99, 6])
+    func testAlarmWeekdays_dropsOutOfRangeLegacyIntegers() throws {
+        // Corrupted legacy data (`-1`, `8`, `99`) can no longer be constructed
+        // via the initializer (#207) — it only reaches the model through
+        // decode of pre-validation persisted JSON, which sanitizes the
+        // indices. The typed view then bridges the surviving valid ones.
+        let alarm = try decodeAlarm(repeatDaysJSON: "[-1, 0, 8, 99, 6]")
+        XCTAssertEqual(alarm.repeatDays, [0, 6])
         XCTAssertEqual(alarm.weekdays, [.monday, .sunday])
     }
 
@@ -64,17 +67,39 @@ final class AlarmTransactionTypedViewsTests: XCTestCase {
         XCTAssertEqual(alarm.penaltyMoney, .zero)
     }
 
-    func testAlarmPenaltyMoney_negativeLegacyValueReturnsNil() {
-        // The primitive setter never validated, so corrupt persisted alarms
-        // could carry a negative `penaltyAmount`. The typed view surfaces this
-        // as `nil` so phase-2 callers must explicitly handle it.
-        let alarm = Alarm(penaltyAmount: -50)
-        XCTAssertNil(alarm.penaltyMoney)
+    func testAlarmPenaltyMoney_negativeLegacyValueSanitizedOnDecode() throws {
+        // Pre-#207 stores could carry a negative `penaltyAmount`. Decode now
+        // degrades it to 0 (no charge) instead of letting downstream code see
+        // a negative amount — the typed view then wraps a valid `.zero`.
+        let alarm = try decodeAlarm(penaltyAmountJSON: "-50.0")
+        XCTAssertEqual(alarm.penaltyAmount, 0)
+        XCTAssertEqual(alarm.penaltyMoney, .zero)
     }
 
-    func testAlarmPenaltyMoney_nanReturnsNil() {
-        let alarm = Alarm(penaltyAmount: .nan)
-        XCTAssertNil(alarm.penaltyMoney)
+    // MARK: - Legacy-JSON decode helper (#207)
+
+    /// Decodes a hand-rolled pre-validation alarm JSON with the given raw
+    /// field payloads, mimicking corrupt legacy storage that the initializer
+    /// would reject today.
+    private func decodeAlarm(
+        repeatDaysJSON: String = "[]",
+        penaltyAmountJSON: String = "50.0"
+    ) throws -> Alarm {
+        let json = """
+        {
+            "id":"\(UUID().uuidString)",
+            "time":770000000,
+            "repeatDays":\(repeatDaysJSON),
+            "name":"Legacy",
+            "soundID":"radar",
+            "vibrationEnabled":true,
+            "snoozeMinutes":9,
+            "penaltyAmount":\(penaltyAmountJSON),
+            "progressiveScale":false,
+            "enabled":true
+        }
+        """.data(using: .utf8)!
+        return try JSONDecoder().decode(Alarm.self, from: json)
     }
 
     // MARK: - Transaction.money

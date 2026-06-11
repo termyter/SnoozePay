@@ -106,15 +106,26 @@ final class CreateAlarmViewModel {
     }
 
     private func makeAlarmFromCurrentState() -> Alarm {
-        Alarm(
+        // Explicit re-construction with validated input (#207). The form's
+        // controls are bounded (sliders/toggles), but `Alarm.init` now traps
+        // on out-of-range values — sanitize here so a future control change
+        // (e.g. a free-text penalty field) degrades gracefully instead of
+        // crashing at the construction boundary.
+        let safeSnooze = min(
+            max(snoozeMinutes, Alarm.snoozeMinutesRange.lowerBound),
+            Alarm.snoozeMinutesRange.upperBound
+        )
+        let safePenalty = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
+        let safeRepeatDays = repeatDays.filter(Alarm.weekdayIndexRange.contains)
+        return Alarm(
             id: existingID ?? UUID(),
             time: time,
-            repeatDays: repeatDays,
+            repeatDays: safeRepeatDays,
             name: name.isEmpty ? "Будильник" : name,
             soundID: soundID,
             vibrationEnabled: vibrationEnabled,
-            snoozeMinutes: snoozeMinutes,
-            penaltyAmount: penaltyAmount,
+            snoozeMinutes: safeSnooze,
+            penaltyAmount: safePenalty,
             progressiveScale: progressiveScale,
             enabled: enabled,
             volume: volume,
