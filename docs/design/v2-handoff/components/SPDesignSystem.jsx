@@ -75,7 +75,7 @@ function DSSection({ id, eyebrow, title, subtitle, children }) {
 function DSPrinciples() {
   const principles = [
     { n: "01", t: "Деньги — главный визуальный ритм", d: "Любая сумма пишется монотипным шрифтом, выровнена по разрядам, с tabular-nums. Зелёное — заработано, янтарное — обычная цена откладывания, красное — прогрессивный штраф." },
-    { n: "02", t: "Сценарий важнее эстетики", d: "Утро в 7:00, глаза не открываются. Кнопки в firing-экране должны попадаться большим пальцем без прицеливания. Минимум 56px, максимум 2 действия в фокусе." },
+    { n: "02", t: "Сценарий важнее эстетики", d: "Утро в 07:00, глаза не открываются. Кнопки в firing-экране должны попадаться большим пальцем без прицеливания. Минимум 56px, максимум 2 действия в фокусе." },
     { n: "03", t: "Тёплый рассвет вместо холодного хайтека", d: "Dawn-палитра (тёмно-янтарный → красный) — фирменная атмосфера. Никаких голубых будильников. Свет «дышит» — лёгкое 8-секундное альфа-движение." },
     { n: "04", t: "Прозрачность боли", d: "Никаких скрытых списаний. Всегда показано: цена следующего откладывания, остаток баланса, сколько списано за сегодня. Цена — обязательно ДО действия, не после." },
     { n: "05", t: "Прогрессив — про дисциплину, не про наказание", d: "Цена ×2 каждое откладывание — это не штраф, это эскалация ставок самим пользователем. Тон: нейтральный, прямой, без морализаторства." },
@@ -227,7 +227,7 @@ function DSType() {
         <div style={{ background: "var(--sp-bg-1)", borderRadius: 24, padding: 32, border: "1px solid var(--sp-white-06)" }}>
           <div className="sp-caps" style={{ color: "var(--sp-money-300)" }}>Money & Time</div>
           <div style={{ font: "700 64px/72px var(--sp-font-mono)", color: "#FFF", marginTop: 8,
-            letterSpacing: "-.02em", fontVariantNumeric: "tabular-nums" }}>1 250 ₽</div>
+            letterSpacing: "-.02em" }}>{fmtRub(1250)}</div>
           <p style={{ font: "var(--sp-t-body-lg)", color: "var(--sp-fg-2)", marginTop: 12 }}>
             <span style={{ fontFamily: "var(--sp-font-mono)" }}>JetBrains&nbsp;Mono</span>.
             Все суммы и таймеры — моноширинные. Цифры выровнены по разрядам (tabular-nums),
@@ -243,7 +243,7 @@ function DSType() {
         <TypeRow name="display"   font="800 88px/92px Manrope"          sample="−400 ₽ за лень" note="Streak modal hero, big-moment overlays" />
         <TypeRow name="h1"        font="800 32px/40px Manrope"          sample="Баланс — это рычаг" note="Onboarding, экран-герой, top-of-screen titles" />
         <TypeRow name="h2"        font="700 24px/32px Manrope"          sample="Создать будильник" note="Sheet titles, секции внутри экрана" />
-        <TypeRow name="h3"        font="700 20px/28px Manrope"          sample="Понедельник, 7:00" note="Subsection, cards" />
+        <TypeRow name="h3"        font="700 20px/28px Manrope"          sample="Понедельник, 07:00" note="Subsection, cards" />
         <TypeRow name="h4"        font="700 17px/24px Manrope"          sample="Способы оплаты" note="Listrows, dense titles" />
         <TypeRow name="body-lg"   font="500 17px/26px Manrope"          sample="Чтобы будильник работал, пополните баланс."  note="Onboarding paragraphs, важные пояснения" />
         <TypeRow name="body"      font="500 15px/22px Manrope"          sample="Будни · Понедельник · обычный режим" note="Default text, supporting copy" />

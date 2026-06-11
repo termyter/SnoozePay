@@ -42,7 +42,7 @@ function FiringDawnProgressive({ stage = 1 }) {
         <div style={{ marginTop: 16 }}>
           <div className="sp-caps" style={{ color: cfg.capsColor }}>{cfg.label}</div>
           <div style={{ font: "200 96px/96px var(--sp-font-mono)", color: "#FFF",
-            letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>7:14</div>
+            letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>07:14</div>
           <div className="sp-body" style={{ color: "var(--sp-fg-2)", marginTop: 8 }}>
             Будни · Понедельник
           </div>
@@ -53,7 +53,7 @@ function FiringDawnProgressive({ stage = 1 }) {
         {/* Кнопка откладывания с растущей ценой */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <button style={{
-            width: "100%", padding: "22px 16px", borderRadius: 24, cursor: "pointer",
+            width: "100%", padding: "22px 20px", borderRadius: 24, cursor: "pointer",
             background: stage >= 7
               ? "linear-gradient(135deg, var(--sp-pain-500), var(--sp-pain-400))"
               : "linear-gradient(135deg, rgba(245,158,11,.18), rgba(245,158,11,.06))",
@@ -63,8 +63,8 @@ function FiringDawnProgressive({ stage = 1 }) {
           }}>
             <div style={{ textAlign: "left" }}>
               <div className="sp-caps" style={{ color: stage >= 7 ? "rgba(255,255,255,.85)" : cfg.capsColor }}>Поспать ещё · +9 минут</div>
-              <div style={{ font: "var(--sp-t-money-md)", color: "#FFF", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
-                {cfg.price} ₽
+              <div style={{ font: "var(--sp-t-money-md)", color: "#FFF", marginTop: 4 }}>
+                {fmtRub(cfg.price)}
               </div>
             </div>
             <IconChevR size={22} style={{ color: "#FFF" }}/>
@@ -100,7 +100,7 @@ function FiringNoBalanceV3() {
         <div style={{ paddingTop: 16 }}>
           <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Будни · Понедельник</div>
           <div style={{ font: "200 96px/96px var(--sp-font-mono)", color: "rgba(255,255,255,.85)",
-            letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>7:14</div>
+            letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>07:14</div>
         </div>
 
         {/* Hero — баланс 0 */}
@@ -108,8 +108,7 @@ function FiringNoBalanceV3() {
           background: "rgba(255,255,255,.04)", border: "1px solid var(--sp-white-08)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Баланс</div>
-            <div style={{ font: "var(--sp-t-money-md)", color: "var(--sp-fg-3)",
-              fontVariantNumeric: "tabular-nums" }}>0 ₽</div>
+            <div style={{ font: "var(--sp-t-money-md)", color: "var(--sp-fg-3)" }}>{fmtRub(0)}</div>
           </div>
           <div className="sp-body" style={{ color: "var(--sp-fg-2)", marginTop: 12 }}>
             Чтобы поспать ещё, нужно пополнить баланс. Без него — только встать.
@@ -121,7 +120,7 @@ function FiringNoBalanceV3() {
         {/* Кнопка пополнить — main action, money-tone, доминирует */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <button style={{
-            width: "100%", padding: "20px 16px", borderRadius: 20, border: 0, cursor: "pointer",
+            width: "100%", padding: "20px 20px", borderRadius: 20, border: 0, cursor: "pointer",
             background: "var(--sp-grad-money)",
             color: "var(--sp-fg-on-money)",
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -153,8 +152,8 @@ function ReferralV2() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ padding: "8px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "16px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
           <button style={{ width: 36, height: 36, borderRadius: 18, border: 0, background: "var(--sp-white-06)",
             color: "var(--sp-fg-1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <IconBack size={18}/>
@@ -220,12 +219,12 @@ function ReferralV2() {
           {/* Друзья */}
           <div>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)", marginBottom: 10 }}>Ваши друзья</div>
-            <SPCard padding={4} radius={16}>
+            <SPCard padding="4px 20px" radius={16}>
               <SPRow leading={
                 <div style={{ width: 36, height: 36, borderRadius: 18, background: "var(--sp-grad-money)",
                   display: "flex", alignItems: "center", justifyContent: "center", font: "var(--sp-t-h4)", color: "var(--sp-fg-on-money)" }}>М</div>
               } title="Маша К." subtitle="Продержалась 7 дней"
-                trailing={<span style={{font:"var(--sp-t-money-md)", color:"var(--sp-money-400)"}}>+200 ₽</span>}/>
+                trailing={<span style={{font:"var(--sp-t-money-md)", color:"var(--sp-money-400)"}}>+{fmtRub(200)}</span>}/>
               <SPRow leading={
                 <div style={{ width: 36, height: 36, borderRadius: 18, background: "var(--sp-warn-700)",
                   display: "flex", alignItems: "center", justifyContent: "center", font: "var(--sp-t-h4)", color: "var(--sp-warn-300)" }}>Д</div>

@@ -3,6 +3,26 @@
 
 const { useState: oS } = React;
 
+/* OnboardingSkip — top-right "Пропустить" escape hatch.
+   Pill shape, sits 16dp below the status bar, 16dp from the right edge.
+   Muted appearance — secondary action. */
+function OnboardingSkip() {
+  return (
+    <button style={{
+      position: "absolute",
+      top: 70, right: 16,
+      zIndex: 5,
+      padding: "6px 14px",
+      border: "1px solid var(--sp-white-08)",
+      borderRadius: 999,
+      background: "var(--sp-white-06)",
+      cursor: "pointer",
+      font: "var(--sp-t-button-sm)",
+      color: "var(--sp-fg-3)",
+    }}>Пропустить</button>
+  );
+}
+
 /* ============================================================
    ONBOARDING — 3 шага
    ============================================================ */
@@ -15,17 +35,18 @@ function Onboarding1() {
         background: "radial-gradient(circle, rgba(255,184,77,.25) 0%, transparent 60%)", filter: "blur(40px)",
       }}/>
       <SPStatusBar time="9:42" tone="light"/>
+      <OnboardingSkip/>
       <div style={{ position: "absolute", inset: 0, paddingTop: 54, display: "flex", flexDirection: "column", padding: "54px 16px 32px" }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
           <div style={{ fontSize: 96, lineHeight: 1, fontFamily: "var(--sp-font-mono)", color: "#FFF", letterSpacing: "-.05em", fontWeight: 200 }}>
-            7:00
+            07:00
           </div>
           <div style={{
-            marginTop: 20, padding: "8px 14px", borderRadius: 999,
+            marginTop: 20, padding: "8px 12px", borderRadius: 999,
             background: "var(--sp-grad-warn)", color: "var(--sp-fg-on-warn)",
             font: "var(--sp-t-button-sm)", fontFamily: "var(--sp-font-mono)",
             display: "inline-flex", boxShadow: "0 8px 24px rgba(245,158,11,.30)",
-          }}>−50 ₽</div>
+          }}>−{fmtRub(50)}</div>
           <div style={{ font: "var(--sp-t-h1)", color: "#FFF", marginTop: 36, letterSpacing: "-.02em" }}>
             Будильник<br/>со ставкой
           </div>
@@ -39,6 +60,9 @@ function Onboarding1() {
           <span style={{ width: 6, height: 6, borderRadius: 3, background: "var(--sp-white-12)" }}/>
         </div>
         <SPButton variant="money" size="lg" full>Дальше</SPButton>
+        {/* CTA-якорь: 20 px ниже «Дальше», чтобы низ зелёной кнопки совпал по Y
+            с «Положить» на экране 04 (там Позже(34) + pad-bot(18) = 52, тут 20 + 32 = 52). */}
+        <div style={{ height: 20, flexShrink: 0 }} aria-hidden="true"/>
       </div>
     </div>
   );
@@ -48,6 +72,7 @@ function Onboarding2() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", overflow: "hidden" }}>
       <SPStatusBar time="9:42" tone="light"/>
+      <OnboardingSkip/>
       <div style={{ position: "absolute", inset: 0, paddingTop: 54, display: "flex", flexDirection: "column", padding: "54px 16px 32px" }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div className="sp-caps" style={{ color: "var(--sp-warn-300)" }}>как это работает</div>
@@ -57,7 +82,7 @@ function Onboarding2() {
           <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 14 }}>
             {[
               { n: "1", t: "Положили 500 ₽", s: "Это запас, из которого спишутся штрафы." },
-              { n: "2", t: "Поспать ещё в 7:00 → −50 ₽", s: "Каждый раз когда вы тянете, деньги уходят." },
+              { n: "2", t: "Поспать ещё в 07:00 → −50 ₽", s: "Каждый раз когда вы тянете, деньги уходят." },
               { n: "3", t: "Встали с первого раза → ничего", s: "Баланс продолжает лежать. Готов к завтрашнему утру." },
             ].map((row, i) => (
               <div key={i} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
@@ -81,6 +106,8 @@ function Onboarding2() {
           <span style={{ width: 6, height: 6, borderRadius: 3, background: "var(--sp-white-12)" }}/>
         </div>
         <SPButton variant="money" size="lg" full>Дальше</SPButton>
+        {/* CTA-якорь — тот же 20 px спейсер, что и на экране 1, низ зелёной кнопки на одном Y. */}
+        <div style={{ height: 20, flexShrink: 0 }} aria-hidden="true"/>
       </div>
     </div>
   );
@@ -96,53 +123,65 @@ function Onboarding3() {
         background: "radial-gradient(circle, rgba(46,219,159,.25) 0%, transparent 60%)", filter: "blur(40px)",
       }}/>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ position: "absolute", inset: 0, paddingTop: 54, display: "flex", flexDirection: "column", padding: "54px 16px 32px" }}>
-        <div className="sp-caps" style={{ color: "var(--sp-money-300)" }}>баланс · сколько положить</div>
-        <div style={{ font: "var(--sp-t-h1)", color: "#FFF", marginTop: 8, letterSpacing: "-.02em" }}>
-          Сколько ставите<br/>на свою дисциплину?
-        </div>
-        <div style={{ flex: 1, marginTop: 24, display: "flex", flexDirection: "column", gap: 8 }}>
-          {[
-            { v: 200, t: "Попробовать", s: "≈ 4 откладывания по 50 ₽" },
-            { v: 500, t: "Серьёзно",     s: "≈ 10 откладываний · хватит на 2 недели", popular: true },
-            { v: 1000, t: "Решительно",  s: "≈ 20 откладываний · спокойный месяц" },
-          ].map(o => {
-            const sel = v === o.v;
-            return (
-              <button key={o.v} onClick={()=>setV(o.v)} style={{
-                width: "100%", padding: "16px 18px", borderRadius: 18, cursor: "pointer", textAlign: "left",
-                background: sel ? "linear-gradient(135deg, rgba(46,219,159,.12), rgba(46,219,159,.04))" : "var(--sp-white-06)",
-                border: sel ? "1px solid rgba(46,219,159,.40)" : "1px solid var(--sp-white-08)",
-                color: "#FFF", display: "flex", alignItems: "center", justifyContent: "space-between",
-                position: "relative", transition: "all 160ms var(--sp-ease-out)",
-              }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ font: "var(--sp-t-h4)", color: "#FFF" }}>{o.t}</span>
-                    {o.popular && <span style={{ font: "10px/12px var(--sp-font-body)", fontWeight: 700, color: "var(--sp-money-300)", letterSpacing: ".12em", textTransform: "uppercase" }}>популярно</span>}
+      <OnboardingSkip/>
+      <div style={{ position: "absolute", inset: 0, paddingTop: 54, display: "flex", flexDirection: "column", padding: "54px 16px 18px" }}>
+        {/* Контентный блок: вертикально по центру, как на onboarding 02/03.
+            Внутри label + title + cards + page dots. Кнопки прикреплены к низу. */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div className="sp-caps" style={{ color: "var(--sp-money-300)" }}>баланс · сколько положить</div>
+          <div style={{ font: "var(--sp-t-h1)", color: "#FFF", marginTop: 8, letterSpacing: "-.02em" }}>
+            Сколько ставите<br/>на свою дисциплину?
+          </div>
+          <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 8 }}>
+            {[
+              { v: 250, t: "Попробовать", s: "≈ 5 откладываний по 50 ₽" },
+              { v: 500, t: "Серьёзно",     s: "≈ 10 откладываний · хватит на 2 недели", popular: true },
+              { v: 1000, t: "Решительно",  s: "≈ 20 откладываний · спокойный месяц" },
+            ].map(o => {
+              const sel = v === o.v;
+              return (
+                <button key={o.v} onClick={()=>setV(o.v)} style={{
+                  width: "100%", padding: "16px 20px", borderRadius: 18, cursor: "pointer", textAlign: "left",
+                  background: sel ? "linear-gradient(135deg, rgba(46,219,159,.12), rgba(46,219,159,.04))" : "var(--sp-white-06)",
+                  border: sel ? "1px solid rgba(46,219,159,.40)" : "1px solid var(--sp-white-08)",
+                  color: "#FFF", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  gap: 12,
+                  position: "relative", transition: "all 160ms var(--sp-ease-out)",
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ font: "var(--sp-t-h4)", color: "#FFF" }}>{o.t}</span>
+                      {o.popular && <span style={{ font: "10px/12px var(--sp-font-body)", fontWeight: 700, color: "var(--sp-money-300)", letterSpacing: ".12em", textTransform: "uppercase" }}>популярно</span>}
+                    </div>
+                    <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 2 }}>{o.s}</div>
                   </div>
-                  <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 2 }}>{o.s}</div>
-                </div>
-                <div style={{ font: "var(--sp-t-money-md)", color: sel ? "var(--sp-money-300)" : "var(--sp-fg-1)", fontVariantNumeric: "tabular-nums" }}>
-                  {o.v} ₽
-                </div>
-              </button>
-            );
-          })}
+                  {/* Сумма всегда на одной строке — white-space: nowrap + не сжимается. */}
+                  <div style={{
+                    font: "var(--sp-t-money-md)",
+                    color: sel ? "var(--sp-money-300)" : "var(--sp-fg-1)",
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}>
+                    {o.v} ₽
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "16px 0 16px" }}>
+        {/* Page dots — закреплены прямо над зелёной кнопкой, 14 px gap до её верхнего края. */}
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 14 }}>
           <span style={{ width: 6, height: 6, borderRadius: 3, background: "var(--sp-white-12)" }}/>
           <span style={{ width: 6, height: 6, borderRadius: 3, background: "var(--sp-white-12)" }}/>
           <span style={{ width: 24, height: 6, borderRadius: 3, background: "var(--sp-grad-money)" }}/>
         </div>
-        <SPButton variant="money" size="lg" full icon={<IconShield size={18}/>} suffix={`${v} ₽`}>Положить</SPButton>
+        {/* Группа [Пополнить + Позже]. Иконка — IconWallet, чётко читается как «положить деньги». */}
+        <SPButton variant="money" size="lg" full icon={<IconWallet size={20}/>} suffix={fmtRubTight(v)}>Пополнить</SPButton>
         <button style={{
-          width: "100%", border: 0, background: "transparent", padding: "12px 0 0",
+          width: "100%", border: 0, background: "transparent", padding: "8px 0 0",
           font: "var(--sp-t-button-md)", color: "var(--sp-fg-3)", cursor: "pointer",
         }}>Позже — попробовать без баланса</button>
-        <div className="sp-meta" style={{ textAlign: "center", color: "var(--sp-fg-4)", marginTop: 10 }}>
-          Можно поменять в любой момент
-        </div>
       </div>
     </div>
   );
@@ -155,9 +194,9 @@ function Statistics() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-        <div style={{ padding: "8px 16px 0" }}>
+        <div style={{ padding: "16px 16px 0" }}>
           <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Апрель</div>
           <div style={{ font: "var(--sp-t-h1)", color: "var(--sp-fg-1)", letterSpacing: "-.02em" }}>Статистика</div>
         </div>
@@ -166,7 +205,7 @@ function Statistics() {
         <div style={{ padding: "16px 16px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <SPCard tone="raised" padding={16} radius={16}>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Потери</div>
-            <div style={{ font: "var(--sp-t-money-lg)", color: "var(--sp-pain-400)", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>−640 ₽</div>
+            <div style={{ font: "var(--sp-t-money-lg)", color: "var(--sp-pain-400)", marginTop: 4 }}>−{fmtRub(640)}</div>
             <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 2 }}>за месяц</div>
           </SPCard>
           <SPCard tone="raised" padding={16} radius={16}>
@@ -243,24 +282,24 @@ function Settings() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ padding: "8px 16px 0" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "16px 16px 0" }}>
           <div style={{ font: "var(--sp-t-h1)", color: "var(--sp-fg-1)", letterSpacing: "-.02em" }}>Настройки</div>
         </div>
 
         <div style={{ padding: "20px 16px 0", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
           <div>
-            <div className="sp-caps" style={{ marginBottom: 8, paddingLeft: 4 }}>баланс</div>
-            <SPCard padding={4} radius={20}>
-              <SPRow leading={<IconShield size={20} style={{color:"var(--sp-money-400)"}}/>} title="Текущий баланс" trailing={<span style={{font:"var(--sp-t-money-md)", color:"var(--sp-money-300)", fontVariantNumeric:"tabular-nums"}}>840 ₽</span>}/>
+            <div className="sp-caps" style={{ marginBottom: 8 }}>баланс</div>
+            <SPCard padding="4px 20px" radius={20}>
+              <SPRow leading={<IconShield size={20} style={{color:"var(--sp-money-400)"}}/>} title="Текущий баланс" trailing={<span style={{font:"var(--sp-t-money-md)", color:"var(--sp-money-300)", fontVariantNumeric:"tabular-nums"}}>{fmtRub(840)}</span>}/>
               <SPRow leading={<IconCoin size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Автопополнение" subtitle="Когда баланс < 200 ₽" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
               <SPRow divider={false} leading={<IconChart size={20} style={{color:"var(--sp-fg-3)"}}/>} title="История списаний" trailing={<IconChevR size={16}/>}/>
             </SPCard>
           </div>
 
           <div>
-            <div className="sp-caps" style={{ marginBottom: 8, paddingLeft: 4 }}>будильники</div>
-            <SPCard padding={4} radius={20}>
+            <div className="sp-caps" style={{ marginBottom: 8 }}>будильники</div>
+            <SPCard padding="4px 20px" radius={20}>
               <SPRow leading={<IconSound size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Звук по умолчанию" trailing={<><span className="sp-meta">Soft Dawn</span><IconChevR size={16}/></>}/>
               <SPRow leading={<IconBell size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Громкость" subtitle="80% · растёт за 30 сек" trailing={<IconChevR size={16}/>}/>
               <SPRow divider={false} leading={<IconClock size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Длина откладывания" trailing={<><span className="sp-meta">5 мин</span><IconChevR size={16}/></>}/>
@@ -268,8 +307,8 @@ function Settings() {
           </div>
 
           <div>
-            <div className="sp-caps" style={{ marginBottom: 8, paddingLeft: 4 }}>профиль</div>
-            <SPCard padding={4} radius={20}>
+            <div className="sp-caps" style={{ marginBottom: 8 }}>профиль</div>
+            <SPCard padding="4px 20px" radius={20}>
               <SPRow divider={false} leading={<IconBell size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Уведомления" trailing={<IconChevR size={16}/>}/>
             </SPCard>
           </div>
@@ -301,8 +340,8 @@ function SoundPicker() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "8px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
           <button style={{ width: 36, height: 36, borderRadius: 18, border: 0, background: "var(--sp-white-06)", color: "var(--sp-fg-1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <IconBack size={18}/>
           </button>
@@ -311,7 +350,7 @@ function SoundPicker() {
         </div>
 
         <div style={{ padding: "20px 16px 0", flex: 1, overflowY: "auto" }}>
-          <SPCard padding={4} radius={20}>
+          <SPCard padding="4px 20px" radius={20}>
             {sounds.map((s, i) => {
               const isLast = i === sounds.length - 1;
               const on = sel === s.id;
@@ -377,8 +416,8 @@ function EmptyAlarms() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "8px 16px 0" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 16px 0" }}>
           <div style={{ font: "var(--sp-t-h1)", color: "var(--sp-fg-1)", letterSpacing: "-.02em" }}>Будильники</div>
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", padding: "0 32px" }}>
@@ -409,8 +448,8 @@ function EmptyStats() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "8px 16px 0" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 16px 0" }}>
           <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Апрель</div>
           <div style={{ font: "var(--sp-t-h1)", color: "var(--sp-fg-1)", letterSpacing: "-.02em" }}>Статистика</div>
         </div>
@@ -429,7 +468,7 @@ function EmptyStats() {
           <div className="sp-body-lg" style={{ color: "var(--sp-fg-2)", marginTop: 10, maxWidth: 280 }}>
             Статистика появится после первой недели использования.
           </div>
-          <div style={{ marginTop: 24, padding: "10px 14px", borderRadius: 999, background: "rgba(46,219,159,.10)", border: "1px solid rgba(46,219,159,.20)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <div style={{ marginTop: 24, padding: "10px 12px", borderRadius: 999, background: "rgba(46,219,159,.10)", border: "1px solid rgba(46,219,159,.20)", display: "inline-flex", alignItems: "center", gap: 8 }}>
             <IconFlame size={14} style={{ color: "var(--sp-money-400)" }}/>
             <span className="sp-meta" style={{ color: "var(--sp-money-300)" }}>Стрик · 2 дня</span>
           </div>

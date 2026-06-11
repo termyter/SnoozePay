@@ -4,8 +4,9 @@
 
 /* ───── Button ───── */
 .sp-btn {
+  flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  border: 0; border-radius: var(--sp-r-md); padding: 0 24px;
+  border: 0; border-radius: var(--sp-r-md); padding: 0 20px;
   font: var(--sp-t-button); cursor: pointer;
   transition: transform var(--sp-dur-quick) var(--sp-ease-out),
               box-shadow var(--sp-dur-quick) var(--sp-ease-out),
@@ -16,9 +17,9 @@
 .sp-btn--full { width: 100%; }
 .sp-btn--lg { height: 56px; font-size: 17px; border-radius: var(--sp-r-lg); }
 .sp-btn--md { height: 48px; }
-.sp-btn--sm { height: 36px; padding: 0 14px; font: var(--sp-t-button-sm); border-radius: var(--sp-r-sm); }
+.sp-btn--sm { height: 36px; padding: 0 12px; font: var(--sp-t-button-sm); border-radius: var(--sp-r-sm); }
 .sp-btn__icon { display: inline-flex; }
-.sp-btn__suffix { margin-left: auto; padding-left: 8px; opacity: .85; font-family: var(--sp-font-mono); }
+.sp-btn__suffix { margin-left: auto; padding-left: 8px; font-family: var(--sp-font-mono); }
 
 .sp-btn--money {
   background: var(--sp-grad-money);
@@ -102,7 +103,7 @@
 .sp-preset {
   position: relative;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  padding: 18px 12px;
+  padding: 16px 16px;
   border-radius: var(--sp-r-md);
   border: 1.5px solid var(--sp-stroke-1);
   background: var(--sp-bg-1);
@@ -110,6 +111,7 @@
   cursor: pointer;
   transition: all var(--sp-dur-quick) var(--sp-ease-out);
   min-height: 88px;
+  min-width: 0;
 }
 .sp-preset:hover { border-color: var(--sp-stroke-2); transform: translateY(-1px); }
 .sp-preset.is-selected {
@@ -117,8 +119,8 @@
   background: rgba(46,219,159,.10);
   box-shadow: 0 0 0 4px rgba(46,219,159,.10);
 }
-.sp-preset__value { font: var(--sp-t-money-md); color: var(--sp-fg-1); }
-.sp-preset__label { font: var(--sp-t-meta); color: var(--sp-fg-3); }
+.sp-preset__value { font: 700 18px/22px var(--sp-font-mono); color: var(--sp-fg-1); white-space: nowrap; }
+.sp-preset__label { font: var(--sp-t-meta); color: var(--sp-fg-3); white-space: normal; text-align: center; line-height: 1.25; }
 .sp-preset__pop {
   position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
   background: var(--sp-grad-money); color: var(--sp-fg-on-money);
@@ -131,7 +133,7 @@
 .sp-snooze {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   width: 100%;
-  padding: 18px 24px 22px;
+  padding: 18px 20px 22px;
   border-radius: var(--sp-r-xl);
   border: 0;
   cursor: pointer;
@@ -148,7 +150,7 @@
 
 /* ───── Balance card ───── */
 .sp-balance {
-  padding: 28px 24px;
+  padding: 28px 20px;
   border-radius: var(--sp-r-xl);
   background: var(--sp-bg-2);
   position: relative; overflow: hidden;
@@ -174,7 +176,7 @@
 }
 .sp-seg__opt {
   border: 0; background: transparent; color: var(--sp-fg-3);
-  padding: 8px 16px; border-radius: 10px;
+  padding: 8px 12px; border-radius: 10px;
   font: var(--sp-t-button-sm); cursor: pointer;
   transition: all var(--sp-dur-quick) var(--sp-ease-out);
 }
@@ -231,7 +233,7 @@
 .sp-navbar__leading button:hover,
 .sp-navbar__trailing button:hover { background: var(--sp-white-08); }
 .sp-navbar--large .sp-navbar__largeTitle {
-  font: var(--sp-t-h1); color: var(--sp-fg-1); padding: 8px 4px 12px;
+  font: var(--sp-t-h1); color: var(--sp-fg-1); padding: 8px 0 12px;
   letter-spacing: -.02em;
 }
 
@@ -329,7 +331,11 @@
   letter-spacing: -.02em; font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
-.dawn-snooze__cur { font-size: 22px; opacity: .8; padding-left: 2px; }
+.dawn-snooze__cur {
+  /* ₽ — тот же кегль, baseline и opacity что и цифры. Просто отделён пробелом. */
+  font-size: inherit;
+  padding-left: .25em;
+}
 .dawn-snooze__hint {
   font: 500 12px/14px var(--sp-font-body);
   opacity: .7;
@@ -381,3 +387,29 @@
   80%  { opacity: 1; transform: translate(-50%, -28px); }
   100% { opacity: 0; transform: translate(-50%, -36px); }
 }
+
+/* ───── Range slider thumb — warn (амбер) на жёлтой дорожке ─────
+   Браузер по умолчанию рисует голубой iOS-thumb. Перекрываем под наш токен. */
+.sp-range-warn {
+  -webkit-appearance: none; appearance: none;
+}
+.sp-range-warn::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #FFF;
+  border: 3px solid var(--sp-warn-500);
+  box-shadow: 0 2px 6px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.08);
+  cursor: pointer;
+  margin-top: -9px;       /* центрирует thumb на 6px треке */
+  transition: transform var(--sp-dur-quick) var(--sp-ease-out);
+}
+.sp-range-warn::-webkit-slider-thumb:active { transform: scale(1.08); }
+.sp-range-warn::-moz-range-thumb {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #FFF;
+  border: 3px solid var(--sp-warn-500);
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  cursor: pointer;
+}
+.sp-range-warn::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; }
+.sp-range-warn::-moz-range-track { height: 6px; border-radius: 3px; }

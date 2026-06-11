@@ -33,7 +33,7 @@ function FiringTopUpInline() {
       <div style={{ position: "absolute", top: 80, left: 0, right: 0, textAlign: "center", opacity: .55 }}>
         <div className="sp-caps" style={{ color: "rgba(255,255,255,.6)" }}>Будни · Понедельник</div>
         <div style={{ font: "200 96px/96px var(--sp-font-mono)", color: "rgba(255,255,255,.85)",
-          letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>7:14</div>
+          letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>07:14</div>
       </div>
 
       {/* Inline sheet снизу */}
@@ -65,12 +65,12 @@ function FiringTopUpInline() {
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Следующее откладывание</div>
             <div style={{ font: "var(--sp-t-h4)", color: "#FFF", marginTop: 4 }}>9 минут сна</div>
           </div>
-          <div style={{ font: "var(--sp-t-money-md)", color: "var(--sp-warn-400)", fontVariantNumeric: "tabular-nums" }}>200 ₽</div>
+          <div style={{ font: "var(--sp-t-money-md)", color: "var(--sp-warn-400)" }}>{fmtRub(200)}</div>
         </div>
 
         {/* Apple Pay one-tap */}
         <button style={{
-          marginTop: 16, width: "100%", padding: "16px 16px",
+          marginTop: 16, width: "100%", padding: "16px 20px",
           borderRadius: 16, border: 0, cursor: "pointer",
           background: "#000", color: "#FFF",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -115,7 +115,7 @@ function FiringTopUpPresets() {
       <div style={{ position: "absolute", top: 80, left: 0, right: 0, textAlign: "center", opacity: .5 }}>
         <div className="sp-caps" style={{ color: "rgba(255,255,255,.6)" }}>Будни · Понедельник</div>
         <div style={{ font: "200 96px/96px var(--sp-font-mono)", color: "rgba(255,255,255,.85)",
-          letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>7:14</div>
+          letterSpacing: "-.04em", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>07:14</div>
       </div>
 
       {/* затемнение под шторкой */}
@@ -147,7 +147,7 @@ function FiringTopUpPresets() {
             const on = sel === p.v;
             return (
               <button key={p.v} onClick={()=>setSel(p.v)} style={{
-                width: "100%", padding: "16px 16px", borderRadius: 16, cursor: "pointer",
+                width: "100%", padding: "16px 20px", borderRadius: 16, cursor: "pointer",
                 border: on ? "1px solid var(--sp-warn-400)" : "1px solid var(--sp-white-08)",
                 background: on ? "rgba(245,158,11,.08)" : "var(--sp-white-04)",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -159,8 +159,8 @@ function FiringTopUpPresets() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ font: "var(--sp-t-money-md)",
-                    color: on ? "var(--sp-warn-400)" : "#FFF", fontVariantNumeric: "tabular-nums" }}>
-                    {p.v} ₽
+                    color: on ? "var(--sp-warn-400)" : "#FFF" }}>
+                    {fmtRub(p.v)}
                   </span>
                   {on && (
                     <div style={{ width: 22, height: 22, borderRadius: 11,
@@ -176,7 +176,7 @@ function FiringTopUpPresets() {
 
         {/* Apple Pay */}
         <button style={{
-          marginTop: 16, width: "100%", padding: "16px 16px",
+          marginTop: 16, width: "100%", padding: "16px 20px",
           borderRadius: 16, border: 0, cursor: "pointer",
           background: "#000", color: "#FFF",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -241,7 +241,7 @@ function FiringTopUpOneTap() {
         {/* Bottom — одна гигантская кнопка */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <button style={{
-            width: "100%", padding: "20px 16px",
+            width: "100%", padding: "20px 20px",
             borderRadius: 20, border: 0, cursor: "pointer",
             background: "#000", color: "#FFF",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
@@ -315,10 +315,10 @@ function AlarmsListLowBalance() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column" }}>
       <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
         {/* Top nav */}
-        <div style={{ padding: "12px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "16px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>SnoozePay</div>
             <div style={{ font: "var(--sp-t-h1)", color: "#FFF", letterSpacing: "-.02em", marginTop: 2 }}>Будильники</div>
@@ -346,7 +346,7 @@ function AlarmsListLowBalance() {
                 <div style={{ flex: 1 }}>
                   <div className="sp-caps" style={{ color: "var(--sp-warn-300)" }}>Баланс почти пуст</div>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-                    <span style={{ font: "var(--sp-t-money-md)", color: "#FFF", fontVariantNumeric: "tabular-nums" }}>50 ₽</span>
+                    <span style={{ font: "var(--sp-t-money-md)", color: "#FFF" }}>{fmtRub(50)}</span>
                     <span className="sp-meta" style={{ color: "rgba(255,255,255,.7)" }}>· хватит на 1 откладывание</span>
                   </div>
                   <div className="sp-body" style={{ color: "rgba(255,255,255,.85)", marginTop: 8 }}>
@@ -354,12 +354,12 @@ function AlarmsListLowBalance() {
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                     <button style={{
-                      flex: 1, padding: "12px 16px", borderRadius: 12, border: 0, cursor: "pointer",
+                      flex: 1, padding: "12px 20px", borderRadius: 12, border: 0, cursor: "pointer",
                       background: "var(--sp-grad-warn)", color: "var(--sp-fg-on-warn)",
                       font: "var(--sp-t-button-md)",
                     }}>Пополнить 500 ₽</button>
                     <button style={{
-                      padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,.20)", cursor: "pointer",
+                      padding: "12px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.20)", cursor: "pointer",
                       background: "transparent", color: "#FFF", font: "var(--sp-t-button-md)",
                     }}>Другая сумма</button>
                   </div>
@@ -375,7 +375,7 @@ function AlarmsListLowBalance() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <div style={{ font: "var(--sp-t-clock-md)", color: "#FFF", fontVariantNumeric: "tabular-nums",
-                  letterSpacing: "-.03em" }}>7:00</div>
+                  letterSpacing: "-.03em" }}>07:00</div>
                 <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 4 }}>Будни · Пн–Пт · 50 ₽ за откладывание</div>
               </div>
               <SPSwitch checked={true} onChange={()=>{}}/>
@@ -385,7 +385,7 @@ function AlarmsListLowBalance() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <div style={{ font: "var(--sp-t-clock-md)", color: "var(--sp-fg-3)", fontVariantNumeric: "tabular-nums",
-                  letterSpacing: "-.03em" }}>9:30</div>
+                  letterSpacing: "-.03em" }}>09:30</div>
                 <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 4 }}>Выходные · Сб–Вс</div>
               </div>
               <SPSwitch checked={false} onChange={()=>{}}/>

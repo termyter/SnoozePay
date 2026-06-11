@@ -325,8 +325,8 @@ function AlarmsListDawn() {
       }}/>
 
       <SPStatusBar time="9:42" tone="light" />
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
-        <div style={{ padding: "8px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
+        <div style={{ padding: "16px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Доброе утро</div>
             <div style={{ font: "var(--sp-t-h1)", color: "var(--sp-fg-1)", letterSpacing: "-.02em" }}>Будильники</div>
@@ -362,7 +362,7 @@ function AlarmsListDawn() {
                 <span className="sp-caps" style={{ color: "var(--sp-money-300)" }}>дней без откладываний</span>
               </div>
               <div className="sp-meta" style={{ color: "var(--sp-fg-2)", marginTop: 2 }}>
-                Сэкономили <span style={{ fontFamily: "var(--sp-font-mono)", color: "var(--sp-money-300)" }}>+250 ₽</span> · до недели 2 дня
+                Сэкономили <span style={{ fontFamily: "var(--sp-font-mono)", color: "var(--sp-money-300)" }}>+{fmtRub(250)}</span> · до недели 2 дня
               </div>
             </div>
             <IconChevR size={18} style={{ color: "var(--sp-fg-3)" }} />
@@ -381,7 +381,7 @@ function AlarmsListDawn() {
               <SPSwitch checked={true} onChange={()=>{}} />
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
-              <SPPill tone="warn" icon={<IconCoin size={12}/>}>50 ₽</SPPill>
+              <SPPill tone="warn" icon={<IconCoin size={12}/>}>{fmtRub(50)}</SPPill>
               <SPPill tone="pain" icon={<IconFlame size={12}/>}>Прогрессив ×2</SPPill>
               <SPPill icon={<IconSound size={12}/>}>Soft Dawn</SPPill>
             </div>
@@ -398,7 +398,7 @@ function AlarmsListDawn() {
               <SPSwitch checked={false} onChange={()=>{}} />
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-              <SPPill>20 ₽</SPPill>
+              <SPPill>{fmtRub(20)}</SPPill>
               <SPPill>Birds</SPPill>
             </div>
           </SPCard>
@@ -408,13 +408,13 @@ function AlarmsListDawn() {
               <div>
                 <div className="sp-caps" style={{ color: "var(--sp-fg-4)" }}>Спорт · Вт, Чт</div>
                 <div style={{ font: "var(--sp-t-clock-lg)", color: "var(--sp-fg-3)", letterSpacing: "-.04em", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
-                  6:15
+                  06:15
                 </div>
               </div>
               <SPSwitch checked={false} onChange={()=>{}} />
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-              <SPPill tone="warn">100 ₽</SPPill>
+              <SPPill tone="warn">{fmtRub(100)}</SPPill>
               <SPPill>Energy</SPPill>
             </div>
           </SPCard>
@@ -442,8 +442,8 @@ function WalletDawn() {
       }}/>
 
       <SPStatusBar time="9:42" tone="light" />
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
-        <div style={{ padding: "8px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
+        <div style={{ padding: "16px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
           <button style={{ width: 36, height: 36, borderRadius: 18, border: 0, background: "var(--sp-white-06)", color: "var(--sp-fg-1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <IconBack size={18}/>
           </button>
@@ -474,7 +474,7 @@ function WalletDawn() {
           <div style={{ marginTop: 22, paddingBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
               <div className="sp-caps">Потери — последние 7 дней</div>
-              <div className="sp-meta" style={{ fontFamily: "var(--sp-font-mono)", color: "var(--sp-pain-400)" }}>−160 ₽</div>
+              <div className="sp-meta" style={{ fontFamily: "var(--sp-font-mono)", color: "var(--sp-pain-400)" }}>−{fmtRub(160)}</div>
             </div>
             <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 56 }}>
               {[40, 0, 80, 50, 0, 0, 30].map((v, i) => (
@@ -494,8 +494,8 @@ function WalletDawn() {
           </div>
 
           <div style={{ marginTop: "auto", paddingBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-            <SPButton variant="money" size="lg" full icon={<IconShield size={18}/>} suffix={fmtRub(sel)}>
-              Положить
+            <SPButton variant="money" size="lg" full icon={<IconWallet size={20}/>} suffix={fmtRubTight(sel)}>
+              Пополнить
             </SPButton>
             <div className="sp-meta" style={{ textAlign: "center", color: "var(--sp-fg-4)" }}>
               Покупка не возвращается · штрафы списываются с баланса
@@ -531,9 +531,9 @@ function CreateAlarmDawn() {
       }}/>
 
       <SPStatusBar time="9:42" tone="light" />
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
 
-        <div style={{ padding: "8px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
+        <div style={{ padding: "16px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
           <button style={{ width: 36, height: 36, borderRadius: 18, border: 0, background: "var(--sp-white-06)", color: "var(--sp-fg-1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <IconClose size={18}/>
           </button>
@@ -566,7 +566,7 @@ function CreateAlarmDawn() {
         </div>
 
         <div style={{ padding: "20px 16px 0", display: "flex", flexDirection: "column", gap: 12, flex: 1, overflowY: "auto" }}>
-          <SPCard padding={4} radius={20}>
+          <SPCard padding="4px 20px" radius={20}>
             <SPRow
               divider={false}
               leading={<IconSound size={20} style={{ color: "var(--sp-fg-3)" }}/>}
@@ -587,8 +587,8 @@ function CreateAlarmDawn() {
                 <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Цена откладывания</div>
                 <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 2 }}>Сколько спишется при «отложить»</div>
               </div>
-              <div style={{ font: "var(--sp-t-money-md)", color: "var(--sp-warn-400)", fontVariantNumeric: "tabular-nums" }}>
-                {price} ₽
+              <div style={{ font: "var(--sp-t-money-md)", color: "var(--sp-warn-400)" }}>
+                {fmtRub(price)}
               </div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
@@ -655,7 +655,7 @@ function StreakModalDawn() {
 
       <SPStatusBar time="7:01" tone="light" />
 
-      <div style={{ position: "absolute", inset: 0, paddingTop: 54, display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "54px 12px 16px" }}>
+      <div style={{ position: "absolute", inset: 0, paddingTop: 54, display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "54px 16px 16px" }}>
         <div style={{
           background: "rgba(22,28,46,.92)", backdropFilter: "blur(20px)",
           borderRadius: 28, padding: 28, textAlign: "center",
@@ -685,7 +685,7 @@ function StreakModalDawn() {
             background: "var(--sp-grad-money)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
             letterSpacing: "-.02em",
           }}>
-            +350 ₽
+            +{fmtRub(350)}
           </div>
           <div style={{ font: "var(--sp-t-h3)", color: "var(--sp-fg-1)", marginTop: 4 }}>
             Сэкономили за неделю

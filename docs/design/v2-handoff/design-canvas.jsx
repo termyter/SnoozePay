@@ -618,5 +618,189 @@ function DCPostIt({ children, top, left, right, bottom, rotate = -2, width = 180
   );
 }
 
-Object.assign(window, { DesignCanvas, DCSection, DCArtboard, DCPostIt });
+// ─────────────────────────────────────────────────────────────
+// DCArrows — flow-chart overlay drawing curved arrows between
+// artboards on the canvas. Lives INSIDE the world transform layer,
+// so arrows pan/zoom with the rest of the canvas content. Positions
+// are measured in unscaled world-local coordinates via the offset
+// chain (offsetLeft/Top up to offsetParent === world), which doesn't
+// change with the transform — so the SVG paths don't need to react
+// to pan/zoom directly, only to layout changes (reorder, rename, etc).
+//
+// Usage:
+//   <DCArrows flows={[
+//     { from: 'a-id', to: 'b-id', label: 'Тап' },
+//     { from: 'a-id', to: 'c-id', side: 'top' },
+//   ]} />
+//
+// Each flow:
+//   from   — slotId of source artboard
+//   to     — slotId of target artboard
+//   label? — optional text on the curve midpoint
+//   side?  — optional override for which edge to exit from
+//            ('right' | 'left' | 'top' | 'bottom' | 'auto'/undefined)
+//   color? — stroke colour (defaults to a warm muted accent)
+//
+// Arrows are decorative only — pointer-events disabled so they don't
+// block panning/zooming over the underlying canvas.
+// ─────────────────────────────────────────────────────────────
+function DCArrows({ flows = [] }) {
+  const ref = React.useRef(null);
+  const [paths, setPaths] = React.useState([]);
+
+  const update = React.useCallback(() => {
+    const root = ref.current;
+    if (!root) return;
+    // SVG elements have no `offsetParent` — use parentElement instead.
+    // DCArrows is rendered as a direct child of <DesignCanvas>, so the
+    // SVG's parent IS the world transform container.
+    const world = root.parentElement;
+    if (!world) return;
+
+    // World-local position by walking offsetParent chain up to the world.
+    // offsetLeft/Top are unaffected by CSS transform, so this is stable at
+    // any zoom level.
+    const slotPos = (id) => {
+      const el = world.querySelector(`[data-dc-slot="${CSS.escape(id)}"]`);
+      if (!el) return null;
+      let x = 0, y = 0, n = el;
+      while (n && n !== world) {
+        x += n.offsetLeft;
+        y += n.offsetTop;
+        n = n.offsetParent;
+      }
+      return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+    };
+
+    const out = [];
+    for (const f of flows) {
+      const a = slotPos(f.from);
+      const b = slotPos(f.to);
+      if (!a || !b) continue;
+
+      const aMid = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+      const bMid = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+
+      // Pick exit/entry edges. 'auto' picks based on relative position:
+      // horizontal if dx dominates, vertical otherwise. Explicit `side`
+      // override is honoured.
+      const dx = bMid.x - aMid.x;
+      const dy = bMid.y - aMid.y;
+      const horiz = (f.side === 'right' || f.side === 'left')
+        ? true
+        : (f.side === 'top' || f.side === 'bottom')
+          ? false
+          : Math.abs(dx) > Math.abs(dy);
+
+      let p1, p2;
+      if (horiz) {
+        if (dx >= 0) {
+          p1 = { x: a.x + a.w, y: aMid.y };
+          p2 = { x: b.x,       y: bMid.y };
+        } else {
+          p1 = { x: a.x,       y: aMid.y };
+          p2 = { x: b.x + b.w, y: bMid.y };
+        }
+      } else {
+        if (dy >= 0) {
+          p1 = { x: aMid.x, y: a.y + a.h };
+          p2 = { x: bMid.x, y: b.y };
+        } else {
+          p1 = { x: aMid.x, y: a.y };
+          p2 = { x: bMid.x, y: b.y + b.h };
+        }
+      }
+
+      // Bezier control points — pull tangents along the exit axis so the
+      // curve leaves/enters the artboards perpendicularly.
+      const span = horiz ? Math.abs(p2.x - p1.x) : Math.abs(p2.y - p1.y);
+      const offset = Math.max(40, Math.min(160, span * 0.45));
+      let cp1, cp2;
+      if (horiz) {
+        const s = p2.x >= p1.x ? 1 : -1;
+        cp1 = { x: p1.x + s * offset, y: p1.y };
+        cp2 = { x: p2.x - s * offset, y: p2.y };
+      } else {
+        const s = p2.y >= p1.y ? 1 : -1;
+        cp1 = { x: p1.x, y: p1.y + s * offset };
+        cp2 = { x: p2.x, y: p2.y - s * offset };
+      }
+
+      const d = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y} ${cp2.x} ${cp2.y} ${p2.x} ${p2.y}`;
+      // Midpoint of the cubic at t=0.5 for the label, approximated as
+      // mean of the four points.
+      const mid = {
+        x: (p1.x + cp1.x + cp2.x + p2.x) / 4,
+        y: (p1.y + cp1.y + cp2.y + p2.y) / 4,
+      };
+
+      out.push({
+        d, mid, label: f.label,
+        color: f.color || '#c96442',
+        from: p1, to: p2,
+      });
+    }
+    setPaths(out);
+  }, [flows]);
+
+  React.useEffect(() => {
+    update();
+    const root = ref.current;
+    const world = root && root.parentElement;
+    if (!world) return;
+    // Layout-change triggers: ResizeObserver on world covers most cases
+    // (section adds, label edits that change widths). Also rerun on next
+    // tick to catch the post-render layout.
+    const ro = new ResizeObserver(update);
+    ro.observe(world);
+    world.querySelectorAll('[data-dc-slot]').forEach((s) => ro.observe(s));
+    const t = setTimeout(update, 50);
+    return () => { ro.disconnect(); clearTimeout(t); };
+  }, [update]);
+
+  return (
+    <svg
+      ref={ref}
+      style={{
+        position: 'absolute',
+        top: 0, left: 0,
+        width: '100%', height: '100%',
+        overflow: 'visible',
+        pointerEvents: 'none',
+        zIndex: 5,
+      }}
+    >
+      <defs>
+        <marker id="dc-arrowhead" viewBox="0 0 12 12" refX="10" refY="6"
+          markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L 12 6 L 0 12 z" fill="#c96442"/>
+        </marker>
+      </defs>
+      {paths.map((p, i) => (
+        <g key={i}>
+          {/* white halo behind the line for legibility over artboards */}
+          <path d={p.d} fill="none" stroke="rgba(250,250,247,.9)" strokeWidth="6" strokeLinecap="round"/>
+          <path d={p.d} fill="none" stroke={p.color} strokeWidth="2.4" strokeLinecap="round" markerEnd="url(#dc-arrowhead)"/>
+          {p.label && (
+            <g transform={`translate(${p.mid.x} ${p.mid.y})`}>
+              <text
+                fontSize="13"
+                fontFamily="ui-sans-serif, system-ui, -apple-system"
+                fontWeight="500"
+                fill="#7a4429"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                stroke="rgba(250,250,247,.95)"
+                strokeWidth="5"
+                paintOrder="stroke"
+              >{p.label}</text>
+            </g>
+          )}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+Object.assign(window, { DesignCanvas, DCSection, DCArtboard, DCPostIt, DCArrows });
 

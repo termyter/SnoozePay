@@ -31,10 +31,10 @@ function Screen({ children, theme = "dark", bg, statusTone, time = "7:00", noSta
 function FiringBefore() {
   return (
     <Screen theme="dark" bg="#0A0F1F">
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "60px 20px 40px", textAlign: "center", color: "#fff" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "60px 16px 40px", textAlign: "center", color: "#fff" }}>
         <div>
           <div style={{ fontSize: 14, opacity: .6 }}>Пятница, 27 апреля</div>
-          <div style={{ fontSize: 80, fontWeight: 300, fontFamily: "Manrope", margin: "20px 0", letterSpacing: "-.02em" }}>7:00</div>
+          <div style={{ fontSize: 80, fontWeight: 300, fontFamily: "Manrope", margin: "20px 0", letterSpacing: "-.02em" }}>07:00</div>
           <div style={{ fontSize: 18, opacity: .8 }}>Будильник</div>
         </div>
         {/* generic ios-style buttons — basic blue & red */}
@@ -52,10 +52,10 @@ function FiringAfter({ progressive }) {
   const tone = progressive ? "pain" : "warn";
   return (
     <Screen theme="dark" bg="var(--sp-grad-dawn)" time="7:00">
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 20px 32px" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 16px 32px" }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
           <div className="sp-caps" style={{ color: "rgba(255,255,255,.5)" }}>Пятница, 27 апреля · Подъём</div>
-          <div style={{ font: "var(--sp-t-clock-xl)", color: "#FFF", marginTop: 16, letterSpacing: "-.04em", fontVariantNumeric: "tabular-nums" }}>7:00</div>
+          <div style={{ font: "var(--sp-t-clock-xl)", color: "#FFF", marginTop: 16, letterSpacing: "-.04em", fontVariantNumeric: "tabular-nums" }}>07:00</div>
           <div style={{ marginTop: 32, display: "flex", alignItems: "center", gap: 10 }}>
             <SPPill tone="money" icon={<IconCoin size={14}/>}>Баланс {fmtRub(840)}</SPPill>
             {progressive && <SPPill tone="pain" icon={<IconFlame size={14}/>}>Прогрессив ×4</SPPill>}
@@ -67,7 +67,7 @@ function FiringAfter({ progressive }) {
             price={price}
             tone={tone}
             minutes={5}
-            hint={progressive ? `Следующее откладывание: ${fmtRub(price * 2)}` : "Цена фиксированная"}
+            hint={progressive ? <>Следующее откладывание: {fmtRub(price * 2)}</> : "Цена фиксированная"}
           />
           <SPButton variant="ghost" size="lg" full>Я встал — выключить</SPButton>
         </div>
@@ -79,10 +79,10 @@ function FiringAfter({ progressive }) {
 function FiringNoBalance() {
   return (
     <Screen theme="dark" bg="var(--sp-grad-dawn)">
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 20px 32px" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 16px 32px" }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
           <div className="sp-caps" style={{ color: "rgba(255,255,255,.5)" }}>Пятница, 27 апреля · Подъём</div>
-          <div style={{ font: "var(--sp-t-clock-xl)", color: "#FFF", marginTop: 16, letterSpacing: "-.04em" }}>7:00</div>
+          <div style={{ font: "var(--sp-t-clock-xl)", color: "#FFF", marginTop: 16, letterSpacing: "-.04em" }}>07:00</div>
           <div style={{ marginTop: 24 }}>
             <SPPill tone="pain" icon={<IconCoin size={14}/>}>Баланс 0 ₽</SPPill>
           </div>
@@ -113,7 +113,7 @@ function WalletBefore() {
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ background: "#fff", borderRadius: 12, padding: 16, textAlign: "center" }}>
           <div style={{ fontSize: 13, color: "#8E8E93" }}>Текущий баланс</div>
-          <div style={{ fontSize: 30, fontWeight: 600, marginTop: 4 }}>840 ₽</div>
+          <div style={{ fontSize: 30, fontWeight: 600, marginTop: 4 }}>{fmtRub(840)}</div>
         </div>
         {/* плоская сетка — все равноправные */}
         <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4 }}>Пополнить</div>
@@ -139,7 +139,7 @@ function WalletAfter() {
         leading={<button><IconBack size={18}/></button>}
         trailing={<button><IconChart size={18}/></button>}
       />
-      <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 24, flex: 1, overflow: "hidden" }}>
+      <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 24, flex: 1, overflow: "hidden" }}>
 
         <SPBalanceCard balance={840} delta={-160} hint="При текущей цене откладывания хватит на ~17 откладываний" />
 
@@ -179,14 +179,14 @@ function AlarmsListAfter() {
         title="Будильники"
         trailing={<button><IconPlus size={20}/></button>}
       />
-      <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 12, flex: 1, overflow: "hidden" }}>
+      <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 12, flex: 1, overflow: "hidden" }}>
 
         <SPCard tone="raised" padding={20} radius={20}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div className="sp-caps">Будни · 5 дней</div>
             <SPSwitch checked={true} onChange={()=>{}} />
           </div>
-          <div style={{ font: "var(--sp-t-clock-lg)", color: "var(--sp-fg-1)", letterSpacing: "-.03em", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>7:00</div>
+          <div style={{ font: "var(--sp-t-clock-lg)", color: "var(--sp-fg-1)", letterSpacing: "-.03em", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>07:00</div>
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
             <SPPill icon={<IconCoin size={12}/>} tone="warn">50 ₽ за поспать ещё</SPPill>
             <SPPill icon={<IconFlame size={12}/>} tone="pain">Прогрессив</SPPill>
@@ -199,7 +199,7 @@ function AlarmsListAfter() {
             <div className="sp-caps" style={{ color: "var(--sp-fg-4)" }}>Выходные · Сб, Вс</div>
             <SPSwitch checked={false} onChange={()=>{}} />
           </div>
-          <div style={{ font: "var(--sp-t-clock-lg)", color: "var(--sp-fg-3)", letterSpacing: "-.03em", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>9:30</div>
+          <div style={{ font: "var(--sp-t-clock-lg)", color: "var(--sp-fg-3)", letterSpacing: "-.03em", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>09:30</div>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <SPPill>20 ₽ за поспать ещё</SPPill>
             <SPPill>Birds</SPPill>
@@ -226,7 +226,7 @@ function CreateAlarmAfter() {
         leading={<button><IconClose size={18}/></button>}
         trailing={<SPButton variant="money" size="sm">Создать</SPButton>}
       />
-      <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 20, flex: 1, overflowY: "auto" }}>
+      <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 20, flex: 1, overflowY: "auto" }}>
 
         <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
           <div style={{ font: "var(--sp-t-clock-xl)", color: "var(--sp-fg-1)", letterSpacing: "-.04em", fontVariantNumeric: "tabular-nums" }}>
@@ -234,7 +234,7 @@ function CreateAlarmAfter() {
           </div>
         </div>
 
-        <SPCard padding={4} radius={20}>
+        <SPCard padding="4px 20px" radius={20}>
           <SPRow
             divider={false}
             leading={<IconClock size={20}/>}
@@ -250,7 +250,7 @@ function CreateAlarmAfter() {
             leading={<IconCoin size={20}/>}
             title="Цена откладывания"
             subtitle="Сколько спишется при «отложить»"
-            trailing={<><span className="sp-mono" style={{ color: "var(--sp-warn-400)" }}>50 ₽</span><IconChevR size={16}/></>}
+            trailing={<><span className="sp-mono" style={{ color: "var(--sp-warn-400)" }}>{fmtRub(50)}</span><IconChevR size={16}/></>}
           />
         </SPCard>
 

@@ -27,6 +27,12 @@
   <script type="text/babel" src="components/SPMore3.jsx"></script>
   <script type="text/babel" src="components/SPMore4.jsx"></script>
   <script type="text/babel" src="components/SPTopUp.jsx"></script>
+  <script type="text/babel" src="components/SPThemedFiring.jsx"></script>
+  <script type="text/babel" src="components/SPWokeMorning.jsx"></script>
+  <script type="text/babel" src="components/SPFiringThemeSnoozed.jsx"></script>
+  <script type="text/babel" src="components/SPOnboardingSE.jsx"></script>
+  <script type="text/babel" src="components/SPTopUpSE.jsx"></script>
+  <script type="text/babel" src="components/SPFiringNoBalanceThemes.jsx"></script>
   <script type="text/babel" src="design-canvas.jsx"></script>
 
   <script type="text/babel" data-presets="env,react">
@@ -50,27 +56,47 @@
             <DCArtboard id="04-onboarding-3" label="04 · Onboarding 3/3 — стартовый депозит" width={420} height={900}>
               <Phone theme="dark"><Onboarding3 /></Phone>
             </DCArtboard>
-            <DCArtboard id="05-permissions" label="05 · Разрешения" width={420} height={900}>
-              <Phone theme="dark"><Permissions /></Phone>
+            {/* iPhone SE (375×667) — адаптивные версии 02/03/04.
+                Phone width=393 → screen interior 375; height=685 → screen interior 667. */}
+            <DCArtboard id="02-se-onboarding-1" label="02 · SE · Onboarding 1/3 — что это (375×667)" width={420} height={715}>
+              <Phone theme="dark" width={393} height={685}><Onboarding1SE /></Phone>
+            </DCArtboard>
+            <DCArtboard id="03-se-onboarding-2" label="03 · SE · Onboarding 2/3 — как работает (375×667)" width={420} height={715}>
+              <Phone theme="dark" width={393} height={685}><Onboarding2SE /></Phone>
+            </DCArtboard>
+            <DCArtboard id="04-se-onboarding-3" label="04 · SE · Onboarding 3/3 — стартовый депозит (375×667)" width={420} height={715}>
+              <Phone theme="dark" width={393} height={685}><Onboarding3SE /></Phone>
+            </DCArtboard>
+            <DCArtboard id="05-permissions" label="05 · Разрешения (iOS)" width={390} height={800}>
+              <Phone theme="dark" width={390} height={752}><Permissions /></Phone>
+            </DCArtboard>
+            <DCArtboard id="05a-permissions-android" label="05a · Разрешения (Android)" width={390} height={990}>
+              <Phone theme="dark" width={390} height={942}><PermissionsAndroid /></Phone>
             </DCArtboard>
           </DCSection>
 
           {/* === ОСНОВНОЙ ФЛОУ === */}
           <DCSection id="main" title="Основной флоу">
-            <DCArtboard id="06-alarms-list" label="06 · Главный — список будильников" width={420} height={900}>
-              <Phone theme="dark"><AlarmsListV2 /></Phone>
+            <DCArtboard id="06-alarms-list" label="06 · Главный — список будильников" width={390} height={948}>
+              <Phone theme="dark" width={390} height={948}><AlarmsListV2 /></Phone>
+            </DCArtboard>
+            <DCArtboard id="06a-alarms-list-zero" label="06a · Главный — нулевой баланс" width={390} height={948}>
+              <Phone theme="dark" width={390} height={948}><AlarmsListV2 zeroBalance /></Phone>
+            </DCArtboard>
+            <DCArtboard id="06b-title-wrap" label="06b · Перенос длинного названия карточки" width={390} height={1120}>
+              <Phone theme="dark" width={390} height={1120}><AlarmCardWrapDemo /></Phone>
             </DCArtboard>
             <DCArtboard id="07-empty-alarms" label="07 · Пустой список (новый юзер)" width={420} height={900}>
               <Phone theme="dark"><EmptyAlarms /></Phone>
             </DCArtboard>
-            <DCArtboard id="08-create-alarm" label="08 · Создание будильника" width={420} height={900}>
-              <Phone theme="dark"><CreateAlarmV2 /></Phone>
+            <DCArtboard id="08-create-alarm" label="08 · Создание будильника" width={390} height={1184}>
+              <Phone theme="dark" width={390} height={1184}><CreateAlarmV2 /></Phone>
             </DCArtboard>
-            <DCArtboard id="10-alarm-edit" label="09 · Редактирование будильника (имя · время · длительность)" width={420} height={900}>
-              <Phone theme="dark"><AlarmEdit /></Phone>
+            <DCArtboard id="10-alarm-edit" label="09 · Редактирование будильника (имя · время · длительность)" width={390} height={1344}>
+              <Phone theme="dark" width={390} height={1296}><AlarmEdit /></Phone>
             </DCArtboard>
-            <DCArtboard id="11-confirm-delete" label="11 · Подтверждение удаления" width={420} height={900}>
-              <Phone theme="dark"><ConfirmDelete /></Phone>
+            <DCArtboard id="11-confirm-delete" label="11 · Подтверждение удаления" width={390} height={852}>
+              <Phone theme="dark" width={390}><ConfirmDelete /></Phone>
             </DCArtboard>
           </DCSection>
 
@@ -82,31 +108,50 @@
             <DCArtboard id="firing-no-balance" label="Баланс закончился — только встать" width={420} height={900}>
               <Phone theme="dark"><FiringNoBalanceV2 /></Phone>
             </DCArtboard>
+            <DCArtboard id="woke-clean" label="После «Я встал» — 0 откладываний" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><WokeMorning /></Phone>
+            </DCArtboard>
+            <DCArtboard id="woke-recovered" label="После «Я встал» — 3 откладывания" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><WokeMorning snoozes={3} charged={150} /></Phone>
+            </DCArtboard>
           </DCSection>
 
           {/* === ФИНАНСЫ === */}
           <DCSection id="money" title="Финансы">
-            <DCArtboard id="18-wallet" label="18 · Кошелёк / баланс" width={420} height={900}>
-              <Phone theme="dark"><WalletV2 /></Phone>
+            <DCArtboard id="18-wallet" label="18 · Кошелёк / баланс" width={390} height={1009}>
+              <Phone theme="dark" width={390} height={1009}><WalletV2 /></Phone>
             </DCArtboard>
-            <DCArtboard id="19-deposit" label="19 · Пополнить баланс" width={420} height={900}>
-              <Phone theme="dark"><Deposit /></Phone>
+            <DCArtboard id="19-deposit" label="19 · Пополнить баланс (bottom sheet)" width={390} height={1009}>
+              <Phone theme="dark" width={390} height={1009}><Deposit /></Phone>
             </DCArtboard>
-            <DCArtboard id="20-withdraw" label="20 · Вывести с баланса" width={420} height={900}>
-              <Phone theme="dark"><Withdraw /></Phone>
+            {/* iPhone SE (375×667) — отдельный экран пополнения, full-screen.
+                Открывается из «Кошелька» по тапу на «Пополнить».
+                CTA запускает нативный Google Play Billing — внутри экрана
+                нет способов оплаты, только выбор суммы. */}
+            <DCArtboard id="19a-topup-se-empty" label="19a · SE · Пополнение (баланс 0)" width={420} height={715}>
+              <Phone theme="dark" width={393} height={685}><TopUpSE balance={0} /></Phone>
             </DCArtboard>
-            <DCArtboard id="21-tx-history" label="21 · История операций" width={420} height={900}>
-              <Phone theme="dark"><TxHistory /></Phone>
+            <DCArtboard id="19b-topup-se-balance" label="19b · SE · Пополнение (баланс 350 ₽)" width={420} height={715}>
+              <Phone theme="dark" width={393} height={685}><TopUpSE balance={350} /></Phone>
             </DCArtboard>
-            <DCArtboard id="22-payment-methods" label="22 · Способы оплаты" width={420} height={900}>
-              <Phone theme="dark"><PaymentMethods /></Phone>
+            <DCArtboard id="21-tx-history" label="21 · История операций" width={390} height={1218}>
+              <Phone theme="dark" width={390} height={1218}><TxHistory /></Phone>
+            </DCArtboard>
+            <DCArtboard id="21a-tx-history-range" label="21a · История — выбран диапазон (3 мес.)" width={390} height={1836}>
+              <Phone theme="dark" width={390} height={1836}><TxHistory period="range" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="21b-tx-history-picker" label="21b · История — выбор периода (bottom sheet)" width={390} height={1218}>
+              <Phone theme="dark" width={390} height={1218}><TxHistory pickerOpen /></Phone>
+            </DCArtboard>
+            <DCArtboard id="22-payment-methods" label="22 · Способы оплаты (V2)" width={390} height={900}>
+              <Phone theme="dark" width={390}><PaymentMethods /></Phone>
             </DCArtboard>
           </DCSection>
 
           {/* === НАСТРОЙКИ === */}
           <DCSection id="settings" title="Настройки и кастомизация">
-            <DCArtboard id="23-settings" label="23 · Настройки (профиль)" width={420} height={900}>
-              <Phone theme="dark"><SettingsV2 /></Phone>
+            <DCArtboard id="23-settings" label="23 · Настройки" width={390} height={1344}>
+              <Phone theme="dark" width={390} height={1344}><SettingsV2 /></Phone>
             </DCArtboard>
             <DCArtboard id="24-sound-picker" label="24 · Выбор звука будильника" width={420} height={900}>
               <Phone theme="dark"><SoundPicker /></Phone>
@@ -119,31 +164,138 @@
             </DCArtboard>
           </DCSection>
 
-          {/* === TOP-UP FLOW (баланс кончился во время звонка) === */}
+          {/* === FIRING ПО ТЕМАМ — превью каждой готовой темы ===
+              Один и тот же firing-layout (время, имя, кнопки), фон —
+              из выбранной темы. Помогает увидеть, как сцена выглядит,
+              не открывая экран настройки. */}
+          <DCSection id="themes-firing" title="Сработавший будильник в каждой теме">
+            <DCArtboard id="firing-theme-dawn" label="Рассвет" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringTheme theme="dawn" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-theme-ocean" label="Океан" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringTheme theme="ocean" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-theme-mountain" label="Горы" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringTheme theme="mountain" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-theme-forest" label="Лес" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringTheme theme="forest" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-theme-neon" label="Неон" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringTheme theme="neon" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-theme-abstract" label="Абстракт" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringTheme theme="abstract" /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === FIRING ПО ТЕМАМ — состояние ПОСЛЕ нажатия «Отложить» ===
+              Тот же layout что и в основной теме, но обновлены три
+              элемента: баланс с пометкой «−50 ₽», большой клок заменён
+              на countdown до следующего звонка, и появилась шкала
+              прогрессивных списаний. CTA показывает следующую ступень
+              цены. По одному артборду на каждую из 6 тем. */}
+          <DCSection id="themes-firing-snoozed" title="После «Отложить» — в каждой теме">
+            <DCArtboard id="firing-snoozed-dawn" label="Рассвет · после «Отложить»" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeSnoozed theme="dawn" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-snoozed-ocean" label="Океан · после «Отложить»" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeSnoozed theme="ocean" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-snoozed-mountain" label="Горы · после «Отложить»" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeSnoozed theme="mountain" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-snoozed-forest" label="Лес · после «Отложить»" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeSnoozed theme="forest" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-snoozed-neon" label="Неон · после «Отложить»" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeSnoozed theme="neon" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-snoozed-abstract" label="Абстракт · после «Отложить»" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeSnoozed theme="abstract" /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === FIRING ПО ТЕМАМ — состояние «БАЛАНС ЗАКОНЧИЛСЯ» ===
+              Тот же firing-layout, но баланс = 0: откладывать нельзя.
+              Большое 07:00, красная пилюля баланса и «БАЛАНСА НЕ ОСТАЛОСЬ»,
+              нет прогрессив-шкалы, карточка «Поспать ещё» disabled,
+              зелёная «Пополнить» + стеклянная «Я встал». Красный glow.
+              Меняется только фон-градиент (desaturated) и акцент рамки. */}
+          <DCSection id="themes-firing-nobalance" title="Баланс закончился — в каждой теме">
+            <DCArtboard id="firing-nobal-dawn" label="Рассвет · баланс 0" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeNoBalance theme="dawn" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-nobal-ocean" label="Океан · баланс 0" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeNoBalance theme="ocean" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-nobal-mountain" label="Горы · баланс 0" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeNoBalance theme="mountain" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-nobal-forest" label="Лес · баланс 0" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeNoBalance theme="forest" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-nobal-neon" label="Неон · баланс 0" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeNoBalance theme="neon" /></Phone>
+            </DCArtboard>
+            <DCArtboard id="firing-nobal-abstract" label="Абстракт · баланс 0" width={390} height={844}>
+              <Phone theme="dark" width={390} height={844}><FiringThemeNoBalance theme="abstract" /></Phone>
+            </DCArtboard>
+          </DCSection>
+
+          {/* === TOP-UP FLOW — V2 ===
+              Пополнение залога во время звонка (inline). Помечено как
+              V2: в MVP пользователь пополняется заранее на экране 19,
+              а во время звонка может только встать (см. firing-no-balance). */}
           <DCSection id="topup" title="Пополнение во время звонка">
-            <DCArtboard id="tu-presets" label="Bottom sheet с пресетами — Apple Pay одной кнопкой" width={420} height={900}>
-              <Phone theme="dark"><FiringTopUpPresets /></Phone>
+            <DCArtboard id="tu-presets" label="Bottom sheet с пресетами — Apple Pay одной кнопкой (V2)" width={420} height={900}>
+              <Phone theme="dark">
+                <V2Overlay caption="Пополнение залога во время звонка — inline-сценарий — запланировано на будущую версию.">
+                  <FiringTopUpPresets />
+                </V2Overlay>
+              </Phone>
             </DCArtboard>
-            <DCArtboard id="tu-success" label="Баланс пополнен — возврат к будильнику" width={420} height={900}>
-              <Phone theme="dark"><FiringTopUpSuccess /></Phone>
+            <DCArtboard id="tu-success" label="Баланс пополнен — возврат к будильнику (V2)" width={420} height={900}>
+              <Phone theme="dark">
+                <V2Overlay caption="Возврат к будильнику после inline-пополнения — часть V2-сценария пополнения во время звонка.">
+                  <FiringTopUpSuccess />
+                </V2Overlay>
+              </Phone>
             </DCArtboard>
-            <DCArtboard id="tu-low-balance" label="Low-balance warning на главном (баланс ≤ 100 ₽)" width={420} height={900}>
-              <Phone theme="dark"><AlarmsListLowBalance /></Phone>
+            <DCArtboard id="tu-low-balance" label="Low-balance warning на главном (баланс ≤ 100 ₽) (V2)" width={420} height={900}>
+              <Phone theme="dark">
+                <V2Overlay caption="Подсказка о низком балансе на главном экране — связана с V2-сценарием пополнения во время звонка.">
+                  <AlarmsListLowBalance />
+                </V2Overlay>
+              </Phone>
             </DCArtboard>
           </DCSection>
 
           {/* === АНАЛИТИКА И ЭМОЦИИ === */}          <DCSection id="moments" title="Аналитика и эмоциональные моменты">
-            <DCArtboard id="27-stats" label="27 · Статистика (heatmap + графики)" width={420} height={900}>
-              <Phone theme="dark"><Stats /></Phone>
+            <DCArtboard id="27-stats" label="27 · Статистика — поведенческая" width={390} height={1211}>
+              <Phone theme="dark" width={390} height={1211}><Stats /></Phone>
             </DCArtboard>
-            <DCArtboard id="28-streak" label="28 · Streak — 7 дней без откладываний" width={420} height={900}>
-              <Phone theme="dark"><StreakModalV2 /></Phone>
+            <DCArtboard id="27a-stats-cell-tooltip" label="27a · Статистика — нажата ячейка (22 января)" width={390} height={1254}>
+              <Phone theme="dark" width={390} height={1254}>
+                <Stats tappedCell={{ row: 3, col: 3, date: "22 января", weekday: "четверг", snoozes: 3, spent: 350, status: "r" }} />
+              </Phone>
             </DCArtboard>
-            <DCArtboard id="29-referral" label="29 · Пригласить друга" width={420} height={900}>
-              <Phone theme="dark"><Referral /></Phone>
+            <DCArtboard id="28-streak" label="28 · Streak — 7 дней без откладываний" width={390} height={852}>
+              <Phone theme="dark" width={390} height={852}><StreakModalV2 /></Phone>
             </DCArtboard>
-            <DCArtboard id="30-alarm-off-warning" label="30 · Срыв 3 раза подряд — забота" width={420} height={900}>
-              <Phone theme="dark"><AlarmOffWarning /></Phone>
+            <DCArtboard id="29-referral" label="29 · Пригласить друга (V2)" width={420} height={900}>
+              <Phone theme="dark">
+                <V2Overlay caption="Реферальная программа — приглашение друзей и бонусы — запланирована на будущую версию.">
+                  <Referral />
+                </V2Overlay>
+              </Phone>
+            </DCArtboard>
+            <DCArtboard id="30-alarm-off-warning" label="30 · Срыв 3 раза подряд — забота (V2)" width={420} height={900}>
+              <Phone theme="dark">
+                <V2Overlay caption="Поведенческие подсказки после серии срывов — отдельная фича, запланирована на будущую версию.">
+                  <AlarmOffWarning />
+                </V2Overlay>
+              </Phone>
             </DCArtboard>
           </DCSection>
         </DesignCanvas>
