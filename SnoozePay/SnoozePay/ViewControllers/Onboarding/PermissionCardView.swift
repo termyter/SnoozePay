@@ -199,6 +199,9 @@ final class PermissionCardView: UIView {
         case .actionable:
             iconHost.backgroundColor = AppColors.whiteOverlay08
             iconView.tintColor = AppColors.fg3
+            // The 2026-06 mockup renders an *empty* span where this caps
+            // label sits — treated as a mockup bug (#238 p.6): the
+            // ungranted row keeps its explicit "Дать" affordance.
             mount(capsLabel(text: "Дать", color: AppColors.warn400))
             tapGesture.isEnabled = true
         case .unavailable:

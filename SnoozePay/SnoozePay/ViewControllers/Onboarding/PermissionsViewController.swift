@@ -1,11 +1,13 @@
 import UIKit
 import UserNotifications
 
-/// Permissions screen — V2 redesign (`docs/design/v2-handoff/components/SPMore2.jsx`
-/// lines 26-65). Shown once after Onboarding finishes, before the main alarms
-/// list. Caps "последний шаг" eyebrow → h1 "Чтобы будильник работал" → body
-/// copy → three permission cards (Notifications, Critical Alerts, Background)
-/// → "Готово" CTA.
+/// Permissions screen — V3 (`docs/design/v2-handoff/components/SPMore2.jsx`
+/// `Permissions`, artboard 05). Shown once after Onboarding finishes, before
+/// the main alarms list. Caps "последний шаг" eyebrow → h1 "Чтобы будильник
+/// работал" → body copy → three permission cards (Notifications, Critical
+/// Alerts, Background) → "Готово" CTA in flow 28pt after the cards (not
+/// pinned to the bottom). Layout padding follows the JSX `70px 16px 52px`
+/// frame: 16pt below the safe-area top, 16pt sides.
 ///
 /// Flow preserves the V1 wiring:
 /// 1. Notifications card → tapping the card calls
@@ -91,7 +93,7 @@ final class PermissionsViewController: UIViewController {
     private let bodyLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Без этих разрешений iOS не разбудит вас в нужное время — даже если телефон беззвучный."
+        label.text = "Эти разрешения нужны, чтобы будильник прозвенел даже на беззвучном режиме."
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg2
         label.numberOfLines = 0
@@ -151,11 +153,13 @@ final class PermissionsViewController: UIViewController {
         view.addSubview(ctaButton)
         ctaButton.translatesAutoresizingMaskIntoConstraints = false
 
-        let inset = AppSpacing.sp4   // 16pt — matches JSX `padding: 54px 16px 32px`
+        let inset = AppSpacing.sp4   // 16pt — matches JSX `padding: 70px 16px 52px`
         NSLayoutConstraint.activate([
+            // JSX top pad 70 on a 54pt-status-bar frame ⇒ 16pt below the
+            // safe-area top.
             capsLabel.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: AppSpacing.sp6
+                constant: AppSpacing.sp4
             ),
             capsLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             capsLabel.trailingAnchor.constraint(
@@ -177,9 +181,18 @@ final class PermissionsViewController: UIViewController {
 
             ctaButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             ctaButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            // V3: "Готово" lives in flow 28pt after the cards (JSX
+            // `marginTop: 28`) instead of pinning to the screen bottom —
+            // cards no longer flex-grow into the gap.
+            ctaButton.topAnchor.constraint(
+                equalTo: cardsStack.bottomAnchor,
+                constant: AppSpacing.sp6 + AppSpacing.sp1   // 28pt
+            ),
+            // Safety net for compact heights — never push the CTA below the
+            // JSX's 52px bottom pad (≈ 18pt above the home-indicator inset).
             ctaButton.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
+                lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -(AppSpacing.sp4 + 2)   // 18pt
             )
         ])
 
