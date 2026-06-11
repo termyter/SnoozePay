@@ -16,9 +16,9 @@ extension SettingsViewController {
     func makeReferralCell(at indexPath: IndexPath) -> UITableViewCell {
         guard let row = ReferralRow(rawValue: indexPath.row) else { return UITableViewCell() }
         switch row {
-        case .myCode:      return makeMyCodeCell()
-        case .friendInput: return makeFriendInputCell()
-        case .caption:     return makeReferralCaptionCell()
+        case .myCode:      return makeMyCodeCell(at: indexPath)
+        case .friendInput: return makeFriendInputCell(at: indexPath)
+        case .caption:     return makeReferralCaptionCell(at: indexPath)
         }
     }
 
@@ -26,159 +26,52 @@ extension SettingsViewController {
     /// Tapping anywhere on the row copies the code (we forward the tap from
     /// `didSelectRowAt:` rather than wiring an inner tap-target so a bigger
     /// hit area falls out for free).
-    func makeMyCodeCell() -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = AppColors.bg1
-
-        let titleLabel = UILabel()
-        titleLabel.text = "Ваш код"
-        titleLabel.font = AppTypography.bodyLg
-        titleLabel.textColor = AppColors.fg1
-
-        let codeLabel = UILabel()
-        codeLabel.text = referralService.getMyCode()
-        codeLabel.font = AppTypography.moneySm
-        codeLabel.textColor = AppColors.money500
-        codeLabel.setContentHuggingPriority(.required, for: .horizontal)
-
-        let copyIcon = UIImageView(image: UIImage(systemName: "doc.on.clipboard"))
-        copyIcon.tintColor = AppColors.fg3
-        copyIcon.contentMode = .scaleAspectFit
-        copyIcon.translatesAutoresizingMaskIntoConstraints = false
-        copyIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
-        copyIcon.heightAnchor.constraint(equalToConstant: 18).isActive = true
-
-        let trailingStack = UIStackView(arrangedSubviews: [codeLabel, copyIcon])
-        trailingStack.axis = .horizontal
-        trailingStack.alignment = .center
-        trailingStack.spacing = AppSpacing.sm
-        trailingStack.translatesAutoresizingMaskIntoConstraints = false
-
-        let mainStack = UIStackView(arrangedSubviews: [titleLabel, trailingStack])
-        mainStack.axis = .horizontal
-        mainStack.alignment = .center
-        mainStack.translatesAutoresizingMaskIntoConstraints = false
-        cell.contentView.addSubview(mainStack)
-
-        NSLayoutConstraint.activate([
-            mainStack.leadingAnchor.constraint(
-                equalTo: cell.contentView.leadingAnchor,
-                constant: AppSpacing.lg
-            ),
-            mainStack.trailingAnchor.constraint(
-                equalTo: cell.contentView.trailingAnchor,
-                constant: -AppSpacing.lg
-            ),
-            mainStack.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor)
-        ])
-
-        cell.accessoryType = .none
+    func makeMyCodeCell(at indexPath: IndexPath) -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: ReferralMyCodeCell.reuseID,
+            for: indexPath
+        ) as? ReferralMyCodeCell else {
+            assertionFailure("dequeueReusableCell returned wrong type for \(ReferralMyCodeCell.reuseID)")
+            return UITableViewCell()
+        }
+        cell.configure(code: referralService.getMyCode())
         return cell
     }
 
     /// Row 2 — `SPInput` for the friend's code + small "Применить" SPButton.
-    /// We disable selection on the cell because the interactive controls are
-    /// inside it; otherwise the cell would highlight on every tap inside the
-    /// text field.
-    func makeFriendInputCell() -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = AppColors.bg1
-        cell.selectionStyle = .none
-
-        let input = SPInput(
-            label: "Код друга",
-            placeholder: "Введите 6 символов"
-        )
-        input.textField.autocapitalizationType = .allCharacters
-        input.textField.autocorrectionType = .no
-        input.textField.returnKeyType = .done
-        input.textField.delegate = self
-        input.translatesAutoresizingMaskIntoConstraints = false
-
-        // If the user has already redeemed a code, render it as the
-        // pre-filled value and freeze further edits — the bonus is one-shot,
-        // and showing the code keeps support able to ask the user what they
-        // entered.
-        if let applied = referralService.appliedFriendCode {
-            input.textField.text = applied
-            input.textField.isEnabled = false
-            input.hint = "Код уже применён"
+    /// The cell owns the controls; we re-point `friendCodeInput` at its input
+    /// on every dequeue so `handleApplyFriendCodeTapped` can surface inline
+    /// validation messages on the instance currently on screen.
+    func makeFriendInputCell(at indexPath: IndexPath) -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: ReferralFriendInputCell.reuseID,
+            for: indexPath
+        ) as? ReferralFriendInputCell else {
+            assertionFailure("dequeueReusableCell returned wrong type for \(ReferralFriendInputCell.reuseID)")
+            return UITableViewCell()
         }
-        self.friendCodeInput = input
-
-        let applyButton = SPButton(title: "Применить", variant: .money, size: .sm)
-        applyButton.translatesAutoresizingMaskIntoConstraints = false
-        applyButton.isEnabled = referralService.appliedFriendCode == nil
-        applyButton.addTarget(
-            self,
-            action: #selector(handleApplyFriendCodeTapped),
-            for: .touchUpInside
-        )
-
-        let stack = UIStackView(arrangedSubviews: [input, applyButton])
-        stack.axis = .horizontal
-        stack.alignment = .top
-        stack.spacing = AppSpacing.sm
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        cell.contentView.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(
-                equalTo: cell.contentView.leadingAnchor,
-                constant: AppSpacing.lg
-            ),
-            stack.trailingAnchor.constraint(
-                equalTo: cell.contentView.trailingAnchor,
-                constant: -AppSpacing.lg
-            ),
-            stack.topAnchor.constraint(
-                equalTo: cell.contentView.topAnchor,
-                constant: AppSpacing.md
-            ),
-            stack.bottomAnchor.constraint(
-                equalTo: cell.contentView.bottomAnchor,
-                constant: -AppSpacing.md
-            )
-        ])
-
+        cell.configure(
+            appliedCode: referralService.appliedFriendCode,
+            delegate: self
+        ) { [weak self] in
+            self?.handleApplyFriendCodeTapped()
+        }
+        self.friendCodeInput = cell.input
         return cell
     }
 
     /// Row 3 — small grey caption line. Modeled as a real cell rather than a
     /// section footer so it inherits the card-row styling applied in
     /// `willDisplay`.
-    func makeReferralCaptionCell() -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = AppColors.bg1
-        cell.selectionStyle = .none
-
-        let label = UILabel()
-        label.text = "За каждого друга — +200 ₽ на ваш баланс"
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        cell.contentView.addSubview(label)
-
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(
-                equalTo: cell.contentView.leadingAnchor,
-                constant: AppSpacing.lg
-            ),
-            label.trailingAnchor.constraint(
-                equalTo: cell.contentView.trailingAnchor,
-                constant: -AppSpacing.lg
-            ),
-            label.topAnchor.constraint(
-                equalTo: cell.contentView.topAnchor,
-                constant: AppSpacing.md
-            ),
-            label.bottomAnchor.constraint(
-                equalTo: cell.contentView.bottomAnchor,
-                constant: -AppSpacing.md
-            )
-        ])
-
+    func makeReferralCaptionCell(at indexPath: IndexPath) -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: ReferralCaptionCell.reuseID,
+            for: indexPath
+        ) as? ReferralCaptionCell else {
+            assertionFailure("dequeueReusableCell returned wrong type for \(ReferralCaptionCell.reuseID)")
+            return UITableViewCell()
+        }
+        cell.configure(text: "За каждого друга — +200 ₽ на ваш баланс")
         return cell
     }
 
@@ -194,7 +87,6 @@ extension SettingsViewController {
         showToast(message: "Скопировано")
     }
 
-    @objc
     func handleApplyFriendCodeTapped() {
         guard let input = friendCodeInput else { return }
         let raw = input.textField.text ?? ""

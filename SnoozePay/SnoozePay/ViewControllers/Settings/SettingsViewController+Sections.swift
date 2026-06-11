@@ -3,53 +3,40 @@ import UIKit
 // MARK: - Section + cell builders
 //
 // Extracted from `SettingsViewController.swift` (#182) so the host file stays
-// under SwiftLint's `file_length` cap. Each helper owns its row's UIKit
-// composition; behaviour is verbatim — only the physical location moved.
+// under SwiftLint's `file_length` cap. Rewritten in #203 to dequeue reusable
+// `SettingsIconRowCell` instances instead of building nil-reuseIdentifier
+// cells from scratch on every `cellForRowAt:` (which UITableView can never
+// recycle — every `reloadData` accumulated a fresh cell hierarchy).
 
 extension SettingsViewController {
 
     // MARK: Account section
 
-    func makeTransactionHistoryRow() -> UITableViewCell {
-        makeIconRow(
+    func makeTransactionHistoryRow(at indexPath: IndexPath) -> UITableViewCell {
+        let cell = dequeueIconRowCell(at: indexPath)
+        cell.configure(
             systemName: "list.bullet.rectangle",
             iconColor: AppColors.info500,
             title: "История транзакций",
             accessory: .disclosureIndicator
         )
+        return cell
     }
 
-    func makeBalanceRow() -> UITableViewCell {
-        let cell = makeIconRow(
+    func makeBalanceRow(at indexPath: IndexPath) -> UITableViewCell {
+        let cell = dequeueIconRowCell(at: indexPath)
+        // The amount is read fresh on every dequeue, so the row is always
+        // current when it (re-)enters the viewport; live updates while the
+        // row is visible arrive via the balance observer's `reloadRows`.
+        cell.configure(
             systemName: "dollarsign.circle",
             iconColor: AppColors.money500,
             title: "Баланс",
-            accessory: .none
+            trailingText: "₽\(Int(BalanceService.shared.balance))",
+            trailingColor: AppColors.money500,
+            accessory: .none,
+            selectionStyle: .none
         )
-
-        let balanceAmount = UILabel()
-        balanceAmount.text = "₽\(Int(BalanceService.shared.balance))"
-        balanceAmount.font = AppTypography.moneyMd
-        balanceAmount.textColor = AppColors.money500
-        balanceAmount.translatesAutoresizingMaskIntoConstraints = false
-        balanceAmount.setContentHuggingPriority(.required, for: .horizontal)
-        cell.contentView.addSubview(balanceAmount)
-
-        NSLayoutConstraint.activate([
-            balanceAmount.trailingAnchor.constraint(
-                equalTo: cell.contentView.trailingAnchor,
-                constant: -AppSpacing.lg
-            ),
-            balanceAmount.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor)
-        ])
-
-        // Track the latest label instance so the balance observer can
-        // refresh it. When the cell is recycled the weak ref nils out
-        // automatically, so the observer becomes a no-op until the row
-        // is rebuilt — at which point this assignment captures the new label.
-        self.balanceAmountLabel = balanceAmount
-
-        cell.selectionStyle = .none
         return cell
     }
 
@@ -57,117 +44,43 @@ extension SettingsViewController {
 
     func makeInfoRow(at indexPath: IndexPath) -> UITableViewCell {
         let title = indexPath.row == 0 ? "Политика конфиденциальности" : "Пользовательское соглашение"
-        return makeIconRow(
+        let cell = dequeueIconRowCell(at: indexPath)
+        cell.configure(
             systemName: "doc.text",
             iconColor: UIColor.systemGray,
             title: title,
             accessory: .disclosureIndicator
         )
+        return cell
     }
 
     // MARK: Contact section
 
-    func makeContactRow() -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = .secondarySystemBackground
-
-        let icon = makeSettingsIcon(systemName: "envelope", backgroundColor: AppColors.warn500)
-        let titleLabel = UILabel()
-        titleLabel.text = "Связаться с нами"
-        titleLabel.font = AppTypography.bodyLg
-        titleLabel.textColor = AppColors.fg1
-
-        let detailLabel = UILabel()
-        detailLabel.text = "support@alarmcash.app"
-        detailLabel.font = AppTypography.meta
-        detailLabel.textColor = AppColors.fg3
-
-        let textStack = UIStackView(arrangedSubviews: [titleLabel, detailLabel])
-        textStack.axis = .vertical
-        textStack.spacing = 2
-
-        let stack = UIStackView(arrangedSubviews: [icon, textStack])
-        stack.axis = .horizontal
-        stack.spacing = AppSpacing.md
-        stack.alignment = .center
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        cell.contentView.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(
-                equalTo: cell.contentView.leadingAnchor,
-                constant: AppSpacing.lg
-            ),
-            stack.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
-            stack.trailingAnchor.constraint(
-                lessThanOrEqualTo: cell.contentView.trailingAnchor,
-                constant: -AppSpacing.lg
-            )
-        ])
-
-        cell.accessoryType = .disclosureIndicator
+    func makeContactRow(at indexPath: IndexPath) -> UITableViewCell {
+        let cell = dequeueIconRowCell(at: indexPath)
+        cell.configure(
+            systemName: "envelope",
+            iconColor: AppColors.warn500,
+            title: "Связаться с нами",
+            subtitle: "support@alarmcash.app",
+            accessory: .disclosureIndicator
+        )
         return cell
     }
 
     // MARK: - Cell factory helpers
 
-    func makeIconRow(
-        systemName: String,
-        iconColor: UIColor,
-        title: String,
-        accessory: UITableViewCell.AccessoryType
-    ) -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.backgroundColor = .secondarySystemBackground
-
-        let icon = makeSettingsIcon(systemName: systemName, backgroundColor: iconColor)
-        let label = UILabel()
-        label.text = title
-        label.font = AppTypography.bodyLg
-        label.textColor = AppColors.fg1
-
-        let stack = UIStackView(arrangedSubviews: [icon, label])
-        stack.axis = .horizontal
-        stack.spacing = AppSpacing.md
-        stack.alignment = .center
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        cell.contentView.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: AppSpacing.lg),
-            stack.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor)
-        ])
-
-        cell.accessoryType = accessory
+    /// Dequeues the shared icon-row cell, falling back to a plain cell (with
+    /// an assertion in debug) if the registration ever drifts out of sync.
+    private func dequeueIconRowCell(at indexPath: IndexPath) -> SettingsIconRowCell {
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: SettingsIconRowCell.reuseID,
+            for: indexPath
+        ) as? SettingsIconRowCell else {
+            assertionFailure("dequeueReusableCell returned wrong type for \(SettingsIconRowCell.reuseID)")
+            return SettingsIconRowCell(style: .default, reuseIdentifier: nil)
+        }
         return cell
-    }
-
-    /// Creates a rounded-rect icon with an SF Symbol, similar to iOS Settings style.
-    func makeSettingsIcon(systemName: String, backgroundColor: UIColor) -> UIView {
-        let size: CGFloat = 30
-        let container = UIView()
-        container.backgroundColor = backgroundColor
-        container.layer.cornerRadius = 7
-        container.layer.masksToBounds = true
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: systemName)?.withConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
-        )
-        imageView.tintColor = .white
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(imageView)
-
-        NSLayoutConstraint.activate([
-            container.widthAnchor.constraint(equalToConstant: size),
-            container.heightAnchor.constraint(equalToConstant: size),
-            imageView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            imageView.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-        ])
-
-        return container
     }
 
     // MARK: - Section header builder
