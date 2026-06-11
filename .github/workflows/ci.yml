@@ -22,7 +22,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      # swiftlint предустановлен на macOS-раннерах GitHub.
+      # На свежих образах GitHub swiftlint больше НЕ предустановлен — ставим сами.
+      - name: Install SwiftLint
+        run: brew install swiftlint
       - name: SwiftLint version
         run: swiftlint version
       # Дефолтный конфиг (как в проекте) — падаем только на ошибках, не на warnings.
