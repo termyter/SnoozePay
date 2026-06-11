@@ -25,6 +25,9 @@ final class CreateAlarmViewModel {
     /// Per-alarm "ramp from 0 → volume over 30 seconds" toggle (#150).
     var volumeFadeIn: Bool
     var theme: AlarmTheme
+    /// Weekly vs one-shot recurrence (#229). Bound to the Никогда /
+    /// Еженедельно pill under the day chips.
+    var repeatMode: AlarmRepeatMode
 
     private let existingID: UUID?
 
@@ -60,6 +63,7 @@ final class CreateAlarmViewModel {
         self.volume = alarm?.volume ?? 1.0
         self.volumeFadeIn = alarm?.volumeFadeIn ?? false
         self.theme = alarm?.theme ?? .dawn
+        self.repeatMode = alarm?.repeatMode ?? .weekly
     }
 
     // MARK: - Save
@@ -134,7 +138,8 @@ final class CreateAlarmViewModel {
             enabled: enabled,
             volume: volume,
             volumeFadeIn: volumeFadeIn,
-            theme: theme
+            theme: theme,
+            repeatMode: repeatMode
         )
     }
 
@@ -150,6 +155,20 @@ final class CreateAlarmViewModel {
     func delete() -> Bool {
         guard let id = existingID else { return false }
         return alarmRepository.delete(id: id)
+    }
+
+    // MARK: - Repeat mode (#229)
+
+    /// One-line explanation of the selected repeat mode, rendered under the
+    /// Никогда / Еженедельно pill so the user understands what changes
+    /// without leaving the screen (`SPScreensV2.jsx` RepeatSegmented).
+    var repeatModeHint: String {
+        switch repeatMode {
+        case .never:
+            return "Будильник сработает в выбранные дни один раз и отключится."
+        case .weekly:
+            return "Будет повторяться каждую неделю по выбранным дням."
+        }
     }
 
     // MARK: - Day toggle helpers
