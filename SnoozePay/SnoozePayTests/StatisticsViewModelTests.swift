@@ -1,18 +1,30 @@
 import XCTest
 @testable import SnoozePay
 
-/// Unit tests for StatisticsViewModel — period filtering, totals, streak, chart data, declension.
+/// Unit tests for the V3 behavioural StatisticsViewModel (#235) — heatmap
+/// buckets, weekday distribution, 8-week trend, streak persistence and the
+/// surfaced load errors.
+///
+/// Aggregation maths is exercised through the pure static functions with a
+/// pinned `today` (2026-01-27, the Tuesday from the design artboard) so the
+/// expectations never race the wall clock; the instance-level tests use
+/// relative dates like the rest of the suite.
 final class StatisticsViewModelDataTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
     private var suiteName: String!
     private var txRepo: TransactionRepository!
+    private var wakeStore: WakeEventStore!
+
+    /// Monday-first calendar shared by fixtures and the SUT.
+    private let calendar = StatisticsViewModel.mondayFirstCalendar
 
     override func setUp() {
         super.setUp()
         suiteName = "test.statistics.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
         txRepo = TransactionRepository(defaults: testDefaults)
+        wakeStore = WakeEventStore(defaults: testDefaults)
     }
 
     override func tearDown() {
@@ -23,345 +35,111 @@ final class StatisticsViewModelDataTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeVM() -> StatisticsViewModel {
-        StatisticsViewModel(repository: txRepo, defaults: testDefaults)
+        StatisticsViewModel(
+            repository: txRepo,
+            wakeStore: wakeStore,
+            defaults: testDefaults,
+            calendar: calendar
+        )
     }
 
     private func addCharge(amount: Double, daysAgo: Int = 0) {
-        let calendar = Calendar.current
         let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date())!
-        let tx = Transaction(type: .charge, amount: amount, createdAt: date)
-        txRepo.record(tx)
+        txRepo.record(Transaction(type: .charge, amount: amount, createdAt: date))
     }
 
     private func addTopup(amount: Double, daysAgo: Int = 0) {
-        let calendar = Calendar.current
         let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date())!
-        let tx = Transaction(type: .topup, amount: amount, createdAt: date)
-        txRepo.record(tx)
+        txRepo.record(Transaction(type: .topup, amount: amount, createdAt: date))
     }
 
-    // MARK: - loadData period filtering
-
-    func testLoadData_weekPeriod_filtersCorrectly() {
-        addCharge(amount: 50, daysAgo: 1)   // within week
-        addCharge(amount: 100, daysAgo: 3)  // within week
-        addCharge(amount: 200, daysAgo: 10) // outside week
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertEqual(vm.snoozeCount, 2, "Only charges within the last 7 days should be included")
-        XCTAssertEqual(vm.totalSpent, 150)
+    /// Pinned date helper — noon avoids any DST edge around midnight.
+    private func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 12) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
     }
 
-    func testLoadData_monthPeriod_filtersCorrectly() {
-        addCharge(amount: 50, daysAgo: 1)   // within month
-        addCharge(amount: 100, daysAgo: 20) // within month
-        addCharge(amount: 200, daysAgo: 40) // outside month
-
-        let vm = makeVM()
-        vm.loadData(period: .month)
-
-        XCTAssertEqual(vm.snoozeCount, 2)
-        XCTAssertEqual(vm.totalSpent, 150)
+    private func charge(_ amount: Double, on date: Date) -> Transaction {
+        Transaction(type: .charge, amount: amount, createdAt: date)
     }
 
-    func testLoadData_allTime_returnsAllCharges() {
+    /// The artboard's reference day — Tuesday, 27 January 2026.
+    private var referenceToday: Date { date(2026, 1, 27) }
+
+    // MARK: - loadData
+
+    func testLoadData_keepsOnlyCharges() {
         addCharge(amount: 50, daysAgo: 1)
-        addCharge(amount: 100, daysAgo: 100)
-        addCharge(amount: 200, daysAgo: 365)
-        addTopup(amount: 999, daysAgo: 0) // topups should NOT be counted
-
-        let vm = makeVM()
-        vm.loadData(period: .allTime)
-
-        XCTAssertEqual(vm.snoozeCount, 3, "All charges should be included regardless of date")
-        XCTAssertEqual(vm.totalSpent, 350)
-    }
-
-    func testLoadData_allTime_excludesTopups() {
-        addTopup(amount: 500, daysAgo: 0)
-        addTopup(amount: 300, daysAgo: 5)
-
-        let vm = makeVM()
-        vm.loadData(period: .allTime)
-
-        XCTAssertEqual(vm.snoozeCount, 0)
-        XCTAssertEqual(vm.totalSpent, 0)
-    }
-
-    // MARK: - Total spent
-
-    func testTotalSpent_sumsCorrectly() {
-        addCharge(amount: 50, daysAgo: 0)
-        addCharge(amount: 100, daysAgo: 0)
-        addCharge(amount: 75, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertEqual(vm.totalSpent, 225)
-        XCTAssertEqual(vm.totalSpentFormatted, "225\u{202F}₽")
-    }
-
-    // MARK: - Snooze count
-
-    func testSnoozeCount_matchesChargeCount() {
-        addCharge(amount: 50, daysAgo: 0)
-        addCharge(amount: 50, daysAgo: 1)
-        addCharge(amount: 50, daysAgo: 2)
-        addTopup(amount: 500, daysAgo: 0) // not a snooze
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertEqual(vm.snoozeCount, 3)
-        XCTAssertEqual(vm.snoozeCountFormatted, "3", "V2: bare digits — the caption carries the word")
-    }
-
-    // MARK: - Motivational messages
-
-    func testMotivationalMessage_whenZeroSpent() {
-        let vm = makeVM()
-        vm.loadData(period: .week)
-        XCTAssertEqual(vm.motivationalMessage, "Отлично! Вы не откладывали будильник.")
-    }
-
-    func testMotivationalMessage_withCoffeeComparison() {
-        // 150 per coffee, so 300 spent = 2 coffees
-        addCharge(amount: 300, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertTrue(vm.motivationalMessage.contains("2 кофе"), "V2 copy: 'N кофе', got: \(vm.motivationalMessage)")
-        XCTAssertTrue(vm.motivationalMessage.contains("☕"))
-    }
-
-    func testMotivationalMessage_lessThanOneCoffee() {
-        // Less than 150 -> no coffee comparison, fallback message
-        addCharge(amount: 100, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertEqual(vm.motivationalMessage, "Продолжайте в том же духе!")
-    }
-
-    func testMotivationalMessage_exactlyOneCoffee() {
-        addCharge(amount: 150, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertTrue(vm.motivationalMessage.contains("1 кофе"), "V2 copy: 'N кофе', got: \(vm.motivationalMessage)")
-    }
-
-    // MARK: - Streak message
-
-    func testStreakMessage_format() {
-        // With no charges and some topup, streak should be >= 1
+        addCharge(amount: 100, daysAgo: 3)
         addTopup(amount: 500, daysAgo: 0)
 
         let vm = makeVM()
-        vm.loadData(period: .week)
+        vm.loadData()
 
-        if vm.streak > 0 {
-            XCTAssertTrue(vm.streakMessage.contains("без откладываний"), "V2 copy plural, got: \(vm.streakMessage)")
-            XCTAssertTrue(vm.streakMessage.contains("\(vm.streak)"))
-        }
+        XCTAssertEqual(vm.charges.count, 2, "Topups must not leak into the behavioural aggregations")
+        XCTAssertTrue(vm.charges.allSatisfy { $0.type == .charge })
     }
-
-    func testStreakMessage_emptyWhenNoStreak() {
-        // Charge today means streak = 0
-        addCharge(amount: 50, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertEqual(vm.streakMessage, "")
-    }
-
-    // MARK: - dayWord declension (tested via streakMessage indirectly)
-
-    /// Since dayWord is private, we test it through streakMessage.
-    /// We set up data so that streak == the target count, then check the word.
-
-    func testDayWord_correctDeclension_1day() {
-        // 1 day without charge: charge yesterday (day 1 ago), topup today
-        addCharge(amount: 50, daysAgo: 1)
-        addTopup(amount: 100, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        if vm.streak == 1 {
-            XCTAssertTrue(vm.streakMessage.contains("день"), "1 -> 'день', got: \(vm.streakMessage)")
-        }
-    }
-
-    func testDayWord_correctDeclension_2days() {
-        addCharge(amount: 50, daysAgo: 2)
-        addTopup(amount: 100, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        if vm.streak == 2 {
-            XCTAssertTrue(vm.streakMessage.contains("дня"), "2 -> 'дня', got: \(vm.streakMessage)")
-        }
-    }
-
-    func testDayWord_correctDeclension_5days() {
-        addCharge(amount: 50, daysAgo: 5)
-        addTopup(amount: 100, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        if vm.streak == 5 {
-            XCTAssertTrue(vm.streakMessage.contains("дней"), "5 -> 'дней', got: \(vm.streakMessage)")
-        }
-    }
-
-    func testDayWord_correctDeclension_11days() {
-        addCharge(amount: 50, daysAgo: 11)
-        addTopup(amount: 100, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .allTime)
-
-        if vm.streak == 11 {
-            XCTAssertTrue(vm.streakMessage.contains("дней"), "11 -> 'дней', got: \(vm.streakMessage)")
-        }
-    }
-
-    func testDayWord_correctDeclension_21days() {
-        addCharge(amount: 50, daysAgo: 21)
-        addTopup(amount: 100, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .allTime)
-
-        if vm.streak == 21 {
-            XCTAssertTrue(vm.streakMessage.contains("день"), "21 -> 'день', got: \(vm.streakMessage)")
-        }
-    }
-
-    // MARK: - Daily chart data
-
-    func testDailyChartData_weekHas7Entries() {
-        let vm = makeVM()
-        vm.loadData(period: .week)
-        XCTAssertEqual(vm.dailyChartData.count, 7)
-    }
-
-    func testDailyChartData_monthHas30Entries() {
-        let vm = makeVM()
-        vm.loadData(period: .month)
-        XCTAssertEqual(vm.dailyChartData.count, 30)
-    }
-
-    func testDailyChartData_allTime_returnsEmpty() {
-        let vm = makeVM()
-        vm.loadData(period: .allTime)
-        XCTAssertTrue(vm.dailyChartData.isEmpty)
-    }
-
-    func testDailyChartData_todayChargeAppearsInLastEntry() {
-        addCharge(amount: 75, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        let data = vm.dailyChartData
-        // Last entry should be today
-        let lastEntry = data.last
-        XCTAssertNotNil(lastEntry)
-        XCTAssertEqual(lastEntry?.amount, 75)
-    }
-
-    func testDailyChartData_labels_areNotEmpty() {
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        for entry in vm.dailyChartData {
-            XCTAssertFalse(entry.label.isEmpty, "Chart label should not be empty")
-        }
-    }
-
-    // MARK: - onDataUpdated callback
 
     func testOnDataUpdated_calledOnLoad() {
         let vm = makeVM()
         var callbackFired = false
         vm.onDataUpdated = { callbackFired = true }
 
-        vm.loadData(period: .week)
+        vm.loadData()
 
         XCTAssertTrue(callbackFired, "onDataUpdated should fire when loadData completes")
     }
 
-    func testSelectedPeriod_updatedOnLoad() {
-        let vm = makeVM()
-
-        vm.loadData(period: .month)
-        XCTAssertEqual(vm.selectedPeriod, .month)
-
-        vm.loadData(period: .allTime)
-        XCTAssertEqual(vm.selectedPeriod, .allTime)
-
-        vm.loadData(period: .week)
-        XCTAssertEqual(vm.selectedPeriod, .week)
-    }
-
-    // MARK: - averagePerDay
-
-    func testAveragePerDay_weekPeriod() {
-        // 700 spent over 7-day period = 100 per day
-        addCharge(amount: 100, daysAgo: 0)
-        addCharge(amount: 100, daysAgo: 1)
-        addCharge(amount: 100, daysAgo: 2)
-        addCharge(amount: 100, daysAgo: 3)
-        addCharge(amount: 100, daysAgo: 4)
-        addCharge(amount: 100, daysAgo: 5)
-        addCharge(amount: 100, daysAgo: 6)
+    /// Corrupt ledger must fire `onLoadError` instead of silently rendering
+    /// an all-dark heatmap that looks identical to a brand-new user (#72).
+    func testLoadData_corruptedJSON_firesOnLoadError() {
+        testDefaults.set(Data("not json".utf8), forKey: "stored_transactions")
 
         let vm = makeVM()
-        vm.loadData(period: .week)
+        var receivedError: LocalizedError?
+        vm.onLoadError = { receivedError = $0 }
 
-        XCTAssertEqual(vm.averagePerDay, 100, accuracy: 0.01)
+        vm.loadData()
+
+        XCTAssertNotNil(receivedError, "VM must propagate ledger decode failures to the VC")
+        if let typed = receivedError as? TransactionRepository.RepositoryError,
+           case .decodeFailure = typed {
+            // expected
+        } else {
+            XCTFail("Expected decodeFailure, got \(String(describing: receivedError))")
+        }
+        XCTAssertTrue(vm.charges.isEmpty)
+        XCTAssertEqual(vm.streak, 0)
     }
 
-    func testAveragePerDay_zeroPeriod() {
-        // No charges at all — should return 0
+    // MARK: - Hero: last slip + best streak
+
+    func testLastSlipText_noCharges_showsNoSlipsCaption() {
         let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertEqual(vm.averagePerDay, 0)
+        vm.loadData()
+        XCTAssertEqual(vm.lastSlipText, "Срывов ещё не было")
     }
 
-    func testAveragePerDayFormatted_format() {
-        addCharge(amount: 350, daysAgo: 0)
-        addCharge(amount: 350, daysAgo: 1)
+    func testLastSlipText_showsMostRecentChargeDate() {
+        addCharge(amount: 50, daysAgo: 5)
+        addCharge(amount: 50, daysAgo: 2)
 
         let vm = makeVM()
-        vm.loadData(period: .week)
+        vm.loadData()
 
-        // 700 / 7 = 100.0
-        XCTAssertEqual(vm.averagePerDayFormatted, "100.0 / утро")
+        let expectedDate = calendar.date(byAdding: .day, value: -2, to: Date())!
+        XCTAssertEqual(
+            vm.lastSlipText,
+            "Последний срыв: \(StatisticsViewModel.dayMonthText(expectedDate))"
+        )
     }
-
-    // MARK: - bestStreak
 
     func testBestStreak_growsWhenCurrentExceedsStored() {
         testDefaults.set(2, forKey: "best_streak")
-        // Charge 5 days ago + topup today → streak should be ~5 (no charges in last 5 days)
         addCharge(amount: 50, daysAgo: 5)
         addTopup(amount: 100, daysAgo: 0)
 
         let vm = makeVM()
-        vm.loadData(period: .week)
+        vm.loadData()
 
         XCTAssertGreaterThan(vm.streak, 2, "Test setup precondition: current streak should exceed stored")
         XCTAssertEqual(vm.bestStreak, vm.streak, "Best streak should bump up to new high")
@@ -370,11 +148,10 @@ final class StatisticsViewModelDataTests: XCTestCase {
 
     func testBestStreak_doesNotResetWhenCurrentIsZero() {
         testDefaults.set(7, forKey: "best_streak")
-        // Charge today → current streak = 0
         addCharge(amount: 50, daysAgo: 0)
 
         let vm = makeVM()
-        vm.loadData(period: .week)
+        vm.loadData()
 
         XCTAssertEqual(vm.streak, 0)
         XCTAssertEqual(vm.bestStreak, 7, "Stored best streak must survive a slip-up")
@@ -386,83 +163,269 @@ final class StatisticsViewModelDataTests: XCTestCase {
         addTopup(amount: 100, daysAgo: 0)
 
         let vm = makeVM()
-        vm.loadData(period: .week)
+        vm.loadData()
 
         XCTAssertLessThan(vm.streak, 10, "Test setup precondition: current streak should be below stored")
         XCTAssertEqual(vm.bestStreak, 10, "Best streak should hold the previous high")
     }
 
-    func testBestStreakFormatted_format() {
-        // With no charges, streak should be some value; verify format
-        let vm = makeVM()
-        vm.loadData(period: .week)
+    // MARK: - Heatmap buckets (dayStatus)
 
-        let formatted = vm.bestStreakFormatted
-        XCTAssertTrue(formatted.hasPrefix("Лучший результат: "), "Should start with 'Лучший результат: ', got: \(formatted)")
-        // Verify it ends with a day word (день/дня/дней)
-        let hasDayWord = formatted.contains("день") || formatted.contains("дня") || formatted.contains("дней")
-        XCTAssertTrue(hasDayWord, "Should contain a day declension, got: \(formatted)")
+    func testDayStatus_zeroSnoozesWithWake_isWoke() {
+        XCTAssertEqual(StatisticsViewModel.dayStatus(snoozes: 0, woke: true), .woke)
     }
 
-    // MARK: - motivationalMessage coffee format
-
-    func testMotivationalMessage_coffeeFormat() {
-        // 450 / 150 = 3 coffees
-        addCharge(amount: 450, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        XCTAssertEqual(vm.motivationalMessage, "450\u{202F}₽ на лень = 3 кофе! ☕")
+    func testDayStatus_zeroSnoozesWithoutWake_isEmpty() {
+        XCTAssertEqual(StatisticsViewModel.dayStatus(snoozes: 0, woke: false), .empty)
     }
 
-    // MARK: - Updated formatting properties
-
-    func testTotalSpentFormatted_rubleSuffix() {
-        addCharge(amount: 250, daysAgo: 0)
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        // fmtRub suffix style with the narrow no-break space: "250 ₽"
-        XCTAssertEqual(vm.totalSpentFormatted, "250\u{202F}₽")
+    func testDayStatus_oneOrTwoSnoozes_isLight() {
+        XCTAssertEqual(StatisticsViewModel.dayStatus(snoozes: 1, woke: false), .light)
+        XCTAssertEqual(StatisticsViewModel.dayStatus(snoozes: 2, woke: true), .light)
     }
 
-    func testSnoozeCountFormatted_justNumber() {
-        // Add 23 charges
-        for _ in 0..<23 {
-            addCharge(amount: 10, daysAgo: 0)
-        }
-
-        let vm = makeVM()
-        vm.loadData(period: .week)
-
-        // New format is just the number, no suffix
-        XCTAssertEqual(vm.snoozeCountFormatted, "23")
+    func testDayStatus_threePlusSnoozes_isHeavy() {
+        XCTAssertEqual(StatisticsViewModel.dayStatus(snoozes: 3, woke: false), .heavy)
+        XCTAssertEqual(StatisticsViewModel.dayStatus(snoozes: 7, woke: true), .heavy)
     }
 
-    // MARK: - Issue #72: surfaced load errors
+    // MARK: - Heatmap month grid
 
-    /// Corrupt ledger must fire `onLoadError` instead of silently rendering
-    /// "₽0 / 0 откладываний" — that empty state looks identical to a
-    /// brand-new user and hides the data corruption.
-    func testLoadData_corruptedJSON_firesOnLoadError() {
-        testDefaults.set(Data("not json".utf8), forKey: "stored_transactions")
+    /// January 2026 spans Mon Dec 29 → Sun Feb 1 in a Monday-first grid:
+    /// exactly 5 full weeks (the artboard's 7×5 layout).
+    func testMonthGrid_january2026_has35Cells() {
+        let grid = StatisticsViewModel.monthGrid(
+            today: referenceToday,
+            snoozesByDay: [:],
+            wakeDays: [],
+            calendar: calendar
+        )
+        XCTAssertEqual(grid.count, 35)
+        XCTAssertEqual(grid.first?.date, calendar.startOfDay(for: date(2025, 12, 29)))
+        XCTAssertEqual(grid.last?.date, calendar.startOfDay(for: date(2026, 2, 1)))
+    }
+
+    func testMonthGrid_paddingDaysOfAdjacentMonths_areEmpty() {
+        // Even with data on a padding day, it renders dark — the calendar
+        // reads as the current month only.
+        let paddingDay = calendar.startOfDay(for: date(2025, 12, 29))
+        let grid = StatisticsViewModel.monthGrid(
+            today: referenceToday,
+            snoozesByDay: [paddingDay: (count: 5, spent: 500)],
+            wakeDays: [],
+            calendar: calendar
+        )
+        let cell = grid.first { $0.date == paddingDay }
+        XCTAssertEqual(cell?.isInCurrentMonth, false)
+        XCTAssertEqual(cell?.status, .empty)
+        XCTAssertEqual(cell?.snoozes, 0)
+    }
+
+    func testMonthGrid_futureDays_areEmpty() {
+        // Jan 30 is after the pinned "today" (Jan 27) — must stay dark even
+        // if (impossible) data existed for it.
+        let futureDay = calendar.startOfDay(for: date(2026, 1, 30))
+        let grid = StatisticsViewModel.monthGrid(
+            today: referenceToday,
+            snoozesByDay: [futureDay: (count: 2, spent: 100)],
+            wakeDays: [futureDay],
+            calendar: calendar
+        )
+        let cell = grid.first { $0.date == futureDay }
+        XCTAssertEqual(cell?.status, .empty)
+    }
+
+    func testMonthGrid_bucketsPastDaysBySnoozeCount() {
+        let heavyDay = calendar.startOfDay(for: date(2026, 1, 5))
+        let lightDay = calendar.startOfDay(for: date(2026, 1, 10))
+        let wokeDay = calendar.startOfDay(for: date(2026, 1, 15))
+        let quietDay = calendar.startOfDay(for: date(2026, 1, 20))
+
+        let grid = StatisticsViewModel.monthGrid(
+            today: referenceToday,
+            snoozesByDay: [
+                heavyDay: (count: 4, spent: 750),
+                lightDay: (count: 2, spent: 100)
+            ],
+            wakeDays: [wokeDay],
+            calendar: calendar
+        )
+
+        XCTAssertEqual(grid.first { $0.date == heavyDay }?.status, .heavy)
+        XCTAssertEqual(grid.first { $0.date == lightDay }?.status, .light)
+        XCTAssertEqual(grid.first { $0.date == wokeDay }?.status, .woke)
+        XCTAssertEqual(grid.first { $0.date == quietDay }?.status, .empty)
+    }
+
+    func testSnoozesByDay_countsChargesAndSumsAmounts() {
+        let day = date(2026, 1, 10)
+        let byDay = StatisticsViewModel.snoozesByDay(
+            charges: [
+                charge(50, on: day),
+                charge(100, on: calendar.date(byAdding: .hour, value: 1, to: day)!),
+                Transaction(type: .topup, amount: 999, createdAt: day)
+            ],
+            calendar: calendar
+        )
+        let key = calendar.startOfDay(for: day)
+        XCTAssertEqual(byDay[key]?.count, 2, "1 charge == 1 snooze; topups are ignored")
+        XCTAssertEqual(byDay[key]?.spent, 150)
+    }
+
+    func testHeatmapDays_instance_todayChargeRendersLight() {
+        addCharge(amount: 50, daysAgo: 0)
 
         let vm = makeVM()
-        var receivedError: LocalizedError?
-        vm.onLoadError = { receivedError = $0 }
+        vm.loadData()
 
-        vm.loadData(period: .week)
+        let todayStart = calendar.startOfDay(for: Date())
+        let cell = vm.heatmapDays.first { $0.date == todayStart }
+        XCTAssertEqual(cell?.status, .light)
+        XCTAssertEqual(cell?.snoozes, 1)
+    }
 
-        XCTAssertNotNil(receivedError, "VM must propagate ledger decode failures to the VC")
-        if let typed = receivedError as? TransactionRepository.RepositoryError,
-           case .decodeFailure = typed {
-            // expected
-        } else {
-            XCTFail("Expected decodeFailure, got \(String(describing: receivedError))")
-        }
-        XCTAssertEqual(vm.totalSpent, 0)
-        XCTAssertEqual(vm.snoozeCount, 0)
+    func testHeatmapDays_instance_wakeWithoutChargesRendersWoke() {
+        wakeStore.recordWake(on: Date(), calendar: calendar)
+
+        let vm = makeVM()
+        vm.loadData()
+
+        let todayStart = calendar.startOfDay(for: Date())
+        XCTAssertEqual(vm.heatmapDays.first { $0.date == todayStart }?.status, .woke)
+    }
+
+    // MARK: - Weekday distribution (4 weeks)
+
+    func testWeekdayAverages_averagesOverFourOccurrences() {
+        // Window for today=Jan 27 is Dec 31 … Jan 27. Wednesdays inside:
+        // Dec 31, Jan 7, Jan 14, Jan 21. Total 4 snoozes → average 1.0.
+        let byDay = StatisticsViewModel.snoozesByDay(
+            charges: [
+                charge(50, on: date(2026, 1, 7)),
+                charge(50, on: date(2026, 1, 7, hour: 8)),
+                charge(50, on: date(2026, 1, 14)),
+                charge(50, on: date(2026, 1, 21))
+            ],
+            calendar: calendar
+        )
+        let averages = StatisticsViewModel.weekdayAverages(
+            today: referenceToday,
+            snoozesByDay: byDay,
+            calendar: calendar
+        )
+        XCTAssertEqual(averages.count, 7)
+        XCTAssertEqual(averages[2], 1.0, accuracy: 0.001, "index 2 = Среда in Monday-first order")
+        XCTAssertEqual(averages[0], 0, "Mondays carried no snoozes")
+    }
+
+    func testWeekdayAverages_excludesChargesOutsideWindow() {
+        // Dec 30 is 28 days before Jan 27 — just past the 28-day window.
+        let byDay = StatisticsViewModel.snoozesByDay(
+            charges: [charge(50, on: date(2025, 12, 30))],
+            calendar: calendar
+        )
+        let averages = StatisticsViewModel.weekdayAverages(
+            today: referenceToday,
+            snoozesByDay: byDay,
+            calendar: calendar
+        )
+        XCTAssertEqual(averages.reduce(0, +), 0, "Charges older than 4 weeks must not count")
+    }
+
+    func testWorstIndex_picksHighestAverage() {
+        XCTAssertEqual(StatisticsViewModel.worstIndex(of: [1, 0.5, 1.75, 0, 1, 0.25, 0]), 2)
+    }
+
+    func testWorstIndex_allZero_returnsNil() {
+        XCTAssertNil(StatisticsViewModel.worstIndex(of: [0, 0, 0, 0, 0, 0, 0]))
+    }
+
+    func testWeekdayStats_instance_marksWorstDay() {
+        // 3 snoozes today → today's weekday is trivially the worst.
+        addCharge(amount: 50, daysAgo: 0)
+        addCharge(amount: 100, daysAgo: 0)
+        addCharge(amount: 200, daysAgo: 0)
+
+        let vm = makeVM()
+        vm.loadData()
+
+        let stats = vm.weekdayStats
+        XCTAssertEqual(stats.count, 7)
+        XCTAssertEqual(stats.map(\.label), StatisticsViewModel.weekdayShortLabels)
+        XCTAssertEqual(stats.filter(\.isWorst).count, 1)
+        XCTAssertNotNil(vm.worstWeekdayName)
+    }
+
+    func testWorstWeekdayName_nilWhenNoSnoozes() {
+        let vm = makeVM()
+        vm.loadData()
+        XCTAssertNil(vm.worstWeekdayName)
+    }
+
+    // MARK: - 8-week trend
+
+    func testWeeklyCounts_returnsEightWeeksOldestToNewest() {
+        // 5 snoozes last week (Jan 20), 2 this week (Jan 26).
+        let byDay = StatisticsViewModel.snoozesByDay(
+            charges: [
+                charge(50, on: date(2026, 1, 20)),
+                charge(50, on: date(2026, 1, 20, hour: 8)),
+                charge(50, on: date(2026, 1, 20, hour: 9)),
+                charge(50, on: date(2026, 1, 20, hour: 10)),
+                charge(50, on: date(2026, 1, 20, hour: 11)),
+                charge(50, on: date(2026, 1, 26)),
+                charge(50, on: date(2026, 1, 26, hour: 8))
+            ],
+            calendar: calendar
+        )
+        let counts = StatisticsViewModel.weeklyCounts(
+            today: referenceToday,
+            snoozesByDay: byDay,
+            calendar: calendar
+        )
+        XCTAssertEqual(counts.count, 8)
+        XCTAssertEqual(counts[7], 2, "Last entry is the current week")
+        XCTAssertEqual(counts[6], 5, "Previous calendar week (Mon Jan 19 – Sun Jan 25)")
+        XCTAssertEqual(counts[0...5].reduce(0, +), 0)
+    }
+
+    func testTrend_improvingWeek_isBetter() {
+        let diff = StatisticsViewModel.trendDiff(weeklyCounts: [0, 0, 0, 0, 0, 0, 5, 2])
+        XCTAssertEqual(diff, -3)
+        XCTAssertEqual(StatisticsViewModel.direction(forDiff: diff), .better)
+        XCTAssertEqual(StatisticsViewModel.headline(for: .better), "Становится лучше")
+        XCTAssertEqual(StatisticsViewModel.subtitle(forDiff: diff), "−3 к прошлой неделе")
+    }
+
+    func testTrend_worseWeek_isWorse() {
+        let diff = StatisticsViewModel.trendDiff(weeklyCounts: [0, 0, 0, 0, 0, 0, 1, 4])
+        XCTAssertEqual(diff, 3)
+        XCTAssertEqual(StatisticsViewModel.direction(forDiff: diff), .worse)
+        XCTAssertEqual(StatisticsViewModel.headline(for: .worse), "Чаще, чем неделю назад")
+        XCTAssertEqual(StatisticsViewModel.subtitle(forDiff: diff), "+3 к прошлой неделе")
+    }
+
+    func testTrend_flatWeek_isSame() {
+        let diff = StatisticsViewModel.trendDiff(weeklyCounts: [0, 0, 0, 0, 0, 0, 2, 2])
+        XCTAssertEqual(diff, 0)
+        XCTAssertEqual(StatisticsViewModel.direction(forDiff: diff), .same)
+        XCTAssertEqual(StatisticsViewModel.headline(for: .same), "Стабильно")
+        XCTAssertEqual(
+            StatisticsViewModel.subtitle(forDiff: diff),
+            "Столько же, сколько на прошлой неделе"
+        )
+    }
+
+    func testWeeklyTrend_instance_marksOnlyCurrentWeek() {
+        addCharge(amount: 50, daysAgo: 0)
+
+        let vm = makeVM()
+        vm.loadData()
+
+        let trend = vm.weeklyTrend
+        XCTAssertEqual(trend.count, 8)
+        XCTAssertEqual(trend.filter(\.isCurrent).count, 1)
+        XCTAssertTrue(trend.last?.isCurrent ?? false)
+        XCTAssertEqual(vm.thisWeekCount, trend.last?.count)
     }
 }

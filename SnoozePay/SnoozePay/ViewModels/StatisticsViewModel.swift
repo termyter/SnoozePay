@@ -1,88 +1,137 @@
 import Foundation
-import UIKit
 
-/// ViewModel for the statistics screen.
+/// ViewModel for the V3 behavioural statistics screen (#235, `SPMore4.jsx`
+/// `Stats()`, artboards 27/27a).
+///
+/// V3 drops every money / wake-time metric (those duplicate the Wallet) and
+/// exposes three behavioural aggregations instead:
+///   1. Calendar heatmap of the current month — per-day snooze status.
+///   2. Average snoozes per weekday over the last 4 weeks (+ worst day).
+///   3. 8-week snooze trend (better / same / worse than last week).
+///
+/// All aggregation maths lives in pure static functions that take an explicit
+/// `today` so tests pin dates instead of racing the wall clock; the instance
+/// properties are thin wrappers over those functions plus the loaded state.
 final class StatisticsViewModel {
 
-    enum Period: Int, CaseIterable {
-        case week = 0, month, allTime
+    // MARK: - Day status (heatmap semantics)
 
-        var title: String {
-            switch self {
-            case .week: return "Неделя"
-            case .month: return "Месяц"
-            case .allTime: return "Всё время"
-            }
-        }
+    /// Semantics of a single heatmap cell, mirroring the JSX `'g'/'y'/'r'/'-'`
+    /// statuses: woke = "встал сразу" (alarm dismissed, 0 snoozes),
+    /// light = 1–2 snoozes, heavy = 3+, empty = no alarm / future / padding.
+    enum DayStatus: Equatable {
+        case woke
+        case light
+        case heavy
+        case empty
+    }
 
-        /// Number of calendar days covered by this period.
-        var dayCount: Int {
-            switch self {
-            case .week: return 7
-            case .month: return 30
-            case .allTime: return 0 // variable
-            }
-        }
+    /// Single square of the month-calendar heatmap.
+    struct HeatmapDay: Equatable {
+        let date: Date
+        let status: DayStatus
+        /// Charge count for the day (1 charge == 1 snooze).
+        let snoozes: Int
+        /// Total penalty roubles charged on the day — surfaces in the tooltip.
+        let spent: Double
+        /// `false` for the leading/trailing padding cells of adjacent months.
+        let isInCurrentMonth: Bool
+    }
+
+    /// Tooltip payload for a tapped heatmap cell (artboard 27a).
+    struct HeatmapTooltip: Equatable {
+        /// "27 января"
+        let dateText: String
+        /// "Встал сразу" / "2 откладывания" / "Не было будильника"
+        let statusText: String
+        /// "· −150 ₽" when the day carried penalties, `nil` otherwise.
+        let spentText: String?
+        let status: DayStatus
+    }
+
+    // MARK: - Weekday distribution
+
+    /// One bar of the "По дням недели" chart (Monday-first order).
+    struct WeekdayStat: Equatable {
+        /// Short label — "Пн" … "Вс".
+        let label: String
+        /// Average snoozes on this weekday across the 4-week window.
+        let average: Double
+        /// `true` for the single worst (highest-average) day.
+        let isWorst: Bool
+    }
+
+    // MARK: - Weekly trend
+
+    /// One bar of the 8-week "Динамика откладываний" chart.
+    struct WeekTrendPoint: Equatable {
+        let count: Int
+        /// `true` for the current (rightmost) week.
+        let isCurrent: Bool
+    }
+
+    enum TrendDirection: Equatable {
+        case better
+        case same
+        case worse
     }
 
     // MARK: - Dependencies
 
     private let transactionRepository: TransactionRepository
+    private let wakeStore: WakeEventStore
     private let defaults: UserDefaults
 
     /// UserDefaults key under which the all-time best streak is persisted.
     /// Centralised here so the read in `bestStreak` and the bump in `loadData`
-    /// can never drift apart (a typo in either site would silently reset the
-    /// user's record).
+    /// can never drift apart.
     private static let bestStreakKey = "best_streak"
+
+    /// Monday-first gregorian calendar — the design grid is Пн…Вс regardless
+    /// of the device locale's first weekday.
+    static var mondayFirstCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2
+        return calendar
+    }
+
+    private let calendar: Calendar
 
     // MARK: - State
 
-    private(set) var selectedPeriod: Period = .week
     private(set) var charges: [Transaction] = []
+    private(set) var wakeDays: Set<Date> = []
     private(set) var streak: Int = 0
 
     var onDataUpdated: (() -> Void)?
     /// Fired when the transaction repository fails to decode the persisted
     /// ledger. The VC presents an alert so a corrupt blob shows the user a
-    /// banner instead of a misleading "ноль откладываний" empty state
-    /// (issue #72).
+    /// banner instead of a misleading "ноль откладываний" state (issue #72).
     var onLoadError: ((LocalizedError) -> Void)?
 
     // MARK: - Init
 
     init(
         repository: TransactionRepository = .shared,
-        defaults: UserDefaults = .standard
+        wakeStore: WakeEventStore = .shared,
+        defaults: UserDefaults = .standard,
+        calendar: Calendar = StatisticsViewModel.mondayFirstCalendar
     ) {
         self.transactionRepository = repository
+        self.wakeStore = wakeStore
         self.defaults = defaults
+        self.calendar = calendar
     }
 
     // MARK: - Load
 
-    func loadData(period: Period = .week) {
-        selectedPeriod = period
-        let since = startDate(for: period)
-
-        // Use the checked variant so a corrupt ledger surfaces an alert
-        // instead of a deceptive zero-state — without this the user sees
-        // "₽0 / 0 откладываний" and assumes the app reset, which is much
-        // worse than a "не удалось загрузить" message (issue #72).
-        //
-        // Streak is computed from the same in-memory transaction list rather
-        // than re-reading via `currentStreak()` — that earlier path silently
-        // returned 0 on a transient decode glitch and contradicted the
-        // banner we surface here (issue #117). Sharing one read keeps the
-        // banner and the streak number consistent.
+    func loadData() {
+        // Checked read so a corrupt ledger surfaces an alert instead of a
+        // deceptive zero-state (issue #72). Streak shares the same in-memory
+        // list so the banner and the number can't contradict (issue #117).
         do {
             let allTransactions = try transactionRepository.fetchAllChecked()
-            if period == .allTime {
-                charges = allTransactions.filter { $0.type == .charge }
-            } else {
-                charges = allTransactions
-                    .filter { $0.type == .charge && $0.createdAt >= since }
-            }
+            charges = allTransactions.filter { $0.type == .charge }
             streak = transactionRepository.currentStreak(from: allTransactions)
         } catch let error as TransactionRepository.RepositoryError {
             charges = []
@@ -92,274 +141,323 @@ final class StatisticsViewModel {
             charges = []
             streak = 0
         }
+        wakeDays = wakeStore.wakeDays()
 
         // Bump persisted best streak only forward — never reset on streak = 0,
-        // so the user's all-time record survives a slip-up. Skipped on a
-        // decode failure because `streak == 0` is a fallback, not a truth.
+        // so the user's all-time record survives a slip-up.
         if streak > defaults.integer(forKey: Self.bestStreakKey) {
             defaults.set(streak, forKey: Self.bestStreakKey)
         }
         onDataUpdated?()
     }
 
-    // MARK: - Computed stats
+    // MARK: - Hero (Серия)
 
-    var totalSpent: Double { charges.reduce(0) { $0 + $1.amount } }
-    var snoozeCount: Int { charges.count }
-
-    /// fmtRub suffix style ("250 ₽") — design v3 retired the ₽-prefix format.
-    var totalSpentFormatted: String {
-        MoneyFormatter.string(max(totalSpent, 0))
-    }
-    var snoozeCountFormatted: String { "\(snoozeCount)" }
-
-    // MARK: - Presentation-ready (extracted from StatisticsViewController.refresh)
-
-    /// Colour for the "spent" headline. Orange when there's actual spend to
-    /// surface, secondary grey for the empty state. Lives in the VM so the
-    /// view doesn't reach into model values to make presentation decisions.
-    var spentColor: UIColor {
-        totalSpent > 0 ? AppColors.accentOrange : .secondaryLabel
-    }
-
-    /// Colour for the snooze-count headline — same secondary-label-on-empty
-    /// convention as `spentColor`.
-    var snoozeCountColor: UIColor {
-        snoozeCount > 0 ? .label : .secondaryLabel
-    }
-
-    /// Whether the motivation banner should be visible. Hidden when there's
-    /// nothing to motivate against (totalSpent == 0).
-    var motivationVisible: Bool {
-        totalSpent > 0
-    }
-
-    /// Whether the user has an active streak worth celebrating. When false the
-    /// view shows a zero-state caption (`streakZeroMessage`) instead of the
-    /// "X days without snoozing" / best-result lines.
-    var streakActive: Bool {
-        streak > 0
-    }
-
-    /// Caption shown when the user has no active streak.
-    var streakZeroMessage: String {
-        "0 дней без откладываний"
-    }
-
-    /// Average spending per day for the selected period.
-    var averagePerDay: Double {
-        let days: Int
-        switch selectedPeriod {
-        case .week:
-            days = 7
-        case .month:
-            days = 30
-        case .allTime:
-            // Calculate actual days from earliest charge to now
-            guard let earliest = charges.min(by: { $0.createdAt < $1.createdAt }) else { return 0 }
-            days = max(Calendar.current.dateComponents([.day], from: earliest.createdAt, to: Date()).day ?? 1, 1)
-        }
-        guard days > 0 else { return 0 }
-        return totalSpent / Double(days)
-    }
-
-    var averagePerDayFormatted: String {
-        String(format: "%.1f / утро", averagePerDay)
-    }
-
-    /// All-time best streak, persisted across launches and never reset on a slip-up.
+    /// All-time best streak, persisted across launches, never reset on a slip.
     var bestStreak: Int {
         defaults.integer(forKey: Self.bestStreakKey)
     }
 
-    var bestStreakFormatted: String {
-        "Лучший результат: \(bestStreak) \(dayWord(bestStreak))"
-    }
-
-    var motivationalMessage: String {
-        guard totalSpent > 0 else { return "Отлично! Вы не откладывали будильник." }
-        let coffees = Int(totalSpent / 150)
-        if coffees > 0 {
-            return "\(MoneyFormatter.string(totalSpent)) на лень = \(coffees) кофе! ☕"
+    /// "Последний срыв: 8 января" — date of the most recent charge, or the
+    /// "no slips yet" caption for a clean ledger.
+    var lastSlipText: String {
+        guard let latest = charges.map(\.createdAt).max() else {
+            return "Срывов ещё не было"
         }
-        return "Продолжайте в том же духе!"
-    }
-
-    var streakMessage: String {
-        guard streak > 0 else { return "" }
-        return "\(streak) \(dayWord(streak)) без откладываний"
-    }
-
-    /// Daily chart data for the selected period (last 7 or 30 days)
-    var dailyChartData: [(label: String, amount: Double)] {
-        let calendar = Calendar.current
-        let dayCount: Int
-        switch selectedPeriod {
-        case .week: dayCount = 7
-        case .month: dayCount = 30
-        case .allTime: return [] // No chart for all time
-        }
-
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateFormat = selectedPeriod == .week ? "EE" : "d"
-
-        return (0..<dayCount).reversed().map { daysAgo in
-            guard let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) else {
-                return ("", 0)
-            }
-            let start = calendar.startOfDay(for: date)
-            let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
-
-            let dayTotal = charges
-                .filter { $0.createdAt >= start && $0.createdAt < end }
-                .reduce(0) { $0 + $1.amount }
-
-            return (dayFormatter.string(from: date), dayTotal)
-        }
+        return "Последний срыв: \(Self.dayMonthText(latest))"
     }
 
     // MARK: - Heatmap
 
-    /// Single square in the GitHub-style heatmap calendar.
-    /// `intensity` is bucketed 0..4 (5 buckets) so the view can pick a tint
-    /// from the money palette without re-running the bucket logic per cell.
-    struct HeatmapCell {
-        let date: Date
-        let amount: Double
-        let intensity: Int
+    /// Weekday header labels for the heatmap grid, Monday-first.
+    static let weekdayShortLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+    /// Calendar grid for the month containing today. Cells run Monday-first,
+    /// row per week, covering full weeks so the count is always a multiple
+    /// of 7 (28–42 cells depending on the month's span).
+    var heatmapDays: [HeatmapDay] {
+        Self.monthGrid(
+            today: Date(),
+            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
+            wakeDays: wakeDays,
+            calendar: calendar
+        )
     }
 
-    /// 7-column grid of squares spanning the selected period. The order is
-    /// chronological (oldest → newest) so a flow-layout collection view fills
-    /// rows top-to-bottom, left-to-right with weekday alignment.
-    ///
-    /// Period sizing:
-    /// - `.week` → 7 cells (1 row).
-    /// - `.month` → ~35 cells (5 rows of 7).
-    /// - `.allTime` → 12 weeks back from today (84 cells).
-    /// The grid always begins on the configured calendar's "first weekday"
-    /// preceding the start date so columns line up with weekday labels.
-    var heatmapCells: [HeatmapCell] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+    /// Tooltip payload for a tapped heatmap cell (artboard 27a).
+    func tooltip(for day: HeatmapDay) -> HeatmapTooltip {
+        HeatmapTooltip(
+            dateText: Self.dayMonthText(day.date),
+            statusText: Self.statusText(for: day),
+            spentText: day.spent > 0 ? "· −\(MoneyFormatter.string(day.spent))" : nil,
+            status: day.status
+        )
+    }
 
-        // How many calendar days does the heatmap span?
-        let dayCount: Int
-        switch selectedPeriod {
-        case .week:
-            dayCount = 7
-        case .month:
-            dayCount = 35
-        case .allTime:
-            dayCount = 84
+    // MARK: - Weekday distribution (last 4 weeks)
+
+    /// 7 bars Monday-first, each the average snooze count for that weekday
+    /// over the trailing 28-day window.
+    var weekdayStats: [WeekdayStat] {
+        let averages = Self.weekdayAverages(
+            today: Date(),
+            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
+            calendar: calendar
+        )
+        let worst = Self.worstIndex(of: averages)
+        return zip(Self.weekdayShortLabels, averages.indices).map { label, index in
+            WeekdayStat(label: label, average: averages[index], isWorst: index == worst)
         }
+    }
 
-        // Per-day total, keyed by startOfDay so look-ups are O(1).
-        var totalByDay: [Date: Double] = [:]
-        for charge in charges {
+    /// Full lowercase name of the worst weekday ("среда"), `nil` when the
+    /// 4-week window carries no snoozes at all.
+    var worstWeekdayName: String? {
+        let averages = Self.weekdayAverages(
+            today: Date(),
+            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
+            calendar: calendar
+        )
+        guard let index = Self.worstIndex(of: averages) else { return nil }
+        return Self.weekdayFullNames[index]
+    }
+
+    // MARK: - 8-week trend
+
+    /// 8 calendar weeks oldest → newest; the last point is the current week.
+    var weeklyTrend: [WeekTrendPoint] {
+        let counts = Self.weeklyCounts(
+            today: Date(),
+            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
+            calendar: calendar
+        )
+        return counts.enumerated().map { index, count in
+            WeekTrendPoint(count: count, isCurrent: index == counts.count - 1)
+        }
+    }
+
+    /// This week's snoozes minus last week's. Negative = improving.
+    var trendDiff: Int {
+        let counts = Self.weeklyCounts(
+            today: Date(),
+            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
+            calendar: calendar
+        )
+        return Self.trendDiff(weeklyCounts: counts)
+    }
+
+    var trendDirection: TrendDirection {
+        Self.direction(forDiff: trendDiff)
+    }
+
+    var trendHeadline: String {
+        Self.headline(for: trendDirection)
+    }
+
+    var trendSubtitle: String {
+        Self.subtitle(forDiff: trendDiff)
+    }
+
+    /// Snooze count of the current week — the big number next to "Эта неделя".
+    var thisWeekCount: Int {
+        weeklyTrend.last?.count ?? 0
+    }
+
+    // MARK: - Pure aggregation (static, deterministic for tests)
+
+    /// Per-day snooze count + penalty total, keyed by `startOfDay`.
+    /// One `.charge` transaction == one snooze (the firing flow records
+    /// exactly one charge per snooze).
+    static func snoozesByDay(
+        charges: [Transaction],
+        calendar: Calendar
+    ) -> [Date: (count: Int, spent: Double)] {
+        var byDay: [Date: (count: Int, spent: Double)] = [:]
+        for charge in charges where charge.type == .charge {
             let day = calendar.startOfDay(for: charge.createdAt)
-            totalByDay[day, default: 0] += charge.amount
+            let current = byDay[day] ?? (0, 0)
+            byDay[day] = (current.count + 1, current.spent + charge.amount)
         }
+        return byDay
+    }
 
-        // Pick a sensible bucket cap: highest single-day spend, fallback to 1
-        // so a flat-empty period doesn't divide by zero.
-        let maxDayTotal = max(totalByDay.values.max() ?? 0, 1)
+    /// Maps a day's raw data onto the heatmap semantics. `woke` requires an
+    /// explicit wake event — a quiet day without one renders "не было
+    /// будильника" (dark), per the issue's missing-data fallback.
+    static func dayStatus(snoozes: Int, woke: Bool) -> DayStatus {
+        if snoozes >= 3 { return .heavy }
+        if snoozes >= 1 { return .light }
+        return woke ? .woke : .empty
+    }
 
-        return (0..<dayCount).reversed().map { daysAgo -> HeatmapCell in
-            let date = calendar.date(byAdding: .day, value: -daysAgo, to: today) ?? today
-            let amount = totalByDay[date] ?? 0
-            return HeatmapCell(
-                date: date,
-                amount: amount,
-                intensity: Self.bucketIntensity(amount: amount, max: maxDayTotal)
+    /// Builds the month-calendar grid for the month containing `today`.
+    /// Pads to full Monday-first weeks; padding / future days are `.empty`.
+    static func monthGrid(
+        today: Date,
+        snoozesByDay: [Date: (count: Int, spent: Double)],
+        wakeDays: Set<Date>,
+        calendar: Calendar
+    ) -> [HeatmapDay] {
+        let todayStart = calendar.startOfDay(for: today)
+        guard
+            let monthInterval = calendar.dateInterval(of: .month, for: todayStart),
+            let firstWeek = calendar.dateInterval(of: .weekOfYear, for: monthInterval.start),
+            // `monthInterval.end` is the first instant of the next month —
+            // step back one day to stay inside the displayed month.
+            let lastDayOfMonth = calendar.date(byAdding: .day, value: -1, to: monthInterval.end),
+            let lastWeek = calendar.dateInterval(of: .weekOfYear, for: lastDayOfMonth)
+        else { return [] }
+
+        var days: [HeatmapDay] = []
+        var cursor = firstWeek.start
+        while cursor < lastWeek.end {
+            let day = calendar.startOfDay(for: cursor)
+            let isInMonth = day >= monthInterval.start && day < monthInterval.end
+            let data = snoozesByDay[day] ?? (0, 0)
+            let isPastOrToday = day <= todayStart
+            let status: DayStatus
+            if isInMonth && isPastOrToday {
+                status = dayStatus(snoozes: data.count, woke: wakeDays.contains(day))
+            } else {
+                status = .empty
+            }
+            days.append(
+                HeatmapDay(
+                    date: day,
+                    status: status,
+                    snoozes: isInMonth && isPastOrToday ? data.count : 0,
+                    spent: isInMonth && isPastOrToday ? data.spent : 0,
+                    isInCurrentMonth: isInMonth
+                )
             )
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return days
+    }
+
+    /// Average snoozes per weekday (Monday-first) across the trailing 28-day
+    /// window ending today. 28 days = exactly 4 occurrences of each weekday,
+    /// so the average is `total / 4`.
+    static func weekdayAverages(
+        today: Date,
+        snoozesByDay: [Date: (count: Int, spent: Double)],
+        calendar: Calendar
+    ) -> [Double] {
+        let todayStart = calendar.startOfDay(for: today)
+        // Calendar weekday is 1 = Sunday … 7 = Saturday; remap Monday-first.
+        let mondayFirstWeekdays = [2, 3, 4, 5, 6, 7, 1]
+        var totals = [Int: Int]()
+        for offset in 0..<28 {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart) else { continue }
+            let weekday = calendar.component(.weekday, from: day)
+            totals[weekday, default: 0] += snoozesByDay[day]?.count ?? 0
+        }
+        return mondayFirstWeekdays.map { Double(totals[$0] ?? 0) / 4.0 }
+    }
+
+    /// Index of the single worst (highest) average; `nil` when every value
+    /// is zero — "Чаще всего" makes no sense on a clean month.
+    static func worstIndex(of averages: [Double]) -> Int? {
+        guard let maxValue = averages.max(), maxValue > 0 else { return nil }
+        return averages.firstIndex(of: maxValue)
+    }
+
+    /// Snooze totals for the trailing 8 calendar weeks (Monday-start),
+    /// oldest → newest; the final entry is the week containing `today`.
+    static func weeklyCounts(
+        today: Date,
+        snoozesByDay: [Date: (count: Int, spent: Double)],
+        calendar: Calendar,
+        weeks: Int = 8
+    ) -> [Int] {
+        guard let currentWeek = calendar.dateInterval(of: .weekOfYear, for: today) else {
+            return Array(repeating: 0, count: weeks)
+        }
+        return (0..<weeks).reversed().map { weeksAgo -> Int in
+            guard
+                let weekStart = calendar.date(byAdding: .weekOfYear, value: -weeksAgo, to: currentWeek.start),
+                let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart)
+            else { return 0 }
+            return snoozesByDay
+                .filter { $0.key >= weekStart && $0.key < weekEnd }
+                .reduce(0) { $0 + $1.value.count }
         }
     }
 
-    /// Buckets a per-day amount onto a 0..4 scale. 0 is reserved for the
-    /// "no penalty today" empty cell so the view can hand back the
-    /// `whiteOverlay06` token without a separate branch. The remaining
-    /// 1..4 buckets are evenly split across the observed range.
-    private static func bucketIntensity(amount: Double, max maxValue: Double) -> Int {
-        guard amount > 0 else { return 0 }
-        let ratio = amount / maxValue
-        if ratio < 0.25 { return 1 }
-        if ratio < 0.5 { return 2 }
-        if ratio < 0.75 { return 3 }
-        return 4
+    static func trendDiff(weeklyCounts counts: [Int]) -> Int {
+        guard counts.count >= 2 else { return 0 }
+        return counts[counts.count - 1] - counts[counts.count - 2]
     }
 
-    // MARK: - Bar chart by weekday
-
-    /// Single bar in the weekday chart.
-    struct WeekdayBar {
-        /// Short localised weekday label (e.g. `"Пн"`).
-        let label: String
-        /// Average penalty across all matching weekdays in the selected period.
-        let amount: Double
-        /// Calendar weekday (1 = Sunday … 7 = Saturday) so the view can sort
-        /// without re-deriving the order from the label.
-        let weekday: Int
+    static func direction(forDiff diff: Int) -> TrendDirection {
+        if diff < 0 { return .better }
+        if diff > 0 { return .worse }
+        return .same
     }
 
-    /// Returns 7 bars in Mon → Sun order, each carrying the average penalty
-    /// for that weekday across the selected period. Empty days surface as 0
-    /// so the chart still renders 7 axis ticks.
-    var weekdayBars: [WeekdayBar] {
-        let calendar = Calendar.current
+    static func headline(for direction: TrendDirection) -> String {
+        switch direction {
+        case .better: return "Становится лучше"
+        case .same: return "Стабильно"
+        case .worse: return "Чаще, чем неделю назад"
+        }
+    }
+
+    /// "−2 к прошлой неделе" / "+3 к прошлой неделе" / the same-level caption.
+    /// Uses the typographic minus (U+2212) per the design copy.
+    static func subtitle(forDiff diff: Int) -> String {
+        if diff == 0 { return "Столько же, сколько на прошлой неделе" }
+        let sign = diff < 0 ? "−" : "+"
+        return "\(sign)\(abs(diff)) к прошлой неделе"
+    }
+
+    // MARK: - Presentation strings
+
+    /// Full lowercase weekday names, Monday-first — "Чаще всего — среда".
+    static let weekdayFullNames = [
+        "понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"
+    ]
+
+    /// Value rendered above a weekday bar: whole averages drop the fraction
+    /// ("4"), fractional ones keep a single decimal with the Russian comma
+    /// ("1,5").
+    static func barValueText(_ value: Double) -> String {
+        if value == value.rounded() {
+            return "\(Int(value))"
+        }
+        return String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
+    }
+
+    /// Tooltip status copy with the Russian declension of "откладывание".
+    static func statusText(for day: HeatmapDay) -> String {
+        switch day.status {
+        case .woke:
+            return "Встал сразу"
+        case .light, .heavy:
+            return "\(day.snoozes) \(snoozeWord(day.snoozes))"
+        case .empty:
+            return "Не было будильника"
+        }
+    }
+
+    /// "1 откладывание / 2 откладывания / 5 откладываний".
+    static func snoozeWord(_ count: Int) -> String {
+        let mod100 = count % 100
+        let mod10 = count % 10
+        if mod100 >= 11 && mod100 <= 14 { return "откладываний" }
+        switch mod10 {
+        case 1: return "откладывание"
+        case 2, 3, 4: return "откладывания"
+        default: return "откладываний"
+        }
+    }
+
+    /// "8 января" — shared by the hero meta line and the heatmap tooltip.
+    static func dayMonthText(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
-        formatter.dateFormat = "EEEEEE" // "Пн", "Вт", ...
-
-        // Group charges by Calendar weekday (1-based Sun=1 … Sat=7).
-        var bucketTotals: [Int: Double] = [:]
-        var bucketDays: [Int: Set<Date>] = [:]
-        for charge in charges {
-            let weekday = calendar.component(.weekday, from: charge.createdAt)
-            let day = calendar.startOfDay(for: charge.createdAt)
-            bucketTotals[weekday, default: 0] += charge.amount
-            bucketDays[weekday, default: []].insert(day)
-        }
-
-        // Render Monday-first regardless of the user's locale calendar so the
-        // chart matches the heatmap column order in the spec.
-        let mondayFirst: [Int] = [2, 3, 4, 5, 6, 7, 1]
-        return mondayFirst.map { weekday -> WeekdayBar in
-            let total = bucketTotals[weekday] ?? 0
-            let dayCount = bucketDays[weekday]?.count ?? 0
-            let average = dayCount > 0 ? total / Double(dayCount) : 0
-            // Build a label off a known sample date that falls on this weekday.
-            // Calendar weekday 1 = Sunday → 2024-01-07, etc.
-            let sample = calendar.date(from: DateComponents(year: 2024, month: 1, day: 6 + weekday)) ?? Date()
-            return WeekdayBar(label: formatter.string(from: sample), amount: average, weekday: weekday)
-        }
-    }
-
-    /// `true` when there are no charge transactions in the selected period.
-    /// View uses this to swap the chart/heatmap stack for the empty-state
-    /// column.
-    var hasData: Bool { !charges.isEmpty }
-
-    // MARK: - Helpers
-
-    private func startDate(for period: Period) -> Date {
-        let calendar = Calendar.current
-        switch period {
-        case .week:
-            return calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        case .month:
-            return calendar.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-        case .allTime:
-            return Date.distantPast
-        }
-    }
-
-    private func dayWord(_ count: Int) -> String {
-        let mod10 = count % 10
-        let mod100 = count % 100
-        if mod100 >= 11 && mod100 <= 19 { return "дней" }
-        if mod10 == 1 { return "день" }
-        if mod10 >= 2 && mod10 <= 4 { return "дня" }
-        return "дней"
+        formatter.dateFormat = "d MMMM"
+        return formatter.string(from: date)
     }
 }

@@ -153,6 +153,26 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         repo.delete(id: alarm.id)
     }
 
+    /// #235: dismissing a firing alarm means the user got up — the wake day
+    /// must land in the injected WakeEventStore so the statistics heatmap can
+    /// render the "встал сразу" cell.
+    func testDismiss_recordsWakeDayInStore() {
+        let suiteName = "test.firing.wake.\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        defer { isolated.removePersistentDomain(forName: suiteName) }
+        let wakeStore = WakeEventStore(defaults: isolated)
+
+        let alarm = makeAlarm(penalty: 50)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, wakeStore: wakeStore)
+
+        XCTAssertTrue(wakeStore.wakeDays().isEmpty, "Precondition: isolated store starts empty")
+        vm.dismiss()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        XCTAssertEqual(wakeStore.wakeDays(), [today],
+                       "Dismiss should record exactly today's wake day")
+    }
+
     /// Issue #54: when the alarm has already been deleted from the repository
     /// (e.g. user removed it from list while firing screen was up), `dismiss()`
     /// must not crash and must not leak any user-facing error — the desired

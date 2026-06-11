@@ -189,6 +189,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // cannot silence audio that has already been claimed by alarm B
             // (stacking-race symmetry with #116).
             stopAlarmSoundIfOwner(of: payload, action: "DISMISS_ACTION")
+            // Explicit "Выключить" on the alarm notification == the user got
+            // up — record the wake day for the statistics heatmap (#235),
+            // mirroring AlarmFiringViewModel.dismiss() on the in-app path.
+            WakeEventStore.shared.recordWake()
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped notification banner — present alarm screen

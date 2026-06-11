@@ -453,57 +453,52 @@ final class AlarmFiringViewModelTests: XCTestCase {
     }
 }
 
-/// Tests for StatisticsViewModel — streak and period filtering.
+/// Smoke tests for the V3 behavioural StatisticsViewModel (#235) — the
+/// money/wake-time/period API was dropped with the redesign; deep coverage of
+/// the aggregations lives in `StatisticsViewModelDataTests`.
 final class StatisticsViewModelTests: XCTestCase {
 
-    /// Both smoke tests below construct the VM on an ISOLATED store — the
-    /// previous `StatisticsViewModel()` default pulled the simulator's real
+    /// The smoke tests below construct the VM on an ISOLATED store — a default
+    /// `StatisticsViewModel()` would pull the simulator's real
     /// `UserDefaults.standard` transactions, so any prior app/test activity
-    /// made "empty data" assertions flake (red on CI, red locally after QA).
+    /// makes "empty data" assertions flake (red on CI, red locally after QA).
     private func makeIsolatedStatisticsVM() -> StatisticsViewModel {
         let isolated = UserDefaults(suiteName: "test.statsSmoke.\(UUID().uuidString)")!
         return StatisticsViewModel(
             repository: TransactionRepository(defaults: isolated),
+            wakeStore: WakeEventStore(defaults: isolated),
             defaults: isolated
         )
     }
 
     func testEmptyDataMotivation() {
         let vm = makeIsolatedStatisticsVM()
-        vm.loadData(period: .week)
-        // With no transactions, should show positive message
-        XCTAssertEqual(vm.motivationalMessage, "Отлично! Вы не откладывали будильник.")
+        vm.loadData()
+        // With no transactions, the hero caption celebrates the clean ledger
+        // and the weekday card has no "worst day" to point at.
+        XCTAssertEqual(vm.lastSlipText, "Срывов ещё не было")
+        XCTAssertNil(vm.worstWeekdayName)
     }
 
-    func testTotalSpentZero() {
+    func testEmptyDataHeatmap_hasFullWeeksOfEmptyCells() {
         let vm = makeIsolatedStatisticsVM()
-        vm.loadData(period: .allTime)
-        XCTAssertEqual(vm.totalSpent, 0)
-        XCTAssertEqual(vm.totalSpentFormatted, "0\u{202F}₽")
+        vm.loadData()
+        let days = vm.heatmapDays
+        XCTAssertFalse(days.isEmpty)
+        XCTAssertEqual(days.count % 7, 0, "Grid must pad to whole Monday-first weeks")
+        XCTAssertTrue(
+            days.allSatisfy { $0.status == .empty },
+            "No charges and no wake events → every cell is dark"
+        )
     }
 
-    func testPeriodTitles() {
-        XCTAssertEqual(StatisticsViewModel.Period.week.title, "Неделя")
-        XCTAssertEqual(StatisticsViewModel.Period.month.title, "Месяц")
-        XCTAssertEqual(StatisticsViewModel.Period.allTime.title, "Всё время")
-    }
-
-    func testChartDataCountForWeek() {
-        let vm = StatisticsViewModel()
-        vm.loadData(period: .week)
-        XCTAssertEqual(vm.dailyChartData.count, 7)
-    }
-
-    func testChartDataCountForMonth() {
-        let vm = StatisticsViewModel()
-        vm.loadData(period: .month)
-        XCTAssertEqual(vm.dailyChartData.count, 30)
-    }
-
-    func testChartDataEmptyForAllTime() {
-        let vm = StatisticsViewModel()
-        vm.loadData(period: .allTime)
-        XCTAssertTrue(vm.dailyChartData.isEmpty)
+    func testEmptyDataTrend_eightFlatWeeks() {
+        let vm = makeIsolatedStatisticsVM()
+        vm.loadData()
+        XCTAssertEqual(vm.weeklyTrend.count, 8)
+        XCTAssertTrue(vm.weeklyTrend.allSatisfy { $0.count == 0 })
+        XCTAssertEqual(vm.trendDirection, .same)
+        XCTAssertEqual(vm.trendHeadline, "Стабильно")
     }
 }
 
