@@ -1,0 +1,83 @@
+name: CI
+
+# Когда запускать пайплайн:
+#  - на каждый push в основные ветки (main + интеграционная design-refresh)
+#  - на каждый pull request (любой), чтобы красные тесты ловились ДО merge
+on:
+  push:
+    branches:
+      - main
+      - design-refresh-2026-04-27
+  pull_request:
+
+# Если в ту же ветку/PR прилетает новый коммит — отменяем предыдущий прогон,
+# чтобы не жечь раннеры на устаревших коммитах.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # swiftlint предустановлен на macOS-раннерах GitHub.
+      - name: SwiftLint version
+        run: swiftlint version
+      # Дефолтный конфиг (как в проекте) — падаем только на ошибках, не на warnings.
+      - name: Run SwiftLint
+        run: swiftlint lint --quiet SnoozePay/SnoozePay
+
+  build-test:
+    name: Build & Test (iOS Simulator)
+    # macos-26 — единственный образ с Xcode 26 / iOS 26 SDK. Проект требует
+    # IPHONEOS_DEPLOYMENT_TARGET = 26.2, поэтому macos-15 (Xcode 16) не соберёт.
+    runs-on: macos-26
+    env:
+      PROJECT: SnoozePay/SnoozePay.xcodeproj
+      SCHEME: SnoozePay
+    steps:
+      - uses: actions/checkout@v4
+
+      # На образе несколько Xcode (26.0…26.5). Дефолт — 26.4.1; этого хватает
+      # для iOS 26.2 SDK. Явно выбираем последний стабильный 26.x.
+      - name: Select Xcode 26
+        run: sudo xcode-select -switch /Applications/Xcode_26.4.1.app
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available | grep -E 'iPhone' || true
+
+      # Берём первый доступный на раннере iPhone-симулятор по UDID, чтобы не
+      # завязываться на конкретное имя/версию (они меняются с версией Xcode).
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available \
+            | grep -E 'iPhone' \
+            | grep -oE '[0-9A-Fa-f-]{36}' \
+            | head -n 1)
+          if [ -z "$UDID" ]; then echo "::error::No iPhone simulator available"; exit 1; fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $UDID"
+
+      - name: Build & Test
+        run: |
+          xcodebuild test \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Сохраняем .xcresult как артефакт даже при падении — можно скачать и
+      # открыть в Xcode, чтобы посмотреть какой именно тест упал.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          retention-days: 7
