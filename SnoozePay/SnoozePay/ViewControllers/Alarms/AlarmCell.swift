@@ -38,12 +38,20 @@ final class AlarmCell: UITableViewCell {
         return view
     }()
 
+    /// Title/days caps row. Long alarm names WRAP onto new lines and are
+    /// never truncated or shrunk — the card grows in height and the clock
+    /// + pill rows slide down (`AlarmCardWrapDemo` in SPScreensV2.jsx,
+    /// #232). The ≈26-char single-line capacity is a fact of the layout,
+    /// not an input limit.
     private let capsLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.numberOfLines = 1
-        label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.85
+        label.numberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        // Required vertical resistance so the multi-line height always
+        // wins over the card's compressed fitting pass — without it the
+        // self-sizing cell could clip the second line instead of growing.
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
         return label
     }()
 
@@ -138,15 +146,25 @@ final class AlarmCell: UITableViewCell {
             cardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -outerH),
             cardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -outerV),
 
-            // Caps top-leading, switch top-trailing — aligned by centerY.
+            // Caps top-leading, switch top-trailing. The caps label gets a
+            // fully-determined width (equality, not ≤) so UILabel computes
+            // its wrapped multi-line height on its own — long names break
+            // onto new lines instead of truncating (#232).
             capsLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: pad),
             capsLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: pad),
             capsLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: toggleSwitch.leadingAnchor,
+                equalTo: toggleSwitch.leadingAnchor,
                 constant: -AppSpacing.sp3
             ),
 
-            toggleSwitch.centerYAnchor.constraint(equalTo: capsLabel.centerYAnchor),
+            // The switch stays anchored to the FIRST caps line (its centre
+            // sits where a single-line caps row's centre would be) so a
+            // wrapped title doesn't drag the toggle down the card —
+            // mirrors the demo's `alignItems: flex-start`.
+            toggleSwitch.centerYAnchor.constraint(
+                equalTo: cardView.topAnchor,
+                constant: pad + AppTypography.caps.lineHeight / 2
+            ),
             toggleSwitch.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -pad),
 
             // Clock below the caps row.
