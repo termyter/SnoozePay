@@ -193,11 +193,12 @@ final class AlarmsListViewModel {
         // closure first, set `.enabled = !enabled`, then the post-call
         // mutation would clobber the rollback (#129).
         //
-        // Mutate the stored value in place rather than rebuilding `Alarm`
-        // field-by-field — the manual rebuild silently dropped any field it
-        // didn't list (it reset `volume`/`volumeFadeIn`/`theme` from #150/#151
-        // to their defaults) and would do the same for every future field (#205).
-        alarms[index].enabled = enabled
+        // Use `with(enabled:)` rather than rebuilding `Alarm` field-by-field —
+        // the manual rebuild silently dropped any field it didn't list (it
+        // reset `volume`/`volumeFadeIn`/`theme` from #150/#151 to their
+        // defaults) and would do the same for every future field (#205).
+        // `with` copies every other field through unchanged (#207).
+        alarms[index] = alarms[index].with(enabled: enabled)
 
         let didUpdate = alarmRepository.setEnabled(enabled, id: id) { [weak self] result in
             // Scheduling outcome only fires on the successful-persist path.
@@ -212,7 +213,7 @@ final class AlarmsListViewModel {
                     "schedule failed during toggle id=\(id, privacy: .private); rolling back UI + disk"
                 )
                 if let idx = self.alarms.firstIndex(where: { $0.id == id }) {
-                    self.alarms[idx].enabled = !enabled
+                    self.alarms[idx] = self.alarms[idx].with(enabled: !enabled)
                 }
                 // Persist the rollback. We pass `nil` completion so we don't
                 // re-trigger this closure on the rollback's own scheduler call
