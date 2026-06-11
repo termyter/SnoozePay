@@ -32,6 +32,7 @@ final class AlarmFiringViewModel {
     private let balanceService: AlarmFiringBalancing
     private let alarmRepository: AlarmRepository
     private let scheduler: AlarmScheduler
+    private let wakeStore: WakeEventStore
 
     // MARK: - State
 
@@ -49,13 +50,15 @@ final class AlarmFiringViewModel {
         snoozeCount: Int = 0,
         balanceService: AlarmFiringBalancing = BalanceService.shared,
         alarmRepository: AlarmRepository = .shared,
-        scheduler: AlarmScheduler = .shared
+        scheduler: AlarmScheduler = .shared,
+        wakeStore: WakeEventStore = .shared
     ) {
         self.alarm = alarm
         self.snoozeCount = snoozeCount
         self.balanceService = balanceService
         self.alarmRepository = alarmRepository
         self.scheduler = scheduler
+        self.wakeStore = wakeStore
     }
 
     // MARK: - Computed properties for UI
@@ -195,6 +198,10 @@ final class AlarmFiringViewModel {
     /// only surface a diagnostic — no UI rollback or user-facing error needed
     /// (issue #54 mirrors the silent-failure fix from #35 for the list path).
     func dismiss() {
+        // The user got up — feed the behavioural statistics heatmap (#235).
+        // Recorded per calendar day; the snooze count for the day comes from
+        // the charge ledger, so "встал сразу" = wake event + zero charges.
+        wakeStore.recordWake()
         scheduler.cancel(alarm.id)
 
         if alarm.repeatDays.isEmpty {

@@ -1,23 +1,29 @@
 import UIKit
-import SwiftUI
 
-/// Card-builder helpers for `StatisticsViewController` (V2 design).
+/// Card-builder helpers for `StatisticsViewController` (V3 behavioural
+/// design, #235).
 ///
 /// Lifted into an extension so the main type body stays under SwiftLint's
 /// `type_body_length` ceiling. Each `make…()` returns a fully-laid-out
-/// `SPCard`-rooted view ready for insertion into `dataStack`.
+/// `SPCard`-rooted view ready for insertion into `contentStack`.
 extension StatisticsViewController {
 
     // MARK: - Hero "Серия" card
 
-    /// Top hero card — caps "Серия" + huge mono streak count + flame badge
-    /// on the right, and the GitHub-style heatmap rendered below the divider.
-    /// Tapping anywhere on the card triggers `streakTapped()`.
+    /// Top hero card — caps "СЕРИЯ" + huge mono streak count + flame badge
+    /// on the right, and the calendar-month heatmap below. Tapping the top
+    /// row opens the streak modal; taps on the heatmap belong to the grid
+    /// (cell tooltip, artboard 27a) so the gesture lives on the row, not
+    /// the whole card.
     func makeHeroStreakCard() -> UIView {
         let card = SPCard(tone: .raised, padding: AppSpacing.sp6, cornerRadius: AppRadius.xl)
+        // The tooltip bubble overhangs the card's bottom edge for last-row
+        // cells — let it escape instead of clipping (issue acceptance:
+        // "Tooltip рендерится корректно, не обрезается сеткой").
+        card.clipsToBounds = false
+
         let topRow = makeHeroTopRow()
-        let heatStack = makeHeroHeatmapStack()
-        let outer = UIStackView(arrangedSubviews: [topRow, heatStack])
+        let outer = UIStackView(arrangedSubviews: [topRow, heatmapView])
         outer.axis = .vertical
         outer.spacing = AppSpacing.sp5
         outer.alignment = .fill
@@ -30,14 +36,13 @@ extension StatisticsViewController {
             outer.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor)
         ])
         let tap = UITapGestureRecognizer(target: self, action: #selector(streakTapped))
-        card.addGestureRecognizer(tap)
-        card.isUserInteractionEnabled = true
+        topRow.addGestureRecognizer(tap)
+        topRow.isUserInteractionEnabled = true
         return card
     }
 
     /// Top row of the hero card — text column on the left, flame badge on the
-    /// right. Lifted out of `makeHeroStreakCard` to keep function bodies
-    /// under SwiftLint's 60-line ceiling.
+    /// right.
     private func makeHeroTopRow() -> UIView {
         let caps = makeCapsLabel("СЕРИЯ", color: AppColors.warn300)
         let numberRow = UIStackView(arrangedSubviews: [streakBigLabel, streakBigWordLabel])
@@ -59,51 +64,6 @@ extension StatisticsViewController {
         row.spacing = AppSpacing.sp4
         row.translatesAutoresizingMaskIntoConstraints = false
         return row
-    }
-
-    /// Heatmap section of the hero card — caps caption + heatmap grid + a
-    /// "раньше · сегодня" range hint row underneath.
-    private func makeHeroHeatmapStack() -> UIView {
-        let heatmapCaps = makeCapsLabel("КАЛЕНДАРЬ ОТКЛАДЫВАНИЙ", color: AppColors.fg3)
-        let rangeLeft = makeMetaLabel("раньше", alignment: .left)
-        let rangeRight = makeMetaLabel("сегодня", alignment: .right)
-        let rangeRow = UIStackView(arrangedSubviews: [rangeLeft, rangeRight])
-        rangeRow.axis = .horizontal
-        rangeRow.distribution = .fillEqually
-        rangeRow.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = UIStackView(arrangedSubviews: [heatmapCaps, heatmapView, rangeRow])
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.sp2
-        stack.alignment = .fill
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
-    }
-
-    /// Convenience caps-styled label constructor used across the hero card.
-    private func makeCapsLabel(_ text: String, color: UIColor) -> UILabel {
-        let label = UILabel()
-        label.attributedText = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: color
-            ]
-        )
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }
-
-    /// Meta-styled label constructor — 13pt fg3 with configurable alignment.
-    private func makeMetaLabel(_ text: String, alignment: NSTextAlignment) -> UILabel {
-        let label = UILabel()
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
-        label.text = text
-        label.textAlignment = alignment
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
     }
 
     /// 56×56 rounded square with the warn gradient + flame icon. Matches
@@ -152,150 +112,27 @@ extension StatisticsViewController {
         return container
     }
 
-    // MARK: - Weekly bar-chart card
+    // MARK: - "По дням недели" card
 
-    /// "Эта неделя" — caps + meta hint + Apple-Charts bar chart + summary row
-    /// with Сэкономили / Потратили / Чистый. Wrapped in an `SPCard(.surface)`.
-    func makeWeeklyCard() -> UIView {
-        let card = SPCard(tone: .surface, padding: AppSpacing.sp5)
+    /// Weekday distribution — caps + "Чаще всего — среда" headline + 4-week
+    /// meta line + the seven-bar chart with the worst day in pain.
+    func makeWeekdayCard() -> UIView {
+        let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
 
-        let caps = UILabel()
-        caps.attributedText = NSAttributedString(
-            string: "ЭТА НЕДЕЛЯ",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
-        caps.translatesAutoresizingMaskIntoConstraints = false
+        let caps = makeCapsLabel("ПО ДНЯМ НЕДЕЛИ", color: AppColors.fg3)
+        let meta = makeMetaLabel("За последние 4 недели")
 
-        let hint = UILabel()
-        hint.font = AppTypography.meta
-        hint.textColor = AppColors.fg3
-        hint.text = "зелёное — копится · красное — теряется"
-        hint.numberOfLines = 0
-        hint.translatesAutoresizingMaskIntoConstraints = false
+        let header = UIStackView(arrangedSubviews: [caps, weekdayHeadlineLabel, meta])
+        header.axis = .vertical
+        header.alignment = .leading
+        header.spacing = AppSpacing.sp1
+        header.setCustomSpacing(AppSpacing.sp2, after: caps)
+        header.translatesAutoresizingMaskIntoConstraints = false
 
-        // Hosting controller for the SwiftUI chart.
-        let chartView = WeekdayChartView(bars: [])
-        let hosting = UIHostingController(rootView: chartView)
-        hosting.view.translatesAutoresizingMaskIntoConstraints = false
-        hosting.view.backgroundColor = .clear
-        addChild(hosting)
-        hosting.didMove(toParent: self)
-        chartHostingController = hosting
-
-        let topRow = UIStackView(arrangedSubviews: [caps, hint])
-        topRow.axis = .vertical
-        topRow.alignment = .leading
-        topRow.spacing = AppSpacing.sp1
-        topRow.translatesAutoresizingMaskIntoConstraints = false
-
-        // Summary row — 3 columns with caps caption + mono number.
-        let summary = makeWeeklySummaryRow()
-
-        let stack = UIStackView(arrangedSubviews: [topRow, hosting.view, summary])
+        let stack = UIStackView(arrangedSubviews: [header, weekdayBarsView])
         stack.axis = .vertical
+        stack.alignment = .fill
         stack.spacing = AppSpacing.sp4
-        stack.alignment = .fill
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        card.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
-            hosting.view.heightAnchor.constraint(equalToConstant: 140)
-        ])
-        return card
-    }
-
-    private func makeWeeklySummaryRow() -> UIView {
-        let separator = UIView()
-        separator.backgroundColor = AppColors.stroke1
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
-
-        let savedColumn = makeSummaryColumn(caption: "СЭКОНОМИЛИ", valueLabel: savedAmountLabel)
-        let spentColumn = makeSummaryColumn(caption: "ПОТРАТИЛИ", valueLabel: spentAmountLabel)
-        let netColumn = makeSummaryColumn(caption: "ЧИСТЫЙ", valueLabel: netAmountLabel)
-
-        let columns = UIStackView(arrangedSubviews: [savedColumn, spentColumn, netColumn])
-        columns.axis = .horizontal
-        columns.distribution = .fillEqually
-        columns.alignment = .top
-        columns.spacing = AppSpacing.sp2
-        columns.translatesAutoresizingMaskIntoConstraints = false
-
-        let wrap = UIStackView(arrangedSubviews: [separator, columns])
-        wrap.axis = .vertical
-        wrap.spacing = AppSpacing.sp4
-        wrap.alignment = .fill
-        wrap.translatesAutoresizingMaskIntoConstraints = false
-        return wrap
-    }
-
-    private func makeSummaryColumn(caption: String, valueLabel: UILabel) -> UIView {
-        let captionLabel = UILabel()
-        captionLabel.attributedText = NSAttributedString(
-            string: caption,
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
-        captionLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = UIStackView(arrangedSubviews: [captionLabel, valueLabel])
-        stack.axis = .vertical
-        stack.spacing = 2
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
-    }
-
-    // MARK: - Wake-time card
-
-    /// "Время подъёма" — three averaged mono numbers (В среднем / Раньше было /
-    /// Раньше на). Until the wake-time ledger lands the values render `--`
-    /// so the card still surfaces in the V2 layout.
-    func makeWakeTimeCard() -> UIView {
-        let card = SPCard(tone: .surface, padding: AppSpacing.sp5)
-
-        let caps = UILabel()
-        caps.attributedText = NSAttributedString(
-            string: "ВРЕМЯ ПОДЪЁМА",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
-        caps.translatesAutoresizingMaskIntoConstraints = false
-
-        let columns = UIStackView(arrangedSubviews: [
-            wakeColumn(caption: "В СРЕДНЕМ", value: "--", valueColor: AppColors.fg1),
-            wakeColumn(
-                caption: "РАНЬШЕ БЫЛО",
-                value: "--",
-                valueColor: AppColors.fg3,
-                strike: true
-            ),
-            wakeColumn(caption: "РАНЬШЕ НА", value: "--", valueColor: AppColors.money400)
-        ])
-        columns.axis = .horizontal
-        columns.distribution = .fillEqually
-        columns.alignment = .top
-        columns.spacing = AppSpacing.sp2
-        columns.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = UIStackView(arrangedSubviews: [caps, columns])
-        stack.axis = .vertical
-        stack.spacing = AppSpacing.sp3
-        stack.alignment = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         card.addSubview(stack)
@@ -308,66 +145,104 @@ extension StatisticsViewController {
         return card
     }
 
-    private func wakeColumn(
-        caption: String,
-        value: String,
-        valueColor: UIColor,
-        strike: Bool = false
-    ) -> UIView {
-        let captionLabel = UILabel()
-        captionLabel.attributedText = NSAttributedString(
-            string: caption,
+    // MARK: - "Динамика откладываний" card
+
+    /// 8-week trend — headline + diagonal arrow on the left, "Эта неделя"
+    /// count on the right, the bar trend below and the axis caption row.
+    func makeTrendCard() -> UIView {
+        let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
+
+        let caps = makeCapsLabel("ДИНАМИКА ОТКЛАДЫВАНИЙ", color: AppColors.fg3)
+
+        let headlineRow = UIStackView(arrangedSubviews: [trendHeadlineLabel, trendArrowView])
+        headlineRow.axis = .horizontal
+        headlineRow.alignment = .center
+        headlineRow.spacing = AppSpacing.sp2
+        headlineRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let leftColumn = UIStackView(arrangedSubviews: [headlineRow, trendSubtitleLabel])
+        leftColumn.axis = .vertical
+        leftColumn.alignment = .leading
+        leftColumn.spacing = 2
+        leftColumn.translatesAutoresizingMaskIntoConstraints = false
+
+        let weekCaption = makeMetaLabel("Эта неделя")
+        weekCaption.textAlignment = .right
+        let rightColumn = UIStackView(arrangedSubviews: [weekCaption, trendWeekValueLabel])
+        rightColumn.axis = .vertical
+        rightColumn.alignment = .trailing
+        rightColumn.spacing = 2
+        rightColumn.translatesAutoresizingMaskIntoConstraints = false
+
+        let summaryRow = UIStackView(arrangedSubviews: [leftColumn, rightColumn])
+        summaryRow.axis = .horizontal
+        summaryRow.alignment = .top
+        summaryRow.distribution = .equalSpacing
+        summaryRow.spacing = AppSpacing.sp3
+        summaryRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let axisLeft = makeMetaLabel("8 недель назад")
+        let axisRight = makeMetaLabel("эта неделя")
+        axisRight.font = AppFonts.sans(.semibold, 13)
+        axisRight.textColor = AppColors.fg1
+        axisRight.textAlignment = .right
+        let axisRow = UIStackView(arrangedSubviews: [axisLeft, axisRight])
+        axisRow.axis = .horizontal
+        axisRow.distribution = .fillEqually
+        axisRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = UIStackView(arrangedSubviews: [caps, summaryRow, trendBarsView, axisRow])
+        stack.axis = .vertical
+        stack.alignment = .fill
+        stack.spacing = AppSpacing.sp2
+        stack.setCustomSpacing(AppSpacing.sp4, after: summaryRow)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        card.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor)
+        ])
+        return card
+    }
+
+    // MARK: - Shared label constructors
+
+    /// Convenience caps-styled label constructor used across the cards.
+    private func makeCapsLabel(_ text: String, color: UIColor) -> UILabel {
+        let label = UILabel()
+        label.attributedText = NSAttributedString(
+            string: text,
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
+                .foregroundColor: color
             ]
         )
-        captionLabel.translatesAutoresizingMaskIntoConstraints = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
 
-        let valueLabel = UILabel()
-        valueLabel.font = AppTypography.moneySm
-        valueLabel.textColor = valueColor
-        if strike {
-            valueLabel.attributedText = NSAttributedString(
-                string: value,
-                attributes: [
-                    .font: AppTypography.moneySm,
-                    .foregroundColor: valueColor,
-                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                    .strikethroughColor: valueColor
-                ]
-            )
-        } else {
-            valueLabel.text = value
-        }
-        valueLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = UIStackView(arrangedSubviews: [captionLabel, valueLabel])
-        stack.axis = .vertical
-        stack.spacing = 2
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
+    /// Meta-styled label constructor — 13pt fg3.
+    private func makeMetaLabel(_ text: String) -> UILabel {
+        let label = UILabel()
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
+        label.text = text
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }
 
     // MARK: - Debug
 
     #if DEBUG
-    /// Three-row DEBUG section that exposes the StreakModalV2 / Referral /
-    /// AlarmOff modals while we don't have real trigger plumbing. Drops out
-    /// of release builds via the `#if DEBUG` gate.
+    /// DEBUG section exposing the StreakModalV2 / Referral / AlarmOff modals
+    /// while we don't have real trigger plumbing. Drops out of release builds
+    /// via the `#if DEBUG` gate (kept per issue #235 scope).
     func makeDebugButtonsRow() -> UIView {
-        let caps = UILabel()
-        caps.attributedText = NSAttributedString(
-            string: "DEBUG · MODALS",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
-        caps.translatesAutoresizingMaskIntoConstraints = false
+        let caps = makeCapsLabel("DEBUG · MODALS", color: AppColors.fg3)
 
         let streakBtn = SPButton(title: "Streak modal", variant: .money, size: .md, fullWidth: true)
         streakBtn.addTarget(self, action: #selector(debugStreakTapped), for: .touchUpInside)
