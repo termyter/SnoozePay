@@ -37,12 +37,25 @@ final class AudioService {
     /// `userInfo[stateUserInfoKey]` so UI (e.g. AlarmFiringViewController) can
     /// surface a banner when audio falls back to vibration or fails entirely.
     ///
-    /// Always posted on the main queue — observers can update UI without
-    /// dispatching themselves.
+    /// Posted synchronously from the service's internal serial queue — UI
+    /// observers must subscribe with `queue: .main` (as
+    /// `AlarmFiringViewController.observeAudioState` does) before touching views.
     static let stateChangedNotification = Notification.Name("snoozepay.audio.stateChanged")
     static let stateUserInfoKey = "state"
 
+    /// Serializes every read/write of the mutable fields below (#202).
+    /// `startAlarmSound` can arrive on a UN-delegate background thread while
+    /// `stopAlarmSound` runs on main — without this queue the four fields can
+    /// land in inconsistent combinations (e.g. `.playing` with a nil player).
+    /// Mirrors the pattern in `BalanceService` / `AlarmRepository`.
+    private let queue = DispatchQueue(label: "com.snoozepay.audio.serial")
+
+    /// Queue-confined. Only touch from inside `queue`.
     private var audioPlayer: AVAudioPlayer?
+
+    /// Queue-confined storage; the timer itself is installed on the *main* run
+    /// loop (see `startVibration`) so it keeps firing regardless of which
+    /// thread started the alarm (#202).
     private var vibrationTimer: Timer?
 
     /// Total seconds the fade-in ramp covers when `alarm.volumeFadeIn == true`
@@ -57,17 +70,25 @@ final class AudioService {
     /// this value before calling `stopAlarmSound()` from `viewDidDisappear` so a
     /// dismissed firing screen does not silence audio that has already been
     /// claimed by the *next* alarm during a stacking-replace race (#116).
-    private(set) var currentAlarmID: UUID?
+    var currentAlarmID: UUID? { queue.sync { _currentAlarmID } }
 
-    /// Current playback state. Mutating this also broadcasts a notification so
-    /// callers can react to fallback paths (config failed / vibration only).
-    private(set) var state: AudioPlaybackState = .stopped {
+    /// Queue-confined backing storage for `currentAlarmID`.
+    private var _currentAlarmID: UUID?
+
+    /// Current playback state. Thread-safe snapshot read (#202).
+    var state: AudioPlaybackState { queue.sync { _state } }
+
+    /// Queue-confined backing storage for `state`. Mutating this also
+    /// broadcasts a notification so callers can react to fallback paths
+    /// (config failed / vibration only). The post happens synchronously on
+    /// the serial queue — see `stateChangedNotification` docs.
+    private var _state: AudioPlaybackState = .stopped {
         didSet {
-            guard oldValue != state else { return }
+            guard oldValue != _state else { return }
             NotificationCenter.default.post(
                 name: Self.stateChangedNotification,
                 object: self,
-                userInfo: [Self.stateUserInfoKey: state]
+                userInfo: [Self.stateUserInfoKey: _state]
             )
         }
     }
@@ -123,11 +144,25 @@ final class AudioService {
         volume: Float = 1.0,
         fadeIn: Bool = false
     ) {
+        // Hop through the serial queue so concurrent start/stop calls (UN
+        // delegate background thread vs main) cannot interleave field writes (#202).
+        queue.sync {
+            startAlarmSoundLocked(soundID: soundID, alarmID: alarmID, volume: volume, fadeIn: fadeIn)
+        }
+    }
+
+    /// Queue-confined body of `startAlarmSound`. Must only be called from `queue`.
+    private func startAlarmSoundLocked(
+        soundID: String,
+        alarmID: UUID?,
+        volume: Float,
+        fadeIn: Bool
+    ) {
         // Already in a non-stopped state — preserve the existing pipeline.
         // Earlier guard was `!isPlaying` (Bool); using state covers
         // `.vibrationOnly` and `.silentBecauseConfigFailed` so we don't try to
         // restart on top of a partial fallback either.
-        guard state == .stopped else {
+        guard _state == .stopped else {
             handleStartWhileNonStopped(alarmID: alarmID)
             return
         }
@@ -139,8 +174,8 @@ final class AudioService {
             // Cannot guarantee playback — skip vibration too and surface the
             // explicit fallback state so the UI can warn the user.
             AppLogger.audio.error("failed to configure audio session: \(error.localizedDescription, privacy: .public)")
-            currentAlarmID = alarmID
-            state = .silentBecauseConfigFailed
+            _currentAlarmID = alarmID
+            _state = .silentBecauseConfigFailed
             return
         }
 
@@ -150,8 +185,8 @@ final class AudioService {
             // Neither bundled file nor synthetic tone available — refuse to claim
             // playback. Vibration still runs so the user is at least woken.
             AppLogger.audio.notice("startAlarmSound: no audio source available, vibration only")
-            currentAlarmID = alarmID
-            state = .vibrationOnly
+            _currentAlarmID = alarmID
+            _state = .vibrationOnly
             startVibration()
             return
         }
@@ -171,14 +206,14 @@ final class AudioService {
                 "AVAudioPlayer play() rejected (prepared=\(prepared, privacy: .public), started=\(started, privacy: .public))"
             )
             audioPlayer = nil
-            currentAlarmID = alarmID
-            state = .vibrationOnly
+            _currentAlarmID = alarmID
+            _state = .vibrationOnly
             startVibration()
             return
         }
 
-        currentAlarmID = alarmID
-        state = .playing
+        _currentAlarmID = alarmID
+        _state = .playing
         startVibration()
     }
 
@@ -187,16 +222,17 @@ final class AudioService {
     /// `alarmID` (stacking-replace path #116) or logs a regression when no
     /// `alarmID` was passed. Pulled out of `startAlarmSound` so its body
     /// stays under SwiftLint's `function_body_length` cap (#182).
+    /// Must only be called from `queue`.
     private func handleStartWhileNonStopped(alarmID: UUID?) {
         // We're already playing — but the *caller* may be a new alarm taking
         // over (stacking-replace path #116). Update ownership so the previous
         // VC's `viewDidDisappear` correctly recognises the session no longer
         // belongs to it and skips `stopAlarmSound()`.
         if let alarmID {
-            let previous = currentAlarmID
-            currentAlarmID = alarmID
+            let previous = _currentAlarmID
+            _currentAlarmID = alarmID
             let prevDesc = String(describing: previous)
-            let stateDesc = String(describing: self.state)
+            let stateDesc = String(describing: self._state)
             AppLogger.audio.notice(
                 "ownership transfer \(prevDesc, privacy: .private) → \(alarmID, privacy: .private), state=\(stateDesc, privacy: .public)"
             )
@@ -204,8 +240,8 @@ final class AudioService {
             // No alarmID provided while audio is already playing means the
             // existing owner is preserved. Log so a regression where a new
             // call site forgets to pass alarmID is diagnosable in Console.
-            let stateDesc = String(describing: self.state)
-            let ownerDesc = String(describing: self.currentAlarmID)
+            let stateDesc = String(describing: self._state)
+            let ownerDesc = String(describing: self._currentAlarmID)
             AppLogger.audio.error(
                 "missing alarmID while state=\(stateDesc, privacy: .public) — ownership NOT transferred, owner=\(ownerDesc, privacy: .private)"
             )
@@ -259,12 +295,14 @@ final class AudioService {
 
     /// Stop alarm sound and vibration immediately.
     func stopAlarmSound() {
-        audioPlayer?.stop()
-        audioPlayer = nil
-        stopVibration()
-        deactivateAudioSession()
-        currentAlarmID = nil
-        state = .stopped
+        queue.sync {
+            audioPlayer?.stop()
+            audioPlayer = nil
+            stopVibration()
+            deactivateAudioSession()
+            _currentAlarmID = nil
+            _state = .stopped
+        }
     }
 
     // MARK: - Pause / Resume
@@ -285,45 +323,64 @@ final class AudioService {
     /// `.playing` because the session is still owned and the next `resume()`
     /// must succeed without re-asking for it.
     func pauseAlarmSound() {
-        guard state == .playing else { return }
-        audioPlayer?.pause()
-        stopVibration()
+        queue.sync {
+            guard _state == .playing else { return }
+            audioPlayer?.pause()
+            stopVibration()
+        }
     }
 
     /// Resume playback + vibration after `pauseAlarmSound()`. No-op if no
     /// player exists (state != .playing). Idempotent so the bottom sheet's
     /// dismiss path can call it without checking pause state first.
     func resumeAlarmSound() {
-        guard state == .playing, let player = audioPlayer else { return }
-        // `play()` returns false only if the queue refuses — which on a paused
-        // looping player should not happen unless the session was deactivated
-        // out-of-band. Log so a regression where pause/resume gets out of sync
-        // (e.g. interrupted by another app's audio) is diagnosable.
-        if !player.play() {
-            AppLogger.audio.error("resumeAlarmSound: AVAudioPlayer.play() returned false")
+        queue.sync {
+            guard _state == .playing, let player = audioPlayer else { return }
+            // `play()` returns false only if the queue refuses — which on a paused
+            // looping player should not happen unless the session was deactivated
+            // out-of-band. Log so a regression where pause/resume gets out of sync
+            // (e.g. interrupted by another app's audio) is diagnosable.
+            if !player.play() {
+                AppLogger.audio.error("resumeAlarmSound: AVAudioPlayer.play() returned false")
+            }
+            startVibration()
         }
-        startVibration()
     }
 
     // MARK: - Vibration
 
     /// Start a repeating vibration pattern (vibrate every ~1 second).
+    /// Must only be called from `queue`.
     private func startVibration() {
         stopVibration()
 
         // Trigger first vibration immediately
         AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
 
-        // Repeat vibration on a timer
-        vibrationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        // Repeat vibration on a timer attached EXPLICITLY to the main run loop.
+        // `Timer.scheduledTimer` attaches to the *caller's* run loop — alarm
+        // starts can arrive on a UN-delegate background thread whose run loop
+        // stops spinning once the thread is recycled, silently killing the
+        // vibration after one tick (#202). `CFRunLoop` is thread-safe, so
+        // adding to `RunLoop.main` from the serial queue is allowed.
+        let timer = Timer(timeInterval: 1.0, repeats: true) { _ in
             AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
         }
+        RunLoop.main.add(timer, forMode: .common)
+        vibrationTimer = timer
     }
 
-    /// Stop the vibration timer.
+    /// Stop the vibration timer. Must only be called from `queue`.
     private func stopVibration() {
-        vibrationTimer?.invalidate()
+        guard let timer = vibrationTimer else { return }
         vibrationTimer = nil
+        // NSTimer should be invalidated on the thread that owns its run loop
+        // (main, see `startVibration`). Hop if the call arrived elsewhere.
+        if Thread.isMainThread {
+            timer.invalidate()
+        } else {
+            DispatchQueue.main.async { timer.invalidate() }
+        }
     }
 
     // MARK: - Tone Generation
