@@ -63,6 +63,13 @@ final class AlarmScheduler: AlarmScheduling {
         /// notification cap. Adding another would silently evict an
         /// existing one, so we refuse and let the user delete old alarms.
         case pendingLimitReached(currentCount: Int)
+        /// The scheduler was torn down (or the operation cancelled) while the
+        /// async 64-pending pre-flight was in flight, so nothing was actually
+        /// registered. Previously this branch reported `.success(())`, which
+        /// produced a phantom "scheduled" outcome — the penalty stayed charged
+        /// but no notification existed (issue #199). Surfacing a typed failure
+        /// lets callers refund / retry instead of trusting a fake success.
+        case cancelled
 
         var errorDescription: String? {
             switch self {
@@ -72,6 +79,8 @@ final class AlarmScheduler: AlarmScheduling {
             case .pendingLimitReached(let count):
                 return "Достигнут лимит iOS на запланированные уведомления (\(count) из 64). "
                      + "Удалите старые будильники, чтобы освободить место."
+            case .cancelled:
+                return "Планирование будильника было прервано. Попробуйте ещё раз."
             }
         }
         // Equatable synthesis is automatic — `String` and `Int` associated
@@ -196,7 +205,9 @@ final class AlarmScheduler: AlarmScheduling {
         // to the user instead so they know to delete old alarms.
         runPendingLimitPreflight(triggerCount: triggers.count) { [weak self] preflight in
             guard let self else {
-                completion?(.success(()))
+                // Scheduler deallocated mid-preflight — report a typed failure,
+                // never a phantom success (issue #199).
+                completion?(.failure(.cancelled))
                 return
             }
             if case .failure(let error) = preflight {
@@ -243,7 +254,10 @@ final class AlarmScheduler: AlarmScheduling {
 
         runPendingLimitPreflight(triggerCount: 1) { [weak self] preflight in
             guard let self else {
-                completion?(.success(()))
+                // Scheduler deallocated mid-preflight — report a typed failure,
+                // never a phantom success (issue #199). The coordinator refunds
+                // the already-charged penalty on this failure.
+                completion?(.failure(.cancelled))
                 return
             }
             if case .failure(let error) = preflight {

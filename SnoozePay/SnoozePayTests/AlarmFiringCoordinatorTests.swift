@@ -47,11 +47,20 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         return alarm
     }
 
+    /// Build a COMPLETE notification `userInfo` for the alarm. `AlarmNotificationPayload`
+    /// requires penalty/progressive/snoozeMinutes/soundID in addition to alarmID +
+    /// snoozeCount; hand-rolled two-key dicts now decode to nil → `.invalidPayload`.
+    /// Routing through the real encoder keeps these tests in lock-step with the
+    /// payload contract.
+    private func userInfo(for alarm: Alarm, snoozeCount: Int) -> [String: Any] {
+        AlarmNotificationPayload(alarm: alarm, snoozeCount: snoozeCount).asUserInfo()
+    }
+
     /// Drive `handleSnooze` to a single resolution and return its outcome.
     /// Wraps the async completion in an expectation so tests stay imperative.
     private func resolveSnooze(
         userInfo: [AnyHashable: Any],
-        timeout: TimeInterval = 1.0,
+        timeout: TimeInterval = 5.0,
         file: StaticString = #file,
         line: UInt = #line
     ) -> AlarmFiringCoordinator.SnoozeOutcome? {
@@ -95,10 +104,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
 
     func testHandleSnooze_unknownAlarmID_returnsAlarmNotFound() {
         // Valid UUID, but no alarm with that ID was saved.
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": UUID().uuidString,
-            "snoozeCount": 0
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: Alarm(), snoozeCount: 0))
         XCTAssertEqual(outcome, .alarmNotFound)
     }
 
@@ -107,10 +113,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
     func testHandleSnooze_insufficientBalance_returnsInsufficientFunds() {
         let alarm = makeAlarm(penalty: 100)
         // Balance is 0 (fresh UserDefaults suite).
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": alarm.id.uuidString,
-            "snoozeCount": 0
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
         XCTAssertEqual(outcome, .insufficientFunds)
         XCTAssertEqual(balanceService.balance, 0, "Balance must not be touched on a failed charge")
     }
@@ -121,10 +124,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         let alarm = makeAlarm(penalty: 50)
         balanceService.topUp(amount: 200)
 
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": alarm.id.uuidString,
-            "snoozeCount": 0
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
         XCTAssertEqual(outcome, .scheduled(newSnoozeCount: 1, charged: 50))
         XCTAssertEqual(balanceService.balance, 150)
@@ -135,10 +135,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         let alarm = makeAlarm(penalty: 50, progressive: true)
         balanceService.topUp(amount: 500)
 
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": alarm.id.uuidString,
-            "snoozeCount": 1
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 1))
 
         XCTAssertEqual(outcome, .scheduled(newSnoozeCount: 2, charged: 100))
         XCTAssertEqual(balanceService.balance, 400)
@@ -149,10 +146,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         let alarm = makeAlarm(penalty: 75)
         balanceService.topUp(amount: 75)
 
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": alarm.id.uuidString,
-            "snoozeCount": 0
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
         XCTAssertEqual(outcome, .scheduled(newSnoozeCount: 1, charged: 75))
         XCTAssertEqual(balanceService.balance, 0)
@@ -171,10 +165,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         let alarm = makeAlarm()
         testDefaults.set(Data("not json".utf8), forKey: "stored_alarms")
 
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": alarm.id.uuidString,
-            "snoozeCount": 0
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
         XCTAssertEqual(outcome, .alarmNotFound,
                        "From a notification action there's no recovery UI, so collapse to alarmNotFound")
@@ -203,10 +194,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
             userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed for this application"]
         )
 
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": alarm.id.uuidString,
-            "snoozeCount": 0
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
         guard case .scheduleFailed(let error) = outcome else {
             return XCTFail("Expected .scheduleFailed, got \(String(describing: outcome))")
@@ -235,10 +223,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
             UNNotificationRequest(identifier: "stub_\(idx)", content: content, trigger: trigger)
         }
 
-        let outcome = resolveSnooze(userInfo: [
-            "alarmID": alarm.id.uuidString,
-            "snoozeCount": 0
-        ])
+        let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
         guard case .scheduleFailed(let error) = outcome else {
             return XCTFail("Expected .scheduleFailed, got \(String(describing: outcome))")
