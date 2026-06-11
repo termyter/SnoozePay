@@ -183,7 +183,6 @@ final class AlarmOffWarningViewController: UIViewController {
         body.numberOfLines = 0
         // Inline pain-tinted mono amount via NSAttributedString.
         let prefix = "За эту неделю списано "
-        let amount = "−750 ₽"
         let suffix = ". Возможно, что-то пошло не так. Что хотите сделать?"
         let attr = NSMutableAttributedString(
             string: prefix,
@@ -192,12 +191,11 @@ final class AlarmOffWarningViewController: UIViewController {
                 .foregroundColor: AppColors.fg2
             ]
         )
-        attr.append(NSAttributedString(
-            string: amount,
-            attributes: [
-                .font: AppFonts.mono(.bold, 17),
-                .foregroundColor: AppColors.pain400
-            ]
+        attr.append(MoneyFormatter.attributed(
+            Decimal(750),
+            digitsFont: AppFonts.mono(.bold, 17),
+            prefix: "−",
+            color: AppColors.pain400
         ))
         attr.append(NSAttributedString(
             string: suffix,
@@ -226,14 +224,14 @@ final class AlarmOffWarningViewController: UIViewController {
                 iconTint: AppColors.fg2,
                 iconBackground: AppColors.whiteOverlay06,
                 title: "Перенести будильник",
-                subtitle: "Сегодня поздно лёг — встаём в 8:00"
+                subtitle: "Сегодня поздно лёг — встаём в 08:00"
             ),
             makeSuggestionRow(
                 icon: "creditcard.fill",
                 iconTint: AppColors.warn400,
                 iconBackground: AppColors.warn500.withAlphaComponent(0.14),
                 title: "Снизить цену откладывания",
-                subtitle: "Сейчас 50 ₽ → попробовать 20 ₽"
+                subtitle: "Сейчас \(MoneyFormatter.string(50)) → попробовать \(MoneyFormatter.string(20))"
             ),
             makeSuggestionRow(
                 icon: "xmark",

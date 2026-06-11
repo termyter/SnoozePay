@@ -2,7 +2,7 @@ import UIKit
 
 /// Hero balance card — `.sp-balance` in `components.css`.
 ///
-/// Visual: 28pt vertical / 24pt horizontal padding, `bg2` fill with a soft
+/// Visual: 28pt vertical / 20pt horizontal padding, `bg2` fill with a soft
 /// money-tinted radial highlight in the top-right corner. Caps "Баланс"
 /// header sits on top of the big mono number; optional weekly delta
 /// (`↑/↓ amount за неделю`) and hint line stack underneath.
@@ -94,7 +94,13 @@ final class SPBalanceCard: UIView {
         self.balance = balance
         self.delta = delta
         self.hint = hint
-        valueLabel.text = balance.formattedRubles()
+        // fmtRub rule: mono digits, proportional ~4pt gap before ₽ — the
+        // attributed variant re-fonts the separator so it escapes the mono
+        // advance grid (a plain string would render a full-cell space).
+        valueLabel.attributedText = MoneyFormatter.attributed(
+            balance,
+            digitsFont: AppTypography.moneyXl
+        )
         if let delta = delta {
             deltaLabel.isHidden = false
             deltaLabel.attributedText = renderDelta(delta)
@@ -162,10 +168,11 @@ final class SPBalanceCard: UIView {
         addSubview(stack)
 
         NSLayoutConstraint.activate([
+            // `.sp-balance` padding 28px 20px (design v3 tightened 24 → 20).
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 28),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -28),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24)
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20)
         ])
 
         // Add the gradient layer above the label so the mask can clip it.
@@ -193,13 +200,18 @@ final class SPBalanceCard: UIView {
         let renderer = UIGraphicsImageRenderer(size: textBounds.size)
         let mask = renderer.image { ctx in
             ctx.cgContext.setFillColor(UIColor.white.cgColor)
-            (valueLabel.text ?? "").draw(
-                in: textBounds,
-                withAttributes: [
-                    .font: valueLabel.font as Any,
-                    .foregroundColor: UIColor.white
-                ]
+            // The value is an attributed string (mono digits + proportional
+            // separator per fmtRub) — render it verbatim so the mask matches
+            // the on-screen glyph layout, forcing white ink for full alpha.
+            guard let attributed = valueLabel.attributedText?.mutableCopy() as? NSMutableAttributedString else {
+                return
+            }
+            attributed.addAttribute(
+                .foregroundColor,
+                value: UIColor.white,
+                range: NSRange(location: 0, length: attributed.length)
             )
+            attributed.draw(in: textBounds)
         }
         let maskLayer = CALayer()
         maskLayer.frame = textBounds
@@ -274,14 +286,10 @@ extension Decimal {
     /// separator and a trailing `₽` glyph, e.g. `1 234 ₽`. Truncates the
     /// fractional component — the design system never shows kopecks on the
     /// balance card.
+    /// Delegates to `MoneyFormatter` — the single fmtRub implementation —
+    /// so every legacy `formattedRubles()` call site picks up the design-v3
+    /// narrow space before `₽` without churning each caller.
     func formattedRubles() -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.maximumFractionDigits = 0
-        formatter.roundingMode = .down
-        let number = NSDecimalNumber(decimal: self)
-        let text = formatter.string(from: number) ?? "\(number.intValue)"
-        return "\(text) ₽"
+        MoneyFormatter.string(self)
     }
 }

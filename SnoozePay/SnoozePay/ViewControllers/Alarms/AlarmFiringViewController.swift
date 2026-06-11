@@ -399,7 +399,7 @@ class AlarmFiringViewController: UIViewController {
         // so caps / custom schedules pick up the right "next" value.
         let next = viewModel.alarm.penalty(forSnoozeCount: viewModel.snoozeCount + 2)
         let nextInt = Int(next.rounded())
-        return "Следующее откладывание: \(nextInt) ₽"
+        return "Следующее откладывание: \(MoneyFormatter.string(nextInt))"
     }
 
     /// Refresh the top-right balance pill so the displayed amount + tone
@@ -409,12 +409,12 @@ class AlarmFiringViewController: UIViewController {
         let balance = Int(viewModel.balance.rounded())
         let tone: SPPill.Tone = balance == 0 ? .pain : .money
         guard let pill = balancePill else { return }
-        pill.setText("Баланс \(balance) ₽")
+        pill.setText("Баланс \(MoneyFormatter.string(balance))")
         // SPPill's `tone` is `let` (constructor-only), so we re-build when
         // the tone needs to flip between money and pain. Cheap — pill is a
         // 26pt-tall capsule with two labels.
         if pill.tone != tone {
-            rebuildBalancePill(tone: tone, text: "Баланс \(balance) ₽")
+            rebuildBalancePill(tone: tone, text: "Баланс \(MoneyFormatter.string(balance))")
         }
     }
 
@@ -423,7 +423,7 @@ class AlarmFiringViewController: UIViewController {
     /// boundary and the chip needs to flip from money → pain or back.
     private func rebuildBalancePill(tone: SPPill.Tone, text: String) {
         guard let old = balancePill else { return }
-        let new = SPPill(text: text, tone: tone)
+        let new = SPPill(text: text, tone: tone, icon: SPIcons.coin(size: 12))
         new.translatesAutoresizingMaskIntoConstraints = false
         if let index = topHeaderRow.arrangedSubviews.firstIndex(of: old) {
             topHeaderRow.removeArrangedSubview(old)

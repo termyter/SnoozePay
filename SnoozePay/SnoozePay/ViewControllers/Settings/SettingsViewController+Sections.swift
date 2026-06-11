@@ -32,7 +32,7 @@ extension SettingsViewController {
             systemName: "rublesign.circle",
             iconColor: AppColors.money500,
             title: "Баланс",
-            trailingText: Decimal(BalanceService.shared.balance).formattedRubles(),
+            trailingText: MoneyFormatter.string(BalanceService.shared.balance),
             trailingColor: AppColors.money500,
             accessory: .none,
             selectionStyle: .none

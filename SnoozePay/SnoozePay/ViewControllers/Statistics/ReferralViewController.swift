@@ -129,7 +129,7 @@ final class ReferralViewController: UIViewController {
         headline.font = AppTypography.h1
         headline.textColor = .white
         headline.numberOfLines = 0
-        headline.text = "+200 ₽ вам\n+200 ₽ другу"
+        headline.text = "+\(MoneyFormatter.string(200)) вам\n+\(MoneyFormatter.string(200)) другу"
         headline.translatesAutoresizingMaskIntoConstraints = false
 
         let body = UILabel()
@@ -269,7 +269,7 @@ final class ReferralViewController: UIViewController {
                 badgeTextColor: AppColors.fgOnMoney,
                 title: "Маша К.",
                 subtitle: "Продержалась 7 дней",
-                trailing: makeAmountLabel(text: "+200 ₽", color: AppColors.money400),
+                trailing: makeAmountLabel(text: "+\(MoneyFormatter.string(200))", color: AppColors.money400),
                 divider: true
             )
         )
@@ -461,7 +461,7 @@ final class ReferralViewController: UIViewController {
 
     @objc private func shareTapped() {
         let text = "Снузь меньше — копи больше. Используй мой код в SnoozePay: "
-            + "\(Self.personalCode) — оба получим +200 ₽ на баланс."
+            + "\(Self.personalCode) — оба получим +\(MoneyFormatter.string(200)) на баланс."
         let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         activity.popoverPresentationController?.sourceView = view
         activity.popoverPresentationController?.sourceRect = view.bounds

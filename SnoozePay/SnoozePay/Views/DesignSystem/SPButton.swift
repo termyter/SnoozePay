@@ -43,9 +43,11 @@ final class SPButton: UIControl {
         }
 
         var horizontalPadding: CGFloat {
+            // Design v3 tightened `.sp-btn` paddings: 0 24px → 0 20px,
+            // sm 0 14px → 0 12px (`components.css`).
             switch self {
-            case .lg, .md: return AppSpacing.sp6   // 24pt
-            case .sm:      return 14
+            case .lg, .md: return AppSpacing.sp5   // 20pt
+            case .sm:      return AppSpacing.sp3   // 12pt
             }
         }
 

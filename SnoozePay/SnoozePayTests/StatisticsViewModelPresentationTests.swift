@@ -120,13 +120,13 @@ final class StatisticsViewModelPresentationTests: XCTestCase {
     func testTotalSpentFormatted_zero_returnsRubleZero() {
         let vm = makeVM()
         vm.loadData(period: .week)
-        XCTAssertEqual(vm.totalSpentFormatted, "₽0")
+        XCTAssertEqual(vm.totalSpentFormatted, "0\u{202F}₽")
     }
 
     func testTotalSpentFormatted_withSpending_includesAmount() {
         addCharge(amount: 250)
         let vm = makeVM()
         vm.loadData(period: .week)
-        XCTAssertEqual(vm.totalSpentFormatted, "₽250")
+        XCTAssertEqual(vm.totalSpentFormatted, "250\u{202F}₽")
     }
 }

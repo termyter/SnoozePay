@@ -2,7 +2,7 @@ import Foundation
 
 /// Visual theme applied to an alarm's card preview and firing screen (#151).
 ///
-/// The five built-in cases are gradient-only so they ship without bundled
+/// The six built-in cases are gradient-only so they ship without bundled
 /// imagery; `.custom` carries an absolute file URL for a user-picked photo
 /// stored in the app's Caches directory by `AlarmThemeImageStore`.
 ///
@@ -15,6 +15,8 @@ enum AlarmTheme: Equatable {
     case dawn
     case mountains
     case ocean
+    case forest
+    case neon
     case abstract
     case custom(imagePath: URL)
 
@@ -27,6 +29,8 @@ enum AlarmTheme: Equatable {
         case .dawn: return "dawn"
         case .mountains: return "mountains"
         case .ocean: return "ocean"
+        case .forest: return "forest"
+        case .neon: return "neon"
         case .abstract: return "abstract"
         case .custom: return "custom"
         }
@@ -41,15 +45,19 @@ enum AlarmTheme: Equatable {
         case .dawn: return "Рассвет"
         case .mountains: return "Горы"
         case .ocean: return "Океан"
-        case .abstract: return "Абстракция"
+        case .forest: return "Лес"
+        case .neon: return "Неон"
+        case .abstract: return "Абстракт"
         case .custom: return "Своё фото"
         }
     }
 
     /// Built-in (non-custom) themes in their canonical picker order. The
     /// `.custom` tile is appended separately by the picker view-controller so
-    /// the "+" affordance always reads as the trailing slot.
-    static let builtInOrder: [AlarmTheme] = [.dawn, .mountains, .ocean, .abstract]
+    /// the "+" affordance always reads as the trailing slot. The sequence
+    /// mirrors the v3 design lineup (`SPMore2.jsx` theme picker / #224):
+    /// dawn, ocean, mountains, forest, neon, abstract.
+    static let builtInOrder: [AlarmTheme] = [.dawn, .ocean, .mountains, .forest, .neon, .abstract]
 }
 
 // MARK: - Codable
@@ -68,6 +76,8 @@ extension AlarmTheme: Codable {
         case "dawn": self = .dawn
         case "mountains": self = .mountains
         case "ocean": self = .ocean
+        case "forest": self = .forest
+        case "neon": self = .neon
         case "abstract": self = .abstract
         case "custom":
             // Path stored as a string so the JSON stays portable across

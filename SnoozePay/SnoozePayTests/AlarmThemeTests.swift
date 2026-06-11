@@ -30,6 +30,32 @@ final class AlarmThemeTests: XCTestCase {
         }
     }
 
+    func testForestAndNeonDecodeFromRawIDs() throws {
+        // The exact raw ids matter — they are the on-disk contract for #224.
+        // A rename would silently degrade every saved forest/neon alarm to
+        // `.dawn` via the unknown-id fallback below.
+        let forest = try JSONDecoder().decode(AlarmTheme.self, from: #"{"id":"forest"}"#.data(using: .utf8)!)
+        let neon = try JSONDecoder().decode(AlarmTheme.self, from: #"{"id":"neon"}"#.data(using: .utf8)!)
+        XCTAssertEqual(forest, .forest)
+        XCTAssertEqual(neon, .neon)
+    }
+
+    func testPreForestNeonThemeIDsStillDecode() throws {
+        // Backwards-compat guard: alarms persisted before #224 keep decoding
+        // to the same cases after the enum grew two members.
+        let legacyIDs: [(String, AlarmTheme)] = [
+            ("dawn", .dawn),
+            ("mountains", .mountains),
+            ("ocean", .ocean),
+            ("abstract", .abstract)
+        ]
+        for (id, expected) in legacyIDs {
+            let json = #"{"id":"\#(id)"}"#.data(using: .utf8)!
+            let decoded = try JSONDecoder().decode(AlarmTheme.self, from: json)
+            XCTAssertEqual(decoded, expected, "Legacy id \(id) no longer decodes to \(expected)")
+        }
+    }
+
     func testUnknownThemeIDDecodesAsDawn() throws {
         let json = #"{"id":"made-up-future-theme"}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(AlarmTheme.self, from: json)
@@ -129,8 +155,20 @@ final class AlarmThemeTests: XCTestCase {
         XCTAssertEqual(AlarmTheme.dawn.displayName, "Рассвет")
         XCTAssertEqual(AlarmTheme.mountains.displayName, "Горы")
         XCTAssertEqual(AlarmTheme.ocean.displayName, "Океан")
-        XCTAssertEqual(AlarmTheme.abstract.displayName, "Абстракция")
+        XCTAssertEqual(AlarmTheme.forest.displayName, "Лес")
+        XCTAssertEqual(AlarmTheme.neon.displayName, "Неон")
+        // Renamed from "Абстракция" in the v3 lineup (#224).
+        XCTAssertEqual(AlarmTheme.abstract.displayName, "Абстракт")
         let custom = AlarmTheme.custom(imagePath: URL(fileURLWithPath: "/x.jpg"))
         XCTAssertEqual(custom.displayName, "Своё фото")
+    }
+
+    func testBuiltInOrderMatchesDesignV3Lineup() {
+        // Picker tile order is part of the v3 design contract (#224):
+        // dawn, ocean, mountains, forest, neon, abstract.
+        XCTAssertEqual(
+            AlarmTheme.builtInOrder,
+            [.dawn, .ocean, .mountains, .forest, .neon, .abstract]
+        )
     }
 }

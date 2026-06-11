@@ -67,6 +67,10 @@ final class TransactionRepository {
 
     // MARK: - Read
 
+    /// Lossy read: a decode failure is indistinguishable from "no
+    /// transactions" (#210). Prefer `fetchAllChecked()` in production paths
+    /// that render state to the user — callers of this variant should
+    /// consult `lastLoadFailed` before trusting an empty result.
     func fetchAll() -> [Transaction] {
         queue.sync { (try? readAll()) ?? [] }
     }
@@ -78,6 +82,9 @@ final class TransactionRepository {
         try queue.sync { try readAll() }
     }
 
+    /// Lossy read: a decode failure yields `[]` silently (#210). Display-only
+    /// callers (weekly chart) tolerate this; anything that drives money or
+    /// scheduling decisions must use `fetchAllChecked()` and filter.
     func fetchCharges(since date: Date) -> [Transaction] {
         queue.sync {
             let txs = (try? readAll()) ?? []

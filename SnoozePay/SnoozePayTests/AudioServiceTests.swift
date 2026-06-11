@@ -4,6 +4,17 @@ import XCTest
 /// Unit tests for AudioService — alarm sound playback state management.
 final class AudioServiceTests: XCTestCase {
 
+    // MARK: - Synthetic tone (#210)
+
+    /// The in-memory WAV fallback must produce a ready AVAudioPlayer — if it
+    /// ever returns nil the alarm fires vibration-only, which previously
+    /// happened without a trace (`try?`). Now the failure path logs, and this
+    /// test pins the happy path so the generated WAV header stays valid.
+    func testGenerateAlarmTone_returnsPlayer() {
+        XCTAssertNotNil(AudioService.generateAlarmTone(),
+                        "Synthetic tone generation must succeed for valid in-memory WAV data")
+    }
+
     // MARK: - Start
 
     func testStartAlarmSound_setsIsPlaying() {

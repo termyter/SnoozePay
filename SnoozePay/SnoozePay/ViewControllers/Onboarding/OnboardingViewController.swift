@@ -4,7 +4,7 @@ import UIKit
 /// (`docs/design/v2-handoff/components/SPMore.jsx` lines 9-149).
 ///
 /// Three full-screen pages on a horizontally-paged `UIScrollView`:
-/// 1. Concept — giant clock "7:00" with a warn "−50 ₽" pill and a hero h1.
+/// 1. Concept — giant clock "07:00" with a warn "−50 ₽" pill and a hero h1.
 /// 2. Mechanics — three numbered steps explaining the snooze-tax loop.
 /// 3. Deposit — caps eyebrow, h1, three option cards (200 / 500 / 1000 ₽)
 ///    with a money-tinted selection, plus a "Положить {value} ₽" CTA and a
@@ -48,7 +48,7 @@ final class OnboardingViewController: UIViewController {
         DepositOption(
             amount: 200,
             title: "Попробовать",
-            description: "≈ 4 откладывания по 50 ₽",
+            description: "≈ 4 откладывания по \(MoneyFormatter.string(50))",
             isPopular: false
         ),
         DepositOption(

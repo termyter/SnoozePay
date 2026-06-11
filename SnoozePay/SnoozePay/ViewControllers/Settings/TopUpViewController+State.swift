@@ -103,7 +103,7 @@ extension TopUpViewController {
         successAmount = amount
         purchaseInFlight = false
 
-        successAmountLabel.text = "+\(amount) ₽"
+        successAmountLabel.text = "+\(MoneyFormatter.string(amount))"
         successContainer.isHidden = false
 
         UIView.animate(withDuration: SPSupport.durationBase) {

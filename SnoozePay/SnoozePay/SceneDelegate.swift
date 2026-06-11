@@ -3,6 +3,7 @@
 //  SnoozePay
 //
 
+import os
 import UIKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -89,7 +90,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     private func transitionToMainApp() {
-        guard let window = window else { return }
+        guard let window = window else {
+            // Permissions flow already flipped its "shown" flag — bailing out
+            // here strands the user on a dead screen with no trace (#210).
+            AppLogger.appDelegate.error("transitionToMainApp: window nil — user stuck on onboarding")
+            return
+        }
         let tabBar = makeTabBarController()
         UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
             window.rootViewController = tabBar

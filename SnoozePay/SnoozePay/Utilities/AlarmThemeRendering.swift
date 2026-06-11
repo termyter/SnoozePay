@@ -37,6 +37,22 @@ enum AlarmThemeRendering {
                 UIColor(themeRGB: 0x1A659E).cgColor,
                 UIColor(themeRGB: 0x003554).cgColor
             ]
+        case .forest:
+            // FIRING_THEMES.forest stops from the v3 handoff
+            // (`SPThemedFiring.jsx`): deep pine → moss midpoint → sage.
+            return [
+                UIColor(themeRGB: 0x0A1A0A).cgColor,
+                UIColor(themeRGB: 0x1E3823).cgColor,
+                UIColor(themeRGB: 0x4A6B3A).cgColor
+            ]
+        case .neon:
+            // FIRING_THEMES.neon stops from the v3 handoff
+            // (`SPThemedFiring.jsx`): midnight ink → violet midpoint → hot pink.
+            return [
+                UIColor(themeRGB: 0x0A0A1F).cgColor,
+                UIColor(themeRGB: 0x3D1E63).cgColor,
+                UIColor(themeRGB: 0xFF3D8A).cgColor
+            ]
         case .abstract:
             // Money-tinted radial vibe — dark green core fading into the
             // brand near-black ink. Rendered as a vertical gradient here
@@ -62,6 +78,10 @@ enum AlarmThemeRendering {
             return [0.0, 0.4, 0.7, 1.0]
         case .abstract:
             return [0.0, 0.55, 1.0]
+        case .forest, .neon:
+            // Midpoint pinned at 50% to match the design's
+            // `linear-gradient(160deg, … 0%, … 50%, … 100%)` recipe.
+            return [0.0, 0.5, 1.0]
         case .mountains, .ocean:
             return [0.0, 1.0]
         case .custom:

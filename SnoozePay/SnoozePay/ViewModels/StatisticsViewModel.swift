@@ -107,8 +107,9 @@ final class StatisticsViewModel {
     var totalSpent: Double { charges.reduce(0) { $0 + $1.amount } }
     var snoozeCount: Int { charges.count }
 
+    /// fmtRub suffix style ("250 ₽") — design v3 retired the ₽-prefix format.
     var totalSpentFormatted: String {
-        totalSpent > 0 ? "₽\(Int(totalSpent))" : "₽0"
+        MoneyFormatter.string(max(totalSpent, 0))
     }
     var snoozeCountFormatted: String { "\(snoozeCount)" }
 
@@ -179,7 +180,7 @@ final class StatisticsViewModel {
         guard totalSpent > 0 else { return "Отлично! Вы не откладывали будильник." }
         let coffees = Int(totalSpent / 150)
         if coffees > 0 {
-            return "\(Int(totalSpent))₽ на лень = \(coffees) кофе! ☕"
+            return "\(MoneyFormatter.string(totalSpent)) на лень = \(coffees) кофе! ☕"
         }
         return "Продолжайте в том же духе!"
     }

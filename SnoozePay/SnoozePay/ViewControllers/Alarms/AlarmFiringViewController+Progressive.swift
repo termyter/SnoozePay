@@ -92,7 +92,7 @@ extension AlarmFiringViewController {
         // Trailing currency glyph after the last amount only — keeps the
         // arrow chain visually balanced ("−50 → −100 → −200 ₽").
         if let last = parts.last {
-            parts[parts.count - 1] = "\(last) ₽"
+            parts[parts.count - 1] = "\(last)\(MoneyFormatter.narrowSpace)₽"
         }
         ticker.text = "сегодня: \(parts.joined(separator: " → "))"
         ticker.isHidden = false

@@ -123,9 +123,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
 
     func testDismiss_disablesNonRepeatingAlarm() {
         let repo = AlarmRepository(defaults: .standard)
-        var alarm = Alarm(penaltyAmount: 50)
-        alarm.repeatDays = []
-        alarm.enabled = true
+        let alarm = Alarm(repeatDays: [], penaltyAmount: 50, enabled: true)
         repo.save(alarm)
 
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
@@ -141,9 +139,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
 
     func testDismiss_keepsRepeatingAlarmEnabled() {
         let repo = AlarmRepository(defaults: .standard)
-        var alarm = Alarm(penaltyAmount: 50)
-        alarm.repeatDays = [0, 1, 2, 3, 4] // Weekdays
-        alarm.enabled = true
+        let alarm = Alarm(repeatDays: [0, 1, 2, 3, 4], penaltyAmount: 50, enabled: true) // Weekdays
         repo.save(alarm)
 
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
@@ -163,9 +159,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     /// end-state is already achieved.
     func testDismiss_alarmAlreadyRemoved_doesNotCrash() {
         let repo = AlarmRepository(defaults: .standard)
-        var alarm = Alarm(penaltyAmount: 50)
-        alarm.repeatDays = []
-        alarm.enabled = true
+        let alarm = Alarm(repeatDays: [], penaltyAmount: 50, enabled: true)
         // Intentionally do NOT save — simulate "already removed" repo state.
 
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
@@ -246,8 +240,9 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         let alarm = makeAlarm(penalty: 50)
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0)
 
-        // V2 copy: "+{minutes} минут · −{penalty} ₽" (default snooze = 9 min).
-        XCTAssertEqual(vm.snoozeButtonTitle, "+9 минут \u{00B7} −50 ₽")
+        // V2 copy: "+{minutes} минут · −{penalty} ₽" (default snooze = 9 min,
+        // fmtRub narrow no-break space before ₽).
+        XCTAssertEqual(vm.snoozeButtonTitle, "+9 минут \u{00B7} −50\u{202F}₽")
     }
 
     func testSnoozeButtonTitle_whenCannotSnooze_showsEmpty() {
