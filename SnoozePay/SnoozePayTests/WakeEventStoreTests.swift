@@ -31,10 +31,15 @@ final class WakeEventStoreTests: XCTestCase {
     }
 
     func testRecordWake_sameDayTwice_dedupes() {
-        let now = Date()
-        store.recordWake(on: now, calendar: calendar)
+        // Anchor mid-day so +1h can never cross midnight — Date()+3600 made
+        // this test fail on any CI run between 23:00 and 00:00 (two distinct
+        // calendar days → count 2).
+        let morning = calendar.date(
+            bySettingHour: 9, minute: 0, second: 0, of: Date()
+        )!
+        store.recordWake(on: morning, calendar: calendar)
         store.recordWake(
-            on: now.addingTimeInterval(3600), calendar: calendar
+            on: morning.addingTimeInterval(3600), calendar: calendar
         )
         XCTAssertEqual(store.wakeDays().count, 1,
                        "Repeat dismissals on the same day must collapse to one entry")
