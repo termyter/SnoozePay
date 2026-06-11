@@ -1,7 +1,10 @@
 import UIKit
 
-/// Streak celebration modal — V2 design (`docs/design/v2-handoff/components/`
-/// `SPScreensV2.jsx` lines 653-732, `StreakModalV2()`).
+/// Streak celebration modal — V3 design (de-monetized, issue #236).
+///
+/// V3 drops every money mention from the V2 sheet (`SPScreensV2.jsx`
+/// `StreakModalV2()`): no "+350 ₽" hero, no "Сэкономили за неделю", no share
+/// button. The celebration is purely behavioral — the habit is the reward.
 ///
 /// Visual recipe:
 /// - Black 92% overlay + radial money green glow background painted over the
@@ -11,31 +14,19 @@ import UIKit
 ///   `strokeMoney` border, money-tinted glow shadow.
 /// - 96×96 rounded-rect (28pt radius) with the money gradient and a flame
 ///   icon — sits centered at the top of the sheet.
-/// - Caps "Серия · N дней без откладываний" in `money300`.
-/// - Hero amount "+350 ₽" at `moneyXl` masked with the money gradient via
-///   the shared `UILabel.applyGradientMask(_:)` helper.
-/// - h3 "Сэкономили за неделю" in `fg1`.
-/// - Body — "Деньги вернули на баланс. Потратьте их на следующей слабой
-///   неделе." in `fg3`.
+/// - Caps "СЕРИЯ" in `money300`.
+/// - h1 "N дней без откладываний" in `fg1`.
+/// - Body — "Это уже не случайность — это привычка. Тело знает, что подъём
+///   вовремя — это просто." in `fg3`.
 /// - 7 day-pip row with the money gradient (numbered 1-7) below the body.
-/// - Primary `SPButton(.money, .lg, fullWidth: true)` "Поделиться победой"
-///   that pops a `UIActivityViewController` so the streak goes onto socials.
-/// - Secondary `SPButton(.quiet, .md, fullWidth: true)` "Закрыть" that
-///   dismisses.
-///
-/// Saved amount carries the same estimation caveat as before — see
-/// `estimatedSavings(for:alarms:)`.
+/// - Single `SPButton(.money, .lg, fullWidth: true)` "Закрыть" that dismisses.
 final class StreakModalViewController: UIViewController {
 
     // MARK: - Configuration
 
-    /// Number of consecutive snooze-free days. Drives the caption + the
+    /// Number of consecutive snooze-free days. Drives the headline + the
     /// completed-square count in the 7-day visualizer.
     private let streakDays: Int
-
-    /// Approximate roubles saved across the streak — the value the hero
-    /// number renders.
-    private let savedAmount: Decimal
 
     // MARK: - Subviews
 
@@ -50,45 +41,40 @@ final class StreakModalViewController: UIViewController {
     private let flameIcon = UIImageView()
 
     private let capsLabel = UILabel()
-    private let amountLabel = UILabel()
-    private let amountGradient = CAGradientLayer()
     private let headlineLabel = UILabel()
     private let bodyLabel = UILabel()
 
     private let pipStrip = UIStackView()
 
-    private let primaryButton = SPButton(
-        title: "Поделиться победой",
+    private let closeButton = SPButton(
+        title: "Закрыть",
         variant: .money,
         size: .lg,
-        fullWidth: true
-    )
-    private let secondaryButton = SPButton(
-        title: "Закрыть",
-        variant: .quiet,
-        size: .md,
         fullWidth: true
     )
 
     // MARK: - Init
 
-    /// - Parameters:
-    ///   - streakDays: Consecutive snooze-free days. `0` is technically
-    ///     allowed (the modal would just look empty) — callers gate via
-    ///     `presentStreakModalIfNeeded(...)` so this never lands at zero
-    ///     in production.
-    ///   - savedAmount: Money the user did not lose. Caller computes this;
-    ///     see `StreakModalViewController.estimatedSavings(for:)` for the
-    ///     default 50 ₽/day fallback used when no transaction history is
-    ///     available.
-    init(streakDays: Int, savedAmount: Decimal) {
+    /// - Parameter streakDays: Consecutive snooze-free days. `0` is
+    ///   technically allowed (the modal would just look empty) — callers gate
+    ///   via `presentStreakModalIfNeeded(...)` so this never lands at zero in
+    ///   production.
+    init(streakDays: Int) {
         self.streakDays = streakDays
-        self.savedAmount = savedAmount
         super.init(nibName: nil, bundle: nil)
         // Custom overlay presentation so we can paint our own backdrop with
         // a money-tinted radial glow.
         modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
+    }
+
+    /// Transition shim for V2-era call sites that still compute a saved
+    /// amount. V3 ignores the money figure entirely — the parameter exists
+    /// only so in-flight branches keep compiling; new code should call
+    /// `init(streakDays:)`.
+    convenience init(streakDays: Int, savedAmount: Decimal) {
+        _ = savedAmount
+        self.init(streakDays: streakDays)
     }
 
     required init?(coder: NSCoder) {
@@ -113,7 +99,6 @@ final class StreakModalViewController: UIViewController {
         super.viewDidLayoutSubviews()
         backdropGlow.frame = view.bounds
         flameBadgeGradient.frame = flameBadge.bounds
-        amountLabel.applyGradientMask(amountGradient)
         // Shadow path tracks the sheet's rounded rect so the soft glow doesn't
         // pay an offscreen pass on every layout while the sheet animates in.
         sheet.layer.shadowPath = UIBezierPath(
@@ -198,10 +183,8 @@ final class StreakModalViewController: UIViewController {
     }
 
     private func configureLabels() {
-        let capsText = "СЕРИЯ · \(streakDays) \(Self.dayWord(for: streakDays).uppercased()) "
-            + "БЕЗ ОТКЛАДЫВАНИЙ"
         capsLabel.attributedText = NSAttributedString(
-            string: capsText,
+            string: "СЕРИЯ",
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -212,26 +195,15 @@ final class StreakModalViewController: UIViewController {
         capsLabel.numberOfLines = 0
         capsLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        amountLabel.font = AppTypography.moneyXl
-        amountLabel.textAlignment = .center
-        amountLabel.adjustsFontForContentSizeCategory = false
-        amountLabel.textColor = AppColors.money400   // safety-net pre-mask
-        amountLabel.text = Self.formatSavedAmount(savedAmount)
-        amountLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        amountGradient.colors = SPSupport.moneyGradientColors
-        amountGradient.locations = SPSupport.moneyGradientLocations
-        amountGradient.startPoint = SPSupport.gradientStart
-        amountGradient.endPoint = SPSupport.gradientEnd
-
-        headlineLabel.text = "Сэкономили за неделю"
-        headlineLabel.font = AppTypography.h3
+        headlineLabel.text = "\(streakDays) \(Self.dayWord(for: streakDays)) без откладываний"
+        headlineLabel.font = AppTypography.h1
         headlineLabel.textColor = AppColors.fg1
         headlineLabel.textAlignment = .center
         headlineLabel.numberOfLines = 0
         headlineLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        bodyLabel.text = "Деньги вернули на баланс. Потратьте их на следующей слабой неделе."
+        bodyLabel.text = "Это уже не случайность — это привычка. "
+            + "Тело знает, что подъём вовремя — это просто."
         bodyLabel.font = AppTypography.body
         bodyLabel.textColor = AppColors.fg3
         bodyLabel.textAlignment = .center
@@ -295,10 +267,8 @@ final class StreakModalViewController: UIViewController {
     }
 
     private func configureButtons() {
-        primaryButton.translatesAutoresizingMaskIntoConstraints = false
-        primaryButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
-        secondaryButton.translatesAutoresizingMaskIntoConstraints = false
-        secondaryButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
     }
 
     private func layout() {
@@ -313,27 +283,19 @@ final class StreakModalViewController: UIViewController {
             pipStrip.trailingAnchor.constraint(lessThanOrEqualTo: pipWrap.trailingAnchor)
         ])
 
-        let buttonsStack = UIStackView(arrangedSubviews: [primaryButton, secondaryButton])
-        buttonsStack.axis = .vertical
-        buttonsStack.spacing = AppSpacing.sp2
-        buttonsStack.alignment = .fill
-        buttonsStack.translatesAutoresizingMaskIntoConstraints = false
-
         let stack = UIStackView(arrangedSubviews: [
             flameBadge,
             capsLabel,
-            amountLabel,
             headlineLabel,
             bodyLabel,
             pipWrap,
-            buttonsStack
+            closeButton
         ])
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = AppSpacing.sp3
         stack.setCustomSpacing(AppSpacing.sp5, after: flameBadge)
         stack.setCustomSpacing(AppSpacing.sp2, after: capsLabel)
-        stack.setCustomSpacing(AppSpacing.sp2, after: amountLabel)
         stack.setCustomSpacing(AppSpacing.sp2, after: headlineLabel)
         stack.setCustomSpacing(AppSpacing.sp6, after: bodyLabel)
         stack.setCustomSpacing(AppSpacing.sp6, after: pipWrap)
@@ -355,11 +317,9 @@ final class StreakModalViewController: UIViewController {
             stack.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: AppSpacing.sp6),
             stack.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -AppSpacing.sp6),
 
-            // Buttons stretch to the full stack width.
-            primaryButton.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
-            primaryButton.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
-            secondaryButton.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
-            secondaryButton.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+            // Button stretches to the full stack width.
+            closeButton.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            closeButton.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
 
             // Pip wrap row stretches but the strip itself centres inside.
             pipWrap.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
@@ -381,24 +341,9 @@ final class StreakModalViewController: UIViewController {
         dismiss(animated: true)
     }
 
-    @objc private func shareTapped() {
-        let text = "SnoozePay: \(streakDays) \(Self.dayWord(for: streakDays)) подряд без откладываний — "
-            + "сэкономлено \(Self.formatSavedAmount(savedAmount))."
-        let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        // iPad popover anchor — the system picker insists on a source view.
-        activity.popoverPresentationController?.sourceView = primaryButton
-        activity.popoverPresentationController?.sourceRect = primaryButton.bounds
-        present(activity, animated: true)
-    }
-
     // MARK: - Helpers
 
-    /// Format the saved amount as `+1 234 ₽` with the brand thousand separator.
-    static func formatSavedAmount(_ amount: Decimal) -> String {
-        "+\(amount.formattedRubles())"
-    }
-
-    /// Russian plural for "день / дня / дней". The streak-modal caption hits
+    /// Russian plural for "день / дня / дней". The streak-modal headline hits
     /// all three forms across the 3 / 7 / 14 / 30 milestones plus future
     /// arbitrary streaks, so we do the full Slavic-plural switch instead of
     /// hardcoding "дней".
@@ -420,9 +365,13 @@ final class StreakModalViewController: UIViewController {
 
     /// Approximate the saved amount over `streakDays`. Uses the default
     /// 50 ₽/day when no alarms exist, otherwise averages the registered
-    /// alarm penalties. Follow-up #142: replace with the exact
-    /// `expectedPenalty * snoozesSaved` once the per-alarm history surface
-    /// lands.
+    /// alarm penalties.
+    ///
+    /// The V3 modal no longer renders money, but the alarms-list streak
+    /// banner (`AlarmsStreakBannerView`) still surfaces this estimate, so the
+    /// helper stays here as the single source of the savings math.
+    /// Follow-up #142: replace with the exact `expectedPenalty * snoozesSaved`
+    /// once the per-alarm history surface lands.
     static func estimatedSavings(for streakDays: Int, alarms: [Alarm]) -> Decimal {
         guard streakDays > 0 else { return 0 }
         let dailyPenalty: Decimal
