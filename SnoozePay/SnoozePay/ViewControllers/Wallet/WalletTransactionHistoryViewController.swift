@@ -1,11 +1,16 @@
 import UIKit
 
-/// Transaction history screen — V2 design `TxHistory` in
-/// `docs/design/v2-handoff/components/SPMore3.jsx` (L6-105).
+/// Transaction history screen — V3 design `TxHistory` in
+/// `docs/design/v2-handoff/components/SPMore3.jsx` (artboards 21/21a/21b,
+/// issue #234).
 ///
-/// Lists every recorded `Transaction` grouped by day. Headers read
-/// "СЕГОДНЯ" / "ВЧЕРА" / "12 АПР" depending on relative date. Tap-through
-/// is not implemented yet — the screen is read-only.
+/// Top-down: centered period chip (current month by default; tap opens
+/// `PeriodPickerSheetViewController` for single-month or month-range
+/// selection) → summary card with Списано / Пополнения / Откладываний
+/// computed over the visible list (bonuses excluded from Пополнения) →
+/// day-grouped transaction list filtered to the selected period. Headers
+/// read "Сегодня" / "Вчера" / "12 января". The whole page scrolls as one
+/// surface — no nested scrolling.
 ///
 /// `Wallet`-prefixed because a legacy `TransactionHistoryViewController`
 /// still lives under `Settings/` for the V1 surface; the two will merge
@@ -22,6 +27,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
     private let scrollView = UIScrollView()
     private let stack = UIStackView()
     private var groups: [Group] = []
+    private var period: TxHistoryPeriod = .currentMonth()
 
     // MARK: - Lifecycle
 
@@ -90,24 +96,167 @@ final class WalletTransactionHistoryViewController: UIViewController {
         }
 
         let all = TransactionRepository.shared.fetchAll()
-        groups = Self.group(transactions: all)
+        let visible = period.filter(all)
+        groups = Self.group(transactions: visible)
+
+        let chipRow = makePeriodChipRow()
+        stack.addArrangedSubview(chipRow)
+        stack.setCustomSpacing(AppSpacing.sp4, after: chipRow)
+        stack.addArrangedSubview(makeSummaryCard(summary: TxHistorySummary.compute(from: visible)))
 
         if groups.isEmpty {
-            stack.addArrangedSubview(makeEmptyCard())
+            stack.addArrangedSubview(makeEmptyCard(hasAnyTransactions: !all.isEmpty))
             return
         }
 
         for group in groups {
-            stack.addArrangedSubview(makeGroupHeader(text: group.title))
+            let header = makeGroupHeader(text: group.title)
+            stack.addArrangedSubview(header)
+            stack.setCustomSpacing(AppSpacing.sp2, after: header)
             stack.addArrangedSubview(makeCard(for: group.entries))
         }
     }
 
-    private func makeEmptyCard() -> UIView {
+    // MARK: - Period chip (artboard 21)
+
+    private func makePeriodChipRow() -> UIView {
+        var configuration = UIButton.Configuration.plain()
+        configuration.attributedTitle = AttributedString(
+            period.chipCaption,
+            attributes: AttributeContainer([
+                .font: AppFonts.sans(.semibold, 15),
+                .foregroundColor: AppColors.fg1
+            ])
+        )
+        configuration.image = UIImage(
+            systemName: "chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        )
+        configuration.imagePlacement = .trailing
+        configuration.imagePadding = AppSpacing.sp2
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 10, leading: AppSpacing.sp4, bottom: 10, trailing: AppSpacing.sp3
+        )
+        configuration.baseForegroundColor = AppColors.fg1
+
+        let chip = UIButton(configuration: configuration)
+        chip.backgroundColor = AppColors.whiteOverlay06
+        chip.layer.cornerRadius = AppRadius.lg
+        chip.layer.masksToBounds = true
+        chip.accessibilityLabel = "Период: \(period.chipCaption)"
+        chip.addTarget(self, action: #selector(periodChipTapped), for: .touchUpInside)
+        chip.translatesAutoresizingMaskIntoConstraints = false
+
+        // Centered inside a full-width row so the stack keeps its margins.
+        let row = UIView()
+        row.addSubview(chip)
+        NSLayoutConstraint.activate([
+            chip.centerXAnchor.constraint(equalTo: row.centerXAnchor),
+            chip.topAnchor.constraint(equalTo: row.topAnchor),
+            chip.bottomAnchor.constraint(equalTo: row.bottomAnchor)
+        ])
+        return row
+    }
+
+    @objc private func periodChipTapped() {
+        let all = TransactionRepository.shared.fetchAll()
+        let currentYear = YearMonth(date: Date()).year
+        let earliestYear = all.map { YearMonth(date: $0.createdAt).year }.min() ?? currentYear
+        let years = Array(min(earliestYear, currentYear)...currentYear)
+        let sheet = PeriodPickerSheetViewController(selected: period, years: years) { [weak self] picked in
+            guard let self else { return }
+            self.period = picked ?? .currentMonth()
+            self.reload()
+        }
+        present(sheet, animated: true)
+    }
+
+    // MARK: - Summary card (artboard 21)
+
+    private func makeSummaryCard(summary: TxHistorySummary) -> UIView {
+        let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
+
+        let caption = UILabel()
+        caption.attributedText = NSAttributedString(
+            string: "За \(period.summaryCaption)".uppercased(with: Locale(identifier: "ru_RU")),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+
+        let spent = makeSummaryColumn(
+            title: "Списано",
+            value: MoneyFormatter.attributed(
+                summary.spent, digitsFont: AppTypography.moneyMd, prefix: "−", color: AppColors.pain400
+            ),
+            alignment: .left
+        )
+        let topups = makeSummaryColumn(
+            title: "Пополнения",
+            value: MoneyFormatter.attributed(
+                summary.topups, digitsFont: AppTypography.moneyMd, prefix: "+", color: AppColors.money400
+            ),
+            alignment: .left
+        )
+        let snoozes = makeSummaryColumn(
+            title: "Откладываний",
+            value: NSAttributedString(
+                string: "\(summary.snoozeCount)",
+                attributes: [.font: AppTypography.moneyMd, .foregroundColor: AppColors.fg1]
+            ),
+            alignment: .right
+        )
+
+        let columns = UIStackView(arrangedSubviews: [spent, topups, snoozes])
+        columns.axis = .horizontal
+        columns.distribution = .equalSpacing
+        columns.alignment = .lastBaseline
+
+        let content = UIStackView(arrangedSubviews: [caption, columns])
+        content.axis = .vertical
+        content.spacing = AppSpacing.sp2
+        content.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor),
+            content.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
+            content.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor)
+        ])
+        return card
+    }
+
+    private func makeSummaryColumn(
+        title: String,
+        value: NSAttributedString,
+        alignment: NSTextAlignment
+    ) -> UIView {
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = AppTypography.meta
+        titleLabel.textColor = AppColors.fg3
+        titleLabel.textAlignment = alignment
+
+        let valueLabel = UILabel()
+        valueLabel.attributedText = value
+        valueLabel.textAlignment = alignment
+
+        let column = UIStackView(arrangedSubviews: [titleLabel, valueLabel])
+        column.axis = .vertical
+        column.spacing = AppSpacing.sp1
+        column.alignment = alignment == .right ? .trailing : .leading
+        return column
+    }
+
+    private func makeEmptyCard(hasAnyTransactions: Bool = false) -> UIView {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp6, cornerRadius: AppRadius.lg)
         card.translatesAutoresizingMaskIntoConstraints = false
         let label = UILabel()
-        label.text = "Здесь появятся пополнения, списания и возвраты."
+        label.text = hasAnyTransactions
+            ? "За выбранный период операций нет."
+            : "Здесь появятся пополнения, списания и бонусы."
         label.font = AppTypography.body
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
@@ -175,11 +324,14 @@ final class WalletTransactionHistoryViewController: UIViewController {
     private static func title(for transaction: Transaction) -> String {
         switch transaction.type {
         case .topup:
-            return "Пополнение Apple Pay"
+            return "Пополнение баланса"
         case .charge:
             return "Поспать ещё"
         case .promotion:
-            return "Промо-зачисление"
+            // `.promotion` is currently minted only by the referral 7-day
+            // hold reward (`ReferralService`), hence the specific copy
+            // (issue #234 item 4 — "Возврат" → "Бонус").
+            return "Бонус: продержались 7 дней"
         }
     }
 
@@ -197,7 +349,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         case .promotion:
             tint = AppColors.money400
             fill = AppColors.money400.withAlphaComponent(0.14)
-            glyph = "gift"
+            glyph = "checkmark"
         case .charge:
             tint = AppColors.pain400
             fill = AppColors.pain400.withAlphaComponent(0.14)
@@ -278,11 +430,12 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
     private static func header(for date: Date) -> String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) { return "СЕГОДНЯ" }
-        if calendar.isDateInYesterday(date) { return "ВЧЕРА" }
+        if calendar.isDateInToday(date) { return "Сегодня" }
+        if calendar.isDateInYesterday(date) { return "Вчера" }
+        // "12 января" — full genitive month, sentence case (artboard 21b).
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
-        formatter.dateFormat = "d MMM"
-        return formatter.string(from: date).uppercased(with: Locale(identifier: "ru_RU"))
+        formatter.dateFormat = "d MMMM"
+        return formatter.string(from: date)
     }
 }
