@@ -80,7 +80,7 @@ final class AlarmSchedulerTests: XCTestCase {
         let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
 
         // snoozeCount=0, so penalty(forSnoozeCount: 1) = 50
-        XCTAssertEqual(content.subtitle, "Отложить \u{00B7} 50 ₽")
+        XCTAssertEqual(content.subtitle, "+9 минут \u{00B7} −50\u{202F}₽")
     }
 
     func testNotificationContent_subtitleWithProgressiveScale() {
@@ -88,7 +88,7 @@ final class AlarmSchedulerTests: XCTestCase {
         let content = scheduler.makeContent(for: alarm, snoozeCount: 2)
 
         // snoozeCount=2, penalty(forSnoozeCount: 3) = 50 * 4 = 200
-        XCTAssertEqual(content.subtitle, "Отложить \u{00B7} 200 ₽")
+        XCTAssertEqual(content.subtitle, "+9 минут \u{00B7} −200\u{202F}₽")
     }
 
     func testNotificationContent_titleIsAlarmName() {

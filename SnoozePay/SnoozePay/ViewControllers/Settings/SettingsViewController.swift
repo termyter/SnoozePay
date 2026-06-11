@@ -102,7 +102,7 @@ class SettingsViewController: UIViewController {
         ) { [weak self] note in
             guard let self,
                   let newBalance = note.userInfo?[BalanceService.balanceUserInfoKey] as? Double else { return }
-            self.balanceAmountLabel?.text = "₽\(Int(newBalance))"
+            self.balanceAmountLabel?.text = MoneyFormatter.string(newBalance)
         }
     }
 

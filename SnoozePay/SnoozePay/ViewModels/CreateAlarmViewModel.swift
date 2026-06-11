@@ -153,7 +153,9 @@ final class CreateAlarmViewModel {
     var progressiveScalePreview: String {
         let base = Int(penaltyAmount)
         let values = (0..<4).map { base * Int(pow(2.0, Double($0))) }
-        return values.enumerated().map { "\($0.offset + 1)-е: \($0.element)₽" }.joined(separator: " → ")
+        return values.enumerated()
+            .map { "\($0.offset + 1)-е: \(MoneyFormatter.string($0.element))" }
+            .joined(separator: " → ")
     }
 
     // MARK: - Available sounds (10 sounds matching Figma design)

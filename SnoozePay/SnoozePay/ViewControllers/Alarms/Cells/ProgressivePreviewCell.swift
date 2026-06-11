@@ -107,14 +107,22 @@ final class ProgressivePreviewCell: UITableViewCell {
             let isLast = index == amounts.count - 1
             let weight = stopWeights[colorIndex]
             let size = stopSizes[colorIndex]
-            let text = isLast ? "\(amount) ₽" : "\(amount)"
-            composed.append(NSAttributedString(
-                string: text,
-                attributes: [
-                    .font: AppFonts.mono(weight, size),
-                    .foregroundColor: stopColors[colorIndex]
-                ]
-            ))
+            if isLast {
+                // fmtRub: digits + ~4pt proportional gap + ₽ at the same size.
+                composed.append(MoneyFormatter.attributed(
+                    Decimal(amount),
+                    digitsFont: AppFonts.mono(weight, size),
+                    color: stopColors[colorIndex]
+                ))
+            } else {
+                composed.append(NSAttributedString(
+                    string: "\(amount)",
+                    attributes: [
+                        .font: AppFonts.mono(weight, size),
+                        .foregroundColor: stopColors[colorIndex]
+                    ]
+                ))
+            }
             if !isLast {
                 composed.append(arrow)
             }

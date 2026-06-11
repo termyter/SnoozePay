@@ -246,8 +246,9 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         let alarm = makeAlarm(penalty: 50)
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0)
 
-        // V2 copy: "+{minutes} минут · −{penalty} ₽" (default snooze = 9 min).
-        XCTAssertEqual(vm.snoozeButtonTitle, "+9 минут \u{00B7} −50 ₽")
+        // V2 copy: "+{minutes} минут · −{penalty} ₽" (default snooze = 9 min,
+        // fmtRub narrow no-break space before ₽).
+        XCTAssertEqual(vm.snoozeButtonTitle, "+9 минут \u{00B7} −50\u{202F}₽")
     }
 
     func testSnoozeButtonTitle_whenCannotSnooze_showsEmpty() {

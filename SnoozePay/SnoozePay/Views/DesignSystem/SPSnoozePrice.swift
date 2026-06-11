@@ -117,7 +117,9 @@ final class SPSnoozePrice: UIControl {
                 .foregroundColor: foreground.withAlphaComponent(0.82)
             ]
         )
-        priceLabel.text = "−\(price.formattedRubles())"
+        priceLabel.attributedText = MoneyFormatter.attributed(
+            price, digitsFont: AppTypography.moneyLg, prefix: "−"
+        )
         if let hint = hint {
             hintLabel.text = hint
             hintLabel.isHidden = false
@@ -179,8 +181,9 @@ final class SPSnoozePrice: UIControl {
             heightAnchor.constraint(greaterThanOrEqualToConstant: 80),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 18),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -22),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24)
+            // `.sp-snooze` padding 18px 20px 22px (design v3 tightened 24 → 20).
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20)
         ])
 
         applyTone()

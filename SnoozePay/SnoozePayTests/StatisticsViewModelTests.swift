@@ -101,7 +101,7 @@ final class StatisticsViewModelDataTests: XCTestCase {
         vm.loadData(period: .week)
 
         XCTAssertEqual(vm.totalSpent, 225)
-        XCTAssertEqual(vm.totalSpentFormatted, "225 ₽")
+        XCTAssertEqual(vm.totalSpentFormatted, "225\u{202F}₽")
     }
 
     // MARK: - Snooze count
@@ -413,19 +413,19 @@ final class StatisticsViewModelDataTests: XCTestCase {
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        XCTAssertEqual(vm.motivationalMessage, "450₽ на лень = 3 кофе! ☕")
+        XCTAssertEqual(vm.motivationalMessage, "450\u{202F}₽ на лень = 3 кофе! ☕")
     }
 
     // MARK: - Updated formatting properties
 
-    func testTotalSpentFormatted_rublePrefix() {
+    func testTotalSpentFormatted_rubleSuffix() {
         addCharge(amount: 250, daysAgo: 0)
 
         let vm = makeVM()
         vm.loadData(period: .week)
 
-        // New format uses ruble sign as prefix: "₽250"
-        XCTAssertEqual(vm.totalSpentFormatted, "₽250")
+        // fmtRub suffix style with the narrow no-break space: "250 ₽"
+        XCTAssertEqual(vm.totalSpentFormatted, "250\u{202F}₽")
     }
 
     func testSnoozeCountFormatted_justNumber() {

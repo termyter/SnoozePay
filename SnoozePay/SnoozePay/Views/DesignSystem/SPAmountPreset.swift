@@ -108,7 +108,9 @@ final class SPAmountPreset: UIControl {
     func update(value: Decimal, label: String?) {
         self.value = value
         self.label = label
-        valueLabel.text = value.formattedRubles()
+        valueLabel.attributedText = MoneyFormatter.attributed(
+            value, digitsFont: AppTypography.moneyMd
+        )
         if let label = label {
             labelView.text = label
             labelView.isHidden = false
@@ -162,10 +164,11 @@ final class SPAmountPreset: UIControl {
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(greaterThanOrEqualToConstant: 88),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 18),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -18),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            // `.sp-preset` padding 16px 16px (design v3; was 18px 12px).
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
 
             popularBadge.centerXAnchor.constraint(equalTo: centerXAnchor),
             popularBadge.centerYAnchor.constraint(equalTo: topAnchor),

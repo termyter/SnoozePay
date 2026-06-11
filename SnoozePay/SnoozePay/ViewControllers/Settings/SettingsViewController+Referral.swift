@@ -153,7 +153,7 @@ extension SettingsViewController {
         cell.selectionStyle = .none
 
         let label = UILabel()
-        label.text = "За каждого друга — +200 ₽ на ваш баланс"
+        label.text = "За каждого друга — +\(MoneyFormatter.string(200)) на ваш баланс"
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
@@ -201,7 +201,7 @@ extension SettingsViewController {
         do {
             let credited = try referralService.applyFriendCode(raw)
             input.error = nil
-            input.hint = "Бонус +\(Int(credited)) ₽ зачислен"
+            input.hint = "Бонус +\(MoneyFormatter.string(credited)) зачислен"
             input.textField.isEnabled = false
             input.textField.resignFirstResponder()
             // Friend-input cell needs a re-layout to flip the apply button

@@ -38,7 +38,7 @@ struct Transaction: Identifiable, Codable {
 
     var formattedAmount: String {
         let prefix = type == .charge ? "-" : "+"
-        return "\(prefix)\(Int(amount)) ₽"
+        return "\(prefix)\(MoneyFormatter.string(amount))"
     }
 
     // MARK: - Typed views (phase 1 of #31)

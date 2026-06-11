@@ -53,7 +53,9 @@ final class SPAlarmsListHeader: UIView {
         currentBalance = balance
         let isLow = (NSDecimalNumber(decimal: balance).doubleValue) <= Self.lowBalanceThreshold
         applyTone(isLow: isLow)
-        balanceValueLabel.text = balance.formattedRubles()
+        balanceValueLabel.attributedText = MoneyFormatter.attributed(
+            balance, digitsFont: AppTypography.moneyMd
+        )
         if let hint = hint, !hint.isEmpty {
             balanceHintLabel.text = hint
             balanceHintLabel.isHidden = false

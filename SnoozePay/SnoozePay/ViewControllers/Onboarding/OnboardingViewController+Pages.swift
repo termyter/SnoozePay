@@ -90,7 +90,7 @@ extension OnboardingViewController {
 
     private func makePage1Clock() -> UILabel {
         let label = UILabel()
-        label.text = "7:00"
+        label.text = "07:00"
         label.font = AppTypography.clockXl
         label.textColor = .white
         label.textAlignment = .center
@@ -160,8 +160,8 @@ extension OnboardingViewController {
         titleLabel.numberOfLines = 0
 
         let rows = [
-            ("1", "Положили 500 ₽", "Это запас, из которого спишутся штрафы."),
-            ("2", "Поспать ещё в 7:00 → −50 ₽", "Каждый раз когда вы тянете, деньги уходят."),
+            ("1", "Положили \(MoneyFormatter.string(500))", "Это запас, из которого спишутся штрафы."),
+            ("2", "Поспать ещё в 07:00 → −\(MoneyFormatter.string(50))", "Каждый раз когда вы тянете, деньги уходят."),
             ("3", "Встали с первого раза → ничего", "Баланс продолжает лежать. Готов к завтрашнему утру.")
         ].map { OnboardingStepRow(number: $0.0, title: $0.1, body: $0.2) }
 

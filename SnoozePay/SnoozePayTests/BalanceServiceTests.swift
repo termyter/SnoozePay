@@ -418,7 +418,7 @@ final class StatisticsViewModelTests: XCTestCase {
         let vm = StatisticsViewModel()
         vm.loadData(period: .allTime)
         XCTAssertEqual(vm.totalSpent, 0)
-        XCTAssertEqual(vm.totalSpentFormatted, "0 ₽")
+        XCTAssertEqual(vm.totalSpentFormatted, "0\u{202F}₽")
     }
 
     func testPeriodTitles() {
@@ -452,12 +452,13 @@ final class CreateAlarmViewModelTests: XCTestCase {
     func testProgressiveScalePreview() {
         let vm = CreateAlarmViewModel()
         vm.penaltyAmount = 50
-        // Expected: "1-е: 50₽ → 2-е: 100₽ → 3-е: 200₽ → 4-е: 400₽"
+        // Expected: "1-е: 50 ₽ → 2-е: 100 ₽ → 3-е: 200 ₽ → 4-е: 400 ₽"
+        // (fmtRub narrow no-break space before ₽)
         let preview = vm.progressiveScalePreview
-        XCTAssertTrue(preview.contains("50₽"))
-        XCTAssertTrue(preview.contains("100₽"))
-        XCTAssertTrue(preview.contains("200₽"))
-        XCTAssertTrue(preview.contains("400₽"))
+        XCTAssertTrue(preview.contains("50\u{202F}₽"))
+        XCTAssertTrue(preview.contains("100\u{202F}₽"))
+        XCTAssertTrue(preview.contains("200\u{202F}₽"))
+        XCTAssertTrue(preview.contains("400\u{202F}₽"))
     }
 
     func testDayToggleAddsAndRemoves() {

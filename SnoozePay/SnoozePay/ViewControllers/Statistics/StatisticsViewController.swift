@@ -283,10 +283,10 @@ final class StatisticsViewController: UIViewController {
         let spent = viewModel.totalSpent
         let saved = Double(max(viewModel.streak, 0)) * 50.0   // 50 ₽/day fallback
         let net = saved - spent
-        savedAmountLabel.text = saved > 0 ? "+\(Int(saved)) ₽" : "+0 ₽"
-        spentAmountLabel.text = spent > 0 ? "−\(Int(spent)) ₽" : "0 ₽"
+        savedAmountLabel.text = "+\(MoneyFormatter.string(max(saved, 0)))"
+        spentAmountLabel.text = spent > 0 ? "−\(MoneyFormatter.string(spent))" : MoneyFormatter.string(0)
         let netPrefix = net >= 0 ? "+" : "−"
-        netAmountLabel.text = "\(netPrefix)\(Int(abs(net))) ₽"
+        netAmountLabel.text = "\(netPrefix)\(MoneyFormatter.string(abs(net)))"
 
         // Empty state — VM handles the empty-period detection.
         setEmptyStateVisible(!viewModel.hasData)
@@ -364,7 +364,7 @@ final class StatisticsViewController: UIViewController {
         let dateText = formatter.string(from: cell.date)
         let amountText: String
         if cell.amount > 0 {
-            amountText = "−\(Int(cell.amount)) ₽"
+            amountText = "−\(MoneyFormatter.string(cell.amount))"
         } else {
             amountText = "без штрафов"
         }

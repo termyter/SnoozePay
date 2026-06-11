@@ -66,7 +66,7 @@ enum TopUpViewControllerFactory {
 
     static func applePayButton(amount: Int) -> SPButton {
         let button = SPButton(
-            title: "Пополнить \(amount) ₽",
+            title: "Пополнить \(MoneyFormatter.string(amount))",
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "applelogo"),

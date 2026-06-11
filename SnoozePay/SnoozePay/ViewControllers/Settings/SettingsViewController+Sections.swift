@@ -28,7 +28,10 @@ extension SettingsViewController {
         )
 
         let balanceAmount = UILabel()
-        balanceAmount.text = "₽\(Int(BalanceService.shared.balance))"
+        balanceAmount.attributedText = MoneyFormatter.attributed(
+            Decimal(BalanceService.shared.balance),
+            digitsFont: AppTypography.moneyMd
+        )
         balanceAmount.font = AppTypography.moneyMd
         balanceAmount.textColor = AppColors.money500
         balanceAmount.translatesAutoresizingMaskIntoConstraints = false

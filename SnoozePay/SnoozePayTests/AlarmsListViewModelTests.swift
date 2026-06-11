@@ -95,7 +95,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.loadData()
 
         let penalty = vm.alarmPenaltyString(at: 0)
-        XCTAssertEqual(penalty, "▲ ОТЛОЖИТЬ: 50 ₽")
+        XCTAssertEqual(penalty, "▲ ПОСПАТЬ ЕЩЁ: −50\u{202F}₽")
     }
 
     func testAlarmPenaltyString_highPenalty() {
@@ -106,7 +106,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.loadData()
 
         let penalty = vm.alarmPenaltyString(at: 0)
-        XCTAssertEqual(penalty, "▲ ОТЛОЖИТЬ: 1000 ₽")
+        XCTAssertEqual(penalty, "▲ ПОСПАТЬ ЕЩЁ: −1\u{00A0}000\u{202F}₽")
     }
 
     // MARK: - Safe index handling
