@@ -5,72 +5,60 @@ import UIKit
 /// views; the VC wires them into its scroll-view content stack.
 extension WalletViewController {
 
-    /// Build the caps + meta row above the preset grid.
-    func makePresetsHeader() -> UIView {
+    /// Page-title header: h1 «Кошелёк» + small money "Пополнить" pill +
+    /// 1pt bottom hairline. Mirrors the `SPAlarmsListHeader` title-row
+    /// recipe so both tabs read identically.
+    func makePageHeader(target: Any, action: Selector) -> UIView {
+        let header = UIView()
+        header.backgroundColor = AppColors.bg0
+
         let title = UILabel()
-        title.attributedText = NSAttributedString(
-            string: "ПОЛОЖИТЬ ПОД РАСПИСКУ",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg2
-            ]
-        )
         title.translatesAutoresizingMaskIntoConstraints = false
-
-        let trailing = UILabel()
-        trailing.attributedText = NSAttributedString(
-            string: "Apple Pay",
+        title.attributedText = NSAttributedString(
+            string: "Кошелёк",
             attributes: [
-                .font: AppTypography.meta,
-                .foregroundColor: AppColors.fg3
+                .font: AppTypography.h1,
+                .kern: -32 * 0.01,  // matches `letterSpacing: -.02em`
+                .foregroundColor: AppColors.fg1
             ]
         )
-        trailing.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = UIStackView(arrangedSubviews: [title, trailing])
-        stack.axis = .horizontal
-        stack.alignment = .firstBaseline
-        stack.distribution = .equalSpacing
-        return stack
-    }
+        let topUpButton = SPButton(
+            title: "Пополнить",
+            variant: .money,
+            size: .sm,
+            icon: UIImage(systemName: "plus")
+        )
+        topUpButton.translatesAutoresizingMaskIntoConstraints = false
+        topUpButton.addTarget(target, action: action, for: .touchUpInside)
 
-    /// Build the 3-column × 2-row preset grid. The view controller stores
-    /// the resulting `SPAmountPreset` instances in `presetButtons` for
-    /// selection-state updates.
-    func makePresetGrid(
-        targets: inout [SPAmountPreset],
-        action: @escaping (Int) -> Void
-    ) -> UIView {
-        let presets = WalletPresets.presets
-        var rows: [UIStackView] = []
-        var allButtons: [SPAmountPreset] = []
-        let columnsPerRow = 3
-        for rowStart in stride(from: 0, to: presets.count, by: columnsPerRow) {
-            let rowEnd = min(rowStart + columnsPerRow, presets.count)
-            let row = UIStackView()
-            row.axis = .horizontal
-            row.distribution = .fillEqually
-            row.spacing = 10
-            for index in rowStart..<rowEnd {
-                let preset = presets[index]
-                let button = SPAmountPreset(
-                    value: preset.value,
-                    label: preset.label,
-                    selected: preset.isDefault,
-                    popular: preset.popular,
-                    onTap: { action(index) }
-                )
-                allButtons.append(button)
-                row.addArrangedSubview(button)
-            }
-            rows.append(row)
-        }
-        targets.append(contentsOf: allButtons)
-        let column = UIStackView(arrangedSubviews: rows)
-        column.axis = .vertical
-        column.spacing = 10
-        return column
+        let hairline = UIView()
+        hairline.translatesAutoresizingMaskIntoConstraints = false
+        hairline.backgroundColor = AppColors.whiteOverlay06
+
+        header.addSubview(title)
+        header.addSubview(topUpButton)
+        header.addSubview(hairline)
+
+        let inset = AppSpacing.screenInset
+        NSLayoutConstraint.activate([
+            title.topAnchor.constraint(equalTo: header.topAnchor, constant: AppSpacing.sp2),
+            title.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: inset),
+            title.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -AppSpacing.sp4),
+            title.trailingAnchor.constraint(
+                lessThanOrEqualTo: topUpButton.leadingAnchor,
+                constant: -AppSpacing.sp3
+            ),
+
+            topUpButton.centerYAnchor.constraint(equalTo: title.centerYAnchor),
+            topUpButton.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -inset),
+
+            hairline.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            hairline.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            hairline.bottomAnchor.constraint(equalTo: header.bottomAnchor),
+            hairline.heightAnchor.constraint(equalToConstant: 1)
+        ])
+        return header
     }
 
     /// Header for the weekly chart section.
@@ -87,66 +75,114 @@ extension WalletViewController {
         return label
     }
 
-    /// Inline "Все операции →" link rendered below the preset grid.
-    func makeTransactionsLink(target: Any, action: Selector) -> UIView {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.setTitle("Все операции →", for: .normal)
-        button.titleLabel?.font = AppTypography.body
-        button.tintColor = AppColors.fg2
-        button.contentHorizontalAlignment = .leading
-        button.addTarget(target, action: action, for: .touchUpInside)
-        return button
+    /// Caps "ИСТОРИЯ ОПЕРАЦИЙ" + trailing "Все операции →" link above the
+    /// transaction-preview card.
+    func makeTxPreviewHeader(target: Any, action: Selector) -> UIView {
+        let title = UILabel()
+        title.attributedText = NSAttributedString(
+            string: "ИСТОРИЯ ОПЕРАЦИЙ",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg2
+            ]
+        )
+
+        let link = UIButton(type: .system)
+        link.setTitle("Все операции →", for: .normal)
+        link.titleLabel?.font = AppTypography.buttonSm
+        link.setTitleColor(AppColors.money400, for: .normal)
+        link.addTarget(target, action: action, for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [title, link])
+        stack.axis = .horizontal
+        stack.alignment = .firstBaseline
+        stack.distribution = .equalSpacing
+        return stack
     }
 
-    /// Tail-section card linking to the payment-methods screen.
-    func makePaymentMethodsRow(target: NSObject, action: Selector) -> UIView {
+    /// Card with up to three `SPRow`s built from preview items, or an
+    /// empty-state caption when the ledger has no entries yet.
+    func makeTxPreviewCard(items: [WalletTransactionPreviewItem]) -> UIView {
+        guard !items.isEmpty else { return makeTxPreviewEmptyCard() }
+
         let card = SPCard(tone: .surface, padding: AppSpacing.sp1, cornerRadius: AppRadius.md)
-        let icon = UIImageView(image: UIImage(systemName: "creditcard"))
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.tintColor = AppColors.fg2
-        icon.contentMode = .scaleAspectFit
-        let leadingHolder = UIView()
-        leadingHolder.translatesAutoresizingMaskIntoConstraints = false
-        leadingHolder.addSubview(icon)
+        let container = UIStackView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.axis = .vertical
+        card.addSubview(container)
         NSLayoutConstraint.activate([
-            leadingHolder.widthAnchor.constraint(equalToConstant: 24),
-            leadingHolder.heightAnchor.constraint(equalToConstant: 24),
-            icon.centerXAnchor.constraint(equalTo: leadingHolder.centerXAnchor),
-            icon.centerYAnchor.constraint(equalTo: leadingHolder.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 20),
-            icon.heightAnchor.constraint(equalToConstant: 20)
+            container.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
+            container.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor)
         ])
-        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
-        chevron.tintColor = AppColors.fg3
-        chevron.translatesAutoresizingMaskIntoConstraints = false
-        chevron.contentMode = .scaleAspectFit
+        for (index, item) in items.enumerated() {
+            let row = SPRow(
+                title: item.title,
+                subtitle: item.timestampText,
+                leading: makeTxIcon(systemName: item.iconSystemName, isDebit: item.isDebit),
+                trailing: makeTxAmountLabel(text: item.amountText, isDebit: item.isDebit),
+                divider: index < items.count - 1
+            )
+            container.addArrangedSubview(row)
+        }
+        return card
+    }
+
+    private func makeTxPreviewEmptyCard() -> UIView {
+        let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.md)
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.body
+        label.textColor = AppColors.fg3
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.text = "Здесь появятся пополнения, списания и бонусы."
+        card.addSubview(label)
         NSLayoutConstraint.activate([
-            chevron.widthAnchor.constraint(equalToConstant: 14),
-            chevron.heightAnchor.constraint(equalToConstant: 14)
-        ])
-        let row = SPRow(
-            title: "Способы оплаты",
-            subtitle: "Apple Pay по умолчанию",
-            leading: leadingHolder,
-            trailing: chevron,
-            divider: false,
-            onTap: { [weak target] in
-                guard let target = target else { return }
-                _ = target.perform(action)
-            }
-        )
-        let stack = UIStackView(arrangedSubviews: [row])
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.axis = .vertical
-        card.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor)
+            label.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
+            label.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
+            label.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
+            label.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor)
         ])
         return card
+    }
+
+    /// 36×36 rounded icon tile — red flame tint for charges, green tint
+    /// for credits. Matches `WalletTransactionHistoryViewController` rows.
+    private func makeTxIcon(systemName: String, isDebit: Bool) -> UIView {
+        let tint = isDebit ? AppColors.pain400 : AppColors.money400
+        let tile = UIView()
+        tile.translatesAutoresizingMaskIntoConstraints = false
+        tile.backgroundColor = tint.withAlphaComponent(0.14)
+        tile.layer.cornerRadius = AppRadius.sm
+        tile.layer.masksToBounds = true
+
+        let imageView = UIImageView(image: UIImage(systemName: systemName))
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.tintColor = tint
+        imageView.contentMode = .scaleAspectFit
+        tile.addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            tile.widthAnchor.constraint(equalToConstant: 36),
+            tile.heightAnchor.constraint(equalToConstant: 36),
+            imageView.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 18),
+            imageView.heightAnchor.constraint(equalToConstant: 18)
+        ])
+        return tile
+    }
+
+    private func makeTxAmountLabel(text: String, isDebit: Bool) -> UILabel {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.moneySm
+        label.textColor = isDebit ? AppColors.pain400 : AppColors.money400
+        label.text = text
+        return label
     }
 
     /// Footer caption "Покупка не возвращается · штрафы списываются с баланса".
