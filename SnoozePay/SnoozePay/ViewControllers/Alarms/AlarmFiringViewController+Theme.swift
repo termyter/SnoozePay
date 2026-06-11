@@ -47,7 +47,7 @@ extension AlarmFiringViewController {
             themeImageView.isHidden = true
             themeImageDimView.isHidden = true
         } else {
-            // Mountains / Ocean / Abstract — vertical gradient using the
+            // Ocean / Mountains / Forest / Neon / Abstract — vertical gradient using the
             // shared `AlarmThemeRendering` stops. Built on a plain
             // SPGradientView-like CAGradientLayer hosted on a UIView so the
             // +Layout subview ordering still works.
