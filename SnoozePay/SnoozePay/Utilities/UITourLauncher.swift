@@ -25,29 +25,30 @@ enum UITourLauncher {
 
     static func mount(_ screen: String, in window: UIWindow) {
         seedIfRequested()
+        // Unknown screen id — land on the alarms tab so the audit
+        // screenshot makes the mistake obvious instead of hanging.
+        let mounter = mounters[screen] ?? { $0.rootViewController = tabBar(selected: 0) }
+        mounter(window)
+    }
 
-        switch screen {
-        case "onboarding":
-            window.rootViewController = OnboardingViewController()
-        case "permissions":
-            window.rootViewController = PermissionsViewController()
-        case "alarms":
-            window.rootViewController = tabBar(selected: 0)
-        case "wallet":
-            window.rootViewController = tabBar(selected: 1)
-        case "stats":
-            window.rootViewController = tabBar(selected: 2)
-        case "settings":
-            mountPushed(SettingsViewController(), onTab: 0, in: window)
-        case "create":
-            mountPresented(createNav(alarm: nil), onTab: 0, in: window)
-        case "edit":
-            mountPresented(createNav(alarm: sampleAlarm()), onTab: 0, in: window)
-        case "theme-picker":
-            mountPushedOnCreate(in: window) { vm in
-                AlarmThemePickerViewController(currentTheme: vm, onSelect: { _ in })
+    /// Screen-id → mounter registry. A flat dictionary (instead of a switch)
+    /// keeps `mount` trivially simple for the linter and makes the supported
+    /// screen list greppable in one place.
+    private static let mounters: [String: (UIWindow) -> Void] = [
+        "onboarding": { $0.rootViewController = OnboardingViewController() },
+        "permissions": { $0.rootViewController = PermissionsViewController() },
+        "alarms": { $0.rootViewController = tabBar(selected: 0) },
+        "wallet": { $0.rootViewController = tabBar(selected: 1) },
+        "stats": { $0.rootViewController = tabBar(selected: 2) },
+        "settings": { mountPushed(SettingsViewController(), onTab: 0, in: $0) },
+        "create": { mountPresented(createNav(alarm: nil), onTab: 0, in: $0) },
+        "edit": { mountPresented(createNav(alarm: sampleAlarm()), onTab: 0, in: $0) },
+        "theme-picker": { window in
+            mountPushedOnCreate(in: window) { theme in
+                AlarmThemePickerViewController(currentTheme: theme, onSelect: { _ in })
             }
-        case "sound-picker":
+        },
+        "sound-picker": { window in
             mountPushedOnCreate(in: window) { _ in
                 SoundPickerViewController(
                     sounds: CreateAlarmViewModel(alarm: nil).availableSounds,
@@ -56,48 +57,50 @@ enum UITourLauncher {
                     previewSound: { _ in }
                 )
             }
-        case "volume-picker":
+        },
+        "volume-picker": { window in
             mountPushedOnCreate(in: window) { _ in
                 VolumePickerViewController(volume: 0.7, fadeIn: true)
             }
-        case "confirm-delete":
+        },
+        "confirm-delete": { window in
             let nav = createNav(alarm: sampleAlarm())
             mountPresented(nav, onTab: 0, in: window)
             presentLater(ConfirmDeleteAlarmViewController(), over: nav)
-        case "firing":
-            window.rootViewController = AlarmFiringViewController(alarm: sampleAlarm())
-        case "firing-snoozed":
-            window.rootViewController = AlarmFiringViewController(alarm: sampleAlarm(), snoozeCount: 2)
-        case "firing-nobalance":
+        },
+        "firing": { $0.rootViewController = AlarmFiringViewController(alarm: sampleAlarm()) },
+        "firing-snoozed": {
+            $0.rootViewController = AlarmFiringViewController(alarm: sampleAlarm(), snoozeCount: 2)
+        },
+        "firing-nobalance": { window in
             forceBalance(to: 0)
             window.rootViewController = AlarmFiringViewController(alarm: sampleAlarm())
-        case "firing-topup":
+        },
+        "firing-topup": { window in
             let firing = AlarmFiringViewController(alarm: sampleAlarm())
             window.rootViewController = firing
             presentLater(FiringTopUpBottomSheetViewController(), over: firing)
-        case "txhistory":
-            mountPushed(WalletTransactionHistoryViewController(), onTab: 1, in: window)
-        case "periodpicker":
+        },
+        "txhistory": { mountPushed(WalletTransactionHistoryViewController(), onTab: 1, in: $0) },
+        "periodpicker": { window in
             let history = WalletTransactionHistoryViewController()
             mountPushed(history, onTab: 1, in: window)
             presentLater(
                 PeriodPickerSheetViewController(selected: nil, years: [2025, 2026], onApply: { _ in }),
                 over: history
             )
-        case "deposit":
+        },
+        "deposit": { window in
             let root = tabBar(selected: 1)
             window.rootViewController = root
             presentLater(DepositBottomSheetViewController(), over: root)
-        case "streak":
+        },
+        "streak": { window in
             let root = tabBar(selected: 2)
             window.rootViewController = root
             presentLater(StreakModalViewController(streakDays: 7), over: root)
-        default:
-            // Unknown screen id — land on the alarms tab so the audit
-            // screenshot makes the mistake obvious instead of hanging.
-            window.rootViewController = tabBar(selected: 0)
         }
-    }
+    ]
 
     // MARK: - Roots
 
