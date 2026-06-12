@@ -329,6 +329,17 @@ final class SPAlarmsListHeader: UIView {
 
         let inset = AppSpacing.screenInset
 
+        // The hint's bottom EQUALITY is what gives the pill — and therefore
+        // the whole header — a defined height. With only a `≤` here the
+        // header height is ambiguous and the solver is free to stretch the
+        // pill to fill the screen (it did). Priority 999 so transient
+        // zero-frame layout passes don't hard-conflict.
+        let hintBottom = balanceHintLabel.bottomAnchor.constraint(
+            equalTo: pillButton.bottomAnchor,
+            constant: -12
+        )
+        hintBottom.priority = UILayoutPriority(999)
+
         NSLayoutConstraint.activate([
             // ── Title row ─────────────────────────────────────────────
             titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.sp2),
@@ -363,9 +374,12 @@ final class SPAlarmsListHeader: UIView {
             zeroTintGradient.trailingAnchor.constraint(equalTo: pillButton.trailingAnchor),
             zeroTintGradient.bottomAnchor.constraint(equalTo: pillButton.bottomAnchor),
 
-            // Wallet icon — 40×40 leading.
+            // Wallet icon — 40×40 leading. The top inequality keeps the
+            // pill at least 64pt tall so the tile can never overflow when
+            // the text column measures shorter than the tile.
             walletIconHost.leadingAnchor.constraint(equalTo: pillButton.leadingAnchor, constant: 12),
             walletIconHost.centerYAnchor.constraint(equalTo: pillButton.centerYAnchor),
+            walletIconHost.topAnchor.constraint(greaterThanOrEqualTo: pillButton.topAnchor, constant: 12),
             walletIconHost.widthAnchor.constraint(equalToConstant: 40),
             walletIconHost.heightAnchor.constraint(equalToConstant: 40),
 
@@ -403,10 +417,7 @@ final class SPAlarmsListHeader: UIView {
                 lessThanOrEqualTo: topUpButton.leadingAnchor,
                 constant: -AppSpacing.sp3
             ),
-            balanceHintLabel.bottomAnchor.constraint(
-                lessThanOrEqualTo: pillButton.bottomAnchor,
-                constant: -12
-            ),
+            hintBottom,
 
             // ── Bottom hairline ───────────────────────────────────────
             bottomHairline.leadingAnchor.constraint(equalTo: leadingAnchor),
