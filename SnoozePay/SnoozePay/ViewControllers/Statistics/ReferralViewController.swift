@@ -460,7 +460,7 @@ final class ReferralViewController: UIViewController {
     }
 
     @objc private func shareTapped() {
-        let text = "Снузь меньше — копи больше. Используй мой код в SnoozePay: "
+        let text = "Откладывай меньше — копи больше. Используй мой код в SnoozePay: "
             + "\(Self.personalCode) — оба получим +\(MoneyFormatter.string(200)) на баланс."
         let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         activity.popoverPresentationController?.sourceView = view

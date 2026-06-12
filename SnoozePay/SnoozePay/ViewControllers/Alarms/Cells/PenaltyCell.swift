@@ -19,9 +19,37 @@ final class PenaltyCell: UITableViewCell {
 
     // MARK: - UI
 
-    /// Mono-font live "{N} ₽" label sitting above the chip row — pulls the
-    /// "ЦЕНА ОТКЛАДЫВАНИЯ" caps from the section header and uses the
-    /// `moneyMd` typography role tinted `warn400`.
+    /// In-card caps caption «Цена откладывания» — the word «штраф» does not
+    /// exist in the design copy (SPMore2.jsx:176). Lives inside the card so
+    /// the table no longer needs a separate section header (#278).
+    private let captionLabel: UILabel = {
+        let label = UILabel()
+        label.attributedText = NSAttributedString(
+            string: "Цена откладывания".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Meta hint under the caption — «Сколько спишется при „отложить“»
+    /// (SPMore2.jsx:268-269 hint pattern).
+    private let hintLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Сколько спишется при «отложить»"
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Mono-font live "{N} ₽" label sitting above the chip row — mirrors the
+    /// in-card caption and uses the `moneyMd` typography role tinted `warn400`.
     private let valueLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.moneyMd
@@ -89,16 +117,25 @@ final class PenaltyCell: UITableViewCell {
             presetStack.addArrangedSubview(button)
         }
 
+        contentView.addSubview(captionLabel)
+        contentView.addSubview(hintLabel)
         contentView.addSubview(valueLabel)
         contentView.addSubview(presetStack)
 
         NSLayoutConstraint.activate([
+            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
+
+            hintLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            hintLabel.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: 2),
+            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -AppSpacing.sm),
+
             valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            valueLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
+            valueLabel.firstBaselineAnchor.constraint(equalTo: captionLabel.firstBaselineAnchor),
 
             presetStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
             presetStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            presetStack.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: AppSpacing.sm),
+            presetStack.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
             presetStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
         ])
     }
