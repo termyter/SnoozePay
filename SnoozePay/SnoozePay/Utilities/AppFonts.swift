@@ -1,32 +1,26 @@
-// swiftlint:disable todo
 import UIKit
 
 /// Brand font families for SnoozePay.
 ///
-/// **Status — placeholder fallback.**
-/// The design system specifies Manrope (UI / headings, weights 400/500/600/700/800)
-/// and JetBrains Mono (money, timers, clocks; weights 400/500/600/700). The .ttf
-/// binaries are not bundled in this PR so every accessor below currently falls
-/// back to the matching iOS system font (`.systemFont` for sans, `.monospacedSystemFont`
-/// for mono).
+/// The design system specifies Manrope (UI / headings, weights 200/400/500/600/
+/// 700/800) and JetBrains Mono (money, timers, clocks; weights 200/300/400/500/
+/// 600/700). The static .ttf cuts live in `SnoozePay/Resources/Fonts/` and are
+/// registered under `UIAppFonts` in `Info.plist`:
+/// - `Manrope-{ExtraLight,Regular,Medium,SemiBold,Bold,ExtraBold}.ttf`
+/// - `JetBrainsMono-{ExtraLight,Light,Regular,Medium,SemiBold,Bold}.ttf`
 ///
-/// TODO: PM adds Manrope/JetBrainsMono .ttf to `SnoozePay/Resources/Fonts/` and
-/// registers them under `UIAppFonts` in `Info.plist` (a separate manual step —
-/// `Info.plist` is a PM-only / no-touch file, so this PR does **not** seed the
-/// keys), then flips `brandFontsAvailable = true`. The `font(family:weight:size:)`
-/// lookup below will then start resolving the PostScript names instead of
-/// returning system fonts; until that happens the API is safe to call (system
-/// fallback always succeeds).
-///
-/// Required files once PM does the manual step:
-/// - `Manrope-{Regular,Medium,SemiBold,Bold,ExtraBold}.ttf`
-/// - `JetBrainsMono-{Regular,Medium,SemiBold,Bold}.ttf`
+/// `brandFontsAvailable` probes the registry once at first use; when a face is
+/// missing (e.g. a stripped test bundle) every accessor falls back to the
+/// matching iOS system font (`.systemFont` for sans, `.monospacedSystemFont`
+/// for mono), so the API always succeeds.
 ///
 /// Sources:
 /// - Manrope: https://fonts.google.com/specimen/Manrope
-/// - JetBrains Mono: https://fonts.google.com/specimen/JetBrains+Mono
+/// - JetBrains Mono: https://github.com/JetBrains/JetBrainsMono (v2.304)
 ///
-/// Both fonts are SIL OFL 1.1 licensed (free for commercial use, embed in app).
+/// Both fonts are SIL OFL 1.1 licensed (free for commercial use, embed in app);
+/// license texts ship next to the .ttf files (`OFL-Manrope.txt`,
+/// `OFL-JetBrainsMono.txt`).
 enum AppFonts {
 
     // MARK: - Families
@@ -48,8 +42,8 @@ enum AppFonts {
         case semibold    // 600
         case bold        // 700
         case extrabold   // 800 (Manrope only)
-        case ultralight  // 100 (system fallback only — used by clockXl)
-        case light       // 300 (system fallback only — used by clockLg)
+        case ultralight  // 200 ExtraLight — used by clockXl (tokens.css clock-xl weight 200)
+        case light       // 300 — used by clockLg
 
         /// PostScript name suffix for Manrope.
         fileprivate var manropeSuffix: String {
@@ -71,9 +65,9 @@ enum AppFonts {
             case .medium: return "Medium"
             case .semibold: return "SemiBold"
             case .bold: return "Bold"
-            case .extrabold: return "Bold"      // JBM tops out at Bold
-            case .ultralight: return "Thin"     // JBM has Thin (100)
-            case .light: return "Light"         // JBM has Light (300)
+            case .extrabold: return "Bold"          // bundled JBM set tops out at Bold
+            case .ultralight: return "ExtraLight"   // JBM ExtraLight (200) per tokens.css clock-xl
+            case .light: return "Light"             // JBM Light (300)
             }
         }
 
@@ -84,7 +78,7 @@ enum AppFonts {
             case .semibold: return .semibold
             case .bold: return .bold
             case .extrabold: return .heavy
-            case .ultralight: return .ultraLight
+            case .ultralight: return .thin // system thin ≈ 200, matches JBM ExtraLight
             case .light: return .light
             }
         }
@@ -118,11 +112,14 @@ enum AppFonts {
 
     // MARK: - Private
 
-    /// Flip to `true` once PM bundles the .ttf binaries and registers them under
-    /// `UIAppFonts` in `Info.plist` (manual no-touch-file step).
-    /// Deliberately gated so we can ship the API surface without worrying that
-    /// half-loaded fonts will quietly use the wrong glyphs at runtime.
-    private static let brandFontsAvailable: Bool = false
+    /// Runtime probe, evaluated once (static-let caching): true when both brand
+    /// families resolve through the font registry — i.e. the bundled .ttf files
+    /// are present AND registered under `UIAppFonts`. Probing (instead of a
+    /// hardcoded `true`) keeps every accessor safe in stripped bundles such as
+    /// unit-test hosts without the resources phase.
+    private static let brandFontsAvailable: Bool =
+        UIFont(name: "Manrope-Regular", size: 17) != nil
+            && UIFont(name: "JetBrainsMono-Regular", size: 17) != nil
 
     private static func customFont(family: Family, weight: Weight, size: CGFloat) -> UIFont? {
         let name: String
@@ -164,4 +161,3 @@ extension UIFont {
         return UIFont(descriptor: descriptor, size: pointSize)
     }
 }
-// swiftlint:enable todo

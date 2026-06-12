@@ -312,6 +312,47 @@ enum AppTypography {
     /// Card clock — 64pt mono light.
     static var clockLg: UIFont { AppFonts.mono(.light, 64) }
 
+    // MARK: - Per-role letter-spacing (tokens.css `letter-spacing`)
+    //
+    // `tokens.css` expresses tracking in em; UIKit's `.kern` attribute wants
+    // points, so each constant resolves `em × pointSize` for its role. Apply
+    // via `attributedText` (see `kerned(_:font:kerning:)` below) — plain
+    // `UILabel.text` ignores tracking.
+
+    /// `display` tracking — −0.025em at 88pt.
+    static let displayKerning: CGFloat = kern(em: -0.025, size: 88)
+    /// `h1` tracking — −0.01em at 32pt.
+    static let h1Kerning: CGFloat = kern(em: -0.01, size: 32)
+    /// `h2` tracking — −0.01em at 24pt.
+    static let h2Kerning: CGFloat = kern(em: -0.01, size: 24)
+    /// `money-xl` tracking — −0.02em at 56pt.
+    static let moneyXlKerning: CGFloat = kern(em: -0.02, size: 56)
+    /// `clock-xl` tracking — −0.04em at 96pt.
+    static let clockXlKerning: CGFloat = kern(em: -0.04, size: 96)
+    /// `clock-lg` tracking — −0.04em at 64pt.
+    static let clockLgKerning: CGFloat = kern(em: -0.04, size: 64)
+
+    /// Convert an em-based tracking value (as authored in `tokens.css`) to the
+    /// point value UIKit's `.kern` attribute expects, for a given font size.
+    static func kern(em: CGFloat, size: CGFloat) -> CGFloat {
+        em * size
+    }
+
+    /// Build an attributed string carrying a typography role's font + tracking.
+    /// Call sites assign the result to `UILabel.attributedText`:
+    ///
+    /// ```swift
+    /// label.attributedText = AppTypography.kerned("07:30",
+    ///                                             font: AppTypography.clockXl,
+    ///                                             kerning: AppTypography.clockXlKerning)
+    /// ```
+    static func kerned(_ text: String, font: UIFont, kerning: CGFloat) -> NSAttributedString {
+        NSAttributedString(string: text, attributes: [
+            .font: font,
+            .kern: kerning
+        ])
+    }
+
     // MARK: - Legacy section header
     //
     // Pre-token "ВЕРХНИЙ ТЕКСТ" recipe used by SettingsVC / CreateAlarmVC /
