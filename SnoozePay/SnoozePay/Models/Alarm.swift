@@ -279,11 +279,24 @@ struct Alarm: Identifiable, Equatable, Codable {
         return time
     }
 
-    /// Penalty for a given snooze count (1-based). Applies progressive doubling if enabled.
+    /// Penalty for a given snooze count (1-based). Applies progressive doubling
+    /// if enabled, capped at a 4-step ladder — `base, ×2, ×4, ×8` (e.g.
+    /// `50 → 100 → 200 → 400 ₽`). The exponent is clamped to `3` so the price
+    /// never escalates past `base × 8`; counts 4, 5, 10, … all return the
+    /// ceiling. Mirrors the design's `idx = min(count, 3)` rule
+    /// (`SPDawnV3.jsx:149-152`, `chat1.md:256`).
     func penalty(forSnoozeCount count: Int) -> Double {
         guard progressiveScale, count > 1 else { return penaltyAmount }
-        let multiplier = pow(2.0, Double(count - 1))
+        let exponent = min(count - 1, 3)
+        let multiplier = pow(2.0, Double(exponent))
         return penaltyAmount * multiplier
+    }
+
+    /// `true` once `penalty(forSnoozeCount:)` has reached the `base × 8`
+    /// ceiling (i.e. `count >= 4`). At the ceiling the firing screen swaps the
+    /// escalating "next price" hint for the max-step copy.
+    func isPenaltyAtCeiling(forSnoozeCount count: Int) -> Bool {
+        progressiveScale && count >= 4
     }
 
     // MARK: - Typed views (phase 1 of #31)

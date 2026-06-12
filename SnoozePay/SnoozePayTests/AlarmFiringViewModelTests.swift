@@ -211,10 +211,11 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         XCTAssertEqual(vm2.currentPenalty, 200, "3rd snooze: 50 * 4 = 200")
 
         let vm3 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 3)
-        XCTAssertEqual(vm3.currentPenalty, 400, "4th snooze: 50 * 8 = 400")
+        XCTAssertEqual(vm3.currentPenalty, 400, "4th snooze: 50 * 8 = 400 (ceiling)")
 
+        // Ladder caps at base × 8 — the 5th snooze stays at 400, not 800 (#274).
         let vm4 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 4)
-        XCTAssertEqual(vm4.currentPenalty, 800, "5th snooze: 50 * 16 = 800")
+        XCTAssertEqual(vm4.currentPenalty, 400, "5th snooze stays at ceiling: 50 * 8 = 400")
     }
 
     func testCurrentPenalty_withoutProgressiveScale_staysFlat() {
@@ -227,12 +228,12 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         XCTAssertEqual(vm3.currentPenalty, 50, "Without progressive scale, penalty is always base")
     }
 
-    func testCurrentPenalty_progressiveFifthSnoozeWithHighBase() {
-        // Verify overflow scenario: base=1000, 5th snooze = 1000 * 16 = 16000
+    func testCurrentPenalty_progressiveCeilingWithHighBase() {
+        // Ladder caps at base × 8: base=1000 → ceiling 8000, not 16000 (#274).
         let alarm = makeAlarm(penalty: 1000, progressive: true)
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 4)
-        XCTAssertEqual(vm.currentPenalty, 16000,
-                       "5th snooze with base=1000 should be 16000")
+        XCTAssertEqual(vm.currentPenalty, 8000,
+                       "5th snooze with base=1000 stays at ceiling 8000")
     }
 
     // MARK: - canSnooze

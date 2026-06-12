@@ -406,13 +406,19 @@ class AlarmFiringViewController: UIViewController {
     /// Snooze CTA hint — "Следующее откладывание: N ₽" when progressive is
     /// active and not at the price ceiling. Mirrors `SPScreensV2.jsx` line 96.
     /// V1 passed nil here; V2 surfaces the escalating cost so the user can
-    /// see what they're agreeing to.
+    /// see what they're agreeing to. Once the ladder caps at `base × 8` there
+    /// is no higher price to show, so we swap in the max-step copy
+    /// «максимум — дальше только встать» (lowercase per `SPDawnV3.jsx:242`).
     func snoozeHintText() -> String? {
         guard viewModel.isProgressiveActive else { return nil }
         // Probe the alarm's penalty schedule one step ahead. The double-snooze
         // rule produces `currentPenalty * 2`, but we route through the model
         // so caps / custom schedules pick up the right "next" value.
-        let next = viewModel.alarm.penalty(forSnoozeCount: viewModel.snoozeCount + 2)
+        let nextCount = viewModel.snoozeCount + 2
+        if viewModel.alarm.isPenaltyAtCeiling(forSnoozeCount: nextCount) {
+            return "максимум — дальше только встать"
+        }
+        let next = viewModel.alarm.penalty(forSnoozeCount: nextCount)
         let nextInt = Int(next.rounded())
         return "Следующее откладывание: \(MoneyFormatter.string(nextInt))"
     }

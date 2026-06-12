@@ -430,11 +430,11 @@ final class AlarmFiringViewModelTests: XCTestCase {
         XCTAssertEqual(vm.currentPenalty, 100)
     }
 
-    func testPenaltyForFifthSnooze() {
+    func testPenaltyForFifthSnoozeCapsAtCeiling() {
         let alarm = alarm(penalty: 50, progressive: true)
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 4)
-        // snoozeCount=4 → penalty(forSnoozeCount: 5) → 50 * 16 = 800
-        XCTAssertEqual(vm.currentPenalty, 800)
+        // snoozeCount=4 → penalty(forSnoozeCount: 5) caps at base × 8 = 400 (#274)
+        XCTAssertEqual(vm.currentPenalty, 400)
     }
 
     func testSnoozeButtonTitleWhenEmpty() {
