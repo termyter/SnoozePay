@@ -133,7 +133,7 @@ final class TxHistoryPeriodTests: XCTestCase {
 
     func testCaptions_singleMonth() {
         let period = TxHistoryPeriod(month: YearMonth(year: 2026, month: 1))
-        XCTAssertEqual(period.chipCaption, "январь 2026")
+        XCTAssertEqual(period.chipCaption, "Январь 2026")
         XCTAssertEqual(period.summaryCaption, "январь 2026")
         XCTAssertEqual(period.pickerCaption, "Январь 2026")
         XCTAssertEqual(period.monthCountText, "1 мес.")
@@ -144,7 +144,7 @@ final class TxHistoryPeriodTests: XCTestCase {
             start: YearMonth(year: 2025, month: 11),
             end: YearMonth(year: 2026, month: 1)
         )
-        XCTAssertEqual(period.chipCaption, "ноя 2025 — янв 2026")
+        XCTAssertEqual(period.chipCaption, "Ноя 2025 — Янв 2026")
         XCTAssertEqual(period.summaryCaption, "ноябрь 2025 — январь 2026")
         XCTAssertEqual(period.pickerCaption, "Ноябрь 2025 — Январь 2026")
         XCTAssertEqual(period.monthCountText, "3 мес.")
