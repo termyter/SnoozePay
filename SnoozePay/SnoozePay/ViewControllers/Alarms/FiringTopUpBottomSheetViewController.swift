@@ -6,8 +6,9 @@ import os
 /// to top up the wallet mid-alarm so they can keep snoozing.
 ///
 /// V2 spec: `docs/design/v2-handoff/components/SPTopUp.jsx`
-/// `FiringTopUpPresets` (lines 103–197). Three preset rows (200 / 500 popular
-/// / 1000 ₽) feed a single Apple Pay primary CTA. Visuals match the V2 design
+/// `FiringTopUpPresets` (lines 103–197). Three preset rows feed a single Apple
+/// Pay primary CTA; each row's amount is the catalogue amount of its mapped SKU
+/// (#275) so display == charge == credit. Visuals match the V2 design
 /// system — bg2 surface, 28pt top corners, caps "ПОПОЛНИТЬ" + close X header,
 /// SPAmountPreset row, money-toned Apple Pay button, footer meta.
 ///
@@ -23,24 +24,44 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     // MARK: - Preset model
 
-    /// One of the three top-up tiles. `productID` points at the closest existing
-    /// IAP SKU in StoreKitService (149 / 499 / 999) — once PM registers exact
-    /// 200 / 500 / 1000 ₽ SKUs in App Store Connect, swap these mappings.
+    /// One of the three top-up tiles. The displayed `amount` is NOT a free
+    /// literal — it is derived from the mapped SKU's catalogue amount (or, once
+    /// loaded, the resolved StoreKit product price) so display == charge ==
+    /// credit. See #275: the tiles used to render rounded literals (200 / 500 /
+    /// 1000 ₽) over the 149 / 499 / 999 SKUs, charging and crediting less than
+    /// shown. The lineup (which SKUs exist) is PM's #240 — this only guarantees
+    /// the rendered number is honest for the current catalogue.
     struct Preset {
+        /// RUB amount to display AND credit. Always equals the catalogue amount
+        /// of `productID` for the current catalogue (or the real product price
+        /// once `StoreKitService` has loaded it).
         let amount: Int
         let label: String
         let popular: Bool
         /// StoreKit product ID. Falls back to `BalanceService.topUp(amount:)`
-        /// when not loaded so debug paths still credit the wallet.
+        /// when not loaded so debug paths still credit the wallet — with the
+        /// SAME `amount` shown, never a rounded literal.
         let productID: String
+
+        /// Build a preset whose displayed amount is the catalogue amount of the
+        /// supplied SKU. Returns nil for an unknown SKU so we never render an
+        /// invented number.
+        init?(productID: String, label: String, popular: Bool) {
+            guard let catalogAmount = StoreKitService.catalogAmount(for: productID) else { return nil }
+            self.amount = catalogAmount
+            self.label = label
+            self.popular = popular
+            self.productID = productID
+        }
     }
 
-    /// Default preset list — see `Preset.productID` for the SKU mapping caveat.
+    /// Default preset list. Amounts are resolved from the SKU catalogue so each
+    /// tile shows exactly what the App Store charges and the ledger credits.
     static let defaultPresets: [Preset] = [
-        Preset(amount: 200, label: "ровно на сейчас", popular: false, productID: "com.snooze_pay.balance.149"),
-        Preset(amount: 500, label: "на пару дней", popular: true, productID: "com.snooze_pay.balance.499"),
-        Preset(amount: 1000, label: "забыть про баланс", popular: false, productID: "com.snooze_pay.balance.999")
-    ]
+        Preset(productID: "com.snooze_pay.balance.149", label: "ровно на сейчас", popular: false),
+        Preset(productID: "com.snooze_pay.balance.499", label: "на пару дней", popular: true),
+        Preset(productID: "com.snooze_pay.balance.999", label: "забыть про баланс", popular: false)
+    ].compactMap { $0 }
 
     // MARK: - Configuration
 
@@ -123,8 +144,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         label.font = AppTypography.body
         label.textColor = AppColors.fg2
         label.numberOfLines = 0
-        label.text = "Минимум — \(MoneyFormatter.string(200)) на следующее откладывание. "
-            + "Можно больше, чтобы не возвращаться сюда."
+        // Text seeded in `setupUI` so the "Минимум — N ₽" amount reflects the
+        // actual smallest preset (catalogue amount), not a hardcoded literal
+        // that diverged from the charged SKU — see #275.
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -205,10 +227,11 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     init(presets: [Preset] = defaultPresets) {
         self.presets = presets
-        // Default-select the "popular" preset (500 ₽) per V2 spec line 107;
-        // fall back to the first preset if none are marked popular.
+        // Default-select the "popular" preset per V2 spec line 107; fall back to
+        // the first preset if none are marked popular, then to 0 (no invented
+        // literal) if the list is empty — see #275.
         self.selectedAmount = presets.first(where: { $0.popular })?.amount
-            ?? presets.first?.amount ?? 200
+            ?? presets.first?.amount ?? 0
         self.remainingSeconds = 60
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
@@ -298,6 +321,13 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
                 .foregroundColor: AppColors.fg3
             ]
         )
+
+        // Seed the subtitle with the real smallest preset amount (catalogue
+        // amount of the cheapest SKU) so the "Минимум — N ₽" copy matches what
+        // the App Store actually charges — see #275.
+        let minimumAmount = presets.map(\.amount).min() ?? 0
+        subtitleLabel.text = "Минимум — \(MoneyFormatter.string(minimumAmount)) на следующее откладывание. "
+            + "Можно больше, чтобы не возвращаться сюда."
 
         let headerLeftStack = UIStackView(arrangedSubviews: [titleCapsLabel, pauseLabel])
         headerLeftStack.translatesAutoresizingMaskIntoConstraints = false

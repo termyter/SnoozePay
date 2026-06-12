@@ -330,6 +330,34 @@ final class StoreKitService {
         return fallbackPrice?.doubleValue ?? 0
     }
 
+    // MARK: - Display / catalogue amounts (#275)
+    //
+    // The amount rendered on a top-up tile or CTA MUST equal the amount the
+    // App Store charges AND the amount credited to the ledger. Historically the
+    // firing-screen tiles hard-coded rounded literals (200 / 500 / 1000 ₽) that
+    // mapped to the 149 / 499 / 999 SKUs — so the user saw 200 ₽ but was charged
+    // and credited 149. These helpers make the displayed number derive from the
+    // catalogue (and, once loaded, the resolved StoreKit product price) so
+    // display == charge == credit for the current catalogue.
+
+    /// The catalogue RUB amount for a SKU (49 / 149 / 299 / 499 / 999), or nil
+    /// for an unknown product ID. This is the same value credited on purchase,
+    /// so it is the honest number to render when the product list hasn't loaded.
+    static func catalogAmount(for productID: String) -> Int? {
+        productAmounts[productID].map { Int($0) }
+    }
+
+    /// The integer RUB amount to DISPLAY for a SKU. Prefers the resolved
+    /// StoreKit product's numeric price (the real charged amount) when the
+    /// catalogue has loaded; otherwise falls back to the catalogue amount.
+    /// Never returns an invented rounded literal.
+    func displayAmount(for productID: String) -> Int? {
+        if let product = products.first(where: { $0.id == productID }) {
+            return NSDecimalNumber(decimal: product.price).intValue
+        }
+        return Self.catalogAmount(for: productID)
+    }
+
     enum StoreError: Error {
         case failedVerification
     }
