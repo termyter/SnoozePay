@@ -110,6 +110,14 @@ final class SPInput: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         fieldContainer.layer.cornerRadius = AppRadius.md     // matches sp-r-md
+        // `.sp-input__field:focus-within { box-shadow: 0 0 0 4px rgba(...,.12) }`
+        // is a hard 4pt ring (spread, zero blur). CALayer has no spread, so we
+        // expand the shadowPath 4pt past the field and keep `shadowRadius` near
+        // zero — that renders a crisp outline rather than a diffuse glow.
+        fieldContainer.layer.shadowPath = UIBezierPath(
+            roundedRect: fieldContainer.bounds.insetBy(dx: -4, dy: -4),
+            cornerRadius: AppRadius.md + 4
+        ).cgPath
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
@@ -141,11 +149,12 @@ final class SPInput: UIView {
         fieldContainer.backgroundColor = AppColors.bg2
         fieldContainer.layer.cornerRadius = AppRadius.md
         fieldContainer.layer.borderWidth = 1.5
-        // Pre-configure the focus glow so editingDidBegin only has to flip
-        // shadowOpacity. Kept off by default (opacity 0) so the field reads
-        // flat at rest.
-        fieldContainer.layer.shadowColor = AppColors.money500.cgColor
-        fieldContainer.layer.shadowRadius = 4
+        // Pre-configure the focus ring so editingDidBegin only has to flip
+        // shadowOpacity. Money400 (`#2EDB9F`), zero blur + zero offset — the
+        // expanded shadowPath in `layoutSubviews` turns it into a hard 4pt
+        // ring. Kept off by default (opacity 0) so the field reads flat at rest.
+        fieldContainer.layer.shadowColor = AppColors.money400.cgColor
+        fieldContainer.layer.shadowRadius = 0
         fieldContainer.layer.shadowOpacity = 0
         fieldContainer.layer.shadowOffset = .zero
         fieldContainer.layer.masksToBounds = false
@@ -221,9 +230,9 @@ final class SPInput: UIView {
             fieldContainer.layer.borderColor = AppColors.stroke1
                 .resolvedColor(with: traitCollection).cgColor
         }
-        // Re-resolve the focus glow tint so a light/dark switch keeps
-        // the ring colour in sync with the active border.
-        fieldContainer.layer.shadowColor = AppColors.money500
+        // Re-resolve the focus ring tint (money400 per the CSS recipe) so a
+        // light/dark switch keeps the ring colour stable.
+        fieldContainer.layer.shadowColor = AppColors.money400
             .resolvedColor(with: traitCollection).cgColor
     }
 

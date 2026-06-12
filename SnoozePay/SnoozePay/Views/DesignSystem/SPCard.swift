@@ -148,19 +148,21 @@ final class SPCard: UIView {
         switch tone {
         case .surface:
             backgroundColor = AppColors.bg1
-            applyHairlineStroke()
+            // `.sp-card { box-shadow: var(--sp-shadow-1) }` with no border in
+            // the canon. Dark mode keeps the stroke off (the shadow + bg1/bg0
+            // contrast carry the edge); light mode adds a hairline per
+            // `feedback_design_system_consistency.md` where the near-white
+            // surfaces would otherwise merge into the page.
+            applyHairlineStrokeIfLight()
             applyShadow1()
         case .raised:
             backgroundColor = AppColors.bg2
-            // Light mode: bg2 (#ECEEF6) vs bg0 (#F4F6FB) is only ~5%
-            // luminance — the card visually merges with the page without a
-            // stroke. Memory `feedback_design_system_consistency.md`
-            // requires "shadow + border" on light cards, so add a hairline
-            // there. Dark mode keeps the stroke off — bg2 already has
-            // enough contrast against bg0 and a border would read as a
-            // double-edge.
+            // `.sp-card--raised` only swaps the fill to bg2 — it inherits the
+            // base `.sp-card` `--sp-shadow-1`, not the heavier shadow-2 (which
+            // the canon reserves for sheets/overlays). Light mode keeps the
+            // hairline so bg2 (#ECEEF6) doesn't merge into bg0 (#F4F6FB).
             applyRaisedHairlineIfLight()
-            applyShadow2()
+            applyShadow1()
         case .outline:
             backgroundColor = .clear
             applyOutlineStroke()
@@ -188,7 +190,11 @@ final class SPCard: UIView {
         }
     }
 
-    private func applyHairlineStroke() {
+    private func applyHairlineStrokeIfLight() {
+        guard traitCollection.userInterfaceStyle != .dark else {
+            layer.borderWidth = 0
+            return
+        }
         let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
         layer.borderWidth = 1.0 / scale
         layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
@@ -225,10 +231,6 @@ final class SPCard: UIView {
         layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
     }
 
-    private func applyShadow2() {
-        AppShadow.shadow2(for: traitCollection).apply(to: layer)
-    }
-
     private func applyColoredShadow(_ kind: ColoredShadow) {
         // `--sp-shadow-{money,pain,warn}: 0 8px 22px -6px rgba(...,.40)`. The
         // CSS uses a negative spread we can't replicate on CALayer, so fold
@@ -263,11 +265,11 @@ final class SPCard: UIView {
         // Re-resolve the same recipe that `applyTone()` first installed.
         switch tone {
         case .surface:
-            applyHairlineStroke()
+            applyHairlineStrokeIfLight()
             applyShadow1()
         case .raised:
             applyRaisedHairlineIfLight()
-            applyShadow2()
+            applyShadow1()
         case .outline:
             applyOutlineStroke()
         case .money:
