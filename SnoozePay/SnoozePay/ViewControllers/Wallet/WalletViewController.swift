@@ -183,7 +183,8 @@ final class WalletViewController: UIViewController {
             sub.removeFromSuperview()
         }
         let items = WalletTransactionPreview.items(
-            from: TransactionRepository.shared.fetchAll()
+            from: TransactionRepository.shared.fetchAll(),
+            alarmLookup: { AlarmRepository.shared.fetch(id: $0) }
         )
         txPreviewHost.addArrangedSubview(makeTxPreviewCard(items: items))
     }

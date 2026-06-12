@@ -53,6 +53,11 @@ struct YearMonth: Equatable, Hashable, Comparable {
     var gridLabel: String {
         Self.shortNames[month - 1].capitalized(with: Locale(identifier: "ru_RU"))
     }
+    /// "Янв 2026" — capitalized compact caption for the (sentence-start)
+    /// header chip when a range is selected.
+    var capitalizedShortCaption: String {
+        "\(Self.shortNames[month - 1].capitalized(with: Locale(identifier: "ru_RU"))) \(year)"
+    }
 }
 
 /// Selected reporting period for the transaction-history screen — either a
@@ -100,9 +105,13 @@ struct TxHistoryPeriod: Equatable {
 
     // MARK: - Captions (artboard 21)
 
-    /// Header chip: "январь 2026" / "ноя 2025 — янв 2026".
+    /// Header chip, capitalized as a sentence start: "Январь 2026" /
+    /// "Ноя 2025 — Янв 2026" (issue #282 — Russian capitalizes month names
+    /// at sentence start, and the chip is a standalone caption).
     var chipCaption: String {
-        isSingleMonth ? start.fullCaption : "\(start.shortCaption) — \(end.shortCaption)"
+        isSingleMonth
+            ? start.capitalizedCaption
+            : "\(start.capitalizedShortCaption) — \(end.capitalizedShortCaption)"
     }
 
     /// Summary-card caption (rendered uppercase by the caps style):
@@ -121,6 +130,46 @@ struct TxHistoryPeriod: Equatable {
 
     /// "3 мес." — month counter next to the picker caption.
     var monthCountText: String { "\(monthCount) мес." }
+}
+
+/// Transaction-type filter for the chip row under the summary card
+/// (issue #282, `SPMore3.jsx` L142-152). Composes *after* the period
+/// filter — period narrows by date, this narrows by direction.
+enum TxHistoryTypeFilter: CaseIterable {
+    /// «Все» — no type restriction.
+    case all
+    /// «Списания» — debits only (`.charge`).
+    case charges
+    /// «Поступления» — credits: paid top-ups *and* bonuses
+    /// (`.topup` + `.promotion`). Both add money to the balance, so the
+    /// user-facing "поступления" bucket groups them.
+    case credits
+
+    /// Chip label.
+    var title: String {
+        switch self {
+        case .all: return "Все"
+        case .charges: return "Списания"
+        case .credits: return "Поступления"
+        }
+    }
+
+    /// Whether a transaction passes this filter.
+    func matches(_ transaction: Transaction) -> Bool {
+        switch self {
+        case .all:
+            return true
+        case .charges:
+            return transaction.type == .charge
+        case .credits:
+            return transaction.type == .topup || transaction.type == .promotion
+        }
+    }
+
+    /// Filtered list, preserving input order.
+    func filter(_ transactions: [Transaction]) -> [Transaction] {
+        transactions.filter(matches)
+    }
 }
 
 /// Three-column aggregate for the summary card — Списано / Пополнения /

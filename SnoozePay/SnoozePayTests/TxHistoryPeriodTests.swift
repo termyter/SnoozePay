@@ -133,7 +133,7 @@ final class TxHistoryPeriodTests: XCTestCase {
 
     func testCaptions_singleMonth() {
         let period = TxHistoryPeriod(month: YearMonth(year: 2026, month: 1))
-        XCTAssertEqual(period.chipCaption, "январь 2026")
+        XCTAssertEqual(period.chipCaption, "Январь 2026")
         XCTAssertEqual(period.summaryCaption, "январь 2026")
         XCTAssertEqual(period.pickerCaption, "Январь 2026")
         XCTAssertEqual(period.monthCountText, "1 мес.")
@@ -144,7 +144,7 @@ final class TxHistoryPeriodTests: XCTestCase {
             start: YearMonth(year: 2025, month: 11),
             end: YearMonth(year: 2026, month: 1)
         )
-        XCTAssertEqual(period.chipCaption, "ноя 2025 — янв 2026")
+        XCTAssertEqual(period.chipCaption, "Ноя 2025 — Янв 2026")
         XCTAssertEqual(period.summaryCaption, "ноябрь 2025 — январь 2026")
         XCTAssertEqual(period.pickerCaption, "Ноябрь 2025 — Январь 2026")
         XCTAssertEqual(period.monthCountText, "3 мес.")
@@ -241,5 +241,58 @@ final class TxHistoryPeriodTests: XCTestCase {
             PeriodPickerSheetViewController.role(of: YearMonth(year: 2026, month: 2), in: period),
             MonthCellRole.none
         )
+    }
+
+    // MARK: - Capitalized chip caption (issue #282)
+
+    func testChipCaption_singleMonth_isCapitalized() {
+        let period = TxHistoryPeriod(month: YearMonth(year: 2026, month: 1))
+        XCTAssertEqual(period.chipCaption, "Январь 2026")
+    }
+
+    func testChipCaption_range_capitalizesBothEndpoints() {
+        let period = TxHistoryPeriod(
+            start: YearMonth(year: 2025, month: 11),
+            end: YearMonth(year: 2026, month: 1)
+        )
+        XCTAssertEqual(period.chipCaption, "Ноя 2025 — Янв 2026")
+    }
+
+    // MARK: - Type filter (issue #282)
+
+    private func tx(_ type: TransactionType, month: Int) -> Transaction {
+        Transaction(type: type, amount: 50, createdAt: date(year: 2026, month: month))
+    }
+
+    func testTypeFilter_all_passesEverything() {
+        let list = [tx(.charge, month: 1), tx(.topup, month: 1), tx(.promotion, month: 1)]
+        XCTAssertEqual(TxHistoryTypeFilter.all.filter(list).count, 3)
+    }
+
+    func testTypeFilter_charges_keepsOnlyDebits() {
+        let list = [tx(.charge, month: 1), tx(.topup, month: 1), tx(.promotion, month: 1)]
+        let filtered = TxHistoryTypeFilter.charges.filter(list)
+        XCTAssertEqual(filtered.map(\.type), [.charge])
+    }
+
+    func testTypeFilter_credits_keepsTopupsAndPromotions() {
+        let list = [tx(.charge, month: 1), tx(.topup, month: 1), tx(.promotion, month: 1)]
+        let filtered = TxHistoryTypeFilter.credits.filter(list)
+        XCTAssertEqual(Set(filtered.map(\.type.rawValue)), ["topup", "promotion"])
+    }
+
+    func testTypeFilter_composesWithPeriod() {
+        // Two months of mixed transactions; January period + charges chip
+        // must keep only January charges.
+        let list = [
+            tx(.charge, month: 1), tx(.topup, month: 1),
+            tx(.charge, month: 2), tx(.promotion, month: 2)
+        ]
+        let period = TxHistoryPeriod(month: YearMonth(year: 2026, month: 1))
+        let periodVisible = period.filter(list)
+        let composed = TxHistoryTypeFilter.charges.filter(periodVisible)
+        XCTAssertEqual(composed.count, 1)
+        XCTAssertEqual(composed.first?.type, .charge)
+        XCTAssertTrue(period.contains(composed.first!.createdAt))
     }
 }

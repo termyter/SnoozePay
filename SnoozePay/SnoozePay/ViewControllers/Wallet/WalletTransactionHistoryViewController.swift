@@ -28,6 +28,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
     private let stack = UIStackView()
     private var groups: [Group] = []
     private var period: TxHistoryPeriod = .currentMonth()
+    private var typeFilter: TxHistoryTypeFilter = .all
 
     // MARK: - Lifecycle
 
@@ -96,16 +97,28 @@ final class WalletTransactionHistoryViewController: UIViewController {
         }
 
         let all = TransactionRepository.shared.fetchAll()
-        let visible = period.filter(all)
-        groups = Self.group(transactions: visible)
+        // Period narrows by date; the summary card aggregates this whole
+        // period set so its totals stay stable as the user toggles chips.
+        let periodVisible = period.filter(all)
+        // The list then composes the type chip on top of the period set.
+        let listVisible = typeFilter.filter(periodVisible)
+        groups = Self.group(transactions: listVisible)
 
         let chipRow = makePeriodChipRow()
         stack.addArrangedSubview(chipRow)
         stack.setCustomSpacing(AppSpacing.sp4, after: chipRow)
-        stack.addArrangedSubview(makeSummaryCard(summary: TxHistorySummary.compute(from: visible)))
+        stack.addArrangedSubview(makeSummaryCard(summary: TxHistorySummary.compute(from: periodVisible)))
+
+        let filterRow = makeTypeFilterRow()
+        stack.setCustomSpacing(AppSpacing.sp4, after: stack.arrangedSubviews[stack.arrangedSubviews.count - 1])
+        stack.addArrangedSubview(filterRow)
+        stack.setCustomSpacing(AppSpacing.sp3, after: filterRow)
 
         if groups.isEmpty {
-            stack.addArrangedSubview(makeEmptyCard(hasAnyTransactions: !all.isEmpty))
+            stack.addArrangedSubview(makeEmptyCard(
+                hasAnyTransactions: !all.isEmpty,
+                periodHasTransactions: !periodVisible.isEmpty
+            ))
             return
         }
 
@@ -250,13 +263,23 @@ final class WalletTransactionHistoryViewController: UIViewController {
         return column
     }
 
-    private func makeEmptyCard(hasAnyTransactions: Bool = false) -> UIView {
+    private func makeEmptyCard(
+        hasAnyTransactions: Bool = false,
+        periodHasTransactions: Bool = false
+    ) -> UIView {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp6, cornerRadius: AppRadius.lg)
         card.translatesAutoresizingMaskIntoConstraints = false
         let label = UILabel()
-        label.text = hasAnyTransactions
-            ? "За выбранный период операций нет."
-            : "Здесь появятся пополнения, списания и бонусы."
+        let message: String
+        if !hasAnyTransactions {
+            message = "Здесь появятся пополнения, списания и бонусы."
+        } else if periodHasTransactions && typeFilter != .all {
+            // Period has rows but the active type chip filtered them all out.
+            message = "За выбранный период таких операций нет."
+        } else {
+            message = "За выбранный период операций нет."
+        }
+        label.text = message
         label.font = AppTypography.body
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
@@ -307,7 +330,10 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
     private func makeRow(for transaction: Transaction, divider: Bool) -> SPRow {
         let title = Self.title(for: transaction)
-        let subtitle = Self.timeString(for: transaction.createdAt)
+        // Charge rows carry the owning alarm's context as the subtitle —
+        // "Будни · 07:00" — falling back to the bare time when the alarm was
+        // deleted/edited away (issue #282, SPScreensV2.jsx L467).
+        let subtitle = Self.subtitle(for: transaction)
         let leading = Self.makeIcon(for: transaction)
         let trailing = Self.makeAmountLabel(for: transaction)
         return SPRow(
@@ -321,18 +347,49 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
     // MARK: - Cell content helpers
 
-    private static func title(for transaction: Transaction) -> String {
+    static func title(for transaction: Transaction) -> String {
         switch transaction.type {
         case .topup:
             return "Пополнение баланса"
         case .charge:
             return "Поспать ещё"
         case .promotion:
-            // `.promotion` is currently minted only by the referral 7-day
-            // hold reward (`ReferralService`), hence the specific copy
-            // (issue #234 item 4 — "Возврат" → "Бонус").
-            return "Бонус: продержались 7 дней"
+            // `.promotion` is currently minted only by the referral bonus
+            // (`ReferralService`) — there is no 7-day hold today, so the
+            // copy must not claim one (issue #282 — honest, unified copy
+            // shared with the wallet preview).
+            return "Бонус за друга"
         }
+    }
+
+    /// Subtitle for a row: charges append the owning alarm's repeat/time
+    /// context when resolvable; everything else (and orphaned charges) show
+    /// the transaction time only. Static + repository-injectable so the
+    /// composition is unit-tested in `subtitle(for:time:lookup:)`.
+    static func subtitle(for transaction: Transaction) -> String {
+        subtitle(
+            for: transaction,
+            time: timeString(for: transaction.createdAt),
+            lookup: { AlarmRepository.shared.fetch(id: $0) }
+        )
+    }
+
+    static func subtitle(
+        for transaction: Transaction,
+        time: String,
+        calendar: Calendar = .current,
+        lookup: (UUID) -> Alarm?
+    ) -> String {
+        guard transaction.type == .charge else { return time }
+        // Prefer the owning alarm's context ("Будни · 07:00") — it tells the
+        // user *which* alarm this snooze charge came from, which the bare
+        // charge time can't. Rows are already grouped under a day header, so
+        // the per-row time is redundant once context is available. When the
+        // alarm was deleted/edited away the context resolves to nil and we
+        // keep the charge time so the row still says *something* (issue #282).
+        return TransactionAlarmContext.caption(
+            for: transaction.alarmID, calendar: calendar, lookup: lookup
+        ) ?? time
     }
 
     private static func makeIcon(for transaction: Transaction) -> UIView {
@@ -347,9 +404,11 @@ final class WalletTransactionHistoryViewController: UIViewController {
             fill = AppColors.money400.withAlphaComponent(0.14)
             glyph = "plus"
         case .promotion:
+            // Unified with the wallet preview — gift glyph, not a checkmark
+            // (issue #282, single promotion-row rendering).
             tint = AppColors.money400
             fill = AppColors.money400.withAlphaComponent(0.14)
-            glyph = "checkmark"
+            glyph = "gift"
         case .charge:
             tint = AppColors.pain400
             fill = AppColors.pain400.withAlphaComponent(0.14)
@@ -437,5 +496,58 @@ final class WalletTransactionHistoryViewController: UIViewController {
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.dateFormat = "d MMMM"
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Type filter chips (issue #282, SPMore3.jsx L142-152)
+
+extension WalletTransactionHistoryViewController {
+
+    func makeTypeFilterRow() -> UIView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = AppSpacing.sp2
+        row.alignment = .center
+        for filter in TxHistoryTypeFilter.allCases {
+            row.addArrangedSubview(makeFilterChip(for: filter))
+        }
+        // Trailing spacer so chips left-align (the row otherwise stretches).
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(spacer)
+        return row
+    }
+
+    private func makeFilterChip(for filter: TxHistoryTypeFilter) -> UIButton {
+        let selected = filter == typeFilter
+        var configuration = UIButton.Configuration.plain()
+        configuration.attributedTitle = AttributedString(
+            filter.title,
+            attributes: AttributeContainer([
+                .font: AppFonts.sans(.semibold, 14),
+                .foregroundColor: selected ? AppColors.bg0 : AppColors.fg2
+            ])
+        )
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 7, leading: AppSpacing.sp3, bottom: 7, trailing: AppSpacing.sp3
+        )
+        let chip = UIButton(configuration: configuration)
+        chip.backgroundColor = selected ? AppColors.fg1 : AppColors.whiteOverlay06
+        chip.layer.cornerRadius = AppRadius.lg
+        chip.layer.masksToBounds = true
+        chip.accessibilityLabel = filter.title
+        chip.accessibilityTraits = selected ? [.button, .selected] : .button
+        chip.tag = TxHistoryTypeFilter.allCases.firstIndex(of: filter) ?? 0
+        chip.addTarget(self, action: #selector(typeFilterChipTapped(_:)), for: .touchUpInside)
+        return chip
+    }
+
+    @objc fileprivate func typeFilterChipTapped(_ sender: UIButton) {
+        let cases = TxHistoryTypeFilter.allCases
+        guard cases.indices.contains(sender.tag) else { return }
+        let picked = cases[sender.tag]
+        guard picked != typeFilter else { return }
+        typeFilter = picked
+        reload()
     }
 }

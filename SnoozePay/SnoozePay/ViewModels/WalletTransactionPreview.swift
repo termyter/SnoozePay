@@ -28,21 +28,28 @@ enum WalletTransactionPreview {
     /// Newest-first preview rows, capped at `maxItems`. Input order is not
     /// trusted — the repository returns newest-first today, but the preview
     /// re-sorts defensively so a future ordering change can't flip the card.
+    ///
+    /// `alarmLookup` resolves a charge's owning alarm so its context
+    /// ("Будни · 07:00") can prefix the timestamp; production passes
+    /// `AlarmRepository.shared.fetch(id:)`. The default no-op lookup keeps
+    /// existing tests (and any context-free call site) bare.
     static func items(
         from transactions: [Transaction],
         now: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        alarmLookup: (UUID) -> Alarm? = { _ in nil }
     ) -> [WalletTransactionPreviewItem] {
         transactions
             .sorted { $0.createdAt > $1.createdAt }
             .prefix(maxItems)
-            .map { item(for: $0, now: now, calendar: calendar) }
+            .map { item(for: $0, now: now, calendar: calendar, alarmLookup: alarmLookup) }
     }
 
     static func item(
         for transaction: Transaction,
         now: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        alarmLookup: (UUID) -> Alarm? = { _ in nil }
     ) -> WalletTransactionPreviewItem {
         let title: String
         let icon: String
@@ -57,15 +64,30 @@ enum WalletTransactionPreview {
             icon = "plus"
             isDebit = false
         case .promotion:
-            title = "Промо-зачисление"
+            // Unified with the history screen — honest copy (the only
+            // promotion source today is the referral bonus) + the same gift
+            // glyph (issue #282).
+            title = "Бонус за друга"
             icon = "gift"
             isDebit = false
         }
         let absolute = Decimal(abs(transaction.amount))
         let sign = isDebit ? "−" : "+"
+        let timestamp = timestampText(for: transaction.createdAt, now: now, calendar: calendar)
+        // Charges prepend the resolvable alarm context, mirroring the
+        // history screen; orphaned/edited-away alarms degrade to bare time.
+        let subtitle: String
+        if transaction.type == .charge,
+           let context = TransactionAlarmContext.caption(
+               for: transaction.alarmID, calendar: calendar, lookup: alarmLookup
+           ) {
+            subtitle = "\(context) · \(timestamp)"
+        } else {
+            subtitle = timestamp
+        }
         return WalletTransactionPreviewItem(
             title: title,
-            timestampText: timestampText(for: transaction.createdAt, now: now, calendar: calendar),
+            timestampText: subtitle,
             amountText: "\(sign)\(absolute.formattedRubles())",
             isDebit: isDebit,
             iconSystemName: icon
