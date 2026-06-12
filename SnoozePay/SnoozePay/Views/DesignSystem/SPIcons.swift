@@ -80,6 +80,42 @@ enum SPIcons {
         }
     }
 
+    /// Кошелёк — body rect + fold line + card slot + top flap. The tab-bar
+    /// glyph for the «Кошелёк» tab. JSX: `IconWallet`.
+    static func wallet(size: CGFloat) -> UIImage {
+        render(size: size) { path in
+            // Body: `rect x=3 y=6 w=18 h=14 rx=3`.
+            path.append(UIBezierPath(
+                roundedRect: CGRect(x: 3, y: 6, width: 18, height: 14),
+                cornerRadius: 3
+            ))
+            // Fold line + card slot: `M3 10h18` / `M16 14h2`.
+            path.move(to: CGPoint(x: 3, y: 10))
+            path.addLine(to: CGPoint(x: 21, y: 10))
+            path.move(to: CGPoint(x: 16, y: 14))
+            path.addLine(to: CGPoint(x: 18, y: 14))
+            // Top flap: `M18 6V4a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v2`.
+            path.move(to: CGPoint(x: 18, y: 6))
+            path.addLine(to: CGPoint(x: 18, y: 4))
+            path.addArc(
+                withCenter: CGPoint(x: 16, y: 4),
+                radius: 2,
+                startAngle: 0,
+                endAngle: -.pi / 2,
+                clockwise: false
+            )
+            path.addLine(to: CGPoint(x: 7, y: 2))
+            path.addArc(
+                withCenter: CGPoint(x: 7, y: 4),
+                radius: 2,
+                startAngle: -.pi / 2,
+                endAngle: -.pi,
+                clockwise: false
+            )
+            path.addLine(to: CGPoint(x: 5, y: 6))
+        }
+    }
+
     /// «Zz» — большая Z + маленькая Z по диагонали. JSX: `IconSnooze`.
     static func snooze(size: CGFloat) -> UIImage {
         render(size: size) { path in
