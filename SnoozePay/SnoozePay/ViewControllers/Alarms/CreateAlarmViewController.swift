@@ -390,7 +390,9 @@ extension CreateAlarmViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         guard let section = Section(rawValue: indexPath.section) else { return 44 }
         switch section {
-        case .timePicker: return 200
+        // V2 (#284): caps «Подъём» header + clock-XL readout stacked above the
+        // wheels needs more room than the old wheels-only 200pt.
+        case .timePicker: return TimePickerCell.rowHeight
         // Day-chips row keeps its fixed 60pt; the repeat-mode pill + hint
         // below self-sizes (the hint wraps to 1–2 lines per mode, #229).
         case .repeatDays:
