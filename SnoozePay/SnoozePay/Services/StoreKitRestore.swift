@@ -1,26 +1,26 @@
-import UIKit
 import StoreKit
+import UIKit
 import os
 
-/// Restore-purchases support split out from the main `TopUpViewController`
-/// so the host file stays under the project's file/type-body length
-/// limits. The restore flow itself is unchanged from the pre-#148
-/// implementation: `AppStore.sync()` triggers Apple's restore, the
-/// `Transaction.updates` listener inside `StoreKitService` does the
-/// actual crediting, and we surface typed errors with actionable
-/// Russian copy instead of swallowing them (#71).
-extension TopUpViewController {
+/// Reusable "Restore purchases" entry point. Extracted from the retired
+/// `TopUpViewController` (#281) so the single Deposit surface
+/// (`DepositBottomSheetViewController`) keeps the App Store-required restore
+/// affordance. `AppStore.sync()` triggers Apple's restore; the
+/// `Transaction.updates` listener inside `StoreKitService` does the actual
+/// crediting, and we surface typed errors with actionable Russian copy
+/// instead of swallowing them (#71).
+extension UIViewController {
 
-    /// Public entry point invoked by the `restoreRow` SPRow tap. `internal`
-    /// rather than `fileprivate` because the call site lives in the main
-    /// `TopUpViewController` file.
-    func performRestorePurchases() {
+    /// Triggers Apple's restore flow and surfaces a success / error alert.
+    /// `onCredited` runs on the main actor after a successful `sync()` so the
+    /// caller can refresh any visible balance UI.
+    func performStoreKitRestore(onCredited: (@MainActor () -> Void)? = nil) {
         Task { [weak self] in
             guard let self else { return }
             do {
                 try await AppStore.sync()
                 await MainActor.run {
-                    self.refreshBalanceCard()
+                    onCredited?()
                     self.presentRestoreSuccess()
                 }
             } catch is CancellationError {
@@ -28,7 +28,7 @@ extension TopUpViewController {
             } catch {
                 if (error as NSError).code == NSUserCancelledError { return }
                 AppLogger.storeKit.error(
-                    "performRestorePurchases failed: \(error.localizedDescription, privacy: .public)"
+                    "performStoreKitRestore failed: \(error.localizedDescription, privacy: .public)"
                 )
                 await MainActor.run {
                     self.presentRestoreError(error)
@@ -37,7 +37,7 @@ extension TopUpViewController {
         }
     }
 
-    func presentRestoreSuccess() {
+    private func presentRestoreSuccess() {
         let alert = UIAlertController(
             title: "Запрос отправлен",
             message: "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение нескольких секунд.",
@@ -47,10 +47,10 @@ extension TopUpViewController {
         present(alert, animated: true)
     }
 
-    func presentRestoreError(_ error: Error) {
+    private func presentRestoreError(_ error: Error) {
         let alert = UIAlertController(
             title: "Не удалось восстановить покупки",
-            message: TopUpRestoreErrorCopy.message(for: error),
+            message: StoreKitRestoreErrorCopy.message(for: error),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -59,14 +59,12 @@ extension TopUpViewController {
 }
 
 /// Translates StoreKit / SKError / URLError failures into actionable
-/// Russian copy. Split out from `TopUpViewController` so the per-error
-/// matching doesn't push the controller's cyclomatic complexity over the
-/// project's lint threshold. Each helper handles one error family; the
-/// public `message(for:)` walks them in priority order.
-enum TopUpRestoreErrorCopy {
+/// Russian copy. Kept as a standalone enum so the per-error matching doesn't
+/// push any host controller's cyclomatic complexity over the project's lint
+/// threshold. Each helper handles one error family; the public
+/// `message(for:)` walks them in priority order.
+enum StoreKitRestoreErrorCopy {
 
-    /// Generic fallback when no specific error mapping matches.
-    private static let fallbackPrefix = ""
     /// Common networking copy reused by URL / SK / StoreKit network branches.
     private static let networkAdvice = "Проверьте подключение к интернету и попробуйте снова."
 

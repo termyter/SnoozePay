@@ -90,6 +90,22 @@ final class DepositBottomSheetViewController: UIViewController {
         return label
     }()
 
+    /// App Store-required restore affordance, folded in from the retired
+    /// `TopUpViewController` (#281) so this single Deposit surface keeps it.
+    private lazy var restoreButton: UIButton = {
+        var config = UIButton.Configuration.plain()
+        config.attributedTitle = AttributedString(
+            "Восстановить покупки",
+            attributes: AttributeContainer([
+                .font: AppTypography.meta,
+                .foregroundColor: AppColors.fg2
+            ])
+        )
+        let button = UIButton(configuration: config)
+        button.addTarget(self, action: #selector(restoreTapped), for: .touchUpInside)
+        return button
+    }()
+
     // MARK: - Success overlay
 
     private let successContainer: UIView = {
@@ -140,7 +156,7 @@ final class DepositBottomSheetViewController: UIViewController {
             if #available(iOS 16.0, *) {
                 let custom = UISheetPresentationController.Detent.custom(
                     identifier: UISheetPresentationController.Detent.Identifier("snoozepay.deposit")
-                ) { _ in 430 }
+                ) { _ in 474 }
                 sheet.detents = [custom, .large()]
             } else {
                 sheet.detents = [.medium(), .large()]
@@ -185,9 +201,11 @@ final class DepositBottomSheetViewController: UIViewController {
         ctaHost.addArrangedSubview(depositButton)
         contentStack.addArrangedSubview(ctaHost)
         contentStack.addArrangedSubview(disclaimerLabel)
+        contentStack.addArrangedSubview(restoreButton)
         contentStack.setCustomSpacing(AppSpacing.sp5, after: titleLabel)
         contentStack.setCustomSpacing(AppSpacing.sp5, after: grid)
         contentStack.setCustomSpacing(AppSpacing.sp3, after: ctaHost)
+        contentStack.setCustomSpacing(AppSpacing.sp2, after: disclaimerLabel)
 
         successContainer.addSubview(successCheck)
         successContainer.addSubview(successAmountLabel)
@@ -332,6 +350,19 @@ final class DepositBottomSheetViewController: UIViewController {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
         }
+    }
+
+    @objc private func restoreTapped() {
+        performStoreKitRestore { [weak self] in
+            self?.refreshBalanceAfterRestore()
+        }
+    }
+
+    /// `Transaction.updates` inside `StoreKitService` credits the balance; this
+    /// sheet only shows its own success state, so there's nothing to redraw
+    /// here beyond logging. Kept as a hook so the closure reads intentionally.
+    private func refreshBalanceAfterRestore() {
+        AppLogger.storeKit.notice("DepositSheet: restore sync completed")
     }
 
     // MARK: - Success / failure

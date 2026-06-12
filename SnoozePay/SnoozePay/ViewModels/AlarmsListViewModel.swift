@@ -315,9 +315,9 @@ final class AlarmsListViewModel {
 
     /// Default penalty used when the user hasn't created any alarms yet
     /// (or every alarm has a non-positive penalty). Matches the
-    /// `Alarm.init` default and the IAP "~N откладываний" copy in
-    /// `TopUpViewController`. Kept as a constant so a single tweak
-    /// covers both the empty-list hint and the topup subtitles.
+    /// `Alarm.init` default and the IAP "~N откладываний" copy in the
+    /// Deposit sheet. Kept as a constant so a single tweak covers both the
+    /// empty-list hint and the topup subtitles.
     static let defaultPenaltyAmount: Double = 50
 
     /// Average penalty across all alarms, falling back to
