@@ -133,10 +133,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // (Settings moved behind a gear icon on Alarms / Wallet headers).
         let walletVC = WalletViewController()
         let walletNav = UINavigationController(rootViewController: walletVC)
+        // Design-system wallet glyph (SPComponents.jsx `IconWallet`) — a
+        // template image, so the appearance's icon colors tint it for both
+        // states; no separate "filled" selected variant in the lucide set.
+        let walletIcon = SPIcons.wallet(size: 24)
         walletNav.tabBarItem = UITabBarItem(
             title: "Кошелёк",
-            image: UIImage(systemName: "creditcard"),
-            selectedImage: UIImage(systemName: "creditcard.fill")
+            image: walletIcon,
+            selectedImage: walletIcon
         )
 
         // Statistics tab
@@ -149,7 +153,58 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         )
 
         tabBar.viewControllers = [alarmsNav, walletNav, statsNav]
+        applyTabBarStyle(to: tabBar.tabBar)
         return tabBar
+    }
+
+    /// V3 tab-bar chrome per `components.css` `.sp-tabbar`: bg1 at 85% over
+    /// blur, stroke-1 top hairline, money-400 active tint / fg3 inactive,
+    /// semibold 11pt labels, 28pt rounded top corners.
+    private static func applyTabBarStyle(to tabBar: UITabBar) {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        // `bg1` is #0E1320 dark / #FFFFFF light — exactly the design's
+        // rgba(14,19,32,.85) / rgba(255,255,255,.85) over blur(20px).
+        // `withAlphaComponent` keeps the dynamic provider, so both modes stay
+        // correct after trait changes.
+        appearance.backgroundColor = AppColors.bg1.withAlphaComponent(0.85)
+        // Top hairline (`border-top: 1px solid var(--sp-stroke-1)`) — UIKit
+        // models the bar's top edge line as its "shadow".
+        appearance.shadowColor = AppColors.stroke1
+
+        let item = UITabBarItemAppearance()
+        // `.sp-tabbar__label { font: 600 11px }` — semibold 11pt.
+        let labelFont = AppFonts.sans(.semibold, 11)
+        item.normal.iconColor = AppColors.fg3
+        item.normal.titleTextAttributes = [
+            .font: labelFont,
+            .foregroundColor: AppColors.fg3
+        ]
+        item.selected.iconColor = AppColors.money400
+        item.selected.titleTextAttributes = [
+            .font: labelFont,
+            .foregroundColor: AppColors.money400
+        ]
+        appearance.stackedLayoutAppearance = item
+        appearance.inlineLayoutAppearance = item
+        appearance.compactInlineLayoutAppearance = item
+
+        tabBar.standardAppearance = appearance
+        // Same chrome when content scrolls underneath and at rest — the
+        // design's bar is always translucent-over-blur, never transparent.
+        tabBar.scrollEdgeAppearance = appearance
+        tabBar.tintColor = AppColors.money400
+        tabBar.unselectedItemTintColor = AppColors.fg3
+
+        // `border-radius: 28px 28px 0 0`. UITabBar has no native corner API;
+        // masking the bar's own layer is the lightest faithful approach. The
+        // bar's frame already extends through the bottom safe area, so
+        // clipping only the *top* corners doesn't fight the home-indicator
+        // extension or the blur background.
+        tabBar.layer.cornerRadius = AppRadius.xl
+        tabBar.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        tabBar.layer.masksToBounds = true
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
