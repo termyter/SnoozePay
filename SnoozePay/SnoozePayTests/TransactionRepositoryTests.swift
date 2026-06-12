@@ -7,12 +7,23 @@ final class TransactionRepositoryTests: XCTestCase {
     private var testDefaults: UserDefaults!
     private var suiteName: String!
     private var repo: TransactionRepository!
+    private var wakeStore: WakeEventStore!
 
     override func setUp() {
         super.setUp()
         suiteName = "test.txRepo.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
-        repo = TransactionRepository(defaults: testDefaults)
+        // Isolated wake store so the streak's #276 wake lookup (and its
+        // empty-store legacy fallback) can't read real-device history.
+        wakeStore = WakeEventStore(defaults: testDefaults)
+        repo = TransactionRepository(defaults: testDefaults, wakeStore: wakeStore)
+    }
+
+    /// Records a wake event for the same `daysAgo` offset the charge/topup
+    /// helpers use, so streak tests can opt into the accurate (#276) path.
+    private func recordWake(daysAgo: Int) {
+        let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date())!
+        wakeStore.recordWake(on: date)
     }
 
     override func tearDown() {
@@ -98,7 +109,12 @@ final class TransactionRepositoryTests: XCTestCase {
         XCTAssertTrue(charges.isEmpty)
     }
 
-    // MARK: - Streak calculation
+    // MARK: - Streak: legacy fallback (no wake history)
+    //
+    // None of these record a wake event, so the wake store is empty and the
+    // streak degrades to the pre-#276 transaction-only heuristic. This proves
+    // existing users (who built a streak before WakeEventStore shipped) don't
+    // see it collapse to 0 on upgrade.
 
     func testCurrentStreak_noTransactions_returnsZero() {
         XCTAssertEqual(repo.currentStreak(), 0)
@@ -143,6 +159,98 @@ final class TransactionRepositoryTests: XCTestCase {
         repo.record(topup(amount: 100, daysAgo: 0))
 
         XCTAssertEqual(repo.currentStreak(), 2)
+    }
+
+    // MARK: - Streak: wake-aware path (#276)
+    //
+    // Once any wake event exists the streak uses the accurate definition:
+    // count consecutive wake-without-charge days, neutral (no wake/no charge)
+    // days skip, today counts only after its wake, a charge breaks the run.
+
+    func testCurrentStreak_wakeChain_countsEachWakeDay() {
+        // Woke today, yesterday, two days ago — no charges -> streak = 3.
+        recordWake(daysAgo: 0)
+        recordWake(daysAgo: 1)
+        recordWake(daysAgo: 2)
+
+        XCTAssertEqual(repo.currentStreak(), 3)
+    }
+
+    func testCurrentStreak_chargeBreaksTheChain() {
+        // Woke today & yesterday, charge two days ago -> the charge stops the
+        // walk, so only today + yesterday count -> streak = 2.
+        recordWake(daysAgo: 0)
+        recordWake(daysAgo: 1)
+        recordWake(daysAgo: 2)
+        repo.record(charge(amount: 50, daysAgo: 2))
+
+        XCTAssertEqual(repo.currentStreak(), 2)
+    }
+
+    func testCurrentStreak_chargeToday_breaksImmediately() {
+        // A charge today ends the streak even if a wake was also recorded.
+        recordWake(daysAgo: 0)
+        recordWake(daysAgo: 1)
+        repo.record(charge(amount: 50, daysAgo: 0))
+
+        XCTAssertEqual(repo.currentStreak(), 0)
+    }
+
+    func testCurrentStreak_neutralGapSkips_doesNotBreak() {
+        // Woke today and 3 days ago; days 1 and 2 had no alarm (neutral).
+        // Neutral days skip rather than break -> both wakes count -> streak = 2.
+        recordWake(daysAgo: 0)
+        recordWake(daysAgo: 3)
+
+        XCTAssertEqual(repo.currentStreak(), 2)
+    }
+
+    func testCurrentStreak_preWakeToday_excludesToday() {
+        // No wake recorded today yet, but woke yesterday & the day before.
+        // Today is neutral (skipped, not counted) -> streak = 2 from the two
+        // prior wake days. The number doesn't optimistically claim today.
+        recordWake(daysAgo: 1)
+        recordWake(daysAgo: 2)
+
+        XCTAssertEqual(repo.currentStreak(), 2)
+    }
+
+    func testCurrentStreak_postWakeToday_includesToday() {
+        // Same history, but now today's wake is recorded -> today counts too.
+        recordWake(daysAgo: 0)
+        recordWake(daysAgo: 1)
+        recordWake(daysAgo: 2)
+
+        XCTAssertEqual(repo.currentStreak(), 3)
+    }
+
+    func testCurrentStreak_onlyWakeIsOld_stillCountsViaNeutralSkip() {
+        // A single wake 5 days ago with no charges since: the intervening
+        // neutral days skip, so the streak surfaces that one habit day.
+        recordWake(daysAgo: 5)
+
+        XCTAssertEqual(repo.currentStreak(), 1)
+    }
+
+    func testCurrentStreak_wakeButChargeSameDay_doesNotCountThatDay() {
+        // Woke yesterday but also got charged yesterday: the charge breaks the
+        // walk at yesterday, and today (neutral) contributes nothing -> 0.
+        recordWake(daysAgo: 1)
+        repo.record(charge(amount: 50, daysAgo: 1))
+
+        XCTAssertEqual(repo.currentStreak(), 0)
+    }
+
+    func testCurrentStreakFromTransactions_alsoConsultsWakeStore() {
+        // The caller-supplied variant (#117 hot path) must apply the same
+        // wake-aware definition, not silently fall back to charge-free days.
+        recordWake(daysAgo: 0)
+        recordWake(daysAgo: 1)
+        let snapshot = [
+            Transaction(type: .topup, amount: 100, createdAt: Date())
+        ]
+
+        XCTAssertEqual(repo.currentStreak(from: snapshot), 2)
     }
 
     // MARK: - Edge cases

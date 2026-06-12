@@ -36,6 +36,9 @@ final class TransactionRepository {
     static let corruptBackupKey = "stored_transactions_backup_corrupt"
 
     private let defaults: UserDefaults
+    /// Supplies the wake-day signal the streak now requires (#276). Injected
+    /// so tests can pin both inputs; production uses the shared store.
+    private let wakeStore: WakeEventStore
     private let queue = DispatchQueue(label: "com.snoozepay.transactions.serial")
     private static let log = OSLog(
         subsystem: "Ivan-Emelyanov.SnoozePay",
@@ -57,12 +60,13 @@ final class TransactionRepository {
     /// state — that's why this initializer is `internal` rather than `private`.
     /// We deliberately omit the default value so a stray `TransactionRepository()`
     /// call site cannot bypass the singleton.
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, wakeStore: WakeEventStore = .shared) {
         self.defaults = defaults
+        self.wakeStore = wakeStore
     }
 
     private convenience init() {
-        self.init(defaults: .standard)
+        self.init(defaults: .standard, wakeStore: .shared)
     }
 
     // MARK: - Read
@@ -116,10 +120,14 @@ final class TransactionRepository {
 
     // MARK: - Streak calculation
 
-    /// Returns count of consecutive days ending today with no charge transactions.
-    /// Returns 0 if there are no transactions at all (new user) or if the
-    /// store can't be decoded — caller should consult `lastLoadFailed`
-    /// before trusting a zero result.
+    /// Current «серия» — consecutive habit-positive days ending today/yesterday.
+    /// Now consults `WakeEventStore` so the count reflects days the user
+    /// actually woke without a charge, not merely charge-free calendar days
+    /// (#276). See `StreakCalculator` for the full semantics (charge breaks,
+    /// neutral alarm-less days skip, today counts only after its wake, empty
+    /// wake-store legacy fallback). Returns 0 for a brand-new user or a
+    /// corrupt ledger — callers should consult `lastLoadFailed` before
+    /// trusting a zero.
     ///
     /// Production callers that have already paid the cost of a checked read
     /// (StatisticsViewModel) should use `currentStreak(from:)` to avoid a
@@ -127,42 +135,24 @@ final class TransactionRepository {
     /// (issue #117).
     func currentStreak() -> Int {
         let allTransactions = queue.sync { (try? readAll()) ?? [] }
-        return Self.computeStreak(from: allTransactions)
+        return StreakCalculator.currentStreak(
+            transactions: allTransactions,
+            wakeDays: wakeStore.wakeDays()
+        )
     }
 
     /// Streak computation against a caller-supplied transaction list. Used
     /// by callers that already loaded transactions via `fetchAllChecked`,
     /// so a single decode failure surfaces once instead of twice and a
     /// transient zero from a hidden re-read can't contradict the surfaced
-    /// banner (issue #117).
+    /// banner (issue #117). Wake days are still read fresh from the store —
+    /// they live in a separate ledger that the transaction snapshot doesn't
+    /// cover.
     func currentStreak(from transactions: [Transaction]) -> Int {
-        Self.computeStreak(from: transactions)
-    }
-
-    /// Pure function over a transaction list — extracted so `currentStreak()`
-    /// and `currentStreak(from:)` cannot drift apart. Lives as `static` so
-    /// it can't accidentally read instance state and reintroduce the silent
-    /// decode the caller-supplied variant exists to avoid.
-    private static func computeStreak(from transactions: [Transaction]) -> Int {
-        guard !transactions.isEmpty else { return 0 }
-
-        let calendar = Calendar.current
-        var streak = 0
-        var checkDate = calendar.startOfDay(for: Date())
-        let allCharges = transactions.filter { $0.type == .charge }
-        let chargeDates = Set(allCharges.map { calendar.startOfDay(for: $0.createdAt) })
-
-        let firstTransactionDate = calendar.startOfDay(
-            for: transactions.map { $0.createdAt }.min() ?? Date()
+        StreakCalculator.currentStreak(
+            transactions: transactions,
+            wakeDays: wakeStore.wakeDays()
         )
-
-        while !chargeDates.contains(checkDate) && checkDate >= firstTransactionDate {
-            streak += 1
-            guard let previous = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
-            checkDate = previous
-        }
-
-        return streak
     }
 
     // MARK: - Recovery
