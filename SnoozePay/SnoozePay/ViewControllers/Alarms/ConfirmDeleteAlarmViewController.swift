@@ -25,9 +25,11 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
 
     // MARK: - Body copy
 
-    /// Subtitle line shown below the headline. Defaults to the V2 copy "Деньги
-    /// с баланса не вернутся. Это безвозвратно."; the host can override to
-    /// surface alarm-specific context (name + repeat + time).
+    /// Subtitle line shown below the headline. Defaults to the design's
+    /// reassurance copy «Баланс N ₽ останется на месте — он привязан к
+    /// аккаунту, а не к будильнику» with the live balance interpolated
+    /// (#277); the host should pass `AlarmDeletionCopy.body(contextLine:
+    /// balance:)` to prepend alarm-specific context (repeat + time).
     private let bodyCopy: String
 
     // MARK: - UI
@@ -122,12 +124,13 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     // MARK: - Init
 
     /// - Parameters:
-    ///   - body: Subtitle copy. Defaults to the V2 spec text. Pass a tailored
-    ///     line (e.g. "Будни · Пн–Пт · 07:00") when the alarm context is rich.
+    ///   - body: Subtitle copy. Defaults to the balance-stays-put reassurance
+    ///     with the live balance (#277). Pass a tailored composition (e.g.
+    ///     "Будни · Пн–Пт · 07:00. Баланс …") when the alarm context is rich.
     ///   - onConfirm: Closure invoked on the destructive tap. The sheet
     ///     dismisses itself before firing the callback.
     init(
-        body: String = "Деньги с баланса не вернутся. Это безвозвратно.",
+        body: String = AlarmDeletionCopy.body(balance: BalanceService.shared.balance),
         onConfirm: (() -> Void)? = nil
     ) {
         self.bodyCopy = body
