@@ -40,11 +40,17 @@ final class CreateAlarmViewModel {
     /// must clamp on load so the slider can render the value without crashing.
     static let snoozeMinutesRange: ClosedRange<Int> = 1...15
 
-    init(alarm: Alarm? = nil, repository: AlarmRepository = .shared) {
+    init(
+        alarm: Alarm? = nil,
+        repository: AlarmRepository = .shared,
+        defaults: AlarmDefaults = .shared
+    ) {
         self.alarmRepository = repository
         self.existingID = alarm?.id
 
-        // Seed from existing alarm or defaults
+        // Seed from existing alarm or — for a brand-new alarm — the user's
+        // global defaults (#283). Editing an existing alarm always keeps its
+        // own saved values; only `alarm == nil` falls through to the defaults.
         self.time = alarm?.time ?? Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
         self.repeatDays = alarm?.repeatDays ?? []
         // New alarms start with an empty name so the form shows the
@@ -52,15 +58,15 @@ final class CreateAlarmViewModel {
         // back to "Будильник" when the user saves without typing one.
         self.name = alarm?.name ?? ""
         self.soundID = alarm?.soundID ?? "radar"
-        self.vibrationEnabled = alarm?.vibrationEnabled ?? true
+        self.vibrationEnabled = alarm?.vibrationEnabled ?? defaults.vibrationEnabled
         // Clamp legacy values silently — pre-#143 alarms could store up to 30
         // minutes (old stepper range). The form's slider now caps at 15.
-        let rawSnooze = alarm?.snoozeMinutes ?? 9
+        let rawSnooze = alarm?.snoozeMinutes ?? defaults.snoozeMinutes
         self.snoozeMinutes = min(max(rawSnooze, Self.snoozeMinutesRange.lowerBound), Self.snoozeMinutesRange.upperBound)
         self.penaltyAmount = alarm?.penaltyAmount ?? 50
-        self.progressiveScale = alarm?.progressiveScale ?? false
+        self.progressiveScale = alarm?.progressiveScale ?? defaults.progressiveScale
         self.enabled = alarm?.enabled ?? true
-        self.volume = alarm?.volume ?? 1.0
+        self.volume = alarm?.volume ?? defaults.volume
         self.volumeFadeIn = alarm?.volumeFadeIn ?? false
         self.theme = alarm?.theme ?? .dawn
         self.repeatMode = alarm?.repeatMode ?? .weekly

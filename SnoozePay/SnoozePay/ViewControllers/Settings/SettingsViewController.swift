@@ -1,12 +1,22 @@
 import UIKit
 import os
 
-/// Settings screen matching Figma design: account, theme, legal, contact sections.
+/// Settings screen, V3 layout per design (`SPMore4.jsx:344-431`, #283).
+///
+/// Sections: Финансы (default price · snooze duration) · Звук и уведомления
+/// (volume → picker · Critical Alerts · vibration) · Правила (progressive
+/// price) · Пригласить друга · Прочее (privacy · terms · contact · theme) +
+/// a `SnoozePay {version} · build {build}` footer.
+///
+/// The legacy АККАУНТ section (transaction history + balance) was removed —
+/// history is canonical in the Wallet tab now, so the duplicate row pushed a
+/// stale non-V3 list.
 class SettingsViewController: UIViewController {
 
     // MARK: - Dependencies
 
     private let themeService: ThemeService
+    let alarmDefaults: AlarmDefaults
 
     // MARK: - UI
 
@@ -20,8 +30,9 @@ class SettingsViewController: UIViewController {
 
     // MARK: - Init
 
-    init(themeService: ThemeService = .shared) {
+    init(themeService: ThemeService = .shared, alarmDefaults: AlarmDefaults = .shared) {
         self.themeService = themeService
+        self.alarmDefaults = alarmDefaults
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -29,21 +40,38 @@ class SettingsViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    /// NotificationCenter token for balance-change updates. Removed in `deinit`.
-    private var balanceObserver: NSObjectProtocol?
-
     // MARK: - Sections
 
     /// `internal` so the cross-file `SettingsViewController+Referral`
     /// extension can read `Section.referral` for the `reloadSections`
     /// call (issue #144).
     enum Section: Int, CaseIterable {
-        case account    // Transaction history + Balance
-        case finance    // Default snooze price (display-only, no PaymentMethods in MVP — #237)
-        case referral   // My code (copyable) + friend's code input + caption
-        case appearance // Theme selector (system / light / dark)
-        case info       // Privacy policy + Terms
-        case contact    // Contact us
+        case finance            // Default price + snooze duration
+        case soundNotifications // Volume → picker · Critical Alerts · vibration
+        case rules              // Progressive price default
+        case referral           // My code (copyable) + friend's code input + caption
+        case other              // Privacy · Terms · Contact · Theme segment
+    }
+
+    /// Row layout inside `.finance`.
+    enum FinanceRow: Int, CaseIterable {
+        case defaultPrice    // "Цена откладывания по умолчанию · 50 ₽"
+        case snoozeDuration  // "Длительность откладывания · 9 мин"
+    }
+
+    /// Row layout inside `.soundNotifications`.
+    enum SoundRow: Int, CaseIterable {
+        case volume          // "Громкость · 80%" → VolumePickerViewController
+        case criticalAlerts  // disabled switch + "Недоступно" hint
+        case vibration       // switch (global default)
+    }
+
+    /// Row layout inside `.other`.
+    enum OtherRow: Int, CaseIterable {
+        case privacy
+        case terms
+        case contact
+        case theme           // SPSegmented system / light / dark
     }
 
     /// Row layout inside `.referral`. Indexed positions stay readable when
@@ -74,43 +102,12 @@ class SettingsViewController: UIViewController {
         navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = AppColors.bg0
         setupUI()
-        observeBalanceChanges()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // Re-read defaults (volume may have changed in the pushed picker).
         tableView.reloadData()
-    }
-
-    deinit {
-        if let token = balanceObserver {
-            NotificationCenter.default.removeObserver(token)
-        }
-    }
-
-    // MARK: - Balance live-update
-
-    /// Subscribe to balance changes so the row updates immediately after a
-    /// top-up that happens while Settings is on-screen (e.g. another tab posts
-    /// a change). Without this, the balance only refreshes on `viewWillAppear`.
-    ///
-    /// Reloading the row (rather than poking a weak label reference) keeps a
-    /// single source of truth: `makeBalanceRow` reads the fresh balance on
-    /// every dequeue, so live updates and scroll-back-into-view share one
-    /// code path and recycled cells can never show a stale amount (#203).
-    private func observeBalanceChanges() {
-        balanceObserver = NotificationCenter.default.addObserver(
-            forName: BalanceService.balanceChangedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Off-screen updates are covered by `viewWillAppear`'s
-            // `reloadData`, so only touch the table while it's in a window —
-            // this also sidesteps reload-before-initial-load edge cases.
-            guard let self, self.tableView.window != nil else { return }
-            let balanceRow = IndexPath(row: 1, section: Section.account.rawValue)
-            self.tableView.reloadRows(at: [balanceRow], with: .none)
-        }
     }
 
     // MARK: - Setup
@@ -128,6 +125,8 @@ class SettingsViewController: UIViewController {
         )
         tableView.register(ReferralCaptionCell.self, forCellReuseIdentifier: ReferralCaptionCell.reuseID)
 
+        tableView.tableFooterView = makeVersionFooter()
+
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -139,7 +138,7 @@ class SettingsViewController: UIViewController {
     // MARK: - Theme
 
     /// Map stored preference to segment index: 0=system, 1=light, 2=dark.
-    private var themeSegmentIndex: Int {
+    var themeSegmentIndex: Int {
         switch themeService.current {
         case .system: return 0
         case .light: return 1
@@ -147,7 +146,7 @@ class SettingsViewController: UIViewController {
         }
     }
 
-    private func handleThemeSegmentChange(_ index: Int) {
+    func handleThemeSegmentChange(_ index: Int) {
         let theme: ThemeService.Theme
         switch index {
         case 1: theme = .light
@@ -169,24 +168,22 @@ extension SettingsViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         guard let sec = Section(rawValue: section) else { return 0 }
         switch sec {
-        case .account: return 2    // Transaction history, Balance
-        case .finance: return 1    // Default snooze price
-        case .referral: return ReferralRow.allCases.count
-        case .appearance: return 1 // Dark theme
-        case .info: return 2       // Privacy, Terms
-        case .contact: return 1    // Contact us
+        case .finance:            return FinanceRow.allCases.count
+        case .soundNotifications: return SoundRow.allCases.count
+        case .rules:              return 1 // Прогрессивная цена
+        case .referral:           return ReferralRow.allCases.count
+        case .other:              return OtherRow.allCases.count
         }
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
-        case .account: return "АККАУНТ"
-        case .finance: return "ФИНАНСЫ"
-        case .referral: return "ПРИГЛАСИТЬ ДРУГА"
-        case .appearance: return "ОФОРМЛЕНИЕ"
-        case .info: return "ИНФОРМАЦИЯ"
-        case .contact: return "СВЯЗАТЬСЯ"
+        case .finance:            return "ФИНАНСЫ"
+        case .soundNotifications: return "ЗВУК И УВЕДОМЛЕНИЯ"
+        case .rules:              return "ПРАВИЛА"
+        case .referral:           return "ПРИГЛАСИТЬ ДРУГА"
+        case .other:              return "ПРОЧЕЕ"
         }
     }
 
@@ -213,43 +210,12 @@ extension SettingsViewController: UITableViewDataSource {
         guard let section = Section(rawValue: indexPath.section) else { return UITableViewCell() }
 
         switch section {
-        case .account:    return makeAccountCell(at: indexPath)
-        case .finance:    return makeDefaultPriceRow(at: indexPath)
-        case .referral:   return makeReferralCell(at: indexPath)
-        case .appearance: return makeAppearanceCell(tableView, at: indexPath)
-        case .info:       return makeInfoRow(at: indexPath)
-        case .contact:    return makeContactRow(at: indexPath)
+        case .finance:            return makeFinanceCell(at: indexPath)
+        case .soundNotifications: return makeSoundCell(at: indexPath)
+        case .rules:              return makeRulesCell(at: indexPath)
+        case .referral:           return makeReferralCell(at: indexPath)
+        case .other:              return makeOtherCell(tableView, at: indexPath)
         }
-    }
-
-    /// Account section dispatches between the History row (`row == 0`) and
-    /// the Balance row (`row == 1`). Split off `cellForRowAt` so the main
-    /// switch stays a one-screen overview (#182).
-    private func makeAccountCell(at indexPath: IndexPath) -> UITableViewCell {
-        indexPath.row == 0 ? makeTransactionHistoryRow(at: indexPath) : makeBalanceRow(at: indexPath)
-    }
-
-    /// Dequeue + configure for the segmented Theme cell. Pulled out of
-    /// `cellForRowAt` so the main switch stays under SwiftLint's
-    /// `function_body_length` cap (#182).
-    private func makeAppearanceCell(
-        _ tableView: UITableView,
-        at indexPath: IndexPath
-    ) -> UITableViewCell {
-        // Dedicated cell type owns the segment control — avoids the previous
-        // removeFromSuperview/re-add dance that left the control bound to
-        // whichever cell rendered last.
-        guard let cell = tableView.dequeueReusableCell(
-            withIdentifier: ThemeSegmentCell.reuseID,
-            for: indexPath
-        ) as? ThemeSegmentCell else {
-            assertionFailure("dequeueReusableCell returned wrong type for \(ThemeSegmentCell.reuseID)")
-            return UITableViewCell()
-        }
-        cell.configure(selectedIndex: themeSegmentIndex) { [weak self] index in
-            self?.handleThemeSegmentChange(index)
-        }
-        return cell
     }
 }
 
@@ -260,7 +226,7 @@ extension SettingsViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         guard let section = Section(rawValue: indexPath.section) else { return 52 }
         switch section {
-        case .appearance:
+        case .other where OtherRow(rawValue: indexPath.row) == .theme:
             return 56
         case .referral:
             // Friend-input row hosts an SPInput (52pt field + label + hint);
@@ -272,6 +238,9 @@ extension SettingsViewController: UITableViewDelegate {
             case .friendInput: return UITableView.automaticDimension
             case .caption:     return UITableView.automaticDimension
             }
+        case .soundNotifications where SoundRow(rawValue: indexPath.row) == .criticalAlerts:
+            // Two-line subtitle hint ("Недоступно — нужно одобрение Apple").
+            return UITableView.automaticDimension
         default:
             return 52
         }
@@ -281,9 +250,7 @@ extension SettingsViewController: UITableViewDelegate {
         // `automaticDimension` paths above need an estimate or the table
         // collapses on first layout pass. 52pt matches the rest of the
         // settings rows for visual continuity.
-        guard let section = Section(rawValue: indexPath.section),
-              section == .referral else { return 52 }
-        return 80
+        52
     }
 
     /// Apply the shared card-style background to every row so each
@@ -301,11 +268,18 @@ extension SettingsViewController: UITableViewDelegate {
         guard let section = Section(rawValue: indexPath.section) else { return }
 
         switch section {
-        case .account:
-            if indexPath.row == 0 {
-                let historyVC = TransactionHistoryViewController()
-                navigationController?.pushViewController(historyVC, animated: true)
+        case .finance:
+            if FinanceRow(rawValue: indexPath.row) == .snoozeDuration {
+                presentSnoozeDurationPicker()
             }
+
+        case .soundNotifications:
+            if SoundRow(rawValue: indexPath.row) == .volume {
+                pushVolumePicker()
+            }
+
+        case .rules:
+            break
 
         case .referral:
             // Only the "Ваш код" row has a tap behaviour — the input row owns
@@ -315,17 +289,28 @@ extension SettingsViewController: UITableViewDelegate {
                 copyMyCodeToPasteboard()
             }
 
-        case .finance, .appearance:
-            break
+        case .other:
+            handleOtherTap(row: indexPath.row)
+        }
+    }
 
-        case .info:
-            let title = indexPath.row == 0 ? "Политика конфиденциальности" : "Пользовательское соглашение"
-            let legalVC = LegalViewController(title: title)
-            navigationController?.pushViewController(legalVC, animated: true)
-
+    /// `.other` row taps split off so `didSelectRowAt` stays under SwiftLint's
+    /// cyclomatic-complexity cap (the nested switch otherwise pushes it over).
+    private func handleOtherTap(row: Int) {
+        switch OtherRow(rawValue: row) {
+        case .privacy:
+            pushLegal(title: "Политика конфиденциальности")
+        case .terms:
+            pushLegal(title: "Пользовательское соглашение")
         case .contact:
             openMailto()
+        case .theme, .none:
+            break
         }
+    }
+
+    private func pushLegal(title: String) {
+        navigationController?.pushViewController(LegalViewController(title: title), animated: true)
     }
 
     private func openMailto() {
@@ -334,9 +319,3 @@ extension SettingsViewController: UITableViewDelegate {
         }
     }
 }
-
-// `TransactionHistoryViewController`, `TransactionCell`,
-// `SettingsSectionHeaderView`, and `LegalViewController` were extracted to
-// sibling extension files (`+TransactionCell.swift`, `+Sections.swift`,
-// `+Legal.swift`) in #182 to satisfy SwiftLint's `file_length` cap. Behaviour
-// is unchanged — only the physical location moved.
