@@ -23,17 +23,45 @@ extension AlarmFiringViewController {
         timeLabel.text = AlarmFiringTimeFormatter.string(from: Date())
     }
 
+    // MARK: Clock mount animation
+
+    /// Seed the clock's pre-entrance state: invisible, slightly enlarged (a
+    /// soft "out-of-focus" proxy for the CA blur the design uses), and sunk
+    /// 8pt below its resting position. `SPDawnV3.jsx:48-67` fades + blurs +
+    /// rises the time on mount; CA blur on a live-ticking label is impractical,
+    /// so we approximate it with a subtle scale-down + alpha-up + 8pt rise.
+    func prepareClockMountState() {
+        timeLabel.alpha = 0
+        timeLabel.transform = CGAffineTransform(translationX: 0, y: 8)
+            .scaledBy(x: 1.04, y: 1.04)
+    }
+
+    /// Play the 800ms fade + blur-to-sharp + 8px rise entrance once the screen
+    /// is on-window. Keeps it subtle per the issue's caution.
+    func playClockMountAnimation() {
+        UIView.animate(
+            withDuration: 0.8,
+            delay: 0,
+            options: [.curveEaseOut, .beginFromCurrentState],
+            animations: {
+                self.timeLabel.alpha = 1
+                self.timeLabel.transform = .identity
+            }
+        )
+    }
+
     // MARK: Glow breathing
 
-    /// 4s ease-in-out autoreverse opacity pulse on the Dawn background's sun
-    /// layer. Driven via CABasicAnimation because the sun is a CAGradientLayer
-    /// (not a view). V2 spec retains the "breathing" character from V1 — the
-    /// warm radial just lives inside `SPDawnBackgroundView.sunLayer` now.
+    /// 8s ease-in-out autoreverse opacity pulse on the Dawn background's sun
+    /// layer (`SPDawnV3.jsx:3` — "медленно дышит (8s)"). Driven via
+    /// CABasicAnimation because the sun is a CAGradientLayer (not a view). V2
+    /// spec retains the "breathing" character from V1 — the warm radial just
+    /// lives inside `SPDawnBackgroundView.sunLayer` now.
     func startGlowBreathing() {
         let animation = CABasicAnimation(keyPath: "opacity")
         animation.fromValue = 0.55
         animation.toValue = 1.0
-        animation.duration = 4.0
+        animation.duration = 8.0
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         animation.autoreverses = true
         animation.repeatCount = .infinity

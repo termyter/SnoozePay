@@ -6,11 +6,12 @@ import os
 /// to top up the wallet mid-alarm so they can keep snoozing.
 ///
 /// V2 spec: `docs/design/v2-handoff/components/SPTopUp.jsx`
-/// `FiringTopUpPresets` (lines 103–197). Three preset rows feed a single Apple
-/// Pay primary CTA; each row's amount is the catalogue amount of its mapped SKU
-/// (#275) so display == charge == credit. Visuals match the V2 design
-/// system — bg2 surface, 28pt top corners, caps "ПОПОЛНИТЬ" + close X header,
-/// SPAmountPreset row, money-toned Apple Pay button, footer meta.
+/// `FiringTopUpPresets` (lines 103–197). Three vertical preset rows feed a
+/// single Apple Pay primary CTA; each row's amount is the catalogue amount of
+/// its mapped SKU (#275/#297) so display == charge == credit. Visuals match the
+/// V2 design system — bg1 surface, 28pt top corners, a pulsing warn dot + caps
+/// «Будильник на паузе · MM:SS» + h2 «Пополнить баланс» header, full-width
+/// preset rows, money-toned Apple Pay button, footer meta.
 ///
 /// Side effects beyond pixel layout:
 /// - On `viewWillAppear` the alarm audio + escalation timer are paused via
@@ -36,7 +37,11 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         /// of `productID` for the current catalogue (or the real product price
         /// once `StoreKitService` has loaded it).
         let amount: Int
+        /// Row title — «+1 откладывание» / «+несколько» / «+неделя»
+        /// (`SPTopUp.jsx:106-108`).
         let label: String
+        /// Row subtitle hint — «ровно на сейчас» etc (`SPTopUp.jsx:106-108`).
+        let hint: String
         let popular: Bool
         /// StoreKit product ID. Falls back to `BalanceService.topUp(amount:)`
         /// when not loaded so debug paths still credit the wallet — with the
@@ -46,21 +51,32 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         /// Build a preset whose displayed amount is the catalogue amount of the
         /// supplied SKU. Returns nil for an unknown SKU so we never render an
         /// invented number.
-        init?(productID: String, label: String, popular: Bool) {
+        init?(productID: String, label: String, hint: String, popular: Bool) {
             guard let catalogAmount = StoreKitService.catalogAmount(for: productID) else { return nil }
             self.amount = catalogAmount
             self.label = label
+            self.hint = hint
             self.popular = popular
             self.productID = productID
         }
     }
 
     /// Default preset list. Amounts are resolved from the SKU catalogue so each
-    /// tile shows exactly what the App Store charges and the ledger credits.
+    /// row shows exactly what the App Store charges and the ledger credits
+    /// (#297). Labels / hints follow `SPTopUp.jsx:106-108`.
     static let defaultPresets: [Preset] = [
-        Preset(productID: "com.snooze_pay.balance.149", label: "ровно на сейчас", popular: false),
-        Preset(productID: "com.snooze_pay.balance.499", label: "на пару дней", popular: true),
-        Preset(productID: "com.snooze_pay.balance.999", label: "забыть про баланс", popular: false)
+        Preset(
+            productID: "com.snooze_pay.balance.149",
+            label: "+1 откладывание", hint: "ровно на сейчас", popular: false
+        ),
+        Preset(
+            productID: "com.snooze_pay.balance.499",
+            label: "+несколько", hint: "на пару дней", popular: true
+        ),
+        Preset(
+            productID: "com.snooze_pay.balance.999",
+            label: "+неделя", hint: "забыть про баланс", popular: false
+        )
     ].compactMap { $0 }
 
     // MARK: - Configuration
@@ -113,15 +129,26 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return view
     }()
 
-    /// Caps "ПОПОЛНИТЬ" header — fg3 colour matches `SPTopUp.jsx` line 137.
-    private let titleCapsLabel: UILabel = {
+    /// h2 «Пополнить баланс» header (`SPTopUp.jsx:138`).
+    private let titleH2Label: UILabel = {
         let label = UILabel()
+        label.font = AppTypography.h2
+        label.textColor = .white
+        label.text = "Пополнить баланс"
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    /// Optional pause countdown label "Будильник на паузе · 00:54". Rendered
-    /// inline with the title row. Mirrors SPTopUp line 137.
+    /// Pulsing 8pt warn dot to the left of the pause caps (`SPTopUp.jsx:136`).
+    private let pauseDot: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppColors.warn400
+        view.layer.cornerRadius = 4
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    /// Caps pause countdown «Будильник на паузе · 00:54» (`SPTopUp.jsx:137`).
     private let pauseLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -151,13 +178,13 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return label
     }()
 
-    /// Horizontal row of `SPAmountPreset` tiles. V2 spec arranges three
-    /// presets edge-to-edge with equal width — `distribution = .fillEqually`.
-    private var presetTiles: [SPAmountPreset] = []
+    /// Vertical column of full-width preset rows (`SPTopUp.jsx:144-175`): each
+    /// row shows the «+1 откладывание» title + hint on the left and the rouble
+    /// amount + a check chip on the right when selected.
+    private var presetRows: [FiringTopUpPresetRow] = []
     private let presetStack: UIStackView = {
         let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.distribution = .fillEqually
+        stack.axis = .vertical
         stack.spacing = AppSpacing.sp2
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
@@ -227,11 +254,10 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     init(presets: [Preset] = defaultPresets) {
         self.presets = presets
-        // Default-select the "popular" preset per V2 spec line 107; fall back to
-        // the first preset if none are marked popular, then to 0 (no invented
-        // literal) if the list is empty — see #275.
-        self.selectedAmount = presets.first(where: { $0.popular })?.amount
-            ?? presets.first?.amount ?? 0
+        // Default-select the SMALLEST preset per `SPTopUp.jsx:118` (the sheet
+        // opens pre-selecting the cheapest "ровно на сейчас" tier). Falls back
+        // to 0 (no invented literal) if the list is empty — see #275/#297.
+        self.selectedAmount = presets.map(\.amount).min() ?? 0
         self.remainingSeconds = 60
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
@@ -240,9 +266,11 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             // preset row + apple pay + footer). Falls back to .medium on
             // older runtimes.
             if #available(iOS 16.0, *) {
+                // ~560pt — header + three full-width preset rows + apple pay +
+                // footer. Taller than the old horizontal-tile comp (#288).
                 let custom = UISheetPresentationController.Detent.custom(
                     identifier: UISheetPresentationController.Detent.Identifier("snoozepay.topup")
-                ) { _ in 440 }
+                ) { _ in 560 }
                 sheet.detents = [custom, .large()]
             } else {
                 sheet.detents = [.medium(), .large()]
@@ -271,7 +299,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = AppColors.bg2
+        // Sheet surface bg1 per `SPTopUp.jsx:135-142` (#288).
+        view.backgroundColor = AppColors.bg1
         // Per the spec the firing screen overlay is dark; pin the sheet to
         // dark so SPAmountPreset / SPButton tokens resolve against the same
         // palette as the host VC.
@@ -311,28 +340,27 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        // Header row: caps title + pause countdown stacked vertically on
-        // the left, close X on the right.
-        titleCapsLabel.attributedText = NSAttributedString(
-            string: "ПОПОЛНИТЬ",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
+        // Header column (`SPTopUp.jsx:135-142`): a pulsing warn dot + caps
+        // pause countdown on top, then the h2 «Пополнить баланс». Close X sits
+        // top-right of the row.
 
         // Seed the subtitle with the real smallest preset amount (catalogue
         // amount of the cheapest SKU) so the "Минимум — N ₽" copy matches what
-        // the App Store actually charges — see #275.
+        // the App Store actually charges — see #275/#297.
         let minimumAmount = presets.map(\.amount).min() ?? 0
         subtitleLabel.text = "Минимум — \(MoneyFormatter.string(minimumAmount)) на следующее откладывание. "
             + "Можно больше, чтобы не возвращаться сюда."
 
-        let headerLeftStack = UIStackView(arrangedSubviews: [titleCapsLabel, pauseLabel])
+        let pauseRow = UIStackView(arrangedSubviews: [pauseDot, pauseLabel])
+        pauseRow.translatesAutoresizingMaskIntoConstraints = false
+        pauseRow.axis = .horizontal
+        pauseRow.spacing = AppSpacing.sp2   // 8pt — matches the JSX `gap: 8`
+        pauseRow.alignment = .center
+
+        let headerLeftStack = UIStackView(arrangedSubviews: [pauseRow, titleH2Label])
         headerLeftStack.translatesAutoresizingMaskIntoConstraints = false
         headerLeftStack.axis = .vertical
-        headerLeftStack.spacing = 2
+        headerLeftStack.spacing = AppSpacing.sp2   // 8pt between caps row and h2
         headerLeftStack.alignment = .leading
 
         let headerRow = UIStackView(arrangedSubviews: [headerLeftStack, closeButton])
@@ -340,6 +368,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         headerRow.axis = .horizontal
         headerRow.alignment = .top
         headerRow.distribution = .equalSpacing
+
+        startPauseDotPulse()
 
         view.addSubview(dragHandle)
         view.addSubview(headerRow)
@@ -377,6 +407,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
             closeButton.widthAnchor.constraint(equalToConstant: 32),
             closeButton.heightAnchor.constraint(equalToConstant: 32),
+
+            pauseDot.widthAnchor.constraint(equalToConstant: 8),
+            pauseDot.heightAnchor.constraint(equalToConstant: 8),
 
             // Subtitle
             subtitleLabel.topAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: AppSpacing.sp2),
@@ -429,16 +462,16 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     private func setupPresetTiles() {
         for preset in presets {
-            let tile = SPAmountPreset(
-                value: Decimal(preset.amount),
-                label: preset.label,
-                selected: preset.amount == selectedAmount,
-                popular: preset.popular
+            let row = FiringTopUpPresetRow(
+                title: preset.label,
+                hint: preset.hint,
+                amount: preset.amount,
+                selected: preset.amount == selectedAmount
             ) { [weak self] in
                 self?.selectAmount(preset.amount)
             }
-            presetStack.addArrangedSubview(tile)
-            presetTiles.append(tile)
+            presetStack.addArrangedSubview(row)
+            presetRows.append(row)
         }
     }
 
@@ -497,8 +530,8 @@ extension FiringTopUpBottomSheetViewController {
     private func selectAmount(_ amount: Int) {
         guard amount != selectedAmount else { return }
         selectedAmount = amount
-        for (tile, preset) in zip(presetTiles, presets) {
-            tile.isSelected = preset.amount == amount
+        for (row, preset) in zip(presetRows, presets) {
+            row.isSelected = preset.amount == amount
         }
         rebuildApplePayButton()
     }
@@ -568,7 +601,8 @@ extension FiringTopUpBottomSheetViewController {
         )
         successContainer.isHidden = false
         UIView.animate(withDuration: SPSupport.durationBase) {
-            self.titleCapsLabel.alpha = 0
+            self.titleH2Label.alpha = 0
+            self.pauseDot.alpha = 0
             self.pauseLabel.alpha = 0
             self.subtitleLabel.alpha = 0
             self.presetStack.alpha = 0
@@ -630,14 +664,30 @@ extension FiringTopUpBottomSheetViewController {
         }
     }
 
+    /// 0.4 → 1.0 opacity autoreverse pulse on the warn dot, 1.6s each leg —
+    /// matches the `sp-pulse` keyframe the JSX warn dot rides (`SPTopUp.jsx:
+    /// 136`). CABasicAnimation so it keeps running through UIKit interactions.
+    private func startPauseDotPulse() {
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 0.4
+        pulse.toValue = 1.0
+        pulse.duration = 1.6
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pauseDot.layer.add(pulse, forKey: "pauseDotPulse")
+    }
+
     private func updatePauseLabel() {
         let minutes = remainingSeconds / 60
         let seconds = remainingSeconds % 60
         let countdown = String(format: "%02d:%02d", minutes, seconds)
+        // Caps «Будильник на паузе · MM:SS» per `SPTopUp.jsx:137`.
         let attributed = NSAttributedString(
-            string: "На паузе · \(countdown)",
+            string: "Будильник на паузе · \(countdown)".uppercased(),
             attributes: [
-                .font: AppTypography.meta.monospacedDigit(),
+                .font: AppTypography.caps.monospacedDigit(),
+                .kern: AppTypography.capsKerning,
                 .foregroundColor: AppColors.warn300
             ]
         )

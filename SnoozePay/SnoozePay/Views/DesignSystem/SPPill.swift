@@ -104,6 +104,32 @@ final class SPPill: UIView {
         label.attributedText = attributed
     }
 
+    /// Two-tier balance variant — a muted caps label segment («Баланс») next
+    /// to a bold value segment («840 ₽»), per `SPDawnV3.jsx:97-109`
+    /// (`dawn-bal__label` at .55 alpha + bold `dawn-bal__value`). Both segments
+    /// inherit the tone foreground; only the label is dimmed. The value keeps a
+    /// hair of tracking so the mono-ish digits don't crowd the glyph.
+    func setBalance(label labelText: String, value: String) {
+        let ink = label.textColor ?? AppColors.fg2
+        let result = NSMutableAttributedString(
+            string: labelText.uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: 12 * 0.14,
+                .foregroundColor: ink.withAlphaComponent(0.55)
+            ]
+        )
+        result.append(NSAttributedString(
+            string: "  \(value)",
+            attributes: [
+                .font: AppFonts.sans(.bold, 13),
+                .kern: 0.2,
+                .foregroundColor: ink
+            ]
+        ))
+        label.attributedText = result
+    }
+
     /// Override the tone-derived colours with theme-accent values — used by
     /// the V3 themed firing screen (#225) where the balance pill picks up
     /// the alarm theme's accent (`pillBg` / `pillBorder` / `accent` in

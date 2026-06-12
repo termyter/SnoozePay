@@ -11,12 +11,13 @@ import UIKit
 /// 2. **Overlay** — radial gradient anchored at the bottom centre (50% 100%),
 ///    blending warn-amber rgba(245,158,11,.22) → pain rgba(244,82,63,.10) →
 ///    transparent at 60%. Sells the "rising heat" cue.
-/// 3. **Sun** — 320×320pt blurred circle anchored 120pt below the bottom edge.
-///    Driven by either the warn or pain radial palette depending on `tone`.
+/// 3. **Sun** — 480×480pt blurred circle anchored 180pt below the bottom edge
+///    (`SPDawnV3.jsx:30-33`). Driven by either the warn or pain radial palette
+///    depending on `tone`.
 ///
 /// The view owns three CAGradientLayers (base, overlay, sun) and reflows them
 /// on every layout pass so rotation / safe-area changes work without per-frame
-/// recompute. The sun layer hosts the 4s opacity breathing animation so
+/// recompute. The sun layer hosts the 8s opacity breathing animation so
 /// `AlarmFiringViewController.startGlowBreathing()` keeps working unchanged.
 final class SPDawnBackgroundView: UIView {
 
@@ -55,14 +56,14 @@ final class SPDawnBackgroundView: UIView {
         return gradient
     }()
 
-    /// 320×320 sun circle, anchored ~120pt below the bottom edge. Public so
-    /// the firing VC can attach the 4s opacity breathing animation.
+    /// 480×480 sun circle, anchored ~180pt below the bottom edge. Public so
+    /// the firing VC can attach the 8s opacity breathing animation.
     let sunLayer: CAGradientLayer = {
         let gradient = CAGradientLayer()
         gradient.type = .radial
         gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
         gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
-        // 320pt circle anchored ~120pt below the bottom edge — the upper
+        // 480pt circle anchored ~180pt below the bottom edge — the upper
         // hemisphere bleeds into the screen as the rising warmth.
         return gradient
     }()
@@ -104,10 +105,11 @@ final class SPDawnBackgroundView: UIView {
         baseLayer.frame = bounds
         overlayLayer.frame = bounds
 
-        // Sun: 320×320pt anchored 120pt below the bottom edge. Centered
-        // horizontally. The upper hemisphere reads as the rising glow.
-        let sunSize: CGFloat = 320
-        let sunY = bounds.height - 120
+        // Sun: 480×480pt whose BOTTOM sits 180pt below the screen edge
+        // (`SPDawnV3.jsx:30` — `bottom: -180px`). Centered horizontally; the
+        // upper hemisphere bleeds in as the rising glow.
+        let sunSize: CGFloat = 480
+        let sunY = bounds.height + 180 - sunSize
         sunLayer.frame = CGRect(
             x: (bounds.width - sunSize) / 2,
             y: sunY,
@@ -140,7 +142,8 @@ final class SPDawnBackgroundView: UIView {
             UIColor(dawnRGB: 0x0E1320).cgColor,
             UIColor(dawnRGB: 0x1A1410).cgColor
         ]
-        baseLayer.locations = [0.0, 0.6, 1.0]
+        // Mid-stop 0.55 per `SPDawnV3.jsx:20` (`#0E1320 55%`).
+        baseLayer.locations = [0.0, 0.55, 1.0]
         // Overlay: warn 22% → pain 10% → transparent
         overlayLayer.colors = [
             UIColor(dawnRGB: 0xF59E0B, alpha: 0.22).cgColor,

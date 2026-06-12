@@ -28,7 +28,7 @@ final class AlarmFiringHintTests: XCTestCase {
             snoozeCount: 0
         )
         XCTAssertEqual(vc.snoozeHintText(),
-                       "Следующее откладывание: \(MoneyFormatter.string(100))")
+                       "следующее откладывание: \(MoneyFormatter.string(100))")
     }
 
     func testSnoozeHint_showsNextPriceAtThirdRung() {
@@ -38,7 +38,7 @@ final class AlarmFiringHintTests: XCTestCase {
             snoozeCount: 1
         )
         XCTAssertEqual(vc.snoozeHintText(),
-                       "Следующее откладывание: \(MoneyFormatter.string(200))")
+                       "следующее откладывание: \(MoneyFormatter.string(200))")
     }
 
     func testSnoozeHint_showsMaxCopyAtCeiling() {

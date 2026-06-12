@@ -159,11 +159,14 @@ class AlarmFiringViewController: UIViewController {
     /// `internal` so the +NoBalance extension can hide / show this when
     /// swapping between the normal (balance OK) and no-balance layouts.
     /// V2 spec calls for the full "Я встал — выключить" copy, ghost variant,
-    /// lg size, full-width — matches `SPScreensV2.jsx` line 98.
+    /// lg size, full-width, with a leading 18pt checkmark and a heavier 1.5pt
+    /// white .22 stroke — matches `SPThemedFiring.jsx:188-203`. The stroke
+    /// override is applied in `buildFiringLayout`.
     let dismissButton = SPButton(
         title: "Я встал — выключить",
         variant: .ghost,
         size: .lg,
+        icon: UIImage(systemName: "checkmark"),
         fullWidth: true
     )
 
@@ -225,20 +228,24 @@ class AlarmFiringViewController: UIViewController {
     /// entirely — they never enter the layout pass.
     var progressiveStack: UIStackView?
 
-    /// "Прогрессив · N-е откладывание" pill above the snooze CTA. Re-titled
+    /// "Прогрессив · {n}-й поспать ещё" pill in the centre hero. Re-titled
     /// on every `updateUI()` so the label tracks `snoozeCount + 1`. V2 spec
     /// uses pain tone with an inline pulsing dot.
     var progressivePill: SPPill?
+
+    /// Dot + pill wrapper row. Hidden until the first snooze
+    /// (`SPDawnV3.jsx:216`); `updateUI()` un-hides it once `snoozeCount > 0`.
+    var progressivePillRow: UIStackView?
 
     /// Pulsing dot rendered to the left of `progressivePill`. CABasicAnimation
     /// drives a 0.4 → 1.0 opacity autoreverse pulse on 900ms cadence
     /// (`durationAnxious`).
     var progressivePulseDot: UIView?
 
-    /// Single-line ticker rendered between the pill and the snooze CTA.
-    /// `meta` typography, fg-3, mono digits — "сегодня: −50 → −100 → ..."
-    /// Hidden when `snoozeCount == 0` (no history to show yet).
-    var historyTicker: UILabel?
+    /// Container that hosts the history ticker chip row (coloured mini-pills
+    /// with «·» separators — amber < 200 ₽ / red ≥ 200 ₽). Rebuilt in place on
+    /// every `updateUI()`; hidden when `snoozeCount == 0` (no history yet).
+    var historyTickerContainer: UIStackView?
 
     /// Banner shown when AudioService falls back to vibration / silent mode.
     /// Hidden by default; surfaces only on `.silentBecauseConfigFailed` or
@@ -322,6 +329,15 @@ class AlarmFiringViewController: UIViewController {
         // Initial transition may have happened synchronously inside
         // `startAlarmSound` before our observer is wired — sync now.
         applyAudioState(AudioService.shared.state)
+
+        // Seed the clock's pre-mount state (faded, soft, sunk 8pt). The
+        // entrance animation plays in `viewDidAppear`.
+        prepareClockMountState()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        playClockMountAnimation()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -365,7 +381,7 @@ class AlarmFiringViewController: UIViewController {
 
         // Refresh snooze CTA — VM may have bumped `snoozeCount` (progressive
         // scaling) since the last update, which changes `currentPenalty`.
-        // The hint surfaces "Следующее откладывание: N ₽" when progressive
+        // The hint surfaces «следующее откладывание: N ₽» when progressive
         // is active and not at max, mirroring `SPScreensV2.jsx` line 96.
         if let snooze = snoozeCTA {
             snooze.update(
@@ -374,12 +390,9 @@ class AlarmFiringViewController: UIViewController {
                 hint: snoozeHintText()
             )
             snooze.isEnabled = viewModel.canSnooze
-            if viewModel.isProgressiveActive {
-                // Cross-fade the gradient toward pain as snoozeCount climbs.
-                // SPSnoozePrice.setTone is a no-op when intensity hasn't
-                // moved, so calling it on every updateUI() is cheap.
-                snooze.setTone(.progressive(intensity: viewModel.progressiveIntensity))
-            }
+            // The CTA stays GOLD on every progressive step (#288). Escalation
+            // is carried by the background tone crossfade + the indicator pill,
+            // never by reddening the button — so we no longer re-tone it here.
         }
 
         if viewModel.isProgressiveActive {
@@ -403,8 +416,9 @@ class AlarmFiringViewController: UIViewController {
         viewModel.canSnooze ? "Пора вставать" : "Только встать"
     }
 
-    /// Snooze CTA hint — "Следующее откладывание: N ₽" when progressive is
-    /// active and not at the price ceiling. Mirrors `SPScreensV2.jsx` line 96.
+    /// Snooze CTA hint — «следующее откладывание: N ₽» (lowercase per
+    /// `SPDawnV3.jsx:240`) when progressive is active and not at the price
+    /// ceiling. Mirrors `SPScreensV2.jsx` line 96.
     /// V1 passed nil here; V2 surfaces the escalating cost so the user can
     /// see what they're agreeing to. Once the ladder caps at `base × 8` there
     /// is no higher price to show, so we swap in the max-step copy
@@ -420,7 +434,8 @@ class AlarmFiringViewController: UIViewController {
         }
         let next = viewModel.alarm.penalty(forSnoozeCount: nextCount)
         let nextInt = Int(next.rounded())
-        return "Следующее откладывание: \(MoneyFormatter.string(nextInt))"
+        // Lowercase «следующее откладывание: …» per `SPDawnV3.jsx:240`.
+        return "следующее откладывание: \(MoneyFormatter.string(nextInt))"
     }
 
     /// Refresh the top-right balance pill so the displayed amount + tone
@@ -430,21 +445,23 @@ class AlarmFiringViewController: UIViewController {
         let balance = Int(viewModel.balance.rounded())
         let tone: SPPill.Tone = balance == 0 ? .pain : .money
         guard let pill = balancePill else { return }
-        pill.setText("Баланс \(MoneyFormatter.string(balance))")
+        let value = MoneyFormatter.string(balance)
+        pill.setBalance(label: "Баланс", value: value)
         // SPPill's `tone` is `let` (constructor-only), so we re-build when
         // the tone needs to flip between money and pain. Cheap — pill is a
         // 26pt-tall capsule with two labels.
         if pill.tone != tone {
-            rebuildBalancePill(tone: tone, text: "Баланс \(MoneyFormatter.string(balance))")
+            rebuildBalancePill(tone: tone, value: value)
         }
     }
 
     /// Replace the existing balance pill with a new instance using the
     /// supplied tone. Used when the balance crosses the 0 ↔ positive
     /// boundary and the chip needs to flip from money → pain or back.
-    private func rebuildBalancePill(tone: SPPill.Tone, text: String) {
+    private func rebuildBalancePill(tone: SPPill.Tone, value: String) {
         guard let old = balancePill else { return }
-        let new = SPPill(text: text, tone: tone, icon: SPIcons.coin(size: 12))
+        let new = SPPill(text: "", tone: tone, icon: SPIcons.coin(size: 12))
+        new.setBalance(label: "Баланс", value: value)
         new.translatesAutoresizingMaskIntoConstraints = false
         if let index = topHeaderRow.arrangedSubviews.firstIndex(of: old) {
             topHeaderRow.removeArrangedSubview(old)
@@ -461,7 +478,9 @@ class AlarmFiringViewController: UIViewController {
         let tone: SPDawnBackgroundView.Tone
         if !viewModel.canSnooze {
             tone = .drained
-        } else if viewModel.isProgressiveActive && viewModel.progressiveIntensity >= 0.5 {
+        } else if viewModel.isProgressiveActive && viewModel.currentPenalty >= 200 {
+            // Tense once the live snooze price crosses 200 ₽ (`SPDawnV3.jsx:
+            // 185` — `price >= 200 ? "tense"`), not at the intensity midpoint.
             tone = .tense
         } else {
             tone = .calm

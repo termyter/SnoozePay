@@ -213,8 +213,8 @@ extension AlarmFiringViewController {
         noBalanceContainer?.isHidden = !needsNoBalance
         noBalanceCenterBlock?.isHidden = !needsNoBalance
         // Hide the normal-state group when the no-balance stack takes over.
-        // The progressive stack is also hidden (it sits above the snooze
-        // CTA and would orphan above a hidden card otherwise).
+        // The progressive chrome (centre-hero indicator pill + ticker) is also
+        // hidden so it doesn't float over the no-balance layout.
         snoozeCTA?.isHidden = needsNoBalance
         dismissButton.isHidden = needsNoBalance
         progressiveStack?.isHidden = needsNoBalance || !viewModel.isProgressiveActive

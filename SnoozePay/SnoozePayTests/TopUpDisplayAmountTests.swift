@@ -68,6 +68,7 @@ final class TopUpDisplayAmountTests: XCTestCase {
         let preset = FiringTopUpBottomSheetViewController.Preset(
             productID: "com.snooze_pay.balance.does_not_exist",
             label: "fake",
+            hint: "fake",
             popular: false
         )
         XCTAssertNil(preset, "Preset must not be created for an unknown SKU")
