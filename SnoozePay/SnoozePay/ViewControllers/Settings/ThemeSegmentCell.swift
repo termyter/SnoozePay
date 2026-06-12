@@ -1,34 +1,39 @@
 import UIKit
 
-/// Reusable settings row that owns its `UISegmentedControl`. Replaces the
+/// Settings row that owns the theme `SPSegmented` selector. Replaces the
 /// previous pattern in `SettingsViewController` where a single shared segment
 /// instance was repeatedly removed/re-added across cell reuse — fragile, and
 /// guaranteed to lose the control to the most-recently-rendered cell.
 ///
-/// The cell is configured by the data source via `configure(selectedIndex:onChange:)`
-/// and forwards segment events through the closure.
+/// V3 (#283): restyled with SP tokens — a bare tinted glyph (no 30×30 chip)
+/// + `SPSegmented` instead of the stock `UISegmentedControl` / `info500`
+/// look. The segment lives in a second row below the title so the three
+/// labels ("Системная / Светлая / Тёмная") have room on narrow screens.
+///
+/// The cell is configured by the data source via
+/// `configure(selectedIndex:onChange:)` and forwards segment events through
+/// the closure.
 final class ThemeSegmentCell: UITableViewCell {
 
     static let reuseID = "ThemeSegmentCell"
 
-    // MARK: - UI
+    /// Stable segment values mapped to the theme preference (index 0/1/2).
+    private static let options: [SPSegmented.Option] = [
+        .init(value: "system", label: "Системная"),
+        .init(value: "light", label: "Светлая"),
+        .init(value: "dark", label: "Тёмная")
+    ]
 
-    private let iconContainer: UIView = {
-        let view = UIView()
-        view.backgroundColor = AppColors.info500
-        view.layer.cornerRadius = 7
-        view.layer.masksToBounds = true
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+    // MARK: - UI
 
     private let iconImageView: UIImageView = {
         let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "moon.fill")?.withConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        imageView.image = UIImage(systemName: "moon")?.withConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         )
-        imageView.tintColor = .white
-        imageView.contentMode = .scaleAspectFit
+        imageView.tintColor = AppColors.fg3
+        imageView.contentMode = .center
+        imageView.setContentHuggingPriority(.required, for: .horizontal)
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
@@ -42,14 +47,14 @@ final class ThemeSegmentCell: UITableViewCell {
         return label
     }()
 
-    private let segmentControl: UISegmentedControl = {
-        let segment = UISegmentedControl(items: ["Системная", "Светлая", "Тёмная"])
-        segment.selectedSegmentTintColor = AppColors.info500
-        segment.translatesAutoresizingMaskIntoConstraints = false
-        return segment
+    private let segment: SPSegmented = {
+        let control = SPSegmented(options: ThemeSegmentCell.options)
+        control.translatesAutoresizingMaskIntoConstraints = false
+        return control
     }()
 
-    /// Forwarded on every `valueChanged` event from the segment.
+    /// Forwarded on every selection change. `Int` index keeps the call site in
+    /// `SettingsViewController` unchanged (it maps index → theme).
     private var onChange: ((Int) -> Void)?
 
     // MARK: - Init
@@ -66,35 +71,35 @@ final class ThemeSegmentCell: UITableViewCell {
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = AppColors.bg1
+        backgroundColor = .secondarySystemBackground
         selectionStyle = .none
 
-        iconContainer.addSubview(iconImageView)
-        contentView.addSubview(iconContainer)
+        contentView.addSubview(iconImageView)
         contentView.addSubview(titleLabel)
-        contentView.addSubview(segmentControl)
+        contentView.addSubview(segment)
 
-        segmentControl.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
+        segment.onChange = { [weak self] value in
+            self?.onChange?(Self.index(for: value))
+        }
 
         NSLayoutConstraint.activate([
-            iconContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            iconContainer.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            iconContainer.widthAnchor.constraint(equalToConstant: 30),
-            iconContainer.heightAnchor.constraint(equalToConstant: 30),
+            iconImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            iconImageView.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 24),
+            iconImageView.heightAnchor.constraint(equalToConstant: 24),
 
-            iconImageView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
-            iconImageView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: AppSpacing.md),
+            titleLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: contentView.trailingAnchor,
+                constant: -AppSpacing.lg
+            ),
+            titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.md),
 
-            titleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: AppSpacing.md),
-            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-
-            segmentControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            segmentControl.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            segmentControl.widthAnchor.constraint(equalToConstant: 220),
-            segmentControl.leadingAnchor.constraint(
-                greaterThanOrEqualTo: titleLabel.trailingAnchor,
-                constant: AppSpacing.sm
-            )
+            segment.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            segment.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            segment.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sm),
+            segment.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md),
+            segment.heightAnchor.constraint(equalToConstant: 36)
         ])
     }
 
@@ -103,14 +108,19 @@ final class ThemeSegmentCell: UITableViewCell {
     /// Set the currently selected segment and the change handler. Safe to call
     /// repeatedly on cell reuse — the previous handler is dropped.
     func configure(selectedIndex: Int, onChange: @escaping (Int) -> Void) {
-        segmentControl.selectedSegmentIndex = selectedIndex
+        segment.selectedValue = Self.value(for: selectedIndex)
         self.onChange = onChange
     }
 
-    // MARK: - Actions
+    // MARK: - Index ↔ value mapping
 
-    @objc private func segmentChanged() {
-        onChange?(segmentControl.selectedSegmentIndex)
+    private static func value(for index: Int) -> String {
+        guard options.indices.contains(index) else { return options[0].value }
+        return options[index].value
+    }
+
+    private static func index(for value: String) -> Int {
+        options.firstIndex { $0.value == value } ?? 0
     }
 
     // MARK: - Reuse
