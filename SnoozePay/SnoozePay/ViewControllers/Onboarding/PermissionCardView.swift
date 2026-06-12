@@ -68,6 +68,17 @@ final class PermissionCardView: UIView {
 
     private let card = SPCard(tone: .surface, padding: 16, cornerRadius: AppRadius.md)
     private let iconHost = UIView()
+    /// Money gradient fill for the granted/enabled state (#289). Hidden for the
+    /// other states, where `iconHost` uses a flat overlay background.
+    private let iconHostGradient: CAGradientLayer = {
+        let gradient = CAGradientLayer()
+        gradient.colors = SPSupport.moneyGradientColors
+        gradient.locations = SPSupport.moneyGradientLocations
+        gradient.startPoint = SPSupport.gradientStart
+        gradient.endPoint = SPSupport.gradientEnd
+        gradient.isHidden = true
+        return gradient
+    }()
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let bodyLabel = UILabel()
@@ -88,6 +99,16 @@ final class PermissionCardView: UIView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Layout
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        iconHostGradient.frame = iconHost.bounds
+        CATransaction.commit()
     }
 
     // MARK: - Configuration
@@ -117,6 +138,7 @@ final class PermissionCardView: UIView {
         iconHost.translatesAutoresizingMaskIntoConstraints = false
         iconHost.layer.cornerRadius = AppRadius.sm    // 12pt — matches JSX
         iconHost.layer.masksToBounds = true
+        iconHost.layer.insertSublayer(iconHostGradient, at: 0)
         iconHost.backgroundColor = AppColors.whiteOverlay08
 
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -185,7 +207,8 @@ final class PermissionCardView: UIView {
 
         switch status {
         case .granted, .enabled:
-            iconHost.backgroundColor = AppColors.money500
+            iconHost.backgroundColor = .clear
+            iconHostGradient.isHidden = false
             iconView.tintColor = AppColors.fgOnMoney
             let configuration = UIImage.SymbolConfiguration(pointSize: 18, weight: .bold)
             let imageView = UIImageView(
@@ -197,6 +220,7 @@ final class PermissionCardView: UIView {
             mount(imageView)
             tapGesture.isEnabled = false
         case .actionable:
+            iconHostGradient.isHidden = true
             iconHost.backgroundColor = AppColors.whiteOverlay08
             iconView.tintColor = AppColors.fg3
             // The 2026-06 mockup renders an *empty* span where this caps
@@ -205,6 +229,7 @@ final class PermissionCardView: UIView {
             mount(capsLabel(text: "Дать", color: AppColors.warn400))
             tapGesture.isEnabled = true
         case .unavailable:
+            iconHostGradient.isHidden = true
             iconHost.backgroundColor = AppColors.whiteOverlay08
             iconView.tintColor = AppColors.fg3
             mount(capsLabel(text: "Недоступно", color: AppColors.fg3))

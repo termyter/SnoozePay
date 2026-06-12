@@ -67,7 +67,7 @@ final class OnboardingPenaltyPill: UIView {
     private func configureLabel() {
         label.translatesAutoresizingMaskIntoConstraints = false
         label.text = "−\(MoneyFormatter.string(50))"
-        label.font = AppTypography.buttonSm
+        label.font = AppTypography.moneySm  // mono digits for the penalty pill (#289)
         label.textColor = AppColors.fgOnWarn
         addSubview(label)
         NSLayoutConstraint.activate([

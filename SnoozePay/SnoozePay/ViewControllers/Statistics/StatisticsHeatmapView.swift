@@ -220,6 +220,20 @@ final class StatisticsHeatmapView: UIView {
         case .empty: return AppColors.fg3
         }
     }
+
+    /// Gradient stops matching the heatmap cell fill for each status — used by
+    /// the tooltip swatch so it mirrors the tapped cell rather than a flat tone
+    /// (#289). `nil` for `.empty` (the swatch falls back to the flat tone).
+    static func gradientStops(
+        for status: StatisticsViewModel.DayStatus
+    ) -> (colors: [CGColor], locations: [NSNumber])? {
+        switch status {
+        case .woke: return (SPSupport.moneyGradientColors, SPSupport.moneyGradientLocations)
+        case .light: return (SPSupport.warnGradientColors, SPSupport.warnGradientLocations)
+        case .heavy: return (SPSupport.painGradientColors, SPSupport.painGradientLocations)
+        case .empty: return nil
+        }
+    }
 }
 
 // MARK: - Day cell
@@ -282,6 +296,9 @@ private final class HeatmapTooltipView: UIView {
     private let arrowView = UIView()
     private let dateLabel = UILabel()
     private let swatchView = UIView()
+    /// Gradient fill for the swatch so it matches the tapped cell's gradient
+    /// (#289). Hidden for `.empty`, where the flat tone is used instead.
+    private let swatchGradient = CAGradientLayer()
     private let statusLabel = UILabel()
     private let spentLabel = UILabel()
 
@@ -317,7 +334,11 @@ private final class HeatmapTooltipView: UIView {
         dateLabel.translatesAutoresizingMaskIntoConstraints = false
 
         swatchView.layer.cornerRadius = 2
+        swatchView.layer.masksToBounds = true
         swatchView.translatesAutoresizingMaskIntoConstraints = false
+        swatchGradient.startPoint = SPSupport.gradientStart
+        swatchGradient.endPoint = SPSupport.gradientEnd
+        swatchView.layer.insertSublayer(swatchGradient, at: 0)
 
         statusLabel.font = AppFonts.sans(.semibold, 12)
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -353,7 +374,15 @@ private final class HeatmapTooltipView: UIView {
         dateLabel.text = tooltip.dateText
         statusLabel.text = tooltip.statusText
         statusLabel.textColor = StatisticsHeatmapView.toneColor(for: tooltip.status)
-        swatchView.backgroundColor = StatisticsHeatmapView.toneColor(for: tooltip.status)
+        if let stops = StatisticsHeatmapView.gradientStops(for: tooltip.status) {
+            swatchGradient.isHidden = false
+            swatchGradient.colors = stops.colors
+            swatchGradient.locations = stops.locations
+            swatchView.backgroundColor = .clear
+        } else {
+            swatchGradient.isHidden = true
+            swatchView.backgroundColor = StatisticsHeatmapView.toneColor(for: tooltip.status)
+        }
         spentLabel.text = tooltip.spentText
         spentLabel.isHidden = tooltip.spentText == nil
     }
@@ -374,5 +403,6 @@ private final class HeatmapTooltipView: UIView {
             roundedRect: bounds,
             cornerRadius: layer.cornerRadius
         ).cgPath
+        swatchGradient.frame = swatchView.bounds
     }
 }

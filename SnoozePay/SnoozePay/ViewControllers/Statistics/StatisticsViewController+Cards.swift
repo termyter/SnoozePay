@@ -16,7 +16,14 @@ extension StatisticsViewController {
     /// (cell tooltip, artboard 27a) so the gesture lives on the row, not
     /// the whole card.
     func makeHeroStreakCard() -> UIView {
-        let card = SPCard(tone: .raised, padding: AppSpacing.sp6, cornerRadius: AppRadius.xl)
+        // Radius 24 + 24v/20h padding per `SPMore4.jsx` (audit P2-3 #289).
+        // SPCard's `padding:` is uniform, so seed it with the vertical inset and
+        // override `layoutMargins` to tighten the horizontal sides to 20.
+        let card = SPCard(tone: .raised, padding: AppSpacing.sp6, cornerRadius: AppSpacing.sp6)
+        card.layoutMargins = UIEdgeInsets(
+            top: AppSpacing.sp6, left: AppSpacing.sp5,
+            bottom: AppSpacing.sp6, right: AppSpacing.sp5
+        )
         // The tooltip bubble overhangs the card's bottom edge for last-row
         // cells — let it escape instead of clipping (issue acceptance:
         // "Tooltip рендерится корректно, не обрезается сеткой").

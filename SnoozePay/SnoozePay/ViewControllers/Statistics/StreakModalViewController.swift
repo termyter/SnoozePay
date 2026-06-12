@@ -214,7 +214,7 @@ final class StreakModalViewController: UIViewController {
     private func configurePipStrip() {
         pipStrip.axis = .horizontal
         pipStrip.distribution = .fillEqually
-        pipStrip.spacing = AppSpacing.sp1
+        pipStrip.spacing = 6  // pip gap per design (#289), between sp1/sp2
         pipStrip.alignment = .fill
         pipStrip.translatesAutoresizingMaskIntoConstraints = false
         // 7 numbered green pips. Streaks < 7 fade out future pips by lowering
@@ -303,9 +303,9 @@ final class StreakModalViewController: UIViewController {
         sheet.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            // Sheet anchored to the bottom with screen-inset margins.
-            sheet.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp3),
-            sheet.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp3),
+            // Sheet anchored to the bottom with screen-inset margins (16 — #289).
+            sheet.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp4),
+            sheet.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp4),
             sheet.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor,
                 constant: -AppSpacing.sp4
