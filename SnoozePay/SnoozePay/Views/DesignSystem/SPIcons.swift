@@ -116,6 +116,65 @@ enum SPIcons {
         }
     }
 
+    /// Колокольчик — купол + язычок + основание. The empty-state /
+    /// notification glyph. JSX: `IconBell`
+    /// (`M6 19V11a6 6 0 0 1 12 0v8` / `M4 19h16` / `M10 22h4`).
+    static func bell(size: CGFloat) -> UIImage {
+        render(size: size) { path in
+            // Dome: left wall up, arc across the top, right wall down.
+            path.move(to: CGPoint(x: 6, y: 19))
+            path.addLine(to: CGPoint(x: 6, y: 11))
+            path.addArc(
+                withCenter: CGPoint(x: 12, y: 11),
+                radius: 6,
+                startAngle: .pi,
+                endAngle: 0,
+                clockwise: true
+            )
+            path.addLine(to: CGPoint(x: 18, y: 19))
+            // Base line.
+            path.move(to: CGPoint(x: 4, y: 19))
+            path.addLine(to: CGPoint(x: 20, y: 19))
+            // Clapper.
+            path.move(to: CGPoint(x: 10, y: 22))
+            path.addLine(to: CGPoint(x: 14, y: 22))
+        }
+    }
+
+    /// Динамик с волнами — speaker cone + two sound arcs. The alarm-sound
+    /// pill glyph. JSX: `IconSound`
+    /// (`M11 5L6 9H3v6h3l5 4V5z` / `M16 9a4 4 0 0 1 0 6` / `M19 6a8 8 0 0 1 0 12`).
+    static func sound(size: CGFloat) -> UIImage {
+        render(size: size) { path in
+            // Speaker cone.
+            path.move(to: CGPoint(x: 11, y: 5))
+            path.addLine(to: CGPoint(x: 6, y: 9))
+            path.addLine(to: CGPoint(x: 3, y: 9))
+            path.addLine(to: CGPoint(x: 3, y: 15))
+            path.addLine(to: CGPoint(x: 6, y: 15))
+            path.addLine(to: CGPoint(x: 11, y: 19))
+            path.close()
+            // Inner wave: `M16 9a4 4 0 0 1 0 6` — quarter-pair arc on the right.
+            path.move(to: CGPoint(x: 16, y: 9))
+            path.addArc(
+                withCenter: CGPoint(x: 16, y: 12),
+                radius: 3,
+                startAngle: -.pi / 2,
+                endAngle: .pi / 2,
+                clockwise: true
+            )
+            // Outer wave: `M19 6a8 8 0 0 1 0 12`.
+            path.move(to: CGPoint(x: 19, y: 6))
+            path.addArc(
+                withCenter: CGPoint(x: 19, y: 12),
+                radius: 6,
+                startAngle: -.pi / 2,
+                endAngle: .pi / 2,
+                clockwise: true
+            )
+        }
+    }
+
     /// «Zz» — большая Z + маленькая Z по диагонали. JSX: `IconSnooze`.
     static func snooze(size: CGFloat) -> UIImage {
         render(size: size) { path in

@@ -39,6 +39,12 @@ final class SPAlarmsListHeader: UIView {
     /// flows (create-alarm vs top-up).
     var onAddTap: (() -> Void)?
 
+    /// Triggered when the user taps the 40×40 gear button. The settings
+    /// affordance now lives inside the header title row (left of the money
+    /// "+"), so the host controller can hide the system nav bar entirely on
+    /// this tab (SPScreensV2.jsx L316-333).
+    var onSettingsTap: (() -> Void)?
+
     /// Kept for binary-compatibility with the legacy header — the V2
     /// pill folds the warning state into itself, so this callback now
     /// routes through the same "Пополнить" tap path.
@@ -60,7 +66,7 @@ final class SPAlarmsListHeader: UIView {
         applyTone(tone)
         balanceValueLabel.attributedText = MoneyFormatter.attributed(
             balance,
-            digitsFont: AppTypography.moneyMd,
+            digitsFont: Self.pillValueFont,
             // 0 ₽ renders in pain-300 per SPScreensV2.jsx L369; the
             // non-zero tones keep the label's fg1 textColor.
             color: tone == .zero ? AppColors.pain300 : nil
@@ -122,11 +128,37 @@ final class SPAlarmsListHeader: UIView {
             string: "Будильники",
             attributes: [
                 .font: AppTypography.h1,
-                .kern: -32 * 0.01, // ~ -0.32 — matches `letterSpacing: -.02em` doubled-down
+                // Full `letterSpacing: -.02em` per SPScreensV2.jsx L315 — the
+                // earlier value was halved (#280). `kern(em:size:)` resolves the
+                // em tracking to points for the 32pt h1.
+                .kern: AppTypography.kern(em: -0.02, size: 32),
                 .foregroundColor: AppColors.fg1
             ]
         )
         return label
+    }()
+
+    /// 40×40 whiteOverlay06 circle hosting the gear glyph — the in-header
+    /// Settings entry point (SPScreensV2.jsx L318-324). Sits left of the
+    /// money "+"; tapping it routes through `onSettingsTap`.
+    private let settingsButton: UIControl = {
+        let view = UIControl()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 20
+        view.layer.masksToBounds = true
+        view.backgroundColor = AppColors.whiteOverlay06
+        return view
+    }()
+
+    private let settingsIconView: UIImageView = {
+        let view = UIImageView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentMode = .scaleAspectFit
+        view.tintColor = AppColors.fg2
+        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+        view.image = UIImage(systemName: "gearshape", withConfiguration: config)
+        view.isUserInteractionEnabled = false
+        return view
     }()
 
     private let addButton: UIControl = {
@@ -211,8 +243,9 @@ final class SPAlarmsListHeader: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentMode = .scaleAspectFit
         view.tintColor = AppColors.fgOnMoney
-        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-        view.image = UIImage(systemName: "creditcard.fill", withConfiguration: config)
+        // Code-drawn wallet glyph (SPScreensV2.jsx L359) — replaces the
+        // SF `creditcard.fill` so the pill matches the V3 icon set (#280).
+        view.image = SPIcons.wallet(size: 18)
         return view
     }()
 
@@ -230,11 +263,19 @@ final class SPAlarmsListHeader: UIView {
         return label
     }()
 
+    /// 14pt mono bold balance amount. The design uses `700 14px/18px mono`
+    /// with `letter-spacing: 0` (SPScreensV2.jsx L364-369) — a compact inline
+    /// value, NOT the 20pt `moneyMd` hero number the pill carried before
+    /// (#280). Built in `pillValueFont` so `setBalance` and this declaration
+    /// agree on one source.
+    private static let pillValueFont = AppFonts.mono(.bold, 14)
+
     private let balanceValueLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        // 20pt mono bold — `moneyMd`. Tabular nums via the mono font.
-        label.font = AppTypography.moneyMd
+        // 14pt mono bold — compact inline amount. Tabular nums via the mono
+        // font; tracking stays at 0 per the design.
+        label.font = SPAlarmsListHeader.pillValueFont
         label.textColor = AppColors.fg1
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.6
@@ -306,6 +347,8 @@ final class SPAlarmsListHeader: UIView {
         backgroundColor = AppColors.bg0
 
         addSubview(titleLabel)
+        addSubview(settingsButton)
+        settingsButton.addSubview(settingsIconView)
         addSubview(addButton)
         addButton.addSubview(addButtonGradient)
         addButton.addSubview(addIconView)
@@ -324,6 +367,7 @@ final class SPAlarmsListHeader: UIView {
         addSubview(bottomHairline)
 
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
+        settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
         pillButton.addTarget(self, action: #selector(pillTapped), for: .touchUpInside)
         topUpButton.addTarget(self, action: #selector(topUpTapped), for: .touchUpInside)
 
@@ -345,9 +389,19 @@ final class SPAlarmsListHeader: UIView {
             titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.sp2),
             titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             titleLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: addButton.leadingAnchor,
+                lessThanOrEqualTo: settingsButton.leadingAnchor,
                 constant: -AppSpacing.sp3
             ),
+
+            // Gear — 40×40 circle left of the money "+", 10pt gap between the
+            // two (SPScreensV2.jsx L316).
+            settingsButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            settingsButton.trailingAnchor.constraint(equalTo: addButton.leadingAnchor, constant: -10),
+            settingsButton.widthAnchor.constraint(equalToConstant: 40),
+            settingsButton.heightAnchor.constraint(equalToConstant: 40),
+
+            settingsIconView.centerXAnchor.constraint(equalTo: settingsButton.centerXAnchor),
+            settingsIconView.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
 
             addButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             addButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
@@ -471,8 +525,7 @@ final class SPAlarmsListHeader: UIView {
             colors: SPSupport.moneyGradientColors,
             locations: SPSupport.moneyGradientLocations
         )
-        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-        walletIconImageView.image = UIImage(systemName: "creditcard.fill", withConfiguration: config)
+        walletIconImageView.image = SPIcons.wallet(size: 18)
         walletIconImageView.tintColor = AppColors.fgOnMoney
     }
 
@@ -485,6 +538,15 @@ final class SPAlarmsListHeader: UIView {
             SPSupport.animatePress(self.addButton, pressed: false)
         }
         onAddTap?()
+    }
+
+    @objc private func settingsTapped() {
+        SPSupport.animatePress(settingsButton, pressed: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + SPSupport.durationQuick) { [weak self] in
+            guard let self else { return }
+            SPSupport.animatePress(self.settingsButton, pressed: false)
+        }
+        onSettingsTap?()
     }
 
     @objc private func pillTapped() {
