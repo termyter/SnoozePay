@@ -100,6 +100,15 @@ final class SPButton: UIControl {
         didSet { invalidateIntrinsicContentSize() }
     }
 
+    /// Optional heavier stroke for `.ghost` buttons that need to read as a
+    /// stronger affordance than the default hairline (e.g. the firing
+    /// «Я встал — выключить» CTA — 1.5pt white .22 per `SPThemedFiring.jsx:
+    /// 188-203`). Nil keeps the default `1/scale` stroke2 hairline. Applied in
+    /// `applyVariant`, so it survives trait-change re-tints.
+    var ghostBorderOverride: (width: CGFloat, color: UIColor)? {
+        didSet { if variant == .ghost { applyVariant() } }
+    }
+
     // MARK: - Subviews
 
     private let stack = UIStackView()
@@ -278,9 +287,14 @@ final class SPButton: UIControl {
             setForeground(AppColors.fgOnWarn)
         case .ghost:
             backgroundColor = .clear
-            let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-            layer.borderWidth = 1.0 / scale
-            layer.borderColor = AppColors.stroke2.resolvedColor(with: traitCollection).cgColor
+            if let override = ghostBorderOverride {
+                layer.borderWidth = override.width
+                layer.borderColor = override.color.resolvedColor(with: traitCollection).cgColor
+            } else {
+                let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+                layer.borderWidth = 1.0 / scale
+                layer.borderColor = AppColors.stroke2.resolvedColor(with: traitCollection).cgColor
+            }
             setForeground(AppColors.fg1)
         case .quiet:
             backgroundColor = AppColors.whiteOverlay06

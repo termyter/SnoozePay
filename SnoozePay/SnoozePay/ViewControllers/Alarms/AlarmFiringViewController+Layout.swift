@@ -25,16 +25,14 @@ extension AlarmFiringViewController {
         installHeroCenter()
 
         // VM exposes `currentPenalty` as `Double`; wrap in `Decimal` so
-        // `SPSnoozePrice.formattedRubles()` does the locale-aware format.
-        // Tone defaults to warn; progressive alarms cross-fade toward pain
-        // as snoozeCount climbs.
-        let initialTone: SPSnoozePrice.Tone = viewModel.isProgressiveActive
-            ? .progressive(intensity: viewModel.progressiveIntensity)
-            : .warn
+        // `SPSnoozePrice.formattedRubles()` does the locale-aware format. The
+        // CTA stays GOLD (`.warn`) on every step, progressive or not (#288) —
+        // escalation lives in the background tone + indicator pill, not the
+        // button colour.
         let snooze = SPSnoozePrice(
             price: Decimal(viewModel.currentPenalty),
             minutes: viewModel.alarm.snoozeMinutes,
-            tone: initialTone,
+            tone: .warn,
             hint: snoozeHintText()
         )
         snooze.translatesAutoresizingMaskIntoConstraints = false
@@ -43,6 +41,9 @@ extension AlarmFiringViewController {
         snoozeCTA = snooze
 
         dismissButton.translatesAutoresizingMaskIntoConstraints = false
+        // Heavier ghost stroke for the wake CTA: 1.5pt white at .22 alpha
+        // (`SPThemedFiring.jsx:188-203`).
+        dismissButton.ghostBorderOverride = (1.5, UIColor.white.withAlphaComponent(0.22))
         dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
         view.addSubview(dismissButton)
         view.addSubview(audioWarningBanner)
@@ -51,21 +52,21 @@ extension AlarmFiringViewController {
         let gap: CGFloat = 10                     // 10pt CTA gap — matches SPScreensV2 line 91 ("gap: 12")
 
         // Progressive escalation chrome — only mounted for alarms with the
-        // doubling-penalty toggle. The default flow stays clean. Anchor the
-        // audio-fallback banner to the chrome's top so the banner never
-        // overlaps the indicator when both are on screen.
-        let bannerBottomAnchor: NSLayoutYAxisAnchor
+        // doubling-penalty toggle. The default flow stays clean. The indicator
+        // pill + history ticker live in the CENTRE hero (below the eyebrow
+        // caps) per `SPDawnV3.jsx:114-136 / 216`, not above the CTA.
         if viewModel.isProgressiveActive {
             let stack = installProgressiveStack(inset: inset)
             NSLayoutConstraint.activate([
-                stack.bottomAnchor.constraint(equalTo: snooze.topAnchor, constant: -AppSpacing.sp3)
+                stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                stack.topAnchor.constraint(
+                    equalTo: wakeUpCapsLabel.bottomAnchor,
+                    constant: AppSpacing.sp5
+                )
             ])
-            bannerBottomAnchor = stack.topAnchor
-        } else {
-            bannerBottomAnchor = snooze.topAnchor
         }
 
-        activateMainConstraints(snooze: snooze, bannerBottomAnchor: bannerBottomAnchor, inset: inset, gap: gap)
+        activateMainConstraints(snooze: snooze, bannerBottomAnchor: snooze.topAnchor, inset: inset, gap: gap)
 
         // No-balance stack overlays the same bottom area as the snooze CTA +
         // dismiss group. Initially hidden — `updateUI()` flips visibility
@@ -106,11 +107,9 @@ extension AlarmFiringViewController {
         // `updateBalancePill()` when the tone needs to flip to pain (zero).
         let balance = Int(viewModel.balance.rounded())
         let initialTone: SPPill.Tone = balance == 0 ? .pain : .money
-        let pill = SPPill(
-            text: "Баланс \(MoneyFormatter.string(balance))",
-            tone: initialTone,
-            icon: SPIcons.coin(size: 12)
-        )
+        let pill = SPPill(text: "", tone: initialTone, icon: SPIcons.coin(size: 12))
+        // Two-tier typography — muted «Баланс» label + bold value (#288).
+        pill.setBalance(label: "Баланс", value: MoneyFormatter.string(balance))
         pill.translatesAutoresizingMaskIntoConstraints = false
         balancePill = pill
 

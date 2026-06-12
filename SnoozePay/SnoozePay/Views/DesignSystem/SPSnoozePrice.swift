@@ -3,9 +3,15 @@ import UIKit
 /// Big snooze CTA — `.sp-snooze` in `components.css`.
 ///
 /// Visual hierarchy: the price is the dominant element (32pt mono bold),
-/// with a small caps top label ("Поспать ещё 5 мин") and an optional
-/// hint meta line. Tone selects between the warn (default snooze price)
-/// and pain (progressive / expensive snooze) gradients.
+/// with a small caps top label (a 14pt clock glyph + "Спать ещё 5 мин")
+/// and an optional hint meta line. Tone selects between the warn (default
+/// snooze price) and pain (progressive / expensive snooze) gradients.
+///
+/// Per `SPDawnV3.jsx:82-85` the CTA stays GOLD (`.warn`) on every progressive
+/// step — escalation is signalled by the background tone crossfade + the
+/// indicator pill, never by reddening the button itself. The legacy
+/// `.progressive` tone is kept for back-compat but now resolves to the warn
+/// surface so callers can pass it without re-tinting the button.
 ///
 /// Min height 80pt so the touch target reads as a primary action even on
 /// the smallest device. Press scale 0.97 — unified with SPButton +
@@ -15,11 +21,11 @@ final class SPSnoozePrice: UIControl {
     enum Tone: Equatable {
         case warn   // Default snooze — warm amber gradient
         case pain   // Progressive / expensive — pain coral gradient
-        /// Progressive escalation — interpolates linearly between the warn
-        /// and pain gradients. `intensity` is clamped to `0...1`; 0 renders
-        /// pure warn (snooze #1), 1 renders pure pain (snooze #6+). The
-        /// shadow tint blends the same way so the surrounding glow tracks
-        /// the fill colour as the user keeps snoozing.
+        /// Progressive escalation. Historically interpolated the warn → pain
+        /// gradient by `intensity`; per `SPDawnV3.jsx:153-155` the CTA must
+        /// stay gold across all steps, so this now renders the warn surface
+        /// regardless of `intensity`. The case is retained so the firing flow
+        /// can keep passing it without a call-site rewrite.
         case progressive(intensity: Double)
     }
 
@@ -109,14 +115,7 @@ final class SPSnoozePrice: UIControl {
         self.price = price
         if let minutes = minutes { self.minutes = minutes }
         self.hint = hint
-        capsLabel.attributedText = NSAttributedString(
-            string: "Поспать ещё \(self.minutes) мин".uppercased(),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: 12 * 0.14,
-                .foregroundColor: foreground.withAlphaComponent(0.82)
-            ]
-        )
+        capsLabel.attributedText = makeCapsText()
         priceLabel.attributedText = MoneyFormatter.attributed(
             price, digitsFont: AppTypography.moneyLg, prefix: "−"
         )
@@ -139,14 +138,34 @@ final class SPSnoozePrice: UIControl {
         hintLabel.textColor = foreground
         // Re-render the caps label so its tinted attributedString picks up
         // the new foreground.
-        capsLabel.attributedText = NSAttributedString(
-            string: "Поспать ещё \(self.minutes) мин".uppercased(),
+        capsLabel.attributedText = makeCapsText()
+    }
+
+    /// Build the caps line — a 14pt leading clock glyph followed by
+    /// «СПАТЬ ЕЩЁ N МИН» (`SPDawnV3.jsx:82-85`). The glyph rides the text
+    /// baseline as an `NSTextAttachment` tinted to the current foreground.
+    private func makeCapsText() -> NSAttributedString {
+        let ink = foreground.withAlphaComponent(0.82)
+        let result = NSMutableAttributedString()
+        if let glyph = UIImage(systemName: "clock")?
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold))
+            .withTintColor(ink, renderingMode: .alwaysOriginal) {
+            let attachment = NSTextAttachment(image: glyph)
+            // Nudge the glyph down a touch so it optically centres on the caps
+            // cap-height rather than the ascender.
+            attachment.bounds = CGRect(x: 0, y: -2, width: 14, height: 14)
+            result.append(NSAttributedString(attachment: attachment))
+            result.append(NSAttributedString(string: "  "))
+        }
+        result.append(NSAttributedString(
+            string: "Спать ещё \(minutes) мин".uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: 12 * 0.14,
-                .foregroundColor: foreground.withAlphaComponent(0.82)
+                .foregroundColor: ink
             ]
-        )
+        ))
+        return result
     }
 
     // MARK: - Configuration
@@ -193,17 +212,9 @@ final class SPSnoozePrice: UIControl {
         switch tone {
         case .warn: return AppColors.fgOnWarn
         case .pain: return AppColors.fgOnPain
-        case .progressive(let intensity):
-            // Cross-fade the on-fill text colour the same way the gradient
-            // is interpolated. At intensity 0 the surface is pure amber so
-            // we want the warn ink (near-black); at intensity 1 it's coral
-            // and the pain ink (white) gives 4.5:1 contrast.
-            let clamped = max(0.0, min(1.0, intensity))
-            return SPSupport.lerpColor(
-                AppColors.fgOnWarn,
-                AppColors.fgOnPain,
-                progress: clamped
-            )
+        // The CTA stays gold across all progressive steps (`SPDawnV3.jsx:
+        // 153-155`), so the on-fill ink is always the warn ink.
+        case .progressive: return AppColors.fgOnWarn
         }
     }
 
@@ -222,15 +233,12 @@ final class SPSnoozePrice: UIControl {
             gradient.colors = SPSupport.painGradientColors
             gradient.locations = SPSupport.painGradientLocations
             layer.shadowColor = AppColors.pain500.cgColor
-        case .progressive(let intensity):
-            let clamped = max(0.0, min(1.0, intensity))
-            gradient.colors = SPSupport.progressiveGradientColors(intensity: clamped)
+        case .progressive:
+            // Gold CTA on every progressive step — render the warn surface
+            // regardless of intensity (`SPDawnV3.jsx:153-155`).
+            gradient.colors = SPSupport.warnGradientColors
             gradient.locations = SPSupport.warnGradientLocations
-            layer.shadowColor = SPSupport.lerpColor(
-                AppColors.warn500,
-                AppColors.pain500,
-                progress: clamped
-            ).cgColor
+            layer.shadowColor = AppColors.warn500.cgColor
         }
         layer.insertSublayer(gradient, at: 0)
         gradientLayer = gradient

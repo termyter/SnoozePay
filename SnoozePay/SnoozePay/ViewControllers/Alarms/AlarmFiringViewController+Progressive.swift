@@ -4,26 +4,25 @@ import UIKit
 /// `AlarmFiringViewController` so the main type stays under SwiftLint's
 /// `type_body_length` cap (mirrors the same pattern used by the +Audio file).
 ///
-/// V2 spec (`SPDawnV3.jsx` lines 215–225): when `alarm.progressiveScale ==
-/// true` the firing screen mounts an indicator pill ("Прогрессив · N-е
-/// откладывание") above the snooze CTA, with a pain300 PulseDot to its left,
-/// and a single-line history ticker ("сегодня: −50 → −100 → −200 ₽") below.
-/// The snooze CTA itself cross-fades from warn → pain as the user keeps
-/// snoozing. None of this is touched for default alarms — the +Progressive
-/// installer is a no-op via guard at the call site.
+/// V2 spec (`SPDawnV3.jsx` lines 114-136 + 216-221): the indicator pill
+/// «Прогрессив · {n}-й поспать ещё» (with a pain300 PulseDot) is hidden until
+/// the first snooze, and below it a row of coloured mini-pill tickers
+/// summarises today's charges (amber < 200 ₽ / red ≥ 200 ₽) separated by «·».
+/// The snooze CTA itself stays GOLD on every step (#288). None of this chrome
+/// is mounted for default alarms — the installer is a no-op via the call site.
 extension AlarmFiringViewController {
 
-    /// Build the progressive-snooze indicator pill + history ticker stack
-    /// and pin it horizontally to the screen-inset. Pulse animation on the
-    /// dot is started here once — no need to restart on `updateUI()`.
-    /// Returns the stack so `setupUI` can wire it into the bottom layout.
+    /// Build the progressive-snooze indicator pill + history ticker stack and
+    /// pin it horizontally to the screen-inset. Pulse animation on the dot is
+    /// started here once — no need to restart on `updateUI()`. Returns the
+    /// stack so `setupUI` can wire it into the centre hero layout.
     func installProgressiveStack(inset: CGFloat) -> UIStackView {
-        // Pill: pain-toned per V2 spec line 217–222. Caps text re-titled on
+        // Pill: pain-toned per V2 spec line 217-222. Caps text re-titled on
         // every updateUI. The leading dot is drawn as a sibling 8pt circle
         // view rather than via `SPPill(icon:)` because we need the dot to
         // host its own pulse animation while the pill keeps its background
         // / text styling untouched.
-        let pill = SPPill(text: "Прогрессив · 1-е откладывание", tone: .pain)
+        let pill = SPPill(text: "Прогрессив · 1-й поспать ещё", tone: .pain)
         pill.translatesAutoresizingMaskIntoConstraints = false
         progressivePill = pill
 
@@ -40,30 +39,29 @@ extension AlarmFiringViewController {
         pillRow.axis = .horizontal
         pillRow.spacing = AppSpacing.sp1 + 2   // 6pt — matches SPPill's internal gap recipe
         pillRow.alignment = .center
+        // Hidden until the first snooze (`SPDawnV3.jsx:216`). `updateUI`
+        // un-hides it once `snoozeCount > 0`.
+        pillRow.isHidden = true
+        progressivePillRow = pillRow
 
-        let ticker = UILabel()
-        ticker.translatesAutoresizingMaskIntoConstraints = false
-        ticker.font = AppTypography.meta.monospacedDigit()
-        ticker.textColor = AppColors.fg3
-        ticker.textAlignment = .center
-        ticker.numberOfLines = 1
-        ticker.lineBreakMode = .byTruncatingHead
-        ticker.adjustsFontSizeToFitWidth = true
-        ticker.minimumScaleFactor = 0.7
-        ticker.isHidden = true
-        historyTicker = ticker
+        // Ticker chip row — rebuilt on every updateUI from the VM's history.
+        // Starts empty / hidden; the container reserves the slot in the stack.
+        let tickerContainer = UIStackView()
+        tickerContainer.axis = .vertical
+        tickerContainer.alignment = .center
+        historyTickerContainer = tickerContainer
 
-        let stack = UIStackView(arrangedSubviews: [pillRow, ticker])
+        let stack = UIStackView(arrangedSubviews: [pillRow, tickerContainer])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
         stack.alignment = .center
-        stack.spacing = AppSpacing.sp2
+        stack.spacing = AppSpacing.sp3
         view.addSubview(stack)
         progressiveStack = stack
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset),
             dot.widthAnchor.constraint(equalToConstant: 8),
             dot.heightAnchor.constraint(equalToConstant: 8)
         ])
@@ -72,30 +70,45 @@ extension AlarmFiringViewController {
         return stack
     }
 
-    /// Refresh the indicator pill text + the history ticker. Called from
-    /// `updateUI()` so the indicator counts up (`1-й` → `2-й` → ...) and
-    /// the ticker grows as the user keeps snoozing.
-    func updateProgressiveChrome() {
-        let nextIndex = viewModel.snoozeCount + 1
-        progressivePill?.setText("Прогрессив · \(nextIndex)-е откладывание")
+    /// Indicator pill copy «Прогрессив · {n}-й поспать ещё» where
+    /// n = snoozeCount + 1 (`SPDawnV3.jsx:219-221`). Pure function so the copy
+    /// is unit-testable without loading the view hierarchy.
+    static func progressivePillText(snoozeCount: Int) -> String {
+        "Прогрессив · \(snoozeCount + 1)-й поспать ещё"
+    }
 
-        guard let ticker = historyTicker else { return }
-        let past = viewModel.pastPenalties
-        if past.isEmpty {
-            // No history yet — keep the pill, hide the ticker.
-            ticker.isHidden = true
-            ticker.text = nil
+    /// `true` when the indicator pill should be visible — only after the first
+    /// snooze (`SPDawnV3.jsx:216`). Pure for the same testability reason.
+    static func progressivePillVisible(snoozeCount: Int) -> Bool {
+        snoozeCount > 0
+    }
+
+    /// Refresh the indicator pill text + visibility and rebuild the history
+    /// ticker chips. Called from `updateUI()` so the indicator counts up
+    /// (`1-й` → `2-й` → ...) and the chip row grows as the user keeps snoozing.
+    func updateProgressiveChrome() {
+        progressivePill?.setText(Self.progressivePillText(snoozeCount: viewModel.snoozeCount))
+        progressivePillRow?.isHidden = !Self.progressivePillVisible(snoozeCount: viewModel.snoozeCount)
+
+        rebuildTicker()
+    }
+
+    /// Replace the ticker chip row in place with one built from the VM's
+    /// current penalty history. Coloured mini-pills with «·» separators per
+    /// `SPDawnV3.jsx:114-136`.
+    private func rebuildTicker() {
+        guard let container = historyTickerContainer else { return }
+        container.arrangedSubviews.forEach {
+            container.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        let entries = SPFiringTicker.entries(from: viewModel.pastPenalties)
+        guard !entries.isEmpty else {
+            container.isHidden = true
             return
         }
-        var parts = past.map { "−\(Self.formatPenalty($0))" }
-        parts.append("−\(Self.formatPenalty(viewModel.currentPenalty))")
-        // Trailing currency glyph after the last amount only — keeps the
-        // arrow chain visually balanced ("−50 → −100 → −200 ₽").
-        if let last = parts.last {
-            parts[parts.count - 1] = "\(last)\(MoneyFormatter.narrowSpace)₽"
-        }
-        ticker.text = "сегодня: \(parts.joined(separator: " → "))"
-        ticker.isHidden = false
+        container.isHidden = false
+        container.addArrangedSubview(SPFiringTicker.makeRow(for: entries))
     }
 
     /// 0.4 → 1.0 opacity autoreverse pulse, 900ms each leg. Driven via
@@ -110,14 +123,5 @@ extension AlarmFiringViewController {
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
         dot.layer.add(pulse, forKey: "progressivePulse")
-    }
-
-    /// Format a penalty amount for the history ticker. The ticker is a
-    /// glanceable single-line summary, so we strip thousand separators and
-    /// the currency glyph (`formattedRubles` adds " ₽" to each value).
-    /// Trailing fraction is dropped — the doubling rule produces integers.
-    private static func formatPenalty(_ amount: Double) -> String {
-        let intValue = Int(amount.rounded())
-        return "\(intValue)"
     }
 }
