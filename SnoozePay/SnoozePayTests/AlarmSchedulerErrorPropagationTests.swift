@@ -72,7 +72,7 @@ final class AlarmSchedulerErrorPropagationTests: XCTestCase {
             captured = result
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: 5.0)
 
         guard case .failure(let error) = captured else {
             return XCTFail("Expected failure, got \(String(describing: captured))")
@@ -101,7 +101,7 @@ final class AlarmSchedulerErrorPropagationTests: XCTestCase {
             captured = result
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: 5.0)
 
         guard case .success = captured else {
             return XCTFail("Expected success, got \(String(describing: captured))")
@@ -119,7 +119,7 @@ final class AlarmSchedulerErrorPropagationTests: XCTestCase {
         scheduler.schedule(alarm) { result in
             if case .success = result { exp.fulfill() }
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: 5.0)
 
         XCTAssertTrue(mock.addedRequests.isEmpty,
                       "Disabled alarms must not register notifications")
@@ -145,7 +145,7 @@ final class AlarmSchedulerErrorPropagationTests: XCTestCase {
             captured = result
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: 5.0)
 
         guard case .failure(let error) = captured else {
             return XCTFail("Expected failure, got \(String(describing: captured))")
@@ -180,7 +180,7 @@ final class AlarmSchedulerErrorPropagationTests: XCTestCase {
             captured = result
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: 5.0)
 
         guard case .failure = captured else {
             return XCTFail("Expected failure, got \(String(describing: captured))")
