@@ -50,6 +50,17 @@ extension OnboardingViewController {
         stack.setCustomSpacing(AppSpacing.sp3 + 2, after: titleLabel)
         container.addSubview(stack)
 
+        // The inequality leading/trailing pins alone don't force a width —
+        // Auto Layout would happily collapse the stack to ~1 glyph and wrap
+        // the title one character per line (#269). Pin centerX and ask for
+        // the full container width at 999 so the required ≤320 cap still
+        // wins on wide screens.
+        let preferredWidth = stack.widthAnchor.constraint(
+            equalTo: container.widthAnchor,
+            constant: -(AppSpacing.sp4 * 2)
+        )
+        preferredWidth.priority = UILayoutPriority(999)
+
         NSLayoutConstraint.activate([
             glowHost.topAnchor.constraint(equalTo: container.topAnchor, constant: 60),
             glowHost.centerXAnchor.constraint(equalTo: container.centerXAnchor),
@@ -57,6 +68,7 @@ extension OnboardingViewController {
             glowHost.heightAnchor.constraint(equalToConstant: 420),
 
             stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             stack.leadingAnchor.constraint(
                 greaterThanOrEqualTo: container.leadingAnchor,
                 constant: AppSpacing.sp4
@@ -65,6 +77,7 @@ extension OnboardingViewController {
                 lessThanOrEqualTo: container.trailingAnchor,
                 constant: -AppSpacing.sp4
             ),
+            preferredWidth,
             stack.widthAnchor.constraint(lessThanOrEqualToConstant: 320),
             bodyLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
         ])
