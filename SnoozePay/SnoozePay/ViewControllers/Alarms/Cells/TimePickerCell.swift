@@ -3,11 +3,54 @@ import UIKit
 /// Wheel-style time picker cell. Owns its own UIDatePicker so the control is
 /// never shared between rows — eliminating the stale-constraint crash that
 /// plagued the previous shared-property implementation.
+///
+/// V2 (#284): the stock wheels are kept as the input mechanism (good UX on
+/// iOS), but the cell now leads with the branded readout from the artboard
+/// (`SPScreensV2.jsx:520-527`): a caps «Подъём» header above a clock-XL mono
+/// readout (`HH` · `:` · `mm`) that mirrors the current wheel selection. The
+/// `:` separator is dimmed (`fg4`) and the digits use `fg1`, matching the
+/// design's tabular-numeral / tight-tracking look.
 final class TimePickerCell: UITableViewCell {
 
     static let reuseID = "TimePickerCell"
 
+    /// Fixed height the host controller reserves for this row. The clock-XL
+    /// readout (96pt ultralight) plus the caps header and the wheels picker
+    /// need more vertical room than the old wheels-only 200pt — exposed here so
+    /// `heightForRowAt` reads from one source of truth.
+    static let rowHeight: CGFloat = 320
+
     // MARK: - UI
+
+    /// "Подъём" — caps header above the readout (`sp-caps`, `fg3`).
+    private let headerLabel: UILabel = {
+        let label = UILabel()
+        label.text = NSLocalizedString("create_alarm.wake_up", value: "Подъём", comment: "Time picker header")
+            .uppercased()
+        label.font = AppTypography.caps
+        label.textColor = AppColors.textTertiary
+        label.textAlignment = .center
+        label.attributedText = NSAttributedString(
+            string: label.text ?? "",
+            attributes: [.kern: AppTypography.capsKerning]
+        )
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Clock-XL mono readout (`HH:mm`) reflecting the live wheel selection.
+    /// A single attributed string keeps the digits / dimmed separator aligned
+    /// on the baseline without three separate labels.
+    private let readoutLabel: UILabel = {
+        let label = UILabel()
+        label.font = AppTypography.clockXl
+        label.textColor = AppColors.fg1
+        label.textAlignment = .center
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
 
     private let picker: UIDatePicker = {
         let view = UIDatePicker()
@@ -15,6 +58,15 @@ final class TimePickerCell: UITableViewCell {
         view.preferredDatePickerStyle = .wheels
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
+    }()
+
+    /// Formats the readout `HH:mm` in 24-hour form independent of locale so the
+    /// branded display always shows the two-digit hour the artboard expects.
+    private let readoutFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter
     }()
 
     // MARK: - Callbacks
@@ -40,13 +92,25 @@ final class TimePickerCell: UITableViewCell {
 
     private func setupUI() {
         selectionStyle = .none
-        backgroundColor = .secondarySystemBackground
-        contentView.addSubview(picker)
+        backgroundColor = AppColors.surface
+
+        let stack = UIStackView(arrangedSubviews: [headerLabel, readoutLabel, picker])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = AppSpacing.sp2
+        stack.setCustomSpacing(AppSpacing.sp4, after: readoutLabel)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(stack)
+
         NSLayoutConstraint.activate([
-            picker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            picker.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            picker.topAnchor.constraint(equalTo: contentView.topAnchor),
-            picker.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
+            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp4),
+            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
+            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            // Wheels span the full readable width so the picker doesn't shrink
+            // to the readout's intrinsic size inside the centred stack.
+            picker.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            picker.trailingAnchor.constraint(equalTo: stack.trailingAnchor)
         ])
     }
 
@@ -59,11 +123,37 @@ final class TimePickerCell: UITableViewCell {
 
     func configure(time: Date) {
         picker.date = time
+        updateReadout(for: time)
+    }
+
+    // MARK: - Readout
+
+    /// Renders `HH:mm` with `fg1` digits and a dimmed (`fg4`) `:` separator,
+    /// mirroring the artboard's three-span layout in one attributed string.
+    private func updateReadout(for date: Date) {
+        let text = readoutFormatter.string(from: date)
+        let attributed = NSMutableAttributedString(
+            string: text,
+            attributes: [
+                .font: AppTypography.clockXl,
+                .foregroundColor: AppColors.fg1,
+                .kern: -3.0
+            ]
+        )
+        if let colonRange = text.range(of: ":") {
+            let nsRange = NSRange(colonRange, in: text)
+            attributed.addAttribute(.foregroundColor, value: AppColors.fg4, range: nsRange)
+            // Drop the negative tracking on the separator so it sits centred
+            // between the digit pairs instead of hugging the minutes.
+            attributed.addAttribute(.kern, value: 0.0, range: nsRange)
+        }
+        readoutLabel.attributedText = attributed
     }
 
     // MARK: - Actions
 
     @objc private func pickerChanged() {
+        updateReadout(for: picker.date)
         onTimeChanged?(picker.date)
     }
 }
