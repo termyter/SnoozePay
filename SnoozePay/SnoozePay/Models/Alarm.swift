@@ -44,10 +44,13 @@ struct Alarm: Identifiable, Equatable, Codable {
 
     // MARK: - Validation rules (#207)
 
-    /// Spec range for snooze duration (SPEC.md says 1–30 minutes). The
-    /// create/edit form's slider exposes a narrower 1...15 — that UI bound
-    /// lives in `CreateAlarmViewModel.snoozeMinutesRange`.
-    static let snoozeMinutesRange: ClosedRange<Int> = 1...30
+    /// Canonical range for snooze duration: 1–15 minutes. The design canon
+    /// (chat1.md:996 — per-alarm slider 1–15 min) is the source of truth; the
+    /// older "1–30" SPEC wording was stale and has since been aligned (#302).
+    /// `CreateAlarmViewModel.snoozeMinutesRange` already bounds the create/edit
+    /// slider to this same range. Legacy alarms persisted with snoozeMinutes
+    /// 16–30 are clamped to 15 on decode (see `init(from:)`), never dropped.
+    static let snoozeMinutesRange: ClosedRange<Int> = 1...15
     /// Legal weekday indices for `repeatDays` (0 = Monday, 6 = Sunday).
     static let weekdayIndexRange: ClosedRange<Int> = 0...6
 
@@ -220,8 +223,9 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.name = try container.decode(String.self, forKey: .name)
         self.soundID = try container.decode(String.self, forKey: .soundID)
         self.vibrationEnabled = try container.decode(Bool.self, forKey: .vibrationEnabled)
-        // Clamp into the spec range (pre-#143 alarms could store up to 30;
-        // anything outside 1...30 is corrupt data).
+        // Clamp into the canonical range. Legacy alarms persisted under the
+        // old 1...30 spec (or with corrupt data) carry snoozeMinutes 16–30;
+        // clamp to 15 so the alarm survives rather than being dropped (#286).
         let rawSnooze = try container.decode(Int.self, forKey: .snoozeMinutes)
         self.snoozeMinutes = min(
             max(rawSnooze, Self.snoozeMinutesRange.lowerBound),
