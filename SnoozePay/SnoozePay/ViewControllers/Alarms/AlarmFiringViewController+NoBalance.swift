@@ -13,8 +13,8 @@ import os
 /// - Bottom CTAs:
 ///   1. Disabled `SPSnoozePrice` (hint "Недостаточно средств") — visual
 ///      continuity so the user sees what they wanted to tap.
-///   2. `SPButton(.money, .lg, fullWidth)` "Apple Pay · 500 ₽" — single-tap
-///      purchase via StoreKitService.
+///   2. `SPButton(.money, .lg, fullWidth)` "Apple Pay · N ₽" (N = catalogue
+///      amount of the resolved SKU) — single-tap purchase via StoreKitService.
 ///   3. `SPButton(.ghost, .lg, fullWidth)` "Я встал — выключить".
 ///
 /// Auto-recovery: `BalanceService.balanceChangedNotification` triggers a
@@ -22,13 +22,17 @@ import os
 /// once the user crosses the affordability threshold.
 extension AlarmFiringViewController {
 
-    /// SKU resolved by the no-balance Apple Pay tap. Hard-coded to the
-    /// 499 ₽ tier rather than a 500 ₽ SKU because the latter doesn't yet
-    /// exist in App Store Connect.
+    /// SKU resolved by the no-balance Apple Pay tap. Targets the 499 ₽ tier;
+    /// the 500 ₽ SKU doesn't exist in App Store Connect (lineup is PM's #240).
     static var noBalanceProductID: String { "com.snooze_pay.balance.499" }
 
-    /// Display amount (₽) for the no-balance Apple Pay button title.
-    static var noBalanceDisplayAmount: Int { 500 }
+    /// Display amount (₽) for the no-balance Apple Pay button title. Derived
+    /// from the catalogue amount of `noBalanceProductID` so the rendered number
+    /// equals what the App Store charges and the ledger credits — see #275. The
+    /// CTA used to show 500 ₽ over the 499 SKU (display != charge != credit).
+    static var noBalanceDisplayAmount: Int {
+        StoreKitService.catalogAmount(for: noBalanceProductID) ?? 0
+    }
 
     // MARK: - Setup
 
@@ -134,8 +138,8 @@ extension AlarmFiringViewController {
 
     private func makeNoBalanceApplePayButton() -> SPButton {
         // V2 spec line 258–266: money variant with apple-logo icon, "Apple Pay"
-        // title, suffix "500 ₽". The suffix uses the mono font so the amount
-        // reads as a money column.
+        // title, suffix = catalogue amount of the resolved SKU (#275). The
+        // suffix uses the mono font so the amount reads as a money column.
         let button = SPButton(
             title: "Apple Pay",
             variant: .money,
@@ -255,7 +259,8 @@ extension AlarmFiringViewController {
 
     // MARK: - Actions
 
-    /// Apple Pay 500 ₽ tap. Resolves the StoreKit product if loaded,
+    /// Apple Pay tap (catalogue amount of the resolved SKU). Resolves the
+    /// StoreKit product if loaded,
     /// otherwise falls back to a direct `BalanceService.topUp` so the
     /// debug / test paths still credit. The re-entrancy guard
     /// (`noBalancePurchaseInFlight`) and `isEnabled = false` flip together
