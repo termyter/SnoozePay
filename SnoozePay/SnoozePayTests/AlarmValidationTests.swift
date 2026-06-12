@@ -26,7 +26,15 @@ final class AlarmValidationTests: XCTestCase {
     }
 
     func testValidatingInit_oversizedSnoozeMinutesReturnsNil() {
-        XCTAssertNil(Alarm(validating: UUID(), snoozeMinutes: 31))
+        // 16 is the first value above the canonical 1...15 range (#286).
+        XCTAssertNil(Alarm(validating: UUID(), snoozeMinutes: 16))
+        XCTAssertNil(Alarm(validating: UUID(), snoozeMinutes: 30))
+    }
+
+    func testValidatingInit_snoozeBoundariesSucceed() {
+        // Both ends of the canonical 1...15 range construct successfully.
+        XCTAssertEqual(Alarm(validating: UUID(), snoozeMinutes: 1)?.snoozeMinutes, 1)
+        XCTAssertEqual(Alarm(validating: UUID(), snoozeMinutes: 15)?.snoozeMinutes, 15)
     }
 
     func testValidatingInit_negativeWeekdayIndexReturnsNil() {
@@ -43,12 +51,12 @@ final class AlarmValidationTests: XCTestCase {
         let alarm = Alarm(
             validating: UUID(),
             repeatDays: [0, 6],
-            snoozeMinutes: 30,
+            snoozeMinutes: 15,
             penaltyAmount: 0
         )
         XCTAssertNotNil(alarm)
         XCTAssertEqual(alarm?.repeatDays, [0, 6])
-        XCTAssertEqual(alarm?.snoozeMinutes, 30)
+        XCTAssertEqual(alarm?.snoozeMinutes, 15)
         XCTAssertEqual(alarm?.penaltyAmount, 0)
     }
 
@@ -106,6 +114,25 @@ final class AlarmValidationTests: XCTestCase {
 
         let high = try decodeLegacyAlarm(snoozeMinutesJSON: "999")
         XCTAssertEqual(high.snoozeMinutes, Alarm.snoozeMinutesRange.upperBound)
+    }
+
+    /// Legacy alarms persisted under the old 1...30 spec carry snoozeMinutes
+    /// 16–30. They must SURVIVE the tighter 1...15 range — clamped to 15, not
+    /// dropped or trapped (#286).
+    func testDecode_clampsLegacySixteenToFifteen() throws {
+        let alarm = try decodeLegacyAlarm(snoozeMinutesJSON: "16")
+        XCTAssertEqual(alarm.snoozeMinutes, 15)
+    }
+
+    func testDecode_clampsLegacyThirtyToFifteen() throws {
+        let alarm = try decodeLegacyAlarm(snoozeMinutesJSON: "30")
+        XCTAssertEqual(alarm.snoozeMinutes, 15)
+    }
+
+    /// Boundary value 15 round-trips unchanged through decode.
+    func testDecode_preservesInRangeSnoozeMinutes() throws {
+        let alarm = try decodeLegacyAlarm(snoozeMinutesJSON: "15")
+        XCTAssertEqual(alarm.snoozeMinutes, 15)
     }
 
     func testDecode_negativePenaltyDegradesToZero() throws {
