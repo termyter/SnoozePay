@@ -71,13 +71,11 @@ final class WalletViewController: UIViewController {
         navigationController?.navigationBar.prefersLargeTitles = false
         navigationItem.largeTitleDisplayMode = .never
 
-        let settingsButton = UIBarButtonItem(
-            image: UIImage(systemName: "gearshape"),
-            style: .plain,
-            target: self,
-            action: #selector(openSettings)
-        )
-        navigationItem.rightBarButtonItem = settingsButton
+        // The design has no Settings entry on the Wallet tab (#280) — the gear
+        // was an invented affordance. Drop the bar item and hide the system
+        // nav bar entirely (mirrors the Alarms tab); the bar is restored just
+        // before child screens are pushed so they keep their back arrow.
+        navigationItem.rightBarButtonItem = nil
 
         setupLayout()
 
@@ -91,6 +89,11 @@ final class WalletViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // Hide the system nav bar on this tab — the custom page header owns the
+        // title and there's no bar item to show (#280). Restored before a child
+        // push (`openHistory`) so the child keeps its back arrow; popping back
+        // here re-hides it.
+        navigationController?.setNavigationBarHidden(true, animated: animated)
         refresh()
     }
 
@@ -196,14 +199,11 @@ final class WalletViewController: UIViewController {
         present(sheet, animated: true)
     }
 
-    @objc private func openSettings() {
-        // Child screen with a back arrow (#237) — pushed onto the tab's
-        // existing navigation stack instead of a standalone modal.
-        let settings = SettingsViewController()
-        navigationController?.pushViewController(settings, animated: true)
-    }
-
     @objc private func openHistory() {
+        // The nav bar is hidden on this root (#280) — restore it before the
+        // push so the history screen keeps its standard back arrow + title.
+        // `viewWillAppear` re-hides it when the user pops back.
+        navigationController?.setNavigationBarHidden(false, animated: true)
         let history = WalletTransactionHistoryViewController()
         navigationController?.pushViewController(history, animated: true)
     }

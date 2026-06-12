@@ -16,9 +16,13 @@ import UIKit
 ///  └──────────────────────────────────────────────────────────┘
 /// ```
 ///
-/// Three tonal states, all 20pt internal padding / 20pt corner radius:
-/// - **enabled**:  `bg2` raised surface, `fg1` clock + `fg3` caps.
-/// - **disabled**: `bg1` surface, `fg3` clock + `fg4` caps.
+/// Three tonal states, all 20pt internal padding / 20pt corner radius. The
+/// card chrome follows the `SPCard` recipe (SPScreensV2.jsx L404/L421) so it
+/// reads as the same primitive as every other surface — `shadow-1`/`shadow-2`
+/// plus the documented light-mode hairline a11y deviation, instead of the old
+/// flat 1pt border with no shadow (#280):
+/// - **enabled**:  `SPCard(tone: .raised)` — `bg2` surface, `fg1` clock + `fg3` caps.
+/// - **disabled**: `SPCard(tone: .surface)` — `bg1` surface, `fg3` clock + `fg4` caps.
 /// - **selected**: handled by `setHighlighted(_:)` press feedback.
 ///
 /// The caps row uses an attributed string with `AppTypography.capsKerning`
@@ -29,12 +33,17 @@ final class AlarmCell: UITableViewCell {
 
     // MARK: - UI Elements
 
+    /// Card surface. Applies the `SPCard` `.raised`/`.surface` recipe inline
+    /// (shadow-2 / shadow-1 + light-mode hairline) rather than embedding an
+    /// `SPCard` — that primitive's tone is immutable at init and the cell flips
+    /// tone per enabled state. `masksToBounds` stays `false` so the shadow can
+    /// render; the rounded corners only clip the background/border on the
+    /// layer, and the cell's subviews never extend past the card edge.
     private let cardView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerRadius = AppRadius.lg  // 20pt
-        view.layer.masksToBounds = true
-        view.layer.borderWidth = 1
+        view.layer.masksToBounds = false
         return view
     }()
 
@@ -85,6 +94,13 @@ final class AlarmCell: UITableViewCell {
         return stack
     }()
 
+    // MARK: - State
+
+    /// Tracks the last applied enabled tone so theme-flip / layout passes can
+    /// re-resolve the (CALayer cgColor / shadow) recipe without the controller
+    /// re-calling `configure`.
+    private var isEnabledTone = true
+
     // MARK: - Callbacks
 
     /// Invoked when the user flips the toggle. Set by the controller in `cellForRowAt`.
@@ -115,8 +131,9 @@ final class AlarmCell: UITableViewCell {
     }
 
     private func refreshDynamicColors() {
-        // CALayer cgColor doesn't auto-resolve dynamic UIColors.
-        cardView.layer.borderColor = AppColors.whiteOverlay08.cgColor
+        // CALayer cgColor + shadow recipe don't auto-resolve dynamic UIColors,
+        // so re-install the whole card chrome on a theme flip.
+        applyCardChrome(enabled: isEnabledTone)
     }
 
     // MARK: - Setup
@@ -211,7 +228,16 @@ final class AlarmCell: UITableViewCell {
         soundName: String?,
         enabled: Bool
     ) {
-        clockLabel.text = time
+        // −0.04em clock tracking per SPScreensV2.jsx L408 (`letterSpacing:
+        // -.04em`). The colour is applied separately by `applyEnabledTone`, so
+        // omit `.foregroundColor` here and let the label's `textColor` win.
+        clockLabel.attributedText = NSAttributedString(
+            string: time,
+            attributes: [
+                .font: clockLabel.font as Any,
+                .kern: AppTypography.clockLgKerning
+            ]
+        )
         capsLabel.attributedText = NSAttributedString(
             string: daysCaps,
             attributes: [
@@ -246,28 +272,36 @@ final class AlarmCell: UITableViewCell {
             pillsStack.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        // Price pill — warn-tone when enabled, neutral when disabled so a
-        // dimmed row doesn't shout "50 ₽" at the user. Design v3 leads with
-        // the ₽-coin icon (`IconRubleCoin`, SPScreensV2.jsx L415).
+        // Enabled cards carry their 12px pill icons; disabled cards drop the
+        // icons entirely so a dimmed row reads quieter (SPScreensV2.jsx
+        // L414-418 vs L431-434, #280).
+        // Price pill — warn-tone when enabled (leading ₽-coin), neutral +
+        // icon-less when disabled.
         let pricePill = SPPill(
             text: price,
             tone: enabled ? .warn : .neutral,
-            icon: SPIcons.rubleCoin(size: 12)
+            icon: enabled ? SPIcons.rubleCoin(size: 12) : nil
         )
         pillsStack.addArrangedSubview(pricePill)
 
         if let multiplier = multiplier {
-            // Progressive multiplier — trend-up polyline replaced the flame
-            // glyph in design v3 (`IconTrendUp`, SPScreensV2.jsx L416).
+            // Progressive multiplier — trend-up polyline (icon only when
+            // enabled).
             let mult = SPPill(
                 text: multiplier,
                 tone: enabled ? .pain : .neutral,
-                icon: SPIcons.trendUp(size: 12)
+                icon: enabled ? SPIcons.trendUp(size: 12) : nil
             )
             pillsStack.addArrangedSubview(mult)
         }
         if let soundName = soundName, !soundName.isEmpty {
-            let sound = SPPill(text: soundName, tone: .neutral)
+            // Sound pill — neutral tone; the 12px speaker glyph appears only
+            // on enabled cards (SPScreensV2.jsx L417, #280).
+            let sound = SPPill(
+                text: soundName,
+                tone: .neutral,
+                icon: enabled ? SPIcons.sound(size: 12) : nil
+            )
             pillsStack.addArrangedSubview(sound)
         }
         // Trailing spacer so pills don't stretch.
@@ -278,9 +312,66 @@ final class AlarmCell: UITableViewCell {
     }
 
     private func applyEnabledTone(_ enabled: Bool) {
-        cardView.backgroundColor = enabled ? AppColors.bg2 : AppColors.bg1
+        isEnabledTone = enabled
         clockLabel.textColor = enabled ? AppColors.fg1 : AppColors.fg3
-        cardView.layer.borderColor = AppColors.whiteOverlay08.cgColor
+        applyCardChrome(enabled: enabled)
+    }
+
+    /// Install the `SPCard` chrome for the given tone: an enabled card uses the
+    /// `.raised` recipe (`bg2` + `shadow-2`), a disabled card the `.surface`
+    /// recipe (`bg1` + `shadow-1`). In light mode both add a 1pt hairline —
+    /// the documented a11y deviation from `SPCard` (near-white surfaces need a
+    /// stroke to read as a card). Dark mode relies on the shadow alone, no
+    /// border, per the design (SPScreensV2.jsx L404/L421).
+    private func applyCardChrome(enabled: Bool) {
+        cardView.backgroundColor = enabled ? AppColors.bg2 : AppColors.bg1
+
+        let trait = traitCollection
+        let isLight = trait.userInterfaceStyle != .dark
+
+        // Shadow recipe.
+        let shadow = enabled ? AppShadow.shadow2(for: trait) : AppShadow.shadow1(for: trait)
+        shadow.apply(to: cardView.layer)
+        // The disabled (`shadow-1`) tone carries a narrow ambient stop on light
+        // surfaces; the enabled (`shadow-2`) tone is a single stop, so clear
+        // any stale ambient layer when switching tones.
+        if enabled {
+            cardView.layer.sublayers?
+                .first { $0.name == AppShadow.ambientShadow1LayerName }?
+                .removeFromSuperlayer()
+        } else {
+            AppShadow.installAmbientShadow1Layer(
+                on: cardView.layer,
+                cornerRadius: AppRadius.lg,
+                trait: trait
+            )
+        }
+
+        // Light-mode hairline a11y deviation.
+        if isLight {
+            let scale = trait.displayScale > 0 ? trait.displayScale : 1
+            cardView.layer.borderWidth = 1.0 / scale
+            cardView.layer.borderColor = AppColors.stroke1.resolvedColor(with: trait).cgColor
+        } else {
+            cardView.layer.borderWidth = 0
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Pre-rasterise the shadow against the rounded path + keep the ambient
+        // layer frame in sync with the card bounds.
+        cardView.layer.shadowPath = UIBezierPath(
+            roundedRect: cardView.bounds,
+            cornerRadius: AppRadius.lg
+        ).cgPath
+        if !isEnabledTone {
+            AppShadow.installAmbientShadow1Layer(
+                on: cardView.layer,
+                cornerRadius: AppRadius.lg,
+                trait: traitCollection
+            )
+        }
     }
 
     @objc private func toggleSwitchChanged() {

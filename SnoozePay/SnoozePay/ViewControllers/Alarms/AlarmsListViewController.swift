@@ -75,6 +75,11 @@ class AlarmsListViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // The V3 header carries its own title + in-row gear, so the system
+        // nav bar is hidden on this tab (#280). It's restored just before a
+        // child screen (Settings/Legal) is pushed so the child keeps its
+        // standard back arrow; returning here re-hides it via this callback.
+        navigationController?.setNavigationBarHidden(true, animated: animated)
         viewModel.loadData()
         tableView.reloadData()
         refreshStreakBanner()
@@ -116,22 +121,16 @@ class AlarmsListViewController: UIViewController {
         navigationItem.title = ""
         navigationController?.navigationBar.prefersLargeTitles = false
 
-        // V1 had a "+" button on the right edge of the nav bar; the V2 header
-        // moves that affordance into the title row so the user always sees
-        // the CTA near the balance. Drop the nav-bar plus to avoid two CTAs.
+        // V1 had a "+" button on the right edge of the nav bar; the V3 header
+        // moves that affordance — and the Settings gear (#280) — into the
+        // title row so the system nav bar can be hidden entirely on this tab
+        // (see `viewWillAppear`). Drop both bar items to avoid duplicates.
         navigationItem.rightBarButtonItem = nil
+        navigationItem.leftBarButtonItem = nil
 
-        // Gear icon — preserved entry point for Settings.
-        let settingsButton = UIBarButtonItem(
-            image: UIImage(systemName: "gearshape"),
-            style: .plain,
-            target: self,
-            action: #selector(openSettings)
-        )
-        navigationItem.leftBarButtonItem = settingsButton
-
-        // DEBUG-only entries — streak modal trigger + onboarding reset.
-        // Required to stay functional after the V2 rewrite.
+        // DEBUG-only entries — streak modal trigger + onboarding reset. The
+        // nav bar is hidden on this tab in release, but these surface when a
+        // developer temporarily un-hides it; keep them wired.
         #if DEBUG
         let streakButton = UIBarButtonItem(
             image: UIImage(systemName: "flame.fill"),
@@ -145,13 +144,17 @@ class AlarmsListViewController: UIViewController {
             target: self,
             action: #selector(debugResetOnboarding)
         )
-        navigationItem.leftBarButtonItems = [settingsButton, streakButton, resetButton]
+        navigationItem.leftBarButtonItems = [streakButton, resetButton]
         #endif
     }
 
     @objc private func openSettings() {
         // Child screen with a back arrow (#237) — pushed onto the tab's
-        // existing navigation stack instead of a standalone modal.
+        // existing navigation stack instead of a standalone modal. The nav
+        // bar is hidden on this root (#280), so restore it before the push
+        // so the Settings screen keeps its standard back arrow + title; this
+        // VC re-hides it in `viewWillAppear` when the user pops back.
+        navigationController?.setNavigationBarHidden(false, animated: true)
         let settingsVC = SettingsViewController()
         navigationController?.pushViewController(settingsVC, animated: true)
     }
@@ -203,6 +206,9 @@ class AlarmsListViewController: UIViewController {
     private func setupCallbacks() {
         header.onAddTap = { [weak self] in
             self?.addAlarmTapped()
+        }
+        header.onSettingsTap = { [weak self] in
+            self?.openSettings()
         }
         header.onBalanceTopUpTap = { [weak self] in
             self?.presentTopUp()
