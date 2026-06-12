@@ -348,9 +348,10 @@ class AlarmsListViewController: UIViewController {
     }
 
     private func presentTopUp() {
-        let topUpVC = TopUpViewController()
-        let nav = UINavigationController(rootViewController: topUpVC)
-        present(nav, animated: true)
+        // Single amount-picker surface (#281): the Alarms «Пополнить» opens the
+        // same Deposit sheet as the Wallet tab — the legacy TopUpViewController
+        // is retired.
+        present(DepositBottomSheetViewController(), animated: true)
     }
 }
 
