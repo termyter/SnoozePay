@@ -36,7 +36,7 @@ final class WalletTransactionPreviewTests: XCTestCase {
         let newest = Transaction(type: .topup, amount: 500, createdAt: now)
         let middle = Transaction(type: .promotion, amount: 200, createdAt: date(daysAgo: 1, from: now))
         let items = WalletTransactionPreview.items(from: [oldest, newest, middle], now: now)
-        XCTAssertEqual(items.map(\.title), ["Пополнение баланса", "Промо-зачисление", "Поспать ещё"])
+        XCTAssertEqual(items.map(\.title), ["Пополнение баланса", "Бонус за друга", "Поспать ещё"])
     }
 
     func testItems_emptyInput_returnsEmpty() {
@@ -65,14 +65,64 @@ final class WalletTransactionPreviewTests: XCTestCase {
         XCTAssertEqual(item.amountText, "+500\u{202F}₽")
     }
 
-    func testPromotionItem_isGreenGiftWithPlusAmount() {
+    func testPromotionItem_isGreenGiftWithHonestCopy() {
         let item = WalletTransactionPreview.item(
             for: Transaction(type: .promotion, amount: 200, createdAt: Date())
         )
-        XCTAssertEqual(item.title, "Промо-зачисление")
+        // Honest, unified copy — no nonexistent 7-day hold (issue #282).
+        XCTAssertEqual(item.title, "Бонус за друга")
         XCTAssertFalse(item.isDebit)
         XCTAssertEqual(item.iconSystemName, "gift")
         XCTAssertEqual(item.amountText, "+200\u{202F}₽")
+    }
+
+    // MARK: - Alarm context on charge rows (issue #282)
+
+    func testChargeItem_appendsAlarmContextWhenResolvable() {
+        let calendar = Calendar(identifier: .gregorian)
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 1; comps.day = 15; comps.hour = 7; comps.minute = 0
+        let alarmTime = calendar.date(from: comps)!
+        let alarm = Alarm(time: alarmTime, repeatDays: [0, 1, 2, 3, 4], name: "Поспать ещё")
+        let tx = Transaction(
+            type: .charge, amount: 50, alarmID: alarm.id.uuidString, createdAt: Date()
+        )
+        let item = WalletTransactionPreview.item(
+            for: tx, alarmLookup: { $0 == alarm.id ? alarm : nil }
+        )
+        XCTAssertTrue(
+            item.timestampText.hasPrefix("Будни · 07:00 · "),
+            "got: \(item.timestampText)"
+        )
+    }
+
+    func testChargeItem_missingAlarm_degradesToBareTimestamp() {
+        let tx = Transaction(
+            type: .charge, amount: 50, alarmID: UUID().uuidString, createdAt: Date()
+        )
+        // Lookup never resolves → no "Будни" prefix, just the timestamp.
+        let item = WalletTransactionPreview.item(for: tx, alarmLookup: { _ in nil })
+        XCTAssertFalse(item.timestampText.contains(" · 07:00 · "))
+        XCTAssertTrue(item.timestampText.hasPrefix("Сегодня · "), "got: \(item.timestampText)")
+    }
+
+    func testChargeItem_nilAlarmID_degradesToBareTimestamp() {
+        let tx = Transaction(type: .charge, amount: 50, alarmID: nil, createdAt: Date())
+        let item = WalletTransactionPreview.item(for: tx, alarmLookup: { _ in
+            XCTFail("lookup must not run for a nil alarmID")
+            return nil
+        })
+        XCTAssertTrue(item.timestampText.hasPrefix("Сегодня · "), "got: \(item.timestampText)")
+    }
+
+    func testTopupItem_ignoresAlarmContext() {
+        let alarm = Alarm(time: Date(), repeatDays: [0], name: "x")
+        let tx = Transaction(
+            type: .topup, amount: 500, alarmID: alarm.id.uuidString, createdAt: Date()
+        )
+        // Non-charge rows never carry alarm context even if an id leaks in.
+        let item = WalletTransactionPreview.item(for: tx, alarmLookup: { _ in alarm })
+        XCTAssertTrue(item.timestampText.hasPrefix("Сегодня · "), "got: \(item.timestampText)")
     }
 
     func testAmountText_usesRussianThousandsSeparator() {
