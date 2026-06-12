@@ -203,18 +203,13 @@ final class CreateAlarmViewModel {
 
     // MARK: - Available sounds (10 sounds matching Figma design)
 
-    let availableSounds: [(id: String, name: String)] = [
-        ("dawn", "Рассвет"),
-        ("radar", "Радар"),
-        ("drops", "Капли"),
-        ("piano", "Пиано"),
-        ("guitar", "Гитара"),
-        ("bell", "Колокольчик"),
-        ("waves", "Волны"),
-        ("birds", "Птицы"),
-        ("classic", "Классика"),
-        ("jazz", "Джаз")
-    ]
+    /// Sound catalogue surfaced to `SoundPickerViewController`. Each entry now
+    /// carries a short Russian `subtitle` describing the timbre (V3 card list —
+    /// `SPMore.jsx:332-339` style, e.g. «Тёплый рассвет с птицами»). The
+    /// `id`/`name` members keep their existing meaning so all named-member
+    /// callers (`+Sections`, list VM) compile unchanged. soundID defaults are
+    /// owned by #278 — this list only adds descriptive copy.
+    let availableSounds: [SoundCatalogue.Entry] = SoundCatalogue.entries
 
     // MARK: - System sound mapping (placeholder until custom audio files are bundled)
 

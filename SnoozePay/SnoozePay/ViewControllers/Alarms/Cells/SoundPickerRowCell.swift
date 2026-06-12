@@ -1,33 +1,45 @@
 import UIKit
 
-/// Single-sound row used by `SoundPickerViewController` (#150 design refresh).
+/// Single-sound row used by `SoundPickerViewController` (V3 — #285).
 ///
-/// Layout: leading `SPButton(.quiet, .sm)` toggling between play / pause →
-/// title (bodyLg) + duration (meta) text stack → trailing checkmark on the
-/// selected row. The whole content is wrapped in a hand-rolled card surface
-/// — `SPCard` itself doesn't expose a "selected" state, so we render the
-/// money-tinted border + `whiteOverlay06` fill directly on a plain `UIView`
-/// container so the picker can animate selection without re-instantiating
-/// the card every reload.
+/// Layout per `SPMore.jsx:354-382`: a 36×36 leading icon tile (money-gradient
+/// when the row is selected, faint overlay otherwise) → title (h4) + subtitle
+/// (meta) stack → trailing 20pt money checkmark on the selected row. Rows sit
+/// inside a single shared `SPCard` owned by the view-controller, so each cell
+/// only draws a hairline bottom divider (suppressed on the last row) rather
+/// than its own card chrome. Preview playback lives in a separate bottom
+/// «Превью» player card, NOT on the row — so there's no per-row play button.
+///
+/// A disabled variant renders the «Своя мелодия · скоро» slot dimmed and
+/// non-interactive.
 final class SoundPickerRowCell: UITableViewCell {
 
     static let reuseID = "SoundPickerRowCell"
 
-    var onPlayTapped: (() -> Void)?
-
     // MARK: - UI
 
-    private let cardContainer = UIView()
-    private var playButton = SPButton(
-        title: "",
-        variant: .quiet,
-        size: .sm,
-        icon: UIImage(systemName: "play.fill")
-    )
+    /// 36×36 rounded icon tile. Fill flips to the money gradient when selected.
+    private let iconTile: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 10
+        view.layer.masksToBounds = true
+        return view
+    }()
+
+    private let iconTileGradient = CAGradientLayer()
+
+    private let iconView: UIImageView = {
+        let view = UIImageView(image: UIImage(systemName: "music.note")?
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentMode = .center
+        return view
+    }()
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.bodyLg
+        label.font = AppTypography.h4
         label.textColor = AppColors.fg1
         label.numberOfLines = 1
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -46,10 +58,17 @@ final class SoundPickerRowCell: UITableViewCell {
     private let checkmark: UIImageView = {
         let view = UIImageView()
         view.image = UIImage(systemName: "checkmark")?.withConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+            UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
         )
         view.tintColor = AppColors.money500
         view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    private let divider: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = AppColors.whiteOverlay08
         return view
     }()
 
@@ -64,18 +83,16 @@ final class SoundPickerRowCell: UITableViewCell {
     }()
 
     private var lastIsSelected = false
+    private var dividerHeightConstraint: NSLayoutConstraint?
 
     // MARK: - Init
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
-        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
-        // closure-based observer when available; the legacy override below
-        // remains as a fallback for older runtimes.
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SoundPickerRowCell, _) in
-                view.refreshChromeColors()
+                view.refreshIconTile()
             }
         }
     }
@@ -92,137 +109,117 @@ final class SoundPickerRowCell: UITableViewCell {
         contentView.backgroundColor = .clear
         selectionStyle = .none
 
-        cardContainer.translatesAutoresizingMaskIntoConstraints = false
-        cardContainer.layer.cornerRadius = AppRadius.sm
-        cardContainer.layer.masksToBounds = false
-        contentView.addSubview(cardContainer)
+        iconTileGradient.startPoint = SPSupport.gradientStart
+        iconTileGradient.endPoint = SPSupport.gradientEnd
+        iconTile.layer.insertSublayer(iconTileGradient, at: 0)
+        iconTile.addSubview(iconView)
 
         textStack.addArrangedSubview(titleLabel)
         textStack.addArrangedSubview(subtitleLabel)
 
-        playButton.translatesAutoresizingMaskIntoConstraints = false
-        playButton.addTarget(self, action: #selector(playTapped), for: .touchUpInside)
+        contentView.addSubview(iconTile)
+        contentView.addSubview(textStack)
+        contentView.addSubview(checkmark)
+        contentView.addSubview(divider)
 
-        cardContainer.addSubview(playButton)
-        cardContainer.addSubview(textStack)
-        cardContainer.addSubview(checkmark)
-
-        let cardInset = AppSpacing.sp3
-        let verticalPadding = AppSpacing.sp3
+        // 14×16 inset per JSX (padding "14px 16px").
+        let hInset = AppSpacing.sp4
         NSLayoutConstraint.activate([
-            cardContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            cardContainer.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            cardContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            cardContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            iconTile.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: hInset),
+            iconTile.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconTile.widthAnchor.constraint(equalToConstant: 36),
+            iconTile.heightAnchor.constraint(equalToConstant: 36),
 
-            playButton.leadingAnchor.constraint(equalTo: cardContainer.leadingAnchor, constant: cardInset),
-            playButton.centerYAnchor.constraint(equalTo: cardContainer.centerYAnchor),
-            playButton.widthAnchor.constraint(equalToConstant: 44),
+            iconView.centerXAnchor.constraint(equalTo: iconTile.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: iconTile.centerYAnchor),
 
-            textStack.leadingAnchor.constraint(equalTo: playButton.trailingAnchor, constant: AppSpacing.sp3),
-            textStack.centerYAnchor.constraint(equalTo: cardContainer.centerYAnchor),
-            textStack.topAnchor.constraint(
-                greaterThanOrEqualTo: cardContainer.topAnchor, constant: verticalPadding
-            ),
-            textStack.bottomAnchor.constraint(
-                lessThanOrEqualTo: cardContainer.bottomAnchor, constant: -verticalPadding
-            ),
+            textStack.leadingAnchor.constraint(equalTo: iconTile.trailingAnchor, constant: AppSpacing.sp3),
+            textStack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            textStack.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 14),
+            textStack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -14),
 
-            checkmark.trailingAnchor.constraint(equalTo: cardContainer.trailingAnchor, constant: -cardInset),
-            checkmark.centerYAnchor.constraint(equalTo: cardContainer.centerYAnchor),
+            checkmark.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -hInset),
+            checkmark.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             checkmark.widthAnchor.constraint(equalToConstant: 20),
+            checkmark.heightAnchor.constraint(equalToConstant: 20),
 
             textStack.trailingAnchor.constraint(
                 lessThanOrEqualTo: checkmark.leadingAnchor, constant: -AppSpacing.sp3
             ),
-            cardContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 56)
+
+            divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: hInset),
+            divider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -hInset),
+            divider.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+
+            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 64)
         ])
+
+        let dividerHeight = divider.heightAnchor.constraint(equalToConstant: 0.5)
+        dividerHeight.isActive = true
+        dividerHeightConstraint = dividerHeight
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        iconTileGradient.frame = iconTile.bounds
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+        dividerHeightConstraint?.constant = 1.0 / scale
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        // iOS 17+ runtimes get the refresh through the registered observer
-        // (see init); skip here so we don't refresh twice.
         if #available(iOS 17.0, *) { return }
-        // CALayer cgColor doesn't auto-resolve dynamic UIColors — refresh
-        // border / shadow on system theme flips.
-        refreshChromeColors()
+        refreshIconTile()
     }
 
-    private func refreshChromeColors() {
-        let scale = max(traitCollection.displayScale, 1)
+    private func refreshIconTile() {
         if lastIsSelected {
-            cardContainer.backgroundColor = AppColors.whiteOverlay06
-            cardContainer.layer.borderWidth = 1.0 / scale
-            cardContainer.layer.borderColor = AppColors.strokeMoney
-                .resolvedColor(with: traitCollection).cgColor
-            cardContainer.layer.shadowColor = AppColors.money500.cgColor
-            cardContainer.layer.shadowOpacity = traitCollection.userInterfaceStyle == .light ? 0.15 : 0.2
-            cardContainer.layer.shadowRadius = 8
-            cardContainer.layer.shadowOffset = CGSize(width: 0, height: 4)
+            iconTileGradient.colors = SPSupport.moneyGradientColors
+            iconTileGradient.locations = SPSupport.moneyGradientLocations
+            iconTileGradient.isHidden = false
+            iconTile.backgroundColor = .clear
+            iconView.tintColor = AppColors.fgOnMoney
         } else {
-            cardContainer.backgroundColor = AppColors.bg1
-            cardContainer.layer.borderWidth = 1.0 / scale
-            cardContainer.layer.borderColor = AppColors.stroke1
-                .resolvedColor(with: traitCollection).cgColor
-            cardContainer.layer.shadowOpacity = 0
+            iconTileGradient.isHidden = true
+            iconTile.backgroundColor = AppColors.whiteOverlay06
+            iconView.tintColor = AppColors.fg3
         }
     }
 
     // MARK: - Configure
 
-    func configure(name: String, duration: String, isSelected: Bool, isPlaying: Bool) {
+    /// - Parameters:
+    ///   - name: sound display name.
+    ///   - subtitle: descriptive copy («Тёплый рассвет с птицами»).
+    ///   - isSelected: money-gradient icon tile + trailing checkmark.
+    ///   - isLast: suppress the hairline divider on the final row.
+    ///   - isEnabled: `false` for the «Своя мелодия · скоро» slot — dims the
+    ///     row and lets the controller skip selection.
+    func configure(
+        name: String,
+        subtitle: String,
+        isSelected: Bool,
+        isLast: Bool,
+        isEnabled: Bool
+    ) {
         titleLabel.text = name
-        subtitleLabel.text = duration
-        checkmark.isHidden = !isSelected
-        lastIsSelected = isSelected
-        refreshChromeColors()
+        subtitleLabel.text = subtitle
+        lastIsSelected = isSelected && isEnabled
+        checkmark.isHidden = !(isSelected && isEnabled)
+        divider.isHidden = isLast
+        refreshIconTile()
 
-        // Replace the SPButton's icon by rebuilding it — `SPButton` doesn't
-        // expose a setter for the leading icon and we want the play / pause
-        // toggle to read with the system "play.fill" / "pause.fill" SF
-        // symbols at consistent weight. Cheaper than animating into a
-        // CAShapeLayer.
-        playButton.removeFromSuperview()
-        playButton.removeTarget(self, action: nil, for: .allEvents)
-        let newIcon = UIImage(systemName: isPlaying ? "pause.fill" : "play.fill")
-        let replacement = SPButton(
-            title: "",
-            variant: .quiet,
-            size: .sm,
-            icon: newIcon
-        )
-        replacement.translatesAutoresizingMaskIntoConstraints = false
-        replacement.addTarget(self, action: #selector(playTapped), for: .touchUpInside)
-        cardContainer.addSubview(replacement)
-        NSLayoutConstraint.activate([
-            replacement.leadingAnchor.constraint(equalTo: cardContainer.leadingAnchor, constant: AppSpacing.sp3),
-            replacement.centerYAnchor.constraint(equalTo: cardContainer.centerYAnchor),
-            replacement.widthAnchor.constraint(equalToConstant: 44)
-        ])
-        playButton = replacement
-
-        // Re-pin the text stack leading anchor because we just swapped the
-        // play button view it depends on. AutoLayout keeps the old (deleted)
-        // constraint dangling otherwise.
-        for constraint in cardContainer.constraints
-        where constraint.firstItem === textStack && constraint.firstAttribute == .leading {
-            cardContainer.removeConstraint(constraint)
-        }
-        textStack.leadingAnchor.constraint(
-            equalTo: playButton.trailingAnchor, constant: AppSpacing.sp3
-        ).isActive = true
-    }
-
-    @objc private func playTapped() {
-        onPlayTapped?()
+        contentView.alpha = isEnabled ? 1.0 : 0.45
+        isUserInteractionEnabled = isEnabled
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        onPlayTapped = nil
         checkmark.isHidden = true
+        divider.isHidden = false
         lastIsSelected = false
+        contentView.alpha = 1.0
+        isUserInteractionEnabled = true
     }
 }

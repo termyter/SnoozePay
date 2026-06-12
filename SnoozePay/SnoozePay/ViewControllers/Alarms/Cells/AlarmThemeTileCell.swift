@@ -1,12 +1,12 @@
 import UIKit
 
-/// Single grid tile rendered by `AlarmThemePickerViewController` (#151).
+/// Single grid tile rendered by `AlarmThemePickerViewController` (V3 — #285).
 ///
-/// Top of the tile previews the theme (gradient layer for built-ins, photo
-/// or "+ icon" for `.custom`); the footer band carries the uppercased name
-/// and a checkmark when selected. The tile uses `SPCard(tone: .surface,
-/// padding: 0, cornerRadius: AppRadius.md)` so it shares the design system's
-/// shadow + stroke recipe with the rest of the create-form surfaces.
+/// Per `SPMore2.jsx:434-456`: the whole tile is the theme preview (135° gradient
+/// for built-ins, photo / "+" for `.custom`). The name + subtitle are overlaid
+/// bottom-left with a text shadow (no opaque footer band); a 22pt money-gradient
+/// checkmark badge sits top-right when selected, and the selected tile gets a
+/// money outline with a 2pt offset.
 final class AlarmThemeTileCell: UICollectionViewCell {
 
     static let reuseID = "AlarmThemeTileCell"
@@ -36,13 +36,12 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         return view
     }()
 
-    /// Centered "+" symbol for the empty `.custom` slot. Hidden the moment a
-    /// custom image is picked so the user gets a thumbnail preview.
+    /// Centered "+" symbol for the empty `.custom` slot.
     private let plusIcon: UIImageView = {
         let icon = UIImageView(image: UIImage(systemName: "plus")?
             .withConfiguration(UIImage.SymbolConfiguration(pointSize: 28, weight: .semibold)))
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.tintColor = AppColors.fg2
+        icon.tintColor = AppColors.fg3
         icon.contentMode = .center
         icon.isHidden = true
         return icon
@@ -51,27 +50,48 @@ final class AlarmThemeTileCell: UICollectionViewCell {
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.textAlignment = .center
-        label.attributedText = nil
-        label.textColor = AppColors.fg1
+        label.font = AppTypography.buttonSm
+        label.textColor = .white
+        label.numberOfLines = 1
         return label
     }()
 
-    /// `bg2` chrome at the bottom of the tile holds the name + checkmark so
-    /// the type stays legible against any underlying gradient or photo.
-    private let footerView: UIView = {
+    private let subtitleLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppFonts.sans(.medium, 10)
+        label.textColor = UIColor.white.withAlphaComponent(0.75)
+        label.numberOfLines = 1
+        return label
+    }()
+
+    private let textStack: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = 1
+        stack.alignment = .leading
+        return stack
+    }()
+
+    /// 22pt money-gradient checkmark badge, top-right when selected.
+    private let checkmarkBadge: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = AppColors.bg2.withAlphaComponent(0.92)
+        view.layer.cornerRadius = 11
+        view.layer.masksToBounds = true
+        view.isHidden = true
         return view
     }()
 
-    private let checkmark: UIImageView = {
-        let view = UIImageView(image: UIImage(systemName: "checkmark.circle.fill")?
-            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)))
+    private let checkmarkGradient = CAGradientLayer()
+
+    private let checkmarkIcon: UIImageView = {
+        let view = UIImageView(image: UIImage(systemName: "checkmark")?
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 12, weight: .bold)))
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.tintColor = AppColors.money500
-        view.isHidden = true
+        view.tintColor = AppColors.fgOnMoney
+        view.contentMode = .center
         return view
     }()
 
@@ -94,9 +114,20 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         card.addSubview(gradientView)
         card.addSubview(imageView)
         card.addSubview(plusIcon)
-        card.addSubview(footerView)
-        footerView.addSubview(nameLabel)
-        footerView.addSubview(checkmark)
+
+        textStack.addArrangedSubview(nameLabel)
+        textStack.addArrangedSubview(subtitleLabel)
+        applyTextShadow(to: nameLabel)
+        applyTextShadow(to: subtitleLabel)
+        card.addSubview(textStack)
+
+        checkmarkGradient.startPoint = SPSupport.gradientStart
+        checkmarkGradient.endPoint = SPSupport.gradientEnd
+        checkmarkGradient.colors = SPSupport.moneyGradientColors
+        checkmarkGradient.locations = SPSupport.moneyGradientLocations
+        checkmarkBadge.layer.insertSublayer(checkmarkGradient, at: 0)
+        checkmarkBadge.addSubview(checkmarkIcon)
+        card.addSubview(checkmarkBadge)
 
         NSLayoutConstraint.activate([
             card.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -115,91 +146,92 @@ final class AlarmThemeTileCell: UICollectionViewCell {
             imageView.bottomAnchor.constraint(equalTo: card.bottomAnchor),
 
             plusIcon.centerXAnchor.constraint(equalTo: card.centerXAnchor),
-            plusIcon.centerYAnchor.constraint(equalTo: card.centerYAnchor, constant: -10),
+            plusIcon.centerYAnchor.constraint(equalTo: card.centerYAnchor, constant: -8),
 
-            footerView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            footerView.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            footerView.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-            footerView.heightAnchor.constraint(equalToConstant: 28),
+            textStack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.sp2),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: card.trailingAnchor, constant: -AppSpacing.sp2),
+            textStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.sp2),
 
-            nameLabel.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
-            nameLabel.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: AppSpacing.sp3),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: checkmark.leadingAnchor, constant: -AppSpacing.sp2),
+            checkmarkBadge.topAnchor.constraint(equalTo: card.topAnchor, constant: 6),
+            checkmarkBadge.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -6),
+            checkmarkBadge.widthAnchor.constraint(equalToConstant: 22),
+            checkmarkBadge.heightAnchor.constraint(equalToConstant: 22),
 
-            checkmark.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
-            checkmark.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -AppSpacing.sp2),
-            checkmark.widthAnchor.constraint(equalToConstant: 24),
-            checkmark.heightAnchor.constraint(equalToConstant: 24)
+            checkmarkIcon.centerXAnchor.constraint(equalTo: checkmarkBadge.centerXAnchor),
+            checkmarkIcon.centerYAnchor.constraint(equalTo: checkmarkBadge.centerYAnchor)
         ])
+    }
+
+    private func applyTextShadow(to label: UILabel) {
+        label.layer.shadowColor = UIColor.black.cgColor
+        label.layer.shadowOpacity = 0.6
+        label.layer.shadowOffset = CGSize(width: 0, height: 1)
+        label.layer.shadowRadius = 4
+        label.layer.masksToBounds = false
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         gradientLayer?.frame = gradientView.bounds
+        checkmarkGradient.frame = checkmarkBadge.bounds
     }
 
     // MARK: - Configure
 
     /// - Parameters:
-    ///   - theme: built-in theme to render the gradient/name from. Ignored
-    ///     for the custom slot (pass `.dawn` as a placeholder).
+    ///   - theme: built-in theme to render the gradient/name/subtitle from.
+    ///     Ignored for the custom slot (pass `.dawn` as a placeholder).
     ///   - isCustomSlot: when true, render the `+` affordance plus a dimmed
-    ///     placeholder gradient. When the user has already picked a photo,
-    ///     pass `customImage` to surface the thumbnail instead.
-    ///   - isSelected: highlights the tile (money-tinted border + checkmark).
-    ///   - customImage: thumbnail for the `.custom` slot when a photo has
-    ///     been picked previously. nil → "+ Своё фото" placeholder.
+    ///     placeholder gradient (or the picked photo thumbnail).
+    ///   - isSelected: money outline + offset + checkmark badge.
+    ///   - customImage: thumbnail for the `.custom` slot when a photo exists.
     func configure(theme: AlarmTheme, isCustomSlot: Bool, isSelected: Bool, customImage: UIImage?) {
-        // Reset prior state so recycled cells don't keep the previous tile's
-        // gradient / image.
         gradientLayer?.removeFromSuperlayer()
         gradientLayer = nil
         imageView.image = nil
         imageView.isHidden = true
         plusIcon.isHidden = true
 
-        let displayName: String
+        let displayTheme: AlarmTheme
         if isCustomSlot {
-            displayName = AlarmTheme.custom(imagePath: URL(fileURLWithPath: "/")).displayName
+            displayTheme = AlarmTheme.custom(imagePath: URL(fileURLWithPath: "/"))
             if let image = customImage {
                 imageView.image = image
                 imageView.isHidden = false
+                gradientView.alpha = 0
             } else {
                 installGradient(for: .dawn)
-                gradientView.alpha = 0.4 // dim the placeholder so "+" pops
+                gradientView.alpha = 0.4 // dim placeholder so "+" pops
                 plusIcon.isHidden = false
             }
         } else if case .custom(let url) = theme {
-            displayName = theme.displayName
+            displayTheme = theme
             if let image = AlarmThemeImageStore.loadImage(at: url) {
                 imageView.image = image
                 imageView.isHidden = false
+                gradientView.alpha = 0
             } else {
                 installGradient(for: .dawn)
+                gradientView.alpha = 1.0
             }
         } else {
-            displayName = theme.displayName
+            displayTheme = theme
             installGradient(for: theme)
             gradientView.alpha = 1.0
         }
 
-        nameLabel.attributedText = NSAttributedString(
-            string: displayName.uppercased(),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg1
-            ]
-        )
+        nameLabel.text = displayTheme.displayName
+        subtitleLabel.text = AlarmThemeSubtitles.subtitle(for: displayTheme)
 
-        checkmark.isHidden = !isSelected
-        // Outline the selected tile with a money-tinted border for an extra
-        // affordance beyond the checkmark.
+        checkmarkBadge.isHidden = !isSelected
+        // Money outline + 2pt offset on the selected tile (SPMore2.jsx:438-439).
         if isSelected {
             card.layer.borderColor = AppColors.money500.cgColor
             card.layer.borderWidth = 2
         } else {
-            card.layer.borderWidth = 0
+            let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+            card.layer.borderColor = AppColors.stroke1.cgColor
+            card.layer.borderWidth = 1.0 / scale
         }
     }
 
@@ -208,8 +240,10 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         let layer = CAGradientLayer()
         layer.colors = colors
         layer.locations = AlarmThemeRendering.gradientLocations(for: theme)
-        layer.startPoint = CGPoint(x: 0.5, y: 0.0)
-        layer.endPoint = CGPoint(x: 0.5, y: 1.0)
+        // 135° diagonal (top-left → bottom-right) — matches ThemeRowCell and the
+        // design's `linear-gradient(135deg, …)`.
+        layer.startPoint = SPSupport.gradientStart
+        layer.endPoint = SPSupport.gradientEnd
         layer.frame = gradientView.bounds
         gradientView.layer.insertSublayer(layer, at: 0)
         gradientLayer = layer

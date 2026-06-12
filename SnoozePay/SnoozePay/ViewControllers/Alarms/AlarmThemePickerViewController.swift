@@ -127,7 +127,17 @@ final class AlarmThemePickerViewController: UIViewController {
         )
         titleLabel.accessibilityLabel = "Тема будильника"
         navigationItem.titleView = titleLabel
+
+        // «Готово» quiet-sm — V3 exit affordance (matches SPMore2.jsx:411).
+        let doneButton = SPButton(title: "Готово", variant: .quiet, size: .sm)
+        doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneButton)
+
         setupCollectionView()
+    }
+
+    @objc private func doneTapped() {
+        navigationController?.popViewController(animated: true)
     }
 
     // MARK: - Setup
@@ -150,6 +160,11 @@ final class AlarmThemePickerViewController: UIViewController {
         grid.dataSource = self
         grid.delegate = self
         grid.register(AlarmThemeTileCell.self, forCellWithReuseIdentifier: AlarmThemeTileCell.reuseID)
+        grid.register(
+            ThemeSectionHeaderView.self,
+            forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+            withReuseIdentifier: ThemeSectionHeaderView.reuseID
+        )
         self.view.addSubview(grid)
 
         NSLayoutConstraint.activate([
@@ -204,32 +219,36 @@ final class AlarmThemePickerViewController: UIViewController {
         let gradient = CAGradientLayer()
         gradient.colors = colors
         gradient.locations = AlarmThemeRendering.gradientLocations(for: theme)
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
+        // 135° diagonal everywhere (top-left → bottom-right) — matches
+        // ThemeRowCell + the design's `linear-gradient(135deg, …)`.
+        gradient.startPoint = SPSupport.gradientStart
+        gradient.endPoint = SPSupport.gradientEnd
         gradient.frame = previewContainer.bounds
         previewContainer.layer.insertSublayer(gradient, at: 0)
         previewGradient = gradient
     }
 
-    /// Two-column compositional grid. Item ratio is 16:9 — width is whatever
-    /// the column resolves to, height tracks via `.fractionalWidth(9.0/16.0)`
-    /// on the group, dropped to ~`0.625` to leave room for the in-tile name
-    /// label without forcing a separate sectional header layout.
+    /// Three-column compositional grid, tile aspect 1:1.2 (V3 — SPMore2.jsx:
+    /// 430-436). The 10pt inter-column gap is folded into per-item trailing
+    /// insets; the row group height tracks the tile aspect so tiles stay 1:1.2.
+    /// A «Готовые темы» caps header sits above the grid.
     private func makeLayout() -> UICollectionViewLayout {
+        let columns: CGFloat = 3
+        let gap = AppSpacing.sp2 + 2 // ≈10pt
+        // Approximate fraction the gap takes per row so the tile width/height
+        // ratio stays close to 1:1.2 across device widths.
         let item = NSCollectionLayoutItem(layoutSize: NSCollectionLayoutSize(
-            widthDimension: .fractionalWidth(0.5),
+            widthDimension: .fractionalWidth(1.0 / columns),
             heightDimension: .fractionalHeight(1.0)
         ))
-        item.contentInsets = NSDirectionalEdgeInsets(
-            top: 0, leading: 0, bottom: 0, trailing: AppSpacing.sp3
-        )
+        item.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: gap)
 
-        // Group height = (9/16) * group-width. Group width ≈ available width
-        // after content insets; each row contains 2 items.
+        // Tile height ≈ tileWidth * 1.2. tileWidth ≈ (groupWidth / 3). Express
+        // the group height as a fraction of group width: (1/3) * 1.2.
         let group = NSCollectionLayoutGroup.horizontal(
             layoutSize: NSCollectionLayoutSize(
                 widthDimension: .fractionalWidth(1.0),
-                heightDimension: .fractionalWidth(0.5 * (9.0 / 16.0) + 0.06)
+                heightDimension: .fractionalWidth((1.0 / columns) * 1.2)
             ),
             subitems: [item]
         )
@@ -237,12 +256,22 @@ final class AlarmThemePickerViewController: UIViewController {
 
         let section = NSCollectionLayoutSection(group: group)
         section.contentInsets = NSDirectionalEdgeInsets(
-            top: AppSpacing.sp4,
+            top: AppSpacing.sp3,
             leading: AppSpacing.sp4,
             bottom: AppSpacing.sp4,
-            trailing: AppSpacing.sp4 - AppSpacing.sp3 // trailing inset already on items
+            trailing: AppSpacing.sp4 - gap // trailing gap already on the last item
         )
-        section.interGroupSpacing = AppSpacing.sp3
+        section.interGroupSpacing = gap
+
+        let header = NSCollectionLayoutBoundarySupplementaryItem(
+            layoutSize: NSCollectionLayoutSize(
+                widthDimension: .fractionalWidth(1.0),
+                heightDimension: .absolute(28)
+            ),
+            elementKind: UICollectionView.elementKindSectionHeader,
+            alignment: .top
+        )
+        section.boundarySupplementaryItems = [header]
 
         return UICollectionViewCompositionalLayout(section: section)
     }
@@ -324,6 +353,62 @@ extension AlarmThemePickerViewController: UICollectionViewDataSource, UICollecti
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         selectItem(at: indexPath)
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        viewForSupplementaryElementOfKind kind: String,
+        at indexPath: IndexPath
+    ) -> UICollectionReusableView {
+        guard let header = collectionView.dequeueReusableSupplementaryView(
+            ofKind: kind,
+            withReuseIdentifier: ThemeSectionHeaderView.reuseID,
+            for: indexPath
+        ) as? ThemeSectionHeaderView else {
+            return UICollectionReusableView()
+        }
+        header.setTitle("Готовые темы")
+        return header
+    }
+}
+
+// MARK: - Section header
+
+/// Caps section header «Готовые темы» above the theme grid (#285).
+private final class ThemeSectionHeaderView: UICollectionReusableView {
+
+    static let reuseID = "ThemeSectionHeaderView"
+
+    private let label: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: AppSpacing.sp4),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -AppSpacing.sp4),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sp2)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setTitle(_ title: String) {
+        label.attributedText = NSAttributedString(
+            string: title.uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
     }
 }
 
