@@ -86,7 +86,7 @@ final class CreateAlarmViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = viewModel.isEditing ? "Редактировать" : "Новый будильник"
+        title = viewModel.isEditing ? "Будильник" : "Новый будильник"
         view.backgroundColor = AppColors.bg0
         setupNavigationBar()
         setupTableView()
@@ -156,7 +156,7 @@ final class CreateAlarmViewController: UIViewController {
         // custom title view label.
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
-            string: (viewModel.isEditing ? "Редактировать" : "Новый будильник").uppercased(),
+            string: (viewModel.isEditing ? "Будильник" : "Новый будильник").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -332,8 +332,10 @@ extension CreateAlarmViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard let sec = Section(rawValue: section) else { return nil }
         switch sec {
-        case .penalty: return "ШТРАФ ЗА ОТКЛАДЫВАНИЕ"
-        case .snoozeTime: return "ВРЕМЯ ОТКЛАДЫВАНИЯ"
+        // The «Цена откладывания» / «Длительность откладывания» captions + hints
+        // now live inside PenaltyCell / SnoozeSliderCell per the design canon
+        // (SPMore2.jsx:268-269), so these sections are header-less (#278). The
+        // word «штраф» is gone — it never existed in the design copy.
         // Name no longer carries a header — the large in-cell placeholder
         // already reads as the field's purpose (#143). The settings and
         // progressive cards are header-less per the V2 artboard (#231).
@@ -397,9 +399,10 @@ extension CreateAlarmViewController: UITableViewDelegate {
         // below self-sizes (the hint wraps to 1–2 lines per mode, #229).
         case .repeatDays:
             return RepeatRow(rawValue: indexPath.row) == .days ? 60 : UITableView.automaticDimension
-        // V2 penalty row stacks a moneyMd value label above a 40pt chip row
-        // — the prior 60pt height clipped the chip ladder, so bump to 96pt.
-        case .penalty: return 96
+        // V2 penalty row stacks an in-card caption + hint above the moneyMd
+        // value and the 40pt chip ladder (#278) — self-size so the caption/
+        // hint never clip when the hint wraps.
+        case .penalty: return UITableView.automaticDimension
         default: return UITableView.automaticDimension
         }
     }

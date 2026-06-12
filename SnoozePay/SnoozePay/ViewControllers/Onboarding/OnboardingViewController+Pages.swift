@@ -173,7 +173,7 @@ extension OnboardingViewController {
         titleLabel.numberOfLines = 0
 
         let rows = [
-            ("1", "Положили \(MoneyFormatter.string(500))", "Это запас, из которого спишутся штрафы."),
+            ("1", "Положили \(MoneyFormatter.string(500))", "Это запас, из которого спишутся откладывания."),
             ("2", "Поспать ещё в 07:00 → −\(MoneyFormatter.string(50))", "Каждый раз когда вы тянете, деньги уходят."),
             ("3", "Встали с первого раза → ничего", "Баланс продолжает лежать. Готов к завтрашнему утру.")
         ].map { OnboardingStepRow(number: $0.0, title: $0.1, body: $0.2) }

@@ -17,6 +17,33 @@ final class SnoozeSliderCell: UITableViewCell {
 
     // MARK: - UI
 
+    /// In-card caps caption «Длительность откладывания» (SPMore2.jsx:268).
+    /// Lives inside the card so the table no longer needs a section header (#278).
+    private let captionLabel: UILabel = {
+        let label = UILabel()
+        label.attributedText = NSAttributedString(
+            string: "Длительность откладывания".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Meta hint «На сколько минут отодвигается звонок» (SPMore2.jsx:269).
+    private let hintLabel: UILabel = {
+        let label = UILabel()
+        label.text = "На сколько минут отодвигается звонок"
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg3
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private let slider: UISlider = {
         let view = UISlider()
         view.minimumValue = Float(SnoozeSliderCell.minMinutes)
@@ -66,21 +93,28 @@ final class SnoozeSliderCell: UITableViewCell {
         backgroundColor = AppColors.bg1
         selectionStyle = .none
 
+        contentView.addSubview(captionLabel)
+        contentView.addSubview(hintLabel)
         contentView.addSubview(slider)
         contentView.addSubview(valueLabel)
 
         NSLayoutConstraint.activate([
-            slider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            slider.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            slider.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.md),
-            slider.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md),
+            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
 
-            valueLabel.leadingAnchor.constraint(equalTo: slider.trailingAnchor, constant: AppSpacing.md),
+            hintLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            hintLabel.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: 2),
+            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -AppSpacing.sm),
+
             valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            valueLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            // Reserve a fixed minimum so "1 мин" / "15 мин" don't reflow the
-            // slider's effective track length as the user drags.
-            valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56)
+            valueLabel.firstBaselineAnchor.constraint(equalTo: captionLabel.firstBaselineAnchor),
+            // Reserve a fixed minimum so "1 мин" / "15 мин" don't reflow.
+            valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
+
+            slider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            slider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            slider.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
+            slider.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
         ])
     }
 
@@ -97,7 +131,7 @@ final class SnoozeSliderCell: UITableViewCell {
     func configure(minutes: Int) {
         let clamped = min(max(minutes, Self.minMinutes), Self.maxMinutes)
         slider.value = Float(clamped)
-        valueLabel.text = "\(clamped) мин"
+        valueLabel.attributedText = Self.valueText(clamped)
     }
 
     // MARK: - Actions
@@ -108,8 +142,28 @@ final class SnoozeSliderCell: UITableViewCell {
         let rounded = Int(roundf(slider.value))
         let clamped = min(max(rounded, Self.minMinutes), Self.maxMinutes)
         slider.value = Float(clamped)
-        valueLabel.text = "\(clamped) мин"
+        valueLabel.attributedText = Self.valueText(clamped)
         onValueChanged?(clamped)
+    }
+
+    /// "{N} мин" with the «мин» suffix dimmed to `fg3` per the V2 slider
+    /// recipe (SPScreensV2.jsx:733-751) so the number reads as the headline.
+    private static func valueText(_ minutes: Int) -> NSAttributedString {
+        let text = NSMutableAttributedString(
+            string: "\(minutes)",
+            attributes: [
+                .font: AppTypography.moneyMd,
+                .foregroundColor: AppColors.fg1
+            ]
+        )
+        text.append(NSAttributedString(
+            string: " мин",
+            attributes: [
+                .font: AppTypography.h4,
+                .foregroundColor: AppColors.fg3
+            ]
+        ))
+        return text
     }
 
     // MARK: - Thumb image
