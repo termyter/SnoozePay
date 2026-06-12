@@ -27,8 +27,10 @@ final class SPPill: UIView {
     // MARK: - Init
 
     /// - Parameters:
-    ///   - text: Caps-styled label (uppercased automatically per the
-    ///     `--sp-t-caps` recipe — bold 12pt + 0.14em tracking).
+    ///   - text: Caps-styled label. The `.sp-pill` recipe applies only the
+    ///     `--sp-t-caps` font + default `.12em` tracking — no `text-transform`,
+    ///     so the caller's casing is preserved (the design mixes case, e.g.
+    ///     «Популярно»).
     ///   - tone: Background + text colour mapping. Defaults to `.neutral`.
     ///   - icon: Optional 12pt leading icon (rendered as template, tinted
     ///     to match the label) — JSX chips use `<Icon size={12} />`.
@@ -91,14 +93,15 @@ final class SPPill: UIView {
     /// a long-lived pill instance (e.g. the progressive-snooze indicator on
     /// the firing screen counts up "1-е откладывание" → "2-е откладывание" → ...).
     func setText(_ text: String) {
-        // CSS pairs caps tracking (.14em ≈ 12 * 0.14 = 1.68pt) with the
-        // bold 12pt size; bake that into an attributed string so the label
-        // stays in one node (not a stack of label + spacer).
+        // `.sp-pill` uses the bold 12pt caps font with the default caps
+        // tracking (`.12em` per `tokens.css` `--sp-t-caps` / `.sp-caps`) and
+        // *no* `text-transform`, so the caller's mixed-case string is kept
+        // verbatim.
         let attributed = NSAttributedString(
-            string: text.uppercased(),
+            string: text,
             attributes: [
                 .font: AppTypography.caps,
-                .kern: 12 * 0.14
+                .kern: AppTypography.capsKerning
             ]
         )
         label.attributedText = attributed
@@ -112,10 +115,10 @@ final class SPPill: UIView {
     func setBalance(label labelText: String, value: String) {
         let ink = label.textColor ?? AppColors.fg2
         let result = NSMutableAttributedString(
-            string: labelText.uppercased(),
+            string: labelText,
             attributes: [
                 .font: AppTypography.caps,
-                .kern: 12 * 0.14,
+                .kern: AppTypography.capsKerning,
                 .foregroundColor: ink.withAlphaComponent(0.55)
             ]
         )

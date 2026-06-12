@@ -60,9 +60,12 @@ final class SPButton: UIControl {
         }
 
         var cornerRadius: CGFloat {
+            // `.sp-btn--lg` overrides the base `--sp-r-md` with `--sp-r-lg`
+            // (20pt); `--md` inherits the 16pt base; `--sm` drops to `--sp-r-sm`
+            // (12pt). Matches `components.css:18-20`.
             switch self {
-            case .lg: return AppRadius.md          // 16pt — matches sp-r-md
-            case .md: return AppRadius.md
+            case .lg: return AppRadius.lg          // 20pt — matches sp-r-lg
+            case .md: return AppRadius.md          // 16pt — matches sp-r-md
             case .sm: return AppRadius.sm          // 12pt — matches sp-r-sm
             }
         }
@@ -97,7 +100,10 @@ final class SPButton: UIControl {
     /// the button stretches to match its superview width via the trailing
     /// constraint installed by the parent.
     var isFullWidth: Bool = false {
-        didSet { invalidateIntrinsicContentSize() }
+        didSet {
+            updateSuffixSpacer()
+            invalidateIntrinsicContentSize()
+        }
     }
 
     /// Optional heavier stroke for `.ghost` buttons that need to read as a
@@ -115,7 +121,16 @@ final class SPButton: UIControl {
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let suffixLabel = UILabel()
+    /// Flexible gap that pushes the suffix to the trailing edge — mirrors the
+    /// CSS `.sp-btn__suffix { margin-left: auto }`. Only inflated (and only
+    /// hugs at a low priority) when the button is full-width *and* carries a
+    /// suffix; otherwise it collapses so a hugging button stays centred.
+    private let suffixSpacer = UIView()
     private var gradientLayer: CAGradientLayer?
+    /// Edge pins toggled on for full-width + suffix layouts (see
+    /// `updateSuffixSpacer`).
+    private var stackLeadingPin: NSLayoutConstraint?
+    private var stackTrailingPin: NSLayoutConstraint?
 
     // MARK: - Init
 
@@ -155,6 +170,7 @@ final class SPButton: UIControl {
         } else {
             suffixLabel.isHidden = true
         }
+        updateSuffixSpacer()
         applyVariant()
         refreshDisabledAppearance()
         // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
@@ -192,9 +208,13 @@ final class SPButton: UIControl {
     override func layoutSubviews() {
         super.layoutSubviews()
         gradientLayer?.frame = bounds
+        // Inset the shadow path by 6pt to reproduce the CSS `-6` spread on the
+        // brand-coloured shadows (`--sp-shadow-{money,pain,warn}`), so the glow
+        // sits tucked under the button rather than haloing past its edges.
+        let spreadInset: CGFloat = layer.shadowOpacity > 0 && layer.borderWidth == 0 ? 6 : 0
         layer.shadowPath = UIBezierPath(
-            roundedRect: bounds,
-            cornerRadius: size.cornerRadius
+            roundedRect: bounds.insetBy(dx: spreadInset, dy: spreadInset),
+            cornerRadius: max(size.cornerRadius - spreadInset, 0)
         ).cgPath
     }
 
@@ -224,11 +244,18 @@ final class SPButton: UIControl {
 
         suffixLabel.translatesAutoresizingMaskIntoConstraints = false
         // Mono font for trailing amount suffixes — matches CSS recipe
-        // `font-family: var(--sp-font-mono); opacity: .85`.
+        // `font-family: var(--sp-font-mono)`. The design dropped the legacy
+        // `opacity: .85` dim, so the suffix now reads at full foreground
+        // weight (`components.css:22`).
         suffixLabel.font = size == .sm ? AppTypography.moneySm : AppTypography.moneyMd
         suffixLabel.textAlignment = .right
-        suffixLabel.alpha = 0.85
         suffixLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        suffixSpacer.translatesAutoresizingMaskIntoConstraints = false
+        // Hugs weakly so it only stretches when the stack has slack (full-width
+        // buttons); a hugging button keeps it collapsed and stays centred.
+        suffixSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        suffixSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
@@ -237,8 +264,24 @@ final class SPButton: UIControl {
         stack.isUserInteractionEnabled = false
         stack.addArrangedSubview(iconView)
         stack.addArrangedSubview(titleLabel)
+        stack.addArrangedSubview(suffixSpacer)
         stack.addArrangedSubview(suffixLabel)
         addSubview(stack)
+
+        // Centre the content for hugging buttons; lower the priority so the
+        // full-width edge constraints can override it when the suffix needs to
+        // be pinned to the trailing edge.
+        let centerX = stack.centerXAnchor.constraint(equalTo: centerXAnchor)
+        centerX.priority = .defaultHigh
+        // Pin the stack to both edges — toggled on only for full-width buttons
+        // carrying a suffix so the flexible spacer can stretch and shove the
+        // suffix to the trailing edge (`margin-left: auto`).
+        stackLeadingPin = stack.leadingAnchor.constraint(
+            equalTo: leadingAnchor, constant: size.horizontalPadding
+        )
+        stackTrailingPin = stack.trailingAnchor.constraint(
+            equalTo: trailingAnchor, constant: -size.horizontalPadding
+        )
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: size.height),
@@ -251,10 +294,20 @@ final class SPButton: UIControl {
                 lessThanOrEqualTo: trailingAnchor,
                 constant: -size.horizontalPadding
             ),
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            centerX,
             iconView.widthAnchor.constraint(equalToConstant: size.iconSize),
             iconView.heightAnchor.constraint(equalToConstant: size.iconSize)
         ])
+    }
+
+    /// Stretch the stack edge-to-edge (and let the flexible spacer expand) only
+    /// when the button is full-width *and* carries a suffix; otherwise collapse
+    /// the spacer so a hugging / suffix-less button stays centred.
+    private func updateSuffixSpacer() {
+        let active = isFullWidth && !suffixLabel.isHidden
+        suffixSpacer.isHidden = !active
+        stackLeadingPin?.isActive = active
+        stackTrailingPin?.isActive = active
     }
 
     private func applyVariant() {
@@ -276,7 +329,7 @@ final class SPButton: UIControl {
                 colors: SPSupport.painGradientColors,
                 locations: SPSupport.painGradientLocations
             )
-            applyColoredShadow(color: AppColors.pain500)
+            applyColoredShadow(color: AppColors.pain500, painLike: true)
             setForeground(AppColors.fgOnPain)
         case .warn:
             installGradient(
@@ -291,8 +344,10 @@ final class SPButton: UIControl {
                 layer.borderWidth = override.width
                 layer.borderColor = override.color.resolvedColor(with: traitCollection).cgColor
             } else {
-                let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-                layer.borderWidth = 1.0 / scale
+                // `.sp-btn--ghost { border: 1px solid var(--sp-stroke-2) }` —
+                // a flat 1pt, not a sub-pixel hairline, so the affordance reads
+                // clearly across scales (`components.css:47`).
+                layer.borderWidth = 1.0
                 layer.borderColor = AppColors.stroke2.resolvedColor(with: traitCollection).cgColor
             }
             setForeground(AppColors.fg1)
@@ -314,11 +369,16 @@ final class SPButton: UIControl {
         backgroundColor = .clear
     }
 
-    private func applyColoredShadow(color: UIColor) {
+    private func applyColoredShadow(color: UIColor, painLike: Bool = false) {
+        // `--sp-shadow-{money,warn}: 0 8px 22px -6px rgba(...,.40)`,
+        // `--sp-shadow-pain: ... .45`. CSS blur 22 ≈ CALayer shadowRadius 11
+        // (CALayer radius is roughly half the CSS blur). The −6 spread is
+        // reproduced by insetting the shadowPath in `layoutSubviews`.
         layer.shadowColor = color.cgColor
-        layer.shadowOpacity = traitCollection.userInterfaceStyle == .light ? 0.30 : 0.40
+        let base: Float = painLike ? 0.45 : 0.40
+        layer.shadowOpacity = traitCollection.userInterfaceStyle == .light ? base - 0.10 : base
         layer.shadowOffset = CGSize(width: 0, height: 8)
-        layer.shadowRadius = 16
+        layer.shadowRadius = 11
     }
 
     private func setForeground(_ color: UIColor) {

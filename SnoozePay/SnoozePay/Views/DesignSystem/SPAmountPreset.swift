@@ -3,11 +3,15 @@ import UIKit
 /// Top-up amount preset tile — `.sp-preset` in `components.css`.
 ///
 /// Visual: outlined card (1.5pt `stroke1`) with a centered mono amount
-/// (`moneyMd` 20pt) and an optional secondary label (`meta` 13pt). When
-/// `selected` is true the border switches to `money500`, the fill takes a
-/// 10% money tint, and a 4pt outer glow ring renders. A "Популярно" badge
-/// floats above the top edge when `popular` is true.
+/// (700 18pt mono per `.sp-preset__value`) and an optional secondary label
+/// (`meta` 13pt). When `selected` is true the border switches to `money400`,
+/// the fill takes a 10% money tint, and a 4pt outer glow ring renders. A
+/// "Популярно" badge with the money gradient fill floats above the top edge
+/// when `popular` is true.
 final class SPAmountPreset: UIControl {
+
+    /// `.sp-preset__value { font: 700 18px/22px var(--sp-font-mono) }`.
+    private static var valueFont: UIFont { AppFonts.mono(.bold, 18) }
 
     // MARK: - State
 
@@ -38,7 +42,10 @@ final class SPAmountPreset: UIControl {
 
     private let valueLabel = UILabel()
     private let labelView = UILabel()
-    private let popularBadge = UILabel()
+    private let popularBadge = InsetLabel(insets: UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10))
+    /// Money-gradient backing for the «Популярно» badge (`.sp-preset__pop`
+    /// fills with `--sp-grad-money`). Inserted behind the badge label.
+    private let popularGradient = CAGradientLayer()
     private let stack = UIStackView()
 
     // MARK: - Init
@@ -92,6 +99,8 @@ final class SPAmountPreset: UIControl {
             roundedRect: bounds,
             cornerRadius: AppRadius.md
         ).cgPath
+        // Keep the «Популярно» gradient backing matched to the badge bounds.
+        popularGradient.frame = popularBadge.bounds
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
@@ -109,7 +118,7 @@ final class SPAmountPreset: UIControl {
         self.value = value
         self.label = label
         valueLabel.attributedText = MoneyFormatter.attributed(
-            value, digitsFont: AppTypography.moneyMd
+            value, digitsFont: Self.valueFont
         )
         if let label = label {
             labelView.text = label
@@ -128,7 +137,7 @@ final class SPAmountPreset: UIControl {
         layer.borderWidth = 1.5
 
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
-        valueLabel.font = AppTypography.moneyMd
+        valueLabel.font = Self.valueFont
         valueLabel.textColor = AppColors.fg1
         valueLabel.textAlignment = .center
 
@@ -147,19 +156,29 @@ final class SPAmountPreset: UIControl {
         addSubview(stack)
 
         // Popular badge — small caps pill that floats above the top edge.
+        // `.sp-preset__pop` uses mixed-case «Популярно», the money gradient
+        // fill, and `3px 10px` padding (no fixed width — it hugs its text).
         popularBadge.translatesAutoresizingMaskIntoConstraints = false
         popularBadge.attributedText = NSAttributedString(
-            string: "ПОПУЛЯРНО",
+            string: "Популярно",
             attributes: [
                 .font: AppTypography.caps,
-                .kern: 12 * 0.12,
+                .kern: AppTypography.capsKerning,
                 .foregroundColor: AppColors.fgOnMoney
             ]
         )
-        popularBadge.backgroundColor = AppColors.money500
+        popularBadge.textAlignment = .center
+        // Inset the text via layoutMargins-style padding using contentInset on
+        // a label isn't supported, so pad with leading/trailing constraints on
+        // a hugging label below; the gradient backs the whole badge bounds.
+        popularGradient.colors = SPSupport.moneyGradientColors
+        popularGradient.locations = SPSupport.moneyGradientLocations
+        popularGradient.startPoint = SPSupport.gradientStart
+        popularGradient.endPoint = SPSupport.gradientEnd
+        popularGradient.cornerRadius = 10
+        popularBadge.layer.insertSublayer(popularGradient, at: 0)
         popularBadge.layer.cornerRadius = 10
         popularBadge.layer.masksToBounds = true
-        popularBadge.textAlignment = .center
         addSubview(popularBadge)
 
         NSLayoutConstraint.activate([
@@ -172,20 +191,22 @@ final class SPAmountPreset: UIControl {
 
             popularBadge.centerXAnchor.constraint(equalTo: centerXAnchor),
             popularBadge.centerYAnchor.constraint(equalTo: topAnchor),
-            popularBadge.heightAnchor.constraint(equalToConstant: 20),
-            popularBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 86)
+            popularBadge.heightAnchor.constraint(equalToConstant: 22)
         ])
     }
 
     private func applySelectionState(animated: Bool) {
         let apply: () -> Void = {
             if self.isSelected {
-                self.backgroundColor = AppColors.money500.withAlphaComponent(0.10)
-                self.layer.borderColor = AppColors.money500.cgColor
+                // `.sp-preset.is-selected` tints with money400 (`#2EDB9F` —
+                // `rgba(46,219,159,…)`), a hair brighter than money500, so the
+                // selected fill/ring pop against the surface.
+                self.backgroundColor = AppColors.money400.withAlphaComponent(0.10)
+                self.layer.borderColor = AppColors.money400.cgColor
                 // Tight selection ring: 4pt radius / 0.10 opacity reads as a
                 // crisp brand outline rather than a diffuse glow that bled
                 // into adjacent presets at radius 8 / opacity 0.18.
-                self.layer.shadowColor = AppColors.money500.cgColor
+                self.layer.shadowColor = AppColors.money400.cgColor
                 self.layer.shadowOpacity = 0.10
                 self.layer.shadowOffset = .zero
                 self.layer.shadowRadius = 4
@@ -207,5 +228,35 @@ final class SPAmountPreset: UIControl {
     @objc
     private func handleTap() {
         onTap?()
+    }
+}
+
+/// `UILabel` that pads its text content — used for the «Популярно» badge so it
+/// hugs its (mixed-case) text plus a 10pt horizontal inset rather than relying
+/// on a fixed width.
+private final class InsetLabel: UILabel {
+
+    private let insets: UIEdgeInsets
+
+    init(insets: UIEdgeInsets) {
+        self.insets = insets
+        super.init(frame: .zero)
+        textAlignment = .center
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func drawText(in rect: CGRect) {
+        super.drawText(in: rect.inset(by: insets))
+    }
+
+    override var intrinsicContentSize: CGSize {
+        let base = super.intrinsicContentSize
+        return CGSize(
+            width: base.width + insets.left + insets.right,
+            height: base.height + insets.top + insets.bottom
+        )
     }
 }

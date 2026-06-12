@@ -246,10 +246,6 @@ enum AppRadius {
     /// Pill / fully-rounded — call sites typically clamp to `bounds.height/2`,
     /// but this constant keeps intent explicit and matches `tokens.css`.
     static let pill: CGFloat = 999
-
-    /// Canonical card corner radius — every standalone surface should round to
-    /// this value so cards on different screens read as the same primitive.
-    static let card: CGFloat = md
 }
 
 /// Typography roles from `tokens.css`. Each role returns a configured `UIFont`

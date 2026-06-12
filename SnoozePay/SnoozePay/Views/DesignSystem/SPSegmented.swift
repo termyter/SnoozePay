@@ -65,9 +65,9 @@ final class SPSegmented: UIControl {
         super.layoutSubviews()
         layer.cornerRadius = AppRadius.sm
         track.layer.cornerRadius = AppRadius.sm
-        // Indicator slides into place via constraints; corner radius scales
-        // with track padding so it visually nests.
-        indicator.layer.cornerRadius = AppRadius.sm - 4
+        // `.sp-seg__opt { border-radius: 10px }` — the active indicator nests
+        // inside the 12pt track with a fixed 10pt radius.
+        indicator.layer.cornerRadius = 10
         // Re-position indicator after layout cycle resolves geometries.
         positionIndicator(animated: false)
     }
@@ -83,17 +83,20 @@ final class SPSegmented: UIControl {
 
         indicator.translatesAutoresizingMaskIntoConstraints = false
         indicator.backgroundColor = AppColors.bg1
+        // `.sp-seg__opt.is-on { box-shadow: var(--sp-shadow-1) }` — soft lift
+        // so the active option floats off the track. shadow-1 dark is a single
+        // `0 2px 8px rgba(0,0,0,.35)` stop; mirror those values directly.
         indicator.layer.shadowColor = UIColor.black.cgColor
-        indicator.layer.shadowOpacity = 0.18
+        indicator.layer.shadowOpacity = 0.35
         indicator.layer.shadowOffset = CGSize(width: 0, height: 2)
-        indicator.layer.shadowRadius = 6
+        indicator.layer.shadowRadius = 8
         track.addSubview(indicator)
 
         let stack = UIStackView()
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
         stack.distribution = .fillEqually
-        stack.spacing = 0
+        stack.spacing = 2     // `.sp-seg { gap: 2px }`
         stack.isUserInteractionEnabled = true
         track.addSubview(stack)
 

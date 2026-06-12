@@ -15,11 +15,14 @@ extension UIView {
     /// (the shadow needs to render outside `bounds`); subviews should be
     /// constrained inside the card via Auto Layout instead of being clipped.
     ///
-    /// Use `cornerRadius` to override the default `AppRadius.sm` (e.g. 8pt for
+    /// Use `cornerRadius` to override the default `AppRadius.md` (e.g. 8pt for
     /// individual table-view cells nested inside `.insetGrouped` sections that
     /// already provide outer rounding).
-    func applyCardStyle(cornerRadius: CGFloat = AppRadius.sm) {
-        backgroundColor = AppColors.surface
+    func applyCardStyle(cornerRadius: CGFloat = AppRadius.md) {
+        // `.sp-card` fills the brand surface token (`--sp-bg-1`), not the
+        // system `secondarySystemBackground` the legacy recipe used — so
+        // legacy cards line up tonally with `SPCard(.surface)`.
+        backgroundColor = AppColors.bg1
         layer.cornerRadius = cornerRadius
         layer.masksToBounds = false
         // Brand `shadow1` is theme-aware: dark mode gets a single deep stop
@@ -70,7 +73,7 @@ extension UIView {
     /// Pre-rasterise the shadow against the rounded card frame so scrolling
     /// doesn't pay the per-pixel offscreen pass cost. Call from
     /// `layoutSubviews()`.
-    func updateCardShadowPath(cornerRadius: CGFloat = AppRadius.sm) {
+    func updateCardShadowPath(cornerRadius: CGFloat = AppRadius.md) {
         layer.shadowPath = UIBezierPath(
             roundedRect: bounds,
             cornerRadius: cornerRadius
@@ -97,7 +100,7 @@ final class CardView: UIView {
 
     private let cardCornerRadius: CGFloat
 
-    init(cornerRadius: CGFloat = AppRadius.sm) {
+    init(cornerRadius: CGFloat = AppRadius.md) {
         self.cardCornerRadius = cornerRadius
         super.init(frame: .zero)
         applyCardStyle(cornerRadius: cornerRadius)

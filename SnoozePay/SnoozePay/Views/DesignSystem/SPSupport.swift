@@ -103,6 +103,37 @@ enum SPSupport {
     /// keyframe animations for every press feedback.
     static let easeOut: UIView.AnimationOptions = [.curveEaseOut]
 
+    // MARK: - Spring easing
+
+    /// Approximation of `--sp-ease-spring: cubic-bezier(.34,1.56,.64,1)` — the
+    /// overshoot curve the design uses for the switch knob and "success"
+    /// moments. The `> 1` control point produces a small bounce past the
+    /// target, which `UISpringTimingParameters` reproduces with a light damping
+    /// ratio. Tuned so the settle feels playful but doesn't visibly oscillate.
+    static let springDampingRatio: CGFloat = 0.72
+    static let springInitialVelocity = CGVector(dx: 0, dy: 0.4)
+
+    /// Run `animations` with the spring overshoot curve over `duration`
+    /// (defaults to `durationBase`). Use for switch toggles and success
+    /// confirmations where the `cubic-bezier(.34,1.56,.64,1)` bounce is wanted;
+    /// keep plain `animatePress` for the flat press scale.
+    static func animateSpring(
+        duration: TimeInterval = durationBase,
+        animations: @escaping () -> Void,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        let timing = UISpringTimingParameters(
+            dampingRatio: springDampingRatio,
+            initialVelocity: springInitialVelocity
+        )
+        let animator = UIViewPropertyAnimator(duration: duration, timingParameters: timing)
+        animator.addAnimations(animations)
+        if let completion = completion {
+            animator.addCompletion { _ in completion(true) }
+        }
+        animator.startAnimation()
+    }
+
     // MARK: - Press feedback
 
     /// Animate a 0.97 scale press (or restore to identity) on a view.
