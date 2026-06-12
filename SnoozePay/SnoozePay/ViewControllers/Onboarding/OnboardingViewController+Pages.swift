@@ -287,10 +287,10 @@ extension OnboardingViewController {
         laterButton.isUserInteractionEnabled = isDepositPage
         laterButton.isAccessibilityElement = isDepositPage
         // Dots sit 14pt above the CTA group on the deposit page
-        // (JSX `marginBottom: 14`), 16pt elsewhere.
+        // (JSX `marginBottom: 14`), 24pt on pages 1/2 (#289).
         dotsGapConstraint?.constant = isDepositPage
             ? -(AppSpacing.sp3 + 2)   // 14pt
-            : -AppSpacing.sp4         // 16pt
+            : -AppSpacing.sp6         // 24pt
         if isDepositPage {
             rebuildDepositCTA()
         } else {

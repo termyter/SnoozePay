@@ -25,6 +25,15 @@ final class StatisticsViewController: UIViewController {
     let scrollView = UIScrollView()
     let contentStack = UIStackView()
 
+    /// Shown over the scroll content when the user has no charges and no wake
+    /// events — nothing to aggregate yet (`SPMore.jsx` `EmptyStats`, #289).
+    let emptyState: SPStatsEmptyState = {
+        let view = SPStatsEmptyState()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+
     /// Hero card reference — raised above its stack siblings while the
     /// heatmap tooltip is visible so the bubble isn't covered by the next
     /// card (the JSX gives the selected cell `zIndex: 3`).
@@ -32,10 +41,11 @@ final class StatisticsViewController: UIViewController {
 
     // MARK: - Hero "Серия"
 
-    /// Big mono streak count drawn at `moneyLg` (32pt).
+    /// Big mono streak count drawn at `moneyXl` (56pt) — the hero number is
+    /// the screen's focal point (`SPMore4.jsx`, audit P2-3 #289).
     let streakBigLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.moneyLg
+        label.font = AppTypography.moneyXl
         label.textColor = AppColors.fg1
         label.adjustsFontForContentSizeCategory = false
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -180,6 +190,13 @@ final class StatisticsViewController: UIViewController {
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
+        view.addSubview(emptyState)
+        NSLayoutConstraint.activate([
+            emptyState.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            emptyState.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            emptyState.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            emptyState.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ])
     }
 
     private func installContainerConstraints() {
@@ -229,6 +246,15 @@ final class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
+        // Empty state — no charges and no wake events means the three cards
+        // would all read empty, so show the "Пока нечего считать" column
+        // instead (`SPMore.jsx` `EmptyStats`, #289).
+        let isEmpty = viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty
+        emptyState.isHidden = !isEmpty
+        emptyState.setStreak(viewModel.streak)
+        scrollView.isHidden = isEmpty
+        if isEmpty { return }
+
         // Hero streak card.
         let streak = viewModel.streak
         streakBigLabel.text = "\(streak)"

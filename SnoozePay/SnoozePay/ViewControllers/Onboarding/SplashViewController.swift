@@ -116,7 +116,7 @@ final class SplashViewController: UIViewController {
         // Force dark — splash is always rendered against the dark canvas
         // regardless of the system theme, so the glow + tile read consistently.
         overrideUserInterfaceStyle = .dark
-        view.backgroundColor = AppColors.bg0
+        view.backgroundColor = AppColors.bg1  // #0E1320 splash canvas (#289)
         view.layer.insertSublayer(glowLayer, at: 0)
         tileView.layer.insertSublayer(tileGradient, at: 0)
 
@@ -149,7 +149,7 @@ final class SplashViewController: UIViewController {
                 constant: -AppSpacing.screenInset
             ),
 
-            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sp3),
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sp5),
             subtitleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
     }

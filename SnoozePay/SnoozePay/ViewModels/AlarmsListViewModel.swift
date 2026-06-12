@@ -477,13 +477,20 @@ final class AlarmsListViewModel {
     // MARK: - V2 cell helpers
 
     /// Caps-styled day label for the V2 card top row.
-    /// Examples:
+    /// Examples (weekly):
     ///  - `[0,1,2,3,4]`             → `БУДНИ · ПН–ПТ`
     ///  - `[5,6]`                   → `ВЫХОДНЫЕ`
     ///  - `[0,1,2,3,4,5,6]`         → `КАЖДЫЙ ДЕНЬ`
     ///  - `[]`                      → `ЕДИНОЖДЫ`
     ///  - `[1,3]`, with name "Спорт" → `СПОРТ · ВТ, ЧТ`
     ///  - `[0]`, name empty/default → `ПН`
+    ///
+    /// One-shot alarms (`repeatMode == .never`) with a non-empty day set are
+    /// kept visually distinct from the weekly ones so the user can tell "rings
+    /// once on the next Mon–Fri" apart from "rings every Mon–Fri" (#289):
+    ///  - `.never`, `[0,1,2,3,4]`   → `ЕДИНОЖДЫ · ПН–ПТ`
+    ///  - `.never`, `[1,3]`         → `ЕДИНОЖДЫ · ВТ, ЧТ`
+    ///  - `.never`, `[]`            → `ЕДИНОЖДЫ`
     ///
     /// Combines the alarm's user-set `name` with the weekday set when the
     /// name is non-default — otherwise renders the weekday phrase alone. The
@@ -492,7 +499,10 @@ final class AlarmsListViewModel {
     func alarmDaysCaps(at index: Int) -> String {
         guard index < alarms.count else { return "" }
         let alarm = alarms[index]
-        let daysPhrase = Self.weekdayPhrase(for: alarm.repeatDays).uppercased()
+        let daysPhrase = Self.weekdayPhrase(
+            for: alarm.repeatDays,
+            repeatMode: alarm.repeatMode
+        ).uppercased()
         let trimmed = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
         // Default name "Будильник" is suppressed in the caps row — it's the
         // boilerplate label every freshly-created alarm carries and would
@@ -508,17 +518,30 @@ final class AlarmsListViewModel {
     /// `Alarm.repeatDaysDescription` shape but always returns a Russian
     /// label suitable for the caps line (no "Единожды" en dash collapsing
     /// the alarm into an unintelligible "·" pair when there's no name).
-    private static func weekdayPhrase(for days: [Int]) -> String {
+    ///
+    /// `repeatMode` decides whether the weekly grouping aliases
+    /// ("Будни · Пн–Пт", "Выходные", "Каждый день") apply: those imply a
+    /// recurring alarm, so a one-shot (`.never`) alarm with days set instead
+    /// renders "Единожды · <day list>" to stay distinguishable from the
+    /// weekly variant (#289).
+    static func weekdayPhrase(
+        for days: [Int],
+        repeatMode: AlarmRepeatMode = .weekly
+    ) -> String {
         guard !days.isEmpty else { return "Единожды" }
         let names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         let sorted = days.sorted()
-        if sorted == Array(0...6) { return "Каждый день" }
-        if sorted == [0, 1, 2, 3, 4] { return "Будни · Пн–Пт" }
-        if sorted == [5, 6] { return "Выходные" }
-        return sorted.compactMap { index -> String? in
+        let dayList = sorted.compactMap { index -> String? in
             guard index >= 0, index < names.count else { return nil }
             return names[index]
         }.joined(separator: ", ")
+        if repeatMode == .never {
+            return dayList.isEmpty ? "Единожды" : "Единожды · \(dayList)"
+        }
+        if sorted == Array(0...6) { return "Каждый день" }
+        if sorted == [0, 1, 2, 3, 4] { return "Будни · Пн–Пт" }
+        if sorted == [5, 6] { return "Выходные" }
+        return dayList
     }
 
     /// Price pill text — bare "50 ₽" formatted via `Decimal.formattedRubles`
