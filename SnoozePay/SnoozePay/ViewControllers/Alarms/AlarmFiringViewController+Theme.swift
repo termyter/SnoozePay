@@ -68,6 +68,9 @@ extension AlarmFiringViewController {
                 background.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                 background.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
+            // Keep the ref so the no-balance state can swap it to the DRAINED
+            // palette in place (#227); dawn / custom have no themed bg to swap.
+            themedFiringBackground = background
             themeImageView.isHidden = true
             themeImageDimView.isHidden = true
         } else {
@@ -79,7 +82,61 @@ extension AlarmFiringViewController {
             themeImageDimView.isHidden = true
         }
 
+        // Red "drained" glow rises from the bottom in the no-balance state
+        // (#227), over every theme + custom photo. Added now (before the
+        // +Layout content installers run) so it layers above the background /
+        // photo but below the clock, pills and CTAs. Hidden until no-balance.
+        let drainedGlow = SPFiringDrainedGlowView()
+        view.addSubview(drainedGlow)
+        NSLayoutConstraint.activate([
+            drainedGlow.topAnchor.constraint(equalTo: view.topAnchor),
+            drainedGlow.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            drainedGlow.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            drainedGlow.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        drainedGlow.setBreathing(false)
+        drainedGlowView = drainedGlow
+
         applyThemeAccents()
+    }
+
+    /// Flip the firing atmosphere into / out of the no-balance "drained" look
+    /// (#227): swap a themed background to its drained palette, breathe the red
+    /// glow, force the clock shadow neutral (the design calls for a plain black
+    /// halo here, not the thematic accent), and tint the wake-glass border with
+    /// the theme accent. Dawn's drained background is already driven by
+    /// `updateAtmosphereTone()`; custom photos keep their image. Idempotent —
+    /// called from `refreshNoBalanceVisibility` on every affordability change.
+    func applyDrainedAtmosphere(_ drained: Bool) {
+        let theme = viewModel.alarm.theme
+
+        // Themed (non-dawn, non-custom) background: swap the gradient in place.
+        if let background = themedFiringBackground {
+            let palette = drained
+                ? AlarmFiringThemePalette.drainedPalette(for: theme)
+                : AlarmFiringThemePalette.palette(for: theme)
+            if let palette = palette { background.apply(palette: palette) }
+        }
+
+        drainedGlowView?.setBreathing(drained)
+
+        // Clock halo: neutral black .45 while drained, thematic otherwise.
+        if drained {
+            timeLabel.layer.shadowColor = UIColor.black.cgColor
+            timeLabel.layer.shadowOpacity = 0.45
+        } else if let palette = firingPalette {
+            timeLabel.layer.shadowColor = palette.timeShadowColor.cgColor
+            timeLabel.layer.shadowOpacity = palette.timeShadowOpacity
+        }
+
+        // Wake-glass border = theme accent (drained accent while spent), 1.5pt
+        // per spec. Custom photo (no palette) keeps the default hairline.
+        let accent = (drained
+            ? AlarmFiringThemePalette.drainedPalette(for: theme)?.accent
+            : firingPalette?.accent)
+        if let accent = accent {
+            noBalanceDismissButton?.ghostBorderOverride = (1.5, accent.withAlphaComponent(0.55))
+        }
     }
 
     /// Accent pass — tint the clock halo + bell tile with the resolved
@@ -114,5 +171,39 @@ extension AlarmFiringViewController {
             border: palette.pillBorder,
             foreground: palette.accent
         )
+    }
+}
+
+// MARK: - Drained-atmosphere view storage
+//
+// The host VC body is at the SwiftLint `type_body_length` limit, so these two
+// references are routed through associated objects (the same approach as
+// `noBalanceCenterBlock`). Single slots keyed by unique pointers; main-thread
+// only (the firing screen is main-only).
+
+private var themedFiringBackgroundKey: UInt8 = 0
+private var drainedGlowViewKey: UInt8 = 0
+
+extension AlarmFiringViewController {
+    /// The themed (non-dawn) firing background, kept so the no-balance state
+    /// can swap it to its drained palette in place (#227). Nil for dawn /
+    /// custom-photo themes, which have no `SPThemedFiringBackgroundView`.
+    var themedFiringBackground: SPThemedFiringBackgroundView? {
+        get { objc_getAssociatedObject(self, &themedFiringBackgroundKey) as? SPThemedFiringBackgroundView }
+        set {
+            objc_setAssociatedObject(
+                self, &themedFiringBackgroundKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
+    }
+
+    /// The red drained-glow overlay (#227), breathed on in the no-balance state.
+    var drainedGlowView: SPFiringDrainedGlowView? {
+        get { objc_getAssociatedObject(self, &drainedGlowViewKey) as? SPFiringDrainedGlowView }
+        set {
+            objc_setAssociatedObject(
+                self, &drainedGlowViewKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
     }
 }

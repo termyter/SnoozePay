@@ -82,7 +82,11 @@ final class SPThemedFiringBackgroundView: UIView {
 
     // MARK: - Palette
 
-    private func apply(palette: AlarmFiringThemePalette) {
+    /// Swap the gradient / scrim / glow to a new palette in place — used to
+    /// flip a themed firing background to its DRAINED variant in the no-balance
+    /// state (#227) without rebuilding the view. Disable implicit layer actions
+    /// so the swap is instant, not a cross-fade.
+    func apply(palette: AlarmFiringThemePalette) {
         baseLayer.colors = palette.backgroundColors.map { $0.cgColor }
         baseLayer.locations = palette.backgroundLocations
         scrimLayer.colors = [

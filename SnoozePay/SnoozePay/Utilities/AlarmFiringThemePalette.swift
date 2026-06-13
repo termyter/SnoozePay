@@ -195,6 +195,47 @@ struct AlarmFiringThemePalette: Equatable {
     /// Bell-tile gradient stop locations — the JSX recipe is
     /// `linear-gradient(135deg, A 0%, B 60%, C 100%)` for every theme.
     static let bellGradientLocations: [NSNumber] = [0.0, 0.6, 1.0]
+
+    // MARK: - Drained variant (no-balance firing, #227)
+
+    /// Resolve the DRAINED palette for the no-balance firing state (#227,
+    /// `SPFiringNoBalanceThemes.jsx`). The drained background is a calmer-but-
+    /// brighter (~+20%) wash of the theme so the screen still reads as "this
+    /// theme" while signalling the spent wallet; the accent shifts to the
+    /// drained tint used for the eyebrow caps and the wake-glass border.
+    ///
+    /// Only `backgroundColors` / `backgroundLocations` / `accent` / `accentSoft`
+    /// differ — the pill / bell / time-shadow fields are inherited from the
+    /// normal palette because in the no-balance layout the pills render red
+    /// (pain) and the clock shadow is forced neutral by the host VC, so those
+    /// fields are unused. Returns nil for `.custom` (photo keeps its own bg).
+    static func drainedPalette(for theme: AlarmTheme) -> AlarmFiringThemePalette? {
+        guard let base = palette(for: theme) else { return nil }
+        let drained: (bg: [UInt32], accent: UInt32)
+        switch theme {
+        case .dawn:      drained = ([0x41290F, 0x804F1E, 0xCE8A30], 0xFAD89A)
+        case .ocean:     drained = ([0x11324C, 0x266384, 0x4DA597], 0xB4ECD8)
+        case .mountains: drained = ([0x28313F, 0x586A92, 0xAAB5CB], 0xDEE3EB)
+        case .forest:    drained = ([0x0E250E, 0x2A4C30, 0x4D7340], 0xB6DEA0)
+        case .neon:      drained = ([0x1A1648, 0x582A90, 0xCE469E], 0xF4A6D2)
+        case .abstract:  drained = ([0x26262A, 0x47474F], 0xDADADA)
+        case .custom:    return nil
+        }
+        let locations: [NSNumber] = drained.bg.count == 2 ? [0.0, 1.0] : [0.0, 0.5, 1.0]
+        return AlarmFiringThemePalette(
+            backgroundColors: drained.bg.map { UIColor(firingRGB: $0) },
+            backgroundLocations: locations,
+            scrimInnerAlpha: base.scrimInnerAlpha,
+            scrimOuterAlpha: base.scrimOuterAlpha,
+            accent: UIColor(firingRGB: drained.accent),
+            accentSoft: UIColor(firingRGB: drained.accent, alpha: 0.18),
+            pillBackground: base.pillBackground,
+            pillBorder: base.pillBorder,
+            bellGradientColors: base.bellGradientColors,
+            timeShadowColor: base.timeShadowColor,
+            timeShadowOpacity: base.timeShadowOpacity
+        )
+    }
 }
 
 // MARK: - Hex helper (file-scoped)
