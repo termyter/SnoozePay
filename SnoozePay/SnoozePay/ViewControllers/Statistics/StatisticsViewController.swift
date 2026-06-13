@@ -25,6 +25,13 @@ final class StatisticsViewController: UIViewController {
     let scrollView = UIScrollView()
     let contentStack = UIStackView()
 
+    /// Fixed page-title header (#319) — same chrome as Будильники / Кошелёк.
+    private let header: SPPageHeader = {
+        let view = SPPageHeader(title: "Статистика")
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     /// Shown over the scroll content when the user has no charges and no wake
     /// events — nothing to aggregate yet (`SPMore.jsx` `EmptyStats`, #289).
     let emptyState: SPStatsEmptyState = {
@@ -143,8 +150,12 @@ final class StatisticsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // The fixed page-title header carries the title; suppress the nav bar's
+        // own title so the screen doesn't render «Статистика» twice (#319,
+        // matching the AlarmsList #280 chrome).
         title = "Статистика"
-        navigationController?.navigationBar.prefersLargeTitles = true
+        navigationItem.title = ""
+        navigationController?.navigationBar.prefersLargeTitles = false
         view.backgroundColor = AppColors.bg0
         setupLayout()
         bindViewModel()
@@ -152,6 +163,8 @@ final class StatisticsViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // Hidden on this tab — the in-screen header owns the title (#319).
+        navigationController?.setNavigationBarHidden(true, animated: animated)
         viewModel.loadData()
     }
 
@@ -191,8 +204,15 @@ final class StatisticsViewController: UIViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
         view.addSubview(emptyState)
+        view.addSubview(header)
         NSLayoutConstraint.activate([
-            emptyState.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            // Empty state fills the area below the header (not from safeArea
+            // top — the header now occupies that band, #319).
+            emptyState.topAnchor.constraint(equalTo: header.bottomAnchor),
             emptyState.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             emptyState.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             emptyState.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
@@ -201,7 +221,7 @@ final class StatisticsViewController: UIViewController {
 
     private func installContainerConstraints() {
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
