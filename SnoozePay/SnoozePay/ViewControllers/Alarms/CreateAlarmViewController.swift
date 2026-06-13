@@ -99,23 +99,12 @@ final class CreateAlarmViewController: UIViewController {
         tableView.reloadSections(IndexSet([Section.settings.rawValue]), with: .none)
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        // Auto-focus the name field on create so the user can start typing
-        // immediately (matches iOS Reminders' "tap +" UX, #143). Edit mode
-        // skips this so the user isn't slammed with the keyboard when they
-        // just want to tweak the time / penalty.
-        guard !viewModel.isEditing, !didAutoFocusName else { return }
-        didAutoFocusName = true
-        let nameIndexPath = IndexPath(row: 0, section: Section.name.rawValue)
-        if let cell = tableView.cellForRow(at: nameIndexPath) as? NameCell {
-            cell.beginEditing()
-        }
-    }
-
-    /// Guards `viewDidAppear`'s auto-focus from re-firing on every return
-    /// from a pushed picker (Sound, Theme).
-    private var didAutoFocusName = false
+    // NOTE: the create-mode auto-focus on «Название» from #143 was intentionally
+    // removed (#317). The keyboard rose on open and hid the lower half of the
+    // form — including the time picker, which is the screen's primary control.
+    // The form now opens with no keyboard; tap «Название» to edit it (NameCell
+    // keeps its tap-to-edit `beginEditing()`). Do not reintroduce auto-focus
+    // here without a design decision — see #317.
 
     // MARK: - Setup
 
