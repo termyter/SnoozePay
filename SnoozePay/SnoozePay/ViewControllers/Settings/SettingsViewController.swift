@@ -51,6 +51,26 @@ class SettingsViewController: UIViewController {
         case rules              // Progressive price default
         case referral           // My code (copyable) + friend's code input + caption
         case other              // Privacy · Terms · Contact · Theme segment
+        case diagnostics        // Corrupt-data recovery row — hidden unless a repo load failed (#102)
+    }
+
+    /// Whether the corrupt-data recovery section should be visible. Surfaced
+    /// only when a repository is locked after a failed load (`lastLoadFailed`),
+    /// so the normal Settings screen never shows the destructive escape hatch
+    /// (#102). Factored out as a pure predicate for unit testing.
+    static func shouldShowRecovery(
+        alarmFailed: Bool,
+        transactionFailed: Bool
+    ) -> Bool {
+        alarmFailed || transactionFailed
+    }
+
+    /// Live recovery visibility, reading the shared repositories.
+    var isRecoveryVisible: Bool {
+        Self.shouldShowRecovery(
+            alarmFailed: AlarmRepository.shared.lastLoadFailed,
+            transactionFailed: TransactionRepository.shared.lastLoadFailed
+        )
     }
 
     /// Row layout inside `.finance`.
@@ -173,6 +193,7 @@ extension SettingsViewController: UITableViewDataSource {
         case .rules:              return 1 // Прогрессивная цена
         case .referral:           return ReferralRow.allCases.count
         case .other:              return OtherRow.allCases.count
+        case .diagnostics:        return isRecoveryVisible ? 1 : 0
         }
     }
 
@@ -184,6 +205,9 @@ extension SettingsViewController: UITableViewDataSource {
         case .rules:              return "ПРАВИЛА"
         case .referral:           return "ПРИГЛАСИТЬ ДРУГА"
         case .other:              return "ПРОЧЕЕ"
+        // No header when the recovery row is hidden, so the empty section
+        // collapses entirely rather than leaving a stray caps title.
+        case .diagnostics:        return isRecoveryVisible ? "ВОССТАНОВЛЕНИЕ" : nil
         }
     }
 
@@ -215,6 +239,7 @@ extension SettingsViewController: UITableViewDataSource {
         case .rules:              return makeRulesCell(at: indexPath)
         case .referral:           return makeReferralCell(at: indexPath)
         case .other:              return makeOtherCell(tableView, at: indexPath)
+        case .diagnostics:        return makeRecoveryCell(at: indexPath)
         }
     }
 }
@@ -236,20 +261,29 @@ extension SettingsViewController: UITableViewDelegate {
             // isn't truncated ("...") on narrow screens (#313).
             return UITableView.automaticDimension
         case .referral:
-            // Friend-input row hosts an SPInput (52pt field + label + hint);
-            // the caption row wraps to two lines on small screens — let
-            // self-sizing handle both rather than guessing.
-            guard let row = ReferralRow(rawValue: indexPath.row) else { return 52 }
-            switch row {
-            case .myCode:      return 52
-            case .friendInput: return UITableView.automaticDimension
-            case .caption:     return UITableView.automaticDimension
-            }
+            return referralRowHeight(row: indexPath.row)
         case .soundNotifications where SoundRow(rawValue: indexPath.row) == .criticalAlerts:
             // Two-line subtitle hint ("Недоступно — нужно одобрение Apple").
             return UITableView.automaticDimension
+        case .diagnostics:
+            // Title + subtitle ("Хранилище повреждено и заблокировано") — let it
+            // self-size so the hint isn't clipped on narrow screens (#102).
+            return UITableView.automaticDimension
         default:
             return 52
+        }
+    }
+
+    /// Row heights inside `.referral`, split off to keep `heightForRowAt` under
+    /// SwiftLint's cyclomatic-complexity cap. Friend-input row hosts an SPInput
+    /// (52pt field + label + hint); the caption row wraps to two lines on small
+    /// screens — let self-sizing handle both rather than guessing.
+    private func referralRowHeight(row: Int) -> CGFloat {
+        switch ReferralRow(rawValue: row) {
+        case .myCode:      return 52
+        case .friendInput: return UITableView.automaticDimension
+        case .caption:     return UITableView.automaticDimension
+        case .none:        return 52
         }
     }
 
@@ -301,6 +335,9 @@ extension SettingsViewController: UITableViewDelegate {
 
         case .other:
             handleOtherTap(row: indexPath.row)
+
+        case .diagnostics:
+            presentRecoveryConfirmation()
         }
     }
 
@@ -334,8 +371,20 @@ extension SettingsViewController: UITableViewDelegate {
     }
 
     private func openMailto() {
-        if let url = URL(string: "mailto:support@alarmcash.app") {
-            UIApplication.shared.open(url)
+        guard let url = URL(string: "mailto:\(AppConstants.supportEmail)") else { return }
+        UIApplication.shared.open(url, options: [:]) { [weak self] success in
+            guard !success else { return }
+            // No Mail client configured (common — many users live in Gmail/
+            // Outlook apps). Don't strand them on a dead «Связаться» tap (#316):
+            // copy the address and tell them so support is still reachable.
+            UIPasteboard.general.string = AppConstants.supportEmail
+            let alert = UIAlertController(
+                title: "Почта не настроена",
+                message: "Адрес поддержки \(AppConstants.supportEmail) скопирован в буфер обмена.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Ок", style: .default))
+            self?.present(alert, animated: true)
         }
     }
 }
