@@ -515,9 +515,46 @@ class AlarmFiringViewController: UIViewController {
 
     /// `internal` so the +NoBalance extension can wire its big ghost
     /// "Я встал — выключить" button to the same dismiss path.
+    ///
+    /// Instead of an instant dismiss we present the WokeMorning summary (#228)
+    /// over this VC. Because WokeMorning sits ON TOP, our `viewDidDisappear`
+    /// won't fire, so we stop the alarm audio explicitly here (mirroring the
+    /// guarded teardown in `viewDidDisappear`) — otherwise the sound lingers
+    /// behind the summary (watchdog #199). «Закрыть» on WokeMorning calls
+    /// `presentingViewController?.dismiss` on THIS firing VC, unwinding both
+    /// screens back to the app.
     @objc func dismissTapped() {
+        let snoozes = viewModel.snoozeCount
+        let charged = viewModel.chargedThisMorning
         viewModel.dismiss()
-        dismiss(animated: true)
+        if AudioService.shared.currentAlarmID == viewModel.alarm.id {
+            AudioService.shared.stopAlarmSound()
+        } else {
+            // Stacking handoff (another alarm took over audio) — mirror the
+            // diagnostic from `viewDidDisappear` so this primary dismiss path
+            // isn't silent about skipping the stop (#199 observability).
+            let ownerDesc = String(describing: AudioService.shared.currentAlarmID)
+            let ours = viewModel.alarm.id
+            AppLogger.audio.notice(
+                "dismissTapped: skip stop — owner=\(ownerDesc, privacy: .private), ours=\(ours, privacy: .private)"
+            )
+        }
+        // `presentingViewController?.dismiss` unwinds both the firing VC and the
+        // WokeMorning overlay back to the app. If that chain is unexpectedly nil
+        // (firing VC deallocated, or presented outside the normal chain) the
+        // user would be stranded on the summary with a dead «Закрыть» — fall
+        // back to dismissing the summary itself, and log so it isn't swallowed.
+        weak var wokeRef: WokeMorningViewController?
+        let woke = WokeMorningViewController(snoozes: snoozes, charged: charged) { [weak self] in
+            if let presenter = self?.presentingViewController {
+                presenter.dismiss(animated: true)
+            } else {
+                AppLogger.ui.error("WokeMorning close: no presenting chain — dismissing summary only")
+                wokeRef?.dismiss(animated: true)
+            }
+        }
+        wokeRef = woke
+        present(woke, animated: true)
     }
 
     // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and
