@@ -1,5 +1,17 @@
 import XCTest
+import UserNotifications
 @testable import SnoozePay
+
+/// Spy that captures the `UNNotificationRequest`s StoreKitService posts when no
+/// UI screen is mounted (#45). Avoids touching the real
+/// `UNUserNotificationCenter` singleton in unit tests.
+@MainActor
+final class LocalNotificationPosterSpy: LocalNotificationPosting {
+    private(set) var requests: [UNNotificationRequest] = []
+    func add(_ request: UNNotificationRequest) {
+        requests.append(request)
+    }
+}
 
 /// Smoke tests for StoreKitService.
 ///
@@ -137,5 +149,170 @@ final class StoreKitServiceTests: XCTestCase {
 
         wait(for: [exp], timeout: 1.0)
         XCTAssertEqual(receivedMessage, StoreKitService.ledgerLockedFailureMessage)
+    }
+
+    // MARK: - #45: deferred-purchase local-notification fallback
+
+    /// A fresh test instance with an injected notification spy and an isolated
+    /// UserDefaults suite — never the `.shared` singleton (which spawns the
+    /// `Transaction.updates` listener and reads `.standard`).
+    private func makeService(
+        poster: LocalNotificationPosterSpy,
+        defaults: UserDefaults
+    ) -> StoreKitService {
+        StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
+    }
+
+    private func makeSuite() -> (UserDefaults, String) {
+        let name = "test_storekit_\(UUID().uuidString)"
+        return (UserDefaults(suiteName: name)!, name)
+    }
+
+    /// With no screen mounted, a completed purchase posts a local notification
+    /// (option B) instead of broadcasting into the void.
+    func testPurchaseCompleted_noSubscriber_postsLocalNotification() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        XCTAssertFalse(service.hasPurchaseFeedbackSubscriber)
+        service.postPurchaseCompleted(149)
+
+        XCTAssertEqual(poster.requests.count, 1)
+        let content = poster.requests.first?.content
+        XCTAssertEqual(content?.title, "Баланс пополнен")
+        XCTAssertEqual(content?.body, "Баланс пополнен на 149 ₽.")
+        // Immediate delivery — no trigger.
+        XCTAssertNil(poster.requests.first?.trigger)
+    }
+
+    /// With a screen mounted, the completed purchase broadcasts via
+    /// NotificationCenter and does NOT post a local notification (no double-notify).
+    func testPurchaseCompleted_withSubscriber_doesNotPostLocalNotification() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        service.beginObservingPurchaseFeedback()
+        XCTAssertTrue(service.hasPurchaseFeedbackSubscriber)
+        service.postPurchaseCompleted(149)
+
+        XCTAssertTrue(poster.requests.isEmpty, "must not double-notify when a screen is mounted")
+    }
+
+    /// A failure (refund / verification failure) with no screen mounted posts a
+    /// local notification carrying the message so it's never silently lost.
+    func testPurchaseFailed_noSubscriber_postsLocalNotificationWithMessage() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        service.postPurchaseFailed("Покупка отменена и возвращена.")
+
+        XCTAssertEqual(poster.requests.count, 1)
+        XCTAssertEqual(poster.requests.first?.content.body, "Покупка отменена и возвращена.")
+    }
+
+    /// begin/end subscriber tracking is balanced and clamps at zero so a stray
+    /// extra `end` can't suppress the fallback forever.
+    func testSubscriberTracking_balancesAndClampsAtZero() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        service.beginObservingPurchaseFeedback()
+        service.beginObservingPurchaseFeedback()
+        XCTAssertTrue(service.hasPurchaseFeedbackSubscriber)
+        service.endObservingPurchaseFeedback()
+        XCTAssertTrue(service.hasPurchaseFeedbackSubscriber, "still one screen mounted")
+        service.endObservingPurchaseFeedback()
+        XCTAssertFalse(service.hasPurchaseFeedbackSubscriber)
+        // Over-balance must not drive negative.
+        service.endObservingPurchaseFeedback()
+        XCTAssertFalse(service.hasPurchaseFeedbackSubscriber)
+    }
+
+    // MARK: - #209.1: conservative dedup-corruption handling
+
+    func testMarkProcessed_freshTable_recordsAndDedupes() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        XCTAssertEqual(service.markProcessed(transactionID: 42), .recorded)
+        // Replay of the same ID is recognised — no double-credit.
+        XCTAssertEqual(service.markProcessed(transactionID: 42), .alreadyProcessed)
+    }
+
+    /// THE money-correctness test: a dedup blob whose plist type has drifted must
+    /// NOT be wiped (old `?? []` behavior re-enabled double-crediting). The table
+    /// is backed up, and the call returns `.degraded` so the caller refuses to credit.
+    func testMarkProcessed_corruptBlob_refusesAndBacksUpWithoutWiping() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        // Plant a type-drifted blob (a dictionary where `[String]` is expected).
+        let corrupt: [String: Int] = ["unexpected": 1]
+        defaults.set(corrupt, forKey: "storekit.processed_tx_ids")
+
+        XCTAssertEqual(service.markProcessed(transactionID: 7), .degraded)
+
+        // Original corrupt blob is preserved (NOT wiped to []).
+        XCTAssertNotNil(defaults.object(forKey: "storekit.processed_tx_ids"))
+        XCTAssertNil(
+            defaults.array(forKey: "storekit.processed_tx_ids") as? [String],
+            "corrupt blob must remain non-[String] — never silently reset"
+        )
+        // Backup written for diagnosis (mirrors TransactionRepository).
+        XCTAssertNotNil(defaults.object(forKey: StoreKitService.processedBackupCorruptKey))
+    }
+
+    /// In the degraded state the dedup table is never overwritten across repeated
+    /// attempts — every call refuses rather than double-crediting.
+    func testMarkProcessed_corruptBlob_repeatedCallsStayDegraded() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        defaults.set(["bad": true], forKey: "storekit.processed_tx_ids")
+        XCTAssertEqual(service.markProcessed(transactionID: 1), .degraded)
+        XCTAssertEqual(service.markProcessed(transactionID: 2), .degraded)
+        XCTAssertNil(defaults.array(forKey: "storekit.processed_tx_ids") as? [String])
+    }
+
+    // MARK: - #209.2: credit-amount unknown-product logging
+
+    func testCreditAmount_knownProduct_returnsCatalogueAmount() {
+        XCTAssertEqual(
+            StoreKitService.creditAmount(for: "com.snooze_pay.balance.299", fallbackPrice: 999),
+            299,
+            "known SKU must credit the catalogue amount, ignoring any fallback price"
+        )
+    }
+
+    func testCreditAmount_unknownProductNoFallback_returnsZero() {
+        // No free/promo products exist (#209) — a zero here means misconfiguration.
+        // The caller's `amount > 0` gate then refuses to finish. (Logging side
+        // effect is asserted indirectly: the path is exercised.)
+        XCTAssertEqual(
+            StoreKitService.creditAmount(for: "com.snooze_pay.balance.unknown", fallbackPrice: nil),
+            0
+        )
+    }
+
+    func testCreditAmount_unknownProductWithFallback_usesFallback() {
+        XCTAssertEqual(
+            StoreKitService.creditAmount(for: "com.snooze_pay.balance.unknown", fallbackPrice: 199),
+            199,
+            "an unmapped SKU with a resolved StoreKit price still credits that price"
+        )
     }
 }

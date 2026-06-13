@@ -118,6 +118,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// Notification observer tokens torn down in `deinit`.
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
+    /// True while registered as a purchase-feedback subscriber so begin/end
+    /// stay balanced across appear/disappear (#45).
+    private var isObservingPurchaseFeedback = false
 
     // MARK: - Subviews
 
@@ -319,6 +322,12 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         startAutoResumeTimer()
         startCountdownTimer()
         updatePauseLabel()
+        // While visible, route purchase feedback to the in-app banner rather
+        // than a fallback local notification (#45). Balanced below.
+        if !isObservingPurchaseFeedback {
+            isObservingPurchaseFeedback = true
+            StoreKitService.shared.beginObservingPurchaseFeedback()
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -327,6 +336,10 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         autoResumeTimer = nil
         countdownTimer?.invalidate()
         countdownTimer = nil
+        if isObservingPurchaseFeedback {
+            isObservingPurchaseFeedback = false
+            StoreKitService.shared.endObservingPurchaseFeedback()
+        }
 
         // Resume audio + escalation unless we got here via success path —
         // the host VC may have already torn down the firing flow on success.
