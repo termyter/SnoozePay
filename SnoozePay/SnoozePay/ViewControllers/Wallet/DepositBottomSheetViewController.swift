@@ -35,6 +35,9 @@ final class DepositBottomSheetViewController: UIViewController {
 
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
+    /// True while this screen is registered as a purchase-feedback subscriber
+    /// so `begin`/`end` stay balanced across appear/disappear (#45).
+    private var isObservingPurchaseFeedback = false
 
     // MARK: - Subviews
 
@@ -186,6 +189,25 @@ final class DepositBottomSheetViewController: UIViewController {
         view.backgroundColor = AppColors.bg1
         setupLayout()
         observePurchaseNotifications()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // While this screen is visible, purchase feedback routes to the in-app
+        // banner; tell StoreKitService so it doesn't also post a fallback local
+        // notification (#45). Balanced in `viewWillDisappear`.
+        if !isObservingPurchaseFeedback {
+            isObservingPurchaseFeedback = true
+            StoreKitService.shared.beginObservingPurchaseFeedback()
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if isObservingPurchaseFeedback {
+            isObservingPurchaseFeedback = false
+            StoreKitService.shared.endObservingPurchaseFeedback()
+        }
     }
 
     // MARK: - Layout
