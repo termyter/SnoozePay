@@ -227,7 +227,14 @@ extension SettingsViewController: UITableViewDelegate {
         guard let section = Section(rawValue: indexPath.section) else { return 52 }
         switch section {
         case .other where OtherRow(rawValue: indexPath.row) == .theme:
-            return 56
+            // Two-storey cell — glyph + «Тема» title, then a 36pt SPSegmented
+            // below (~90pt total). A fixed 56pt clipped the title and squashed
+            // the segment; self-size instead (#314).
+            return UITableView.automaticDimension
+        case .rules:
+            // «Прогрессивная цена» carries a wrapping subtitle — self-size so it
+            // isn't truncated ("...") on narrow screens (#313).
+            return UITableView.automaticDimension
         case .referral:
             // Friend-input row hosts an SPInput (52pt field + label + hint);
             // the caption row wraps to two lines on small screens — let
@@ -248,9 +255,14 @@ extension SettingsViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         // `automaticDimension` paths above need an estimate or the table
-        // collapses on first layout pass. 52pt matches the rest of the
-        // settings rows for visual continuity.
-        52
+        // collapses on first layout pass. The two-storey theme row (~90pt) gets
+        // its own estimate so it doesn't jump on first display; the rest match
+        // the 52pt row rhythm.
+        if Section(rawValue: indexPath.section) == .other,
+           OtherRow(rawValue: indexPath.row) == .theme {
+            return 90
+        }
+        return 52
     }
 
     /// Apply the shared card-style background to every row so each

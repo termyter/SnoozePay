@@ -127,7 +127,9 @@ extension SettingsViewController {
             systemName: "flame",
             iconColor: AppColors.pain400,
             title: "Прогрессивная цена",
-            subtitle: "Цена откладывания удваивается за каждый повтор",
+            // Design copy (`SPMore4.jsx:381`) — the doubling ramp reads clearer
+            // than prose and won't clip (#313).
+            subtitle: "50 → 100 → 200 → 400",
             isOn: alarmDefaults.progressiveScale,
             onChange: { [weak self] isOn in
                 self?.alarmDefaults.progressiveScale = isOn
