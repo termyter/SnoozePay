@@ -15,7 +15,7 @@ import UIKit
 ///            Пока нечего считать          <- h2 fg1
 ///   Статистика появится после первой
 ///   недели использования.                <- body-lg fg2
-///        ( 🔥 Стрик · 2 дня )            <- money-tinted pill
+///        ( 🔥 Серия · 2 дня )            <- money-tinted pill
 /// ```
 final class SPStatsEmptyState: UIView {
 
@@ -72,7 +72,7 @@ final class SPStatsEmptyState: UIView {
         return label
     }()
 
-    /// Money-tinted pill: flame icon + "Стрик · N дня".
+    /// Money-tinted pill: flame icon + "Серия · N дня".
     private let streakChip = UIView()
     private let streakChipLabel: UILabel = {
         let label = UILabel()
@@ -98,7 +98,9 @@ final class SPStatsEmptyState: UIView {
     /// Update the streak chip's day count + Russian declension.
     func setStreak(_ days: Int) {
         let word = StreakModalViewController.dayWord(for: days)
-        streakChipLabel.text = "Стрик · \(days) \(word)"
+        // Canonical term is «Серия», not the «Стрик» anglicism (#318) — the
+        // hero card of this same screen already reads «Серия».
+        streakChipLabel.text = "Серия · \(days) \(word)"
         // Hide the chip entirely when there is no streak to celebrate.
         streakChip.isHidden = days <= 0
     }
