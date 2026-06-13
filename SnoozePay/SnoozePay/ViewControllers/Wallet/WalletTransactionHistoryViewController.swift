@@ -442,18 +442,20 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
     private static func makeAmountLabel(for transaction: Transaction) -> UILabel {
         let label = UILabel()
-        label.font = AppTypography.moneySm
+        // Row sums use money-md (700 20px mono) per design, not 14pt moneySm
+        // (#321; full history SPMore3.jsx:178, role "Row sums" SPDesignSystem.jsx:254).
+        label.font = AppTypography.moneyMd
         label.translatesAutoresizingMaskIntoConstraints = false
         let absAmount = Int(abs(transaction.amount))
         switch transaction.type {
         case .topup, .promotion:
             label.attributedText = MoneyFormatter.attributed(
-                Decimal(absAmount), digitsFont: AppTypography.moneySm, prefix: "+"
+                Decimal(absAmount), digitsFont: AppTypography.moneyMd, prefix: "+"
             )
             label.textColor = AppColors.money400
         case .charge:
             label.attributedText = MoneyFormatter.attributed(
-                Decimal(absAmount), digitsFont: AppTypography.moneySm, prefix: "−"
+                Decimal(absAmount), digitsFont: AppTypography.moneyMd, prefix: "−"
             )
             label.textColor = AppColors.pain400
         }

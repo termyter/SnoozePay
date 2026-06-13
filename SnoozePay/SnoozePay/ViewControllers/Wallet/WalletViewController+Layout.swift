@@ -179,7 +179,9 @@ extension WalletViewController {
     private func makeTxAmountLabel(text: String, isDebit: Bool) -> UILabel {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = AppTypography.moneySm
+        // Row sums use money-md (700 20px mono) per design — 14pt moneySm read
+        // as a secondary caption (#321; SPScreensV2.jsx:543, SPMore3.jsx:178).
+        label.font = AppTypography.moneyMd
         label.textColor = isDebit ? AppColors.pain400 : AppColors.money400
         label.text = text
         return label
