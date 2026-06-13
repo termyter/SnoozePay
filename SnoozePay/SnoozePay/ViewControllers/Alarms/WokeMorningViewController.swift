@@ -263,3 +263,17 @@ final class WokeMorningViewController: UIViewController {
         onClose()
     }
 }
+
+// MARK: - Hex helper (file-scoped)
+
+private extension UIColor {
+    /// `0xRRGGBB` literal initializer for this screen's mint accent / base
+    /// colours. File-scoped — `private` is file-scope in Swift; the brand-token
+    /// `UIColor(hex:)` in AppColors is `private` and not visible across files.
+    convenience init(hex rgb: UInt32, alpha: CGFloat = 1) {
+        let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
+        let green = CGFloat((rgb >> 8) & 0xFF) / 255.0
+        let blue = CGFloat(rgb & 0xFF) / 255.0
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
+    }
+}

@@ -524,10 +524,31 @@ class AlarmFiringViewController: UIViewController {
         viewModel.dismiss()
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
+        } else {
+            // Stacking handoff (another alarm took over audio) — mirror the
+            // diagnostic from `viewDidDisappear` so this primary dismiss path
+            // isn't silent about skipping the stop (#199 observability).
+            let ownerDesc = String(describing: AudioService.shared.currentAlarmID)
+            let ours = viewModel.alarm.id
+            AppLogger.audio.notice(
+                "dismissTapped: skip stop — owner=\(ownerDesc, privacy: .private), ours=\(ours, privacy: .private)"
+            )
         }
+        // `presentingViewController?.dismiss` unwinds both the firing VC and the
+        // WokeMorning overlay back to the app. If that chain is unexpectedly nil
+        // (firing VC deallocated, or presented outside the normal chain) the
+        // user would be stranded on the summary with a dead «Закрыть» — fall
+        // back to dismissing the summary itself, and log so it isn't swallowed.
+        weak var wokeRef: WokeMorningViewController?
         let woke = WokeMorningViewController(snoozes: snoozes, charged: charged) { [weak self] in
-            self?.presentingViewController?.dismiss(animated: true)
+            if let presenter = self?.presentingViewController {
+                presenter.dismiss(animated: true)
+            } else {
+                AppLogger.ui.error("WokeMorning close: no presenting chain — dismissing summary only")
+                wokeRef?.dismiss(animated: true)
+            }
         }
+        wokeRef = woke
         present(woke, animated: true)
     }
 

@@ -34,7 +34,9 @@ final class SPWokeMorningBackgroundView: UIView {
     private static let horizonFraction: CGFloat = 0.44
 
     private static let mistColor = UIColor(hex: 0x9EE6CC)
-    private static let glowColor = UIColor(hex: 0x2EDB9F)
+    /// Byte-identical to the brand `AppColors.money400` token — reuse it rather
+    /// than re-literal the hex (design-system single-source-of-truth).
+    private static let glowColor = AppColors.money400
 
     // MARK: - Layers
 
@@ -149,5 +151,21 @@ final class SPWokeMorningBackgroundView: UIView {
         )
 
         CATransaction.commit()
+    }
+}
+
+// MARK: - Hex helper (file-scoped)
+
+private extension UIColor {
+    /// `0xRRGGBB` literal initializer for this screen's mint atmosphere stops.
+    /// File-scoped copy — `private` is file-scope in Swift, mirroring the
+    /// identical helpers in the firing `+Layout` / `+Theme` / `+Snoozed` files
+    /// (the brand-token `UIColor(hex:)` in AppColors is itself `private` and not
+    /// visible across files).
+    convenience init(hex rgb: UInt32, alpha: CGFloat = 1) {
+        let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
+        let green = CGFloat((rgb >> 8) & 0xFF) / 255.0
+        let blue = CGFloat(rgb & 0xFF) / 255.0
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
