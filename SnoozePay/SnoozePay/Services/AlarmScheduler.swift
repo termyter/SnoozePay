@@ -274,10 +274,17 @@ final class AlarmScheduler: AlarmScheduling {
         // handled. Skipped on the critical-alerts path (continuous sound).
         var requests = [request]
         if !Self.criticalAlertsAvailable {
+            // Build the burst identifier from the index directly — `snooze_<id>
+            // _burstN` — so it matches the explicit-ID set `cancel(_:)` /
+            // `cancelFallbackBursts(_:)` remove (`"\(snoozeID)_burst\(i)"`).
+            // Routing through `burst.label` would double the suffix
+            // (`burst_burst0`) and the belt-and-suspenders removal would miss it,
+            // orphaning the snooze burst (#19 QA).
             requests += Self.burstTriggers(after: components, label: "burst", repeats: false)
-                .map { burst in
+                .enumerated()
+                .map { index, burst in
                     UNNotificationRequest(
-                        identifier: "\(snoozeNotificationID(for: alarm.id))_\(burst.label)",
+                        identifier: "\(snoozeNotificationID(for: alarm.id))_burst\(index)",
                         content: content,
                         trigger: burst.trigger
                     )
@@ -422,6 +429,48 @@ final class AlarmScheduler: AlarmScheduling {
         }
         notificationCenter.getDeliveredNotifications { [notificationCenter] notifications in
             let ids = notifications.map { $0.request.identifier }.filter(belongsToAlarm)
+            guard !ids.isEmpty else { return }
+            notificationCenter.removeDeliveredNotifications(withIdentifiers: ids)
+        }
+    }
+
+    /// Cancel ONLY the lock-screen fallback-burst follow-ups (`#19`) for an
+    /// alarm — the `_burstN` notifications — while leaving the primary triggers
+    /// (`day0…day6`, `once`, `snooze`) armed. Called from the lock-screen
+    /// dismiss / snooze action paths, where the current firing's bursts are
+    /// still pending at +30/60/90s and would spuriously re-ring after the user
+    /// already got up or snoozed (#19 QA — the orphan-re-ring fix). A blanket
+    /// `cancel(_:)` would also drop a repeating alarm's future weekday triggers,
+    /// disabling it — so this is deliberately burst-only.
+    func cancelFallbackBursts(_ alarmID: UUID) {
+        let prefix = notificationIDPrefix(for: alarmID)
+        let snoozeID = snoozeNotificationID(for: alarmID)
+        // A burst id is the alarm/snooze id plus a `_burstN` suffix. Primary
+        // triggers never contain `_burst`, so this never touches them.
+        let isBurst: (String) -> Bool = {
+            ($0.hasPrefix(prefix) || $0.hasPrefix(snoozeID)) && $0.contains("_burst")
+        }
+
+        // Belt-and-suspenders explicit removal (sync, no async dependency —
+        // mirrors `cancel(_:)`): covers day0..day6 / once / snooze burst IDs.
+        let labels = (0..<7).map { "day\($0)" } + ["once"]
+        let explicitBurstIDs = labels.flatMap { label in
+            Self.fallbackBurstOffsetsSeconds.indices.map {
+                notificationID(for: alarmID, trigger: "\(label)_burst\($0)")
+            }
+        }
+            + Self.fallbackBurstOffsetsSeconds.indices.map { "\(snoozeID)_burst\($0)" }
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: explicitBurstIDs)
+        notificationCenter.removeDeliveredNotifications(withIdentifiers: explicitBurstIDs)
+
+        // Prefix sweep for any stragglers the explicit set didn't cover.
+        notificationCenter.getPendingNotificationRequests { [notificationCenter] requests in
+            let ids = requests.map { $0.identifier }.filter(isBurst)
+            guard !ids.isEmpty else { return }
+            notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
+        }
+        notificationCenter.getDeliveredNotifications { [notificationCenter] notifications in
+            let ids = notifications.map { $0.request.identifier }.filter(isBurst)
             guard !ids.isEmpty else { return }
             notificationCenter.removeDeliveredNotifications(withIdentifiers: ids)
         }
