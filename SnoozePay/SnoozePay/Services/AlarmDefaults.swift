@@ -29,6 +29,7 @@ final class AlarmDefaults {
         static let volume = "default_volume"
         static let vibration = "default_vibration"
         static let progressiveScale = "default_progressive_scale"
+        static let penaltyAmount = "default_penalty_amount"
     }
 
     // MARK: - Factory fallbacks
@@ -40,6 +41,7 @@ final class AlarmDefaults {
     static let fallbackVolume: Float = 1.0
     static let fallbackVibration = true
     static let fallbackProgressiveScale = false
+    static let fallbackPenaltyAmount: Double = 50
 
     // MARK: - Snooze duration
 
@@ -109,5 +111,26 @@ final class AlarmDefaults {
             return defaults.bool(forKey: Key.progressiveScale)
         }
         set { defaults.set(newValue, forKey: Key.progressiveScale) }
+    }
+
+    // MARK: - Default snooze price
+
+    /// Default snooze price (₽) seeding new alarms (#315). Free value floored
+    /// at 1 ₽ with no upper cap (per #230); a non-finite or sub-1 stored blob
+    /// falls back to the 1 ₽ floor so `Alarm.init` never seeds a zero/NaN
+    /// penalty. Editing only affects alarms created afterwards.
+    var penaltyAmount: Double {
+        get {
+            guard defaults.object(forKey: Key.penaltyAmount) != nil else {
+                return Self.fallbackPenaltyAmount
+            }
+            let raw = defaults.double(forKey: Key.penaltyAmount)
+            guard raw.isFinite else { return Self.fallbackPenaltyAmount }
+            return max(raw, 1)
+        }
+        set {
+            let clamped = newValue.isFinite ? max(newValue, 1) : Self.fallbackPenaltyAmount
+            defaults.set(clamped, forKey: Key.penaltyAmount)
+        }
     }
 }

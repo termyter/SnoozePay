@@ -281,9 +281,7 @@ extension SettingsViewController: UITableViewDelegate {
 
         switch section {
         case .finance:
-            if FinanceRow(rawValue: indexPath.row) == .snoozeDuration {
-                presentSnoozeDurationPicker()
-            }
+            handleFinanceTap(row: indexPath.row)
 
         case .soundNotifications:
             if SoundRow(rawValue: indexPath.row) == .volume {
@@ -303,6 +301,16 @@ extension SettingsViewController: UITableViewDelegate {
 
         case .other:
             handleOtherTap(row: indexPath.row)
+        }
+    }
+
+    /// `.finance` row taps split off so `didSelectRowAt` stays under SwiftLint's
+    /// cyclomatic-complexity cap (same reason as `handleOtherTap`).
+    private func handleFinanceTap(row: Int) {
+        switch FinanceRow(rawValue: row) {
+        case .defaultPrice:   presentDefaultPricePicker()
+        case .snoozeDuration: presentSnoozeDurationPicker()
+        case .none:           break
         }
     }
 

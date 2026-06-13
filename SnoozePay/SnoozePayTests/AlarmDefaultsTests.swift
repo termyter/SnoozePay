@@ -94,6 +94,36 @@ final class AlarmDefaultsTests: XCTestCase {
         XCTAssertTrue(AlarmDefaults(defaults: defaults).progressiveScale)
     }
 
+    // MARK: - Default snooze price (#315)
+
+    func testPenaltyAmount_defaultsToFactoryFallback() {
+        XCTAssertEqual(sut.penaltyAmount, AlarmDefaults.fallbackPenaltyAmount, accuracy: 0.0001)
+        XCTAssertEqual(sut.penaltyAmount, 50, accuracy: 0.0001)
+    }
+
+    func testPenaltyAmount_persistsWrite() {
+        sut.penaltyAmount = 200
+        XCTAssertEqual(sut.penaltyAmount, 200, accuracy: 0.0001)
+        XCTAssertEqual(AlarmDefaults(defaults: defaults).penaltyAmount, 200, accuracy: 0.0001)
+    }
+
+    func testPenaltyAmount_floorsAtOne() {
+        sut.penaltyAmount = 0
+        XCTAssertEqual(sut.penaltyAmount, 1, accuracy: 0.0001)
+        sut.penaltyAmount = -100
+        XCTAssertEqual(sut.penaltyAmount, 1, accuracy: 0.0001)
+    }
+
+    func testPenaltyAmount_hasNoUpperCap() {
+        sut.penaltyAmount = 99_999
+        XCTAssertEqual(sut.penaltyAmount, 99_999, accuracy: 0.0001)
+    }
+
+    func testPenaltyAmount_nonFiniteFallsBack() {
+        sut.penaltyAmount = .nan
+        XCTAssertEqual(sut.penaltyAmount, AlarmDefaults.fallbackPenaltyAmount, accuracy: 0.0001)
+    }
+
     // MARK: - Seeds new alarms
 
     func testDefaults_seedNewAlarmDraft() {
@@ -101,6 +131,7 @@ final class AlarmDefaultsTests: XCTestCase {
         sut.vibrationEnabled = false
         sut.volume = 0.8
         sut.progressiveScale = true
+        sut.penaltyAmount = 150
 
         let viewModel = CreateAlarmViewModel(alarm: nil, defaults: sut)
 
@@ -108,17 +139,20 @@ final class AlarmDefaultsTests: XCTestCase {
         XCTAssertFalse(viewModel.vibrationEnabled)
         XCTAssertEqual(viewModel.volume, 0.8, accuracy: 0.0001)
         XCTAssertTrue(viewModel.progressiveScale)
+        XCTAssertEqual(viewModel.penaltyAmount, 150, accuracy: 0.0001)
     }
 
     func testDefaults_doNotOverrideExistingAlarm() {
         sut.snoozeMinutes = 5
         sut.vibrationEnabled = false
+        sut.penaltyAmount = 150
 
-        let existing = Alarm(vibrationEnabled: true, snoozeMinutes: 12)
+        let existing = Alarm(vibrationEnabled: true, snoozeMinutes: 12, penaltyAmount: 75)
         let viewModel = CreateAlarmViewModel(alarm: existing, defaults: sut)
 
         // Editing keeps the alarm's own values, ignoring the global default.
         XCTAssertEqual(viewModel.snoozeMinutes, 12)
         XCTAssertTrue(viewModel.vibrationEnabled)
+        XCTAssertEqual(viewModel.penaltyAmount, 75, accuracy: 0.0001)
     }
 }

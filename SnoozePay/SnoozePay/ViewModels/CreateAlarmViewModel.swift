@@ -63,7 +63,7 @@ final class CreateAlarmViewModel {
         // minutes (old stepper range). The form's slider now caps at 15.
         let rawSnooze = alarm?.snoozeMinutes ?? defaults.snoozeMinutes
         self.snoozeMinutes = min(max(rawSnooze, Self.snoozeMinutesRange.lowerBound), Self.snoozeMinutesRange.upperBound)
-        self.penaltyAmount = alarm?.penaltyAmount ?? 50
+        self.penaltyAmount = alarm?.penaltyAmount ?? defaults.penaltyAmount
         self.progressiveScale = alarm?.progressiveScale ?? defaults.progressiveScale
         self.enabled = alarm?.enabled ?? true
         self.volume = alarm?.volume ?? defaults.volume
