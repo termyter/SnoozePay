@@ -229,12 +229,19 @@ extension SettingsViewController {
         present(alert, animated: true)
     }
 
-    /// Clears the corrupt state on both repositories and reloads the table so
-    /// the now-unlocked (empty) Settings refreshes and the recovery section
-    /// collapses again.
+    /// Clears the corrupt state and reloads the table so the now-unlocked
+    /// Settings refreshes and the recovery section collapses again. Only the
+    /// repository that ACTUALLY failed to load is wiped — `clearCorruptState()`
+    /// is unconditional (it removes the data key regardless of lock state), so
+    /// clearing a healthy store here would destroy valid data the user never
+    /// lost (e.g. transactions corrupt but alarms intact → don't nuke alarms).
     private func performRecovery() {
-        AlarmRepository.shared.clearCorruptState()
-        TransactionRepository.shared.clearCorruptState()
+        if AlarmRepository.shared.lastLoadFailed {
+            AlarmRepository.shared.clearCorruptState()
+        }
+        if TransactionRepository.shared.lastLoadFailed {
+            TransactionRepository.shared.clearCorruptState()
+        }
         tableView.reloadData()
     }
 

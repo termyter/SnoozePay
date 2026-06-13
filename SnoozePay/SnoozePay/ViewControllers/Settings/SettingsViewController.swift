@@ -371,8 +371,20 @@ extension SettingsViewController: UITableViewDelegate {
     }
 
     private func openMailto() {
-        if let url = URL(string: "mailto:\(AppConstants.supportEmail)") {
-            UIApplication.shared.open(url)
+        guard let url = URL(string: "mailto:\(AppConstants.supportEmail)") else { return }
+        UIApplication.shared.open(url, options: [:]) { [weak self] success in
+            guard !success else { return }
+            // No Mail client configured (common — many users live in Gmail/
+            // Outlook apps). Don't strand them on a dead «Связаться» tap (#316):
+            // copy the address and tell them so support is still reachable.
+            UIPasteboard.general.string = AppConstants.supportEmail
+            let alert = UIAlertController(
+                title: "Почта не настроена",
+                message: "Адрес поддержки \(AppConstants.supportEmail) скопирован в буфер обмена.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Ок", style: .default))
+            self?.present(alert, animated: true)
         }
     }
 }
