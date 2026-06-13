@@ -80,13 +80,28 @@ extension AlarmFiringViewController {
             case .scheduled:
                 break
             case .scheduleFailed(let error):
+                // The charge was refunded and the alarm will NOT re-fire, so the
+                // snoozed chrome (a live countdown to a phantom ring + the
+                // decremented pill) would lie. Tear it back down to the active
+                // firing UI BEFORE surfacing the alert so the screen matches the
+                // alert's "будильник не зазвенит повторно / деньги возвращены".
+                self.exitSnoozedState()
                 self.presentSnoozeScheduleFailureAlert(error: error)
             case .scheduleFailedAndRefundFailed(let error):
+                // Worse: billed, no re-fire, refund also failed. Same teardown so
+                // the countdown stops lying; the alert routes the user to support.
+                self.exitSnoozedState()
                 self.presentSnoozeRefundFailedAlert(error: error)
             }
         }
+        // Foreground snooze (#226): instead of dismissing, transition the live
+        // firing screen into the "отложено" state in place — countdown to the
+        // next ring, zZ badge, progressive ladder. At countdown zero the active
+        // firing UI restores. `viewModel.snooze` already bumped `snoozeCount`
+        // and fired `onStateChanged → updateUI`, so the balance pill / ladder
+        // reflect the charge before we render the snoozed chrome.
         if success {
-            dismiss(animated: true)
+            enterSnoozedState()
         }
     }
 

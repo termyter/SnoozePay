@@ -343,6 +343,7 @@ class AlarmFiringViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         clockTimer?.invalidate()
+        teardownSnoozedTimers()
         dawnBackgroundView.sunLayer.removeAllAnimations()
 
         // Stop alarm sound only if AudioService still belongs to *this*
@@ -407,6 +408,10 @@ class AlarmFiringViewController: UIViewController {
         // (Apple Pay 500 ₽) stack based on affordability. `canSnooze` is
         // the single source of truth.
         refreshNoBalanceVisibility()
+
+        // While the snoozed state is live (#226) re-render its chrome too — a
+        // back-to-back snooze bumps the ladder rung / countdown / hero suffix.
+        refreshSnoozedChrome()
     }
 
     /// Build the eyebrow caps copy below the clock. Mirrors `SPDawnV3.jsx`
