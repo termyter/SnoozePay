@@ -510,9 +510,25 @@ class AlarmFiringViewController: UIViewController {
 
     /// `internal` so the +NoBalance extension can wire its big ghost
     /// "Я встал — выключить" button to the same dismiss path.
+    ///
+    /// Instead of an instant dismiss we present the WokeMorning summary (#228)
+    /// over this VC. Because WokeMorning sits ON TOP, our `viewDidDisappear`
+    /// won't fire, so we stop the alarm audio explicitly here (mirroring the
+    /// guarded teardown in `viewDidDisappear`) — otherwise the sound lingers
+    /// behind the summary (watchdog #199). «Закрыть» on WokeMorning calls
+    /// `presentingViewController?.dismiss` on THIS firing VC, unwinding both
+    /// screens back to the app.
     @objc func dismissTapped() {
+        let snoozes = viewModel.snoozeCount
+        let charged = viewModel.chargedThisMorning
         viewModel.dismiss()
-        dismiss(animated: true)
+        if AudioService.shared.currentAlarmID == viewModel.alarm.id {
+            AudioService.shared.stopAlarmSound()
+        }
+        let woke = WokeMorningViewController(snoozes: snoozes, charged: charged) { [weak self] in
+            self?.presentingViewController?.dismiss(animated: true)
+        }
+        present(woke, animated: true)
     }
 
     // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and

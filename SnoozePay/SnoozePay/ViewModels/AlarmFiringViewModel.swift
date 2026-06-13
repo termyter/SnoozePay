@@ -96,6 +96,11 @@ final class AlarmFiringViewModel {
         return (1...snoozeCount).map { alarm.penalty(forSnoozeCount: $0) }
     }
 
+    /// Total roubles charged this wake — the sum of every snooze penalty taken
+    /// (`pastPenalties`). Drives the WokeMorning «recovered» subtitle
+    /// "Сегодня списано N ₽" (#228); `0` when the user got up on the first ring.
+    var chargedThisMorning: Double { pastPenalties.reduce(0, +) }
+
     var canSnooze: Bool {
         balanceService.canAfford(currentPenalty)
     }
