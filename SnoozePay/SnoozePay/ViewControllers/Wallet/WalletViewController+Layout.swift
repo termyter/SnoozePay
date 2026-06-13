@@ -187,14 +187,16 @@ extension WalletViewController {
         return label
     }
 
-    /// Footer caption "Покупка не возвращается · штрафы списываются с баланса".
+    /// Footer caption "Покупка не возвращается · списывается только при
+    /// откладывании" — one-way stake framing per screen 19 canon (#322).
+    /// The word «штрафы» is dropped here too for a unified soft tone (#278).
     func makeFooterCaption() -> UILabel {
         let label = UILabel()
         label.font = AppTypography.meta
         label.textColor = AppColors.fg4
         label.numberOfLines = 0
         label.textAlignment = .center
-        label.text = "Покупка не возвращается · штрафы списываются с баланса"
+        label.text = "Покупка не возвращается · списывается только при откладывании"
         return label
     }
 }
