@@ -112,6 +112,102 @@ final class AlarmFiringViewModel {
 
     var alarmName: String { alarm.name }
 
+    /// Amount charged by the MOST RECENT snooze — the rung the user just paid
+    /// for. `snooze()` bumps `snoozeCount` before this reads, so it equals
+    /// `penalty(forSnoozeCount: snoozeCount)`. Drives the fly-up «−N ₽» in the
+    /// snoozed state. `0` before the first snooze.
+    var lastChargeAmount: Double {
+        snoozeCount > 0 ? alarm.penalty(forSnoozeCount: snoozeCount) : 0
+    }
+
+    // MARK: - Snoozed state (#226)
+
+    /// Per-step state of the 4-rung charge ladder rendered in the snoozed
+    /// firing chrome (`SPFiringThemeSnoozed.jsx`). `done` rungs are already
+    /// paid, `current` is the rung the user just landed on, `future` rungs are
+    /// still ahead. Pure value type so the ladder layout is unit-testable
+    /// without a view hierarchy.
+    enum LadderStepState: Equatable {
+        case done
+        case current
+        case future
+    }
+
+    /// One rung of the charge ladder: its amount (₽) plus its state.
+    struct LadderStep: Equatable {
+        let amount: Int
+        let state: LadderStepState
+    }
+
+    /// The 4-rung progressive charge ladder for the snoozed state. Amounts are
+    /// the doubling schedule `base, ×2, ×4, ×8` (the same ceiling
+    /// `penalty(forSnoozeCount:)` walks). State keys off `snoozeCount`: rungs
+    /// strictly before it are `done`, the rung AT it is `current`, the rest are
+    /// `future`. `snoozeCount` past the last rung clamps `current` to rung 4 so
+    /// the ladder never blanks out at the ceiling. Returns `[]` when the alarm
+    /// isn't progressive (the snoozed state hides the ladder entirely).
+    var ladderSteps: [LadderStep] {
+        guard isProgressiveActive else { return [] }
+        let base = alarm.penaltyAmount
+        let amounts = (0..<4).map { Int((base * pow(2.0, Double($0))).rounded()) }
+        let currentIdx = min(snoozeCount, amounts.count - 1)
+        return amounts.enumerated().map { idx, amount in
+            let state: LadderStepState
+            if idx < currentIdx {
+                state = .done
+            } else if idx == currentIdx {
+                state = .current
+            } else {
+                state = .future
+            }
+            return LadderStep(amount: amount, state: state)
+        }
+    }
+
+    /// Wall-clock `Date` of the next ring after the current snooze — the
+    /// alarm's time-of-day shifted forward `snoozeMinutes × snoozeCount`
+    /// minutes, anchored to `reference`'s calendar day. Pure (takes `now` +
+    /// `calendar`) so the countdown maths is testable without the system clock.
+    func nextRingDate(after reference: Date, calendar: Calendar = .current) -> Date {
+        let timeParts = calendar.dateComponents([.hour, .minute], from: alarm.time)
+        let base = calendar.date(
+            bySettingHour: timeParts.hour ?? 0,
+            minute: timeParts.minute ?? 0,
+            second: 0,
+            of: reference
+        ) ?? reference
+        return base.addingTimeInterval(TimeInterval(alarm.snoozeMinutes * snoozeCount * 60))
+    }
+
+    /// `HH:mm` label of the next ring — "отложено до 07:05" / status-bar time.
+    func nextRingTimeText(after reference: Date, calendar: Calendar = .current) -> String {
+        AlarmFiringTimeFormatter.string(from: nextRingDate(after: reference, calendar: calendar))
+    }
+
+    /// Hero name + next-ring suffix shown in the snoozed state, e.g.
+    /// "Будни · отложено до 07:05". Degrades to "отложено до …" when the alarm
+    /// has no name, so the row never renders a dangling "·".
+    func snoozedHeroTitle(after reference: Date, calendar: Calendar = .current) -> String {
+        let time = nextRingTimeText(after: reference, calendar: calendar)
+        let name = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = "отложено до \(time)"
+        return name.isEmpty ? suffix : "\(name) · \(suffix)"
+    }
+
+    /// Remaining seconds until the next ring (never negative). Used by the live
+    /// countdown; at `0` the firing screen restores the active state.
+    func secondsUntilNextRing(from reference: Date, calendar: Calendar = .current) -> Int {
+        let target = nextRingDate(after: reference, calendar: calendar)
+        return max(0, Int(target.timeIntervalSince(reference).rounded()))
+    }
+
+    /// `mm:ss` countdown label clamped at `00:00`. Static so the formatting is
+    /// testable from a raw second count without a clock.
+    static func countdownText(seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        return String(format: "%02d:%02d", clamped / 60, clamped % 60)
+    }
+
     /// "Будни · 07:00" hero title above the big clock — alarm name plus its
     /// scheduled time (V3 themed firing, `SPThemedFiring.jsx` line 152).
     /// A blank / whitespace-only name degrades to just the time so the row

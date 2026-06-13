@@ -85,8 +85,14 @@ extension AlarmFiringViewController {
                 self.presentSnoozeRefundFailedAlert(error: error)
             }
         }
+        // Foreground snooze (#226): instead of dismissing, transition the live
+        // firing screen into the "отложено" state in place — countdown to the
+        // next ring, zZ badge, progressive ladder. At countdown zero the active
+        // firing UI restores. `viewModel.snooze` already bumped `snoozeCount`
+        // and fired `onStateChanged → updateUI`, so the balance pill / ladder
+        // reflect the charge before we render the snoozed chrome.
         if success {
-            dismiss(animated: true)
+            enterSnoozedState()
         }
     }
 
