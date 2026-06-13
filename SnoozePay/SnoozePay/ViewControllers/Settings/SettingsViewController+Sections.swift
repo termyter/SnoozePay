@@ -19,21 +19,21 @@ extension SettingsViewController {
         }
     }
 
-    /// Display-only "Цена откладывания по умолчанию · 50 ₽" row (#237/#283).
-    /// The value mirrors `AlarmsListViewModel.defaultPenaltyAmount` (the
-    /// `Alarm.init` default applied to new alarms); per-alarm price editing
-    /// lives on the Create/Edit screen, so this row carries no navigation
-    /// (chevron-to-edit is tracked separately in #230).
+    /// Tappable "Цена откладывания по умолчанию · 50 ₽" row (#237/#283/#315).
+    /// The value is the global default penalty seeding new alarms
+    /// (`AlarmDefaults.penaltyAmount`); tapping opens a price editor and the
+    /// chevron signals the affordance, symmetric with the snooze-duration row
+    /// (design `SPMore4.jsx:362`). Existing alarms keep their own saved price.
     func makeDefaultPriceRow(at indexPath: IndexPath) -> UITableViewCell {
         let cell = dequeueIconRowCell(at: indexPath)
         cell.configure(
             systemName: "rublesign.circle",
             iconColor: AppColors.warn400,
             title: "Цена откладывания по умолчанию",
-            trailingText: Decimal(AlarmsListViewModel.defaultPenaltyAmount).formattedRubles(),
+            trailingText: Decimal(alarmDefaults.penaltyAmount).formattedRubles(),
             trailingColor: AppColors.warn400,
-            accessory: .none,
-            selectionStyle: .none
+            accessory: .disclosureIndicator,
+            selectionStyle: .default
         )
         return cell
     }
@@ -228,6 +228,36 @@ extension SettingsViewController {
         if let popover = sheet.popoverPresentationController {
             let indexPath = IndexPath(
                 row: FinanceRow.snoozeDuration.rawValue,
+                section: Section.finance.rawValue
+            )
+            popover.sourceView = tableView
+            popover.sourceRect = tableView.rectForRow(at: indexPath)
+        }
+        present(sheet, animated: true)
+    }
+
+    /// Interim default-price editor (#315). The design ultimately calls for the
+    /// free-numeric SnoozePriceCard input (#230); until that lands this mirrors
+    /// `presentSnoozeDurationPicker()` with the canonical price chips. Writing
+    /// the global default never rewrites existing alarms — only new ones inherit.
+    func presentDefaultPricePicker() {
+        let sheet = UIAlertController(
+            title: "Цена откладывания по умолчанию",
+            message: "Применяется к новым будильникам",
+            preferredStyle: .actionSheet
+        )
+        for amount in [20, 50, 100, 200, 500] {
+            let title = Decimal(amount).formattedRubles()
+            sheet.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+                self?.alarmDefaults.penaltyAmount = Double(amount)
+                self?.tableView.reloadData()
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        // iPad: anchor the popover to the tapped row.
+        if let popover = sheet.popoverPresentationController {
+            let indexPath = IndexPath(
+                row: FinanceRow.defaultPrice.rawValue,
                 section: Section.finance.rawValue
             )
             popover.sourceView = tableView
