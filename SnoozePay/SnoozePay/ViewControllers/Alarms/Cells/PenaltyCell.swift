@@ -1,27 +1,27 @@
 import UIKit
 
-/// V2 "Цена откладывания" preset row: 5 fixed-price chips (20 / 50 / 100 /
-/// 200 / 500) — replaces the prior 10...1000 slider so the user picks from
-/// the design's curated price ladder rather than landing on noisy values.
+/// V3 «Цена откладывания» card (#230, `SPComponents.jsx` `SnoozePriceCard`):
+/// a large free-numeric field (mono 32pt, amber, trailing ₽) over the curated
+/// quick-chip ladder. Replaces the chips-only V2 picker — the design now lets
+/// the user type any whole price ≥ 1 ₽ (no maximum, chat3) while the chips stay
+/// as fast presets and highlight when they match the typed value.
 ///
-/// Layout follows `SPScreensV2.jsx` lines 594-615 — the selected chip wears
-/// the warn gradient (`fgOnWarn` text) and unselected chips read as the
-/// `whiteOverlay06` muted state. The active amount is mirrored in the cell's
-/// trailing accessory label so the host card's "right side" still surfaces
-/// the live amount alongside the chip selection.
+/// Validation: a whole number ≥ 1. Empty / zero / invalid input surfaces the
+/// red «Минимум 1 ₽» helper and is NOT committed — on end-editing the field
+/// reverts to the last valid amount, so the model never sees a bad price.
 final class PenaltyCell: UITableViewCell {
 
     static let reuseID = "PenaltyCell"
 
-    /// V2 preset ladder. Tweak in lock-step with the JSX spec — these are
-    /// the only values the picker exposes.
+    /// Quick-chip ladder. Tap fills the field; a chip matching the current
+    /// value lights amber.
     static let presets: [Double] = [20, 50, 100, 200, 500]
+
+    /// Floor enforced on the free input (chat3: «Минимум — 1 ₽, максимума нет»).
+    static let minimumAmount = 1
 
     // MARK: - UI
 
-    /// In-card caps caption «Цена откладывания» — the word «штраф» does not
-    /// exist in the design copy (SPMore2.jsx:176). Lives inside the card so
-    /// the table no longer needs a separate section header (#278).
     private let captionLabel: UILabel = {
         let label = UILabel()
         label.attributedText = NSAttributedString(
@@ -36,8 +36,6 @@ final class PenaltyCell: UITableViewCell {
         return label
     }()
 
-    /// Meta hint under the caption — «Сколько спишется при „отложить“»
-    /// (SPMore2.jsx:268-269 hint pattern).
     private let hintLabel: UILabel = {
         let label = UILabel()
         label.text = "Сколько спишется при «отложить»"
@@ -48,13 +46,39 @@ final class PenaltyCell: UITableViewCell {
         return label
     }()
 
-    /// Mono-font live "{N} ₽" label sitting above the chip row — mirrors the
-    /// in-card caption and uses the `moneyMd` typography role tinted `warn400`.
-    private let valueLabel: UILabel = {
+    /// Big editable mono amount — `moneyXl`-scale (32pt) amber, numeric pad.
+    private let amountField: UITextField = {
+        let field = UITextField()
+        field.font = AppFonts.mono(.bold, 32)
+        field.textColor = AppColors.warn400
+        field.tintColor = AppColors.warn400
+        field.keyboardType = .numberPad
+        field.borderStyle = .none
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        field.accessibilityLabel = "Цена откладывания, рублей"
+        field.translatesAutoresizingMaskIntoConstraints = false
+        return field
+    }()
+
+    /// Trailing ₽ in the same mono amber as the number.
+    private let suffixLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.moneyMd
+        label.text = "₽"
+        label.font = AppFonts.mono(.bold, 32)
         label.textColor = AppColors.warn400
-        label.textAlignment = .right
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Red «Минимум 1 ₽» helper — hidden unless the field holds invalid input.
+    private let helperLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Минимум 1 ₽"
+        label.font = AppTypography.meta
+        label.textColor = AppColors.pain400
+        label.isHidden = true
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -70,10 +94,13 @@ final class PenaltyCell: UITableViewCell {
 
     private var presetButtons: [UIButton] = []
     private var currentAmount: Double = 0
+    /// Last value that passed validation — restored if the field is left blank.
+    private var lastValidAmount: Double = Double(PenaltyCell.minimumAmount)
 
     // MARK: - Callbacks
 
-    /// Fires when the user picks a new preset.
+    /// Fires with a validated whole amount (≥ 1 ₽) when the user types a valid
+    /// value or taps a chip. Invalid input never fires it.
     var onValueChanged: ((Double) -> Void)?
 
     // MARK: - Init
@@ -105,6 +132,9 @@ final class PenaltyCell: UITableViewCell {
         backgroundColor = AppColors.bg1
         selectionStyle = .none
 
+        amountField.addTarget(self, action: #selector(amountEditingChanged), for: .editingChanged)
+        amountField.addTarget(self, action: #selector(amountEditingEnded), for: .editingDidEnd)
+
         for amount in Self.presets {
             let button = UIButton(type: .system)
             button.setTitle(String(Int(amount)), for: .normal)
@@ -117,26 +147,29 @@ final class PenaltyCell: UITableViewCell {
             presetStack.addArrangedSubview(button)
         }
 
-        contentView.addSubview(captionLabel)
-        contentView.addSubview(hintLabel)
-        contentView.addSubview(valueLabel)
-        contentView.addSubview(presetStack)
+        // Amount + ₽, left-aligned with a flexible trailing spacer.
+        let amountSpacer = UIView()
+        amountSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let amountRow = UIStackView(arrangedSubviews: [amountField, suffixLabel, amountSpacer])
+        amountRow.axis = .horizontal
+        amountRow.alignment = .firstBaseline
+        amountRow.spacing = AppSpacing.sp1
+
+        let column = UIStackView(arrangedSubviews: [
+            captionLabel, hintLabel, amountRow, helperLabel, presetStack
+        ])
+        column.axis = .vertical
+        column.spacing = AppSpacing.sp2
+        column.setCustomSpacing(AppSpacing.sp3, after: hintLabel)
+        column.setCustomSpacing(AppSpacing.sp3, after: helperLabel)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(column)
 
         NSLayoutConstraint.activate([
-            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
-
-            hintLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            hintLabel.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: 2),
-            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -AppSpacing.sm),
-
-            valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            valueLabel.firstBaselineAnchor.constraint(equalTo: captionLabel.firstBaselineAnchor),
-
-            presetStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            presetStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
-            presetStack.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
-            presetStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
+            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
+            column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
         ])
     }
 
@@ -148,11 +181,54 @@ final class PenaltyCell: UITableViewCell {
     // MARK: - Configure
 
     func configure(amount: Double) {
-        currentAmount = amount
-        valueLabel.attributedText = MoneyFormatter.attributed(
-            Decimal(amount), digitsFont: AppTypography.moneyMd
-        )
+        let whole = max(Int(amount.rounded()), Self.minimumAmount)
+        currentAmount = Double(whole)
+        lastValidAmount = currentAmount
+        amountField.text = String(whole)
+        setHelper(visible: false)
         refreshAppearance()
+    }
+
+    // MARK: - Validation
+
+    /// Parse the field as a whole ₽ amount ≥ minimum. Returns nil for empty /
+    /// zero / non-numeric input.
+    private func validatedAmount() -> Int? {
+        guard let text = amountField.text, let value = Int(text), value >= Self.minimumAmount else {
+            return nil
+        }
+        return value
+    }
+
+    @objc private func amountEditingChanged() {
+        guard let value = validatedAmount() else {
+            // Invalid mid-edit — flag it, but keep the last valid amount staged
+            // so the model isn't fed a bad price.
+            setHelper(visible: true)
+            return
+        }
+        setHelper(visible: false)
+        currentAmount = Double(value)
+        lastValidAmount = currentAmount
+        refreshAppearance()
+        onValueChanged?(currentAmount)
+    }
+
+    @objc private func amountEditingEnded() {
+        guard validatedAmount() == nil else {
+            setHelper(visible: false)
+            return
+        }
+        // Left blank / invalid — revert to the last valid amount.
+        amountField.text = String(Int(lastValidAmount))
+        setHelper(visible: false)
+        refreshAppearance()
+    }
+
+    private func setHelper(visible: Bool) {
+        helperLabel.isHidden = !visible
+        amountField.textColor = visible ? AppColors.pain400 : AppColors.warn400
+        suffixLabel.textColor = visible ? AppColors.pain400 : AppColors.warn400
     }
 
     // MARK: - Appearance
@@ -164,15 +240,9 @@ final class PenaltyCell: UITableViewCell {
         for (index, button) in presetButtons.enumerated() {
             let preset = Self.presets[index]
             let isOn = abs(preset - currentAmount) < .ulpOfOne
-            if isOn {
-                button.backgroundColor = AppColors.warn500
-                button.setTitleColor(AppColors.fgOnWarn, for: .normal)
-                button.layer.borderWidth = 0
-            } else {
-                button.backgroundColor = AppColors.whiteOverlay06
-                button.setTitleColor(AppColors.fg2, for: .normal)
-                button.layer.borderWidth = 0
-            }
+            button.backgroundColor = isOn ? AppColors.warn500 : AppColors.whiteOverlay06
+            button.setTitleColor(isOn ? AppColors.fgOnWarn : AppColors.fg2, for: .normal)
+            button.layer.borderWidth = 0
         }
     }
 
@@ -182,7 +252,11 @@ final class PenaltyCell: UITableViewCell {
         guard let index = presetButtons.firstIndex(of: sender) else { return }
         let amount = Self.presets[index]
         UISelectionFeedbackGenerator().selectionChanged()
-        configure(amount: amount)
+        amountField.text = String(Int(amount))
+        currentAmount = amount
+        lastValidAmount = amount
+        setHelper(visible: false)
+        refreshAppearance()
         onValueChanged?(amount)
     }
 }

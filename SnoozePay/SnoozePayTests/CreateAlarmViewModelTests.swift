@@ -356,4 +356,31 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertFalse(vm.enabled)
         XCTAssertEqual(vm.repeatDays, [0, 2, 4])
     }
+
+    // MARK: - Progressive chain from a custom price (#230)
+
+    func testProgressiveChain_recomputesFromCustomPenalty() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = 75
+        // Free-input price feeds the ×2 ladder: [base, ×2, ×4, ×8].
+        XCTAssertEqual(vm.progressiveChain, [75, 150, 300, 600])
+    }
+
+    func testProgressiveChain_defaultPriceLadder() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = 50
+        XCTAssertEqual(vm.progressiveChain, [50, 100, 200, 400])
+    }
+
+    func testProgressiveChain_nonFinitePenaltyDegradesToDefault() {
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = .nan
+        XCTAssertEqual(vm.progressiveChain, [50, 100, 200, 400])
+    }
+
+    // MARK: - Editable price cell floor (#230)
+
+    func testPenaltyCell_minimumIsOneRouble() {
+        XCTAssertEqual(PenaltyCell.minimumAmount, 1)
+    }
 }
