@@ -93,6 +93,22 @@ final class AlarmScheduler: AlarmScheduling {
     /// or may not survive eviction.
     static let pendingNotificationLimit = 64
 
+    /// Lock-screen fallback burst (issue #19). Without the Critical Alerts
+    /// entitlement the alarm arrives as a single `.timeSensitive` notification
+    /// — one ping, no continuous sound. If the user doesn't catch that one
+    /// banner the alarm is effectively missed. To make the fallback more
+    /// insistent within standard-notification limits we schedule a small set
+    /// of follow-up notifications a few seconds apart, so a missed first ping
+    /// re-pings instead of going silent.
+    ///
+    /// Offsets are in SECONDS after the primary fire time. Kept deliberately
+    /// short and few (3 follow-ups over 90s) so we never spam dozens of
+    /// notifications or crowd out the 64-pending cap. The follow-ups share the
+    /// alarm's `alarm_<id>_` identifier prefix, so the existing prefix-sweep in
+    /// `cancel(_:)` removes them the moment the alarm is dismissed / snoozed —
+    /// no orphan notifications survive a handled alarm.
+    static let fallbackBurstOffsetsSeconds = [30, 60, 90]
+
     private let notificationCenter: NotificationScheduling
 
     // Notification category and action IDs
@@ -252,7 +268,23 @@ final class AlarmScheduler: AlarmScheduling {
             trigger: trigger
         )
 
-        runPendingLimitPreflight(triggerCount: 1) { [weak self] preflight in
+        // Lock-screen fallback burst (#19): make the snooze re-fire as
+        // insistent as the original alarm. Follow-ups carry the snooze
+        // identifier prefix so `cancel(_:)` sweeps them away once the alarm is
+        // handled. Skipped on the critical-alerts path (continuous sound).
+        var requests = [request]
+        if !Self.criticalAlertsAvailable {
+            requests += Self.burstTriggers(after: components, label: "burst", repeats: false)
+                .map { burst in
+                    UNNotificationRequest(
+                        identifier: "\(snoozeNotificationID(for: alarm.id))_\(burst.label)",
+                        content: content,
+                        trigger: burst.trigger
+                    )
+                }
+        }
+
+        runPendingLimitPreflight(triggerCount: requests.count) { [weak self] preflight in
             guard let self else {
                 // Scheduler deallocated mid-preflight — report a typed failure,
                 // never a phantom success (issue #199). The coordinator refunds
@@ -264,7 +296,7 @@ final class AlarmScheduler: AlarmScheduling {
                 completion?(.failure(error))
                 return
             }
-            self.dispatchAdds(requests: [request], completion: completion)
+            self.dispatchAdds(requests: requests, completion: completion)
         }
     }
 
@@ -353,17 +385,28 @@ final class AlarmScheduler: AlarmScheduling {
     func cancel(_ alarmID: UUID) {
         let prefix = notificationIDPrefix(for: alarmID)
         let snoozeID = snoozeNotificationID(for: alarmID)
-        let belongsToAlarm: (String) -> Bool = { $0.hasPrefix(prefix) || $0 == snoozeID }
+        // Match the snooze identifier itself AND its fallback-burst follow-ups
+        // (`snooze_<id>_burstN`, #19) — using a prefix check rather than an
+        // exact match so a handled alarm leaves no orphan burst notifications.
+        let belongsToAlarm: (String) -> Bool = {
+            $0.hasPrefix(prefix) || $0 == snoozeID || $0.hasPrefix("\(snoozeID)_")
+        }
 
         // Belt-and-suspenders: explicit-IDs sync removal first (no async dependency).
         // If the async `getPendingNotificationRequests` completion returns an empty
         // array — system glitch, background suspension, permission revoked — the
         // prefix sweep below silently exits without removing anything. The sync
-        // call here guarantees the canonical day0..day6 / once / snooze IDs are
-        // removed regardless. Per #92 follow-up to #70.
-        let explicitIDs = (0..<7).map { notificationID(for: alarmID, trigger: "day\($0)") }
-            + [notificationID(for: alarmID, trigger: "once")]
+        // call here guarantees the canonical day0..day6 / once / snooze IDs and
+        // their burst follow-ups (#19) are removed regardless. Per #92 follow-up to #70.
+        let labels = (0..<7).map { "day\($0)" } + ["once"]
+        let explicitIDs = labels.map { notificationID(for: alarmID, trigger: $0) }
+            + labels.flatMap { label in
+                Self.fallbackBurstOffsetsSeconds.indices.map {
+                    notificationID(for: alarmID, trigger: "\(label)_burst\($0)")
+                }
+            }
             + [snoozeID]
+            + Self.fallbackBurstOffsetsSeconds.indices.map { "\(snoozeID)_burst\($0)" }
         notificationCenter.removePendingNotificationRequests(withIdentifiers: explicitIDs)
         notificationCenter.removeDeliveredNotifications(withIdentifiers: explicitIDs)
 
@@ -434,14 +477,22 @@ final class AlarmScheduler: AlarmScheduling {
         let calendar = Calendar.current
         let timeComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
 
+        // Critical alerts (when entitled) deliver continuous lock-screen sound,
+        // so the lock-screen fallback burst (#19) is only added on the degraded
+        // `.timeSensitive` path where a single ping can be missed.
+        let withBurst = !Self.criticalAlertsAvailable
+
         if alarm.repeatDays.isEmpty {
-            // One-time alarm: fire at the next occurrence of this time
+            // One-time alarm: fire at the next occurrence of this time, plus a
+            // short self-cancelling follow-up burst (#19).
             var components = DateComponents()
             components.hour = timeComponents.hour
             components.minute = timeComponents.minute
             components.second = 0
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-            return [TriggerWithLabel(label: "once", trigger: trigger)]
+            let primary = TriggerWithLabel(label: "once", trigger: trigger)
+            guard withBurst else { return [primary] }
+            return [primary] + Self.burstTriggers(after: components, label: "once", repeats: false)
         }
 
         // One-shot mode (#229): non-repeating triggers fire once at the next
@@ -452,7 +503,7 @@ final class AlarmScheduler: AlarmScheduling {
         let repeats = alarm.repeatMode == .weekly
 
         // Map our 0=Mon system to iOS weekday (1=Sun, 2=Mon, ..., 7=Sat)
-        return alarm.repeatDays.map { day in
+        return alarm.repeatDays.flatMap { day -> [TriggerWithLabel] in
             let weekday = ((day + 1) % 7) + 1 // Convert: 0(Mon)->2, 6(Sun)->1
             var components = DateComponents()
             components.weekday = weekday
@@ -460,8 +511,50 @@ final class AlarmScheduler: AlarmScheduling {
             components.minute = timeComponents.minute
             components.second = 0
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: repeats)
-            return TriggerWithLabel(label: "day\(day)", trigger: trigger)
+            let primary = TriggerWithLabel(label: "day\(day)", trigger: trigger)
+            guard withBurst else { return [primary] }
+            return [primary] + Self.burstTriggers(after: components, label: "day\(day)", repeats: repeats)
         }
+    }
+
+    /// Build the self-cancelling follow-up burst for a primary trigger (#19).
+    ///
+    /// Each follow-up reuses the primary's date components and shifts them
+    /// forward by one of `fallbackBurstOffsetsSeconds`, carrying any weekday so
+    /// the burst lands on the same day as the alarm. Labels are suffixed
+    /// `<label>_burstN` so they share the alarm's identifier prefix and are
+    /// swept away by `cancel(_:)` on dismiss/snooze — no orphans survive a
+    /// handled alarm. Exposed `static` + `internal` so unit tests can pin the
+    /// second/minute/hour roll-over arithmetic without touching UN.
+    static func burstTriggers(
+        after base: DateComponents,
+        label: String,
+        repeats: Bool
+    ) -> [TriggerWithLabel] {
+        fallbackBurstOffsetsSeconds.enumerated().map { index, offset in
+            let shifted = burstComponents(base: base, offsetSeconds: offset)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: shifted, repeats: repeats)
+            return TriggerWithLabel(label: "\(label)_burst\(index)", trigger: trigger)
+        }
+    }
+
+    /// Shift `base`'s hour/minute/second forward by `offsetSeconds`, rolling
+    /// minutes and hours over correctly (e.g. 07:59:00 + 90s = 08:00:30).
+    /// `weekday` is preserved unchanged — the small offsets used here (≤90s)
+    /// never cross midnight in practice, and crossing a day boundary would only
+    /// move a follow-up to the wrong weekday, which we accept over the
+    /// complexity of weekday roll-over for a best-effort fallback burst.
+    static func burstComponents(base: DateComponents, offsetSeconds: Int) -> DateComponents {
+        let totalSeconds = (base.hour ?? 0) * 3600
+            + (base.minute ?? 0) * 60
+            + (base.second ?? 0)
+            + offsetSeconds
+        let dayWrapped = ((totalSeconds % 86_400) + 86_400) % 86_400
+        var shifted = base
+        shifted.hour = dayWrapped / 3600
+        shifted.minute = (dayWrapped % 3600) / 60
+        shifted.second = dayWrapped % 60
+        return shifted
     }
 
     private func notificationID(for alarmID: UUID, trigger: String) -> String {
