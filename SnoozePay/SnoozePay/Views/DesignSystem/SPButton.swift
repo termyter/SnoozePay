@@ -355,6 +355,9 @@ final class SPButton: UIControl {
             backgroundColor = AppColors.whiteOverlay06
             setForeground(AppColors.fg1)
         }
+        // Refresh the brand-shadow path (and gradient frame) for the new chrome —
+        // a trait change re-tints here but doesn't guarantee a layout pass.
+        setNeedsLayout()
     }
 
     private func installGradient(colors: [CGColor], locations: [NSNumber]) {
@@ -364,6 +367,14 @@ final class SPButton: UIControl {
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         gradient.cornerRadius = size.cornerRadius
+        // Size the layer to the current bounds up front. `applyVariant()` runs
+        // on trait changes when the button is already laid out, and re-inserting
+        // a sublayer doesn't itself trigger `layoutSubviews` — without this the
+        // fresh gradient would sit at `.zero` frame (invisible), leaving only the
+        // dark on-money text so the CTA reads as disabled (#320). `layoutSubviews`
+        // keeps it in sync afterwards and corrects the cold-start case where
+        // `bounds` is still zero at first install.
+        gradient.frame = bounds
         layer.insertSublayer(gradient, at: 0)
         gradientLayer = gradient
         backgroundColor = .clear
