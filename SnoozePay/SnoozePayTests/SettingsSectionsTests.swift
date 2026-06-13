@@ -20,15 +20,42 @@ final class SettingsSectionsTests: XCTestCase {
     func testSectionOrder_matchesDesign() {
         XCTAssertEqual(
             SettingsViewController.Section.allCases,
-            [.finance, .soundNotifications, .rules, .referral, .other]
+            [.finance, .soundNotifications, .rules, .referral, .other, .diagnostics]
         )
     }
 
     func testLegacySectionsRemoved() {
         // АККАУНТ (history + balance) and a standalone ОФОРМЛЕНИЕ section are
         // gone — there is no `.account` / `.appearance` case anymore. Asserting
-        // the count is the compile-safe way to lock the section list.
-        XCTAssertEqual(SettingsViewController.Section.allCases.count, 5)
+        // the count is the compile-safe way to lock the section list. The
+        // appended `.diagnostics` recovery section (#102) brings the total to 6.
+        XCTAssertEqual(SettingsViewController.Section.allCases.count, 6)
+    }
+
+    // MARK: - Recovery section visibility (#102)
+
+    func testRecoveryHidden_whenNoLoadFailed() {
+        XCTAssertFalse(
+            SettingsViewController.shouldShowRecovery(alarmFailed: false, transactionFailed: false)
+        )
+    }
+
+    func testRecoveryVisible_whenAlarmLoadFailed() {
+        XCTAssertTrue(
+            SettingsViewController.shouldShowRecovery(alarmFailed: true, transactionFailed: false)
+        )
+    }
+
+    func testRecoveryVisible_whenTransactionLoadFailed() {
+        XCTAssertTrue(
+            SettingsViewController.shouldShowRecovery(alarmFailed: false, transactionFailed: true)
+        )
+    }
+
+    func testRecoveryVisible_whenBothFailed() {
+        XCTAssertTrue(
+            SettingsViewController.shouldShowRecovery(alarmFailed: true, transactionFailed: true)
+        )
     }
 
     // MARK: - Row composition per section

@@ -172,7 +172,7 @@ extension SettingsViewController {
             systemName: "envelope",
             iconColor: AppColors.fg3,
             title: "Связаться с нами",
-            subtitle: "support@alarmcash.app",
+            subtitle: AppConstants.supportEmail,
             accessory: .disclosureIndicator
         )
         return cell
@@ -192,6 +192,50 @@ extension SettingsViewController {
             self?.handleThemeSegmentChange(index)
         }
         return cell
+    }
+
+    // MARK: Восстановление (#102)
+
+    /// Destructive recovery row, shown only while a repository is locked after
+    /// a corrupt load (`lastLoadFailed`). Tapping it presents a confirmation
+    /// alert before wiping the corrupt stores — see `presentRecoveryConfirmation`.
+    func makeRecoveryCell(at indexPath: IndexPath) -> UITableViewCell {
+        let cell = dequeueIconRowCell(at: indexPath)
+        cell.configure(
+            systemName: "exclamationmark.triangle",
+            iconColor: AppColors.pain400,
+            title: "Стереть повреждённые данные",
+            subtitle: "Хранилище повреждено и заблокировано",
+            accessory: .none,
+            selectionStyle: .default
+        )
+        return cell
+    }
+
+    /// Double-confirmation for the destructive recovery action (#102). The user
+    /// is erasing their own alarms and transactions, so the alert spells out the
+    /// consequence and the confirm button uses `.destructive` styling.
+    func presentRecoveryConfirmation() {
+        let alert = UIAlertController(
+            title: "Стереть повреждённые данные?",
+            message: "Будильники и история операций будут удалены безвозвратно, "
+                + "а хранилище разблокировано. Это действие нельзя отменить.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Подтвердить", style: .destructive) { [weak self] _ in
+            self?.performRecovery()
+        })
+        present(alert, animated: true)
+    }
+
+    /// Clears the corrupt state on both repositories and reloads the table so
+    /// the now-unlocked (empty) Settings refreshes and the recovery section
+    /// collapses again.
+    private func performRecovery() {
+        AlarmRepository.shared.clearCorruptState()
+        TransactionRepository.shared.clearCorruptState()
+        tableView.reloadData()
     }
 
     // MARK: - Navigation helpers
