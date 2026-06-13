@@ -25,6 +25,12 @@ extension AlarmFiringViewController {
     /// recreation). Called from `snoozeTapped()` after a successful charge.
     func enterSnoozedState() {
         guard !isSnoozedStateActive else { return }
+        // Defensive: if the next ring is already due (clock skew, or a
+        // backgrounded-then-foregrounded VC where the snooze interval has
+        // already elapsed), there's nothing to count down to — stay in the
+        // active firing UI rather than installing a timer that fires once to
+        // undo itself and flashes 00:00.
+        guard viewModel.secondsUntilNextRing(from: Date()) > 0 else { return }
         isSnoozedStateActive = true
 
         installSnoozedChromeIfNeeded()
@@ -44,6 +50,11 @@ extension AlarmFiringViewController {
         countdownTimer?.invalidate()
         countdownTimer = nil
         showSnoozedChrome(false)
+        // Restore the active hero name — `refreshSnoozedChrome` overwrote it with
+        // the "… · отложено до 07:05" suffix on entry, and `showSnoozedChrome`
+        // only toggles the clock/eyebrow/badge, not the name. Without this the
+        // active firing UI returns with a stale "отложено до …" label (#226 QA).
+        nameLabel.text = viewModel.heroTitle
     }
 
     /// Invalidate the countdown timer on teardown — mirrors the `clockTimer`

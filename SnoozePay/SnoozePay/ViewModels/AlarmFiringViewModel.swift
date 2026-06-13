@@ -124,9 +124,10 @@ final class AlarmFiringViewModel {
 
     /// Per-step state of the 4-rung charge ladder rendered in the snoozed
     /// firing chrome (`SPFiringThemeSnoozed.jsx`). `done` rungs are already
-    /// paid, `current` is the rung the user just landed on, `future` rungs are
-    /// still ahead. Pure value type so the ladder layout is unit-testable
-    /// without a view hierarchy.
+    /// paid, `current` is the rung the user will pay on the NEXT snooze (it
+    /// matches the snooze CTA's next-step price and the «N-й поспать ещё» pill,
+    /// where N = snoozeCount + 1), `future` rungs are still ahead. Pure value
+    /// type so the ladder layout is unit-testable without a view hierarchy.
     enum LadderStepState: Equatable {
         case done
         case current
@@ -142,7 +143,10 @@ final class AlarmFiringViewModel {
     /// The 4-rung progressive charge ladder for the snoozed state. Amounts are
     /// the doubling schedule `base, ×2, ×4, ×8` (the same ceiling
     /// `penalty(forSnoozeCount:)` walks). State keys off `snoozeCount`: rungs
-    /// strictly before it are `done`, the rung AT it is `current`, the rest are
+    /// strictly before it are `done` (already paid), the rung AT `snoozeCount`
+    /// is `current` — the NEXT charge (after paying rung `i` the user has
+    /// snoozed `i+1` times, so `snoozeCount` indexes the next unpaid rung, which
+    /// is why it lines up with the CTA's next-step price) — and the rest are
     /// `future`. `snoozeCount` past the last rung clamps `current` to rung 4 so
     /// the ladder never blanks out at the ceiling. Returns `[]` when the alarm
     /// isn't progressive (the snoozed state hides the ladder entirely).
