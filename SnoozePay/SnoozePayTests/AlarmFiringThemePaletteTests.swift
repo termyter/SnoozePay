@@ -126,6 +126,69 @@ final class AlarmFiringThemePaletteTests: XCTestCase {
         XCTAssertEqual(neon.timeShadowOpacity, 0.40, accuracy: 0.001)
     }
 
+    // MARK: - Drained variant (#227)
+
+    /// Expected drained accent per stock theme — the no-balance table in
+    /// `SPFiringNoBalanceThemes.jsx`.
+    private let expectedDrainedAccents: [(AlarmTheme, UInt32)] = [
+        (.dawn, 0xFAD89A),
+        (.ocean, 0xB4ECD8),
+        (.mountains, 0xDEE3EB),
+        (.forest, 0xB6DEA0),
+        (.neon, 0xF4A6D2),
+        (.abstract, 0xDADADA)
+    ]
+
+    func testEveryStockThemeHasADrainedPalette() {
+        for theme in AlarmTheme.builtInOrder {
+            XCTAssertNotNil(
+                AlarmFiringThemePalette.drainedPalette(for: theme),
+                "Stock theme \(theme.id) must map to a drained firing palette"
+            )
+        }
+    }
+
+    func testCustomThemeHasNoDrainedPalette() {
+        let url = URL(fileURLWithPath: "/tmp/photo.jpg")
+        XCTAssertNil(
+            AlarmFiringThemePalette.drainedPalette(for: .custom(imagePath: url)),
+            "Photo themes keep their image — no drained palette"
+        )
+    }
+
+    func testDrainedAccentsMatchDesignTable() {
+        for (theme, hex) in expectedDrainedAccents {
+            guard let palette = AlarmFiringThemePalette.drainedPalette(for: theme) else {
+                XCTFail("Missing drained palette for \(theme.id)")
+                continue
+            }
+            assertColor(palette.accent, matchesHex: hex, "drained accent for \(theme.id)")
+        }
+    }
+
+    func testDrainedBackgroundStopsPairWithLocations() {
+        for theme in AlarmTheme.builtInOrder {
+            guard let palette = AlarmFiringThemePalette.drainedPalette(for: theme) else { continue }
+            XCTAssertEqual(
+                palette.backgroundColors.count,
+                palette.backgroundLocations.count,
+                "Drained colour/location count mismatch for \(theme.id)"
+            )
+            let expectedStops = theme == .abstract ? 2 : 3
+            XCTAssertEqual(palette.backgroundColors.count, expectedStops)
+        }
+    }
+
+    func testDrainedDawnBackgroundMatchesDesignTable() {
+        // Spot-check the dawn drained gradient end-to-end.
+        guard let dawn = AlarmFiringThemePalette.drainedPalette(for: .dawn) else {
+            return XCTFail("Missing dawn drained palette")
+        }
+        assertColor(dawn.backgroundColors[0], matchesHex: 0x41290F, "dawn drained bg stop 0")
+        assertColor(dawn.backgroundColors[1], matchesHex: 0x804F1E, "dawn drained bg stop 1")
+        assertColor(dawn.backgroundColors[2], matchesHex: 0xCE8A30, "dawn drained bg stop 2")
+    }
+
     // MARK: - AlarmThemeRendering delegation
 
     func testPickerTileGradientsDelegateToPaletteForNonDawnThemes() {

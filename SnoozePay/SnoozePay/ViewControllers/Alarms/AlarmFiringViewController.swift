@@ -460,7 +460,10 @@ class AlarmFiringViewController: UIViewController {
     /// boundary and the chip needs to flip from money → pain or back.
     private func rebuildBalancePill(tone: SPPill.Tone, value: String) {
         guard let old = balancePill else { return }
-        let new = SPPill(text: "", tone: tone, icon: SPIcons.coin(size: 12))
+        // Zero-balance pill swaps the coin glyph for the crossed-out «coin off»
+        // icon (⊘) per the no-balance spec (#227); the money tone keeps the coin.
+        let icon = tone == .pain ? SPIcons.coinOff(size: 12) : SPIcons.coin(size: 12)
+        let new = SPPill(text: "", tone: tone, icon: icon)
         new.setBalance(label: "Баланс", value: value)
         new.translatesAutoresizingMaskIntoConstraints = false
         if let index = topHeaderRow.arrangedSubviews.firstIndex(of: old) {

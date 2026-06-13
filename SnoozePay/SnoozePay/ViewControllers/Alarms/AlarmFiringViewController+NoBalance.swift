@@ -83,12 +83,12 @@ extension AlarmFiringViewController {
     /// the hero name label so it slots into the centered column when the
     /// no-balance state activates. Mirrors `SPScreensV2.jsx` lines 239–251.
     private func installNoBalanceCenterPill(inset: CGFloat) {
-        // Pain-tinted shield pill — wider than a stock SPPill (custom padding)
-        // so the V2 spec's "10px 18px" reads correctly.
+        // Pain-tinted "coin off" pill — V3 swaps the shield glyph for the
+        // crossed-out-coin icon used across the zero-balance surfaces (#227).
         let shieldPill = SPPill(
             text: "Баланса не осталось",
             tone: .pain,
-            icon: UIImage(systemName: "shield.fill")
+            icon: SPIcons.coinOff(size: 14)
         )
         shieldPill.translatesAutoresizingMaskIntoConstraints = false
 
@@ -128,23 +128,27 @@ extension AlarmFiringViewController {
         )
         card.translatesAutoresizingMaskIntoConstraints = false
         card.isEnabled = false
-        // Spec calls for an extra-faded surface (alpha 0.45 vs the
+        // Spec calls for an extra-faded surface (alpha 0.5 vs the
         // `SPSnoozePrice` default 0.35) — the .35 reads as "tap me" still,
-        // .45 reads as "this is the goal you can't hit yet". Override the
+        // .5 reads as "this is the goal you can't hit yet" (#227). Override the
         // disabled appearance after the fact since it's set in the setter.
-        card.alpha = 0.45
+        card.alpha = 0.5
         return card
     }
 
     private func makeNoBalanceApplePayButton() -> SPButton {
-        // V2 spec line 258–266: money variant with apple-logo icon, "Apple Pay"
-        // title, suffix = catalogue amount of the resolved SKU (#275). The
-        // suffix uses the mono font so the amount reads as a money column.
+        // V3 (#227): neutral green money CTA — wallet icon + «Пополнить» + the
+        // amount suffix. NO "Apple Pay ·" in the label (cross-platform neutral
+        // copy, PM decision chat2); the purchase still runs through StoreKit /
+        // Apple Pay under the hood — only the visible branding is dropped, so
+        // the `applePay*` identifiers stay accurate. Suffix keeps the catalogue
+        // amount of the resolved SKU (#275: display == charge == credit) rather
+        // than a hardcoded 500 ₽, so the rendered number matches what's charged.
         let button = SPButton(
-            title: "Apple Pay",
+            title: "Пополнить",
             variant: .money,
             size: .lg,
-            icon: UIImage(systemName: "applelogo"),
+            icon: SPIcons.wallet(size: 20),
             suffix: MoneyFormatter.string(Self.noBalanceDisplayAmount),
             fullWidth: true
         )
@@ -212,6 +216,8 @@ extension AlarmFiringViewController {
         }
         noBalanceContainer?.isHidden = !needsNoBalance
         noBalanceCenterBlock?.isHidden = !needsNoBalance
+        // Drained background + red glow + neutral clock + accent wake-border.
+        applyDrainedAtmosphere(needsNoBalance)
         // Hide the normal-state group when the no-balance stack takes over.
         // The progressive chrome (centre-hero indicator pill + ticker) is also
         // hidden so it doesn't float over the no-balance layout.
