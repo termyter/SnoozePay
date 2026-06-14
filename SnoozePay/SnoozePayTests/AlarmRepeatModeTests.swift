@@ -118,10 +118,21 @@ final class AlarmRepeatModeTests: XCTestCase {
         trigger.trigger as? UNCalendarNotificationTrigger
     }
 
+    /// The primary (non-burst) triggers. The lock-screen fallback burst (#19)
+    /// appends `_burstN` follow-ups whose presence depends on the global
+    /// `criticalAlertsAvailable` flag (mutated by other tests). These repeat-mode
+    /// assertions only care about the primary triggers, so filter the bursts out
+    /// to stay deterministic regardless of suite ordering. Burst behaviour is
+    /// pinned by `AlarmSchedulerFallbackBurstTests` /
+    /// `AlarmSchedulerBurstCancellationTests`.
+    private func primaries(for alarm: Alarm) -> [AlarmScheduler.TriggerWithLabel] {
+        scheduler.makeTriggers(for: alarm).filter { !$0.label.contains("_burst") }
+    }
+
     func testMakeTriggers_neverMode_producesNonRepeatingPerDayTriggers() {
         let alarm = Alarm(repeatDays: [0, 2], repeatMode: .never)
 
-        let triggers = scheduler.makeTriggers(for: alarm)
+        let triggers = primaries(for: alarm)
 
         XCTAssertEqual(triggers.count, 2)
         XCTAssertEqual(triggers.map(\.label).sorted(), ["day0", "day2"],
@@ -139,7 +150,7 @@ final class AlarmRepeatModeTests: XCTestCase {
     func testMakeTriggers_weeklyMode_keepsRepeatingTriggers() {
         let alarm = Alarm(repeatDays: [0, 2], repeatMode: .weekly)
 
-        let triggers = scheduler.makeTriggers(for: alarm)
+        let triggers = primaries(for: alarm)
 
         XCTAssertEqual(triggers.count, 2)
         for trigger in triggers {
@@ -151,7 +162,7 @@ final class AlarmRepeatModeTests: XCTestCase {
     func testMakeTriggers_neverModeWithoutDays_fallsBackToOnceTrigger() {
         let alarm = Alarm(repeatDays: [], repeatMode: .never)
 
-        let triggers = scheduler.makeTriggers(for: alarm)
+        let triggers = primaries(for: alarm)
 
         XCTAssertEqual(triggers.count, 1)
         XCTAssertEqual(triggers.first?.label, "once")
