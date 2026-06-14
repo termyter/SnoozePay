@@ -37,6 +37,7 @@ extension AlarmFiringViewController {
         )
         snooze.translatesAutoresizingMaskIntoConstraints = false
         snooze.onTap = { [weak self] in self?.snoozeTapped() }
+        snooze.accessibilityIdentifier = "firing.snoozeButton"
         view.addSubview(snooze)
         snoozeCTA = snooze
 
@@ -45,6 +46,7 @@ extension AlarmFiringViewController {
         // (`SPThemedFiring.jsx:188-203`).
         dismissButton.ghostBorderOverride = (1.5, UIColor.white.withAlphaComponent(0.22))
         dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
+        dismissButton.accessibilityIdentifier = "firing.dismissButton"
         view.addSubview(dismissButton)
         view.addSubview(audioWarningBanner)
 

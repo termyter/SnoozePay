@@ -173,6 +173,14 @@ final class SPButton: UIControl {
         updateSuffixSpacer()
         applyVariant()
         refreshDisabledAppearance()
+        // Expose the button as a SINGLE accessibility element rather than
+        // leaking its internal title/suffix UILabels as separate staticTexts.
+        // VoiceOver then reads one "button" with the combined label, and UI
+        // tests can target it via `accessibilityIdentifier`. The combined
+        // label joins the title with the optional mono suffix (e.g. amount).
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        accessibilityLabel = [title, suffix].compactMap { $0 }.joined(separator: ", ")
         // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
         // closure-based observer when available; the legacy override below
         // remains as a fallback for older runtimes.
