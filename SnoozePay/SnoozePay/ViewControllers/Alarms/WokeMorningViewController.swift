@@ -71,6 +71,8 @@ final class WokeMorningViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(hex: 0x060F0E)
+        view.accessibilityIdentifier = "woke.screen"
+        closeButton.accessibilityIdentifier = "woke.closeButton"
         configureBackground()
         configureCheckTile()
         configureLabels()

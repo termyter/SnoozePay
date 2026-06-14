@@ -83,6 +83,7 @@ extension AlarmFiringViewController {
         countdown.layer.shadowOffset = CGSize(width: 0, height: 4)
         countdown.layer.masksToBounds = false
         countdown.isHidden = true
+        countdown.accessibilityIdentifier = "firing.countdown"
         view.addSubview(countdown)
         snoozedCountdownLabel = countdown
 

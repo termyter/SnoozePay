@@ -68,16 +68,16 @@ enum UITourLauncher {
             mountPresented(nav, onTab: 0, in: window)
             presentLater(ConfirmDeleteAlarmViewController(), over: nav)
         },
-        "firing": { $0.rootViewController = AlarmFiringViewController(alarm: sampleAlarm()) },
+        "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
         "firing-snoozed": {
-            $0.rootViewController = AlarmFiringViewController(alarm: sampleAlarm(), snoozeCount: 2)
+            $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm(), snoozeCount: 2)
         },
         "firing-nobalance": { window in
             forceBalance(to: 0)
-            window.rootViewController = AlarmFiringViewController(alarm: sampleAlarm())
+            window.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm())
         },
         "firing-topup": { window in
-            let firing = AlarmFiringViewController(alarm: sampleAlarm())
+            let firing = AlarmFiringViewController(alarm: firingSampleAlarm())
             window.rootViewController = firing
             presentLater(FiringTopUpBottomSheetViewController(), over: firing)
         },
@@ -154,6 +154,24 @@ enum UITourLauncher {
     private static func sampleAlarm() -> Alarm {
         Alarm(
             time: Calendar.current.date(bySettingHour: 7, minute: 30, second: 0, of: Date()) ?? Date(),
+            repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
+            name: "Работа",
+            penaltyAmount: 50,
+            theme: requestedTheme()
+        )
+    }
+
+    /// The firing-screen sample, anchored to the CURRENT time rather than a
+    /// fixed 07:30. A firing alarm is, by definition, ringing *now* — and the
+    /// snoozed-state countdown derives the next ring from the alarm's HH:MM on
+    /// today (`AlarmFiringViewModel.nextRingDate`). With a fixed 07:30 time the
+    /// snooze target lands in the past whenever the tour runs later in the day,
+    /// so `secondsUntilNextRing == 0` and the snoozed chrome never installs.
+    /// Pinning the time to now keeps the snooze countdown positive — both for
+    /// realistic screenshots and for the e2e firing→snooze→wake UI test.
+    private static func firingSampleAlarm() -> Alarm {
+        Alarm(
+            time: Date(),
             repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
             name: "Работа",
             penaltyAmount: 50,

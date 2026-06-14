@@ -92,6 +92,12 @@ final class SPSnoozePrice: UIControl {
         configure()
         update(price: price, minutes: minutes, hint: hint)
         addTarget(self, action: #selector(handleTap), for: .touchUpInside)
+        // Expose as a SINGLE accessibility button rather than its internal
+        // caps/price/hint labels — VoiceOver reads one control, and UI tests
+        // can target it via `accessibilityIdentifier`. The label is refreshed
+        // in `update(price:…)` so it tracks the live minutes value.
+        isAccessibilityElement = true
+        accessibilityTraits = .button
     }
 
     required init?(coder: NSCoder) {
@@ -125,6 +131,8 @@ final class SPSnoozePrice: UIControl {
         } else {
             hintLabel.isHidden = true
         }
+        accessibilityLabel = "Отложить на \(self.minutes) минут"
+        accessibilityValue = MoneyFormatter.string(price)
     }
 
     /// Re-tone the surface in place. Used by the progressive-firing flow
