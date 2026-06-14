@@ -193,6 +193,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // up — record the wake day for the statistics heatmap (#235),
             // mirroring AlarmFiringViewModel.dismiss() on the in-app path.
             WakeEventStore.shared.recordWake()
+            // Cancel this firing's pending lock-screen fallback bursts (#19) so
+            // the alarm doesn't re-ring at +30/60/90s after the user got up.
+            // Burst-only — a repeating alarm keeps its future weekday triggers.
+            if let payload {
+                AlarmScheduler.shared.cancelFallbackBursts(payload.alarmID)
+            }
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped notification banner — present alarm screen
@@ -253,6 +259,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // User swiped away notification — stop sound. Gate on ownership
             // for the same reason as DISMISS_ACTION above.
             stopAlarmSoundIfOwner(of: payload, action: "swipe-dismiss")
+            // Swiping the alarm away also means "I'm up" — clear pending bursts
+            // (#19) so they don't re-ring. Burst-only (keeps repeats armed).
+            if let payload {
+                AlarmScheduler.shared.cancelFallbackBursts(payload.alarmID)
+            }
 
         default:
             AppLogger.appDelegate.notice(

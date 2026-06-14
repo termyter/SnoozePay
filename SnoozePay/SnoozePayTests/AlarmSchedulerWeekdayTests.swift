@@ -29,12 +29,24 @@ final class AlarmSchedulerWeekdayTests: XCTestCase {
         trigger.trigger as? UNCalendarNotificationTrigger
     }
 
+    /// The primary (non-burst) triggers. The lock-screen fallback burst (#19)
+    /// appends `_burstN` follow-ups whose presence depends on the global
+    /// `criticalAlertsAvailable` flag (mutated by other tests via
+    /// `requestPermission`). These weekday-mapping assertions only care about
+    /// the primary calendar triggers, so filter the bursts out to stay
+    /// deterministic regardless of suite ordering. Burst behaviour itself is
+    /// pinned by `AlarmSchedulerFallbackBurstTests` /
+    /// `AlarmSchedulerBurstCancellationTests`.
+    private func primaries(for alarm: Alarm) -> [AlarmScheduler.TriggerWithLabel] {
+        scheduler.makeTriggers(for: alarm).filter { !$0.label.contains("_burst") }
+    }
+
     // MARK: - Empty repeatDays → single one-shot trigger
 
     func testMakeTriggers_emptyRepeatDays_producesSingleNonRepeatingTrigger() {
         let alarm = self.alarm(hour: 7, minute: 30, repeatDays: [])
 
-        let triggers = scheduler.makeTriggers(for: alarm)
+        let triggers = primaries(for: alarm)
 
         XCTAssertEqual(triggers.count, 1, "Empty repeatDays should produce one one-shot trigger")
         XCTAssertEqual(triggers.first?.label, "once",
@@ -55,7 +67,7 @@ final class AlarmSchedulerWeekdayTests: XCTestCase {
     func testMakeTriggers_allSevenDays_producesSevenRepeatingTriggers() {
         let alarm = self.alarm(hour: 6, minute: 0, repeatDays: [0, 1, 2, 3, 4, 5, 6])
 
-        let triggers = scheduler.makeTriggers(for: alarm)
+        let triggers = primaries(for: alarm)
 
         XCTAssertEqual(triggers.count, 7,
                        "All-day alarm must produce one trigger per weekday — separate triggers " +
@@ -104,7 +116,7 @@ final class AlarmSchedulerWeekdayTests: XCTestCase {
         for entry in Self.expectedWeekdayMapping {
             let alarm = self.alarm(hour: 8, minute: 15, repeatDays: [entry.legacyDay])
 
-            let triggers = scheduler.makeTriggers(for: alarm)
+            let triggers = primaries(for: alarm)
 
             XCTAssertEqual(triggers.count, 1, "\(entry.name): single repeat day → single trigger")
             XCTAssertEqual(triggers.first?.label, "day\(entry.legacyDay)")
@@ -129,14 +141,14 @@ final class AlarmSchedulerWeekdayTests: XCTestCase {
     /// Pin both explicitly so a future refactor of the formula trips this test.
     func testMakeTriggers_saturday_mapsToCalendarSaturday() {
         let alarm = self.alarm(hour: 9, minute: 0, repeatDays: [5])
-        let triggers = scheduler.makeTriggers(for: alarm)
+        let triggers = primaries(for: alarm)
         XCTAssertEqual(calendarTrigger(triggers[0])?.dateComponents.weekday, 7,
                        "Legacy 5 (Sat) must map to Calendar.weekday 7 (Saturday)")
     }
 
     func testMakeTriggers_sunday_mapsToCalendarSunday() {
         let alarm = self.alarm(hour: 9, minute: 0, repeatDays: [6])
-        let triggers = scheduler.makeTriggers(for: alarm)
+        let triggers = primaries(for: alarm)
         XCTAssertEqual(calendarTrigger(triggers[0])?.dateComponents.weekday, 1,
                        "Legacy 6 (Sun) must map to Calendar.weekday 1 (Sunday) — this is the wrap-around case")
     }
