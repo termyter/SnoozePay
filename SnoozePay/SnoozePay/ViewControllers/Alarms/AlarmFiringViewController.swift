@@ -401,7 +401,11 @@ class AlarmFiringViewController: UIViewController {
         }
 
         updateBalancePill()
-        applyThemeAccentToBalancePill()
+        // The balance pill is intentionally NOT theme-tinted: its money (green)
+        // / pain (red) tone is a functional affordability signal that must read
+        // identically in every firing theme (#342). It used to be re-tinted
+        // with the theme accent here, which turned the green chip gold under
+        // Dawn and hid the «money / no money» state.
         updateAtmosphereTone()
 
         // Swap between the normal snooze + dismiss group and the no-balance
