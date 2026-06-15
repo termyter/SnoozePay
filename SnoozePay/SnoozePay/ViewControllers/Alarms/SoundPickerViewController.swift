@@ -27,7 +27,6 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     /// sounds are fire-and-forget, so this is a UI state reset by a timer keyed
     /// to the typical preview length.
     private var isPreviewing = false
-    private var previewResetWorkItem: DispatchWorkItem?
 
     /// The disabled custom-melody slot is appended after the catalogue rows.
     private var rowCount: Int { sounds.count + 1 }
@@ -107,24 +106,50 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     private let previewPlayGradient = CAGradientLayer()
 
-    private let previewTitleLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = AppTypography.bodyLg
-        label.textColor = AppColors.fg1
-        label.numberOfLines = 1
-        return label
+    /// Progress track + fill + timecode, per `SPMore.jsx:358-363` — a 3pt
+    /// white-08 rail with a money-gradient fill and a «0:08 / 0:24» meta label.
+    /// The fill is driven by a `CADisplayLink` keyed to the sound's expected
+    /// preview length (system sounds are fire-and-forget, so the bar reflects
+    /// elapsed-vs-expected rather than true decoder position).
+    private let progressTrack: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = AppColors.whiteOverlay08
+        view.layer.cornerRadius = 1.5
+        view.layer.masksToBounds = true
+        return view
     }()
 
-    private let previewHintLabel: UILabel = {
+    private let progressFill: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.masksToBounds = true
+        return view
+    }()
+
+    /// Money gradient sized to the FULL track width so the visible portion keeps
+    /// a consistent left→right gradient direction as `progressFill` grows.
+    private let progressFillGradient = CAGradientLayer()
+
+    private let timecodeLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
-        label.text = "Нажмите, чтобы прослушать"
         label.numberOfLines = 1
         return label
     }()
+
+    /// Width of the filled portion of the progress rail. Animated to `0…track`
+    /// each `CADisplayLink` tick; `0` while idle.
+    private var progressFillWidth: NSLayoutConstraint?
+
+    /// Drives the progress fill + timecode during a preview. Nil while idle.
+    private var progressLink: CADisplayLink?
+    /// Host time (`CACurrentMediaTime`) at which the current preview started.
+    private var previewStartTime: CFTimeInterval = 0
+    /// Expected length of the in-flight preview, in seconds.
+    private var previewTotalDuration: Double = 0
 
     // MARK: - Init
 
@@ -164,13 +189,17 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        previewResetWorkItem?.cancel()
-        previewResetWorkItem = nil
+        stopPreview()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewPlayGradient.frame = previewPlayButton.bounds
+        // Pin the gradient to the full rail width so the played fraction always
+        // shows the same left→right gradient slice, regardless of fill width.
+        progressFillGradient.frame = CGRect(
+            x: 0, y: 0, width: progressTrack.bounds.width, height: progressTrack.bounds.height
+        )
     }
 
     // MARK: - Setup
@@ -255,12 +284,33 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         previewPlayGradient.locations = SPSupport.moneyGradientLocations
         previewPlayButton.layer.insertSublayer(previewPlayGradient, at: 0)
         previewPlayButton.addTarget(self, action: #selector(previewTapped), for: .touchUpInside)
+        previewPlayButton.accessibilityLabel = "Прослушать превью"
 
-        let previewTextStack = UIStackView(arrangedSubviews: [previewTitleLabel, previewHintLabel])
+        // Money-gradient fill rail. The gradient layer is sized to the full
+        // track width in `viewDidLayoutSubviews`; the fill view clips it to the
+        // played fraction.
+        progressFillGradient.startPoint = SPSupport.gradientStart
+        progressFillGradient.endPoint = SPSupport.gradientEnd
+        progressFillGradient.colors = SPSupport.moneyGradientColors
+        progressFillGradient.locations = SPSupport.moneyGradientLocations
+        progressFill.layer.addSublayer(progressFillGradient)
+        progressTrack.addSubview(progressFill)
+
+        let fillWidth = progressFill.widthAnchor.constraint(equalToConstant: 0)
+        progressFillWidth = fillWidth
+        NSLayoutConstraint.activate([
+            progressTrack.heightAnchor.constraint(equalToConstant: 3),
+            progressFill.leadingAnchor.constraint(equalTo: progressTrack.leadingAnchor),
+            progressFill.topAnchor.constraint(equalTo: progressTrack.topAnchor),
+            progressFill.bottomAnchor.constraint(equalTo: progressTrack.bottomAnchor),
+            fillWidth
+        ])
+
+        let previewTextStack = UIStackView(arrangedSubviews: [progressTrack, timecodeLabel])
         previewTextStack.translatesAutoresizingMaskIntoConstraints = false
         previewTextStack.axis = .vertical
-        previewTextStack.spacing = 2
-        previewTextStack.alignment = .leading
+        previewTextStack.spacing = AppSpacing.sp1 + 2   // 6pt — matches `marginTop: 6`
+        previewTextStack.alignment = .fill
 
         let previewRow = UIStackView(arrangedSubviews: [previewPlayButton, previewTextStack])
         previewRow.translatesAutoresizingMaskIntoConstraints = false
@@ -347,37 +397,76 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     // MARK: - Preview player
 
+    /// Resets the rail + timecode to the at-rest «0:00 / total» state for the
+    /// currently-selected sound. Called when the selection changes so the total
+    /// reflects the new sound's expected length.
     private func refreshPreviewLabel() {
-        let name = sounds.first(where: { $0.id == selectedSoundID })?.name ?? selectedSoundID
-        previewTitleLabel.text = name
+        resetProgress()
     }
 
     @objc private func previewTapped() {
         if isPreviewing {
-            isPreviewing = false
-            previewResetWorkItem?.cancel()
-            updatePreviewIcon()
+            stopPreview()
             return
         }
         previewSound(selectedSoundID)
         startPreviewAffordance(for: selectedSoundID)
     }
 
-    /// Flip the preview head to its "playing" state and schedule a reset once
-    /// the typical preview length elapses (system sounds can't be stopped).
+    /// Flip the preview head to its "playing" state and start the progress
+    /// rail. System sounds are fire-and-forget, so the rail/timecode track the
+    /// expected preview length rather than a real decoder position; a second
+    /// tap stops and resets.
     private func startPreviewAffordance(for soundID: String) {
-        previewResetWorkItem?.cancel()
         isPreviewing = true
+        previewTotalDuration = Self.previewDurationSeconds(for: soundID)
+        previewStartTime = CACurrentMediaTime()
         updatePreviewIcon()
 
-        let duration = Self.previewDurationSeconds(for: soundID)
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.isPreviewing = false
-            self.updatePreviewIcon()
+        progressLink?.invalidate()
+        let link = CADisplayLink(target: self, selector: #selector(tickProgress))
+        link.add(to: .main, forMode: .common)
+        progressLink = link
+        tickProgress()
+    }
+
+    /// Stops an in-flight preview (second tap or screen leaving) and snaps the
+    /// rail back to empty. The underlying system sound can't be cancelled, but
+    /// the affordance must reflect "not playing".
+    private func stopPreview() {
+        isPreviewing = false
+        progressLink?.invalidate()
+        progressLink = nil
+        updatePreviewIcon()
+        resetProgress()
+    }
+
+    @objc private func tickProgress() {
+        let elapsed = CACurrentMediaTime() - previewStartTime
+        let total = max(previewTotalDuration, 0.001)
+        let fraction = min(1, max(0, elapsed / total))
+        setProgress(fraction: fraction, elapsed: min(elapsed, total), total: total)
+
+        if fraction >= 1 {
+            // Preview elapsed — drop back to the idle play affordance.
+            isPreviewing = false
+            progressLink?.invalidate()
+            progressLink = nil
+            updatePreviewIcon()
         }
-        previewResetWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: workItem)
+    }
+
+    private func setProgress(fraction: Double, elapsed: Double, total: Double) {
+        progressFillWidth?.constant = progressTrack.bounds.width * CGFloat(fraction)
+        timecodeLabel.text = "\(Self.timecode(elapsed)) / \(Self.timecode(total))"
+    }
+
+    /// Snaps the rail to empty and the timecode to «0:00 / total» for the
+    /// selected sound.
+    private func resetProgress() {
+        let total = Self.previewDurationSeconds(for: selectedSoundID)
+        progressFillWidth?.constant = 0
+        timecodeLabel.text = "\(Self.timecode(0)) / \(Self.timecode(total))"
     }
 
     private func updatePreviewIcon() {
@@ -387,6 +476,12 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
                 .withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)),
             for: .normal
         )
+    }
+
+    /// «M:SS» timecode for a non-negative number of seconds.
+    private static func timecode(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     @objc private func doneTapped() {
