@@ -447,12 +447,16 @@ final class AlarmsListViewModel {
     // MARK: - Helpers for cell display
 
     /// Cached formatter — avoids ~1ms per-call allocation that adds up in lists.
-    /// Locale fixed to `en_US_POSIX` so the 24-hour format `HH:mm` is honoured
-    /// regardless of the user's region (some locales otherwise render `7:00 AM`).
+    /// Locale fixed to `en_US_POSIX` so the 24-hour format is honoured regardless
+    /// of the user's region (some locales otherwise render `7:00 AM`).
+    ///
+    /// The list cells use `H:mm` — hour WITHOUT a leading zero ("7:30", "19:05")
+    /// to match the prototype (artboard 06); the create/edit time picker keeps
+    /// the padded `HH:mm` form (`TimePickerCell`). See #343.
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
+        formatter.dateFormat = "H:mm"
         return formatter
     }()
 
