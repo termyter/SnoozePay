@@ -120,16 +120,10 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         return view
     }()
 
-    private let progressFill: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.layer.masksToBounds = true
-        return view
-    }()
-
-    /// Money gradient sized to the FULL track width so the visible portion keeps
-    /// a consistent left→right gradient direction as `progressFill` grows.
-    private let progressFillGradient = CAGradientLayer()
+    /// Money-gradient fill. `GradientRailFill` sizes its gradient in its own
+    /// `layoutSubviews`, so the colour always tracks the view's bounds with no
+    /// dependency on the view controller's layout timing.
+    private let progressFill = GradientRailFill()
 
     private let timecodeLabel: UILabel = {
         let label = UILabel()
@@ -177,6 +171,13 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        // Defence in depth: `CADisplayLink` holds a strong target ref, so a
+        // teardown that skips `viewWillDisappear` would otherwise keep the link
+        // (and this VC) alive and ticking. Normal exits already invalidate it.
+        progressLink?.invalidate()
+    }
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
@@ -195,11 +196,6 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewPlayGradient.frame = previewPlayButton.bounds
-        // Pin the gradient to the full rail width so the played fraction always
-        // shows the same left→right gradient slice, regardless of fill width.
-        progressFillGradient.frame = CGRect(
-            x: 0, y: 0, width: progressTrack.bounds.width, height: progressTrack.bounds.height
-        )
     }
 
     // MARK: - Setup
@@ -286,14 +282,6 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         previewPlayButton.addTarget(self, action: #selector(previewTapped), for: .touchUpInside)
         previewPlayButton.accessibilityLabel = "Прослушать превью"
 
-        // Money-gradient fill rail. The gradient layer is sized to the full
-        // track width in `viewDidLayoutSubviews`; the fill view clips it to the
-        // played fraction.
-        progressFillGradient.startPoint = SPSupport.gradientStart
-        progressFillGradient.endPoint = SPSupport.gradientEnd
-        progressFillGradient.colors = SPSupport.moneyGradientColors
-        progressFillGradient.locations = SPSupport.moneyGradientLocations
-        progressFill.layer.addSublayer(progressFillGradient)
         progressTrack.addSubview(progressFill)
 
         let fillWidth = progressFill.widthAnchor.constraint(equalToConstant: 0)
@@ -427,6 +415,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         let link = CADisplayLink(target: self, selector: #selector(tickProgress))
         link.add(to: .main, forMode: .common)
         progressLink = link
+        // Resolve the rail width before the first synchronous tick so frame 0
+        // paints the correct fraction instead of a transient empty bar.
+        view.layoutIfNeeded()
         tickProgress()
     }
 
@@ -478,9 +469,10 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         )
     }
 
-    /// «M:SS» timecode for a non-negative number of seconds.
+    /// «M:SS» timecode. Negative inputs are clamped to 0 so an out-of-order
+    /// clock read can never render malformed «0:-3» text.
     private static func timecode(_ seconds: Double) -> String {
-        let total = Int(seconds.rounded())
+        let total = max(0, Int(seconds.rounded()))
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 
@@ -498,6 +490,34 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     private static func previewDurationSeconds(for soundID: String) -> Double {
         previewDurations[soundID] ?? 3
+    }
+}
+
+/// Money-gradient progress fill that sizes its own gradient in `layoutSubviews`,
+/// so the colour always fills the view's current bounds with no dependency on
+/// the host view controller's layout timing (silent-failure-hunter, PR #367).
+private final class GradientRailFill: UIView {
+    private let gradient = CAGradientLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        translatesAutoresizingMaskIntoConstraints = false
+        layer.masksToBounds = true
+        gradient.startPoint = SPSupport.gradientStart
+        gradient.endPoint = SPSupport.gradientEnd
+        gradient.colors = SPSupport.moneyGradientColors
+        gradient.locations = SPSupport.moneyGradientLocations
+        layer.addSublayer(gradient)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        gradient.frame = bounds
     }
 }
 
