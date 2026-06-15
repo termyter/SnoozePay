@@ -51,6 +51,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Handle notification responses
         UNUserNotificationCenter.current().delegate = self
 
+        // Reclaim orphaned custom-theme JPEGs (#357): re-picking a photo or
+        // deleting a `.custom`-themed alarm leaves its image on disk forever.
+        // Sweep off the main thread against the live alarm set — only files no
+        // current alarm references are removed.
+        DispatchQueue.global(qos: .utility).async {
+            let referenced = Set(AlarmRepository.shared.fetchAll().compactMap { alarm -> URL? in
+                if case .custom(let url) = alarm.theme { return url }
+                return nil
+            })
+            AlarmThemeImageStore.reconcileCaches(referencedURLs: referenced)
+        }
+
         return true
     }
 
