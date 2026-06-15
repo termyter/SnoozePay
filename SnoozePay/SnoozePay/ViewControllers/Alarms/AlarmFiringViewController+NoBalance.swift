@@ -174,6 +174,8 @@ extension AlarmFiringViewController {
             fullWidth: true
         )
         button.translatesAutoresizingMaskIntoConstraints = false
+        // Stable selector for the no-balance top-up e2e UI test (#340).
+        button.accessibilityIdentifier = "firing.noBalance.topUp"
         button.addTarget(
             self,
             action: #selector(noBalanceApplePayTapped),

@@ -28,6 +28,9 @@ final class NameCell: UITableViewCell {
         )
         field.returnKeyType = .done
         field.clearButtonMode = .whileEditing
+        // Stable selector for the create-alarm e2e UI test (#340) — targets
+        // the field by id, not the localized «Название» placeholder.
+        field.accessibilityIdentifier = "create.nameField"
         return field
     }()
 

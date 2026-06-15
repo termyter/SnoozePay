@@ -137,6 +137,8 @@ final class CreateAlarmViewController: UIViewController {
             variant: .money,
             size: .sm
         )
+        // Stable selector for the create-alarm e2e UI test (#340).
+        saveButton.accessibilityIdentifier = "create.saveButton"
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: saveButton)
 
