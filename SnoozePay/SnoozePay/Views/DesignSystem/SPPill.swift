@@ -143,10 +143,8 @@ final class SPPill: UIView {
     }
 
     private func applyTone() {
-        // swiftlint:disable identifier_name
         let bg: UIColor
         let fg: UIColor
-        // swiftlint:enable identifier_name
         switch tone {
         case .neutral:
             bg = AppColors.whiteOverlay08
