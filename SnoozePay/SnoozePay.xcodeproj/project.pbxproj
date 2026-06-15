@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		47E841C354E5DA7707DA30DA /* FiringFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */; };
+		A3400000000000000000B001 /* NoBalanceTopUpUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F001 /* NoBalanceTopUpUITests.swift */; };
+		A3400000000000000000B002 /* CreateAlarmUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F002 /* CreateAlarmUITests.swift */; };
+		A3400000000000000000B003 /* ProgressiveSnoozeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F003 /* ProgressiveSnoozeUITests.swift */; };
+		A3400000000000000000B004 /* OnboardingFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F004 /* OnboardingFlowUITests.swift */; };
 		A7D767A1C75F0B3D99B35C0E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4AED0CBCB2279D458B93ABDC /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
@@ -34,6 +38,10 @@
 		AA0001012F5B000000000002 /* SnoozePayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D9F3B13686755D92D101DDAA /* SnoozePayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FiringFlowUITests.swift; sourceTree = "<group>"; };
+		A3400000000000000000F001 /* NoBalanceTopUpUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NoBalanceTopUpUITests.swift; sourceTree = "<group>"; };
+		A3400000000000000000F002 /* CreateAlarmUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CreateAlarmUITests.swift; sourceTree = "<group>"; };
+		A3400000000000000000F003 /* ProgressiveSnoozeUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProgressiveSnoozeUITests.swift; sourceTree = "<group>"; };
+		A3400000000000000000F004 /* OnboardingFlowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnboardingFlowUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -131,6 +139,10 @@
 			isa = PBXGroup;
 			children = (
 				EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */,
+				A3400000000000000000F001 /* NoBalanceTopUpUITests.swift */,
+				A3400000000000000000F002 /* CreateAlarmUITests.swift */,
+				A3400000000000000000F003 /* ProgressiveSnoozeUITests.swift */,
+				A3400000000000000000F004 /* OnboardingFlowUITests.swift */,
 			);
 			name = SnoozePayUITests;
 			path = SnoozePayUITests;
@@ -285,6 +297,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				47E841C354E5DA7707DA30DA /* FiringFlowUITests.swift in Sources */,
+				A3400000000000000000B001 /* NoBalanceTopUpUITests.swift in Sources */,
+				A3400000000000000000B002 /* CreateAlarmUITests.swift in Sources */,
+				A3400000000000000000B003 /* ProgressiveSnoozeUITests.swift in Sources */,
+				A3400000000000000000B004 /* OnboardingFlowUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

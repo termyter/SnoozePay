@@ -57,6 +57,7 @@ final class PenaltyCell: UITableViewCell {
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
         field.accessibilityLabel = "Цена откладывания, рублей"
+        field.accessibilityIdentifier = "createAlarm.penaltyField"
         field.translatesAutoresizingMaskIntoConstraints = false
         return field
     }()

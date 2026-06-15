@@ -322,8 +322,11 @@ final class OnboardingViewController: UIViewController {
 
     private func wireActionTargets() {
         scrollView.delegate = self
+        primaryButton.accessibilityIdentifier = "onboarding.primaryButton"
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
+        laterButton.accessibilityIdentifier = "onboarding.laterButton"
         laterButton.addTarget(self, action: #selector(laterTapped), for: .touchUpInside)
+        skipButton.accessibilityIdentifier = "onboarding.skipButton"
         skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
     }
 

@@ -28,6 +28,7 @@ final class NameCell: UITableViewCell {
         )
         field.returnKeyType = .done
         field.clearButtonMode = .whileEditing
+        field.accessibilityIdentifier = "createAlarm.nameField"
         return field
     }()
 
