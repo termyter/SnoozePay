@@ -77,6 +77,15 @@ extension AlarmFiringViewController {
                 constant: -AppSpacing.sp7   // 32pt bottom inset per V2 spec
             )
         ])
+
+        // Keep the center "Баланса не осталось" block from colliding with the
+        // disabled price card at the top of this stack (#345). Required, so it
+        // wins over the block's breakable hero pin when the column is tight.
+        if let centerBlock = noBalanceCenterBlock {
+            centerBlock.bottomAnchor.constraint(
+                lessThanOrEqualTo: stack.topAnchor, constant: -AppSpacing.sp4
+            ).isActive = true
+        }
     }
 
     /// Build the center "БАЛАНСА НЕ ОСТАЛОСЬ" pill + body text. Pinned below
@@ -109,11 +118,23 @@ extension AlarmFiringViewController {
         view.addSubview(block)
         noBalanceCenterBlock = block
 
+        // Tuck under the eyebrow caps — V3 moved the name label above the
+        // clock (#225), so the eyebrow is now the hero's bottom edge. This pin
+        // is breakable (.defaultHigh) so the required "stay above the bottom
+        // stack" constraint in `installNoBalanceStack` can win on a tight
+        // column: the no-balance bottom stack is taller than the normal one
+        // (disabled card + Apple Pay + dismiss + choose-amount, vs snooze +
+        // dismiss), and without that safety net the body text overlaps the
+        // disabled price card (#345). On the regular screen height there's
+        // ample room, so this pin holds and the block stays tucked.
+        let heroPin = block.topAnchor.constraint(
+            equalTo: wakeUpCapsLabel.bottomAnchor, constant: AppSpacing.sp6
+        )
+        heroPin.priority = .defaultHigh
+
         NSLayoutConstraint.activate([
             block.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            // Below the eyebrow caps — V3 moved the name label above the
-            // clock (#225), so the eyebrow is now the hero's bottom edge.
-            block.topAnchor.constraint(equalTo: wakeUpCapsLabel.bottomAnchor, constant: AppSpacing.sp6),
+            heroPin,
             block.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
             block.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset)
         ])
