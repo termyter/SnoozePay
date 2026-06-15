@@ -1,0 +1,101 @@
+{
+  "identifier" : "65B0A509-5E62-4BA2-9998-68F8E6AF4827",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "49.00",
+      "familyShareable" : false,
+      "internalID" : "64216C2C-707C-480A-A3E9-EDC137A7DE37",
+      "localizations" : [
+        {
+          "description" : "Пополнение баланса на 49 ₽",
+          "displayName" : "Пополнение 49 ₽",
+          "locale" : "ru"
+        }
+      ],
+      "productID" : "com.snooze_pay.balance.49",
+      "referenceName" : "Balance 49 ₽",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "149.00",
+      "familyShareable" : false,
+      "internalID" : "062EA255-6FD5-4A59-8097-68C417EB4F1E",
+      "localizations" : [
+        {
+          "description" : "Пополнение баланса на 149 ₽",
+          "displayName" : "Пополнение 149 ₽",
+          "locale" : "ru"
+        }
+      ],
+      "productID" : "com.snooze_pay.balance.149",
+      "referenceName" : "Balance 149 ₽",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "299.00",
+      "familyShareable" : false,
+      "internalID" : "E63F3567-7BDB-4356-8202-12E0C42E5A93",
+      "localizations" : [
+        {
+          "description" : "Пополнение баланса на 299 ₽",
+          "displayName" : "Пополнение 299 ₽",
+          "locale" : "ru"
+        }
+      ],
+      "productID" : "com.snooze_pay.balance.299",
+      "referenceName" : "Balance 299 ₽",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "499.00",
+      "familyShareable" : false,
+      "internalID" : "30E5CCC1-66E0-4E7A-8D4E-1CE4E6D063FF",
+      "localizations" : [
+        {
+          "description" : "Пополнение баланса на 499 ₽",
+          "displayName" : "Пополнение 499 ₽",
+          "locale" : "ru"
+        }
+      ],
+      "productID" : "com.snooze_pay.balance.499",
+      "referenceName" : "Balance 499 ₽",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "999.00",
+      "familyShareable" : false,
+      "internalID" : "2E2A8654-503F-4A93-96DC-7FD1320FA101",
+      "localizations" : [
+        {
+          "description" : "Пополнение баланса на 999 ₽",
+          "displayName" : "Пополнение 999 ₽",
+          "locale" : "ru"
+        }
+      ],
+      "productID" : "com.snooze_pay.balance.999",
+      "referenceName" : "Balance 999 ₽",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "snoozepay.local.test",
+    "_developerTeamID" : "8ZKDC782V4",
+    "_failTransactionsEnabled" : false,
+    "_askToBuyEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
