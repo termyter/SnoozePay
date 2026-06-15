@@ -327,6 +327,9 @@ extension OnboardingViewController {
 
     private func swapPrimary(with newButton: SPButton) {
         let oldButton = primaryButton
+        // Keep the test id stable across the per-page instance swaps (the
+        // "Дальше" advance variant ↔ the page-3 "Пополнить" deposit CTA).
+        newButton.accessibilityIdentifier = "onboarding.primaryButton"
         newButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
         if let index = ctaStack.arrangedSubviews.firstIndex(of: oldButton) {
             ctaStack.removeArrangedSubview(oldButton)

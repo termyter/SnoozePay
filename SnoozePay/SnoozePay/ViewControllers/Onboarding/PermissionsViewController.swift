@@ -130,6 +130,7 @@ final class PermissionsViewController: UIViewController {
         view.backgroundColor = AppColors.bg0
         setupUI()
         refreshNotificationSettings()
+        ctaButton.accessibilityIdentifier = "permissions.doneButton"
         ctaButton.addTarget(self, action: #selector(ctaTapped), for: .touchUpInside)
     }
 

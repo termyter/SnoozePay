@@ -174,6 +174,7 @@ extension AlarmFiringViewController {
             fullWidth: true
         )
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityIdentifier = "firing.noBalance.topUpButton"
         button.addTarget(
             self,
             action: #selector(noBalanceApplePayTapped),

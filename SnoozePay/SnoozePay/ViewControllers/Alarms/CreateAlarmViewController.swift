@@ -137,6 +137,7 @@ final class CreateAlarmViewController: UIViewController {
             variant: .money,
             size: .sm
         )
+        saveButton.accessibilityIdentifier = "createAlarm.saveButton"
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: saveButton)
 
