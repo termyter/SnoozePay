@@ -130,8 +130,13 @@ final class AlarmFiringCoordinator {
         let newCount = payload.snoozeCount + 1
         let penalty = alarm.penalty(forSnoozeCount: newCount)
 
-        let charged = balanceService.charge(amount: penalty, alarmID: payload.alarmID)
-        guard charged else {
+        // `chargeWithReceipt` returns the persisted Transaction so a later
+        // refund can link back to it (issue #133) — without that link stats
+        // can't tell a refunded charge apart from a real snooze.
+        guard let chargeTransaction = balanceService.chargeWithReceipt(
+            amount: penalty,
+            alarmID: payload.alarmID
+        ) else {
             let alarmID = payload.alarmID
             AppLogger.coordinator.notice(
                 "snooze: insufficient funds alarm=\(alarmID, privacy: .private) penalty=\(penalty, privacy: .public)"
@@ -153,6 +158,7 @@ final class AlarmFiringCoordinator {
                 alarmID: payload.alarmID,
                 newCount: newCount,
                 penalty: penalty,
+                chargeTransactionID: chargeTransaction.id,
                 completion: completion
             )
         }
@@ -168,6 +174,7 @@ final class AlarmFiringCoordinator {
         alarmID: UUID,
         newCount: Int,
         penalty: Double,
+        chargeTransactionID: UUID,
         completion: ((SnoozeOutcome) -> Void)?
     ) {
         switch result {
@@ -181,7 +188,13 @@ final class AlarmFiringCoordinator {
             // will never re-fire. `topUp` records an offsetting ledger entry
             // (rather than mutating storage directly) so transaction history
             // shows both the charge and the refund — stats stay auditable.
-            let refunded = balanceService.topUp(amount: penalty)
+            // Link the refund to the original charge ID so stats consumers
+            // can pair the two rows (issue #133); without the link a refund
+            // still inflates snoozeCount/totalSpent and resets streak.
+            let refunded = balanceService.topUp(
+                amount: penalty,
+                refundsTransactionID: chargeTransactionID
+            )
             let desc = error.errorDescription ?? error.localizedDescription
             if refunded {
                 AppLogger.coordinator.error(

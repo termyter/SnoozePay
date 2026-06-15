@@ -121,16 +121,24 @@ final class BalanceService {
     /// (mirrors locked-ledger pattern from #72).
     @discardableResult
     func charge(amount: Double, alarmID: UUID?) -> Bool {
+        chargeWithReceipt(amount: amount, alarmID: alarmID) != nil
+    }
+
+    /// Charge variant that returns the persisted `Transaction` so the caller
+    /// can later post a refund linked to this exact ledger entry (issue #133).
+    /// Returns `nil` on the same failure modes as `charge` — insufficient
+    /// funds, corrupted balance, or repository write rejection.
+    func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
+        let transaction = Transaction(
+            type: .charge,
+            amount: amount,
+            alarmID: alarmID?.uuidString
+        )
         let result: (charged: Bool, newBalance: Double) = queue.sync {
             let current = readRawBalance()
             guard !_balanceCorrupted else { return (false, current) }
             guard current >= amount else { return (false, current) }
 
-            let transaction = Transaction(
-                type: .charge,
-                amount: amount,
-                alarmID: alarmID?.uuidString
-            )
             // Record the ledger entry FIRST. If the transaction repository is
             // locked (corrupt blob waiting on user ack) or encoding fails, we
             // refuse to mutate the balance — otherwise money would silently
@@ -147,8 +155,9 @@ final class BalanceService {
 
         if result.charged {
             notifyBalanceChanged(result.newBalance)
+            return transaction
         }
-        return result.charged
+        return nil
     }
 
     // MARK: - Top up (IAP)
@@ -159,15 +168,21 @@ final class BalanceService {
     /// caller should surface this to the user instead of pretending
     /// the IAP credited (silent ledger desync was the regression behind the #72
     /// PR #101 hunter feedback).
+    ///
+    /// `refundsTransactionID` links the top-up to the original `charge` it
+    /// reverses. `AlarmFiringCoordinator` sets it after a snooze schedule
+    /// fails so stats can pair the two rows and avoid counting the snooze
+    /// (issue #133). Organic top-ups (IAP, dev tools) leave it `nil`.
     @discardableResult
-    func topUp(amount: Double) -> Bool {
+    func topUp(amount: Double, refundsTransactionID: UUID? = nil) -> Bool {
         let result: (recorded: Bool, newBalance: Double) = queue.sync {
             let current = readRawBalance()
             guard !_balanceCorrupted else { return (false, current) }
 
             let transaction = Transaction(
                 type: .topup,
-                amount: amount
+                amount: amount,
+                refundsTransactionID: refundsTransactionID
             )
             guard transactionRepository.record(transaction) else {
                 return (false, current)

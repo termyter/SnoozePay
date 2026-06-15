@@ -175,7 +175,7 @@ private final class StubFiringBalance: AlarmFiringBalancing {
     }
 
     @discardableResult
-    func topUp(amount: Double) -> Bool {
+    func topUp(amount: Double, refundsTransactionID: UUID?) -> Bool {
         topUpCalls.append(amount)
         guard topUpResult else { return false }
         balance += amount

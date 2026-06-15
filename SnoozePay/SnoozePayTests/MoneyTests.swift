@@ -77,6 +77,22 @@ final class MoneyTests: XCTestCase {
         XCTAssertNil(base.multiplied(by: -1))
     }
 
+    /// `Money.+` previously force-unwrapped its result with a comment claiming
+    /// "non-negative + non-negative is safe". `Decimal.greatestFiniteMagnitude
+    /// + Decimal.greatestFiniteMagnitude` can produce a non-finite value and
+    /// trap the release build. The defensive path now clamps to `.zero` with
+    /// a fault log instead of crashing — this test pins that no real wallet
+    /// path can crash the app via overflow (audit-finding #198).
+    func testAdditionDoesNotCrashOnExtremeOverflow() {
+        let huge = Money(Decimal.greatestFiniteMagnitude)!
+        // Result is either a valid clamped value or the documented `.zero`
+        // fallback — what matters is that we don't trap. Assert we got SOME
+        // valid `Money` back rather than crashing.
+        let result = huge + huge
+        XCTAssertTrue(result.amount.isFinite || result == .zero,
+                      "Overflow must not produce non-finite Money; either Decimal handled it or we clamped to .zero")
+    }
+
     // MARK: - Ordering
 
     func testOrdering() {

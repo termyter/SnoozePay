@@ -61,6 +61,25 @@ final class StatisticsViewModelDataTests: XCTestCase {
         calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
     }
 
+    /// Records a charge + matching refund pair so tests can assert that a
+    /// snooze refunded after a scheduler failure (#130) is excluded from the
+    /// behavioural aggregations, mirroring what `AlarmFiringCoordinator` writes
+    /// (issue #133).
+    @discardableResult
+    private func addRefundedCharge(amount: Double, daysAgo: Int = 0) -> Transaction {
+        let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date())!
+        let charge = Transaction(type: .charge, amount: amount, createdAt: date)
+        let refund = Transaction(
+            type: .topup,
+            amount: amount,
+            createdAt: date,
+            refundsTransactionID: charge.id
+        )
+        txRepo.record(charge)
+        txRepo.record(refund)
+        return charge
+    }
+
     private func charge(_ amount: Double, on date: Date) -> Transaction {
         Transaction(type: .charge, amount: amount, createdAt: date)
     }
@@ -80,6 +99,36 @@ final class StatisticsViewModelDataTests: XCTestCase {
 
         XCTAssertEqual(vm.charges.count, 2, "Topups must not leak into the behavioural aggregations")
         XCTAssertTrue(vm.charges.allSatisfy { $0.type == .charge })
+    }
+
+    // MARK: - Refunded snooze charges (issue #133)
+
+    /// A snooze that was charged but refunded after a scheduler failure
+    /// (revoked notification permission, pending-limit, etc.) must not appear
+    /// in `charges` — the alarm never re-fired so the stats would lie about
+    /// user behaviour. `realCharges` strips charges with a matching refund row.
+    func testLoadData_refundedCharge_excludedFromCharges() {
+        addRefundedCharge(amount: 50, daysAgo: 1)
+
+        let vm = makeVM()
+        vm.loadData()
+
+        XCTAssertEqual(vm.charges.count, 0,
+            "Refunded charge represents a snooze that didn't actually fire")
+    }
+
+    /// A real charge alongside a refunded one should be counted normally.
+    /// Guards against the filter being too aggressive — only charges with a
+    /// matching refund row are excluded.
+    func testLoadData_realChargeAlongsideRefunded_keepsRealOnly() {
+        addCharge(amount: 50, daysAgo: 0)
+        addRefundedCharge(amount: 50, daysAgo: 1)
+
+        let vm = makeVM()
+        vm.loadData()
+
+        XCTAssertEqual(vm.charges.count, 1)
+        XCTAssertEqual(vm.charges.first?.amount, 50)
     }
 
     func testOnDataUpdated_calledOnLoad() {

@@ -155,6 +155,14 @@ final class TransactionRepository {
         )
     }
 
+    /// Returns the subset of `transactions` that represent real (non-refunded)
+    /// charges. Used by streak computation and by `StatisticsViewModel` so the
+    /// two sites can never drift on what counts as "the user actually snoozed".
+    static func realCharges(from transactions: [Transaction]) -> [Transaction] {
+        let refundedIDs = Set(transactions.compactMap { $0.refundsTransactionID })
+        return transactions.filter { $0.type == .charge && !refundedIDs.contains($0.id) }
+    }
+
     // MARK: - Recovery
 
     /// Clears the lock and removes the corrupt blob. Used by a future

@@ -207,6 +207,74 @@ final class AlarmNotificationPayloadTests: XCTestCase {
         XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
     }
 
+    // MARK: - Out-of-range values rejected (issue #208)
+
+    private func validDict() -> [AnyHashable: Any] {
+        [
+            "alarmID": UUID().uuidString,
+            "penaltyAmount": 50.0,
+            "progressiveScale": false,
+            "snoozeCount": 0,
+            "snoozeMinutes": 9,
+            "soundID": "radar"
+        ]
+    }
+
+    func testInit_negativeSnoozeCount_returnsNil() {
+        var dict = validDict()
+        dict["snoozeCount"] = -1
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict),
+                     "negative snoozeCount would yield pow(2.0, negative) → silently shrunk penalty")
+    }
+
+    func testInit_zeroSnoozeMinutes_returnsNil() {
+        var dict = validDict()
+        dict["snoozeMinutes"] = 0
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict),
+                     "0 minutes would schedule a trigger at the current instant")
+    }
+
+    func testInit_excessiveSnoozeMinutes_returnsNil() {
+        var dict = validDict()
+        dict["snoozeMinutes"] = 61
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict),
+                     "spec caps snoozeMinutes at 30; >60 is clearly out-of-range")
+    }
+
+    func testInit_negativePenaltyAmount_returnsNil() {
+        var dict = validDict()
+        dict["penaltyAmount"] = -10.0
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
+    }
+
+    func testInit_nanPenaltyAmount_returnsNil() {
+        var dict = validDict()
+        dict["penaltyAmount"] = Double.nan
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict),
+                     "NaN penalty would silently disable charge (current >= NaN is false)")
+    }
+
+    func testInit_infinitePenaltyAmount_returnsNil() {
+        var dict = validDict()
+        dict["penaltyAmount"] = Double.infinity
+        XCTAssertNil(AlarmNotificationPayload(userInfo: dict))
+    }
+
+    func testInit_validBoundaryValues_succeeds() {
+        // snoozeMinutes == 1 and snoozeMinutes == 60 must be accepted —
+        // boundary regressions are the typical fallout when ranges tighten.
+        var dict = validDict()
+        dict["snoozeMinutes"] = 1
+        XCTAssertNotNil(AlarmNotificationPayload(userInfo: dict))
+        dict["snoozeMinutes"] = 60
+        XCTAssertNotNil(AlarmNotificationPayload(userInfo: dict))
+        dict["snoozeMinutes"] = 9
+        dict["snoozeCount"] = 0
+        dict["penaltyAmount"] = 0.0
+        XCTAssertNotNil(AlarmNotificationPayload(userInfo: dict),
+                        "Zero penalty / zero count must round-trip (legit fresh-fire state)")
+    }
+
     // MARK: - Compatibility with existing keys
     //
     // The keys here are the exact strings AlarmScheduler / AlarmFiringCoordinator

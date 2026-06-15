@@ -280,7 +280,7 @@ final class AlarmFiringViewModel {
             // Refund via `topUp` (an offsetting ledger entry) rather than
             // mutating storage directly, so transaction history shows both the
             // charge and the refund and stats stay auditable.
-            let refunded = balanceService.topUp(amount: penalty)
+            let refunded = balanceService.topUp(amount: penalty, refundsTransactionID: nil)
             let desc = error.errorDescription ?? error.localizedDescription
             if refunded {
                 AppLogger.ui.error(
@@ -343,7 +343,12 @@ protocol AlarmFiringBalancing: AnyObject {
     var balance: Double { get }
     func canAfford(_ amount: Double) -> Bool
     @discardableResult func charge(amount: Double, alarmID: UUID?) -> Bool
-    @discardableResult func topUp(amount: Double) -> Bool
+    /// `refundsTransactionID` links a refund to the charge it offsets so the
+    /// charge is excluded from snooze stats (issue #133). The foreground snooze
+    /// path passes `nil` — `charge(amount:alarmID:)` doesn't surface the charge
+    /// transaction id yet (tracked separately); the notification-action path in
+    /// `AlarmFiringCoordinator` supplies it.
+    @discardableResult func topUp(amount: Double, refundsTransactionID: UUID?) -> Bool
 }
 
 extension BalanceService: AlarmFiringBalancing {}
