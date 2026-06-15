@@ -140,10 +140,10 @@ extension AlarmFiringViewController {
     }
 
     /// Accent pass — tint the clock halo + bell tile with the resolved
-    /// palette. The balance pill and eyebrow are re-tinted on every
-    /// `updateUI()` (their colour interacts with the zero-balance state), so
-    /// they live in `applyThemeAccentToBalancePill()` /
-    /// `updateAtmosphereTone()` instead.
+    /// palette. The balance pill is deliberately excluded: its money/pain tone
+    /// is a functional affordability signal kept un-themed in every theme so
+    /// «money / no money» always reads (#342). The eyebrow atmosphere is
+    /// re-tinted on every `updateUI()` via `updateAtmosphereTone()` instead.
     private func applyThemeAccents() {
         guard let palette = firingPalette else {
             // `.custom` photo — keep the neutral chrome and skip the bell
@@ -157,21 +157,6 @@ extension AlarmFiringViewController {
         bellTile.isHidden = false
     }
 
-    /// Re-tint the balance pill with the theme accent. The themed colours
-    /// only apply while the pill is in its normal `.money` tone — at zero
-    /// balance the stock pain (red) tint is a functional signal and stays
-    /// un-themed in every theme. Called from `updateUI()` after
-    /// `updateBalancePill()` so a tone-flip rebuild gets re-tinted too.
-    func applyThemeAccentToBalancePill() {
-        guard let palette = firingPalette,
-              let pill = balancePill,
-              pill.tone == .money else { return }
-        pill.applyCustomColors(
-            background: palette.pillBackground,
-            border: palette.pillBorder,
-            foreground: palette.accent
-        )
-    }
 }
 
 // MARK: - Drained-atmosphere view storage
