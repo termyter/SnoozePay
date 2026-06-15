@@ -133,20 +133,6 @@ final class SPPill: UIView {
         label.attributedText = result
     }
 
-    /// Override the tone-derived colours with theme-accent values — used by
-    /// the V3 themed firing screen (#225) where the balance pill picks up
-    /// the alarm theme's accent (`pillBg` / `pillBorder` / `accent` in
-    /// `SPThemedFiring.jsx`) instead of the stock money tint. The hairline
-    /// border only exists in this themed variant, so it's installed here
-    /// rather than in `applyTone()`.
-    func applyCustomColors(background: UIColor, border: UIColor, foreground: UIColor) {
-        backgroundColor = background
-        layer.borderWidth = 1
-        layer.borderColor = border.cgColor
-        label.textColor = foreground
-        iconView.tintColor = foreground
-    }
-
     private func setIcon(_ icon: UIImage?) {
         if let icon = icon {
             iconView.image = icon.withRenderingMode(.alwaysTemplate)
@@ -157,10 +143,8 @@ final class SPPill: UIView {
     }
 
     private func applyTone() {
-        // swiftlint:disable identifier_name
         let bg: UIColor
         let fg: UIColor
-        // swiftlint:enable identifier_name
         switch tone {
         case .neutral:
             bg = AppColors.whiteOverlay08
