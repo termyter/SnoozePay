@@ -172,3 +172,91 @@ final class AlarmThemeTests: XCTestCase {
         )
     }
 }
+
+/// Coverage for the orphaned-image reconcile sweep (#357). Co-located in this
+/// file (rather than a new `AlarmThemeImageStoreTests.swift`) on purpose: the
+/// SnoozePayTests group is an explicit Xcode group, so a brand-new file would
+/// require a `project.pbxproj` edit — a no-touch zone gated behind PM override.
+/// These tests stay in the AlarmTheme domain file to keep the fix mergeable
+/// without touching the project file.
+final class AlarmThemeImageStoreReconcileTests: XCTestCase {
+
+    private var tempDir: URL!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AlarmThemeReconcileTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        if let tempDir { try? FileManager.default.removeItem(at: tempDir) }
+        try super.tearDownWithError()
+    }
+
+    /// Write an empty placeholder file and return its URL.
+    private func makeFile(_ name: String) throws -> URL {
+        let url = tempDir.appendingPathComponent(name)
+        try Data("x".utf8).write(to: url)
+        return url
+    }
+
+    private func exists(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    func testReconcileDeletesUnreferencedFiles() throws {
+        let kept = try makeFile("alarm-theme-KEEP.jpg")
+        let orphanA = try makeFile("alarm-theme-ORPHAN-A.jpg")
+        let orphanB = try makeFile("alarm-theme-ORPHAN-B.jpg")
+
+        AlarmThemeImageStore.reconcile(in: tempDir, referencedURLs: [kept])
+
+        XCTAssertTrue(exists(kept), "Referenced image must survive the sweep")
+        XCTAssertFalse(exists(orphanA), "Orphaned image A should be deleted")
+        XCTAssertFalse(exists(orphanB), "Orphaned image B should be deleted")
+    }
+
+    func testReconcileKeepsAllWhenEveryFileIsReferenced() throws {
+        let first = try makeFile("alarm-theme-A.jpg")
+        let second = try makeFile("alarm-theme-B.jpg")
+
+        AlarmThemeImageStore.reconcile(in: tempDir, referencedURLs: [first, second])
+
+        XCTAssertTrue(exists(first))
+        XCTAssertTrue(exists(second))
+    }
+
+    func testReconcileDeletesAllWhenNothingReferenced() throws {
+        let first = try makeFile("alarm-theme-A.jpg")
+        let second = try makeFile("alarm-theme-B.jpg")
+
+        AlarmThemeImageStore.reconcile(in: tempDir, referencedURLs: [])
+
+        XCTAssertFalse(exists(first))
+        XCTAssertFalse(exists(second))
+    }
+
+    func testReconcileMatchesByFilenameAcrossURLSpelling() throws {
+        // `.custom` persists its path via `URL(string:)`, which can yield a
+        // `file://`-prefixed URL whose `.path` differs from the on-disk
+        // `URL(fileURLWithPath:)` spelling. Matching by lastPathComponent must
+        // still treat them as the same image and keep it.
+        let onDisk = try makeFile("alarm-theme-SAME.jpg")
+        let referenced = URL(string: "file://\(tempDir.path)/alarm-theme-SAME.jpg")!
+
+        AlarmThemeImageStore.reconcile(in: tempDir, referencedURLs: [referenced])
+
+        XCTAssertTrue(exists(onDisk),
+                      "A file referenced under a different URL spelling must not be deleted")
+    }
+
+    func testDeleteImageRemovesFileAndIsSilentWhenMissing() throws {
+        let url = try makeFile("alarm-theme-DELETE.jpg")
+        AlarmThemeImageStore.deleteImage(at: url)
+        XCTAssertFalse(exists(url), "deleteImage should remove the file")
+        // Second call on an already-gone file must not throw/crash.
+        AlarmThemeImageStore.deleteImage(at: url)
+    }
+}
