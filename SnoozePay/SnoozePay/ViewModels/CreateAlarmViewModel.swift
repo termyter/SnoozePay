@@ -194,9 +194,19 @@ final class CreateAlarmViewModel {
     /// `[base, ×2, ×4, ×8]`. Drives the `50 → 100 → 200 → 400 ₽` chain on
     /// the progressive card (#231). Non-finite penalty input degrades to the
     /// default 50 ₽ base, mirroring `makeAlarmFromCurrentState`.
+    ///
+    /// Doubling is computed on `Double` via `pow(2.0, …)` so the preview
+    /// matches the canonical charge engine `Alarm.penalty(forSnoozeCount:)`
+    /// exactly on fractional bases (e.g. 49.5 ₽ → 49.5/99/198/396, not the
+    /// truncate-then-shift 49/98/196/392 of the old `Int << $0`). The final
+    /// `Int` conversion is clamped to avoid trapping on an absurdly large
+    /// penalty — `PenaltyCell` enforces only a minimum, no upper bound (#373).
     var progressiveChain: [Int] {
-        let base = penaltyAmount.isFinite ? Int(max(penaltyAmount, 0)) : 50
-        return (0..<4).map { base << $0 }
+        let base = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
+        return (0..<4).map { step in
+            let value = (base * pow(2.0, Double(step))).rounded()
+            return value >= Double(Int.max) ? Int.max : Int(value)
+        }
     }
 
     /// Spoken/long form of `progressiveChain` — used as the chain row's
