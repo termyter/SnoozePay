@@ -114,6 +114,32 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(penalty, "▲ ПОСПАТЬ ЕЩЁ: −1\u{00A0}000\u{202F}₽")
     }
 
+    // MARK: - alarmMultiplierText(at:)
+
+    /// Progressive-scale alarms surface a «×2» pill in the list card so the
+    /// user sees the price escalates per snooze (#349 — the cell already
+    /// renders it via `AlarmCell.configure(multiplier:)`). Locks the value so
+    /// it can't silently regress to `nil`.
+    func testAlarmMultiplierText_progressiveAlarm_showsMultiplier() {
+        repo.save(Alarm(penaltyAmount: 100, progressiveScale: true))
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        XCTAssertEqual(vm.alarmMultiplierText(at: 0), "×2")
+    }
+
+    /// Flat-penalty alarms have no multiplier pill — the pill must stay hidden
+    /// so a non-progressive card doesn't imply escalation.
+    func testAlarmMultiplierText_nonProgressiveAlarm_isNil() {
+        repo.save(Alarm(penaltyAmount: 50, progressiveScale: false))
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        XCTAssertNil(vm.alarmMultiplierText(at: 0))
+    }
+
     // MARK: - Safe index handling
 
     func testAlarmTimeString_emptyAlarmsReturnsEmptyString() {
@@ -122,6 +148,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(vm.alarmTimeString(at: 0), "")
         XCTAssertEqual(vm.alarmDetail(at: 0), "")
         XCTAssertEqual(vm.alarmPenaltyString(at: 0), "")
+        XCTAssertNil(vm.alarmMultiplierText(at: 0))
     }
 
     func testFormattedBalance_containsRubleSign() {
