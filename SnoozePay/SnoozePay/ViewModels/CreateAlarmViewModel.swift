@@ -196,11 +196,15 @@ final class CreateAlarmViewModel {
     /// default 50 ₽ base, mirroring `makeAlarmFromCurrentState`.
     ///
     /// Doubling is computed on `Double` via `pow(2.0, …)` so the preview
-    /// matches the canonical charge engine `Alarm.penalty(forSnoozeCount:)`
-    /// exactly on fractional bases (e.g. 49.5 ₽ → 49.5/99/198/396, not the
-    /// truncate-then-shift 49/98/196/392 of the old `Int << $0`). The final
-    /// `Int` conversion is clamped to avoid trapping on an absurdly large
-    /// penalty — `PenaltyCell` enforces only a minimum, no upper bound (#373).
+    /// follows the same doubling progression as the canonical charge engine
+    /// `Alarm.penalty(forSnoozeCount:)` (which multiplies on `Double`), instead
+    /// of the old truncate-then-shift `Int(base) << $0` that diverged on
+    /// fractional bases (49.5 ₽ → 49/98/196/392 vs the engine's 49.5/99/198/396).
+    /// Each rung is then rounded to whole roubles for display, so a fractional
+    /// base shows e.g. `50/99/198/396` — the doubling matches the engine; only
+    /// the display is rounded. The final `Int` conversion is clamped to avoid
+    /// trapping on an absurdly large penalty — `PenaltyCell` enforces only a
+    /// minimum, no upper bound (#373).
     var progressiveChain: [Int] {
         let base = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
         return (0..<4).map { step in
