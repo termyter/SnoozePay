@@ -109,31 +109,44 @@ final class CreateAlarmViewController: UIViewController {
     // MARK: - Setup
 
     private func setupNavigationBar() {
-        // V2 nav bar — left X close chip, centered caps title, right `Готово`
-        // SPButton(.money, .sm). The UIKit navigation bar still owns layout
-        // (we keep `title` set on viewDidLoad for accessibility), but the
-        // left/right items are custom views so the brand styling sticks.
-        // Matches `SPScreensV2.jsx` lines 496-502.
-        let closeButton = UIButton(type: .system)
-        closeButton.setImage(
-            UIImage(systemName: "xmark")?.withConfiguration(
-                UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-            ),
-            for: .normal
-        )
-        closeButton.tintColor = AppColors.fg1
-        closeButton.backgroundColor = AppColors.whiteOverlay06
-        closeButton.layer.cornerRadius = 18
-        closeButton.layer.masksToBounds = true
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
-        closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-        closeButton.accessibilityLabel = "Закрыть"
-        navigationItem.leftBarButtonItem = UIBarButtonItem(customView: closeButton)
+        // V2 nav bar. Two modes differ by design (SPMore2.jsx `AlarmEdit`
+        // artboard 10 vs `SPScreensV2.jsx` lines 496-502):
+        //   • create — left X close chip, right `Готово` money button
+        //   • edit   — left `Отмена` quiet button, right `Сохранить` money button
+        // The UIKit navigation bar still owns layout (we keep `title` set on
+        // viewDidLoad for accessibility), but the left/right items are custom
+        // views so the brand styling sticks.
+        if viewModel.isEditing {
+            let cancelButton = SPButton(
+                title: "Отмена",
+                variant: .quiet,
+                size: .sm
+            )
+            cancelButton.accessibilityIdentifier = "createAlarm.cancelButton"
+            cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+            navigationItem.leftBarButtonItem = UIBarButtonItem(customView: cancelButton)
+        } else {
+            let closeButton = UIButton(type: .system)
+            closeButton.setImage(
+                UIImage(systemName: "xmark")?.withConfiguration(
+                    UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+                ),
+                for: .normal
+            )
+            closeButton.tintColor = AppColors.fg1
+            closeButton.backgroundColor = AppColors.whiteOverlay06
+            closeButton.layer.cornerRadius = 18
+            closeButton.layer.masksToBounds = true
+            closeButton.translatesAutoresizingMaskIntoConstraints = false
+            closeButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
+            closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+            closeButton.accessibilityLabel = "Закрыть"
+            navigationItem.leftBarButtonItem = UIBarButtonItem(customView: closeButton)
+        }
 
         let saveButton = SPButton(
-            title: "Готово",
+            title: viewModel.isEditing ? "Сохранить" : "Готово",
             variant: .money,
             size: .sm
         )
