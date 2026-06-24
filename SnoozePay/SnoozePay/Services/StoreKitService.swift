@@ -27,20 +27,20 @@ final class StoreKitService {
 
     // Product IDs — must match App Store Connect configuration
     static let productIDs = [
-        "com.snooze_pay.balance.49",
-        "com.snooze_pay.balance.149",
-        "com.snooze_pay.balance.299",
-        "com.snooze_pay.balance.499",
-        "com.snooze_pay.balance.999"
+        "io.mobilife.snoozepay.balance.49",
+        "io.mobilife.snoozepay.balance.149",
+        "io.mobilife.snoozepay.balance.299",
+        "io.mobilife.snoozepay.balance.499",
+        "io.mobilife.snoozepay.balance.999"
     ]
 
     // Corresponding RUB amounts to credit
     static let productAmounts: [String: Double] = [
-        "com.snooze_pay.balance.49": 49,
-        "com.snooze_pay.balance.149": 149,
-        "com.snooze_pay.balance.299": 299,
-        "com.snooze_pay.balance.499": 499,
-        "com.snooze_pay.balance.999": 999
+        "io.mobilife.snoozepay.balance.49": 49,
+        "io.mobilife.snoozepay.balance.149": 149,
+        "io.mobilife.snoozepay.balance.299": 299,
+        "io.mobilife.snoozepay.balance.499": 499,
+        "io.mobilife.snoozepay.balance.999": 999
     ]
 
     // MARK: - Notification names

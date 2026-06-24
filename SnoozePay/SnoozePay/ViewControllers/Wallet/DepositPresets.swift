@@ -28,7 +28,7 @@ enum DepositPresets {
         DepositPreset(
             amount: amount,
             label: snoozeCountLabel(forAmount: amount),
-            productID: "com.snooze_pay.balance.\(amount)",
+            productID: "io.mobilife.snoozepay.balance.\(amount)",
             popular: amount == 149
         )
     }
