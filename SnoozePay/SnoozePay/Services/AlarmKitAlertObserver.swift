@@ -38,7 +38,10 @@ protocol AlertingAlarmStream {
 @MainActor
 final class AlarmKitAlertObserver {
 
-    static let shared = AlarmKitAlertObserver()
+    static let shared = AlarmKitAlertObserver(
+        stream: AlarmKitAlertObserver.makeDefaultStream(),
+        onAlerting: { AlarmFiringPresenter.shared.requestPresentation(alarmID: $0) }
+    )
 
     private let stream: AlertingAlarmStream?
     /// Closure invoked with each newly-alerting alarm ID. Injectable so tests
@@ -54,18 +57,25 @@ final class AlarmKitAlertObserver {
 
     private var task: Task<Void, Never>?
 
+    // Explicit (no defaulted-argument) inits: `static let shared` is a
+    // main-actor-isolated initializer, so it supplies the production stream +
+    // presenter closure directly. A defaulted `= makeDefaultStream()` /
+    // `= { … present }` would force the helper to be `nonisolated` (and then
+    // calling the main-actor `AlarmManagerAlertingStream.init` from it warns —
+    // every type is `@MainActor` by default under SWIFT_DEFAULT_ACTOR_ISOLATION,
+    // #382).
     #if DEBUG
     init(
-        stream: AlertingAlarmStream? = AlarmKitAlertObserver.makeDefaultStream(),
-        onAlerting: @escaping @MainActor (UUID) -> Void = { AlarmFiringPresenter.shared.present(alarmID: $0) }
+        stream: AlertingAlarmStream?,
+        onAlerting: @escaping @MainActor (UUID) -> Void
     ) {
         self.stream = stream
         self.onAlerting = onAlerting
     }
     #else
     private init(
-        stream: AlertingAlarmStream? = AlarmKitAlertObserver.makeDefaultStream(),
-        onAlerting: @escaping @MainActor (UUID) -> Void = { AlarmFiringPresenter.shared.present(alarmID: $0) }
+        stream: AlertingAlarmStream?,
+        onAlerting: @escaping @MainActor (UUID) -> Void
     ) {
         self.stream = stream
         self.onAlerting = onAlerting
@@ -73,9 +83,8 @@ final class AlarmKitAlertObserver {
     #endif
 
     /// Build the production stream when AlarmKit is available on this OS, else
-    /// `nil` (iOS < 26 — there are no AlarmKit alarms to observe). `nonisolated`
-    /// so it can be evaluated as a default argument outside the main actor.
-    private nonisolated static func makeDefaultStream() -> AlertingAlarmStream? {
+    /// `nil` (iOS < 26 — there are no AlarmKit alarms to observe).
+    private static func makeDefaultStream() -> AlertingAlarmStream? {
         #if canImport(AlarmKit)
         if #available(iOS 26.0, *) {
             return AlarmManagerAlertingStream()
@@ -90,10 +99,12 @@ final class AlarmKitAlertObserver {
     func start() {
         guard task == nil, let stream else { return }
         AppLogger.scheduler.info("AlarmKit alert observer started")
+        // The Task inherits this main-actor context, so `handle` (main-actor,
+        // synchronous) is called without an actor hop — no `await` needed (#382).
         task = Task { [weak self] in
             for await alertingIDs in stream.alertingAlarmIDs() {
                 guard let self else { return }
-                await self.handle(alertingIDs: alertingIDs)
+                self.handle(alertingIDs: alertingIDs)
             }
         }
     }

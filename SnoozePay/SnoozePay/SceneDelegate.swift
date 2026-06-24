@@ -56,6 +56,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let nextRoot = makeNextRootViewController()
         UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve) {
             window.rootViewController = nextRoot
+        } completion: { _ in
+            // Cold launch by an AlarmKit alarm tap: the firing screen was
+            // deferred while only the splash existed (swapping the root would
+            // tear a screen presented over the splash back down). Now the real
+            // root is mounted, mount the deferred firing screen (#382).
+            AlarmFiringPresenter.shared.flushPendingPresentation()
         }
     }
 
@@ -205,6 +211,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         tabBar.layer.cornerRadius = AppRadius.xl
         tabBar.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         tabBar.layer.masksToBounds = true
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // Flush any AlarmKit firing screen deferred while the scene wasn't yet
+        // active (#382): tapping an AlarmKit alarm button runs the intent before
+        // the window exists, so `AlarmFiringPresenter` records the alarm as
+        // pending and mounts it here once a root view controller is attached.
+        AlarmFiringPresenter.shared.flushPendingPresentation()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
