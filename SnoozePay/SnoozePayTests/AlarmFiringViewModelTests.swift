@@ -80,6 +80,27 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         XCTAssertFalse(result, "Snooze should fail when balance is penalty - 1")
     }
 
+    /// #381: with a zero balance the paid snooze must take *no* money and *not*
+    /// snooze — the balance stays at 0 (never negative) and the snooze count is
+    /// untouched. The user is instead routed to the Apple Pay top-up (the VC's
+    /// no-balance state), and the actual snooze only runs after a successful
+    /// top-up flips `canSnooze` true. This is the in-app guard the AlarmKit
+    /// lock-screen Snooze button now relies on (it only opens the app; it never
+    /// charges), so a −50 ₽ button at 0 ₽ can't snooze for free or go negative.
+    func testSnooze_atZeroBalance_takesNoMoneyAndDoesNotSnooze() {
+        setBalance(0)
+        let alarm = makeAlarm(penalty: 50)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0)
+
+        let result = vm.snooze()
+
+        XCTAssertFalse(result, "A paid snooze at 0 ₽ must not proceed")
+        XCTAssertFalse(vm.canSnooze, "0 ₽ cannot afford a −50 ₽ snooze")
+        XCTAssertEqual(vm.snoozeCount, 0, "snoozeCount must not advance on a refused snooze")
+        XCTAssertEqual(BalanceService.shared.balance, 0, accuracy: 0.001,
+                       "Balance must stay at 0 — never deducted, never negative")
+    }
+
     // MARK: - Snooze count
 
     func testSnooze_incrementsSnoozeCount() {
