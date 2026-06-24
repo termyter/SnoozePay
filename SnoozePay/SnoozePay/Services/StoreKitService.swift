@@ -179,6 +179,17 @@ final class StoreKitService {
         do {
             let loaded = try await Product.products(for: Set(StoreKitService.productIDs))
             products = loaded.sorted { $0.price < $1.price }
+            // `Product.products(for:)` returns the *available* subset and does
+            // NOT throw when an ID is simply unavailable (e.g. the Paid Apps
+            // agreement isn't active, or the SKU hasn't propagated yet) — it
+            // just omits it. Log found/missing so a silent empty result is
+            // diagnosable instead of looking like the call never ran.
+            let missing = Set(StoreKitService.productIDs)
+                .subtracting(loaded.map(\.id))
+                .sorted()
+            AppLogger.storeKit.notice(
+                "loaded \(loaded.count)/\(StoreKitService.productIDs.count) products; missing: \(missing.joined(separator: ", "), privacy: .public)"
+            )
             postProductsLoaded(products)
         } catch {
             AppLogger.storeKit.error("product load failed: \(error.localizedDescription, privacy: .public)")
