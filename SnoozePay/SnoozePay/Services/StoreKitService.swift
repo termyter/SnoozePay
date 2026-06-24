@@ -126,6 +126,12 @@ final class StoreKitService {
         self.notificationPoster = UNUserNotificationCenter.current()
         self.defaults = .standard
         transactionListener = Self.makeTransactionListener()
+        // Fetch the StoreKit catalogue at startup. Without this the `products`
+        // array stays empty for the whole session and every top-up path falls
+        // back to the (DEBUG-only intended) local credit — the purchase sheet
+        // never reaches real StoreKit. `_ = StoreKitService.shared` in
+        // AppDelegate triggers this init, so the load kicks off at launch.
+        Task { await loadProducts() }
     }
 
     /// Test-only initializer. Injects the notification + storage seams and skips
