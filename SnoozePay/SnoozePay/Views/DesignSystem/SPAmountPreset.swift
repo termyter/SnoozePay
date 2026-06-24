@@ -51,6 +51,11 @@ final class SPAmountPreset: UIControl {
     private let popularBackground = UIView()
     private let popularGradient = CAGradientLayer()
     private let stack = UIStackView()
+    /// Tile outline drawn as a *sublayer* rather than `layer.borderWidth`: a
+    /// CALayer border renders above all sublayers, so the real border painted
+    /// a line straight across the «Популярно» badge that floats on the top
+    /// edge. As a sublayer (inserted below the badge) the badge covers it.
+    private let borderLayer = CALayer()
 
     // MARK: - Init
 
@@ -98,6 +103,8 @@ final class SPAmountPreset: UIControl {
     override func layoutSubviews() {
         super.layoutSubviews()
         layer.cornerRadius = AppRadius.md     // 16pt — matches sp-r-md
+        borderLayer.frame = bounds
+        borderLayer.cornerRadius = AppRadius.md
         // Outer ring is faked via shadow when selected — pre-rasterise the
         // path so it tracks the rounded corners cleanly.
         layer.shadowPath = UIBezierPath(
@@ -139,7 +146,10 @@ final class SPAmountPreset: UIControl {
         backgroundColor = AppColors.bg1
         layer.cornerRadius = AppRadius.md
         layer.masksToBounds = false
-        layer.borderWidth = 1.5
+        // Border as a bottom sublayer (not `layer.borderWidth`) so it draws
+        // *below* the badge — see `borderLayer`.
+        borderLayer.borderWidth = 1.5
+        layer.insertSublayer(borderLayer, at: 0)
 
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
         valueLabel.font = Self.valueFont
@@ -234,7 +244,7 @@ final class SPAmountPreset: UIControl {
                 // `rgba(46,219,159,…)`), a hair brighter than money500, so the
                 // selected fill/ring pop against the surface.
                 self.backgroundColor = AppColors.money400.withAlphaComponent(0.10)
-                self.layer.borderColor = AppColors.money400.cgColor
+                self.borderLayer.borderColor = AppColors.money400.cgColor
                 // Tight selection ring: 4pt radius / 0.10 opacity reads as a
                 // crisp brand outline rather than a diffuse glow that bled
                 // into adjacent presets at radius 8 / opacity 0.18.
@@ -245,7 +255,7 @@ final class SPAmountPreset: UIControl {
                 self.layer.masksToBounds = false
             } else {
                 self.backgroundColor = AppColors.bg1
-                self.layer.borderColor = AppColors.stroke1
+                self.borderLayer.borderColor = AppColors.stroke1
                     .resolvedColor(with: self.traitCollection).cgColor
                 self.layer.shadowOpacity = 0
             }
