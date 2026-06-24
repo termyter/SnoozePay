@@ -176,7 +176,10 @@ final class SPAmountPreset: UIControl {
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fgOnMoney
+                // White reads with even contrast across the whole money
+                // gradient — the dark `fgOnMoney` ink vanished on the gradient's
+                // darker (#0B7A56) end and made the badge look empty.
+                .foregroundColor: UIColor.white
             ]
         )
         popularBadge.textAlignment = .center
@@ -188,6 +191,9 @@ final class SPAmountPreset: UIControl {
         // the backing is pinned to the label's bounds.
         popularBackground.translatesAutoresizingMaskIntoConstraints = false
         popularBackground.isUserInteractionEnabled = false
+        // Solid opaque fill under the gradient — guarantees the badge never
+        // shows through even before the gradient layer lays out its frame.
+        popularBackground.backgroundColor = AppColors.money500
         popularGradient.colors = SPSupport.moneyGradientColors
         popularGradient.locations = SPSupport.moneyGradientLocations
         popularGradient.startPoint = SPSupport.gradientStart
