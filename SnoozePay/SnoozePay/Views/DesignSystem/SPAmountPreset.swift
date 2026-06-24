@@ -44,7 +44,11 @@ final class SPAmountPreset: UIControl {
     private let labelView = UILabel()
     private let popularBadge = InsetLabel(insets: UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10))
     /// Money-gradient backing for the «Популярно» badge (`.sp-preset__pop`
-    /// fills with `--sp-grad-money`). Inserted behind the badge label.
+    /// fills with `--sp-grad-money`). Lives in `popularBackground` *behind* the
+    /// label — a `UILabel` draws its text as the layer's own content, which
+    /// composites below any sublayer, so a gradient inserted into the label's
+    /// own layer painted over the text (badge showed an empty green pill).
+    private let popularBackground = UIView()
     private let popularGradient = CAGradientLayer()
     private let stack = UIStackView()
 
@@ -73,6 +77,7 @@ final class SPAmountPreset: UIControl {
         isSelected = selected
         applySelectionState(animated: false)
         popularBadge.isHidden = !popular
+        popularBackground.isHidden = !popular
         addTarget(self, action: #selector(handleTap), for: .touchUpInside)
         // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
         // closure-based observer when available; the legacy override below
@@ -99,8 +104,8 @@ final class SPAmountPreset: UIControl {
             roundedRect: bounds,
             cornerRadius: AppRadius.md
         ).cgPath
-        // Keep the «Популярно» gradient backing matched to the badge bounds.
-        popularGradient.frame = popularBadge.bounds
+        // Keep the «Популярно» gradient backing matched to its backing view.
+        popularGradient.frame = popularBackground.bounds
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
@@ -145,6 +150,13 @@ final class SPAmountPreset: UIControl {
         labelView.font = AppTypography.meta
         labelView.textColor = AppColors.fg3
         labelView.textAlignment = .center
+        // The "≈ N откладываний" hint is too wide for a 3-column tile on one
+        // line (it truncated to "≈ 1 откладыва…"). Wrap to two lines and let
+        // the font shrink a touch as a backstop so the full word is always
+        // visible regardless of count/plural form.
+        labelView.numberOfLines = 2
+        labelView.adjustsFontSizeToFitWidth = true
+        labelView.minimumScaleFactor = 0.8
 
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
@@ -168,17 +180,23 @@ final class SPAmountPreset: UIControl {
             ]
         )
         popularBadge.textAlignment = .center
-        // Inset the text via layoutMargins-style padding using contentInset on
-        // a label isn't supported, so pad with leading/trailing constraints on
-        // a hugging label below; the gradient backs the whole badge bounds.
+        popularBadge.backgroundColor = .clear
+
+        // Gradient backing view — sits strictly *behind* the label so the text
+        // composites on top (see `popularBackground` doc). The label keeps a
+        // clear background and hugs its text via `InsetLabel`'s 10pt insets;
+        // the backing is pinned to the label's bounds.
+        popularBackground.translatesAutoresizingMaskIntoConstraints = false
+        popularBackground.isUserInteractionEnabled = false
         popularGradient.colors = SPSupport.moneyGradientColors
         popularGradient.locations = SPSupport.moneyGradientLocations
         popularGradient.startPoint = SPSupport.gradientStart
         popularGradient.endPoint = SPSupport.gradientEnd
-        popularGradient.cornerRadius = 10
-        popularBadge.layer.insertSublayer(popularGradient, at: 0)
-        popularBadge.layer.cornerRadius = 10
-        popularBadge.layer.masksToBounds = true
+        popularGradient.cornerRadius = 11
+        popularBackground.layer.insertSublayer(popularGradient, at: 0)
+        popularBackground.layer.cornerRadius = 11
+        popularBackground.layer.masksToBounds = true
+        addSubview(popularBackground)
         addSubview(popularBadge)
 
         NSLayoutConstraint.activate([
@@ -191,7 +209,12 @@ final class SPAmountPreset: UIControl {
 
             popularBadge.centerXAnchor.constraint(equalTo: centerXAnchor),
             popularBadge.centerYAnchor.constraint(equalTo: topAnchor),
-            popularBadge.heightAnchor.constraint(equalToConstant: 22)
+            popularBadge.heightAnchor.constraint(equalToConstant: 22),
+
+            popularBackground.leadingAnchor.constraint(equalTo: popularBadge.leadingAnchor),
+            popularBackground.trailingAnchor.constraint(equalTo: popularBadge.trailingAnchor),
+            popularBackground.topAnchor.constraint(equalTo: popularBadge.topAnchor),
+            popularBackground.bottomAnchor.constraint(equalTo: popularBadge.bottomAnchor)
         ])
     }
 
