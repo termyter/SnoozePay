@@ -111,4 +111,100 @@ final class AlarmKitFiringRoutingTests: XCTestCase {
 
         XCTAssertEqual(presentedCount, 0)
     }
+
+    // MARK: - AlarmFiringPresenter pending-present (#382)
+
+    /// Builds a presenter with injectable readiness + mount seams so the
+    /// pending-present logic is exercised without a UIKit window.
+    private func makePresenter(
+        rootReady: @escaping () -> Bool,
+        mounted: @escaping (UUID) -> Bool
+    ) -> AlarmFiringPresenter {
+        let presenter = AlarmFiringPresenter(alarmRepository: .shared)
+        presenter.isRootReady = rootReady
+        presenter.mount = { alarmID, _ in mounted(alarmID) }
+        return presenter
+    }
+
+    /// When no window is ready yet, a request records the alarm as pending and
+    /// mounts nothing — the screen must survive until the scene becomes active.
+    func testPresenter_requestBeforeWindow_defersAndKeepsPending() {
+        var mountedIDs: [UUID] = []
+        let presenter = makePresenter(rootReady: { false }, mounted: { id in
+            mountedIDs.append(id); return true
+        })
+        let id = UUID()
+
+        presenter.requestPresentation(alarmID: id)
+
+        XCTAssertTrue(mountedIDs.isEmpty, "Must not mount before the root is ready")
+        XCTAssertEqual(presenter.pendingAlarmID, id,
+                       "The alarm must stay pending until the scene is active")
+    }
+
+    /// A flush once the root is ready mounts the deferred alarm and clears the
+    /// pending id — the cold-launch / scene-active recovery path.
+    func testPresenter_flushAfterWindowReady_mountsAndClearsPending() {
+        var rootReady = false
+        var mountedIDs: [UUID] = []
+        let presenter = makePresenter(rootReady: { rootReady }, mounted: { id in
+            mountedIDs.append(id); return true
+        })
+        let id = UUID()
+
+        presenter.requestPresentation(alarmID: id) // deferred (no root)
+        rootReady = true
+        presenter.flushPendingPresentation()        // scene became active
+
+        XCTAssertEqual(mountedIDs, [id], "Flush must mount the deferred alarm once")
+        XCTAssertNil(presenter.pendingAlarmID, "Pending must clear after a successful mount")
+    }
+
+    /// A flush that still finds no window keeps the alarm pending so a later
+    /// activation re-attempts — it must not silently drop the firing screen.
+    func testPresenter_flushWhileStillNotReady_keepsPending() {
+        var mountedIDs: [UUID] = []
+        let presenter = makePresenter(rootReady: { false }, mounted: { id in
+            mountedIDs.append(id); return true
+        })
+        let id = UUID()
+
+        presenter.requestPresentation(alarmID: id)
+        presenter.flushPendingPresentation() // still no root
+
+        XCTAssertTrue(mountedIDs.isEmpty)
+        XCTAssertEqual(presenter.pendingAlarmID, id)
+    }
+
+    /// A mount that reports "no window" (returns false) even though the root
+    /// gate passed keeps the alarm pending for the next flush — the window-race
+    /// belt-and-suspenders.
+    func testPresenter_mountReportsNoWindow_keepsPending() {
+        var attempts = 0
+        let presenter = makePresenter(rootReady: { true }, mounted: { _ in
+            attempts += 1; return false
+        })
+        let id = UUID()
+
+        presenter.requestPresentation(alarmID: id)
+
+        XCTAssertEqual(attempts, 1, "Should attempt the mount when the root is ready")
+        XCTAssertEqual(presenter.pendingAlarmID, id,
+                       "A failed mount must keep the alarm pending")
+    }
+
+    /// A warm request (window already ready) mounts immediately and never
+    /// records a pending id.
+    func testPresenter_requestWithWindowReady_mountsImmediately() {
+        var mountedIDs: [UUID] = []
+        let presenter = makePresenter(rootReady: { true }, mounted: { id in
+            mountedIDs.append(id); return true
+        })
+        let id = UUID()
+
+        presenter.requestPresentation(alarmID: id)
+
+        XCTAssertEqual(mountedIDs, [id])
+        XCTAssertNil(presenter.pendingAlarmID)
+    }
 }

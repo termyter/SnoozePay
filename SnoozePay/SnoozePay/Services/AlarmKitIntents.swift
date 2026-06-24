@@ -15,14 +15,32 @@ import AppIntents
 // runs the corresponding intent's `perform()` in our app process — even while
 // the device is locked.
 //
-// #379: both intents now set `openAppWhenRun`, so tapping either button
-// foregrounds the app and routes to our custom firing screen
+// #379: both intents set `openAppWhenRun`, so tapping either *button* on the
+// system alert foregrounds the app and routes to our custom firing screen
 // (`AlarmFiringViewController`) for that alarm via `AlarmKitActionRouter` —
 // rather than charging / dismissing silently from the lock-screen context.
 // The in-app firing screen owns the actual stop / paid-snooze flow, so the
 // charge / reschedule logic is NOT duplicated in the intents. Both carry the
 // alarm UUID as a plain string parameter so the system can persist + replay
 // them; the router resolves the alarm from `AlarmRepository` when presenting.
+//
+// #382: presenting our screen directly inside `perform()` lost a window race —
+// `openAppWhenRun` foregrounds the app, but `perform()` runs *before* the scene
+// is active (and on a cold launch the splash → tab-bar root mounts ~200 ms
+// later), so the present silently no-op'd and the user only ever saw the app
+// background. The router now hands the alarm id to
+// `AlarmFiringPresenter.requestPresentation`, which records it as *pending* and
+// flushes it from `SceneDelegate.sceneDidBecomeActive`. The presentation
+// therefore survives both the warm-foreground race and a cold start.
+//
+// What `openAppWhenRun` can / cannot do (verified against the public AlarmKit /
+// AppIntents surface, iOS 26): it reliably foregrounds the app when the user
+// taps a *button* (Stop / Snooze) whose `LiveActivityIntent` we own. The public
+// API does NOT expose a way to attach an intent to a tap on the *body* of the
+// system alert / Dynamic Island — that gesture is system-owned and is not
+// guaranteed to run our intent. So the supported "tap to open our screen" path
+// is the alert's buttons; tapping the body alone may not route. Both buttons
+// are wired, so any deliberate user action on the alarm opens the app.
 //
 // NOTE: iOS does not allow replacing the system alert at fire time on a locked
 // screen with our own UIView — that presentation stays system-owned. Our screen
@@ -115,9 +133,13 @@ final class AlarmKitActionRouter {
     static let shared = AlarmKitActionRouter()
 
     /// Seam so a test can observe which alarmID the router asked to present
-    /// without standing up the UIKit hierarchy. Defaults to the real presenter.
+    /// without standing up the UIKit hierarchy. Defaults to the real presenter's
+    /// *pending-present* entry point: the system runs the intent before the
+    /// scene is active (and may cold-launch the app), so presenting directly
+    /// here loses the window race and the screen never appears (#382).
+    /// `requestPresentation` records the id and retries on scene-active.
     var present: (UUID) -> Void = { alarmID in
-        AlarmFiringPresenter.shared.present(alarmID: alarmID)
+        AlarmFiringPresenter.shared.requestPresentation(alarmID: alarmID)
     }
 
     #if DEBUG
