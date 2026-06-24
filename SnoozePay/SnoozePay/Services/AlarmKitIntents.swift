@@ -4,7 +4,7 @@ import os
 import AppIntents
 #endif
 
-// MARK: - AlarmKit alert button intents (#377)
+// MARK: - AlarmKit alert button intents (#377, routing reworked in #379)
 //
 // AlarmKit (iOS 26+, Strategy A) does NOT use UNNotificationAction-style action
 // identifiers routed through the UNUserNotificationCenter delegate. Instead the
@@ -15,17 +15,18 @@ import AppIntents
 // runs the corresponding intent's `perform()` in our app process — even while
 // the device is locked.
 //
-// These two intents are the AlarmKit analogue of the
-// `DISMISS_ACTION` / `SNOOZE_ACTION` notification actions handled in
-// `AppDelegate.userNotificationCenter(_:didReceive:)`:
-//   * `StopAlarmIntent`   → stop ringing, record the wake day (no charge).
-//   * `SnoozeAlarmIntent`  → charge the (progressive) penalty, reschedule via
-//                            `AlarmFiringCoordinator`, re-arm the snooze alarm.
+// #379: both intents now set `openAppWhenRun`, so tapping either button
+// foregrounds the app and routes to our custom firing screen
+// (`AlarmFiringViewController`) for that alarm via `AlarmKitActionRouter` —
+// rather than charging / dismissing silently from the lock-screen context.
+// The in-app firing screen owns the actual stop / paid-snooze flow, so the
+// charge / reschedule logic is NOT duplicated in the intents. Both carry the
+// alarm UUID as a plain string parameter so the system can persist + replay
+// them; the router resolves the alarm from `AlarmRepository` when presenting.
 //
-// Both carry the alarm UUID as a plain string parameter so the system can
-// persist + replay them, and both resolve the alarm from `AlarmRepository`
-// rather than trusting any payload state — the repository is the single source
-// of truth for penalty / snooze settings (mirrors the notification path).
+// NOTE: iOS does not allow replacing the system alert at fire time on a locked
+// screen with our own UIView — that presentation stays system-owned. Our screen
+// only appears once the app is brought to the foreground (#379 scope).
 
 #if canImport(AppIntents)
 
@@ -33,6 +34,13 @@ import AppIntents
 struct StopAlarmIntent: LiveActivityIntent {
 
     static let title: LocalizedStringResource = "Выключить будильник"
+
+    /// Bring the app to the foreground when the system runs this intent so the
+    /// router can present our custom firing screen (#379). Without this the
+    /// intent silences the alarm but the user never sees our screen — the
+    /// issue's whole point is to route an alarm-open to the in-app flow rather
+    /// than only dismissing the system UI.
+    static let openAppWhenRun: Bool = true
 
     /// UUID string of the alarm whose AlarmKit alert this button belongs to.
     /// Stored as a string because `IntentParameter` does not support `UUID`
@@ -57,6 +65,10 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
 
     static let title: LocalizedStringResource = "Поспать ещё"
 
+    /// Open the app so the paid-snooze flow runs in our firing screen (#379)
+    /// rather than charging silently from the lock screen. See `StopAlarmIntent`.
+    static let openAppWhenRun: Bool = true
+
     @Parameter(title: "Alarm ID")
     var alarmID: String
 
@@ -75,28 +87,51 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
 #endif
 
 /// Shared, framework-free router for AlarmKit alert-button actions. Extracted
-/// from the intents so the business logic (charge + reschedule + wake-event)
-/// is unit-testable without standing up AppIntents / AlarmKit — the intents
-/// are thin shells whose only job is to forward to this type.
+/// from the intents so the routing decision is unit-testable without standing
+/// up AppIntents / AlarmKit — the intents are thin shells whose only job is to
+/// forward to this type.
 ///
 /// Always available (no `@available` gate) so the test target and the
 /// `< iOS 26` build can reference it; the intents that call it are the
 /// iOS-26-gated surface.
 ///
-/// `@MainActor`-isolated: every action it performs touches a UI-adjacent
-/// singleton (`AudioService`, `AlarmScheduler`, `WakeEventStore`,
-/// `AlarmFiringCoordinator`), and the AppIntent `perform()` that drives it is
-/// itself main-actor isolated — keeping the router on the main actor avoids
-/// cross-actor hops and the Swift-6 isolation diagnostics they raise.
+/// ## #379 — route an alarm-open into our custom firing screen
+///
+/// Both alert buttons set `openAppWhenRun`, so the system foregrounds the app
+/// before running `perform()`. Rather than charging / dismissing from the
+/// lock-screen context, the router silences the system alarm UI and then hands
+/// off to `AlarmFiringPresenter`, which mounts our `AlarmFiringViewController`
+/// for that alarm. The in-app firing screen owns the actual stop / paid-snooze
+/// flow (via `AlarmFiringViewModel` → `AlarmFiringCoordinator`), so the charge
+/// / refund logic is NOT duplicated here — the lock-screen button can't tell
+/// us the live snoozeCount or run an Apple-Pay top-up anyway.
+///
+/// `@MainActor`-isolated: it silences `AudioService`, stops the system alarm
+/// via `AlarmScheduler`, and presents a VC through `AlarmFiringPresenter` —
+/// all main-actor surfaces, matching the main-actor `perform()` that drives it.
 @MainActor
 final class AlarmKitActionRouter {
 
     static let shared = AlarmKitActionRouter()
 
-    private init() {}
+    /// Seam so a test can observe which alarmID the router asked to present
+    /// without standing up the UIKit hierarchy. Defaults to the real presenter.
+    var present: (UUID) -> Void = { alarmID in
+        AlarmFiringPresenter.shared.present(alarmID: alarmID)
+    }
 
-    /// Stop the ringing alarm: silence audio + record the wake day. No charge —
-    /// mirrors the `DISMISS_ACTION` branch in `AppDelegate.didReceive`.
+    #if DEBUG
+    init() {}
+    #else
+    private init() {}
+    #endif
+
+    /// Stop button on the system alert. Silence audio, dismiss the system alarm
+    /// UI, then open our firing screen so the user confirms the wake in-app
+    /// (the in-app dismiss records the wake day, mirroring the notification
+    /// `DISMISS_ACTION` semantics). The screen is the single owner of the wake
+    /// event so a Stop that the user then changes their mind on (snoozes
+    /// in-app) isn't double-counted.
     func handleStop(alarmIDString: String) {
         guard let alarmID = UUID(uuidString: alarmIDString) else {
             AppLogger.scheduler.error(
@@ -106,14 +141,17 @@ final class AlarmKitActionRouter {
         }
         AppLogger.scheduler.notice("AlarmKit stop alarm=\(alarmID, privacy: .private)")
         AudioService.shared.stopAlarmSound()
-        WakeEventStore.shared.recordWake()
         // Stop the AlarmKit alert itself so the system stops the alarm UI.
         AlarmScheduler.shared.stopSystemAlarm(alarmID)
+        present(alarmID)
     }
 
-    /// Snooze the ringing alarm: charge the penalty + reschedule. Routed
-    /// through the same `AlarmFiringCoordinator` the notification path uses so
-    /// the paid-snooze / refund-on-failure semantics stay identical (#377).
+    /// Snooze button on the system alert. Silence the system alarm UI, then
+    /// open our firing screen so the *paid* snooze (−X ₽, progressive penalty,
+    /// Apple-Pay top-up on insufficient balance) runs through the in-app flow
+    /// — the same path the notification banner takes. The charge therefore
+    /// happens exactly once, in the screen, never from the lock-screen button
+    /// (which can't surface a balance error or a top-up sheet).
     func handleSnooze(alarmIDString: String) async {
         guard let alarmID = UUID(uuidString: alarmIDString) else {
             AppLogger.scheduler.error(
@@ -124,28 +162,6 @@ final class AlarmKitActionRouter {
         AppLogger.scheduler.notice("AlarmKit snooze alarm=\(alarmID, privacy: .private)")
         AudioService.shared.stopAlarmSound()
         AlarmScheduler.shared.stopSystemAlarm(alarmID)
-
-        // Reuse the notification-path payload contract so the coordinator's
-        // charge / progressive-penalty / refund logic is shared verbatim. The
-        // coordinator re-reads the alarm from the repository, so a minimal
-        // payload (id + current snoozeCount) is enough — but we still need the
-        // alarm's penalty settings to build a complete payload, so resolve it.
-        guard let alarm = AlarmRepository.shared.fetch(id: alarmID) else {
-            AppLogger.scheduler.notice(
-                "AlarmKit snooze: alarm \(alarmID, privacy: .private) not found — skipping"
-            )
-            return
-        }
-        // AlarmKit owns its own snooze counter via repeated alerts; we start at
-        // the alarm's base penalty (snoozeCount 0 → coordinator increments to 1).
-        let payload = AlarmNotificationPayload(alarm: alarm, snoozeCount: 0)
-        await withCheckedContinuation { continuation in
-            AlarmFiringCoordinator.shared.handleSnooze(userInfo: payload.asUserInfo()) { outcome in
-                AppLogger.scheduler.info(
-                    "AlarmKit snooze outcome=\(String(describing: outcome), privacy: .public)"
-                )
-                continuation.resume()
-            }
-        }
+        present(alarmID)
     }
 }
