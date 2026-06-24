@@ -117,6 +117,15 @@ final class AlarmFiringViewModel {
 
     var alarmName: String { alarm.name }
 
+    /// `true` when this firing runs on the AlarmKit (Strategy A) backend — iOS
+    /// 26+ with AlarmKit authorized (#383). On that path the SYSTEM owns the
+    /// alarm sound (the in-app screen must not start its own `AudioService`) and
+    /// a snooze re-fires as a real system alarm, so the firing screen DISMISSES
+    /// after a snooze rather than running the in-place notification-snooze
+    /// countdown (which is a Strategy-B-only affordance). Below iOS 26 this is
+    /// `false` and the existing notification behaviour is unchanged.
+    var usesAlarmKit: Bool { scheduler.usesAlarmKit }
+
     /// Amount charged by the MOST RECENT snooze — the rung the user just paid
     /// for. `snooze()` bumps `snoozeCount` before this reads, so it equals
     /// `penalty(forSnoozeCount: snoozeCount)`. Drives the fly-up «−N ₽» in the

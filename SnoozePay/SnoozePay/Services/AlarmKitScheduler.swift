@@ -44,6 +44,14 @@ protocol AlarmKitScheduling: AnyObject {
     /// disabled alarm is the caller's responsibility.
     func schedule(_ alarm: Alarm) throws
 
+    /// Reschedule `alarm` as a one-shot AlarmKit system alarm that re-fires at
+    /// `fireDate` (the snooze re-ring), `.never` recurrence. Reuses the alarm's
+    /// id so the snooze replaces the just-stopped firing (#383). Throws when
+    /// AlarmKit rejects the request. Kept distinct from `schedule(_:)` because a
+    /// snooze fires at an arbitrary wall-clock time (now + snoozeMinutes), not at
+    /// the alarm's configured time-of-day.
+    func scheduleSnooze(_ alarm: Alarm, fireDate: Date) throws
+
     /// Cancel the system alarm for `alarmID` (pending — not yet alerting).
     func cancel(_ alarmID: UUID)
 
@@ -129,6 +137,27 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         }
     }
 
+    func scheduleSnooze(_ alarm: Alarm, fireDate: Date) throws {
+        let configuration = try Self.makeSnoozeConfiguration(for: alarm, fireDate: fireDate)
+        // Reuse the alarm's id so the snooze replaces the just-stopped firing —
+        // a fresh id would leave the original armed for its next recurrence AND
+        // arm a snooze, double-ringing. Fire-and-log mirrors `schedule(_:)` so
+        // the synchronous contract holds.
+        Task {
+            do {
+                _ = try await manager.schedule(id: alarm.id, configuration: configuration)
+                AppLogger.scheduler.info(
+                    "AlarmKit snooze scheduled alarm=\(alarm.id, privacy: .private)"
+                )
+            } catch {
+                let desc = error.localizedDescription
+                AppLogger.scheduler.error(
+                    "AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
+                )
+            }
+        }
+    }
+
     func cancel(_ alarmID: UUID) {
         do {
             try manager.cancel(id: alarmID)
@@ -176,6 +205,42 @@ final class AlarmKitScheduler: AlarmKitScheduling {
             secondaryIntent: SnoozeAlarmIntent(alarmID: alarm.id),
             sound: alarmSound(for: alarm)
         )
+    }
+
+    /// Build the AlarmKit configuration for a snooze re-fire: same presentation /
+    /// intents / sound as the original alarm, but a one-shot schedule pinned to
+    /// `fireDate`'s hour/minute (`.never` recurrence) so it rings once at
+    /// now + snoozeMinutes instead of the alarm's configured time-of-day (#383).
+    static func makeSnoozeConfiguration(
+        for alarm: Alarm,
+        fireDate: Date
+    ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
+        let schedule = makeSnoozeSchedule(fireDate: fireDate)
+        let presentation = makePresentation(for: alarm)
+        let attributes = AlarmAttributes<SnoozePayAlarmMetadata>(
+            presentation: presentation,
+            metadata: SnoozePayAlarmMetadata(),
+            tintColor: Color.orange
+        )
+        return AlarmManager.AlarmConfiguration.alarm(
+            schedule: schedule,
+            attributes: attributes,
+            stopIntent: StopAlarmIntent(alarmID: alarm.id),
+            secondaryIntent: SnoozeAlarmIntent(alarmID: alarm.id),
+            sound: alarmSound(for: alarm)
+        )
+    }
+
+    /// One-shot relative schedule pinned to `fireDate`'s hour/minute. AlarmKit's
+    /// relative schedule fires at the next occurrence of that time-of-day; for a
+    /// snooze (always < 1h ahead) that next occurrence is the snooze re-ring.
+    nonisolated static func makeSnoozeSchedule(fireDate: Date) -> AlarmKit.Alarm.Schedule {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
+        let time = AlarmKit.Alarm.Schedule.Relative.Time(
+            hour: components.hour ?? 0,
+            minute: components.minute ?? 0
+        )
+        return .relative(.init(time: time, repeats: .never))
     }
 
     /// Map the app's hour/minute + Monday-first repeat-day indices to an

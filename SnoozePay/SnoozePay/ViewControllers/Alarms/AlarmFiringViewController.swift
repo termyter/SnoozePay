@@ -316,15 +316,22 @@ class AlarmFiringViewController: UIViewController {
         startClockTicker()
         startGlowBreathing()
 
-        // Pass `alarmID` so a stacking-replace race does not silence the next
-        // alarm when this VC's `viewDidDisappear` fires. Volume + fade-in
-        // honour the per-alarm settings.
-        AudioService.shared.startAlarmSound(
-            soundID: viewModel.alarm.soundID,
-            alarmID: viewModel.alarm.id,
-            volume: viewModel.alarm.volume,
-            fadeIn: viewModel.alarm.volumeFadeIn
-        )
+        // On the AlarmKit (Strategy A) path the SYSTEM owns the alarm sound (a
+        // real system alarm that pierces silent mode); the lock-screen button
+        // that opened this screen already silenced it. Starting our own
+        // `AudioService` here would double up the sound (#383). On the
+        // notification (Strategy B) path the in-app screen IS the sound source,
+        // so it starts audio as before. Pass `alarmID` so a stacking-replace race
+        // does not silence the next alarm when this VC's `viewDidDisappear` fires.
+        // Volume + fade-in honour the per-alarm settings.
+        if !viewModel.usesAlarmKit {
+            AudioService.shared.startAlarmSound(
+                soundID: viewModel.alarm.soundID,
+                alarmID: viewModel.alarm.id,
+                volume: viewModel.alarm.volume,
+                fadeIn: viewModel.alarm.volumeFadeIn
+            )
+        }
 
         // Initial transition may have happened synchronously inside
         // `startAlarmSound` before our observer is wired — sync now.

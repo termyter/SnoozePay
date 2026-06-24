@@ -130,12 +130,16 @@ final class AlarmScheduler: AlarmScheduling {
     /// iOS-26-vs-fallback branching can be exercised on any host OS.
     private let alarmKitScheduler: AlarmKitScheduling?
 
-    /// Whether the AlarmKit (Strategy A) path should be used for this call.
+    /// Whether the AlarmKit (Strategy A) path is active for this app/device.
     /// True only when running on iOS 26+, a backend is wired, AND the user has
     /// authorized AlarmKit. Otherwise we fall through to the notification
     /// fallback so a denied / undetermined AlarmKit grant never leaves the user
-    /// without any alarm.
-    private var usesAlarmKit: Bool {
+    /// without any alarm. `internal` (#383) so the firing screen can mirror the
+    /// scheduler's backend choice — on the AlarmKit path the system owns the
+    /// alarm sound and the snooze re-fires as a system alarm, so the in-app
+    /// screen must NOT start its own `AudioService` and must dismiss (rather than
+    /// run the in-place notification snooze countdown) after a snooze.
+    var usesAlarmKit: Bool {
         guard #available(iOS 26.0, *), let alarmKitScheduler else { return false }
         return alarmKitScheduler.isAuthorized
     }
@@ -361,6 +365,38 @@ final class AlarmScheduler: AlarmScheduling {
         snoozeCount: Int,
         completion: ((Result<Void, SchedulingError>) -> Void)? = nil
     ) {
+        // Strategy A (#383): on iOS 26+ with AlarmKit authorized, the snooze must
+        // re-fire as a real system alarm — not a notification — to match the
+        // original firing and keep piercing silent mode / Focus. Stop the
+        // currently-alerting system alarm first (the in-app firing screen also
+        // silences its audio), then reschedule the same id as a one-shot relative
+        // alarm at now + snoozeMinutes. A synchronous reschedule failure (config
+        // build) falls through to the notification path so the user is never left
+        // without a re-ring. Below iOS 26 (Strategy B) the notification burst
+        // below is unchanged.
+        if #available(iOS 26.0, *), usesAlarmKit, let alarmKitScheduler {
+            let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
+            do {
+                alarmKitScheduler.stop(alarm.id)
+                try alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate)
+                AppLogger.scheduler.info(
+                    "scheduled snooze via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
+                )
+                completion?(.success(()))
+                return
+            } catch {
+                let desc = error.localizedDescription
+                let alarmID = alarm.id
+                AppLogger.scheduler.error(
+                    """
+                    AlarmKit snooze schedule failed alarm=\(alarmID, privacy: .private): \
+                    \(desc, privacy: .public) — fallback
+                    """
+                )
+                // fall through to the notification path below
+            }
+        }
+
         let content = makeContent(for: alarm, snoozeCount: snoozeCount)
 
         let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
