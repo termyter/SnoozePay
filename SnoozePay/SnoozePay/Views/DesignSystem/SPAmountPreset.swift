@@ -198,7 +198,10 @@ final class SPAmountPreset: UIControl {
         popularGradient.locations = SPSupport.moneyGradientLocations
         popularGradient.startPoint = SPSupport.gradientStart
         popularGradient.endPoint = SPSupport.gradientEnd
-        popularGradient.cornerRadius = 11
+        // No corner radius on the gradient itself — the backing view's
+        // `masksToBounds` does all the rounding. Two independently-rounded
+        // layers misaligned by a sub-pixel, exposing a hairline of the solid
+        // fill at the corners (read as a faint border around the badge).
         popularBackground.layer.insertSublayer(popularGradient, at: 0)
         popularBackground.layer.cornerRadius = 11
         popularBackground.layer.masksToBounds = true
