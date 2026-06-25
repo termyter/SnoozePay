@@ -185,7 +185,7 @@ class AlarmFiringViewController: UIViewController {
     var noBalanceSnoozeCard: SPSnoozePrice?
 
     /// Apple Pay 500 ₽ primary CTA. Single-tap purchase via StoreKitService
-    /// (SKU `com.snooze_pay.balance.499`); falls back to direct
+    /// (SKU `io.mobilife.snoozepay.balance.499`); falls back to direct
     /// `BalanceService.topUp` when the StoreKit product list hasn't loaded
     /// yet (test / debug paths) so the wallet still credits end-to-end.
     var applePayNoBalanceButton: SPButton?

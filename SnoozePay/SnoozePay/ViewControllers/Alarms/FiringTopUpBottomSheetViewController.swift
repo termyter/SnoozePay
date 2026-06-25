@@ -66,15 +66,15 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// (#297). Labels / hints follow `SPTopUp.jsx:106-108`.
     static let defaultPresets: [Preset] = [
         Preset(
-            productID: "com.snooze_pay.balance.149",
+            productID: "io.mobilife.snoozepay.balance.149",
             label: "+1 откладывание", hint: "ровно на сейчас", popular: false
         ),
         Preset(
-            productID: "com.snooze_pay.balance.499",
+            productID: "io.mobilife.snoozepay.balance.499",
             label: "+несколько", hint: "на пару дней", popular: true
         ),
         Preset(
-            productID: "com.snooze_pay.balance.999",
+            productID: "io.mobilife.snoozepay.balance.999",
             label: "+неделя", hint: "забыть про баланс", popular: false
         )
     ].compactMap { $0 }

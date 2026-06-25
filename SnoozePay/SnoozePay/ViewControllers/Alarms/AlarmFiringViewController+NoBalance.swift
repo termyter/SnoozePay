@@ -24,7 +24,7 @@ extension AlarmFiringViewController {
 
     /// SKU resolved by the no-balance Apple Pay tap. Targets the 499 ₽ tier;
     /// the 500 ₽ SKU doesn't exist in App Store Connect (lineup is PM's #240).
-    static var noBalanceProductID: String { "com.snooze_pay.balance.499" }
+    static var noBalanceProductID: String { "io.mobilife.snoozepay.balance.499" }
 
     /// Display amount (₽) for the no-balance Apple Pay button title. Derived
     /// from the catalogue amount of `noBalanceProductID` so the rendered number

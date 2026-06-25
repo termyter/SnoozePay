@@ -66,7 +66,7 @@ final class TopUpDisplayAmountTests: XCTestCase {
     /// this is what prevents a rounded literal from ever being displayed again.
     func testPresetInit_rejectsUnknownSKU() {
         let preset = FiringTopUpBottomSheetViewController.Preset(
-            productID: "com.snooze_pay.balance.does_not_exist",
+            productID: "io.mobilife.snoozepay.balance.does_not_exist",
             label: "fake",
             hint: "fake",
             popular: false
@@ -80,8 +80,8 @@ final class TopUpDisplayAmountTests: XCTestCase {
         let presets = FiringTopUpBottomSheetViewController.defaultPresets
         let popular = presets.first(where: { $0.popular })
         XCTAssertNotNil(popular)
-        XCTAssertEqual(popular?.productID, "com.snooze_pay.balance.499")
-        XCTAssertEqual(popular?.amount, StoreKitService.catalogAmount(for: "com.snooze_pay.balance.499"))
+        XCTAssertEqual(popular?.productID, "io.mobilife.snoozepay.balance.499")
+        XCTAssertEqual(popular?.amount, StoreKitService.catalogAmount(for: "io.mobilife.snoozepay.balance.499"))
     }
 
     // MARK: - No-balance CTA
@@ -115,7 +115,7 @@ final class TopUpDisplayAmountTests: XCTestCase {
         for (productID, amount) in StoreKitService.productAmounts {
             XCTAssertEqual(StoreKitService.catalogAmount(for: productID), Int(amount))
         }
-        XCTAssertNil(StoreKitService.catalogAmount(for: "com.snooze_pay.balance.unknown"))
+        XCTAssertNil(StoreKitService.catalogAmount(for: "io.mobilife.snoozepay.balance.unknown"))
     }
 
     /// With no products loaded (test environment), `displayAmount(for:)` falls

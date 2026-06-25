@@ -292,7 +292,7 @@ final class StoreKitServiceTests: XCTestCase {
 
     func testCreditAmount_knownProduct_returnsCatalogueAmount() {
         XCTAssertEqual(
-            StoreKitService.creditAmount(for: "com.snooze_pay.balance.299", fallbackPrice: 999),
+            StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.299", fallbackPrice: 999),
             299,
             "known SKU must credit the catalogue amount, ignoring any fallback price"
         )
@@ -303,14 +303,14 @@ final class StoreKitServiceTests: XCTestCase {
         // The caller's `amount > 0` gate then refuses to finish. (Logging side
         // effect is asserted indirectly: the path is exercised.)
         XCTAssertEqual(
-            StoreKitService.creditAmount(for: "com.snooze_pay.balance.unknown", fallbackPrice: nil),
+            StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.unknown", fallbackPrice: nil),
             0
         )
     }
 
     func testCreditAmount_unknownProductWithFallback_usesFallback() {
         XCTAssertEqual(
-            StoreKitService.creditAmount(for: "com.snooze_pay.balance.unknown", fallbackPrice: 199),
+            StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.unknown", fallbackPrice: 199),
             199,
             "an unmapped SKU with a resolved StoreKit price still credits that price"
         )

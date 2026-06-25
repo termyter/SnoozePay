@@ -17,7 +17,7 @@ final class DepositPresetsTests: XCTestCase {
                 StoreKitService.productIDs.contains(preset.productID),
                 "Preset \(preset.amount) ₽ points at unknown SKU \(preset.productID)"
             )
-            XCTAssertEqual(preset.productID, "com.snooze_pay.balance.\(preset.amount)")
+            XCTAssertEqual(preset.productID, "io.mobilife.snoozepay.balance.\(preset.amount)")
         }
     }
 
@@ -32,7 +32,7 @@ final class DepositPresetsTests: XCTestCase {
     }
 
     func testPresetForAmount_returnsMatchingPreset() {
-        XCTAssertEqual(DepositPresets.preset(forAmount: 499)?.productID, "com.snooze_pay.balance.499")
+        XCTAssertEqual(DepositPresets.preset(forAmount: 499)?.productID, "io.mobilife.snoozepay.balance.499")
         XCTAssertNil(DepositPresets.preset(forAmount: 500))
     }
 
