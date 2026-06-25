@@ -121,12 +121,11 @@ private final class SnoozeStubBalance: AlarmFiringBalancing {
 
     func canAfford(_ amount: Double) -> Bool { balance >= amount }
 
-    @discardableResult
-    func charge(amount: Double, alarmID: UUID?) -> Bool {
+    func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
         chargeCalls.append(amount)
-        guard balance >= amount else { return false }
+        guard balance >= amount else { return nil }
         balance -= amount
-        return true
+        return Transaction(type: .charge, amount: amount, alarmID: alarmID?.uuidString)
     }
 
     @discardableResult
