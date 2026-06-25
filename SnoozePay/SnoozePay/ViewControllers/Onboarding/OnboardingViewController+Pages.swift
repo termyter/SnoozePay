@@ -14,6 +14,29 @@ import UIKit
 
 extension OnboardingViewController {
 
+    // MARK: - Adaptive tokens (compact height — iPhone SE, #244)
+
+    /// Hero clock font — drops 96 → 64pt on SE so step 1 clears the title.
+    var pageClockFont: UIFont {
+        isCompactHeight ? AppTypography.clockLg : AppTypography.clockXl
+    }
+
+    /// Page-title font — drops h1 (32) → h2 (24) on SE.
+    var pageTitleFont: UIFont {
+        isCompactHeight ? AppTypography.h2 : AppTypography.h1
+    }
+
+    /// Body copy under the step-1 hero — bodyLg (17) → body (15) on SE.
+    var pageBodyFont: UIFont {
+        isCompactHeight ? AppTypography.body : AppTypography.bodyLg
+    }
+
+    /// Vertical gap below the title block — tightened on SE so the denser
+    /// stack still reads as grouped without overflowing.
+    var pageTitleGap: CGFloat {
+        isCompactHeight ? AppSpacing.sp4 : AppSpacing.sp7
+    }
+
     // MARK: - Page stack
 
     func buildPageStack() {
@@ -45,8 +68,12 @@ extension OnboardingViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
         stack.alignment = .center
-        stack.setCustomSpacing(AppSpacing.sp5, after: clockLabel)
-        stack.setCustomSpacing(AppSpacing.sp7 + 4, after: pill)
+        // Tighten the hero spacing on SE (#244) so the dense clock/pill/title
+        // trio doesn't push the body off-canvas.
+        let afterClock = isCompactHeight ? AppSpacing.sp3 : AppSpacing.sp5
+        let afterPill = isCompactHeight ? AppSpacing.sp5 : AppSpacing.sp7 + 4
+        stack.setCustomSpacing(afterClock, after: clockLabel)
+        stack.setCustomSpacing(afterPill, after: pill)
         stack.setCustomSpacing(AppSpacing.sp3 + 2, after: titleLabel)
         container.addSubview(stack)
 
@@ -104,7 +131,7 @@ extension OnboardingViewController {
     private func makePage1Clock() -> UILabel {
         let label = UILabel()
         label.text = "07:00"
-        label.font = AppTypography.clockXl
+        label.font = pageClockFont
         label.textColor = .white
         label.textAlignment = .center
         label.adjustsFontForContentSizeCategory = false
@@ -126,7 +153,7 @@ extension OnboardingViewController {
         label.attributedText = NSAttributedString(
             string: "Будильник\nсо ставкой",
             attributes: [
-                .font: AppTypography.h1,
+                .font: pageTitleFont,
                 .kern: -0.32,
                 .foregroundColor: UIColor.white
             ]
@@ -139,7 +166,7 @@ extension OnboardingViewController {
     private func makePage1Body() -> UILabel {
         let label = UILabel()
         label.text = "Каждое откладывание стоит денег. Деньги не вернутся. Зато вы встанете."
-        label.font = AppTypography.bodyLg
+        label.font = pageBodyFont
         label.textColor = AppColors.fg2
         label.textAlignment = .center
         label.numberOfLines = 0
@@ -165,7 +192,7 @@ extension OnboardingViewController {
         titleLabel.attributedText = NSAttributedString(
             string: "Положи баланс.\nОткладывай — теряй.",
             attributes: [
-                .font: AppTypography.h1,
+                .font: pageTitleFont,
                 .kern: -0.32,
                 .foregroundColor: UIColor.white
             ]
@@ -180,7 +207,8 @@ extension OnboardingViewController {
 
         let rowsStack = UIStackView(arrangedSubviews: rows)
         rowsStack.axis = .vertical
-        rowsStack.spacing = AppSpacing.sp3 + 2     // 14pt — matches JSX `gap: 14`
+        // 14pt canonical → 10pt on SE so the three steps stack tighter (#244).
+        rowsStack.spacing = isCompactHeight ? AppSpacing.sp2 + 2 : AppSpacing.sp3 + 2
         rowsStack.alignment = .fill
 
         let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, rowsStack])
@@ -188,7 +216,7 @@ extension OnboardingViewController {
         mainStack.axis = .vertical
         mainStack.alignment = .fill
         mainStack.setCustomSpacing(AppSpacing.sp2, after: caps)
-        mainStack.setCustomSpacing(AppSpacing.sp7, after: titleLabel)
+        mainStack.setCustomSpacing(pageTitleGap, after: titleLabel)
 
         container.addSubview(mainStack)
         NSLayoutConstraint.activate([
@@ -218,7 +246,7 @@ extension OnboardingViewController {
         titleLabel.attributedText = NSAttributedString(
             string: "Сколько ставите\nна свою дисциплину?",
             attributes: [
-                .font: AppTypography.h1,
+                .font: pageTitleFont,
                 .kern: -0.32,
                 .foregroundColor: UIColor.white
             ]
@@ -227,11 +255,12 @@ extension OnboardingViewController {
 
         let optionsStack = UIStackView()
         optionsStack.axis = .vertical
-        optionsStack.spacing = AppSpacing.sp2
+        // 8pt canonical → 6pt on SE so the three deposit cards fit (#244).
+        optionsStack.spacing = isCompactHeight ? AppSpacing.sp1 + 2 : AppSpacing.sp2
         optionsStack.alignment = .fill
 
         for (index, option) in depositOptions.enumerated() {
-            let optionView = OnboardingDepositOptionView(option: option)
+            let optionView = OnboardingDepositOptionView(option: option, isCompact: isCompactHeight)
             optionView.isSelectedOption = index == defaultDepositIndex
             optionView.onTap = { [weak self] in self?.handleDepositOptionTap(at: index) }
             depositOptionViews.append(optionView)
@@ -246,7 +275,7 @@ extension OnboardingViewController {
         mainStack.axis = .vertical
         mainStack.alignment = .fill
         mainStack.setCustomSpacing(AppSpacing.sp2, after: caps)
-        mainStack.setCustomSpacing(AppSpacing.sp6, after: titleLabel)
+        mainStack.setCustomSpacing(isCompactHeight ? AppSpacing.sp4 : AppSpacing.sp6, after: titleLabel)
 
         container.addSubview(mainStack)
         NSLayoutConstraint.activate([
