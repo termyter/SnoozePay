@@ -240,6 +240,11 @@ final class CreateAlarmViewController: UIViewController {
     }
 
     @objc private func saveTapped() {
+        // Commit any focused field first: the penalty `.numberPad` commits its
+        // value on `editingDidEnd` (#410), and tapping the nav-bar Save button
+        // does not blur the field on its own — without this, a value typed and
+        // saved without dismissing the keyboard would be silently dropped.
+        view.endEditing(true)
         // Cells push state into the view-model live via callbacks, so save just
         // forwards the current snapshot to the repository.
         // The async overload waits on `AlarmScheduler.schedule` to resolve so
