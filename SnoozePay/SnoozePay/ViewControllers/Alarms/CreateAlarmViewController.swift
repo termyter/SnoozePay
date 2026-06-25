@@ -174,6 +174,10 @@ final class CreateAlarmViewController: UIViewController {
         view.addSubview(tableView)
         tableView.delegate = self
         tableView.dataSource = self
+        // The penalty field uses a `.numberPad` keyboard (no return key), so a
+        // drag over the form dismisses it — otherwise it would cover the cards
+        // below with no way out but Save/Cancel (#410).
+        tableView.keyboardDismissMode = .interactive
         registerSectionCells(in: tableView)
 
         // Pin to safe area on top so the first section's "ПОВТОР" header is
@@ -236,6 +240,11 @@ final class CreateAlarmViewController: UIViewController {
     }
 
     @objc private func saveTapped() {
+        // Commit any focused field first: the penalty `.numberPad` commits its
+        // value on `editingDidEnd` (#410), and tapping the nav-bar Save button
+        // does not blur the field on its own — without this, a value typed and
+        // saved without dismissing the keyboard would be silently dropped.
+        view.endEditing(true)
         // Cells push state into the view-model live via callbacks, so save just
         // forwards the current snapshot to the repository.
         // The async overload waits on `AlarmScheduler.schedule` to resolve so
