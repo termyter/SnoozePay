@@ -177,6 +177,81 @@ final class AlarmKitSchedulerTests: XCTestCase {
                        "Without AlarmKit the notification snooze fallback must still register")
     }
 
+    /// #394 Finding 1: when the AlarmKit system snooze fails to schedule
+    /// asynchronously (alarm limit, revoked auth, backend reject), the caller
+    /// MUST arm the notification-burst fallback so a re-ring still exists — the
+    /// penalty was already charged and the original already stopped, so a
+    /// swallowed failure would leave the user with nothing ringing.
+    func testScheduleSnooze_alarmKitAsyncFailure_armsNotificationFallback() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
+        }
+        let alarmKit = MockAlarmKitScheduler(authorized: true, failSnooze: true)
+        let center = RecordingCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
+        let alarm = AppAlarm(penaltyAmount: 50)
+
+        let exp = expectation(description: "snooze completes")
+        var reportedResult: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler.scheduleSnooze(for: alarm, snoozeCount: 1) { result in
+            reportedResult = result
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(alarmKit.snoozedIDs, [alarm.id],
+                       "AlarmKit snooze must have been attempted before failing over")
+        XCTAssertFalse(center.addedRequests.isEmpty,
+                       "On async AlarmKit failure the notification re-ring fallback MUST be armed")
+        if case .success = reportedResult {
+            // Fallback notification landed → reporting success is correct: a
+            // re-ring exists. The regression we guard against is success with
+            // NO notification armed (covered by the addedRequests assertion).
+        } else {
+            XCTFail("With the notification fallback armed the snooze should report success")
+        }
+    }
+
+    // MARK: - Past-date floor (#394 Finding 2)
+
+    /// `.fixed` with a past instant silently never fires. A `fireDate` captured
+    /// before the async schedule await can land in the past under latency; the
+    /// floor must bump it strictly forward instead of passing the past instant
+    /// straight through.
+    func testMakeSnoozeSchedule_pastFireDate_isFlooredForward() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit types require iOS 26+")
+        }
+        let now = Date()
+        // A fireDate already in the past (latency ate the snooze gap).
+        let pastDate = now.addingTimeInterval(-30)
+        let floored = AlarmKitScheduler.flooredSnoozeFireDate(pastDate, now: now)
+
+        XCTAssertGreaterThan(floored, now,
+                             "A past fireDate must be bumped strictly into the future, not passed through")
+        XCTAssertEqual(floored.timeIntervalSince(now),
+                       AlarmKitScheduler.pastDateFloorBuffer, accuracy: 0.001,
+                       "Floored snooze must land exactly at now + buffer")
+    }
+
+    /// A comfortably-future fireDate is passed through unchanged — the floor only
+    /// engages when latency would otherwise push `.fixed` into the past.
+    func testMakeSnoozeSchedule_futureFireDate_isUnchanged() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit types require iOS 26+")
+        }
+        let now = Date()
+        let future = now.addingTimeInterval(9 * 60)
+        XCTAssertEqual(AlarmKitScheduler.flooredSnoozeFireDate(future, now: now), future,
+                       "A future fireDate must not be altered by the floor")
+
+        // And the public schedule entry point yields a .fixed at that instant.
+        guard case let .fixed(date) = AlarmKitScheduler.makeSnoozeSchedule(fireDate: future) else {
+            return XCTFail("Snooze must use an absolute .fixed schedule")
+        }
+        XCTAssertEqual(date.timeIntervalSince(future), 0, accuracy: 1)
+    }
+
     // MARK: - Cancel + stop forward to AlarmKit
 
     func testCancel_forwardsToAlarmKitBackend() throws {
@@ -372,7 +447,13 @@ final class AlarmKitSchedulerTests: XCTestCase {
 /// Strategy-A-vs-fallback branching can be asserted on any host OS. Mirrors the
 /// `PermissionStubCenter` pattern from `AlarmSchedulerTests`.
 private final class MockAlarmKitScheduler: AlarmKitScheduling {
+    struct SnoozeScheduleError: Error {}
+
     private let authorized: Bool
+    /// When `true`, `scheduleSnooze` reports `.failure` via its completion (after
+    /// still recording the call) — models an async AlarmKit reject so the caller
+    /// must arm the notification fallback instead (#394 Finding 1).
+    private let failSnooze: Bool
     private(set) var scheduledIDs: [UUID] = []
     private(set) var snoozedIDs: [UUID] = []
     private(set) var snoozeFireDates: [Date] = []
@@ -383,7 +464,10 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
     /// the alerting alarm BEFORE rescheduling.
     private(set) var callLog: [String] = []
 
-    init(authorized: Bool) { self.authorized = authorized }
+    init(authorized: Bool, failSnooze: Bool = false) {
+        self.authorized = authorized
+        self.failSnooze = failSnooze
+    }
 
     var isAuthorized: Bool { authorized }
 
@@ -397,10 +481,15 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
         callLog.append("schedule")
     }
 
-    func scheduleSnooze(_ alarm: AppAlarm, fireDate: Date) throws {
+    func scheduleSnooze(
+        _ alarm: AppAlarm,
+        fireDate: Date,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
         snoozedIDs.append(alarm.id)
         snoozeFireDates.append(fireDate)
         callLog.append("scheduleSnooze")
+        completion(failSnooze ? .failure(SnoozeScheduleError()) : .success(()))
     }
 
     func cancel(_ alarmID: UUID) {
