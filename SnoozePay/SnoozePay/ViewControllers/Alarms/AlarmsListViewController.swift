@@ -351,6 +351,8 @@ class AlarmsListViewController: UIViewController {
         // Single amount-picker surface (#281): the Alarms «Пополнить» opens the
         // same Deposit sheet as the Wallet tab — the legacy TopUpViewController
         // is retired.
+        // Guard against double-present from a fast double-tap (#389).
+        guard presentedViewController == nil else { return }
         present(DepositBottomSheetViewController(), animated: true)
     }
 }

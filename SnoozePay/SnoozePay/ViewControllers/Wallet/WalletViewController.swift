@@ -195,6 +195,8 @@ final class WalletViewController: UIViewController {
     // MARK: - Navigation
 
     @objc private func presentDepositSheet() {
+        // Guard against double-present from a fast double-tap (#389).
+        guard presentedViewController == nil else { return }
         let sheet = DepositBottomSheetViewController()
         present(sheet, animated: true)
     }
