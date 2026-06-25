@@ -272,6 +272,84 @@ final class AlarmKitSchedulerTests: XCTestCase {
         }
     }
 
+    // MARK: - Snooze schedule + id (#394)
+
+    /// The snooze schedule must be an ABSOLUTE `.fixed` schedule pinned to the
+    /// exact fireDate — NOT a relative hh:mm schedule that drops seconds and can
+    /// roll over to the next day. Regression guard for the ~24h drift (#394).
+    func testMakeSnoozeSchedule_usesFixedAbsoluteDate_notRelative() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit types require iOS 26+")
+        }
+        let fireDate = Date(timeIntervalSince1970: 1_700_000_030) // :30s — non-zero seconds
+        let schedule = AlarmKitScheduler.makeSnoozeSchedule(fireDate: fireDate)
+
+        guard case let .fixed(date) = schedule else {
+            return XCTFail("Snooze must use an absolute .fixed schedule, not .relative")
+        }
+        XCTAssertEqual(date, fireDate,
+                       "The snooze must fire at the exact fireDate, seconds preserved")
+    }
+
+    /// A short snooze planned at a non-zero-seconds instant must fire ≈ now + N,
+    /// never ~24h later. Exercises the boundary the relative-schedule bug failed:
+    /// 07:00:30 + 1min = 07:01:30, which a seconds-truncating relative schedule
+    /// would round to 07:01 (already past) and push to tomorrow (#394).
+    func testMakeSnoozeSchedule_shortSnoozeFiresWithinTheMinute_notNextDay() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit types require iOS 26+")
+        }
+        let now = Date()
+        let fireDate = now.addingTimeInterval(60) // +1 minute
+        let schedule = AlarmKitScheduler.makeSnoozeSchedule(fireDate: fireDate)
+
+        guard case let .fixed(date) = schedule else {
+            return XCTFail("Snooze must use an absolute .fixed schedule")
+        }
+        let delta = date.timeIntervalSince(now)
+        XCTAssertEqual(delta, 60, accuracy: 1,
+                       "Snooze must fire ~1 min out, not ~24h (86400s) later")
+        XCTAssertLessThan(delta, 3600, "A snooze must never land hours/days away")
+    }
+
+    /// The snooze is scheduled under a SEPARATE id derived from the alarm id, so
+    /// a `.weekly` original is never overwritten by the one-shot snooze and keeps
+    /// ringing on its weekdays (#394). The derived id must be stable and distinct.
+    func testSnoozeID_isDistinctFromAlarmIDButDeterministic() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit types require iOS 26+")
+        }
+        let alarmID = UUID()
+        let snoozeID = AlarmKitScheduler.snoozeID(for: alarmID)
+
+        XCTAssertNotEqual(snoozeID, alarmID,
+                          "Snooze must use a different id so the weekly original survives")
+        XCTAssertEqual(snoozeID, AlarmKitScheduler.snoozeID(for: alarmID),
+                       "Derivation must be deterministic — same alarm → same snooze id")
+        // Distinct alarms map to distinct snooze ids (no collisions).
+        XCTAssertNotEqual(AlarmKitScheduler.snoozeID(for: alarmID),
+                          AlarmKitScheduler.snoozeID(for: UUID()))
+    }
+
+    /// End-to-end mapping guard for #394 part 1: a weekly alarm's MAIN schedule
+    /// (`makeSchedule`) still carries its weekly recurrence — the snooze path
+    /// (which targets the separate snooze id) cannot touch it. The original
+    /// alarm keeps ringing on its configured weekdays after a snooze.
+    func testWeeklyAlarm_mainScheduleKeepsRecurrence_independentOfSnooze() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit types require iOS 26+")
+        }
+        let alarm = AppAlarm(repeatDays: [0, 2, 4], penaltyAmount: 50, repeatMode: .weekly)
+        // Snooze targets a different id, so the alarm's own schedule is untouched.
+        XCTAssertNotEqual(AlarmKitScheduler.snoozeID(for: alarm.id), alarm.id)
+
+        guard case let .relative(relative) = AlarmKitScheduler.makeSchedule(for: alarm),
+              case let .weekly(days) = relative.repeats else {
+            return XCTFail("Weekly alarm must keep its weekly recurrence")
+        }
+        XCTAssertEqual(Set(days), [.monday, .wednesday, .friday])
+    }
+
     func testWeekdayMapping_coversAllSevenIndices() throws {
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("AlarmKit types require iOS 26+")
