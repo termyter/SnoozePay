@@ -263,12 +263,24 @@ final class AlarmFiringViewModel {
         // Capture the penalty for this snooze BEFORE bumping the count so the
         // refund (if the schedule fails) returns the exact amount charged.
         let penalty = currentPenalty
-        let charged = balanceService.charge(amount: penalty, alarmID: alarm.id)
-        guard charged else { return false }
+        // `chargeWithReceipt` surfaces the persisted charge transaction so a
+        // later refund can link back to it via `refundsTransactionID` (issue
+        // #366). Without that link the foreground refund offsets the balance
+        // but the original charge still inflates snooze stats / streak, the
+        // exact bug #133 fixed for the notification-action path only.
+        guard let chargeTransaction = balanceService.chargeWithReceipt(
+            amount: penalty,
+            alarmID: alarm.id
+        ) else { return false }
 
         snoozeCount += 1
         scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount) { [weak self] result in
-            self?.handleScheduleResult(result, penalty: penalty, completion: scheduleCompletion)
+            self?.handleScheduleResult(
+                result,
+                penalty: penalty,
+                chargeTransactionID: chargeTransaction.id,
+                completion: scheduleCompletion
+            )
         }
         onStateChanged?()
         return true
@@ -280,6 +292,7 @@ final class AlarmFiringViewModel {
     private func handleScheduleResult(
         _ result: Result<Void, AlarmScheduler.SchedulingError>,
         penalty: Double,
+        chargeTransactionID: UUID,
         completion: ((SnoozeScheduleOutcome) -> Void)?
     ) {
         switch result {
@@ -288,8 +301,13 @@ final class AlarmFiringViewModel {
         case .failure(let error):
             // Refund via `topUp` (an offsetting ledger entry) rather than
             // mutating storage directly, so transaction history shows both the
-            // charge and the refund and stats stay auditable.
-            let refunded = balanceService.topUp(amount: penalty, refundsTransactionID: nil)
+            // charge and the refund and stats stay auditable. Link the refund
+            // to the original charge so `realCharges(from:)` excludes the
+            // reversed snooze from stats / streak (issue #366 / #133).
+            let refunded = balanceService.topUp(
+                amount: penalty,
+                refundsTransactionID: chargeTransactionID
+            )
             let desc = error.errorDescription ?? error.localizedDescription
             if refunded {
                 AppLogger.ui.error(
@@ -351,12 +369,15 @@ final class AlarmFiringViewModel {
 protocol AlarmFiringBalancing: AnyObject {
     var balance: Double { get }
     func canAfford(_ amount: Double) -> Bool
-    @discardableResult func charge(amount: Double, alarmID: UUID?) -> Bool
+    /// Charges the penalty and returns the persisted charge `Transaction` (or
+    /// `nil` on insufficient funds / locked ledger). The returned `id` lets the
+    /// foreground snooze path link an offsetting refund back to this charge via
+    /// `topUp(amount:refundsTransactionID:)` so a reversed snooze is excluded
+    /// from stats — closing the gap #133 left on the foreground path (#366).
+    func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction?
     /// `refundsTransactionID` links a refund to the charge it offsets so the
-    /// charge is excluded from snooze stats (issue #133). The foreground snooze
-    /// path passes `nil` — `charge(amount:alarmID:)` doesn't surface the charge
-    /// transaction id yet (tracked separately); the notification-action path in
-    /// `AlarmFiringCoordinator` supplies it.
+    /// charge is excluded from snooze stats (issue #133). Both the foreground
+    /// snooze path and the notification-action path now supply it (#366).
     @discardableResult func topUp(amount: Double, refundsTransactionID: UUID?) -> Bool
 }
 
