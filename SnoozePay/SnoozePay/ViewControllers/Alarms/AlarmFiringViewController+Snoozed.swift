@@ -55,6 +55,11 @@ extension AlarmFiringViewController {
         // only toggles the clock/eyebrow/badge, not the name. Without this the
         // active firing UI returns with a stale "отложено до …" label (#226 QA).
         nameLabel.text = viewModel.heroTitle
+        // #398: `showSnoozedChrome(true)` force-hid the no-balance stack so it
+        // wouldn't overlap the countdown. Re-evaluate affordability now — if the
+        // snooze left the wallet empty, the "Баланса не осталось" stack returns
+        // for the restored active state; if still solvent it stays hidden.
+        refreshNoBalanceVisibility()
     }
 
     /// Invalidate the countdown timer on teardown — mirrors the `clockTimer`
@@ -135,6 +140,19 @@ extension AlarmFiringViewController {
 
         let showLadder = snoozed && viewModel.isProgressiveActive
         snoozedCenterStack?.isHidden = !showLadder
+
+        if snoozed {
+            // #398: a snooze that drains the balance below the next penalty has
+            // already run `refreshNoBalanceVisibility()` (via `updateUI`), which
+            // unhid the "Баланса не осталось" stack. Force it hidden so the
+            // countdown owns the screen — the two must never overlap. Exit
+            // restores it via `refreshNoBalanceVisibility()` (see `exitSnoozedState`).
+            noBalanceContainer?.isHidden = true
+            noBalanceCenterBlock?.isHidden = true
+        }
+        // On `false` (teardown) we do NOT unhide here: `exitSnoozedState` calls
+        // `refreshNoBalanceVisibility()` so the stack returns only when actually
+        // unaffordable — unconditionally showing it would flash it for solvent users.
     }
 
     // MARK: - Refresh (text + ladder + accents)
@@ -143,9 +161,10 @@ extension AlarmFiringViewController {
     /// name suffix, countdown label, progressive pill copy and the ladder rungs.
     func refreshSnoozedChrome() {
         guard isSnoozedStateActive else { return }
-        let now = Date()
-        nameLabel.text = viewModel.snoozedHeroTitle(after: now)
-        updateCountdownLabel(now: now)
+        // Hero suffix reads the FIXED snooze target (anchor + snoozeMinutes), not
+        // a per-tick clock, so "отложено до 07:06" stays put across ticks (#396).
+        nameLabel.text = viewModel.snoozedHeroTitle()
+        updateCountdownLabel(now: Date())
 
         guard viewModel.isProgressiveActive else { return }
         snoozedProgressivePill?.text =
