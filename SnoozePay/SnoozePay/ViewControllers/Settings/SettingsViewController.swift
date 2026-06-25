@@ -174,6 +174,10 @@ class SettingsViewController: UIViewController {
         default: theme = .system
         }
         themeService.setTheme(theme)
+        // Theme flips overrideUserInterfaceStyle live, but already-displayed rows
+        // baked their mode-specific shadow + (light-only) ambient layer in
+        // willDisplay. Reload so willDisplay re-runs styleAsCardRow for visible rows.
+        tableView.reloadData()
     }
 }
 
