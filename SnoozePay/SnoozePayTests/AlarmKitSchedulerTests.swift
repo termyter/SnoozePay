@@ -356,7 +356,11 @@ final class AlarmKitSchedulerTests: XCTestCase {
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("AlarmKit types require iOS 26+")
         }
-        let fireDate = Date(timeIntervalSince1970: 1_700_000_030) // :30s — non-zero seconds
+        // Far-future instant with non-zero seconds (2100-01-01 00:00:30 UTC): it is
+        // well beyond `now + floor buffer`, so the past-date floor (#394 Finding 2)
+        // does NOT engage and `.fixed` must echo the exact fireDate, proving seconds
+        // are preserved (not truncated to hh:mm).
+        let fireDate = Date(timeIntervalSince1970: 4_102_444_830)
         let schedule = AlarmKitScheduler.makeSnoozeSchedule(fireDate: fireDate)
 
         guard case let .fixed(date) = schedule else {
