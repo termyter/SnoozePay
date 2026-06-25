@@ -160,13 +160,15 @@ final class SPAmountPreset: UIControl {
         labelView.font = AppTypography.meta
         labelView.textColor = AppColors.fg3
         labelView.textAlignment = .center
-        // The "≈ N откладываний" hint is too wide for a 3-column tile on one
-        // line (it truncated to "≈ 1 откладыва…"). Wrap to two lines and let
-        // the font shrink a touch as a backstop so the full word is always
-        // visible regardless of count/plural form.
-        labelView.numberOfLines = 2
+        // The "≈ N откладываний" hint is too wide for a 3-column tile (it
+        // truncated to "≈ 1 откладыва…"). Keep it on a single line and shrink
+        // the font as a backstop so the full word is always visible regardless
+        // of count/plural form. `adjustsFontSizeToFitWidth` is honoured only for
+        // single-line labels — pairing it with numberOfLines=2 silently disabled
+        // the shrink and let the longest form ellipsise.
+        labelView.numberOfLines = 1
         labelView.adjustsFontSizeToFitWidth = true
-        labelView.minimumScaleFactor = 0.8
+        labelView.minimumScaleFactor = 0.7
 
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
