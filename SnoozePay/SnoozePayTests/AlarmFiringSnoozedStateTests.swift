@@ -43,29 +43,38 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
     }
 
     // MARK: - Next-ring time
+    //
+    // The next ring anchors to the snooze-TAP moment (`reference`), not the
+    // alarm's time-of-day × snoozeCount (issue #396). This mirrors
+    // `AlarmScheduler.scheduledFireDate`, which registers the snooze trigger at
+    // `now + snoozeMinutes` regardless of `snoozeCount`. So the next-ring time is
+    // always `reference + snoozeMinutes` — independent of how many snoozes have
+    // accrued or how long after the alarm the user finally tapped snooze.
 
-    func testNextRingTime_firstSnooze_shiftsByOneInterval() {
+    func testNextRingTime_firstSnooze_shiftsByOneIntervalFromTap() {
         let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 1)
+        // Tapped at 07:01 → next ring 07:06 (tap + 5min), NOT 07:05 (alarm + 5).
         let text = vm.nextRingTimeText(after: reference(hour: 7, minute: 1))
-        XCTAssertEqual(text, "07:05", "07:00 + 5min × 1 snooze = 07:05")
+        XCTAssertEqual(text, "07:06", "07:01 tap + 5min = 07:06")
     }
 
-    func testNextRingTime_thirdSnooze_accumulates() {
+    func testNextRingTime_thirdSnooze_stillOneIntervalFromTap() {
         let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 3)
+        // The interval does not accumulate with snoozeCount — each tap re-anchors.
         let text = vm.nextRingTimeText(after: reference(hour: 7, minute: 11))
-        XCTAssertEqual(text, "07:15", "07:00 + 5min × 3 snoozes = 07:15")
+        XCTAssertEqual(text, "07:16", "07:11 tap + 5min = 07:16, regardless of snoozeCount")
     }
 
     func testNextRingTime_customInterval() {
         let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 9), snoozeCount: 2)
         let text = vm.nextRingTimeText(after: reference(hour: 7, minute: 10))
-        XCTAssertEqual(text, "07:18", "07:00 + 9min × 2 snoozes = 07:18")
+        XCTAssertEqual(text, "07:19", "07:10 tap + 9min = 07:19")
     }
 
     func testSnoozedHeroTitle_includesNameAndNextRing() {
         let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 1)
         let title = vm.snoozedHeroTitle(after: reference(hour: 7, minute: 1))
-        XCTAssertEqual(title, "Будни · отложено до 07:05")
+        XCTAssertEqual(title, "Будни · отложено до 07:06")
     }
 
     func testSnoozedHeroTitle_blankNameDropsSeparator() {
@@ -73,22 +82,36 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let renamed = alarm.with(name: "   ")
         let vm = AlarmFiringViewModel(alarm: renamed, snoozeCount: 1)
         let title = vm.snoozedHeroTitle(after: reference(hour: 7, minute: 1))
-        XCTAssertEqual(title, "отложено до 07:05", "Whitespace name must not leave a dangling «·»")
+        XCTAssertEqual(title, "отложено до 07:06", "Whitespace name must not leave a dangling «·»")
     }
 
     // MARK: - Countdown
 
     func testSecondsUntilNextRing_countsRemainder() {
         let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 1)
-        // Next ring 07:05; now 07:00:37 → 4min 23s = 263s.
-        let now = reference(hour: 7, minute: 0).addingTimeInterval(37)
-        XCTAssertEqual(vm.secondsUntilNextRing(from: now), 263)
+        // Tapped at 07:00:00; next ring tap + 5min = 07:05:00 → 300s.
+        let now = reference(hour: 7, minute: 0)
+        XCTAssertEqual(vm.secondsUntilNextRing(from: now), 300)
+    }
+
+    /// Issue #396 regression: snoozing well AFTER the alarm rang must still yield
+    /// a positive countdown ≈ snoozeMinutes. Under the old time-of-day anchoring a
+    /// 07:00 alarm snoozed at 07:12 pointed at the long-past 07:05 → clamped to 0,
+    /// so the snoozed chrome never installed and the countdown was dead.
+    func testSecondsUntilNextRing_lateSnooze_isPositiveOneInterval() {
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 1)
+        // Alarm fired 07:00, user dawdles, taps snooze at 07:12.
+        let tap = reference(hour: 7, minute: 12)
+        let seconds = vm.secondsUntilNextRing(from: tap)
+        XCTAssertEqual(seconds, 5 * 60, "Late snooze still counts a full interval from the tap")
+        XCTAssertGreaterThan(seconds, 0, "Snoozed chrome must install — countdown is positive")
     }
 
     func testSecondsUntilNextRing_clampsAtZeroPastRing() {
         let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 1)
-        // Past the 07:05 next ring — never negative.
-        XCTAssertEqual(vm.secondsUntilNextRing(from: reference(hour: 7, minute: 10)), 0)
+        // 6 minutes after the 07:00 tap — past the tap + 5min ring; never negative.
+        let now = reference(hour: 7, minute: 0).addingTimeInterval(6 * 60)
+        XCTAssertEqual(vm.secondsUntilNextRing(from: now), 0)
     }
 
     func testCountdownText_formatsMinutesSeconds() {

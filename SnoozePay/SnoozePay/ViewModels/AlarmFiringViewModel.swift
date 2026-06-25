@@ -182,19 +182,20 @@ final class AlarmFiringViewModel {
         }
     }
 
-    /// Wall-clock `Date` of the next ring after the current snooze — the
-    /// alarm's time-of-day shifted forward `snoozeMinutes × snoozeCount`
-    /// minutes, anchored to `reference`'s calendar day. Pure (takes `now` +
-    /// `calendar`) so the countdown maths is testable without the system clock.
+    /// Wall-clock `Date` of the next ring after the current snooze — `reference`
+    /// (the moment the user tapped «Поспать ещё») shifted forward exactly one
+    /// `snoozeMinutes` interval. This mirrors `AlarmScheduler.scheduledFireDate`,
+    /// which registers the snooze trigger at `now + snoozeMinutes` regardless of
+    /// `snoozeCount`. Anchoring to the tap moment (not the alarm's time-of-day ×
+    /// snoozeCount) keeps the in-app countdown aligned with the real re-ring even
+    /// when the user snoozes minutes after the alarm fires (issue #396): a 07:00
+    /// alarm snoozed at 07:12 counts down to 07:17, not the long-past 07:05.
+    /// Pure (takes `reference` + `calendar`) so the countdown maths is testable
+    /// without the system clock; `calendar` is retained for call-site symmetry
+    /// with the time-of-day formatters even though the interval add is
+    /// calendar-independent.
     func nextRingDate(after reference: Date, calendar: Calendar = .current) -> Date {
-        let timeParts = calendar.dateComponents([.hour, .minute], from: alarm.time)
-        let base = calendar.date(
-            bySettingHour: timeParts.hour ?? 0,
-            minute: timeParts.minute ?? 0,
-            second: 0,
-            of: reference
-        ) ?? reference
-        return base.addingTimeInterval(TimeInterval(alarm.snoozeMinutes * snoozeCount * 60))
+        AlarmScheduler.scheduledFireDate(now: reference, snoozeMinutes: alarm.snoozeMinutes)
     }
 
     /// `HH:mm` label of the next ring — "отложено до 07:05" / status-bar time.
