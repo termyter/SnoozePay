@@ -116,6 +116,23 @@ final class PermissionsViewController: UIViewController {
         fullWidth: true
     )
 
+    /// Vertical scroll container so the caps/title/body/cards/CTA column can
+    /// overflow and scroll on compact-height devices or large Dynamic Type
+    /// instead of breaking the `cta.bottom <= safeArea` constraint and clipping
+    /// the CTA under the home indicator (#409). Mirrors the adaptive-overflow
+    /// intent of the onboarding rework (#244). On tall devices the content fits
+    /// the frame and the view reads identically to before.
+    private let scrollView: UIScrollView = {
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.alwaysBounceVertical = false
+        // Keep the column width fixed to the frame; never inset horizontally so
+        // the cards stay edge-aligned with the JSX 16pt side padding.
+        scrollView.contentInsetAdjustmentBehavior = .never
+        return scrollView
+    }()
+
     /// One card per `PermissionKind`, owned so we can re-render trailing
     /// affordances after a grant without rebuilding the view tree.
     private var cardViews: [PermissionKind: PermissionCardView] = [:]
@@ -147,41 +164,59 @@ final class PermissionsViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        view.addSubview(capsLabel)
-        view.addSubview(titleLabel)
-        view.addSubview(bodyLabel)
-        view.addSubview(cardsStack)
-        view.addSubview(ctaButton)
+        view.addSubview(scrollView)
+        scrollView.addSubview(capsLabel)
+        scrollView.addSubview(titleLabel)
+        scrollView.addSubview(bodyLabel)
+        scrollView.addSubview(cardsStack)
+        scrollView.addSubview(ctaButton)
         ctaButton.translatesAutoresizingMaskIntoConstraints = false
 
         let inset = AppSpacing.sp4   // 16pt — matches JSX `padding: 70px 16px 52px`
+        let content = scrollView.contentLayoutGuide
+        let frame = scrollView.frameLayoutGuide
+
+        // Min content height equal to the visible frame so a short column stays
+        // top-aligned (no centering) and reads identically to the pre-scroll
+        // layout on tall devices. On overflow the content guide grows past the
+        // frame and the column scrolls.
+        let minHeight = content.heightAnchor.constraint(equalTo: frame.heightAnchor)
+        minHeight.priority = .defaultLow
+
         NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+
+            // Pin the column width to the visible frame so labels wrap to the
+            // device width rather than the scroll content's intrinsic size.
+            content.widthAnchor.constraint(equalTo: frame.widthAnchor),
+            minHeight,
+
             // JSX top pad 70 on a 54pt-status-bar frame ⇒ 16pt below the
             // safe-area top.
-            capsLabel.topAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: AppSpacing.sp4
-            ),
-            capsLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            capsLabel.topAnchor.constraint(equalTo: content.topAnchor, constant: AppSpacing.sp4),
+            capsLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             capsLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: view.trailingAnchor,
+                lessThanOrEqualTo: content.trailingAnchor,
                 constant: -inset
             ),
 
             titleLabel.topAnchor.constraint(equalTo: capsLabel.bottomAnchor, constant: AppSpacing.sp2),
-            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            titleLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            titleLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
 
             bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppSpacing.sp3),
-            bodyLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            bodyLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            bodyLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            bodyLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
 
             cardsStack.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: AppSpacing.sp7),
-            cardsStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            cardsStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            cardsStack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            cardsStack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
 
-            ctaButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            ctaButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            ctaButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            ctaButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
             // V3: "Готово" lives in flow 28pt after the cards (JSX
             // `marginTop: 28`) instead of pinning to the screen bottom —
             // cards no longer flex-grow into the gap.
@@ -189,10 +224,11 @@ final class PermissionsViewController: UIViewController {
                 equalTo: cardsStack.bottomAnchor,
                 constant: AppSpacing.sp6 + AppSpacing.sp1   // 28pt
             ),
-            // Safety net for compact heights — never push the CTA below the
-            // JSX's 52px bottom pad (≈ 18pt above the home-indicator inset).
+            // Bottom pad mirrors the JSX 52px bottom (≈ 18pt above the
+            // home-indicator inset). Drives the scroll content height so the
+            // CTA stays reachable instead of clipping on compact heights.
             ctaButton.bottomAnchor.constraint(
-                lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor,
+                equalTo: content.bottomAnchor,
                 constant: -(AppSpacing.sp4 + 2)   // 18pt
             )
         ])

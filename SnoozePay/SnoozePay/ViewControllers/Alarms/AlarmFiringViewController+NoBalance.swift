@@ -226,6 +226,11 @@ extension AlarmFiringViewController {
     /// external top-ups also flip the state).
     func refreshNoBalanceVisibility() {
         let needsNoBalance = !viewModel.canSnooze
+        // #398: while the snoozed countdown owns the screen, never surface the
+        // no-balance stack — even if a mid-snooze balance notification re-runs
+        // this pass with `canSnooze == false`. `exitSnoozedState` re-calls this
+        // after clearing the flag, so the stack returns correctly on teardown.
+        let showNoBalanceStack = needsNoBalance && !isSnoozedStateActive
         // Refresh the disabled card's hint + price each pass so progressive
         // alarms show the correct disabled value even after snoozeCount has
         // bumped the next penalty.
@@ -236,8 +241,8 @@ extension AlarmFiringViewController {
                 hint: "Недостаточно средств"
             )
         }
-        noBalanceContainer?.isHidden = !needsNoBalance
-        noBalanceCenterBlock?.isHidden = !needsNoBalance
+        noBalanceContainer?.isHidden = !showNoBalanceStack
+        noBalanceCenterBlock?.isHidden = !showNoBalanceStack
         // Drained background + red glow + neutral clock + accent wake-border.
         applyDrainedAtmosphere(needsNoBalance)
         // Hide the normal-state group when the no-balance stack takes over.

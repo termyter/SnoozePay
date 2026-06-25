@@ -62,6 +62,19 @@ final class PenaltyCell: UITableViewCell {
         return field
     }()
 
+    /// «Готово» toolbar above the numberPad — the pad has no return key, so this
+    /// is the explicit dismissal path (#410). Complements the table's
+    /// interactive drag-to-dismiss.
+    private lazy var accessoryToolbar: UIToolbar = {
+        let toolbar = UIToolbar()
+        toolbar.sizeToFit()
+        let spacer = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
+        let done = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(doneTapped))
+        done.accessibilityIdentifier = "createAlarm.penaltyDone"
+        toolbar.items = [spacer, done]
+        return toolbar
+    }()
+
     /// Trailing ₽ in the same mono amber as the number.
     private let suffixLabel: UILabel = {
         let label = UILabel()
@@ -133,6 +146,7 @@ final class PenaltyCell: UITableViewCell {
         backgroundColor = AppColors.bg1
         selectionStyle = .none
 
+        amountField.inputAccessoryView = accessoryToolbar
         amountField.addTarget(self, action: #selector(amountEditingChanged), for: .editingChanged)
         amountField.addTarget(self, action: #selector(amountEditingEnded), for: .editingDidEnd)
 
@@ -201,29 +215,40 @@ final class PenaltyCell: UITableViewCell {
         return value
     }
 
+    /// Live keystroke handler — updates ONLY the cell's own appearance (helper
+    /// flag + chip highlight). It does NOT commit to the model: typing "100"
+    /// must not push 1→10→100 and flicker the preset chips / progressive chain
+    /// downstream (#410). The commit happens once on `.editingDidEnd`.
     @objc private func amountEditingChanged() {
         guard let value = validatedAmount() else {
-            // Invalid mid-edit — flag it, but keep the last valid amount staged
-            // so the model isn't fed a bad price.
             setHelper(visible: true)
             return
         }
         setHelper(visible: false)
         currentAmount = Double(value)
+        refreshAppearance()
+    }
+
+    @objc private func amountEditingEnded() {
+        guard let value = validatedAmount() else {
+            // Left blank / invalid — revert to the last valid amount.
+            amountField.text = String(Int(lastValidAmount))
+            currentAmount = lastValidAmount
+            setHelper(visible: false)
+            refreshAppearance()
+            return
+        }
+        setHelper(visible: false)
+        currentAmount = Double(value)
+        // Commit only the final value once editing ends.
+        guard abs(lastValidAmount - currentAmount) >= .ulpOfOne else { return }
         lastValidAmount = currentAmount
         refreshAppearance()
         onValueChanged?(currentAmount)
     }
 
-    @objc private func amountEditingEnded() {
-        guard validatedAmount() == nil else {
-            setHelper(visible: false)
-            return
-        }
-        // Left blank / invalid — revert to the last valid amount.
-        amountField.text = String(Int(lastValidAmount))
-        setHelper(visible: false)
-        refreshAppearance()
+    @objc private func doneTapped() {
+        amountField.resignFirstResponder()
     }
 
     private func setHelper(visible: Bool) {
