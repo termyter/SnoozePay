@@ -39,6 +39,16 @@ final class AlarmFiringViewModel {
     let alarm: Alarm
     private(set) var snoozeCount: Int
 
+    /// Wall-clock moment the user last tapped «Поспать ещё», captured ONCE per
+    /// snooze in `snooze()`. The snoozed countdown anchors its target to this
+    /// FIXED instant (`snoozeAnchor + snoozeMinutes`) so the live countdown
+    /// ticks down against a moving `now` and actually reaches `0` (issue #396).
+    /// It must equal what the scheduler arms — `AlarmScheduler.scheduledFireDate`
+    /// = tap moment + snoozeMinutes — so the in-app countdown and the real
+    /// re-ring agree even when the user snoozes minutes after the alarm fired.
+    /// `nil` before the first snooze (the active firing UI shows no countdown).
+    private(set) var snoozeAnchor: Date?
+
     // MARK: - Callbacks
 
     var onStateChanged: (() -> Void)?
@@ -48,6 +58,7 @@ final class AlarmFiringViewModel {
     init(
         alarm: Alarm,
         snoozeCount: Int = 0,
+        snoozeAnchor: Date? = nil,
         balanceService: AlarmFiringBalancing = BalanceService.shared,
         alarmRepository: AlarmRepository = .shared,
         scheduler: AlarmScheduler = .shared,
@@ -55,6 +66,7 @@ final class AlarmFiringViewModel {
     ) {
         self.alarm = alarm
         self.snoozeCount = snoozeCount
+        self.snoozeAnchor = snoozeAnchor
         self.balanceService = balanceService
         self.alarmRepository = alarmRepository
         self.scheduler = scheduler
@@ -182,41 +194,49 @@ final class AlarmFiringViewModel {
         }
     }
 
-    /// Wall-clock `Date` of the next ring after the current snooze — the
-    /// alarm's time-of-day shifted forward `snoozeMinutes × snoozeCount`
-    /// minutes, anchored to `reference`'s calendar day. Pure (takes `now` +
-    /// `calendar`) so the countdown maths is testable without the system clock.
-    func nextRingDate(after reference: Date, calendar: Calendar = .current) -> Date {
-        let timeParts = calendar.dateComponents([.hour, .minute], from: alarm.time)
-        let base = calendar.date(
-            bySettingHour: timeParts.hour ?? 0,
-            minute: timeParts.minute ?? 0,
-            second: 0,
-            of: reference
-        ) ?? reference
-        return base.addingTimeInterval(TimeInterval(alarm.snoozeMinutes * snoozeCount * 60))
+    /// Wall-clock `Date` of the next ring after the current snooze — the FIXED
+    /// `anchor` (the moment the user tapped «Поспать ещё», stored once in
+    /// `snooze()`) shifted forward exactly one `snoozeMinutes` interval. This
+    /// mirrors `AlarmScheduler.scheduledFireDate`, which arms the snooze trigger
+    /// at `tap + snoozeMinutes` regardless of `snoozeCount`. Anchoring to the
+    /// FIXED tap moment (not the per-tick clock and not the alarm's time-of-day ×
+    /// snoozeCount) is what lets the live countdown decrement: the target is
+    /// constant while `now` moves, so `secondsUntilNextRing(from:)` falls to `0`
+    /// and the chrome tears down. A 07:00 alarm snoozed at 07:12 counts down to
+    /// 07:17, not the long-past 07:05 (issue #396). The default `anchor`
+    /// (`snoozeAnchor`, the stored tap moment) is used by production call sites;
+    /// tests pin it explicitly. Returns `nil` before the first snooze.
+    func nextRingDate(anchor: Date? = nil) -> Date? {
+        guard let tap = anchor ?? snoozeAnchor else { return nil }
+        return AlarmScheduler.scheduledFireDate(now: tap, snoozeMinutes: alarm.snoozeMinutes)
     }
 
     /// `HH:mm` label of the next ring — "отложено до 07:05" / status-bar time.
-    func nextRingTimeText(after reference: Date, calendar: Calendar = .current) -> String {
-        AlarmFiringTimeFormatter.string(from: nextRingDate(after: reference, calendar: calendar))
+    /// Empty before the first snooze (no anchor → no target).
+    func nextRingTimeText(anchor: Date? = nil) -> String {
+        guard let target = nextRingDate(anchor: anchor) else { return "" }
+        return AlarmFiringTimeFormatter.string(from: target)
     }
 
     /// Hero name + next-ring suffix shown in the snoozed state, e.g.
     /// "Будни · отложено до 07:05". Degrades to "отложено до …" when the alarm
     /// has no name, so the row never renders a dangling "·".
-    func snoozedHeroTitle(after reference: Date, calendar: Calendar = .current) -> String {
-        let time = nextRingTimeText(after: reference, calendar: calendar)
+    func snoozedHeroTitle(anchor: Date? = nil) -> String {
+        let time = nextRingTimeText(anchor: anchor)
         let name = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let suffix = "отложено до \(time)"
         return name.isEmpty ? suffix : "\(name) · \(suffix)"
     }
 
-    /// Remaining seconds until the next ring (never negative). Used by the live
-    /// countdown; at `0` the firing screen restores the active state.
-    func secondsUntilNextRing(from reference: Date, calendar: Calendar = .current) -> Int {
-        let target = nextRingDate(after: reference, calendar: calendar)
-        return max(0, Int(target.timeIntervalSince(reference).rounded()))
+    /// Remaining seconds until the next ring (never negative), measured from the
+    /// FIXED snooze target (`snoozeAnchor + snoozeMinutes`) to the MOVING `now`.
+    /// Because the target is fixed while `now` advances, the value decrements
+    /// every tick and reaches `0` at the re-ring — which is when the firing
+    /// screen restores the active state. `0` when there is no anchor yet (no
+    /// snooze taken) so the snoozed chrome never installs prematurely.
+    func secondsUntilNextRing(from now: Date, anchor: Date? = nil) -> Int {
+        guard let target = nextRingDate(anchor: anchor) else { return 0 }
+        return max(0, Int(target.timeIntervalSince(now).rounded()))
     }
 
     /// `mm:ss` countdown label clamped at `00:00`. Static so the formatting is
@@ -274,6 +294,12 @@ final class AlarmFiringViewModel {
         ) else { return false }
 
         snoozeCount += 1
+        // Pin the tap moment ONCE so the live countdown target stays fixed while
+        // `now` advances (issue #396). Mirrors the instant the scheduler arms the
+        // trigger at (`scheduledFireDate(now: Date(), …)`) so the in-app countdown
+        // and the real re-ring agree. Re-tapping snooze re-anchors to the new tap,
+        // matching the freshly-armed trigger.
+        snoozeAnchor = Date()
         scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount) { [weak self] result in
             self?.handleScheduleResult(
                 result,

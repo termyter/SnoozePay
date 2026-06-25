@@ -182,13 +182,12 @@ enum UITourLauncher {
     }
 
     /// The firing-screen sample, anchored to the CURRENT time rather than a
-    /// fixed 07:30. A firing alarm is, by definition, ringing *now* — and the
-    /// snoozed-state countdown derives the next ring from the alarm's HH:MM on
-    /// today (`AlarmFiringViewModel.nextRingDate`). With a fixed 07:30 time the
-    /// snooze target lands in the past whenever the tour runs later in the day,
-    /// so `secondsUntilNextRing == 0` and the snoozed chrome never installs.
-    /// Pinning the time to now keeps the snooze countdown positive — both for
-    /// realistic screenshots and for the e2e firing→snooze→wake UI test.
+    /// fixed 07:30. A firing alarm is, by definition, ringing *now*. The
+    /// snoozed-state countdown now anchors to the snooze-tap moment
+    /// (`AlarmFiringViewModel.nextRingDate` = tap + snoozeMinutes, issue #396),
+    /// so the countdown stays positive regardless of the alarm's HH:MM — but a
+    /// now-anchored time still keeps the firing clock and "ringing now" framing
+    /// realistic for screenshots and the e2e firing→snooze→wake UI test.
     private static func firingSampleAlarm() -> Alarm {
         Alarm(
             time: Date(),
