@@ -39,10 +39,24 @@ protocol AlarmKitScheduling: AnyObject {
     /// Idempotent — AlarmKit returns the cached state once decided.
     func requestAuthorization(completion: @escaping (Bool) -> Void)
 
-    /// Schedule (or replace) the system alarm for `alarm`. Throws when AlarmKit
-    /// rejects the request (limit reached, not authorized). A no-op for a
+    /// Schedule (or replace) the system alarm for `alarm`. A no-op for a
     /// disabled alarm is the caller's responsibility.
-    func schedule(_ alarm: Alarm) throws
+    ///
+    /// Completion-based — NOT a synchronous `throws` — because the actual
+    /// AlarmKit `schedule(id:configuration:)` is `async`: a synchronous API
+    /// would have to report success before the await resolves, so an async
+    /// rejection (alarm limit, revoked auth, backend reject) would be swallowed
+    /// while the caller (`AlarmRepository.save`) already told the user "Будильник
+    /// создан" — nothing would ring and no notification fallback would arm
+    /// (#417, same phantom-success class as #118/#199 but on the primary iOS 26
+    /// path). `completion` fires with `.success` ONLY after the await succeeds,
+    /// and `.failure` on any (sync config build or async schedule) error so the
+    /// caller can fall through to the notification fallback instead. Mirrors the
+    /// `scheduleSnooze` plumbing landed in #394/#401.
+    func schedule(
+        _ alarm: Alarm,
+        completion: @escaping (Result<Void, Error>) -> Void
+    )
 
     /// Reschedule `alarm` as a one-shot AlarmKit system alarm that re-fires once
     /// at `fireDate` (the snooze re-ring), no recurrence. Scheduled under a
@@ -131,23 +145,44 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         }
     }
 
-    func schedule(_ alarm: Alarm) throws {
-        let configuration = try Self.makeConfiguration(for: alarm)
-        // `schedule(id:configuration:)` is async; we fire-and-log so the
-        // synchronous `AlarmScheduling` contract (used by `AlarmRepository`)
-        // is preserved. Errors that surface before the await (config build)
-        // are thrown to the caller; post-await failures are logged.
+    func schedule(
+        _ alarm: Alarm,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
+        do {
+            configuration = try Self.makeConfiguration(for: alarm)
+        } catch {
+            // Synchronous config-build failure — report immediately so the
+            // caller arms the notification fallback (#417).
+            let desc = error.localizedDescription
+            AppLogger.scheduler.error(
+                "AlarmKit schedule config failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
+            )
+            completion(.failure(error))
+            return
+        }
+        let alarmID = alarm.id
+        // Report success/failure ONLY after the async schedule resolves, on the
+        // main actor (the caller tells the user "Будильник создан" off this
+        // result). A swallowed async error here would mean the user sees the
+        // alarm as created with nothing armed and no fallback (#417).
         Task {
             do {
-                _ = try await manager.schedule(id: alarm.id, configuration: configuration)
+                _ = try await manager.schedule(id: alarmID, configuration: configuration)
                 AppLogger.scheduler.info(
-                    "AlarmKit scheduled alarm=\(alarm.id, privacy: .private)"
+                    "AlarmKit scheduled alarm=\(alarmID, privacy: .private)"
                 )
+                await MainActor.run { completion(.success(())) }
             } catch {
                 let desc = error.localizedDescription
                 AppLogger.scheduler.error(
-                    "AlarmKit schedule failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
+                    """
+                    AlarmKit schedule failed alarm=\(alarmID, privacy: .private): \
+                    \(desc, privacy: .public) — fallback
+                    """
                 )
+                await MainActor.run { completion(.failure(error)) }
             }
         }
     }
