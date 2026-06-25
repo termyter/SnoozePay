@@ -51,6 +51,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Handle notification responses
         UNUserNotificationCenter.current().delegate = self
 
+        // Watch AlarmKit's alerting stream so an alarm that fires while the app
+        // is in the foreground mounts our custom firing screen on top of the
+        // system alert (#379). No-op on iOS < 26 / when AlarmKit is absent.
+        AlarmKitAlertObserver.shared.start()
+
         // Reclaim orphaned custom-theme JPEGs (#357): re-picking a photo or
         // deleting a `.custom`-themed alarm leaves its image on disk forever.
         // Sweep off the main thread against the live alarm set — only files no
@@ -348,35 +353,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             return
         }
 
+        // The window/VC walk + full-screen present (and the stacking-alarm
+        // swap) live in `AlarmFiringPresenter` so the AlarmKit paths (#379)
+        // share them verbatim. Keep the hop to the main queue here: the
+        // notification delegate already runs on main, but `willPresent` may
+        // race a not-yet-attached window on cold launch.
         DispatchQueue.main.async {
-            let firingVC = AlarmFiringViewController(alarm: alarm, snoozeCount: payload.snoozeCount)
-            firingVC.modalPresentationStyle = .fullScreen
-
-            // Find the topmost presented view controller to avoid "already presenting" issues
-            guard
-                let windowScene = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .first,
-                let rootVC = windowScene.windows.first?.rootViewController
-            else {
-                AppLogger.appDelegate.error("no window scene, stopping audio")
-                AudioService.shared.stopAlarmSound()
-                return
-            }
-
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController {
-                // If an alarm firing screen is already showing, dismiss it first
-                if presented is AlarmFiringViewController {
-                    presented.dismiss(animated: false) {
-                        topVC.present(firingVC, animated: false)
-                    }
-                    return
-                }
-                topVC = presented
-            }
-
-            topVC.present(firingVC, animated: false)
+            AlarmFiringPresenter.shared.present(alarm: alarm, snoozeCount: payload.snoozeCount)
         }
     }
 

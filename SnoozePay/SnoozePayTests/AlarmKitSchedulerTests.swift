@@ -94,6 +94,89 @@ final class AlarmKitSchedulerTests: XCTestCase {
         XCTAssertTrue(center.addedRequests.isEmpty)
     }
 
+    // MARK: - Snooze routing (#383)
+
+    /// On the AlarmKit path a snooze must reschedule a real system alarm (NOT a
+    /// notification) and must stop the currently-alerting alarm *before*
+    /// rescheduling, so the ringing stops and the snooze re-arms cleanly.
+    func testScheduleSnooze_authorizedAlarmKit_stopsThenReschedulesViaAlarmKit() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
+        }
+        let alarmKit = MockAlarmKitScheduler(authorized: true)
+        let center = RecordingCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
+        let alarm = AppAlarm(penaltyAmount: 50)
+
+        let exp = expectation(description: "snooze completes")
+        scheduler.scheduleSnooze(for: alarm, snoozeCount: 1) { result in
+            if case .failure = result { XCTFail("expected success on AlarmKit snooze path") }
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(alarmKit.snoozedIDs, [alarm.id],
+                       "Authorized AlarmKit must receive the snooze reschedule")
+        XCTAssertEqual(alarmKit.stoppedIDs, [alarm.id],
+                       "The currently-alerting alarm must be stopped on snooze")
+        XCTAssertEqual(alarmKit.callLog, ["stop", "scheduleSnooze"],
+                       "Stop must run BEFORE the reschedule so the alarm stops ringing")
+        XCTAssertTrue(center.addedRequests.isEmpty,
+                      "Strategy A snooze must not also register a notification (Strategy B)")
+    }
+
+    /// The AlarmKit snooze re-fire date is now + the alarm's snoozeMinutes.
+    func testScheduleSnooze_authorizedAlarmKit_fireDateIsNowPlusSnoozeMinutes() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
+        }
+        let alarmKit = MockAlarmKitScheduler(authorized: true)
+        let scheduler = AlarmScheduler(notificationCenter: RecordingCenter(), alarmKit: alarmKit)
+        let alarm = AppAlarm(snoozeMinutes: 9, penaltyAmount: 50)
+
+        let before = Date()
+        let exp = expectation(description: "snooze completes")
+        scheduler.scheduleSnooze(for: alarm, snoozeCount: 1) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+        let after = Date()
+
+        let fireDate = try XCTUnwrap(alarmKit.snoozeFireDates.first)
+        XCTAssertGreaterThanOrEqual(fireDate.timeIntervalSince(before), 9 * 60 - 1)
+        XCTAssertLessThanOrEqual(fireDate.timeIntervalSince(after), 9 * 60 + 1)
+    }
+
+    /// On the notification fallback (AlarmKit unauthorized) the snooze stays a
+    /// notification (Strategy B) — the existing behaviour must not regress.
+    func testScheduleSnooze_unauthorizedAlarmKit_fallsBackToNotification() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
+        }
+        let alarmKit = MockAlarmKitScheduler(authorized: false)
+        let center = RecordingCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
+
+        let exp = expectation(description: "snooze completes")
+        scheduler.scheduleSnooze(for: AppAlarm(penaltyAmount: 50), snoozeCount: 1) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertTrue(alarmKit.snoozedIDs.isEmpty, "Unauthorized AlarmKit must not reschedule a system snooze")
+        XCTAssertFalse(center.addedRequests.isEmpty, "Fallback must register the notification snooze")
+    }
+
+    /// With no AlarmKit backend (iOS < 26 shape) the snooze is a notification —
+    /// the pre-#383 behaviour, unchanged.
+    func testScheduleSnooze_noAlarmKitBackend_usesNotificationFallback() {
+        let center = RecordingCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: nil)
+
+        let exp = expectation(description: "snooze completes")
+        scheduler.scheduleSnooze(for: AppAlarm(penaltyAmount: 50), snoozeCount: 1) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertFalse(center.addedRequests.isEmpty,
+                       "Without AlarmKit the notification snooze fallback must still register")
+    }
+
     // MARK: - Cancel + stop forward to AlarmKit
 
     func testCancel_forwardsToAlarmKitBackend() throws {
@@ -213,9 +296,14 @@ final class AlarmKitSchedulerTests: XCTestCase {
 private final class MockAlarmKitScheduler: AlarmKitScheduling {
     private let authorized: Bool
     private(set) var scheduledIDs: [UUID] = []
+    private(set) var snoozedIDs: [UUID] = []
+    private(set) var snoozeFireDates: [Date] = []
     private(set) var cancelledIDs: [UUID] = []
     private(set) var stoppedIDs: [UUID] = []
     private(set) var authorizationRequests = 0
+    /// Ordered log of every mutating call so #383 can assert the snooze stops
+    /// the alerting alarm BEFORE rescheduling.
+    private(set) var callLog: [String] = []
 
     init(authorized: Bool) { self.authorized = authorized }
 
@@ -228,14 +316,23 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
 
     func schedule(_ alarm: AppAlarm) throws {
         scheduledIDs.append(alarm.id)
+        callLog.append("schedule")
+    }
+
+    func scheduleSnooze(_ alarm: AppAlarm, fireDate: Date) throws {
+        snoozedIDs.append(alarm.id)
+        snoozeFireDates.append(fireDate)
+        callLog.append("scheduleSnooze")
     }
 
     func cancel(_ alarmID: UUID) {
         cancelledIDs.append(alarmID)
+        callLog.append("cancel")
     }
 
     func stop(_ alarmID: UUID) {
         stoppedIDs.append(alarmID)
+        callLog.append("stop")
     }
 }
 

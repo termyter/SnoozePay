@@ -71,6 +71,15 @@ extension AlarmFiringViewController {
     // MARK: Actions
 
     func snoozeTapped() {
+        // On the AlarmKit (Strategy A) path the snooze re-fires as a REAL system
+        // alarm (the scheduler stops the current one and reschedules via
+        // AlarmKit), so this screen must close — its job is done and the system
+        // owns the next ring (#383). The in-place "отложено" countdown is a
+        // Strategy-B affordance for the notification path, where the in-app
+        // screen is the sound source and stays up. We capture the flag up front
+        // because `viewModel.snooze` is the same call on both paths.
+        let usesAlarmKit = viewModel.usesAlarmKit
+
         // scheduleCompletion surfaces a notification-center failure (revoked
         // permission, 64-pending-limit, malformed trigger) so the user
         // doesn't pay for a snooze that will never re-fire (#127 finding).
@@ -94,14 +103,42 @@ extension AlarmFiringViewController {
                 self.presentSnoozeRefundFailedAlert(error: error)
             }
         }
-        // Foreground snooze (#226): instead of dismissing, transition the live
-        // firing screen into the "отложено" state in place — countdown to the
-        // next ring, zZ badge, progressive ladder. At countdown zero the active
-        // firing UI restores. `viewModel.snooze` already bumped `snoozeCount`
-        // and fired `onStateChanged → updateUI`, so the balance pill / ladder
-        // reflect the charge before we render the snoozed chrome.
-        if success {
-            enterSnoozedState()
+
+        guard success else { return }
+
+        if usesAlarmKit {
+            // System alarm rescheduled — silence any in-app audio (a no-op on
+            // this path since we never started it, but keeps the stop-on-handoff
+            // contract) and dismiss the firing screen.
+            dismissAfterAlarmKitSnooze()
+            return
+        }
+
+        // Foreground snooze (#226), notification path: instead of dismissing,
+        // transition the live firing screen into the "отложено" state in place —
+        // countdown to the next ring, zZ badge, progressive ladder. At countdown
+        // zero the active firing UI restores. `viewModel.snooze` already bumped
+        // `snoozeCount` and fired `onStateChanged → updateUI`, so the balance
+        // pill / ladder reflect the charge before we render the snoozed chrome.
+        enterSnoozedState()
+    }
+
+    /// Close the firing screen after an AlarmKit snooze (#383). The next ring is
+    /// a real system alarm: the scheduler already stopped the currently-alerting
+    /// alarm and rescheduled the snooze under the same id, so we must NOT call
+    /// `stopSystemAlarm` again here — that would cancel the freshly-armed snooze.
+    /// We only silence any in-app audio (guarded by the per-alarm owner check,
+    /// mirroring `viewDidDisappear`; a no-op on this path since we never started
+    /// it) and dismiss. `viewDidDisappear` re-runs the same guarded stop, so the
+    /// audio teardown is idempotent.
+    private func dismissAfterAlarmKitSnooze() {
+        if AudioService.shared.currentAlarmID == viewModel.alarm.id {
+            AudioService.shared.stopAlarmSound()
+        }
+        if let presenter = presentingViewController {
+            presenter.dismiss(animated: true)
+        } else {
+            dismiss(animated: true)
         }
     }
 
