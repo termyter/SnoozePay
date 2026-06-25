@@ -195,6 +195,17 @@ final class AlarmCell: UITableViewCell {
             pillsStack.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -pad),
             pillsStack.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -pad)
         ])
+
+        // Accessibility: VoiceOver would otherwise read the card's labels as
+        // disconnected fragments ("07:00", "50 ₽", "×2"). Make the cell an
+        // a11y container exposing exactly two elements — the card (a composed
+        // summary label, updated in `configure`) and the toggle (a UISwitch,
+        // which carries native on/off value + activation for free).
+        isAccessibilityElement = false
+        accessibilityElements = [cardView, toggleSwitch]
+        cardView.isAccessibilityElement = true
+        cardView.accessibilityTraits = .summaryElement
+        toggleSwitch.accessibilityLabel = "Будильник"
     }
 
     override func prepareForReuse() {
@@ -206,6 +217,17 @@ final class AlarmCell: UITableViewCell {
             pillsStack.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
+        // Reset card chrome to a known (enabled) state. `applyCardChrome` only
+        // *adds* the ambient `shadow-1` sublayer in its disabled branch, and
+        // `layoutSubviews` re-installs it whenever `isEnabledTone` is false —
+        // so a recycled cell whose previous alarm was disabled would paint the
+        // stale ambient shadow / disabled tone for one layout pass before the
+        // controller re-calls `configure`. Drop the ambient layer and reset the
+        // tracked tone so the cell starts every reuse from the enabled recipe.
+        cardView.layer.sublayers?
+            .first { $0.name == AppShadow.ambientShadow1LayerName }?
+            .removeFromSuperlayer()
+        isEnabledTone = true
     }
 
     // MARK: - Configure
@@ -250,6 +272,54 @@ final class AlarmCell: UITableViewCell {
         toggleSwitch.isOn = enabled
         applyEnabledTone(enabled)
         rebuildPills(price: priceText, multiplier: multiplier, soundName: soundName, enabled: enabled)
+
+        // Compose the VoiceOver summary from the same fields and refresh the
+        // toggle's value so the row reads as one coherent control pair.
+        cardView.accessibilityLabel = Self.accessibilityLabel(
+            time: time,
+            daysCaps: daysCaps,
+            priceText: priceText,
+            multiplier: multiplier,
+            soundName: soundName
+        )
+        toggleSwitch.accessibilityValue = enabled ? "включён" : "выключен"
+    }
+
+    /// Build the composed VoiceOver label for a card from its display fields,
+    /// e.g. "Будильник 07:00, будни Пн–Пт, 50 ₽, ×2, Soft Dawn". Pure so it
+    /// can be unit-tested without instantiating a cell. `daysCaps` arrives
+    /// upper-cased for the visual caps row; VoiceOver reads sentence-case more
+    /// naturally, so it's lowered with a capital first letter.
+    static func accessibilityLabel(
+        time: String,
+        daysCaps: String,
+        priceText: String,
+        multiplier: String?,
+        soundName: String?
+    ) -> String {
+        var parts: [String] = ["Будильник \(time)"]
+
+        let days = sentenceCased(daysCaps)
+        if !days.isEmpty { parts.append(days) }
+
+        let price = priceText.trimmingCharacters(in: .whitespaces)
+        if !price.isEmpty { parts.append(price) }
+
+        if let multiplier = multiplier?.trimmingCharacters(in: .whitespaces), !multiplier.isEmpty {
+            parts.append(multiplier)
+        }
+        if let soundName = soundName?.trimmingCharacters(in: .whitespaces), !soundName.isEmpty {
+            parts.append(soundName)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Lower-case a caps string and re-capitalise its first letter so VoiceOver
+    /// reads "Будни · Пн–Пт" instead of spelling out the all-caps form.
+    private static func sentenceCased(_ caps: String) -> String {
+        let trimmed = caps.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return "" }
+        return first.uppercased() + trimmed.dropFirst().lowercased()
     }
 
     /// Legacy-style call site preserved for migration. Forwards to the
@@ -378,6 +448,7 @@ final class AlarmCell: UITableViewCell {
     @objc private func toggleSwitchChanged() {
         let isOn = toggleSwitch.isOn
         applyEnabledTone(isOn)
+        toggleSwitch.accessibilityValue = isOn ? "включён" : "выключен"
         // Recolour the caps + pill set to track the new tone.
         if let attributed = capsLabel.attributedText?.string {
             capsLabel.attributedText = NSAttributedString(

@@ -9,16 +9,31 @@ import UIKit
 /// Subclassing (rather than a factory) keeps the type information attached
 /// to call sites: a screen that exposes `let pushToggle = SPSwitch()` makes
 /// the brand intent obvious in code review.
+///
+/// Accessibility: because this is a real `UISwitch`, VoiceOver gets the native
+/// `.button`/switch trait, the on/off value and double-tap activation for free
+/// — there's nothing custom to re-implement. What it can't infer is *which*
+/// setting the toggle controls, so every call site is responsible for setting a
+/// context `accessibilityLabel` (e.g. the alarm card sets "Будильник"). We seed
+/// a neutral fallback here so a switch that's never given one isn't announced
+/// as an anonymous control.
 final class SPSwitch: UISwitch {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         applyBrandTint()
+        seedAccessibility()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         applyBrandTint()
+        seedAccessibility()
+    }
+
+    private func seedAccessibility() {
+        // Neutral fallback label; call sites override with a contextual one.
+        accessibilityLabel = "Переключатель"
     }
 
     private func applyBrandTint() {
