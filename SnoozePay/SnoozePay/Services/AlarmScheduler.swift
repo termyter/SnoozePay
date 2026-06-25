@@ -369,34 +369,63 @@ final class AlarmScheduler: AlarmScheduling {
         // re-fire as a real system alarm — not a notification — to match the
         // original firing and keep piercing silent mode / Focus. Stop the
         // currently-alerting system alarm first (the in-app firing screen also
-        // silences its audio), then reschedule the same id as a one-shot relative
-        // alarm at now + snoozeMinutes. A synchronous reschedule failure (config
-        // build) falls through to the notification path so the user is never left
-        // without a re-ring. Below iOS 26 (Strategy B) the notification burst
-        // below is unchanged.
+        // silences its audio), then reschedule (under a separate snooze id, #394)
+        // a one-shot `.fixed` alarm at now + snoozeMinutes.
+        //
+        // The AlarmKit `schedule` is async: we report `.success` ONLY after that
+        // await resolves, and on ANY failure (sync config build OR async reject —
+        // alarm limit, revoked auth, backend reject) we arm the notification
+        // burst below instead. A success reported before the await could leave
+        // the penalty charged with nothing re-ringing (#394 Finding 1). Below
+        // iOS 26 (Strategy B) the notification burst is the only path.
         if #available(iOS 26.0, *), usesAlarmKit, let alarmKitScheduler {
             let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
-            do {
-                alarmKitScheduler.stop(alarm.id)
-                try alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate)
-                AppLogger.scheduler.info(
-                    "scheduled snooze via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
-                )
-                completion?(.success(()))
-                return
-            } catch {
-                let desc = error.localizedDescription
-                let alarmID = alarm.id
-                AppLogger.scheduler.error(
-                    """
-                    AlarmKit snooze schedule failed alarm=\(alarmID, privacy: .private): \
-                    \(desc, privacy: .public) — fallback
-                    """
-                )
-                // fall through to the notification path below
+            alarmKitScheduler.stop(alarm.id)
+            alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate) { [weak self] result in
+                switch result {
+                case .success:
+                    AppLogger.scheduler.info(
+                        "scheduled snooze via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
+                    )
+                    completion?(.success(()))
+                case .failure(let error):
+                    let desc = error.localizedDescription
+                    AppLogger.scheduler.error(
+                        """
+                        AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \
+                        \(desc, privacy: .public) — arming notification fallback
+                        """
+                    )
+                    guard let self else {
+                        // Scheduler gone before the async result — report a typed
+                        // failure so the penalty is refunded, never a phantom
+                        // success with no re-ring (#199 / #394).
+                        completion?(.failure(.cancelled))
+                        return
+                    }
+                    self.scheduleSnoozeNotification(
+                        for: alarm,
+                        snoozeCount: snoozeCount,
+                        completion: completion
+                    )
+                }
             }
+            return
         }
 
+        scheduleSnoozeNotification(for: alarm, snoozeCount: snoozeCount, completion: completion)
+    }
+
+    /// Strategy B (fallback) snooze: a `.timeSensitive` notification at
+    /// now + snoozeMinutes plus the lock-screen insistence burst (#19). Used
+    /// below iOS 26 and as the re-ring fallback when the AlarmKit system snooze
+    /// fails to schedule (#394 Finding 1) so the user is never left without a
+    /// re-ring after the penalty is charged.
+    private func scheduleSnoozeNotification(
+        for alarm: Alarm,
+        snoozeCount: Int,
+        completion: ((Result<Void, SchedulingError>) -> Void)?
+    ) {
         let content = makeContent(for: alarm, snoozeCount: snoozeCount)
 
         let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)

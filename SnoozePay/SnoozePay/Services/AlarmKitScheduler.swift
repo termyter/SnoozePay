@@ -44,13 +44,28 @@ protocol AlarmKitScheduling: AnyObject {
     /// disabled alarm is the caller's responsibility.
     func schedule(_ alarm: Alarm) throws
 
-    /// Reschedule `alarm` as a one-shot AlarmKit system alarm that re-fires at
-    /// `fireDate` (the snooze re-ring), `.never` recurrence. Reuses the alarm's
-    /// id so the snooze replaces the just-stopped firing (#383). Throws when
-    /// AlarmKit rejects the request. Kept distinct from `schedule(_:)` because a
-    /// snooze fires at an arbitrary wall-clock time (now + snoozeMinutes), not at
-    /// the alarm's configured time-of-day.
-    func scheduleSnooze(_ alarm: Alarm, fireDate: Date) throws
+    /// Reschedule `alarm` as a one-shot AlarmKit system alarm that re-fires once
+    /// at `fireDate` (the snooze re-ring), no recurrence. Scheduled under a
+    /// SEPARATE snooze id (not `alarm.id`) so a repeating (`.weekly`) original is
+    /// left armed for its future occurrences — replacing `alarm.id` would
+    /// overwrite the weekly schedule with a one-shot and the alarm would never
+    /// ring on its weekdays again (#394). Kept distinct from `schedule(_:)`
+    /// because a snooze fires at an arbitrary wall-clock time (now +
+    /// snoozeMinutes), not at the alarm's configured time-of-day.
+    ///
+    /// Completion-based — NOT a synchronous `throws` — because the actual
+    /// AlarmKit `schedule` is `async`: a synchronous API would have to report
+    /// success before the await resolves, so an async rejection (alarm limit,
+    /// revoked auth, backend reject) would be swallowed while the caller has
+    /// already charged the snooze penalty and stopped the original — nothing
+    /// would ring (#394 Finding 1). `completion` fires with `.success` ONLY after
+    /// the await succeeds, and `.failure` on any (sync config or async schedule)
+    /// error so the caller can arm the notification-burst fallback instead.
+    func scheduleSnooze(
+        _ alarm: Alarm,
+        fireDate: Date,
+        completion: @escaping (Result<Void, Error>) -> Void
+    )
 
     /// Cancel the system alarm for `alarmID` (pending — not yet alerting).
     func cancel(_ alarmID: UUID)
@@ -137,48 +152,92 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         }
     }
 
-    func scheduleSnooze(_ alarm: Alarm, fireDate: Date) throws {
-        let configuration = try Self.makeSnoozeConfiguration(for: alarm, fireDate: fireDate)
-        // Reuse the alarm's id so the snooze replaces the just-stopped firing —
-        // a fresh id would leave the original armed for its next recurrence AND
-        // arm a snooze, double-ringing. Fire-and-log mirrors `schedule(_:)` so
-        // the synchronous contract holds.
+    func scheduleSnooze(
+        _ alarm: Alarm,
+        fireDate: Date,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        // Schedule under a SEPARATE, deterministic snooze id — NOT `alarm.id`.
+        // Replacing `alarm.id` would overwrite a `.weekly` original with this
+        // one-shot snooze, permanently dropping the recurrence (#394). The
+        // caller stops the currently-alerting `alarm.id` before this (#383), so
+        // the original weekly stays armed for its next weekday while the snooze
+        // rings once.
+        let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
+        do {
+            configuration = try Self.makeSnoozeConfiguration(for: alarm, fireDate: fireDate)
+        } catch {
+            // Synchronous config-build failure — report immediately so the
+            // caller arms the notification fallback (#394 Finding 1).
+            let desc = error.localizedDescription
+            AppLogger.scheduler.error(
+                "AlarmKit snooze config failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
+            )
+            completion(.failure(error))
+            return
+        }
+        let snoozeID = Self.snoozeID(for: alarm.id)
+        let alarmID = alarm.id
+        // Report success/failure ONLY after the async schedule resolves, on the
+        // main actor (the caller charges the penalty / arms the fallback off
+        // this result). A swallowed async error here would mean the penalty was
+        // charged but nothing re-rings (#394 Finding 1).
         Task {
             do {
-                _ = try await manager.schedule(id: alarm.id, configuration: configuration)
+                _ = try await manager.schedule(id: snoozeID, configuration: configuration)
                 AppLogger.scheduler.info(
-                    "AlarmKit snooze scheduled alarm=\(alarm.id, privacy: .private)"
+                    "AlarmKit snooze scheduled alarm=\(alarmID, privacy: .private)"
                 )
+                await MainActor.run { completion(.success(())) }
             } catch {
                 let desc = error.localizedDescription
                 AppLogger.scheduler.error(
-                    "AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
+                    """
+                    AlarmKit snooze schedule failed alarm=\(alarmID, privacy: .private): \
+                    \(desc, privacy: .public) — fallback
+                    """
                 )
+                await MainActor.run { completion(.failure(error)) }
             }
         }
     }
 
     func cancel(_ alarmID: UUID) {
+        // Cancel both the alarm and any pending snooze re-ring scheduled under
+        // its separate snooze id (#394) — otherwise a cancelled alarm could
+        // still fire its outstanding snooze.
+        cancelOne(alarmID)
+        cancelOne(Self.snoozeID(for: alarmID))
+    }
+
+    private func cancelOne(_ id: UUID) {
         do {
-            try manager.cancel(id: alarmID)
-            AppLogger.scheduler.info("AlarmKit cancelled alarm=\(alarmID, privacy: .private)")
+            try manager.cancel(id: id)
+            AppLogger.scheduler.info("AlarmKit cancelled alarm=\(id, privacy: .private)")
         } catch {
             // A not-found cancel is benign (alarm already fired / never armed
             // on this backend) — log at info, never crash the caller.
             let desc = error.localizedDescription
             AppLogger.scheduler.info(
-                "AlarmKit cancel no-op alarm=\(alarmID, privacy: .private): \(desc, privacy: .public)"
+                "AlarmKit cancel no-op alarm=\(id, privacy: .private): \(desc, privacy: .public)"
             )
         }
     }
 
     func stop(_ alarmID: UUID) {
+        // Stop both the alarm and any alerting snooze under its snooze id (#394)
+        // so a "stop" from the lock screen silences whichever is ringing.
+        stopOne(alarmID)
+        stopOne(Self.snoozeID(for: alarmID))
+    }
+
+    private func stopOne(_ id: UUID) {
         do {
-            try manager.stop(id: alarmID)
+            try manager.stop(id: id)
         } catch {
             let desc = error.localizedDescription
             AppLogger.scheduler.info(
-                "AlarmKit stop no-op alarm=\(alarmID, privacy: .private): \(desc, privacy: .public)"
+                "AlarmKit stop no-op alarm=\(id, privacy: .private): \(desc, privacy: .public)"
             )
         }
     }
@@ -208,8 +267,8 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     }
 
     /// Build the AlarmKit configuration for a snooze re-fire: same presentation /
-    /// intents / sound as the original alarm, but a one-shot schedule pinned to
-    /// `fireDate`'s hour/minute (`.never` recurrence) so it rings once at
+    /// intents / sound as the original alarm, but a one-shot `.fixed` schedule
+    /// pinned to the absolute `fireDate` so it rings exactly once at
     /// now + snoozeMinutes instead of the alarm's configured time-of-day (#383).
     static func makeSnoozeConfiguration(
         for alarm: Alarm,
@@ -231,16 +290,56 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         )
     }
 
-    /// One-shot relative schedule pinned to `fireDate`'s hour/minute. AlarmKit's
-    /// relative schedule fires at the next occurrence of that time-of-day; for a
-    /// snooze (always < 1h ahead) that next occurrence is the snooze re-ring.
+    /// One-shot schedule pinned to the ABSOLUTE `fireDate`. Uses `.fixed` rather
+    /// than a relative hour/minute schedule: a relative schedule drops seconds
+    /// and fires at the *next* occurrence of that hh:mm, so a snooze planned at
+    /// 07:00:30 for +1min (07:01:30) would round to 07:01 — already in the past
+    /// this minute — and AlarmKit would take *tomorrow's* 07:01, ~24h away
+    /// (#394). `.fixed` rings once at the exact instant, no truncation. (#383)
+    ///
+    /// `fireDate` is captured by the caller *before* the async schedule await, so
+    /// under latency it can already be in the past; a `.fixed` schedule with a
+    /// past instant silently never fires (#394 Finding 2). Floor it strictly into
+    /// the future first.
     nonisolated static func makeSnoozeSchedule(fireDate: Date) -> AlarmKit.Alarm.Schedule {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
-        let time = AlarmKit.Alarm.Schedule.Relative.Time(
-            hour: components.hour ?? 0,
-            minute: components.minute ?? 0
+        .fixed(flooredSnoozeFireDate(fireDate, now: Date()))
+    }
+
+    /// Smallest gap a snooze `fireDate` must keep ahead of `now`; at or under
+    /// this we treat it as effectively-past and bump forward so `.fixed` always
+    /// fires.
+    static let pastDateFloorBuffer: TimeInterval = 2
+
+    /// Clamp a snooze `fireDate` strictly into the future. If `fireDate` is at or
+    /// before `now + pastDateFloorBuffer` (latency ate the gap), return
+    /// `now + pastDateFloorBuffer` and `.notice`-log the bump; otherwise pass it
+    /// through unchanged. Pure + `now`-injectable so the floor is unit-testable
+    /// (#394 Finding 2).
+    nonisolated static func flooredSnoozeFireDate(_ fireDate: Date, now: Date) -> Date {
+        let floor = now.addingTimeInterval(pastDateFloorBuffer)
+        guard fireDate <= floor else { return fireDate }
+        AppLogger.scheduler.notice(
+            """
+            AlarmKit snooze fireDate in past/too-soon — \
+            bumped forward to now+\(pastDateFloorBuffer, privacy: .public)s
+            """
         )
-        return .relative(.init(time: time, repeats: .never))
+        return floor
+    }
+
+    /// Deterministic, distinct snooze id derived from the alarm id (#394). The
+    /// AlarmKit snooze re-ring is scheduled under THIS id, not `alarm.id`, so a
+    /// `.weekly` original keeps its recurrence instead of being overwritten by a
+    /// one-shot. Derived by XOR-ing a fixed namespace into the id's bytes so the
+    /// mapping is stable (same alarm → same snooze id) and reversibly cancelable
+    /// without persisting any extra state.
+    nonisolated static func snoozeID(for alarmID: UUID) -> UUID {
+        var bytes = alarmID.uuid
+        // Flip the high byte with a fixed marker so the snooze id can never
+        // collide with the original alarm id (or any other alarm's id, since the
+        // remaining 120 bits stay unique).
+        bytes.0 ^= 0x53 // 'S' for Snooze
+        return UUID(uuid: bytes)
     }
 
     /// Map the app's hour/minute + Monday-first repeat-day indices to an
