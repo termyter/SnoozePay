@@ -75,6 +75,16 @@ final class AudioService {
     /// Queue-confined backing storage for `currentAlarmID`.
     private var _currentAlarmID: UUID?
 
+    /// Queue-confined count of successful `configureAudioSession()` activations.
+    /// Exposed (`@testable`) so unit tests can assert that a resume path actually
+    /// reclaims the session before `play()` (#395) — the activation itself can't
+    /// be observed in the simulator, but the call count proves the code path ran.
+    private var _sessionActivationCount = 0
+
+    /// Test-only snapshot of how many times the audio session was (re)activated.
+    /// Thread-safe read; see `_sessionActivationCount`.
+    var sessionActivationCount: Int { queue.sync { _sessionActivationCount } }
+
     /// Queue-confined. `true` while the looped player is paused but the session
     /// is still owned — either the top-up sheet paused it (#141) or a system
     /// interruption did (#374). `_state` stays `.playing` throughout (the
@@ -140,6 +150,8 @@ final class AudioService {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, options: [.duckOthers])
         try session.setActive(true, options: [])
+        // Only counted on success (a throw skips this) — see `sessionActivationCount`.
+        _sessionActivationCount += 1
     }
 
     /// Deactivate the audio session when alarm is stopped.
@@ -380,24 +392,45 @@ final class AudioService {
     /// Resume playback + vibration after `pauseAlarmSound()`. No-op if no
     /// player exists (state != .playing). Idempotent so the bottom sheet's
     /// dismiss path can call it without checking pause state first.
+    ///
+    /// Does NOT touch `_interrupted`: a top-up resume must not cancel an
+    /// in-flight system-interruption recovery (#395). Clearing `_interrupted`
+    /// is owned exclusively by the `.ended` branch of `handleAudioInterruption`.
     func resumeAlarmSound() {
         queue.sync {
             guard _state == .playing, audioPlayer != nil else { return }
             resumePlaybackLocked()
-            _interrupted = false
         }
     }
 
     /// Resume the paused looped player + vibration. Must only be called from
     /// `queue` with `audioPlayer != nil`. Clears `_isPaused`. Shared by
     /// `resumeAlarmSound()` (#141), the stacking-replace un-pause (#116/#374)
-    /// and interruption recovery (#374).
+    /// and interruption recovery (#374/#395).
+    ///
+    /// Re-activates the audio session before `play()`. A top-up pause that
+    /// overlaps a system interruption (#395) leaves the session *deactivated*
+    /// by iOS — calling `play()` against a dead session yields silence with no
+    /// error, a failed wake. So every resume path reclaims the session first,
+    /// falling back to `.silentBecauseConfigFailed` if another app holds it.
     private func resumePlaybackLocked() {
         guard let player = audioPlayer else { return }
+        do {
+            try configureAudioSession()
+        } catch {
+            // Session could not be reclaimed (another app owns it). Surface the
+            // explicit fallback so the firing UI warns the user instead of
+            // showing a "ringing" screen with no sound.
+            AppLogger.audio.error(
+                "resumePlaybackLocked: session reactivate failed: \(error.localizedDescription, privacy: .public)"
+            )
+            _isPaused = false
+            _state = .silentBecauseConfigFailed
+            return
+        }
         // `play()` returns false only if the queue refuses — which on a paused
-        // looping player should not happen unless the session was deactivated
-        // out-of-band. Log so a regression where pause/resume gets out of sync
-        // (e.g. interrupted by another app's audio) is diagnosable.
+        // looping player should not happen once the session is active again.
+        // Log so a residual desync is diagnosable.
         if !player.play() {
             AppLogger.audio.error("resumePlaybackLocked: AVAudioPlayer.play() returned false")
         }
@@ -432,31 +465,14 @@ final class AudioService {
             case .ended:
                 guard _interrupted else { return }
                 _interrupted = false
-                resumeAfterInterruptionLocked()
+                // `resumePlaybackLocked` reactivates the session the system
+                // tore down during the interruption before `play()` (#395).
+                guard _state == .playing, audioPlayer != nil else { return }
+                resumePlaybackLocked()
             @unknown default:
                 break
             }
         }
-    }
-
-    /// Re-activate the audio session (the system deactivated it during the
-    /// interruption) and resume playback. Must only be called from `queue`.
-    private func resumeAfterInterruptionLocked() {
-        guard _state == .playing, audioPlayer != nil else { return }
-        do {
-            try configureAudioSession()
-        } catch {
-            // Session could not be reclaimed (another app holds it). Surface the
-            // explicit fallback so the firing UI can warn the user rather than
-            // showing a "ringing" screen with no sound.
-            AppLogger.audio.error(
-                "failed to reactivate audio session after interruption: \(error.localizedDescription, privacy: .public)"
-            )
-            _isPaused = false
-            _state = .silentBecauseConfigFailed
-            return
-        }
-        resumePlaybackLocked()
     }
 
     // MARK: - Vibration
