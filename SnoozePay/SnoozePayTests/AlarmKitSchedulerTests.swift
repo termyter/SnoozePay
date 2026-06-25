@@ -94,6 +94,41 @@ final class AlarmKitSchedulerTests: XCTestCase {
         XCTAssertTrue(center.addedRequests.isEmpty)
     }
 
+    /// #417: when the AlarmKit PRIMARY schedule fails to land asynchronously
+    /// (alarm limit, revoked auth, backend reject), `AlarmScheduler.schedule`
+    /// MUST NOT report a phantom success — it must arm the notification fallback
+    /// so the user (who was told "Будильник создан") still has an alarm. The old
+    /// fire-and-log path swallowed this and left nothing armed.
+    func testSchedule_alarmKitAsyncFailure_armsNotificationFallback() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
+        }
+        let alarmKit = MockAlarmKitScheduler(authorized: true, failSchedule: true)
+        let center = RecordingCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
+        let alarm = AppAlarm(penaltyAmount: 50)
+
+        let exp = expectation(description: "schedule completes")
+        var reportedResult: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler.schedule(alarm) { result in
+            reportedResult = result
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(alarmKit.scheduledIDs, [alarm.id],
+                       "AlarmKit schedule must have been attempted before failing over")
+        XCTAssertFalse(center.addedRequests.isEmpty,
+                       "On async AlarmKit failure the notification fallback MUST be armed")
+        // Result is reported ONLY after the async failure resolves into the
+        // fallback. With the notification fallback landed, success is correct:
+        // an alarm exists. The regression we guard against is success with NO
+        // notification armed (covered by the addedRequests assertion).
+        if case .failure = reportedResult {
+            XCTFail("With the notification fallback armed the schedule should report success")
+        }
+    }
+
     // MARK: - Snooze routing (#383)
 
     /// On the AlarmKit path a snooze must reschedule a real system alarm (NOT a
@@ -452,12 +487,18 @@ final class AlarmKitSchedulerTests: XCTestCase {
 /// `PermissionStubCenter` pattern from `AlarmSchedulerTests`.
 private final class MockAlarmKitScheduler: AlarmKitScheduling {
     struct SnoozeScheduleError: Error {}
+    struct ScheduleError: Error {}
 
     private let authorized: Bool
     /// When `true`, `scheduleSnooze` reports `.failure` via its completion (after
     /// still recording the call) — models an async AlarmKit reject so the caller
     /// must arm the notification fallback instead (#394 Finding 1).
     private let failSnooze: Bool
+    /// When `true`, `schedule` reports `.failure` via its completion (after still
+    /// recording the call) — models an async AlarmKit reject on the PRIMARY
+    /// schedule path so the caller must arm the notification fallback instead of
+    /// reporting a phantom success (#417).
+    private let failSchedule: Bool
     private(set) var scheduledIDs: [UUID] = []
     private(set) var snoozedIDs: [UUID] = []
     private(set) var snoozeFireDates: [Date] = []
@@ -468,9 +509,10 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
     /// the alerting alarm BEFORE rescheduling.
     private(set) var callLog: [String] = []
 
-    init(authorized: Bool, failSnooze: Bool = false) {
+    init(authorized: Bool, failSnooze: Bool = false, failSchedule: Bool = false) {
         self.authorized = authorized
         self.failSnooze = failSnooze
+        self.failSchedule = failSchedule
     }
 
     var isAuthorized: Bool { authorized }
@@ -480,9 +522,13 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
         completion(authorized)
     }
 
-    func schedule(_ alarm: AppAlarm) throws {
+    func schedule(
+        _ alarm: AppAlarm,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
         scheduledIDs.append(alarm.id)
         callLog.append("schedule")
+        completion(failSchedule ? .failure(ScheduleError()) : .success(()))
     }
 
     func scheduleSnooze(

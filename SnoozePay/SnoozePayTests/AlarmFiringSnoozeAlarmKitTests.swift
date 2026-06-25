@@ -106,7 +106,10 @@ private final class SnoozeMockAlarmKit: AlarmKitScheduling {
 
     var isAuthorized: Bool { authorized }
     func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(authorized) }
-    func schedule(_ alarm: Alarm) throws { scheduledIDs.append(alarm.id) }
+    func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) {
+        scheduledIDs.append(alarm.id)
+        completion(.success(()))
+    }
     func scheduleSnooze(
         _ alarm: Alarm,
         fireDate: Date,

@@ -296,27 +296,54 @@ final class AlarmScheduler: AlarmScheduling {
         }
 
         // Strategy A (#377): on iOS 26+ with AlarmKit authorized, schedule a
-        // real system alarm. If AlarmKit rejects the request synchronously
-        // (e.g. limit reached) we fall through to the notification fallback so
-        // the user is never left without an alarm.
+        // real system alarm. The AlarmKit `schedule` is async: we report
+        // `.success` ONLY after that await resolves, and on ANY failure (sync
+        // config build OR async reject — alarm limit, revoked auth, backend
+        // reject) we arm the notification fallback below instead. A success
+        // reported before the await could tell the user "Будильник создан" with
+        // nothing armed and no fallback (#417, same phantom-success class as
+        // #118/#199 but on the primary iOS 26 path).
         if #available(iOS 26.0, *), usesAlarmKit, let alarmKitScheduler {
-            do {
-                try alarmKitScheduler.schedule(alarm)
-                AppLogger.scheduler.info(
-                    "scheduled via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
-                )
-                completion?(.success(()))
-                return
-            } catch {
-                let desc = error.localizedDescription
-                let alarmID = alarm.id
-                AppLogger.scheduler.error(
-                    "AlarmKit schedule failed alarm=\(alarmID, privacy: .private): \(desc, privacy: .public) — fallback"
-                )
-                // fall through to the notification path below
+            alarmKitScheduler.schedule(alarm) { [weak self] result in
+                switch result {
+                case .success:
+                    AppLogger.scheduler.info(
+                        "scheduled via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
+                    )
+                    completion?(.success(()))
+                case .failure(let error):
+                    let desc = error.localizedDescription
+                    AppLogger.scheduler.error(
+                        """
+                        AlarmKit schedule failed alarm=\(alarm.id, privacy: .private): \
+                        \(desc, privacy: .public) — arming notification fallback
+                        """
+                    )
+                    guard let self else {
+                        // Scheduler gone before the async result — report a typed
+                        // failure so the caller never sees a phantom success with
+                        // no alarm armed (#199 / #417).
+                        completion?(.failure(.cancelled))
+                        return
+                    }
+                    self.scheduleNotificationFallback(for: alarm, completion: completion)
+                }
             }
+            return
         }
 
+        scheduleNotificationFallback(for: alarm, completion: completion)
+    }
+
+    /// Strategy B (fallback) initial schedule: the `.timeSensitive`
+    /// notification trigger(s) at the alarm's configured time, plus the
+    /// 64-pending preflight. Used below iOS 26 and as the fallback when the
+    /// AlarmKit system schedule fails (#417) so the user is never left without
+    /// an alarm after being told it was created.
+    private func scheduleNotificationFallback(
+        for alarm: Alarm,
+        completion: ((Result<Void, SchedulingError>) -> Void)?
+    ) {
         let content = makeContent(for: alarm, snoozeCount: 0)
         let triggers = makeTriggers(for: alarm)
 
