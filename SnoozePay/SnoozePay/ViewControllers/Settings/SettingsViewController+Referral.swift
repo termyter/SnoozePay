@@ -168,17 +168,62 @@ extension SettingsViewController: UITextFieldDelegate {
     /// displayed always matches what `applyFriendCode` will see post-
     /// normalisation. Without the cap nothing prevents pasting a 30-char
     /// blob that would later fail validation with no visible cause.
+    ///
+    /// We always return `false` and rewrite the text ourselves (the uppercase
+    /// transform means the rendered string differs from the raw replacement),
+    /// but we recompute the caret offset and restore it via
+    /// `selectedTextRange` so mid-string edits and backspaces don't jump the
+    /// caret to the end. The transform itself lives in `ReferralCodeInput`
+    /// so it can be unit-tested without a live `UITextField`.
     public func textField(
         _ textField: UITextField,
         shouldChangeCharactersIn range: NSRange,
         replacementString string: String
     ) -> Bool {
         let current = textField.text ?? ""
-        guard let swiftRange = Range(range, in: current) else { return false }
-        let proposed = current.replacingCharacters(in: swiftRange, with: string).uppercased()
-        if proposed.count > 6 { return false }
-        textField.text = proposed
+        guard let result = ReferralCodeInput.transform(
+            current: current,
+            replacing: range,
+            with: string
+        ) else { return false }
+
+        textField.text = result.text
+        // Map the UTF-16 caret offset back onto a live text position. Clamp to
+        // the document end in case the transform produced a shorter string.
+        let offset = min(result.caretOffset, (result.text as NSString).length)
+        if let position = textField.position(from: textField.beginningOfDocument, offset: offset) {
+            textField.selectedTextRange = textField.textRange(from: position, to: position)
+        }
         return false
+    }
+}
+
+// MARK: - ReferralCodeInput (pure transform)
+
+/// Pure, UI-free transform behind the referral input's `shouldChangeCharactersIn`
+/// delegate hook. Extracted so the uppercase + 6-char-cap + caret math can be
+/// unit-tested without instantiating a `UITextField`.
+enum ReferralCodeInput {
+
+    /// Result of applying an edit: the new field text plus where the caret
+    /// should land, expressed as a UTF-16 offset from the start of the string.
+    struct Result: Equatable {
+        let text: String
+        let caretOffset: Int
+    }
+
+    /// Applies the replacement, uppercases the whole value, and rejects (returns
+    /// `nil`) any edit that would push the result past 6 characters. On accept,
+    /// the caret offset is the original range start plus the length of the
+    /// inserted (uppercased) text — i.e. it follows what the user just typed,
+    /// even mid-string.
+    static func transform(current: String, replacing range: NSRange, with string: String) -> Result? {
+        guard let swiftRange = Range(range, in: current) else { return nil }
+        let proposed = current.replacingCharacters(in: swiftRange, with: string).uppercased()
+        if proposed.count > 6 { return nil }
+        let insertedLength = (string.uppercased() as NSString).length
+        let caretOffset = range.location + insertedLength
+        return Result(text: proposed, caretOffset: caretOffset)
     }
 }
 
