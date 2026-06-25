@@ -208,6 +208,30 @@ final class OnboardingViewController: UIViewController {
     /// selection change.
     var depositOptionViews: [OnboardingDepositOptionView] = []
 
+    // MARK: - Compact-height adaptation (iPhone SE, #244)
+
+    /// `true` on short devices (iPhone SE / mini family, ≤ 667pt). Drives a
+    /// denser page layout so the vertically-centred content fits without a
+    /// scroll: the hero clock drops 96 → 64pt (`clockXl` → `clockLg`), the
+    /// page titles drop h1 → h2, and the inter-block spacing tightens. Above
+    /// the threshold the canonical 390pt layout is untouched.
+    ///
+    /// 700pt threshold: iPhone SE 3rd-gen is 667pt, the next size up
+    /// (iPhone 13 mini) is 812pt, so any cut here lands cleanly between the
+    /// "needs SE polish" and "roomy" buckets.
+    var isCompactHeight: Bool {
+        view.bounds.height > 0 && view.bounds.height <= Self.compactHeightThreshold
+    }
+
+    /// Height at/below which the dense SE layout kicks in.
+    private static let compactHeightThreshold: CGFloat = 700
+
+    /// Compactness the live `pageViews` were built for — lets
+    /// `viewDidLayoutSubviews` rebuild once if the first real `bounds` flips
+    /// the verdict (page builders run in `viewDidLoad`, before the window
+    /// size is guaranteed).
+    private var builtForCompactHeight: Bool?
+
     // MARK: - Init
 
     init() {
@@ -237,6 +261,15 @@ final class OnboardingViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+
+        // Page builders run in `viewDidLoad`; if the first resolved `bounds`
+        // disagrees with the compactness they assumed, rebuild once so SE gets
+        // the dense layout (and vice-versa on rotation / iPad multitasking).
+        if builtForCompactHeight != isCompactHeight {
+            builtForCompactHeight = isCompactHeight
+            buildPageStack()
+        }
+
         let width = scrollView.bounds.width
         let height = scrollView.bounds.height
         guard width > 0, height > 0 else { return }
@@ -278,6 +311,10 @@ final class OnboardingViewController: UIViewController {
         wireActionTargets()
         rebuildDotsRow(activePage: 0)
         buildPageStack()
+        // Record the compactness the initial pages were built for so the
+        // first `viewDidLayoutSubviews` only rebuilds if the resolved bounds
+        // actually flip the verdict (avoids a redundant double-build).
+        builtForCompactHeight = isCompactHeight
     }
 
     private func installLayoutConstraints() {
