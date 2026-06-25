@@ -149,6 +149,30 @@ extension WalletViewController {
         return card
     }
 
+    /// Distinct error card shown when the ledger fails to decode (#419) — a
+    /// corrupt blob must read as "не удалось загрузить", NOT the friendly
+    /// "нет операций" empty-state, so the user doesn't assume their history
+    /// was wiped. Tinted with the pain colour to set it apart from the empty
+    /// card, mirroring how `StatisticsViewModel` surfaces its load error.
+    func makeTxPreviewErrorCard() -> UIView {
+        let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.md)
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.body
+        label.textColor = AppColors.pain400
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.text = "Не удалось загрузить историю"
+        card.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
+            label.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
+            label.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
+            label.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor)
+        ])
+        return card
+    }
+
     /// 36×36 rounded icon tile — red flame tint for charges, green tint
     /// for credits. Matches `WalletTransactionHistoryViewController` rows.
     private func makeTxIcon(systemName: String, isDebit: Bool) -> UIView {
