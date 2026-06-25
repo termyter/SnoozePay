@@ -109,6 +109,10 @@ final class AlarmKitSchedulerTests: XCTestCase {
         let alarm = AppAlarm(penaltyAmount: 50)
 
         let exp = expectation(description: "schedule completes")
+        // The completion must fire exactly once (over-fulfillment = a double
+        // report from both the AlarmKit branch and the fallback).
+        exp.expectedFulfillmentCount = 1
+        exp.assertForOverFulfill = true
         var reportedResult: Result<Void, AlarmScheduler.SchedulingError>?
         scheduler.schedule(alarm) { result in
             reportedResult = result
@@ -126,6 +130,36 @@ final class AlarmKitSchedulerTests: XCTestCase {
         // notification armed (covered by the addedRequests assertion).
         if case .failure = reportedResult {
             XCTFail("With the notification fallback armed the schedule should report success")
+        }
+    }
+
+    /// Worst case for #417: AlarmKit async-rejects AND the notification fallback's
+    /// `add` also errors. The user was told nothing yet, so the result MUST be a
+    /// typed `.failure` — never a phantom success that leaves no alarm armed.
+    func testSchedule_bothBackendsFail_reportsFailureNotPhantomSuccess() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
+        }
+        let alarmKit = MockAlarmKitScheduler(authorized: true, failSchedule: true)
+        let center = RecordingCenter()
+        center.failAdds = true
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
+        let alarm = AppAlarm(penaltyAmount: 50)
+
+        let exp = expectation(description: "schedule completes")
+        exp.expectedFulfillmentCount = 1
+        exp.assertForOverFulfill = true
+        var reportedResult: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler.schedule(alarm) { result in
+            reportedResult = result
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        guard case .failure = reportedResult else {
+            XCTFail("When BOTH AlarmKit and the notification fallback fail, the "
+                + "schedule must report a typed .failure, not phantom success")
+            return
         }
     }
 
@@ -558,13 +592,16 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
 /// pre-flight 64-pending check resolves deterministically.
 private final class RecordingCenter: NotificationScheduling {
     private(set) var addedRequests: [UNNotificationRequest] = []
+    /// When true, every `add` reports an error so the notification fallback
+    /// itself fails — used to exercise the both-backends-fail path (#417).
+    var failAdds = false
 
     func add(
         _ request: UNNotificationRequest,
         withCompletionHandler completion: ((Error?) -> Void)?
     ) {
         addedRequests.append(request)
-        completion?(nil)
+        completion?(failAdds ? NSError(domain: "RecordingCenterTest", code: 1) : nil)
     }
     func getPendingNotificationRequests(
         completionHandler: @escaping ([UNNotificationRequest]) -> Void
