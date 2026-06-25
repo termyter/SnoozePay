@@ -441,4 +441,108 @@ final class AudioServiceTests: XCTestCase {
 
         service.stopAlarmSound()
     }
+
+    // MARK: - Session reactivation on resume (#395)
+
+    /// #395 facet 1 — every resume must reclaim the audio session before
+    /// `play()`. iOS deactivates the session during an interruption; a
+    /// `play()` against a dead session is silent with no error (a failed wake).
+    /// `sessionActivationCount` increasing on resume proves the reactivation
+    /// path actually ran.
+    func testResumeAlarmSound_reactivatesSession() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: UUID())
+        let afterStart = service.sessionActivationCount
+
+        service.pauseAlarmSound()
+        service.resumeAlarmSound()
+        XCTAssertEqual(
+            service.sessionActivationCount, afterStart + 1,
+            "resumeAlarmSound must reactivate the session (it may be dead after an interruption, #395)"
+        )
+        XCTAssertFalse(service.isPaused)
+        XCTAssertEqual(service.state, .playing)
+
+        service.stopAlarmSound()
+    }
+
+    /// #395 core scenario — a top-up pause (#141) overlaps an incoming call.
+    /// The `.began` is guarded out because `_isPaused` is already set, so iOS
+    /// silently tears the session down. When the top-up sheet dismisses,
+    /// `resumeAlarmSound()` must reactivate the session — otherwise the alarm
+    /// plays against a dead session and the user never wakes.
+    func testTopUpPauseThenInterruption_resumeReactivatesSession() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: UUID())
+
+        service.pauseAlarmSound()          // top-up sheet opens
+        postInterruption(.began)           // call arrives, guarded out, session torn down
+        XCTAssertTrue(service.isPaused, "top-up pause stays in effect through the interruption")
+
+        let beforeResume = service.sessionActivationCount
+        service.resumeAlarmSound()         // sheet dismisses
+        XCTAssertEqual(
+            service.sessionActivationCount, beforeResume + 1,
+            "resume after a top-up-pause+interruption must reclaim the dead session (#395)"
+        )
+        XCTAssertFalse(service.isPaused)
+        XCTAssertEqual(service.state, .playing)
+
+        service.stopAlarmSound()
+    }
+
+    /// #395 facet 2 — `resumeAlarmSound()` must NOT clear `_interrupted`. If a
+    /// real interruption is active and a top-up resume fires concurrently, the
+    /// old code reset `_interrupted=false`, so the later `.ended` no-op'd and
+    /// the alarm never auto-resumed. Here the un-pause via stacking-replace
+    /// (which calls the same resume path) must leave the pending interruption's
+    /// `.ended` recovery intact.
+    func testConcurrentResume_doesNotDropPendingInterruption() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: UUID())
+
+        postInterruption(.began)           // real interruption → _interrupted = true
+        XCTAssertTrue(service.isPaused)
+
+        // A racing manual resume (e.g. top-up dismiss) must not cancel the
+        // pending interruption recovery.
+        service.resumeAlarmSound()
+        XCTAssertFalse(service.isPaused, "manual resume un-pauses")
+
+        // The interruption still ends — recovery must run rather than no-op,
+        // proving `_interrupted` survived the manual resume.
+        let beforeEnded = service.sessionActivationCount
+        postInterruption(.ended)
+        XCTAssertEqual(
+            service.sessionActivationCount, beforeEnded + 1,
+            "interruption .ended must still reactivate — _interrupted must survive a concurrent resume (#395)"
+        )
+        XCTAssertEqual(service.state, .playing)
+
+        service.stopAlarmSound()
+    }
+
+    /// Interruption began/ended round-trip must reactivate the session on
+    /// `.ended` (#395) — the original #374 path, now routed through
+    /// `resumePlaybackLocked`.
+    func testInterruptionEnded_reactivatesSession() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: UUID())
+
+        postInterruption(.began)
+        let beforeEnded = service.sessionActivationCount
+        postInterruption(.ended)
+        XCTAssertEqual(
+            service.sessionActivationCount, beforeEnded + 1,
+            "interruption .ended must reclaim the session iOS tore down (#395)"
+        )
+        XCTAssertFalse(service.isPaused)
+        XCTAssertEqual(service.state, .playing)
+
+        service.stopAlarmSound()
+    }
 }
