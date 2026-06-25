@@ -206,6 +206,21 @@ final class SPBalanceCard: UIView {
             guard let attributed = valueLabel.attributedText?.mutableCopy() as? NSMutableAttributedString else {
                 return
             }
+            // `valueLabel.adjustsFontSizeToFitWidth` may have shrunk the glyphs
+            // below the 56pt `moneyXl` baked into the attributed string. The
+            // attributed copy still carries the original (large) font, so
+            // drawing it verbatim renders 56pt glyphs into the smaller, shrunk
+            // `textBounds` — the mask then overflows / clips the right-hand
+            // digits and the `₽`. Re-font every run at the effective on-screen
+            // scale so the mask matches what the label actually paints.
+            let scale = Self.effectiveFontScale(
+                for: attributed,
+                fitting: textBounds.width,
+                minimumScaleFactor: valueLabel.minimumScaleFactor
+            )
+            if scale < 1 {
+                Self.scaleFonts(in: attributed, by: scale)
+            }
             attributed.addAttribute(
                 .foregroundColor,
                 value: UIColor.white,
@@ -220,6 +235,47 @@ final class SPBalanceCard: UIView {
         // Hide the underlying label colour so we don't double-stack glyph
         // outlines (label paints fg1, gradient paints money tones).
         valueLabel.textColor = .clear
+    }
+
+    // MARK: - Auto-shrink mask alignment
+
+    /// Compute the scale factor `adjustsFontSizeToFitWidth` would apply to fit
+    /// `attributed` (rendered at its baked-in fonts) into `availableWidth`.
+    ///
+    /// Mirrors UIKit's single-line shrink heuristic: if the natural text width
+    /// already fits, returns `1`; otherwise returns `availableWidth / naturalWidth`
+    /// clamped to `minimumScaleFactor` (UIKit never shrinks below the floor,
+    /// it clips instead — so the mask must match that clamped size, not the
+    /// raw ratio). A pure function so the geometry is unit-testable without a
+    /// live label / layout pass.
+    static func effectiveFontScale(
+        for attributed: NSAttributedString,
+        fitting availableWidth: CGFloat,
+        minimumScaleFactor: CGFloat
+    ) -> CGFloat {
+        guard availableWidth > 0, attributed.length > 0 else { return 1 }
+        let naturalWidth = attributed.size().width
+        guard naturalWidth > availableWidth else { return 1 }
+        let ratio = availableWidth / naturalWidth
+        let floor = minimumScaleFactor > 0 ? minimumScaleFactor : ratio
+        return max(ratio, floor)
+    }
+
+    /// Re-font every run of `attributed` in place at `scale × pointSize`,
+    /// preserving each run's traits / weight (digits stay mono, the separator
+    /// stays proportional). Used to align the gradient mask with the shrunk
+    /// on-screen glyphs.
+    static func scaleFonts(in attributed: NSMutableAttributedString, by scale: CGFloat) {
+        guard scale > 0, scale != 1 else { return }
+        let full = NSRange(location: 0, length: attributed.length)
+        attributed.enumerateAttribute(.font, in: full, options: []) { value, range, _ in
+            guard let font = value as? UIFont else { return }
+            attributed.addAttribute(
+                .font,
+                value: font.withSize(font.pointSize * scale),
+                range: range
+            )
+        }
     }
 
     private func renderDelta(_ delta: Decimal) -> NSAttributedString {
