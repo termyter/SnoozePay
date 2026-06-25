@@ -44,10 +44,23 @@ protocol AlarmScheduling: AnyObject {
     func cancel(_ alarmID: UUID)
 }
 
-/// Handles scheduling and cancelling alarms.
-/// Uses UNUserNotificationCenter (iOS 18+) as the scheduling backend.
-/// On iOS 26+ with AlarmKit, the system alarm engine takes over — this service
-/// manages the notification fallback and snooze rescheduling.
+/// Handles scheduling and cancelling alarms across two backends (`docs/SPEC.md`
+/// §3.2.1):
+///
+/// - **Strategy A — AlarmKit (iOS 26+).** On iOS 26 and later, alarms are
+///   scheduled through `AlarmKitScheduler` (the `AlarmManager` wrapper). This
+///   is a real system alarm: it rings continuously, pierces silent mode and
+///   Focus/DND, and shows a full-screen lock-screen alert — like Clock.app —
+///   without the (unapproved) Critical Alerts entitlement. Stop / snooze
+///   buttons on the system alert route back through `AlarmKitActionRouter`.
+/// - **Strategy B — UNUserNotificationCenter (fallback, all versions).** Below
+///   iOS 26 (or if AlarmKit scheduling fails / is unauthorized) the alarm is a
+///   `.timeSensitive` notification with the lock-screen fallback burst (#19).
+///   This is the only backend that ran before #377.
+///
+/// The two paths share `AlarmFiringCoordinator` for paid-snooze charging and
+/// refund-on-failure, so the wallet semantics are identical regardless of
+/// backend.
 final class AlarmScheduler: AlarmScheduling {
 
     static let shared = AlarmScheduler()
@@ -111,6 +124,22 @@ final class AlarmScheduler: AlarmScheduling {
 
     private let notificationCenter: NotificationScheduling
 
+    /// Strategy A backend (#377). Non-nil only on iOS 26+ where AlarmKit is
+    /// available; `nil` on earlier OSes so every call site naturally falls
+    /// through to the notification path. Injectable for tests so the
+    /// iOS-26-vs-fallback branching can be exercised on any host OS.
+    private let alarmKitScheduler: AlarmKitScheduling?
+
+    /// Whether the AlarmKit (Strategy A) path should be used for this call.
+    /// True only when running on iOS 26+, a backend is wired, AND the user has
+    /// authorized AlarmKit. Otherwise we fall through to the notification
+    /// fallback so a denied / undetermined AlarmKit grant never leaves the user
+    /// without any alarm.
+    private var usesAlarmKit: Bool {
+        guard #available(iOS 26.0, *), let alarmKitScheduler else { return false }
+        return alarmKitScheduler.isAuthorized
+    }
+
     // Notification category and action IDs
     private let categoryID = "ALARM_CATEGORY"
     private let dismissActionID = "DISMISS_ACTION"
@@ -139,17 +168,54 @@ final class AlarmScheduler: AlarmScheduling {
 
     private init() {
         self.notificationCenter = UNUserNotificationCenter.current()
+        // Wire the AlarmKit backend on iOS 26+; leave nil below so every call
+        // site falls through to the notification fallback (Strategy B).
+        if #available(iOS 26.0, *) {
+            self.alarmKitScheduler = AlarmKitScheduler()
+        } else {
+            self.alarmKitScheduler = nil
+        }
     }
 
-    /// Test-only initializer that swaps the notification-center seam.
-    /// Production code MUST use `AlarmScheduler.shared` (see `singleton`).
-    init(notificationCenter: NotificationScheduling) {
+    /// Test-only initializer that swaps the notification-center seam and,
+    /// optionally, the AlarmKit backend. Production code MUST use
+    /// `AlarmScheduler.shared` (see `singleton`). Passing an `alarmKit` mock
+    /// lets tests drive the Strategy-A path on any host OS.
+    init(
+        notificationCenter: NotificationScheduling,
+        alarmKit: AlarmKitScheduling? = nil
+    ) {
         self.notificationCenter = notificationCenter
+        self.alarmKitScheduler = alarmKit
     }
 
     // MARK: - Permission
 
+    /// Request AlarmKit (Strategy A) authorization on iOS 26+. No-op on earlier
+    /// OSes / when no backend is wired. Completes with the resolved grant.
+    /// Called alongside the notification permission request so the onboarding /
+    /// first-enable flow primes both backends (#377).
+    func requestAlarmKitAuthorization(completion: @escaping (Bool) -> Void) {
+        guard #available(iOS 26.0, *), let alarmKitScheduler else {
+            completion(false)
+            return
+        }
+        alarmKitScheduler.requestAuthorization(completion: completion)
+    }
+
     func requestPermission(completion: @escaping (Bool) -> Void) {
+        // On iOS 26+ prime AlarmKit authorization first (Strategy A). Its grant
+        // does not gate the notification request — we always also request
+        // notifications so the Strategy-B fallback stays available if AlarmKit
+        // is denied. The result reported to the caller is the NOTIFICATION
+        // grant, preserving the existing PermissionsViewController contract.
+        if #available(iOS 26.0, *), let alarmKitScheduler {
+            alarmKitScheduler.requestAuthorization { granted in
+                AppLogger.scheduler.notice(
+                    "AlarmKit authorization granted=\(granted, privacy: .public)"
+                )
+            }
+        }
         // Request critical alerts if entitled, fall back to standard alerts otherwise.
         // Always log the resolved state so QA can tell if we're on the degraded
         // (no critical-alert) path even when standard permission succeeds.
@@ -223,6 +289,28 @@ final class AlarmScheduler: AlarmScheduling {
         guard alarm.enabled else {
             completion?(.success(()))
             return
+        }
+
+        // Strategy A (#377): on iOS 26+ with AlarmKit authorized, schedule a
+        // real system alarm. If AlarmKit rejects the request synchronously
+        // (e.g. limit reached) we fall through to the notification fallback so
+        // the user is never left without an alarm.
+        if #available(iOS 26.0, *), usesAlarmKit, let alarmKitScheduler {
+            do {
+                try alarmKitScheduler.schedule(alarm)
+                AppLogger.scheduler.info(
+                    "scheduled via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
+                )
+                completion?(.success(()))
+                return
+            } catch {
+                let desc = error.localizedDescription
+                let alarmID = alarm.id
+                AppLogger.scheduler.error(
+                    "AlarmKit schedule failed alarm=\(alarmID, privacy: .private): \(desc, privacy: .public) — fallback"
+                )
+                // fall through to the notification path below
+            }
         }
 
         let content = makeContent(for: alarm, snoozeCount: 0)
@@ -408,6 +496,15 @@ final class AlarmScheduler: AlarmScheduling {
     /// label list — this prevents regressions like IOS-070 where a one-off (`once`) alarm
     /// kept ringing after deletion because its identifier was missing from the cancel set.
     func cancel(_ alarmID: UUID) {
+        // Strategy A (#377): also cancel the AlarmKit system alarm. Always
+        // attempt it on iOS 26+ regardless of `usesAlarmKit` so an alarm
+        // scheduled while authorized is still cancellable if authorization
+        // later changed. The notification sweep below runs unconditionally
+        // because an alarm may have been scheduled via either backend.
+        if #available(iOS 26.0, *), let alarmKitScheduler {
+            alarmKitScheduler.cancel(alarmID)
+        }
+
         let prefix = notificationIDPrefix(for: alarmID)
         let snoozeID = snoozeNotificationID(for: alarmID)
         // Match the snooze identifier itself AND its fallback-burst follow-ups
@@ -496,6 +593,16 @@ final class AlarmScheduler: AlarmScheduling {
 
     func cancelAll() {
         notificationCenter.removeAllPendingNotificationRequests()
+    }
+
+    /// Stop a currently-alerting AlarmKit (Strategy A) system alarm — invoked
+    /// from `AlarmKitActionRouter` when the user taps stop / snooze on the
+    /// system alert. No-op on iOS < 26 / when no AlarmKit backend is wired
+    /// (the notification path stops audio via `AudioService` instead). (#377)
+    func stopSystemAlarm(_ alarmID: UUID) {
+        if #available(iOS 26.0, *), let alarmKitScheduler {
+            alarmKitScheduler.stop(alarmID)
+        }
     }
 
     // MARK: - Private helpers

@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>SnoozePay использует будильники, чтобы будить вас вовремя — даже в беззвучном режиме.</string>
 	<key>NSCriticalAlertUsageDescription</key>
 	<string>SnoozePay использует критические уведомления для срабатывания будильника даже в режиме «Не беспокоить» и при выключенном звуке.</string>
 	<key>UIBackgroundModes</key>
