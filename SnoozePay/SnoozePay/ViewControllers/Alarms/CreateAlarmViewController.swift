@@ -174,6 +174,10 @@ final class CreateAlarmViewController: UIViewController {
         view.addSubview(tableView)
         tableView.delegate = self
         tableView.dataSource = self
+        // The penalty field uses a `.numberPad` keyboard (no return key), so a
+        // drag over the form dismisses it — otherwise it would cover the cards
+        // below with no way out but Save/Cancel (#410).
+        tableView.keyboardDismissMode = .interactive
         registerSectionCells(in: tableView)
 
         // Pin to safe area on top so the first section's "ПОВТОР" header is
