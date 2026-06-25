@@ -23,6 +23,16 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     private let onSelect: (String) -> Void
     private let previewSound: (String) -> Void
 
+    /// Per-alarm volume + fade-in, surfaced via a «Громкость» row that pushes
+    /// `VolumePickerViewController` (#270 — option 2: sound + volume are
+    /// cohesive, so the volume entry point lives on the sound screen rather
+    /// than the create/edit settings card). Kept in sync as the user edits.
+    private var volume: Float
+    private var fadeIn: Bool
+    /// Fired live as the volume/fade-in picker reports changes, so the caller
+    /// can persist. `nil` when the host doesn't surface volume control.
+    private let onVolumeChange: ((Float, Bool) -> Void)?
+
     /// `true` while the «Превью» head is in its "playing" affordance. System
     /// sounds are fire-and-forget, so this is a UI state reset by a timer keyed
     /// to the typical preview length.
@@ -138,6 +148,17 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     /// each `CADisplayLink` tick; `0` while idle.
     private var progressFillWidth: NSLayoutConstraint?
 
+    /// Trailing value label on the «Громкость» row — reads e.g. «80% · плавно».
+    /// Refreshed when the volume picker reports a change.
+    private let volumeValueLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg3
+        label.textAlignment = .right
+        return label
+    }()
+
     /// Drives the progress fill + timecode during a preview. Nil while idle.
     private var progressLink: CADisplayLink?
     /// Host time (`CACurrentMediaTime`) at which the current preview started.
@@ -153,16 +174,28 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     ///   - onSelect: Fired when the user picks a sound. The picker no longer
     ///     pops itself — the user leaves via «Готово» / back.
     ///   - previewSound: Plays a preview for a given sound id.
+    ///   - volume: Initial per-alarm volume in `0.0...1.0`. Drives the
+    ///     «Громкость» row value; defaults to full volume.
+    ///   - fadeIn: Initial fade-in flag for the «Громкость» row.
+    ///   - onVolumeChange: Fired live as the pushed `VolumePickerViewController`
+    ///     reports slider / switch changes. Pass `nil` to hide the volume row.
     init(
         sounds: [SoundCatalogue.Entry],
         selectedID: String,
         onSelect: @escaping (String) -> Void,
-        previewSound: @escaping (String) -> Void
+        previewSound: @escaping (String) -> Void,
+        volume: Float = 1.0,
+        fadeIn: Bool = false,
+        onVolumeChange: ((Float, Bool) -> Void)? = nil
     ) {
         self.sounds = sounds
         self.selectedSoundID = selectedID
         self.onSelect = onSelect
         self.previewSound = previewSound
+        // Clamp the seed so a corrupt persisted volume can't render «-12%».
+        self.volume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
+        self.fadeIn = fadeIn
+        self.onVolumeChange = onVolumeChange
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -236,6 +269,13 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
         contentStack.addArrangedSubview(listCard)
         contentStack.addArrangedSubview(makePreviewBlock())
+        // «Громкость» entry point — only when the host wired up a change
+        // handler (#270). Restores the volume/fade-in picker dropped by the
+        // 3-row settings card in #263.
+        if onVolumeChange != nil {
+            contentStack.addArrangedSubview(makeVolumeBlock())
+            refreshVolumeLabel()
+        }
 
         scrollView.addSubview(contentStack)
         view.addSubview(scrollView)
@@ -490,6 +530,91 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     private static func previewDurationSeconds(for soundID: String) -> Double {
         previewDurations[soundID] ?? 3
+    }
+}
+
+// MARK: - Volume entry point (#270)
+
+/// The «Громкость» entry that PR #263 dropped from the create/edit settings
+/// card lives here instead — sound + volume are cohesive, so the volume/fade-in
+/// picker is reached from the sound screen (issue #270, option 2).
+extension SoundPickerViewController {
+
+    /// Builds the «Громкость» caps label + a single-row `SPCard` whose row
+    /// pushes `VolumePickerViewController`. Mirrors the sound-list card recipe
+    /// (padding-0 card + inset row) so the entry reads as a sibling of the
+    /// sound list.
+    func makeVolumeBlock() -> UIStackView {
+        let capsLabel = UILabel()
+        capsLabel.translatesAutoresizingMaskIntoConstraints = false
+        capsLabel.attributedText = NSAttributedString(
+            string: "Громкость".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right")?
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)))
+        chevron.tintColor = AppColors.fg3
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
+        let trailingStack = UIStackView(arrangedSubviews: [volumeValueLabel, chevron])
+        trailingStack.axis = .horizontal
+        trailingStack.alignment = .center
+        trailingStack.spacing = AppSpacing.sp2
+
+        let row = SPRow(
+            title: "Громкость и нарастание",
+            trailing: trailingStack,
+            divider: false
+        ) { [weak self] in
+            self?.showVolumePicker()
+        }
+        row.accessibilityLabel = "Громкость и нарастание"
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let card = SPCard(tone: .surface, padding: 0, cornerRadius: AppRadius.lg)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(row)
+        NSLayoutConstraint.activate([
+            // 20pt horizontal inset to match the JSX «padding "4px 20px"» list
+            // recipe used by the sound rows.
+            row.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.sp5),
+            row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.sp5),
+            row.topAnchor.constraint(equalTo: card.topAnchor),
+            row.bottomAnchor.constraint(equalTo: card.bottomAnchor)
+        ])
+
+        let block = UIStackView(arrangedSubviews: [capsLabel, card])
+        block.translatesAutoresizingMaskIntoConstraints = false
+        block.axis = .vertical
+        block.spacing = AppSpacing.sp2 + 2
+        return block
+    }
+
+    /// Refreshes the «Громкость» row value label, e.g. «80% · плавно».
+    func refreshVolumeLabel() {
+        let percent = "\(Int((volume * 100).rounded()))%"
+        volumeValueLabel.text = fadeIn ? "\(percent) · плавно" : percent
+    }
+
+    /// Pushes the existing `VolumePickerViewController` (#150) and forwards its
+    /// live slider / switch changes to both the local label and the host.
+    private func showVolumePicker() {
+        let picker = VolumePickerViewController(
+            volume: volume,
+            fadeIn: fadeIn
+        ) { [weak self] newVolume, newFadeIn in
+            guard let self else { return }
+            self.volume = newVolume
+            self.fadeIn = newFadeIn
+            self.refreshVolumeLabel()
+            self.onVolumeChange?(newVolume, newFadeIn)
+        }
+        navigationController?.pushViewController(picker, animated: true)
     }
 }
 
