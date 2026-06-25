@@ -306,14 +306,23 @@ extension AlarmFiringViewController {
             return
         }
 
-        // Product list hasn't loaded yet — fall back to a direct top-up.
+        // Product list hasn't loaded yet.
+        #if DEBUG
+        // DEBUG/simulator: credit locally so the flow stays testable.
         AppLogger.storeKit.notice(
-            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — fallback to topUp"
+            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — DEBUG fallback to topUp"
         )
         let amount = Double(Self.noBalanceDisplayAmount)
         if BalanceService.shared.topUp(amount: amount) {
             return
         }
+        #else
+        // Release: never credit without a real StoreKit transaction —
+        // fall through to reset + the failure alert below.
+        AppLogger.storeKit.error(
+            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
+        )
+        #endif
         noBalancePurchaseInFlight = false
         applePayNoBalanceButton?.isEnabled = true
         presentNoBalancePurchaseFailureAlert(

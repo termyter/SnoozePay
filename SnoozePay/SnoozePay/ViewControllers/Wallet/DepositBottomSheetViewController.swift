@@ -363,14 +363,27 @@ final class DepositBottomSheetViewController: UIViewController {
             }
         } else {
             let pid = preset.productID
+            #if DEBUG
+            // DEBUG/simulator without a loaded StoreKit catalogue: credit
+            // locally so the flow stays testable without ASC products.
             AppLogger.storeKit.notice(
-                "DepositSheet: product \(pid, privacy: .public) not loaded — falling back to BalanceService.topUp"
+                "DepositSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
             )
             if BalanceService.shared.topUp(amount: Double(preset.amount)) {
                 handlePurchaseSuccess(amount: preset.amount)
             } else {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
+            #else
+            // Release: NEVER credit balance without a real StoreKit
+            // transaction. An empty product list (inactive Paid Apps /
+            // unpropagated SKU / offline) must surface as an error, not as
+            // free balance.
+            AppLogger.storeKit.error(
+                "DepositSheet: product \(pid, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
+            )
+            handlePurchaseFailure(message: "Не удалось загрузить пакеты пополнения. Попробуйте позже.")
+            #endif
         }
     }
 
