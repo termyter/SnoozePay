@@ -406,8 +406,27 @@ final class OnboardingViewController: UIViewController {
 
 extension OnboardingViewController: UIScrollViewDelegate {
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        let page = Int(round(scrollView.contentOffset.x / scrollView.bounds.width))
+        settlePagerState(for: scrollView)
+    }
+
+    /// A slow drag released without momentum settles here (`decelerate == false`)
+    /// and never reaches `scrollViewDidEndDecelerating`. Resolve the page so the
+    /// dot-row, glow, "Позже" link and primary CTA stay in sync. (#408)
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        guard !decelerate else { return }
+        settlePagerState(for: scrollView)
+    }
+
+    private func settlePagerState(for scrollView: UIScrollView) {
+        let page = Self.resolvePage(offsetX: scrollView.contentOffset.x, width: scrollView.bounds.width)
         pageControl.currentPage = page
         updatePagerState(forPage: page)
+    }
+
+    /// Pure page-index resolution from a horizontal content offset. Static and
+    /// side-effect-free so it can be unit-tested without a live scroll view.
+    static func resolvePage(offsetX: CGFloat, width: CGFloat) -> Int {
+        guard width > 0 else { return 0 }
+        return Int(round(offsetX / width))
     }
 }

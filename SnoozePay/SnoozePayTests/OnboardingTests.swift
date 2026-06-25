@@ -95,4 +95,21 @@ final class OnboardingTests: XCTestCase {
         let title = vc.skipButton.configuration?.attributedTitle.map { String($0.characters) }
         XCTAssertEqual(title, "Пропустить")
     }
+
+    // MARK: - Pager page resolution (#408)
+
+    func testResolvePage_settlesToNearestPage() {
+        let width: CGFloat = 390
+
+        XCTAssertEqual(OnboardingViewController.resolvePage(offsetX: 0, width: width), 0)
+        // Slow drag releasing just past the midpoint of page 3 rounds to page 2,
+        // the case scrollViewDidEndDragging(decelerate: false) must now cover.
+        XCTAssertEqual(OnboardingViewController.resolvePage(offsetX: width * 2 - 10, width: width), 2)
+        XCTAssertEqual(OnboardingViewController.resolvePage(offsetX: width * 2, width: width), 2)
+    }
+
+    func testResolvePage_zeroWidthIsSafe() {
+        // Before layout the scroll view has zero width — must not divide by zero.
+        XCTAssertEqual(OnboardingViewController.resolvePage(offsetX: 100, width: 0), 0)
+    }
 }
