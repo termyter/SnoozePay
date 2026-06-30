@@ -245,7 +245,12 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
             captured = outcome
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        // 5.0s, matching the suite's `resolveSnooze` helper. The prior 1.0s was
+        // too tight for a loaded CI runner — the async handleSnooze + refund
+        // chain (≈45ms locally) intermittently overran it under parallel-job
+        // contention, leaving `captured` nil and flaking this test on most PRs
+        // (#434). This is a tolerance budget, not a perf assertion.
+        wait(for: [exp], timeout: 5.0)
 
         guard case .scheduleFailedAndRefundFailed = captured else {
             return XCTFail("Expected .scheduleFailedAndRefundFailed, got \(String(describing: captured))")
