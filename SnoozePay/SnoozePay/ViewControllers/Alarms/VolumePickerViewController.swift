@@ -199,6 +199,10 @@ final class VolumePickerViewController: UIViewController {
             fadeRow.topAnchor.constraint(equalTo: fadeRowContainer.layoutMarginsGuide.topAnchor),
             fadeRow.bottomAnchor.constraint(equalTo: fadeRowContainer.layoutMarginsGuide.bottomAnchor)
         ])
+        // VoiceOver otherwise announces the brand `SPSwitch` as the generic
+        // "Переключатель". Give it the fade row's title so the control is
+        // self-describing (#425), mirroring the volume slider's label above.
+        fadeSwitch.accessibilityLabel = "Постепенно нарастает"
         fadeSwitch.addTarget(self, action: #selector(fadeToggled), for: .valueChanged)
     }
 
