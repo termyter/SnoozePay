@@ -26,6 +26,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// never explicitly removed.
     private var rescheduleObserverTokens: [NSObjectProtocol] = []
 
+    /// Token for the resume-audio-failure observer (#405). Held for the app's
+    /// lifetime alongside `rescheduleObserverTokens`.
+    private var resumeAudioObserverToken: NSObjectProtocol?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -70,6 +74,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // or never re-arm onto the notification fallback after AlarmKit is
         // revoked (#427). The first foreground after launch covers reboot.
         registerAlarmRescheduleObservers()
+
+        // Surface a silent resume-time audio failure as a lock-screen banner
+        // (#405). When the audio session can't be re-activated on resume and the
+        // firing screen isn't visible, the in-app banner never reaches the user;
+        // this observer turns AudioService's process notification into a
+        // time-sensitive local notification they actually see.
+        registerResumeAudioFailedObserver()
 
         // Reclaim orphaned custom-theme JPEGs (#357): re-picking a photo or
         // deleting a `.custom`-themed alarm leaves its image on disk forever.
@@ -144,6 +155,48 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             "re-arming saved alarms (trigger=\(trigger.rawValue, privacy: .public))"
         )
         AlarmScheduler.shared.rescheduleAll(AlarmRepository.shared.fetchAll())
+    }
+
+    /// Observe `AudioService.resumeAudioFailedNotification` so a silent
+    /// resume-time audio failure is surfaced as a lock-screen banner even when
+    /// no firing screen is visible (#405). `static` handler so the `@Sendable`
+    /// closure doesn't capture `self`.
+    private func registerResumeAudioFailedObserver() {
+        resumeAudioObserverToken = NotificationCenter.default.addObserver(
+            forName: AudioService.resumeAudioFailedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            AppDelegate.postResumeAudioFailedBanner()
+        }
+    }
+
+    /// Post a time-sensitive local notification telling the user their alarm
+    /// is sounding silently because the audio session could not be reclaimed on
+    /// resume. Mirrors `postSnoozeScheduleFailedBanner` — a banner the system
+    /// delivers is the only surface that reaches a user who isn't looking at
+    /// the firing screen (#405).
+    private static func postResumeAudioFailedBanner() {
+        let content = UNMutableNotificationContent()
+        content.title = "Будильник звучит беззвучно"
+        content.body = "Не удалось включить звук — откройте приложение и выключите будильник вручную."
+        content.sound = .default
+        // Time-sensitive so it pierces Focus the way the alarm itself would.
+        content.interruptionLevel = .timeSensitive
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "resume_audio_failed_\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                AppLogger.appDelegate.fault(
+                    "resume-audio-failed banner failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
     }
 
     // MARK: - Permission UI
