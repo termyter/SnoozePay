@@ -20,6 +20,12 @@ private final class ObserverBox: @unchecked Sendable {
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
+    /// Tokens for the time-change / activation observers that drive alarm
+    /// re-arming (#427). Held for the app's lifetime so the observers stay
+    /// registered; the `AppDelegate` lives as long as the process, so they are
+    /// never explicitly removed.
+    private var rescheduleObserverTokens: [NSObjectProtocol] = []
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -56,6 +62,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // system alert (#379). No-op on iOS < 26 / when AlarmKit is absent.
         AlarmKitAlertObserver.shared.start()
 
+        // Re-arm saved alarms whenever the wall-clock interpretation of their
+        // triggers may have shifted (timezone / DST change, reboot) or the
+        // backend that should own them may have changed (AlarmKit / notification
+        // authorization toggled in Settings). Without this, alarms keep whatever
+        // triggers they had at save time and silently fire at the wrong time —
+        // or never re-arm onto the notification fallback after AlarmKit is
+        // revoked (#427). The first foreground after launch covers reboot.
+        registerAlarmRescheduleObservers()
+
         // Reclaim orphaned custom-theme JPEGs (#357): re-picking a photo or
         // deleting a `.custom`-themed alarm leaves its image on disk forever.
         // Sweep off the main thread against the live alarm set — only files no
@@ -85,6 +100,51 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didDiscardSceneSessions sceneSessions: Set<UISceneSession>
     ) {}
+
+    // MARK: - Alarm re-arming (#427)
+
+    /// Observe the two system signals that can silently invalidate already
+    /// scheduled alarm triggers and re-arm every saved alarm in response:
+    ///
+    /// - `significantTimeChangeNotification` — posted on timezone change, DST
+    ///   transition, and midnight rollover. This is the primary defence against
+    ///   an alarm firing at the wrong wall-clock after the user crosses a
+    ///   timezone or the clocks shift.
+    /// - `didBecomeActiveNotification` — posted on every foreground, including
+    ///   the first one after a cold launch (so reboot is covered) and after the
+    ///   user returns from Settings having toggled AlarmKit / notification
+    ///   permission (so `usesAlarmKit` is re-evaluated and the alarm moves to
+    ///   the correct backend).
+    ///
+    /// Re-arming is idempotent — for an unchanged alarm `cancel` + `schedule`
+    /// re-adds the same deterministic notification identifiers — so firing it on
+    /// every activation only recomputes triggers, never duplicates them.
+    private func registerAlarmRescheduleObservers() {
+        let names: [Notification.Name] = [
+            UIApplication.significantTimeChangeNotification,
+            UIApplication.didBecomeActiveNotification
+        ]
+        rescheduleObserverTokens = names.map { name in
+            NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { _ in
+                AppDelegate.rescheduleSavedAlarms(trigger: name)
+            }
+        }
+    }
+
+    /// Re-arm every saved alarm against the current clock / timezone / backend.
+    /// `static` so the `@Sendable` observer closure does not capture `self`
+    /// (the work touches only the `AlarmScheduler` / `AlarmRepository`
+    /// singletons, which manage their own state).
+    private static func rescheduleSavedAlarms(trigger: Notification.Name) {
+        AppLogger.appDelegate.info(
+            "re-arming saved alarms (trigger=\(trigger.rawValue, privacy: .public))"
+        )
+        AlarmScheduler.shared.rescheduleAll(AlarmRepository.shared.fetchAll())
+    }
 
     // MARK: - Permission UI
 
