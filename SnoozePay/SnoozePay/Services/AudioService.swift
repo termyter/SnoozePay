@@ -430,9 +430,16 @@ final class AudioService {
         }
         // `play()` returns false only if the queue refuses — which on a paused
         // looping player should not happen once the session is active again.
-        // Log so a residual desync is diagnosable.
+        // If it does, leaving `_state == .playing` shows a "ringing" firing
+        // screen that only vibrates: silent, banner hidden, no surfaced failure.
+        // Mirror `startAlarmSoundLocked`'s play()==false branch and fall to
+        // `.vibrationOnly` so the UI reflects the real state (#406).
         if !player.play() {
             AppLogger.audio.error("resumePlaybackLocked: AVAudioPlayer.play() returned false")
+            _isPaused = false
+            _state = .vibrationOnly
+            startVibration()
+            return
         }
         startVibration()
         _isPaused = false
