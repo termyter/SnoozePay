@@ -43,6 +43,16 @@ final class AudioService {
     static let stateChangedNotification = Notification.Name("snoozepay.audio.stateChanged")
     static let stateUserInfoKey = "state"
 
+    /// Posted when a RESUME re-activates the audio session and that
+    /// re-activation FAILS (`resumePlaybackLocked` → `.silentBecauseConfigFailed`).
+    /// Unlike `stateChangedNotification`, which only the on-screen firing VC
+    /// observes, this is consumed by `AppDelegate` to post a time-sensitive
+    /// local notification — so a silent failed wake is surfaced even when no
+    /// firing screen is visible (locked-screen wake / AlarmKit path / top-up
+    /// sheet on top). See `AlarmFiringViewController` for the in-app banner that
+    /// still covers the on-screen case (#405).
+    static let resumeAudioFailedNotification = Notification.Name("snoozepay.audio.resumeFailed")
+
     /// Serializes every read/write of the mutable fields below (#202).
     /// `startAlarmSound` can arrive on a UN-delegate background thread while
     /// `stopAlarmSound` runs on main — without this queue the four fields can
@@ -426,6 +436,19 @@ final class AudioService {
             )
             _isPaused = false
             _state = .silentBecauseConfigFailed
+            // On a resume the firing screen that normally renders the
+            // `.silentBecauseConfigFailed` banner is often NOT on screen
+            // (locked-screen wake, AlarmKit/notification path, or a top-up sheet
+            // on top), so the failure had only a Console-log trace — a silent
+            // failed wake (#405). Vibration uses AudioToolbox, which works
+            // without an audio session, so keep buzzing; and post a process
+            // notification that `AppDelegate` turns into a time-sensitive local
+            // banner the user actually sees on the lock screen.
+            startVibration()
+            NotificationCenter.default.post(
+                name: Self.resumeAudioFailedNotification,
+                object: self
+            )
             return
         }
         // `play()` returns false only if the queue refuses — which on a paused
