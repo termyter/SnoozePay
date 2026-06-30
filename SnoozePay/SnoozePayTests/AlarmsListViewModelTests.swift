@@ -292,6 +292,29 @@ final class AlarmsListViewModelTests: XCTestCase {
         )
     }
 
+    /// Issue #429: a successful toggle changes `averagePenalty`, which the
+    /// sticky header's `balanceHint` ("Хватит на ~N откладываний") is derived
+    /// from. The cell repaints itself, but the header must also refresh — so the
+    /// success path fires `onBalanceUpdated` (lighter than `onAlarmsUpdated`: no
+    /// table reload). Without it the affordability pill kept a stale number until
+    /// the next viewWillAppear.
+    func testToggleAlarm_successFiresOnBalanceUpdatedForHeaderRefresh() {
+        repo.save(Alarm(penaltyAmount: 50, enabled: true))
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        var balanceEmissions = 0
+        vm.onBalanceUpdated = { _ in balanceEmissions += 1 }
+
+        vm.toggleAlarm(id: vm.alarms[0].id, enabled: false)
+
+        XCTAssertEqual(
+            balanceEmissions, 1,
+            "Successful toggle must fire onBalanceUpdated so the header re-resolves balanceHint (#429)"
+        )
+    }
+
     // MARK: - toggleAlarm(id:enabled:)
 
     /// Regression for issue #35: when the alarm exists in the VM's in-memory snapshot

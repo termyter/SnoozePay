@@ -687,6 +687,40 @@ final class AlarmScheduler: AlarmScheduling {
         notificationCenter.removeAllPendingNotificationRequests()
     }
 
+    /// Re-arm every enabled alarm from scratch — cancel its existing triggers
+    /// (both backends) and schedule it again. Mirrors the `cancel` → `schedule`
+    /// sequence `AlarmRepository.save(_:)` already uses, so the wallet / backend
+    /// semantics are identical to a normal save.
+    ///
+    /// Called when something that silently invalidates already-scheduled
+    /// triggers may have changed out from under us (#427):
+    ///
+    /// - **Timezone / DST shift.** `UNCalendarNotificationTrigger` interprets
+    ///   its date components in `Calendar.current` at fire time, so a one-time
+    ///   alarm armed in TZ A fires at the wrong wall-clock after moving to TZ B,
+    ///   and a repeating trigger drifts an hour across a DST boundary. Re-arming
+    ///   recomputes every trigger against the current calendar.
+    /// - **Reboot.** Re-evaluates triggers in case the clock / timezone changed
+    ///   while the device was powered off.
+    /// - **Authorization change.** `usesAlarmKit` is computed live from the
+    ///   AlarmKit grant, so toggling AlarmKit / notification permission in
+    ///   Settings flips which backend should own each alarm. Without re-arming,
+    ///   an alarm scheduled under the old grant is never moved to the now-correct
+    ///   backend (e.g. AlarmKit revoked → no notification fallback is ever armed).
+    ///
+    /// Disabled alarms are skipped: they hold no triggers to re-arm and
+    /// `schedule(_:)` is already a no-op for them.
+    func rescheduleAll(_ alarms: [Alarm]) {
+        let enabled = alarms.filter { $0.enabled }
+        AppLogger.scheduler.info(
+            "rescheduleAll: re-arming \(enabled.count, privacy: .public) of \(alarms.count, privacy: .public) alarms"
+        )
+        for alarm in enabled {
+            cancel(alarm.id)
+            schedule(alarm)
+        }
+    }
+
     /// Stop a currently-alerting AlarmKit (Strategy A) system alarm — invoked
     /// from `AlarmKitActionRouter` when the user taps stop / snooze on the
     /// system alert. No-op on iOS < 26 / when no AlarmKit backend is wired
