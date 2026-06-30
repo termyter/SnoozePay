@@ -99,6 +99,10 @@ final class ProgressiveScaleCell: UITableViewCell {
         contentStack.setCustomSpacing(AppSpacing.sp3, after: subtitleLabel)
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
+        // VoiceOver otherwise reads the brand `SPSwitch` as the generic
+        // "Переключатель". Give it the row's title so the control is
+        // self-describing, mirroring AlarmCell's pattern (#425).
+        toggle.accessibilityLabel = titleLabel.text
 
         contentView.addSubview(contentStack)
         contentView.addSubview(toggle)
