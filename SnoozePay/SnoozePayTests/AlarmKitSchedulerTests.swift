@@ -512,6 +512,54 @@ final class AlarmKitSchedulerTests: XCTestCase {
         XCTAssertNil(AlarmKitScheduler.weekday(forMondayFirstIndex: 7),
                      "Out-of-range index is dropped, not crashed")
     }
+
+    // MARK: - Deallocated-during-async-reject (#424, #417 follow-up)
+
+    /// Issue #424: `schedule`'s AlarmKit branch captures `[weak self]`; if the
+    /// scheduler is torn down between dispatching the async AlarmKit schedule and
+    /// its rejection callback, the `guard let self else` arm must report a typed
+    /// `.failure(.cancelled)` — never a phantom success and never a hang. The
+    /// synchronous `MockAlarmKitScheduler` can't cover this (it answers while the
+    /// scheduler is still alive); this deferring double releases the callback on
+    /// demand so the test can drop the scheduler first.
+    func testSchedule_deallocatedAfterAsyncReject_reportsCancelled() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
+        }
+        let alarmKit = DeferringAlarmKitScheduler(authorized: true)
+        let center = RecordingCenter()
+        var scheduler: AlarmScheduler? = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
+        let alarm = AppAlarm(penaltyAmount: 50)
+
+        let exp = expectation(description: "schedule reports cancelled")
+        exp.expectedFulfillmentCount = 1
+        exp.assertForOverFulfill = true
+        var reported: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler?.schedule(alarm) { result in
+            reported = result
+            exp.fulfill()
+        }
+
+        // AlarmKit captured the completion but hasn't answered. The scheduler's
+        // only strong reference is ours (the mock holds the [weak self] closure,
+        // which does not retain it) — drop it so the guard sees nil.
+        XCTAssertNotNil(alarmKit.pendingCompletion,
+                        "AlarmKit schedule must be awaiting its async result")
+        XCTAssertNil(reported, "No result before the async reject resolves")
+        scheduler = nil
+
+        // Now fire the async rejection. With self deallocated the guard must
+        // report .cancelled (not arm a fallback, not hang, not phantom-succeed).
+        alarmKit.fireRejection()
+        wait(for: [exp], timeout: 2.0)
+
+        guard case .failure(.cancelled) = reported else {
+            return XCTFail("Deallocated-after-async-reject must report .cancelled, "
+                + "got \(String(describing: reported))")
+        }
+        XCTAssertTrue(center.addedRequests.isEmpty,
+                      "A deallocated scheduler must not arm a notification fallback")
+    }
 }
 
 // MARK: - Test doubles
@@ -585,6 +633,51 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
         stoppedIDs.append(alarmID)
         callLog.append("stop")
     }
+}
+
+/// `AlarmKitScheduling` double that DEFERS its `schedule` completion: it stores
+/// the callback and only invokes it (as a `.failure`) when `fireRejection()` is
+/// called. Lets a test drop the `AlarmScheduler` reference before the async
+/// reject lands, exercising the deallocated-scheduler `.cancelled` guard (#424).
+private final class DeferringAlarmKitScheduler: AlarmKitScheduling {
+    struct ScheduleRejected: Error {}
+
+    private let authorized: Bool
+    private(set) var scheduledIDs: [UUID] = []
+    /// The captured schedule completion, awaiting `fireRejection()`.
+    var pendingCompletion: ((Result<Void, Error>) -> Void)?
+
+    init(authorized: Bool) { self.authorized = authorized }
+
+    var isAuthorized: Bool { authorized }
+
+    func requestAuthorization(completion: @escaping (Bool) -> Void) {
+        completion(authorized)
+    }
+
+    func schedule(
+        _ alarm: AppAlarm,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        scheduledIDs.append(alarm.id)
+        pendingCompletion = completion
+    }
+
+    /// Resolve the deferred schedule with a rejection — models AlarmKit
+    /// async-rejecting after the scheduler may already be gone.
+    func fireRejection() {
+        let completion = pendingCompletion
+        pendingCompletion = nil
+        completion?(.failure(ScheduleRejected()))
+    }
+
+    func scheduleSnooze(
+        _ alarm: AppAlarm,
+        fireDate: Date,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {}
+    func cancel(_ alarmID: UUID) {}
+    func stop(_ alarmID: UUID) {}
 }
 
 /// `NotificationScheduling` double that records every `add` so the fallback
