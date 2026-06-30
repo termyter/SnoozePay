@@ -275,6 +275,17 @@ final class AlarmsListViewModel {
             onAlarmsUpdated?()
             return
         }
+
+        // Success path: the new enabled state is persisted (the `guard` above
+        // passed). The cell repaints its own switch, but the sticky header's
+        // affordability hint (`balanceHint`, derived from `averagePenalty`)
+        // shifts when an alarm with an outlier penalty is toggled — without a
+        // refresh here the header pill keeps the stale "~N откладываний" number
+        // until the next `viewWillAppear` (#429). `onBalanceUpdated` re-resolves
+        // the header without a full table reload (the cell already updated). A
+        // later async scheduling failure re-fires the header via the
+        // rollback path's `onAlarmsUpdated`, re-syncing it to the reverted state.
+        onBalanceUpdated?(balance)
     }
 
     // MARK: - Delete
