@@ -22,6 +22,14 @@ final class OnboardingFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    override func tearDown() {
+        // Terminate the app under test so a leftover firing/snooze instance
+        // can't survive into the next E2E class's launch() and make its
+        // implicit terminate fail (#438).
+        XCUIApplication().terminate()
+        super.tearDown()
+    }
+
     func testOnboardingThroughPermissionsToMain() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitour", "onboarding"]
