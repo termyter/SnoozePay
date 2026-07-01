@@ -133,6 +133,20 @@ final class AlarmsListViewModel {
         } catch {
             alarms = []
         }
+        // Surface a corrupt transaction ledger here too (#440). The weekly-delta
+        // header reads the lossy `fetchAll`, which collapses a corrupt blob to
+        // "no charges" and silently hides the row — so the main screen would give
+        // no signal that financial history is unreadable (it would otherwise
+        // surface only later on Statistics/Wallet, or when a snooze charge fails
+        // at firing). Probe the checked variant and drive the same `onLoadError`
+        // banner used for alarm/balance corruption.
+        do {
+            _ = try transactionRepository.fetchAllChecked()
+        } catch let error as TransactionRepository.RepositoryError {
+            onLoadError?(error)
+        } catch {
+            // Non-typed decode error — swallow to match the alarm-fetch fallback.
+        }
         balance = balanceService.balance
         onAlarmsUpdated?()
         onBalanceUpdated?(balance)
@@ -417,9 +431,17 @@ final class AlarmsListViewModel {
         guard let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) else {
             return nil
         }
-        let charges = transactionRepository.fetchCharges(since: weekAgo)
-        guard !charges.isEmpty else { return nil }
-        let totalCharged = charges.reduce(0.0) { $0 + $1.amount }
+        // Exclude REFUNDED charges (a snooze that failed to schedule is auto-
+        // refunded and per design "doesn't count") so the header doesn't
+        // overstate the week's spend (#440). `realCharges` is computed over the
+        // FULL ledger first — a charge refunded by a later top-up is still
+        // excluded — then filtered to the rolling 7-day window. Display-only, so
+        // the lossy `fetchAll` is fine; a corrupt ledger is surfaced separately
+        // in `loadData()`.
+        let weekCharges = TransactionRepository.realCharges(from: transactionRepository.fetchAll())
+            .filter { $0.createdAt >= weekAgo }
+        guard !weekCharges.isEmpty else { return nil }
+        let totalCharged = weekCharges.reduce(0.0) { $0 + $1.amount }
         guard totalCharged > 0 else { return nil }
         return -Decimal(totalCharged)
     }
