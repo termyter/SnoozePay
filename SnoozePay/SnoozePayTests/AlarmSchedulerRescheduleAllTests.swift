@@ -86,6 +86,52 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
         XCTAssertTrue(center.addedIdentifiers.isEmpty)
         XCTAssertTrue(center.removedIdentifiers.isEmpty)
     }
+
+    // MARK: - Failure aggregation (#442)
+
+    func testRescheduleAll_allSchedulesSucceed_reportsZeroFailed() {
+        let center = RecordingNotificationCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center)
+
+        let exp = expectation(description: "completion")
+        var reported: Int?
+        scheduler.rescheduleAll([
+            dailyAlarm(name: "A", enabled: true),
+            dailyAlarm(name: "B", enabled: true)
+        ]) { reported = $0; exp.fulfill() }
+
+        wait(for: [exp], timeout: 5)
+        XCTAssertEqual(reported, 0, "All schedules succeeded → zero failures reported")
+    }
+
+    func testRescheduleAll_scheduleFailures_reportsFailedCount() {
+        let center = FailingNotificationCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center)
+
+        let exp = expectation(description: "completion")
+        var reported: Int?
+        scheduler.rescheduleAll([
+            dailyAlarm(name: "A", enabled: true),
+            dailyAlarm(name: "B", enabled: true),
+            dailyAlarm(name: "Off", enabled: false)
+        ]) { reported = $0; exp.fulfill() }
+
+        wait(for: [exp], timeout: 5)
+        XCTAssertEqual(reported, 2,
+                       "Both enabled alarms failed to re-arm → failedCount 2 (disabled skipped)")
+    }
+
+    func testRescheduleAll_emptyEnabled_reportsZeroImmediately() {
+        let center = RecordingNotificationCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center)
+
+        let exp = expectation(description: "completion")
+        var reported: Int?
+        scheduler.rescheduleAll([dailyAlarm(name: "Off", enabled: false)]) { reported = $0; exp.fulfill() }
+
+        wait(for: [exp], timeout: 5)
+        XCTAssertEqual(reported, 0)
+    }
 }
 
 // MARK: - Test double
@@ -112,6 +158,39 @@ private final class RecordingNotificationCenter: NotificationScheduling {
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
         removedIdentifiers.append(contentsOf: identifiers)
     }
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
+    func getDeliveredNotifications(
+        completionHandler: @escaping ([UNNotification]) -> Void
+    ) {
+        completionHandler([])
+    }
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {}
+    func removeAllPendingNotificationRequests() {}
+    func requestAuthorization(
+        options: UNAuthorizationOptions,
+        completionHandler: @escaping (Bool, Error?) -> Void
+    ) {
+        completionHandler(false, nil)
+    }
+}
+
+/// `NotificationScheduling` stub whose `add` always fails, so every `schedule`
+/// resolves to `.failure` — drives `rescheduleAll`'s failure aggregation (#442).
+private final class FailingNotificationCenter: NotificationScheduling {
+    struct AddError: Error {}
+
+    func add(
+        _ request: UNNotificationRequest,
+        withCompletionHandler completion: ((Error?) -> Void)?
+    ) {
+        completion?(AddError())
+    }
+    func getPendingNotificationRequests(
+        completionHandler: @escaping ([UNNotificationRequest]) -> Void
+    ) {
+        completionHandler([])
+    }
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
     func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
     func getDeliveredNotifications(
         completionHandler: @escaping ([UNNotification]) -> Void
