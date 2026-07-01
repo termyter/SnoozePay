@@ -30,6 +30,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// lifetime alongside `rescheduleObserverTokens`.
     private var resumeAudioObserverToken: NSObjectProtocol?
 
+    /// Latch so a persistent re-arm failure surfaces a banner only once per
+    /// episode rather than on every foreground (#442). Reset to 0 by a fully-
+    /// successful re-arm.
+    private var lastRescheduleFailedCount = 0
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -140,21 +145,36 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 forName: name,
                 object: nil,
                 queue: .main
-            ) { _ in
-                AppDelegate.rescheduleSavedAlarms(trigger: name)
+            ) { [weak self] _ in
+                self?.rescheduleSavedAlarms(trigger: name)
             }
         }
     }
 
-    /// Re-arm every saved alarm against the current clock / timezone / backend.
-    /// `static` so the `@Sendable` observer closure does not capture `self`
-    /// (the work touches only the `AlarmScheduler` / `AlarmRepository`
-    /// singletons, which manage their own state).
-    private static func rescheduleSavedAlarms(trigger: Notification.Name) {
+    /// Re-arm every saved alarm against the current clock / timezone / backend,
+    /// then surface an aggregate banner if any failed to re-arm (#442). Instance
+    /// method (was `static`) so the outcome can be deduped via
+    /// `lastRescheduleFailedCount`; the observer captures `self` weakly.
+    private func rescheduleSavedAlarms(trigger: Notification.Name) {
         AppLogger.appDelegate.info(
             "re-arming saved alarms (trigger=\(trigger.rawValue, privacy: .public))"
         )
-        AlarmScheduler.shared.rescheduleAll(AlarmRepository.shared.fetchAll())
+        AlarmScheduler.shared.rescheduleAll(AlarmRepository.shared.fetchAll()) { [weak self] failedCount in
+            self?.handleRescheduleOutcome(failedCount: failedCount)
+        }
+    }
+
+    /// Surface a re-arm failure ONCE per episode: post a banner when failures
+    /// first appear and stay quiet until a fully-successful re-arm (count 0)
+    /// clears the latch, so a persistent failure (e.g. revoked permission)
+    /// doesn't banner on every foreground (#442).
+    private func handleRescheduleOutcome(failedCount: Int) {
+        defer { lastRescheduleFailedCount = failedCount }
+        guard failedCount > 0, lastRescheduleFailedCount == 0 else { return }
+        AppLogger.appDelegate.fault(
+            "rescheduleAll: \(failedCount, privacy: .public) alarms failed to re-arm"
+        )
+        Self.postRescheduleFailedBanner(failedCount: failedCount)
     }
 
     /// Observe `AudioService.resumeAudioFailedNotification` so a silent
@@ -194,6 +214,33 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             if let error = error {
                 AppLogger.appDelegate.fault(
                     "resume-audio-failed banner failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+
+    /// Post a time-sensitive local notification when one or more alarms failed
+    /// to re-arm on a clock/timezone/reboot/permission change (#442). The re-arm
+    /// runs in the background (no UI on screen), so a system-delivered banner is
+    /// the only surface that reaches the user.
+    private static func postRescheduleFailedBanner(failedCount: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Будильники не перевзведены"
+        content.body = "Не удалось перепланировать будильники (\(failedCount)) — "
+            + "откройте приложение и проверьте разрешения на уведомления."
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "reschedule_failed_\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                AppLogger.appDelegate.fault(
+                    "reschedule-failed banner failed: \(error.localizedDescription, privacy: .public)"
                 )
             }
         }

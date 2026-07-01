@@ -710,14 +710,49 @@ final class AlarmScheduler: AlarmScheduling {
     ///
     /// Disabled alarms are skipped: they hold no triggers to re-arm and
     /// `schedule(_:)` is already a no-op for them.
-    func rescheduleAll(_ alarms: [Alarm]) {
+    /// - Parameter completion: invoked on the main queue once every re-arm has
+    ///   resolved, carrying the number that FAILED to re-arm. Previously each
+    ///   `schedule` was fired with a `nil` completion, so every typed
+    ///   `SchedulingError` (pending-limit, system, cancelled, AlarmKit reject +
+    ///   fallback-also-failed) was silently dropped — an alarm could fail to
+    ///   re-arm after a DST/TZ shift, reboot or permission change and never
+    ///   ring, with only a Console log (#442). Aggregating the outcomes lets the
+    ///   caller surface it (see `AppDelegate.handleRescheduleOutcome`).
+    func rescheduleAll(_ alarms: [Alarm], completion: ((_ failedCount: Int) -> Void)? = nil) {
         let enabled = alarms.filter { $0.enabled }
         AppLogger.scheduler.info(
             "rescheduleAll: re-arming \(enabled.count, privacy: .public) of \(alarms.count, privacy: .public) alarms"
         )
+        guard !enabled.isEmpty else {
+            completion?(0)
+            return
+        }
+
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var failedCount = 0
+
         for alarm in enabled {
             cancel(alarm.id)
-            schedule(alarm)
+            group.enter()
+            schedule(alarm) { result in
+                if case .failure = result {
+                    lock.lock()
+                    failedCount += 1
+                    lock.unlock()
+                }
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            if failedCount > 0 {
+                let total = enabled.count
+                AppLogger.scheduler.error(
+                    "rescheduleAll failed: \(failedCount, privacy: .public)/\(total, privacy: .public)"
+                )
+            }
+            completion?(failedCount)
         }
     }
 
