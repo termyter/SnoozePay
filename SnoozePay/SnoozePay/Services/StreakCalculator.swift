@@ -60,9 +60,15 @@ enum StreakCalculator {
             return legacyStreak(transactions: transactions, now: now, calendar: calendar)
         }
 
+        // Exclude REFUNDED charges — a snooze charge that failed to schedule
+        // is auto-refunded (its offsetting `.topup` carries
+        // `refundsTransactionID`) and per design "doesn't count", so it must not
+        // break the streak. The Statistics heatmap is already built from
+        // `realCharges`; consulting the same helper here is what stops streak
+        // and heatmap from contradicting each other (#439). `realCharges` is a
+        // pure static function over the array — no store/queue access.
         let chargeDays = Set(
-            transactions
-                .filter { $0.type == .charge }
+            TransactionRepository.realCharges(from: transactions)
                 .map { calendar.startOfDay(for: $0.createdAt) }
         )
 
@@ -102,9 +108,10 @@ enum StreakCalculator {
 
         var streak = 0
         var checkDate = calendar.startOfDay(for: now)
+        // Same refunded-charge exclusion as the accurate path (#439) so the
+        // legacy fallback can't reset a streak on a refunded snooze either.
         let chargeDates = Set(
-            transactions
-                .filter { $0.type == .charge }
+            TransactionRepository.realCharges(from: transactions)
                 .map { calendar.startOfDay(for: $0.createdAt) }
         )
         let firstTransactionDate = calendar.startOfDay(
