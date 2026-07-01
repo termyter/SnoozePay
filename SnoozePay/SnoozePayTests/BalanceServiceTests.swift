@@ -721,3 +721,100 @@ final class CreateAlarmViewModelTests: XCTestCase {
         XCTAssertEqual(saved?.name, "Будильник")
     }
 }
+
+/// Amount-validation guards on the `Double` money APIs (`topUp` / `charge`)
+/// and `creditPromotion` coverage (#441). The guards close the one asymmetric
+/// hole where the sibling `creditPromotion` validated `isFinite && > 0` but
+/// `topUp` / `chargeWithReceipt` did not.
+final class BalanceServiceAmountValidationTests: XCTestCase {
+
+    private var testDefaults: UserDefaults!
+    private var suiteName: String!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.balanceGuard.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
+    }
+
+    override func tearDown() {
+        testDefaults.removePersistentDomain(forName: suiteName)
+        testDefaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
+    private func makeService(balance: Double) -> BalanceService {
+        testDefaults.set(balance, forKey: "user_balance")
+        return BalanceService(defaults: testDefaults, notificationCenter: NotificationCenter())
+    }
+
+    private func promotions() -> [Transaction] {
+        TransactionRepository(defaults: testDefaults).fetchAll().filter { $0.type == .promotion }
+    }
+
+    // MARK: - topUp guard
+
+    func testTopUp_negativeAmount_rejectedNoMutation() {
+        let service = makeService(balance: 100)
+        XCTAssertFalse(service.topUp(amount: -50), "Negative top-up must be rejected")
+        XCTAssertEqual(service.balance, 100, "A rejected top-up must not change the balance")
+    }
+
+    func testTopUp_nonFiniteAmount_rejected() {
+        let service = makeService(balance: 100)
+        XCTAssertFalse(service.topUp(amount: .nan))
+        XCTAssertFalse(service.topUp(amount: .infinity))
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    func testTopUp_zeroAmount_rejected() {
+        let service = makeService(balance: 100)
+        XCTAssertFalse(service.topUp(amount: 0))
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    // MARK: - chargeWithReceipt guard
+
+    func testChargeWithReceipt_negativeAmount_rejectedNoMutation() {
+        let service = makeService(balance: 100)
+        XCTAssertNil(service.chargeWithReceipt(amount: -50, alarmID: nil),
+                     "Negative charge must be rejected (would otherwise INCREASE the balance)")
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    func testChargeWithReceipt_nonFiniteAmount_rejected() {
+        let service = makeService(balance: 100)
+        XCTAssertNil(service.chargeWithReceipt(amount: .nan, alarmID: nil))
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    // MARK: - creditPromotion
+
+    func testCreditPromotion_validAmount_creditsAndRecordsPromotion() {
+        let service = makeService(balance: 0)
+        XCTAssertTrue(service.creditPromotion(amount: 200))
+        XCTAssertEqual(service.balance, 200)
+
+        let recorded = promotions()
+        XCTAssertEqual(recorded.count, 1, "Exactly one .promotion entry must be recorded")
+        XCTAssertEqual(recorded.first?.amount, 200)
+    }
+
+    func testCreditPromotion_nonPositiveOrNaN_rejected() {
+        let service = makeService(balance: 50)
+        XCTAssertFalse(service.creditPromotion(amount: 0))
+        XCTAssertFalse(service.creditPromotion(amount: -10))
+        XCTAssertFalse(service.creditPromotion(amount: .nan))
+        XCTAssertEqual(service.balance, 50)
+        XCTAssertTrue(promotions().isEmpty)
+    }
+
+    func testCreditPromotion_corruptedBalance_rejectedNoMutation() {
+        // A negative stored balance latches the corruption gate at init.
+        let service = makeService(balance: -5)
+        XCTAssertFalse(service.creditPromotion(amount: 100),
+                       "creditPromotion must refuse while the balance is corrupt")
+        XCTAssertTrue(promotions().isEmpty, "No promotion entry may be recorded into a corrupt ledger")
+    }
+}

@@ -129,6 +129,13 @@ final class BalanceService {
     /// Returns `nil` on the same failure modes as `charge` — insufficient
     /// funds, corrupted balance, or repository write rejection.
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
+        // Reject non-finite / non-positive amounts up front, matching
+        // `creditPromotion`'s contract (#441). Without this a negative amount
+        // passes the `current >= amount` guard and records a `.charge` that
+        // INCREASES the balance (and injects a phantom snooze day into
+        // streak/stats); a NaN would persist into storage before the read-time
+        // corruption guard catches it.
+        guard amount.isFinite, amount > 0 else { return nil }
         let transaction = Transaction(
             type: .charge,
             amount: amount,
@@ -175,6 +182,12 @@ final class BalanceService {
     /// (issue #133). Organic top-ups (IAP, dev tools) leave it `nil`.
     @discardableResult
     func topUp(amount: Double, refundsTransactionID: UUID? = nil) -> Bool {
+        // Reject non-finite / non-positive amounts, matching `creditPromotion`
+        // (#441): a negative top-up would record a positive-typed `.topup` while
+        // DECREASING the balance (ledger/balance divergence that can drive
+        // `user_balance` negative and latch #119 corruption); a NaN would
+        // persist into storage before the read-time guard fires.
+        guard amount.isFinite, amount > 0 else { return false }
         let result: (recorded: Bool, newBalance: Double) = queue.sync {
             let current = readRawBalance()
             guard !_balanceCorrupted else { return (false, current) }
