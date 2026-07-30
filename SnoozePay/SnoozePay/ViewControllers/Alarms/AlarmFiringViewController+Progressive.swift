@@ -96,6 +96,13 @@ extension AlarmFiringViewController {
     /// Replace the ticker chip row in place with one built from the VM's
     /// current penalty history. Coloured mini-pills with «·» separators per
     /// `SPDawnV3.jsx:114-136`.
+    ///
+    /// The chips list money actually taken (`pastPenalties` now reads the
+    /// ledger, #400), while the pill above counts attempts — so a snooze that
+    /// failed to schedule and was refunded advances the pill but leaves no
+    /// chip. That asymmetry is intended: the pill is about which rung the user
+    /// pays NEXT, the chips are a receipt. An unreadable ledger yields no
+    /// chips, hiding the row rather than inventing amounts.
     private func rebuildTicker() {
         guard let container = historyTickerContainer else { return }
         container.arrangedSubviews.forEach {

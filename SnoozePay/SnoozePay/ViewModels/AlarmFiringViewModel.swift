@@ -33,10 +33,20 @@ final class AlarmFiringViewModel {
     private let alarmRepository: AlarmRepository
     private let scheduler: AlarmScheduler
     private let wakeStore: WakeEventStore
+    /// Read-only view of the transaction ledger. Post-factum money figures
+    /// («сегодня списано N ₽», the history ticker) are derived from THIS, not
+    /// from `snoozeCount` — see `billedSnoozes` (#400).
+    private let ledger: AlarmFiringLedgerReading
 
     // MARK: - State
 
     let alarm: Alarm
+    /// Snooze ATTEMPTS in this wake — every «Поспать ещё» whose charge landed,
+    /// including one whose trigger the scheduler later rejected (the penalty is
+    /// refunded but the attempt still happened). Drives everything FORWARD-
+    /// looking: the next price, the ladder, the escalation gradient. It is
+    /// deliberately NOT the source for what was actually billed — that is
+    /// `billedSnoozes`, read from the ledger (#400).
     private(set) var snoozeCount: Int
 
     /// Wall-clock moment the user last tapped «Поспать ещё», captured ONCE per
@@ -48,6 +58,11 @@ final class AlarmFiringViewModel {
     /// re-ring agree even when the user snoozes minutes after the alarm fired.
     /// `nil` before the first snooze (the active firing UI shows no countdown).
     private(set) var snoozeAnchor: Date?
+
+    /// Moment this firing session was mounted. Anchors the ledger window the
+    /// billed-charge summary looks back over (`wakeWindow`), so charges from
+    /// yesterday's wake of the SAME alarm can never leak into today's total.
+    private let firingStartedAt: Date
 
     // MARK: - Callbacks
 
@@ -62,7 +77,9 @@ final class AlarmFiringViewModel {
         balanceService: AlarmFiringBalancing = BalanceService.shared,
         alarmRepository: AlarmRepository = .shared,
         scheduler: AlarmScheduler = .shared,
-        wakeStore: WakeEventStore = .shared
+        wakeStore: WakeEventStore = .shared,
+        ledger: AlarmFiringLedgerReading = TransactionRepository.shared,
+        firingStartedAt: Date = Date()
     ) {
         self.alarm = alarm
         self.snoozeCount = snoozeCount
@@ -71,6 +88,8 @@ final class AlarmFiringViewModel {
         self.alarmRepository = alarmRepository
         self.scheduler = scheduler
         self.wakeStore = wakeStore
+        self.ledger = ledger
+        self.firingStartedAt = firingStartedAt
     }
 
     // MARK: - Computed properties for UI
@@ -98,20 +117,116 @@ final class AlarmFiringViewModel {
         return max(0.0, min(1.0, Double(snoozeCount) / 5.0))
     }
 
-    /// Past penalty amounts charged today, in chronological order, derived
-    /// from the same doubling rule as `currentPenalty`. Used by the firing
-    /// screen's history ticker to render "сегодня: −50 → −100 → ..." without
-    /// hitting the balance ledger (the in-VC string is purely informational).
-    /// Returns `[]` until the user has snoozed at least once.
-    var pastPenalties: [Double] {
-        guard snoozeCount > 0 else { return [] }
-        return (1...snoozeCount).map { alarm.penalty(forSnoozeCount: $0) }
+    // MARK: - Billed history from the ledger (#400)
+
+    /// How far back of the ledger belongs to the CURRENT wake. A snooze chain
+    /// can only stretch a few hours (`snoozeMinutes` × attempts), so 12 h is
+    /// generous — and, being well under 24 h, it also guarantees that a charge
+    /// from yesterday's firing of the same alarm falls outside the window.
+    /// A fixed offset rather than "start of calendar day" so a 23:50 alarm
+    /// snoozed past midnight still reports its pre-midnight charges.
+    static let wakeWindow: TimeInterval = 12 * 60 * 60
+
+    /// What the ledger says the user was ACTUALLY billed for this wake.
+    ///
+    /// Deriving the on-screen money from `snoozeCount` × the doubling rule was
+    /// the bug in #400: a snooze whose trigger the scheduler rejected is
+    /// charged, then **refunded**, yet still bumps `snoozeCount` — so the
+    /// summary claimed money the user got back. The ledger is the only place
+    /// that knows which charges survived.
+    enum BilledSnoozes: Equatable {
+        /// Ledger read cleanly — every non-reversed penalty of this wake,
+        /// oldest first.
+        case known([Double])
+        /// The ledger could not be read (decode failure), carried rows this
+        /// build can't classify, or held a non-finite/negative amount. Any
+        /// total computed from it would be a guess, so callers MUST NOT render
+        /// a rouble figure — they hide the number or say so plainly.
+        case unavailable
     }
 
-    /// Total roubles charged this wake — the sum of every snooze penalty taken
-    /// (`pastPenalties`). Drives the WokeMorning «recovered» subtitle
-    /// "Сегодня списано N ₽" (#228); `0` when the user got up on the first ring.
-    var chargedThisMorning: Double { pastPenalties.reduce(0, +) }
+    /// Read on demand (no caching) so a refund landing asynchronously, a
+    /// top-up, or a charge from another surface is reflected the next time the
+    /// firing screen refreshes. Reads are serialised inside the repository, and
+    /// `updateUI()` is event-driven (state change / balance notification), not
+    /// per clock tick, so this is not on a hot path.
+    var billedSnoozes: BilledSnoozes { loadBilledSnoozes() }
+
+    /// Penalty amounts actually billed this wake, oldest first. Feeds the
+    /// firing screen's history ticker ("сегодня: −50 → −100 → ..."). Empty
+    /// before the first billed snooze — and also when the ledger is
+    /// unreadable, which hides the ticker rather than inventing amounts.
+    var pastPenalties: [Double] {
+        guard case .known(let amounts) = billedSnoozes else { return [] }
+        return amounts
+    }
+
+    /// Total roubles the user is actually out of pocket this wake. Drives the
+    /// WokeMorning «recovered» subtitle "Сегодня списано N ₽" (#228); `0` when
+    /// the user got up on the first ring. **`nil` when the ledger is
+    /// unreadable** — the caller must then show the no-figure variant instead
+    /// of a fabricated sum (#400).
+    var chargedThisMorning: Double? {
+        guard case .known(let amounts) = billedSnoozes else { return nil }
+        return amounts.reduce(0, +)
+    }
+
+    /// Snoozes the user was actually BILLED for this wake — `snoozeCount`
+    /// minus any attempt whose penalty was refunded. Drives the WokeMorning
+    /// headline so the count and the sum on that screen can't contradict each
+    /// other. `nil` when the ledger is unreadable, same contract as
+    /// `chargedThisMorning`.
+    var billedSnoozeCount: Int? {
+        guard case .known(let amounts) = billedSnoozes else { return nil }
+        return amounts.count
+    }
+
+    /// Pulls this wake's surviving charges out of the ledger.
+    ///
+    /// Every failure mode returns `.unavailable` instead of an empty/partial
+    /// total: this number is money the user is told they lost, so "we couldn't
+    /// read it" must never render as "0 ₽" (the `try? … ?? []` trap, #210).
+    private func loadBilledSnoozes() -> BilledSnoozes {
+        let all: [Transaction]
+        do {
+            all = try ledger.fetchAllChecked()
+        } catch {
+            let desc = String(describing: error)
+            AppLogger.ui.error(
+                "firing summary: ledger unreadable (\(desc, privacy: .public)) — charged total suppressed"
+            )
+            return .unavailable
+        }
+        // A row whose `type` token this build can't classify is skipped by
+        // every aggregate, including `realCharges` — so the total would be
+        // silently short. Treat it as unreadable too (#358 surfaced the flag
+        // for exactly this).
+        guard !ledger.lastLoadHadUnrecognizedTypes else {
+            AppLogger.ui.error(
+                "firing summary: ledger holds unrecognised transaction types — charged total suppressed"
+            )
+            return .unavailable
+        }
+
+        let windowStart = firingStartedAt.addingTimeInterval(-Self.wakeWindow)
+        let alarmKey = alarm.id.uuidString
+        // `realCharges` must see the WHOLE ledger — a refund row lives outside
+        // any window/alarm filter, and dropping it first would resurrect the
+        // charge it reverses.
+        let amounts = TransactionRepository.realCharges(from: all)
+            .filter { $0.alarmID == alarmKey && $0.createdAt >= windowStart }
+            .sorted { $0.createdAt < $1.createdAt }
+            .map(\.amount)
+        // Legacy rows predate the finite/positive guard in `chargeWithReceipt`
+        // (#441); one NaN would render the summary as "списано nan ₽".
+        guard amounts.allSatisfy({ $0.isFinite && $0 >= 0 }) else {
+            AppLogger.ui.error(
+                "firing summary: ledger holds a non-finite/negative charge — charged total suppressed"
+            )
+            return .unavailable
+        }
+        return .known(amounts)
+    }
 
     var canSnooze: Bool {
         balanceService.canAfford(currentPenalty)
@@ -325,6 +440,15 @@ final class AlarmFiringViewModel {
         case .success:
             completion?(.scheduled)
         case .failure(let error):
+            // `snoozeCount` is deliberately NOT rolled back here (#400). It
+            // counts ATTEMPTS and drives forward-looking state — the next
+            // price, the ladder rung, the escalation gradient — so decrementing
+            // it would hand out a cheaper next snooze every time the scheduler
+            // hiccups, and would race a second tap that already read the old
+            // value. The user is made whole by the refund, and the post-factum
+            // money display no longer reads `snoozeCount` at all: it comes from
+            // the ledger via `billedSnoozes`, which drops this reversed charge.
+            //
             // Refund via `refund` (an offsetting ledger entry) rather than
             // mutating storage directly, so transaction history shows both the
             // charge and the refund and stats stay auditable. Link the refund
@@ -413,3 +537,20 @@ protocol AlarmFiringBalancing: AnyObject {
 }
 
 extension BalanceService: AlarmFiringBalancing {}
+
+// MARK: - Ledger seam (#400)
+
+/// The read-only slice of `TransactionRepository` the firing VM needs to report
+/// what was ACTUALLY billed this wake.
+///
+/// Only the *checked* read is exposed: the lossy `fetchAll()` turns a corrupt
+/// ledger into "no charges", which on this screen means telling the user their
+/// money is intact when we have no idea (#210). `lastLoadHadUnrecognizedTypes`
+/// rides along because an unclassifiable row is skipped by every aggregate and
+/// would silently understate the total (#358).
+protocol AlarmFiringLedgerReading: AnyObject {
+    func fetchAllChecked() throws -> [Transaction]
+    var lastLoadHadUnrecognizedTypes: Bool { get }
+}
+
+extension TransactionRepository: AlarmFiringLedgerReading {}

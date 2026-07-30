@@ -535,8 +535,12 @@ class AlarmFiringViewController: UIViewController {
     /// `presentingViewController?.dismiss` on THIS firing VC, unwinding both
     /// screens back to the app.
     @objc func dismissTapped() {
-        let snoozes = viewModel.snoozeCount
-        let charged = viewModel.chargedThisMorning
+        // Read the summary BEFORE `dismiss()` so the numbers describe the wake
+        // that just ended. Both figures come from the ledger (#400) — a snooze
+        // whose trigger the scheduler rejected was refunded, so it must not
+        // inflate either the count or the sum the user is shown. When the
+        // ledger can't be read we say so rather than print a guessed total.
+        let summary = wokeMorningContent()
         viewModel.dismiss()
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
@@ -556,7 +560,7 @@ class AlarmFiringViewController: UIViewController {
         // user would be stranded on the summary with a dead «Закрыть» — fall
         // back to dismissing the summary itself, and log so it isn't swallowed.
         weak var wokeRef: WokeMorningViewController?
-        let woke = WokeMorningViewController(snoozes: snoozes, charged: charged) { [weak self] in
+        let woke = WokeMorningViewController(content: summary) { [weak self] in
             if let presenter = self?.presentingViewController {
                 presenter.dismiss(animated: true)
             } else {
@@ -566,6 +570,22 @@ class AlarmFiringViewController: UIViewController {
         }
         wokeRef = woke
         present(woke, animated: true)
+    }
+
+    /// Copy for the morning summary, chosen from what the ledger could confirm.
+    ///
+    /// `chargedThisMorning` / `billedSnoozeCount` are `nil` together when the
+    /// ledger is unreadable; that maps to the no-figures variant, since a
+    /// summary that states a rouble amount nobody verified is worse than one
+    /// that admits it doesn't know (#400). `internal` for unit testing.
+    func wokeMorningContent() -> WokeMorningContent {
+        guard
+            let charged = viewModel.chargedThisMorning,
+            let billed = viewModel.billedSnoozeCount
+        else {
+            return WokeMorningContent(chargesUnavailableAfter: viewModel.snoozeCount)
+        }
+        return WokeMorningContent(snoozes: billed, charged: Int(charged.rounded()))
     }
 
     // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and
