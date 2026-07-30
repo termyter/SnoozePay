@@ -87,7 +87,7 @@ final class AlarmFiringCoordinator {
     /// distinguish `.scheduled` from `.scheduleFailed` (issue #130).
     ///
     /// On `.scheduleFailed` the penalty is refunded via
-    /// `BalanceService.topUp` so the user is not billed for a snooze that
+    /// `BalanceService.refund` so the user is not billed for a snooze that
     /// will never re-fire. The refund posts an offsetting ledger entry —
     /// transaction history therefore shows both the charge and the refund,
     /// which is the consistent representation for stats/auditing (mirrors the
@@ -165,7 +165,7 @@ final class AlarmFiringCoordinator {
     }
 
     /// Resolves the async scheduler result into a `SnoozeOutcome`. On failure
-    /// the penalty is refunded via `BalanceService.topUp` so the user is not
+    /// the penalty is refunded via `BalanceService.refund` so the user is not
     /// billed for a snooze that won't re-fire — extracted from `handleSnooze`
     /// to keep the entry-point readable and to give the refund logic its own
     /// log seam.
@@ -185,13 +185,15 @@ final class AlarmFiringCoordinator {
             completion?(.scheduled(newSnoozeCount: newCount, charged: penalty))
         case .failure(let error):
             // Refund the penalty so the user isn't billed for a snooze that
-            // will never re-fire. `topUp` records an offsetting ledger entry
-            // (rather than mutating storage directly) so transaction history
-            // shows both the charge and the refund — stats stay auditable.
+            // will never re-fire. `refund` records an offsetting `.refund`
+            // ledger entry (rather than mutating storage directly) so
+            // transaction history shows both the charge and the reversal —
+            // stats stay auditable and revenue accounting, which keys off
+            // `.topup`, doesn't see phantom income (issue #358).
             // Link the refund to the original charge ID so stats consumers
             // can pair the two rows (issue #133); without the link a refund
             // still inflates snoozeCount/totalSpent and resets streak.
-            let refunded = balanceService.topUp(
+            let refunded = balanceService.refund(
                 amount: penalty,
                 refundsTransactionID: chargeTransactionID
             )

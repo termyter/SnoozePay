@@ -339,6 +339,13 @@ final class WalletTransactionHistoryViewController: UIViewController {
             // copy must not claim one (issue #282 — honest, unified copy
             // shared with the wallet preview).
             return "Бонус за друга"
+        case .refund:
+            // Penalty returned because the snooze never armed (issue #358) —
+            // same copy as the wallet preview row.
+            return "Возврат за откладывание"
+        case .unknown:
+            // Written by a newer build (see `TransactionType.unknown`).
+            return "Операция"
         }
     }
 
@@ -389,10 +396,20 @@ final class WalletTransactionHistoryViewController: UIViewController {
             tint = AppColors.money400
             fill = AppColors.money400.withAlphaComponent(0.14)
             glyph = "gift"
+        case .refund:
+            // Money back, but not income — the undo glyph keeps it visually
+            // distinct from a real top-up (issue #358).
+            tint = AppColors.money400
+            fill = AppColors.money400.withAlphaComponent(0.14)
+            glyph = "arrow.uturn.backward"
         case .charge:
             tint = AppColors.pain400
             fill = AppColors.pain400.withAlphaComponent(0.14)
             glyph = "flame"
+        case .unknown:
+            tint = AppColors.fg3
+            fill = AppColors.fg3.withAlphaComponent(0.14)
+            glyph = "questionmark"
         }
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -428,7 +445,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         let absAmount = Int(abs(transaction.amount))
         switch transaction.type {
-        case .topup, .promotion:
+        case .topup, .promotion, .refund:
             label.attributedText = MoneyFormatter.attributed(
                 Decimal(absAmount), digitsFont: AppTypography.moneyMd, prefix: "+"
             )
@@ -438,6 +455,12 @@ final class WalletTransactionHistoryViewController: UIViewController {
                 Decimal(absAmount), digitsFont: AppTypography.moneyMd, prefix: "−"
             )
             label.textColor = AppColors.pain400
+        case .unknown:
+            // Direction unknown — no sign, muted colour.
+            label.attributedText = MoneyFormatter.attributed(
+                Decimal(absAmount), digitsFont: AppTypography.moneyMd
+            )
+            label.textColor = AppColors.fg3
         }
         return label
     }

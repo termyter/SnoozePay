@@ -124,6 +124,58 @@ final class TxHistoryPeriodTests: XCTestCase {
         XCTAssertEqual(summary.snoozeCount, 0)
     }
 
+    /// #358: a penalty reversal is returned money, not income — it must stay
+    /// out of the Пополнения aggregate exactly like a bonus does.
+    func testSummary_excludesRefundsFromTopups() {
+        let now = Date()
+        let summary = TxHistorySummary.compute(from: [
+            Transaction(type: .topup, amount: 500, createdAt: now),
+            Transaction(type: .refund, amount: 50, createdAt: now)
+        ])
+        XCTAssertEqual(summary.topups, 500, "A refund must not be booked as a top-up")
+    }
+
+    /// The other half of #358: once the refund stops counting as a top-up, the
+    /// charge it reverses must stop counting as spend — otherwise the card
+    /// claims money left the wallet when it came straight back.
+    func testSummary_refundedChargeExcludedFromSpentAndSnoozeCount() {
+        let now = Date()
+        let reversed = Transaction(type: .charge, amount: 50, createdAt: now)
+        let summary = TxHistorySummary.compute(from: [
+            reversed,
+            Transaction(type: .charge, amount: 100, createdAt: now),
+            Transaction(type: .refund, amount: 50, createdAt: now,
+                        refundsTransactionID: reversed.id)
+        ])
+        XCTAssertEqual(summary.spent, 100, "Only the snooze the user really paid for counts")
+        XCTAssertEqual(summary.snoozeCount, 1)
+        XCTAssertEqual(summary.topups, 0)
+    }
+
+    /// Pre-#358 ledgers recorded the reversal as `.topup` with the link. The
+    /// charge still has to drop out (it pairs on the link, not the type) —
+    /// the legacy `.topup` row keeps counting as a top-up, which is the
+    /// historic data we can't retroactively reclassify.
+    func testSummary_legacyTopupShapedRefund_stillCancelsItsCharge() {
+        let now = Date()
+        let reversed = Transaction(type: .charge, amount: 50, createdAt: now)
+        let summary = TxHistorySummary.compute(from: [
+            reversed,
+            Transaction(type: .topup, amount: 50, createdAt: now,
+                        refundsTransactionID: reversed.id)
+        ])
+        XCTAssertEqual(summary.spent, 0)
+        XCTAssertEqual(summary.snoozeCount, 0)
+    }
+
+    /// A row this build can't classify contributes to nothing.
+    func testSummary_unknownType_isIgnored() {
+        let summary = TxHistorySummary.compute(from: [
+            Transaction(type: .unknown("cashback"), amount: 10, createdAt: Date())
+        ])
+        XCTAssertEqual(summary, TxHistorySummary(spent: 0, topups: 0, snoozeCount: 0))
+    }
+
     func testSummary_emptyList_allZero() {
         let summary = TxHistorySummary.compute(from: [])
         XCTAssertEqual(summary, TxHistorySummary(spent: 0, topups: 0, snoozeCount: 0))
@@ -275,10 +327,23 @@ final class TxHistoryPeriodTests: XCTestCase {
         XCTAssertEqual(filtered.map(\.type), [.charge])
     }
 
-    func testTypeFilter_credits_keepsTopupsAndPromotions() {
-        let list = [tx(.charge, month: 1), tx(.topup, month: 1), tx(.promotion, month: 1)]
+    func testTypeFilter_credits_keepsTopupsPromotionsAndRefunds() {
+        let list = [
+            tx(.charge, month: 1), tx(.topup, month: 1),
+            tx(.promotion, month: 1), tx(.refund, month: 1)
+        ]
         let filtered = TxHistoryTypeFilter.credits.filter(list)
-        XCTAssertEqual(Set(filtered.map(\.type.rawValue)), ["topup", "promotion"])
+        XCTAssertEqual(Set(filtered.map(\.type.rawValue)), ["topup", "promotion", "refund"],
+            "A refund puts money back in the wallet — the user reads it as «поступление» (#358)")
+    }
+
+    /// An unrecognised row has no known direction, so neither chip may claim
+    /// it — it stays visible only under «Все».
+    func testTypeFilter_unknownType_claimedByNeitherChip() {
+        let list = [tx(.unknown("cashback"), month: 1)]
+        XCTAssertEqual(TxHistoryTypeFilter.all.filter(list).count, 1)
+        XCTAssertTrue(TxHistoryTypeFilter.charges.filter(list).isEmpty)
+        XCTAssertTrue(TxHistoryTypeFilter.credits.filter(list).isEmpty)
     }
 
     func testTypeFilter_composesWithPeriod() {

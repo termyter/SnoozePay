@@ -206,6 +206,16 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
                        "Underlying UN error message must reach the outcome verbatim")
         XCTAssertEqual(balanceService.balance, preCharge,
                        "Penalty must be refunded so the user isn't billed for a snooze that won't fire")
+
+        // #358: the reversal is typed `.refund`, not `.topup` — the
+        // notification-action path must not book phantom IAP revenue either.
+        // A second repository over the same suite reads the ledger the
+        // coordinator's BalanceService wrote.
+        let ledger = TransactionRepository(defaults: testDefaults).fetchAll()
+        let reversal = ledger.first { $0.refundsTransactionID != nil }
+        XCTAssertEqual(reversal?.type, .refund)
+        XCTAssertEqual(ledger.filter { $0.type == .topup }.count, 1,
+                       "Only the 200 ₽ seed top-up is revenue")
     }
 
     /// Worst-case branch: schedule fails AND the offsetting refund also fails
@@ -332,7 +342,7 @@ private final class MockNotificationCenter: NotificationScheduling {
 
 /// Reports an `add()` failure to drive `.scheduleFailed`, but ALSO corrupts
 /// the transaction store the moment before invoking the completion handler.
-/// By the time the coordinator's refund path calls `topUp`, the repository
+/// By the time the coordinator's refund path calls `refund`, the repository
 /// is locked (decode failed on the corrupt blob) and `record()` refuses —
 /// reproducing the `.scheduleFailedAndRefundFailed` outcome (issue #200).
 private final class CorruptingThenFailingCenter: NotificationScheduling {

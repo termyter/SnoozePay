@@ -6,12 +6,79 @@ import Foundation
 /// StoreKit pipeline — Statistics revenue accounting and any future receipt-
 /// reconciliation logic keys off this case. `promotion` covers free credits
 /// granted by in-app marketing flows (referrals, daily bonuses, etc.) so they
-/// stay segregated from purchases the user actually paid for. `charge` is a
-/// debit (snooze penalty).
-enum TransactionType: String, Codable {
+/// stay segregated from purchases the user actually paid for. `refund` is the
+/// compensating credit posted when a snooze penalty was charged but the
+/// scheduler refused the trigger — real money moves back into the wallet, but
+/// no revenue was ever earned, so it must NOT be booked as a `topup`
+/// (issue #358). `charge` is a debit (snooze penalty).
+///
+/// Persisted verbatim (as the raw string) into the `"transactions"`
+/// UserDefaults ledger, so the token set is an on-disk contract: rename a case
+/// and every historic row becomes unreadable.
+enum TransactionType: Codable, Equatable, Hashable {
     case topup
     case charge
     case promotion
+    case refund
+    /// Any token this build doesn't recognise, carrying the original string.
+    ///
+    /// `TransactionRepository` decodes the whole ledger as a single array and
+    /// treats ANY decode failure as corruption (locks the ledger, see #72), so
+    /// a strict enum would turn one unknown token into total ledger loss — the
+    /// realistic trigger being a version downgrade (TestFlight rollback) onto a
+    /// build that predates a newer case such as `.refund`. Decoding unknown
+    /// tokens into this case keeps the rest of the ledger readable, and because
+    /// the raw string is carried along, re-encoding round-trips it losslessly
+    /// instead of overwriting it with a sentinel.
+    ///
+    /// Never constructed by app code — aggregates deliberately ignore it
+    /// (an unrecognised row can't be classified as credit or debit).
+    case unknown(String)
+
+    /// Stable persisted token.
+    var rawValue: String {
+        switch self {
+        case .topup: return "topup"
+        case .charge: return "charge"
+        case .promotion: return "promotion"
+        case .refund: return "refund"
+        case .unknown(let raw): return raw
+        }
+    }
+
+    /// Non-failable by design — unrecognised tokens land in `.unknown` rather
+    /// than `nil` (see the case documentation).
+    init(rawValue: String) {
+        switch rawValue {
+        case "topup": self = .topup
+        case "charge": self = .charge
+        case "promotion": self = .promotion
+        case "refund": self = .refund
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: try container.decode(String.self))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    /// `true` when the transaction takes money out of the wallet. Everything
+    /// else either adds money or (for `.unknown`) can't be classified, so it
+    /// renders with the neutral credit styling.
+    var isDebit: Bool { self == .charge }
+
+    /// `true` for a token this build can't classify — UI renders such rows
+    /// without a +/− sign because the direction is genuinely unknown.
+    var isUnrecognized: Bool {
+        if case .unknown = self { return true }
+        return false
+    }
 }
 
 /// Domain model for a balance transaction
@@ -21,11 +88,13 @@ struct Transaction: Identifiable, Codable {
     let amount: Double
     let alarmID: String?
     let createdAt: Date
-    /// When this transaction is a `topup` posted to offset a failed snooze
+    /// When this transaction is a `refund` posted to offset a failed snooze
     /// schedule, points back at the original `charge` so stats consumers can
     /// exclude both rows from snooze counts / streak resets (issue #133).
     /// `nil` for organic top-ups and for legacy ledger entries written before
     /// the field existed — those continue to count as real charges/top-ups.
+    /// Ledgers written before #358 carry this link on a `.topup` row instead;
+    /// consumers key off the link, not the type, so both shapes still pair up.
     let refundsTransactionID: UUID?
 
     init(
@@ -45,7 +114,7 @@ struct Transaction: Identifiable, Codable {
     }
 
     var formattedAmount: String {
-        let prefix = type == .charge ? "-" : "+"
+        let prefix = type.isDebit ? "-" : "+"
         return "\(prefix)\(MoneyFormatter.string(amount))"
     }
 
