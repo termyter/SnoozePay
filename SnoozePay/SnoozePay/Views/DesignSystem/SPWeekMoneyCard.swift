@@ -24,8 +24,9 @@ final class SPWeekMoneyCard: UIView {
     private let netValueLabel = SPSupport.makeMoneyValueLabel(color: AppColors.fg1)
 
     /// The totals row — swapped for `emptyLabel` when the week recorded
-    /// nothing at all, so the card never shows a `+0 ₽` triplet that reads
-    /// like a rendering bug.
+    /// nothing at all, so an untouched week doesn't publish a `+0 ₽` triplet
+    /// that reads like a rendering bug. A *legitimate* zero (free alarms) does
+    /// print, with `savingsNoteLabel` explaining it.
     private let totalsRow = UIStackView()
     private let emptyLabel: UILabel = {
         let label = SPSupport.makeMetaLabel("За эту неделю данных пока нет")
@@ -33,16 +34,30 @@ final class SPWeekMoneyCard: UIView {
         return label
     }()
 
-    /// Explains a "—" in the savings column instead of leaving the user to
-    /// guess. Shown when there are clean mornings but no alarm to price them.
-    private let priceUnknownLabel: UILabel = {
-        let label = SPSupport.makeMetaLabel(
-            "Сэкономленное появится, когда у будильника будет цена снуза"
-        )
+    /// Explains a "—" or a legitimate zero in the savings column instead of
+    /// leaving the user to guess. Copy is supplied by the view model, which
+    /// is the only layer that knows *why* the figure came out that way.
+    private let savingsNoteLabel: UILabel = {
+        let label = SPSupport.makeMetaLabel()
         label.numberOfLines = 0
         label.isHidden = true
         return label
     }()
+
+    /// Shown instead of the chart + totals when the ledger couldn't be read.
+    /// The card deliberately stays on screen: a card that silently vanishes
+    /// between launches is as dishonest as one that prints made-up money
+    /// (#348 verification, finding 3).
+    private let unavailableLabel: UILabel = {
+        let label = SPSupport.makeMetaLabel(color: AppColors.warn300)
+        label.numberOfLines = 0
+        label.isHidden = true
+        return label
+    }()
+
+    private let legendLabel = SPSupport.makeMetaLabel(
+        "зелёное — сэкономлено · красное — потеряно"
+    )
 
     private let divider: UIView = {
         let view = UIView()
@@ -69,7 +84,8 @@ final class SPWeekMoneyCard: UIView {
     /// derived from the same read of the clock and the same ledger.
     func apply(
         days: [StatisticsViewModel.WeekMoneyDay],
-        summary: StatisticsViewModel.MoneySummary
+        summary: StatisticsViewModel.MoneySummary,
+        savingsNote: String? = nil
     ) {
         barsView.days = days
         applyValue(savedValueLabel, amount: summary.saved, color: AppColors.money400)
@@ -84,9 +100,28 @@ final class SPWeekMoneyCard: UIView {
         }
         applyValue(netValueLabel, amount: summary.net, color: netColor)
 
+        legendLabel.isHidden = false
+        barsView.isHidden = false
+        divider.isHidden = false
+        unavailableLabel.isHidden = true
         totalsRow.isHidden = summary.isEmpty
         emptyLabel.isHidden = !summary.isEmpty
-        priceUnknownLabel.isHidden = !summary.savingsUnavailable
+        savingsNoteLabel.text = savingsNote
+        savingsNoteLabel.isHidden = savingsNote == nil
+    }
+
+    /// Ledger-unavailable state: the title stays, everything numeric goes, and
+    /// `reason` explains which failure hit. Callers pass
+    /// `StatisticsViewModel.MoneyUnavailableReason.message`.
+    func applyUnavailable(_ message: String) {
+        legendLabel.isHidden = true
+        barsView.isHidden = true
+        divider.isHidden = true
+        totalsRow.isHidden = true
+        emptyLabel.isHidden = true
+        savingsNoteLabel.isHidden = true
+        unavailableLabel.isHidden = false
+        unavailableLabel.text = message
     }
 
     private func applyValue(_ label: UILabel, amount: Double?, color: UIColor) {
@@ -106,18 +141,18 @@ final class SPWeekMoneyCard: UIView {
         addSubview(card)
 
         let caps = SPSupport.makeCapsLabel("ЭТА НЕДЕЛЯ")
-        let legend = SPSupport.makeMetaLabel("зелёное — сэкономлено · красное — потеряно")
-        legend.numberOfLines = 0
+        legendLabel.numberOfLines = 0
 
         buildTotalsRow()
 
         let stack = UIStackView(arrangedSubviews: [
-            caps, legend, barsView, divider, totalsRow, priceUnknownLabel, emptyLabel
+            caps, legendLabel, barsView, divider, totalsRow, savingsNoteLabel,
+            emptyLabel, unavailableLabel
         ])
         stack.axis = .vertical
         stack.alignment = .fill
         stack.spacing = AppSpacing.sp2
-        stack.setCustomSpacing(AppSpacing.sp4, after: legend)
+        stack.setCustomSpacing(AppSpacing.sp4, after: legendLabel)
         stack.setCustomSpacing(AppSpacing.sp4, after: barsView)
         stack.setCustomSpacing(AppSpacing.sp4, after: divider)
         stack.translatesAutoresizingMaskIntoConstraints = false

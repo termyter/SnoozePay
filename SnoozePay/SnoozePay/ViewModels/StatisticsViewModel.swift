@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// ViewModel for the V3 behavioural statistics screen (#235, `SPMore4.jsx`
 /// `Stats()`, artboards 27/27a).
@@ -123,15 +124,25 @@ final class StatisticsViewModel {
     /// day-granular wakes before the timestamp key shipped.
     private(set) var wakeTimes: [Date] = []
     /// Snooze price behind the "Сэкономили" counterfactual. `nil` means "we
-    /// have no honest price" (no alarms, or the alarm store is unreadable) —
-    /// distinct from a genuine 0 ₽ price when every alarm is free.
-    private(set) var snoozePrice: Double?
-    /// `false` when the ledger could not be read in full — a hard decode
-    /// failure, or rows carrying `type` tokens this build doesn't recognise
-    /// (#453). Money aggregates built on a partial ledger overstate savings
-    /// and understate spending, so the card is suppressed rather than shown
-    /// with plausible-looking numbers (#348 review, finding 1).
-    private(set) var ledgerReadable: Bool = true
+    /// have no honest price" — see `snoozePriceState` for *why*. Distinct
+    /// from a genuine 0 ₽ price when every alarm is free.
+    var snoozePrice: Double? { snoozePriceState.price }
+    /// Why the money card can't publish figures, or `nil` when it can.
+    ///
+    /// Money aggregates built on a partial ledger overstate savings and
+    /// understate spending (#348 review, finding 1), so the card refuses to
+    /// print numbers — but it stays on screen and says *which* failure it
+    /// hit, because silently vanishing is its own form of lying
+    /// (#348 verification, finding 3).
+    private(set) var moneyUnavailableReason: MoneyUnavailableReason?
+    /// Convenience for call sites that only need "can we publish money".
+    var ledgerReadable: Bool { moneyUnavailableReason == nil }
+
+    /// How the snooze price resolved — separates "no alarm to price a morning
+    /// with" from "the alarm store is damaged", which used to collapse into
+    /// one `nil` and produce a misleading, unactionable caption
+    /// (#348 verification, finding 4).
+    private(set) var snoozePriceState: SnoozePriceState = .noPricedAlarms
     private(set) var streak: Int = 0
 
     /// Precomputed on `loadData` so the bars and the totals are derived from
@@ -186,7 +197,22 @@ final class StatisticsViewModel {
             // throwing, and every aggregate silently skips those rows. That
             // inflates "Сэкономили" by exactly the days whose charges dropped
             // out, so it disqualifies the money card just like a hard failure.
-            ledgerReadable = !transactionRepository.lastLoadHadUnrecognizedTypes
+            let unknownTokens = transactionRepository.lastLoadUnrecognizedTypes
+            if unknownTokens.isEmpty {
+                moneyUnavailableReason = nil
+            } else {
+                moneyUnavailableReason = .ledgerPartiallyRead
+                // Nothing throws on this path, so this log is the only trace
+                // an incident leaves — version skew, byte damage to a `type`
+                // string, or a half-finished migration all land here.
+                AppLogger.repository.error(
+                    """
+                    [\(Self.partialLedgerErrorID, privacy: .public)] Money card suppressed: \
+                    ledger carries \(unknownTokens.count, privacy: .public) unrecognised \
+                    type token(s): \(unknownTokens.sorted().joined(separator: ","), privacy: .public)
+                    """
+                )
+            }
         } catch let error as TransactionRepository.RepositoryError {
             resetLedgerState()
             onLoadError?(error)
@@ -214,28 +240,48 @@ final class StatisticsViewModel {
         charges = []
         attemptedSnoozeDays = []
         streak = 0
-        ledgerReadable = false
+        moneyUnavailableReason = .ledgerUnreadable
     }
 
     /// Reads the alarms that price a saved morning.
     ///
-    /// Checked read: `saved_alarms` and `stored_transactions` are independent
+    /// Checked read: `stored_alarms` and `stored_transactions` are independent
     /// blobs, so a broken alarm store raises no ledger banner of its own — a
     /// lossy read here would silently collapse "Сэкономили" to nothing while
     /// the Будильники tab loudly reports the same store as corrupt (#348
-    /// review, finding 5). An unreadable store yields `nil`, i.e. "no honest
-    /// price", which the card renders as "—" rather than as 0 ₽.
+    /// review, finding 5).
+    ///
+    /// The two failure modes stay separate: "you have no alarm with a price"
+    /// is actionable advice, "your alarm store is damaged" is a different
+    /// problem with a different fix, and telling the second user the first
+    /// thing sends them to edit an alarm that is already priced
+    /// (#348 verification, finding 4).
     private func loadSnoozePrice() {
-        guard let alarms = try? alarmRepository.fetchAllChecked() else {
-            snoozePrice = nil
-            return
+        do {
+            let alarms = try alarmRepository.fetchAllChecked()
+            if let price = Self.snoozePrice(alarms: alarms) {
+                snoozePriceState = .known(price)
+            } else {
+                snoozePriceState = .noPricedAlarms
+            }
+        } catch {
+            snoozePriceState = .alarmStoreUnreadable
+            AppLogger.repository.error(
+                """
+                [\(Self.alarmStoreErrorID, privacy: .public)] Savings unpriced: \
+                alarm store unreadable: \(String(describing: error), privacy: .public)
+                """
+            )
         }
-        snoozePrice = Self.snoozePrice(alarms: alarms)
     }
 
     /// Rebuilds the money + wake-time snapshots from one `today`, so the bars
     /// and the totals can never come from two different reads of the clock.
-    /// `today` is a parameter purely so tests can pin it.
+    ///
+    /// `today` is a parameter so tests can pin it — see
+    /// `testRecompute_barsAndTotalsComeFromTheSameDay`, which drives two
+    /// different days through this method to prove the two outputs move
+    /// together.
     func recomputeMoneyAndWakeTime(today: Date) {
         weekMoneyDays = Self.weekMoneyDays(
             today: today,

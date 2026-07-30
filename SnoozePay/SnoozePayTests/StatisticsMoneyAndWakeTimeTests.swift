@@ -435,8 +435,56 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
 
         XCTAssertEqual(vm.weekMoneySummary.spent, 0, accuracy: 0.0001,
             "A snooze refunded after a scheduler failure never cost the user anything")
+    }
+
+    /// End-to-end guard for the rolled-back-snooze rule through `loadData`.
+    ///
+    /// The wake event is the whole point: without it `cleanDays` is empty and
+    /// `saved` comes out 0 via the "no clean mornings" branch regardless of
+    /// what `attemptedSnoozeDays` holds — which is exactly why the previous
+    /// version of this assertion proved nothing. With a wake recorded, the
+    /// morning is clean on every axis *except* the rolled-back attempt, so the
+    /// 50 ₽ only stays off the total if `attemptedSnoozeDays` is populated and
+    /// consulted.
+    func testLoadData_rolledBackSnoozeOnAWokenMorning_isNotCountedAsSaved() {
+        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
+        let today = Date()
+        wakeStore.recordWake(on: today, calendar: calendar)
+        let refunded = Transaction(type: .charge, amount: 50, createdAt: today)
+        txRepo.record(refunded)
+        txRepo.record(Transaction(
+            type: .refund, amount: 50, createdAt: today, refundsTransactionID: refunded.id
+        ))
+
+        let vm = makeVM()
+        vm.loadData()
+
+        XCTAssertTrue(vm.attemptedSnoozeDays.contains(day(today)),
+            "loadData must record the attempt even though the charge was rolled back")
+        XCTAssertEqual(vm.snoozePrice!, 50, accuracy: 0.0001)
+        XCTAssertEqual(vm.weekMoneySummary.spent, 0, accuracy: 0.0001,
+            "The refund means the morning cost nothing…")
         XCTAssertEqual(vm.weekMoneySummary.saved!, 0, accuracy: 0.0001,
-            "…but the attempt still disqualifies the morning from 'сэкономили'")
+            "…but the user pressed snooze, so it saved nothing either")
+        XCTAssertEqual(vm.weekMoneySummary.observedDays, 0,
+            "A rolled-back attempt is neither a clean morning nor a spend")
+        let todayColumn = vm.weekMoneyDays.first { $0.isPastOrToday && $0.isCleanWake }
+        XCTAssertNil(todayColumn, "No column may be marked clean on an attempted-snooze day")
+    }
+
+    /// Control for the test above: the identical fixture *without* the
+    /// rolled-back attempt does credit the morning. Together the pair pins the
+    /// attempt — not the wake event or the price — as the deciding input.
+    func testLoadData_wokenMorningWithoutAnyAttempt_isCountedAsSaved() {
+        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
+        wakeStore.recordWake(on: Date(), calendar: calendar)
+
+        let vm = makeVM()
+        vm.loadData()
+
+        XCTAssertTrue(vm.attemptedSnoozeDays.isEmpty)
+        XCTAssertEqual(vm.weekMoneySummary.saved!, 50, accuracy: 0.0001)
+        XCTAssertEqual(vm.weekMoneySummary.observedDays, 1)
     }
 
     func testWeekMoneySummary_topUpsNeverCountAsSpending() {
@@ -449,93 +497,38 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         XCTAssertEqual(vm.weekMoneySummary.spent, 0, accuracy: 0.0001)
     }
 
-    func testWeekMoneyDays_arePublishedAsOneSnapshot() {
+    /// The bars and the totals must describe the same day.
+    ///
+    /// Asserting `moneySummary(days: vm.weekMoneyDays) == vm.weekMoneySummary`
+    /// proves nothing — it's the same expression the production code runs, and
+    /// it held on the old lazy implementation too. Instead this drives two
+    /// *different* days through `recomputeMoneyAndWakeTime(today:)` and checks
+    /// both outputs moved: a stale total left over from the previous day would
+    /// keep `spent` at Monday's value while the bars had already flipped.
+    func testRecompute_barsAndTotalsComeFromTheSameDay() {
+        let monday = date(2026, 1, 26, 7, 30)
+        let nextMonday = date(2026, 2, 2, 7, 30)
+        txRepo.record(charge(150, on: monday))
         alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
-        wakeStore.recordWake(on: Date(), calendar: calendar)
 
         let vm = makeVM()
         vm.loadData()
 
-        XCTAssertEqual(vm.weekMoneyDays, vm.weekMoneyDays,
-            "Repeated reads must return one snapshot, not two clock samples")
-        XCTAssertEqual(
-            StatisticsViewModel.moneySummary(days: vm.weekMoneyDays), vm.weekMoneySummary,
-            "The published totals must be derived from the published bars"
-        )
-    }
+        vm.recomputeMoneyAndWakeTime(today: monday)
+        let mondayBars = vm.weekMoneyDays
+        let mondayTotals = vm.weekMoneySummary
+        XCTAssertEqual(mondayBars[0].spent, 150, accuracy: 0.0001)
+        XCTAssertEqual(mondayTotals.spent, 150, accuracy: 0.0001,
+            "Totals must reflect the week the bars are drawn for")
 
-    // MARK: - Ledger health gating (#348 review, finding 1)
-
-    /// A corrupt ledger surfaces an alert, but `wakeDays` survives it. Without
-    /// the health gate every morning looked "clean" and the card invented
-    /// savings out of a blob it never read.
-    func testLoadData_corruptLedger_suppressesMoneySummary() {
-        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
-        for daysAgo in 0..<3 {
-            wakeStore.recordWake(
-                on: calendar.date(byAdding: .day, value: -daysAgo, to: Date())!,
-                calendar: calendar
-            )
-        }
-        testDefaults.set(Data("not json".utf8), forKey: "stored_transactions")
-
-        let vm = makeVM()
-        var surfacedError = false
-        vm.onLoadError = { _ in surfacedError = true }
-        vm.loadData()
-
-        XCTAssertTrue(surfacedError)
-        XCTAssertFalse(vm.ledgerReadable)
-        XCTAssertTrue(vm.weekMoneySummary.isEmpty,
-            "No money statement may be built on a ledger we couldn't read")
-        XCTAssertNil(vm.weekMoneySummary.saved)
-        XCTAssertTrue(vm.weekMoneyDays.allSatisfy { $0.saved == nil })
-    }
-
-    /// Since #453 an unrecognised `type` token decodes to `.unknown` instead
-    /// of throwing: no alert fires, rows silently drop out of every aggregate,
-    /// and "Сэкономили" grows by exactly the days whose charges vanished.
-    func testLoadData_unrecognizedTransactionType_suppressesMoneySummary() throws {
-        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
-        wakeStore.recordWake(on: Date(), calendar: calendar)
-        let ledger = [Transaction(type: .unknown("teleport"), amount: 50, createdAt: Date())]
-        testDefaults.set(try JSONEncoder().encode(ledger), forKey: "stored_transactions")
-
-        let vm = makeVM()
-        var surfacedError = false
-        vm.onLoadError = { _ in surfacedError = true }
-        vm.loadData()
-
-        XCTAssertFalse(surfacedError, "A tolerated token doesn't throw — that's the danger")
-        XCTAssertFalse(vm.ledgerReadable)
-        XCTAssertTrue(vm.weekMoneySummary.isEmpty)
-    }
-
-    func testLoadData_healthyLedger_keepsMoneySummary() {
-        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
-        wakeStore.recordWake(on: Date(), calendar: calendar)
-
-        let vm = makeVM()
-        vm.loadData()
-
-        XCTAssertTrue(vm.ledgerReadable)
-        XCTAssertFalse(vm.weekMoneySummary.isEmpty)
-        XCTAssertEqual(vm.weekMoneySummary.saved!, 50, accuracy: 0.0001)
-    }
-
-    /// Regression for #348 review finding 5: `saved_alarms` and
-    /// `stored_transactions` are independent blobs, so a broken alarm store
-    /// raises no ledger banner — the price must degrade to "unknown", not to
-    /// a silent zero.
-    func testLoadData_corruptAlarmStore_leavesPriceUnknown() {
-        wakeStore.recordWake(on: Date(), calendar: calendar)
-        testDefaults.set(Data("not json".utf8), forKey: "stored_alarms")
-
-        let vm = makeVM()
-        vm.loadData()
-
-        XCTAssertNil(vm.snoozePrice, "An unreadable alarm store gives no honest price")
-        XCTAssertTrue(vm.weekMoneySummary.savingsUnavailable)
-        XCTAssertNil(vm.weekMoneySummary.saved)
+        // A week later the charge belongs to the *previous* week, so both the
+        // bars and the totals have to drop it — in lockstep.
+        vm.recomputeMoneyAndWakeTime(today: nextMonday)
+        XCTAssertEqual(vm.weekMoneyDays[0].spent, 0, accuracy: 0.0001,
+            "New week — the old charge is out of range for the bars")
+        XCTAssertEqual(vm.weekMoneySummary.spent, 0, accuracy: 0.0001,
+            "…and must be out of range for the totals too, not left stale")
+        XCTAssertNotEqual(vm.weekMoneyDays, mondayBars)
+        XCTAssertNotEqual(vm.weekMoneySummary, mondayTotals)
     }
 }

@@ -14,6 +14,90 @@ import UIKit
 /// this screen by up to 2×. They move onto this entry point in #347.
 extension StatisticsViewModel {
 
+    // MARK: - Data-health states
+
+    /// Why the money card can't publish figures.
+    ///
+    /// Both cases keep the card on screen with an explanation. Hiding it
+    /// instead would swap "lies with numbers" for "disappears without a
+    /// word" — and the states worth noticing (version skew, byte damage to a
+    /// `type` string, a half-finished migration) are exactly the ones that
+    /// would vanish (#348 verification, finding 3).
+    enum MoneyUnavailableReason: Equatable {
+        /// The ledger threw on decode. `onLoadError` has already fired, so the
+        /// user is seeing an alert too — this is the in-card echo of it.
+        case ledgerUnreadable
+        /// The ledger decoded, but rows carry `type` tokens this build can't
+        /// classify (#453). Nothing throws on this path, so without this state
+        /// the failure would be entirely invisible.
+        case ledgerPartiallyRead
+
+        /// In-card copy replacing the totals.
+        var message: String {
+            switch self {
+            case .ledgerUnreadable:
+                return "Не удалось прочитать историю списаний — данные за неделю скрыты"
+            case .ledgerPartiallyRead:
+                return "История списаний прочитана не полностью — данные за неделю скрыты, "
+                     + "чтобы не показать заниженные суммы"
+            }
+        }
+    }
+
+    /// Log identifier for the silent partial-read path, so a support ticket
+    /// can be grepped straight to the branch that suppressed the card.
+    static var partialLedgerErrorID: String { "STATS-348-LEDGER-PARTIAL" }
+    /// Log identifier for an unreadable alarm store.
+    static var alarmStoreErrorID: String { "STATS-348-ALARMS-UNREADABLE" }
+
+    /// Outcome of resolving the snooze price.
+    enum SnoozePriceState: Equatable {
+        /// A real price — including a legitimate 0 ₽ when every alarm is free.
+        case known(Double)
+        /// No alarm exists to price a morning with.
+        case noPricedAlarms
+        /// `stored_alarms` failed to decode; the user's alarms may well be
+        /// priced, we just can't read them.
+        case alarmStoreUnreadable
+
+        var price: Double? {
+            if case .known(let price) = self { return price }
+            return nil
+        }
+
+        /// Caption explaining a "—" in the savings column, or `nil` when a
+        /// price exists and no explanation is owed.
+        var explanation: String? {
+            switch self {
+            case .known:
+                return nil
+            case .noPricedAlarms:
+                return "Сэкономленное появится, когда у будильника будет цена снуза"
+            case .alarmStoreUnreadable:
+                return "Не удалось прочитать будильники — сэкономленное не посчитать"
+            }
+        }
+    }
+
+    /// Caption under the totals row, or `nil` when the numbers speak for
+    /// themselves.
+    ///
+    /// Covers both ways a zero can mislead: a "—" that needs a reason, and a
+    /// genuine `Сэкономили 0 ₽` on a week of clean mornings under free alarms,
+    /// which otherwise reads as a broken screen (#348 verification, finding 5).
+    var savingsNote: String? {
+        guard !weekMoneySummary.isEmpty else { return nil }
+        if weekMoneySummary.savingsUnavailable {
+            return snoozePriceState.explanation
+        }
+        if case .known(let price) = snoozePriceState,
+           price == 0,
+           weekMoneyDays.contains(where: \.isCleanWake) {
+            return "Снуз на ваших будильниках бесплатный — экономить нечего"
+        }
+        return nil
+    }
+
     // MARK: - Canonical savings formula (shared entry point)
 
     /// The one place that answers "what is a clean morning worth, and what
