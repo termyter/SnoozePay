@@ -290,6 +290,49 @@ final class StreakModalCopyTests: XCTestCase {
         XCTAssertTrue(hero?.adjustsFontSizeToFitWidth == true)
     }
 
+    /// Regression for the timing bug the drawing fix alone did not solve: the
+    /// mask used to be applied from the controller's `viewDidLayoutSubviews`,
+    /// where the hero (sheet → stack → label) still measures 0×0, so it never
+    /// landed and the glyphs stayed flat `money400`. Asserting on the *result
+    /// of a real layout pass* is what catches that — the drawing code being
+    /// correct proves nothing if it never runs.
+    func testMoneyHeroGradientMaskLandsAfterLayoutPass() {
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 440, height: 956)
+        vc.loadViewIfNeeded()
+        vc.view.layoutIfNeeded()
+
+        let hero = Self.labels(in: vc.view).first {
+            ($0.text ?? "").contains("350") && ($0.text ?? "").contains("₽")
+        }
+        let unwrapped = try? XCTUnwrap(hero)
+        XCTAssertNotNil(unwrapped)
+        XCTAssertGreaterThan(unwrapped?.bounds.width ?? 0, 0, "hero must be measured by layout")
+
+        // `applyGradientMask` clears the text colour as its last step, so a
+        // clear colour is proof the mask actually rasterised.
+        XCTAssertEqual(unwrapped?.textColor, .clear, "gradient mask never applied to the hero")
+
+        let gradients = (unwrapped?.layer.sublayers ?? []).compactMap { $0 as? CAGradientLayer }
+        XCTAssertEqual(gradients.count, 1, "exactly one gradient layer expected")
+        XCTAssertNotNil(gradients.first?.mask, "gradient must be clipped to the glyphs")
+        XCTAssertEqual(gradients.first?.frame.size, unwrapped?.bounds.size)
+    }
+
+    /// The behavioural sheet has no hero at all — nothing to mask, and no
+    /// stray gradient layer left behind.
+    func testBehavioralSheetHasNoGradientHero() {
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: nil)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 440, height: 956)
+        vc.loadViewIfNeeded()
+        vc.view.layoutIfNeeded()
+
+        XCTAssertTrue(
+            Self.labels(in: vc.view).allSatisfy { !($0 is SPGradientTextLabel) },
+            "no money hero should be mounted without a figure"
+        )
+    }
+
     // MARK: - Helpers
 
     private static func labels(in view: UIView) -> [UILabel] {

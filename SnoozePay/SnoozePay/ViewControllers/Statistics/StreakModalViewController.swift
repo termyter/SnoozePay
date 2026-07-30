@@ -72,8 +72,17 @@ final class StreakModalViewController: UIViewController {
     private let flameIcon = UIImageView()
 
     private let capsLabel = UILabel()
-    private let amountLabel = UILabel()
-    private let amountGradient = CAGradientLayer()
+    /// Money hero. `SPGradientTextLabel` re-masks itself from its own
+    /// `layoutSubviews` — driving that from the controller's
+    /// `viewDidLayoutSubviews` never worked, because the label (sheet → stack →
+    /// label) still measures zero when the controller's callback fires (#347
+    /// review).
+    private let amountLabel = SPGradientTextLabel(
+        colors: SPSupport.moneyGradientColors,
+        locations: SPSupport.moneyGradientLocations,
+        startPoint: SPSupport.gradientStart,
+        endPoint: SPSupport.gradientEnd
+    )
     private let headlineLabel = UILabel()
     private let bodyLabel = UILabel()
 
@@ -138,9 +147,9 @@ final class StreakModalViewController: UIViewController {
         super.viewDidLayoutSubviews()
         backdropGlow.frame = view.bounds
         flameBadgeGradient.frame = flameBadge.bounds
-        if case .savings = mode {
-            amountLabel.applyGradientMask(amountGradient)
-        }
+        // NB: the money hero is deliberately absent here — `SPGradientTextLabel`
+        // owns its own mask timing. This callback runs before the label has a
+        // resolved size, so masking from here is a no-op.
         // Shadow path tracks the sheet's rounded rect so the soft glow doesn't
         // pay an offscreen pass on every layout while the sheet animates in.
         sheet.layer.shadowPath = UIBezierPath(
@@ -268,14 +277,11 @@ final class StreakModalViewController: UIViewController {
         amountLabel.numberOfLines = 1
         amountLabel.adjustsFontSizeToFitWidth = true
         amountLabel.minimumScaleFactor = 0.5
-        amountLabel.textColor = AppColors.money400   // safety-net pre-mask
+        // Flat fallback in case the mask can't rasterise (zero-width label on a
+        // pathological layout) — the number stays readable, just untinted.
+        amountLabel.textColor = AppColors.money400
         amountLabel.text = Self.formatSavedAmount(amount)
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        amountGradient.colors = SPSupport.moneyGradientColors
-        amountGradient.locations = SPSupport.moneyGradientLocations
-        amountGradient.startPoint = SPSupport.gradientStart
-        amountGradient.endPoint = SPSupport.gradientEnd
     }
 
     private func configureButtons() {
