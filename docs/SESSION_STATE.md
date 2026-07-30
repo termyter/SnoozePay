@@ -161,3 +161,4 @@ dawn, radar, drops, piano, guitar, bell, waves, birds, classic, jazz + default_a
 3. Работать над IOS-026 (lock screen alarm) и IOS-027 (toggle UI)
 4. **Помнить**: не мержить без ОК Ивана!
 - 2026-06-19 — autopilot: merged 6 PRs (#346, #343, #344, #349, #350, #351 → PRs #367-372), phase: ready-queue drained, next: /audit
+- 2026-07-30 — autopilot: merged 1 PR (#450 → #444 StoreKitRestoreErrorCopy tests). Останов: ready-queue пуст, все 11 proposals gated на pm-input-needed / no-touch, MVP-фичи из SPEC §7.1 реализованы, v2.0 (CloudKit, backend) — PM-стратегия. Свежий /audit пропущен: 8 audit-findings уже открыты и блочены Иваном, ещё один прогон дал бы только шум.
