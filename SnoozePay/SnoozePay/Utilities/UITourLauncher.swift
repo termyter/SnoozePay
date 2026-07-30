@@ -296,10 +296,18 @@ enum UITourLauncher {
         let calendar = Calendar.current
         // Wake on ~2 of every 3 of the last 45 days — enough texture for the
         // heatmap, weekday bars and the 8-week trend to render all states.
+        //
+        // The recorded instant matters since #348: wake times drift ~1 min
+        // earlier per day into the past, so the trailing two weeks average
+        // out visibly earlier than the two before them and the "Раньше на N
+        // мин" column has something honest to show in the tour.
         for daysAgo in 0...45 where daysAgo % 3 != 1 {
-            if let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) {
-                store.recordWake(on: date)
-            }
+            guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) else { continue }
+            let minutesLater = daysAgo + (daysAgo % 7) * 3
+            let wakeTime = calendar.date(
+                bySettingHour: 6, minute: 45, second: 0, of: day
+            ).flatMap { calendar.date(byAdding: .minute, value: minutesLater, to: $0) }
+            store.recordWake(on: wakeTime ?? day)
         }
     }
 
