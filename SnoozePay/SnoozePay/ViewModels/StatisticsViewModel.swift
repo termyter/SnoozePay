@@ -3,11 +3,12 @@ import Foundation
 /// ViewModel for the V3 behavioural statistics screen (#235, `SPMore4.jsx`
 /// `Stats()`, artboards 27/27a).
 ///
-/// V3 drops every money / wake-time metric (those duplicate the Wallet) and
-/// exposes three behavioural aggregations instead:
+/// Aggregations exposed to the screen:
 ///   1. Calendar heatmap of the current month — per-day snooze status.
 ///   2. Average snoozes per weekday over the last 4 weeks (+ worst day).
 ///   3. 8-week snooze trend (better / same / worse than last week).
+///   4. "Эта неделя" money — saved / spent / net for the current week (#348).
+///   5. "Время подъёма" — mean wake time vs. the preceding window (#348).
 ///
 /// All aggregation maths lives in pure static functions that take an explicit
 /// `today` so tests pin dates instead of racing the wall clock; the instance
@@ -76,10 +77,16 @@ final class StatisticsViewModel {
         case worse
     }
 
+    // Money / wake-time value types live in `StatisticsViewModel+Money.swift`
+    // (#348) alongside the aggregations that build them.
+
     // MARK: - Dependencies
 
     private let transactionRepository: TransactionRepository
     private let wakeStore: WakeEventStore
+    /// Supplies the snooze price behind the "Сэкономили" counterfactual
+    /// (#348) — a saved morning is worth whatever a snooze would have cost.
+    private let alarmRepository: AlarmRepository
     private let defaults: UserDefaults
 
     /// UserDefaults key under which the all-time best streak is persisted.
@@ -97,10 +104,21 @@ final class StatisticsViewModel {
 
     private let calendar: Calendar
 
+    /// Read-only seam for the aggregations split into
+    /// `StatisticsViewModel+Money.swift` — `private` is file-scoped, so the
+    /// extension in the sibling file can't reach `calendar` directly.
+    var aggregationCalendar: Calendar { calendar }
+
     // MARK: - State
 
     private(set) var charges: [Transaction] = []
     private(set) var wakeDays: Set<Date> = []
+    /// Exact wake instants (#348) — empty for installs that only recorded
+    /// day-granular wakes before the timestamp key shipped.
+    private(set) var wakeTimes: [Date] = []
+    /// Snooze price used by the "Сэкономили" counterfactual, refreshed on
+    /// every load so an edited penalty is reflected immediately.
+    private(set) var snoozePrice: Double = 0
     private(set) var streak: Int = 0
 
     var onDataUpdated: (() -> Void)?
@@ -114,11 +132,13 @@ final class StatisticsViewModel {
     init(
         repository: TransactionRepository = .shared,
         wakeStore: WakeEventStore = .shared,
+        alarmRepository: AlarmRepository = .shared,
         defaults: UserDefaults = .standard,
         calendar: Calendar = StatisticsViewModel.mondayFirstCalendar
     ) {
         self.transactionRepository = repository
         self.wakeStore = wakeStore
+        self.alarmRepository = alarmRepository
         self.defaults = defaults
         self.calendar = calendar
     }
@@ -147,6 +167,11 @@ final class StatisticsViewModel {
             streak = 0
         }
         wakeDays = wakeStore.wakeDays()
+        wakeTimes = wakeStore.wakeTimes()
+        // Lossy read on purpose: alarms only feed the "Сэкономили" price, so a
+        // corrupt alarm store degrades that one figure to 0 instead of raising
+        // a second banner over the ledger error the user is already seeing.
+        snoozePrice = Self.snoozePrice(alarms: alarmRepository.fetchAll())
 
         // Bump persisted best streak only forward — never reset on streak = 0,
         // so the user's all-time record survives a slip-up.
