@@ -310,10 +310,15 @@ enum WalletStats {
         for transaction in recent {
             let amount = Decimal(transaction.amount)
             switch transaction.type {
-            case .topup, .promotion:
+            case .topup, .promotion, .refund:
+                // `.refund` still moves money INTO the wallet — excluding it
+                // would make the delta contradict the actual balance, which is
+                // why #358 changed the ledger type, not the balance maths.
                 net += amount
             case .charge:
                 net -= amount
+            case .unknown:
+                continue // direction unknown — can't be signed into the delta
             }
         }
         return net

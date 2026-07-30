@@ -92,14 +92,23 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
 
         // Charge + offsetting refund = two new ledger entries, so stats can
         // reconcile the failed snooze.
-        XCTAssertEqual(repo.fetchAll().count, preCount + 2,
+        let ledger = repo.fetchAll()
+        XCTAssertEqual(ledger.count, preCount + 2,
                        "Both the charge and the refund must be recorded")
+
+        // #358: the offsetting entry must be typed `.refund`. Typed `.topup`
+        // it would masquerade as paid IAP income in revenue accounting.
+        let reversal = ledger.first { $0.refundsTransactionID != nil }
+        XCTAssertEqual(reversal?.type, .refund)
+        XCTAssertEqual(reversal?.amount, 50)
+        XCTAssertEqual(ledger.filter { $0.type == .topup }.count, 1,
+                       "Only the 200 ₽ seed top-up may count as revenue — not the reversal")
     }
 
     // MARK: - Degraded refund failure (stub billing)
 
     func testForegroundSnooze_scheduleFails_refundFails_reportsDegradedOutcome() {
-        let billing = StubFiringBalance(balanceValue: 200, chargeResult: true, topUpResult: false)
+        let billing = StubFiringBalance(balanceValue: 200, chargeResult: true, refundResult: false)
 
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(penalty: 50),
@@ -118,14 +127,14 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
         guard case .scheduleFailedAndRefundFailed = captured else {
             return XCTFail("Expected .scheduleFailedAndRefundFailed, got \(String(describing: captured))")
         }
-        XCTAssertEqual(billing.topUpCalls, [50], "A refund of the charged penalty must be attempted")
+        XCTAssertEqual(billing.refundCalls, [50], "A refund of the charged penalty must be attempted")
         XCTAssertEqual(billing.chargeCalls, [50], "The penalty was charged before scheduling")
     }
 
     // MARK: - Refund linkage (#366)
 
     func testForegroundSnooze_scheduleFails_refundLinksToChargeTransaction() {
-        let billing = StubFiringBalance(balanceValue: 200, chargeResult: true, topUpResult: true)
+        let billing = StubFiringBalance(balanceValue: 200, chargeResult: true, refundResult: true)
 
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(penalty: 50),
@@ -137,7 +146,7 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
         vm.snooze { _ in exp.fulfill() }
         wait(for: [exp], timeout: 10)
 
-        XCTAssertEqual(billing.topUpRefundLinks, [billing.lastChargeID],
+        XCTAssertEqual(billing.refundLinks, [billing.lastChargeID],
                        "Foreground refund must link to the charge it offsets (#366)")
         XCTAssertNotNil(billing.lastChargeID)
     }
@@ -167,7 +176,7 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
     // MARK: - Success path
 
     func testForegroundSnooze_scheduleSucceeds_reportsScheduledNoRefund() {
-        let billing = StubFiringBalance(balanceValue: 200, chargeResult: true, topUpResult: true)
+        let billing = StubFiringBalance(balanceValue: 200, chargeResult: true, refundResult: true)
 
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(penalty: 50),
@@ -184,32 +193,32 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
         wait(for: [exp], timeout: 10)
 
         XCTAssertEqual(captured, .scheduled)
-        XCTAssertTrue(billing.topUpCalls.isEmpty, "No refund when the snooze schedules successfully")
+        XCTAssertTrue(billing.refundCalls.isEmpty, "No refund when the snooze schedules successfully")
     }
 }
 
 // MARK: - Test doubles
 
-/// Stub `AlarmFiringBalancing` that lets `charge` and `topUp` resolve
+/// Stub `AlarmFiringBalancing` that lets `charge` and `refund` resolve
 /// independently — the only way to exercise `scheduleFailedAndRefundFailed`
 /// (the real services are `final` and a locked ledger fails both calls).
 private final class StubFiringBalance: AlarmFiringBalancing {
     private(set) var balance: Double
     private let chargeResult: Bool
-    private let topUpResult: Bool
+    private let refundResult: Bool
     private(set) var chargeCalls: [Double] = []
-    private(set) var topUpCalls: [Double] = []
+    private(set) var refundCalls: [Double] = []
     /// The id minted for the most recent successful `chargeWithReceipt`, so a
     /// test can assert the refund linked back to it (issue #366).
     private(set) var lastChargeID: UUID?
-    /// Captures the `refundsTransactionID` passed to each `topUp` so a test can
+    /// Captures the `refundsTransactionID` passed to each `refund` so a test can
     /// assert the foreground refund links to the charge instead of `nil`.
-    private(set) var topUpRefundLinks: [UUID?] = []
+    private(set) var refundLinks: [UUID?] = []
 
-    init(balanceValue: Double, chargeResult: Bool, topUpResult: Bool) {
+    init(balanceValue: Double, chargeResult: Bool, refundResult: Bool) {
         self.balance = balanceValue
         self.chargeResult = chargeResult
-        self.topUpResult = topUpResult
+        self.refundResult = refundResult
     }
 
     func canAfford(_ amount: Double) -> Bool { balance >= amount }
@@ -224,10 +233,10 @@ private final class StubFiringBalance: AlarmFiringBalancing {
     }
 
     @discardableResult
-    func topUp(amount: Double, refundsTransactionID: UUID?) -> Bool {
-        topUpCalls.append(amount)
-        topUpRefundLinks.append(refundsTransactionID)
-        guard topUpResult else { return false }
+    func refund(amount: Double, refundsTransactionID: UUID?) -> Bool {
+        refundCalls.append(amount)
+        refundLinks.append(refundsTransactionID)
+        guard refundResult else { return false }
         balance += amount
         return true
     }

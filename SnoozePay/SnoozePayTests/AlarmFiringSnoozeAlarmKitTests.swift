@@ -67,7 +67,7 @@ final class AlarmFiringSnoozeAlarmKitTests: XCTestCase {
 
         XCTAssertTrue(charged, "Snooze charges when the balance covers the penalty")
         XCTAssertEqual(billing.chargeCalls, [50], "The penalty must be charged exactly once")
-        XCTAssertTrue(billing.topUpCalls.isEmpty, "No refund on a successful AlarmKit snooze")
+        XCTAssertTrue(billing.refundCalls.isEmpty, "No refund on a successful AlarmKit snooze")
         XCTAssertEqual(outcome, .scheduled)
         XCTAssertEqual(alarmKit.snoozedIDs, [alarm.id], "Snooze must reschedule via AlarmKit")
         XCTAssertEqual(alarmKit.stoppedIDs, [alarm.id], "The ringing alarm must be stopped on snooze")
@@ -125,7 +125,7 @@ private final class SnoozeMockAlarmKit: AlarmKitScheduling {
 private final class SnoozeStubBalance: AlarmFiringBalancing {
     private(set) var balance: Double
     private(set) var chargeCalls: [Double] = []
-    private(set) var topUpCalls: [Double] = []
+    private(set) var refundCalls: [Double] = []
 
     init(balanceValue: Double) { self.balance = balanceValue }
 
@@ -139,8 +139,8 @@ private final class SnoozeStubBalance: AlarmFiringBalancing {
     }
 
     @discardableResult
-    func topUp(amount: Double, refundsTransactionID: UUID?) -> Bool {
-        topUpCalls.append(amount)
+    func refund(amount: Double, refundsTransactionID: UUID?) -> Bool {
+        refundCalls.append(amount)
         balance += amount
         return true
     }

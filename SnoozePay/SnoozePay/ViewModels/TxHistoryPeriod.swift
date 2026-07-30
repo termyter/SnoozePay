@@ -140,9 +140,9 @@ enum TxHistoryTypeFilter: CaseIterable {
     case all
     /// «Списания» — debits only (`.charge`).
     case charges
-    /// «Поступления» — credits: paid top-ups *and* bonuses
-    /// (`.topup` + `.promotion`). Both add money to the balance, so the
-    /// user-facing "поступления" bucket groups them.
+    /// «Поступления» — credits: paid top-ups, bonuses *and* penalty
+    /// reversals (`.topup` + `.promotion` + `.refund`). All three add money to
+    /// the balance, so the user-facing "поступления" bucket groups them.
     case credits
 
     /// Chip label.
@@ -162,7 +162,15 @@ enum TxHistoryTypeFilter: CaseIterable {
         case .charges:
             return transaction.type == .charge
         case .credits:
-            return transaction.type == .topup || transaction.type == .promotion
+            switch transaction.type {
+            case .topup, .promotion, .refund:
+                return true
+            // An unrecognised row (ledger written by a newer build, see
+            // `TransactionType.unknown`) has no known direction — it stays in
+            // «Все» rather than being claimed by either bucket.
+            case .charge, .unknown:
+                return false
+            }
         }
     }
 
@@ -178,26 +186,52 @@ enum TxHistoryTypeFilter: CaseIterable {
 struct TxHistorySummary: Equatable {
     /// Absolute sum of charges, ₽.
     let spent: Decimal
-    /// Sum of paid top-ups, ₽. Bonuses (`.promotion`) are deliberately
-    /// excluded — they appear in the list but not in this aggregate
-    /// (issue #234 item 4).
+    /// Sum of paid top-ups, ₽. Bonuses (`.promotion`) and penalty reversals
+    /// are deliberately excluded — they appear in the list but not in this
+    /// aggregate (issue #234 item 4; issue #358 for refunds, which are
+    /// returned money, never income). "Reversal" covers both shapes: the
+    /// current `.refund` row *and* the pre-#358 `.topup` row that carries a
+    /// `refundsTransactionID`.
     let topups: Decimal
-    /// Number of snooze charges.
+    /// Number of snooze charges the user actually paid for — a charge whose
+    /// snooze never armed was refunded and per design "doesn't count", so it
+    /// is excluded here just like in streak / Statistics (#133).
     let snoozeCount: Int
 
-    static func compute(from transactions: [Transaction]) -> TxHistorySummary {
+    /// - Parameters:
+    ///   - transactions: the rows the card must reconcile with — the period
+    ///     slice the user is looking at.
+    ///   - ledger: the FULL ledger, used only to decide which charges were
+    ///     reversed. A refund can land in a different period than its charge
+    ///     (23:59 on the 31st, refunded at 00:00 on the 1st), and scoping the
+    ///     pairing to the visible slice would then show a fully-reversed snooze
+    ///     as real spend. Same convention `AlarmsListViewModel.weeklyDelta`
+    ///     follows for its rolling window (#440).
+    static func compute(from transactions: [Transaction], ledger: [Transaction]) -> TxHistorySummary {
         var spent = Decimal(0)
         var topups = Decimal(0)
         var snoozes = 0
+        // A reversed charge and its refund must drop out together. Counting
+        // the charge while skipping the refund (which is NOT a top-up since
+        // #358) would leave the card claiming the user spent money that came
+        // straight back. `realCharges` is the same helper streak / Statistics
+        // use, so the three surfaces can't drift on what "a snooze" means.
+        let realCharges = Set(TransactionRepository.realCharges(from: ledger).map(\.id))
         for transaction in transactions {
             switch transaction.type {
             case .charge:
+                guard realCharges.contains(transaction.id) else { continue }
                 spent += Decimal(abs(transaction.amount))
                 snoozes += 1
             case .topup:
+                // Pre-#358 ledgers recorded reversals as `.topup` + link. Now
+                // that the charge side drops out, counting this side would
+                // claim a top-up that never happened — the card would imply
+                // +50 ₽ of movement against a balance that never moved.
+                guard transaction.refundsTransactionID == nil else { continue }
                 topups += Decimal(abs(transaction.amount))
-            case .promotion:
-                continue // bonus — list-only, never aggregated
+            case .promotion, .refund, .unknown:
+                continue // bonus / reversal / unrecognised — list-only
             }
         }
         return TxHistorySummary(spent: spent, topups: topups, snoozeCount: snoozes)

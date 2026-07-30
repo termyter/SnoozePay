@@ -325,12 +325,14 @@ final class AlarmFiringViewModel {
         case .success:
             completion?(.scheduled)
         case .failure(let error):
-            // Refund via `topUp` (an offsetting ledger entry) rather than
+            // Refund via `refund` (an offsetting ledger entry) rather than
             // mutating storage directly, so transaction history shows both the
             // charge and the refund and stats stay auditable. Link the refund
             // to the original charge so `realCharges(from:)` excludes the
-            // reversed snooze from stats / streak (issue #366 / #133).
-            let refunded = balanceService.topUp(
+            // reversed snooze from stats / streak (issue #366 / #133). Must not
+            // go through `topUp` — that books the reversal as paid IAP revenue
+            // (issue #358).
+            let refunded = balanceService.refund(
                 amount: penalty,
                 refundsTransactionID: chargeTransactionID
             )
@@ -388,7 +390,7 @@ final class AlarmFiringViewModel {
 // MARK: - Billing seam
 
 /// The slice of `BalanceService` the firing VM depends on. Declaring it as a
-/// protocol lets tests inject a stub that can fail `topUp` independently of
+/// protocol lets tests inject a stub that can fail `refund` independently of
 /// `charge` — the only way to exercise the `scheduleFailedAndRefundFailed`
 /// branch, since `BalanceService` / `TransactionRepository` are `final` and a
 /// locked ledger fails `charge` too (issue #197).
@@ -398,13 +400,16 @@ protocol AlarmFiringBalancing: AnyObject {
     /// Charges the penalty and returns the persisted charge `Transaction` (or
     /// `nil` on insufficient funds / locked ledger). The returned `id` lets the
     /// foreground snooze path link an offsetting refund back to this charge via
-    /// `topUp(amount:refundsTransactionID:)` so a reversed snooze is excluded
+    /// `refund(amount:refundsTransactionID:)` so a reversed snooze is excluded
     /// from stats — closing the gap #133 left on the foreground path (#366).
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction?
-    /// `refundsTransactionID` links a refund to the charge it offsets so the
-    /// charge is excluded from snooze stats (issue #133). Both the foreground
-    /// snooze path and the notification-action path now supply it (#366).
-    @discardableResult func topUp(amount: Double, refundsTransactionID: UUID?) -> Bool
+    /// Reverses a penalty as a `.refund` ledger row — deliberately NOT `topUp`,
+    /// which is reserved for paid IAP credit and drives revenue accounting
+    /// (issue #358). `refundsTransactionID` links the reversal to the charge it
+    /// offsets so the charge is excluded from snooze stats (issue #133). Both
+    /// the foreground snooze path and the notification-action path supply it
+    /// (#366).
+    @discardableResult func refund(amount: Double, refundsTransactionID: UUID?) -> Bool
 }
 
 extension BalanceService: AlarmFiringBalancing {}

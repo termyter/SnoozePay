@@ -52,6 +52,26 @@ final class TransactionRepository {
     private var _lastLoadFailed: Bool = false
     var lastLoadFailed: Bool { queue.sync { _lastLoadFailed } }
 
+    /// Tokens in the `type` field that the last successful load could not
+    /// classify (they decoded into `TransactionType.unknown`, see #358).
+    ///
+    /// A decode that *throws* is loud — it latches `_lastLoadFailed`, backs the
+    /// blob up and logs. An unrecognised `type` string does neither on its own,
+    /// yet it is just as much an incident: every aggregate skips such a row, so
+    /// `Списано` / `weeklyDelta` / streak quietly disagree with `user_balance`.
+    /// Byte-level damage to a `type` string used to throw (strict enum) and now
+    /// doesn't, so this is the replacement signal — without it #358 would have
+    /// turned ledger damage into a silent failure.
+    ///
+    /// Unlike `_lastLoadFailed` this does NOT block writes: the rows are
+    /// individually intact and refusing to record new transactions would be a
+    /// harsher penalty than the damage warrants. Like `_lastLoadFailed`, it
+    /// describes the most recent load — it stays empty until something reads.
+    private var _lastLoadUnrecognizedTypes: Set<String> = []
+    var lastLoadUnrecognizedTypes: Set<String> { queue.sync { _lastLoadUnrecognizedTypes } }
+    /// Convenience for UI that only needs "should I warn the user".
+    var lastLoadHadUnrecognizedTypes: Bool { !lastLoadUnrecognizedTypes.isEmpty }
+
     /// Production code MUST use `TransactionRepository.shared` to avoid
     /// creating isolated instances with separate serial queues (which
     /// reintroduces the race this class exists to prevent).
@@ -191,11 +211,13 @@ final class TransactionRepository {
         guard let data = defaults.data(forKey: key) else {
             // Case 1: brand-new install — no recorded transactions yet.
             _lastLoadFailed = false
+            _lastLoadUnrecognizedTypes = []
             return []
         }
         do {
             let txs = try JSONDecoder().decode([Transaction].self, from: data)
             _lastLoadFailed = false
+            noteUnrecognizedTypes(in: txs)
             return txs.sorted { $0.createdAt > $1.createdAt }
         } catch {
             // Case 3: stored bytes can't be decoded.
@@ -209,6 +231,30 @@ final class TransactionRepository {
             )
             throw RepositoryError.decodeFailure(underlying: error)
         }
+    }
+
+    /// Latches + logs the `type` tokens this build couldn't classify.
+    ///
+    /// Logged only when the token set *changes*, because `readAll` runs on
+    /// every UI reload and a per-read `os_log` would bury the incident in its
+    /// own noise. MUST be called inside `queue.sync`.
+    private func noteUnrecognizedTypes(in transactions: [Transaction]) {
+        let tokens = Set(
+            transactions.map(\.type).filter(\.isUnrecognized).map(\.rawValue)
+        )
+        guard tokens != _lastLoadUnrecognizedTypes else { return }
+        _lastLoadUnrecognizedTypes = tokens
+        guard !tokens.isEmpty else { return }
+        // `.error`, not `.info`: in production an unrecognised token means
+        // either ledger damage or a build/version skew, and both make the
+        // wallet's on-screen totals diverge from `user_balance` (#358).
+        os_log(
+            "Unrecognised transaction type(s) %{public}@ — %{public}d of %{public}d rows excluded from all aggregates",
+            log: Self.log, type: .error,
+            tokens.sorted().joined(separator: ", "),
+            transactions.filter { $0.type.isUnrecognized }.count,
+            transactions.count
+        )
     }
 
     /// Writes the encoded transaction list to disk.
