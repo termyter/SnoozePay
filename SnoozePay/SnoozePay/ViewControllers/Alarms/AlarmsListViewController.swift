@@ -8,6 +8,7 @@ import UIKit
 ///   ├─ SPAlarmsListHeader (sticky)
 ///   │     ├─ title row "Будильники" + 40×40 "+" button
 ///   │     └─ compact balance pill (auto-warn-tint when balance < 100)
+///   ├─ SPAlarmBackendBanner (when no backend can ring an alarm, #428)
 ///   └─ UITableView (scrolls)
 ///         ├─ tableHeaderView: AlarmsStreakBannerView (when streak > 0)
 ///         └─ rows: AlarmCell
@@ -55,6 +56,22 @@ class AlarmsListViewController: UIViewController {
         return view
     }()
 
+    /// Proactive "nothing can ring your alarms" banner (#428). Pinned between
+    /// the sticky header and the table — NOT a `tableHeaderView`, because the
+    /// table is hidden behind the empty state exactly when the user has no
+    /// alarms yet, which is the case the guard exists for.
+    private let backendBanner: SPAlarmBackendBanner = {
+        let view = SPAlarmBackendBanner()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+
+    /// Table top pinned straight to the header (no banner) vs below the
+    /// banner. Exactly one is active at a time — see `refreshBackendBanner`.
+    private var tableTopToHeader: NSLayoutConstraint!
+    private var tableTopToBanner: NSLayoutConstraint!
+
     private let emptyStateView: SPAlarmsListEmptyState = {
         let view = SPAlarmsListEmptyState()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -83,6 +100,11 @@ class AlarmsListViewController: UIViewController {
         viewModel.loadData()
         tableView.reloadData()
         refreshStreakBanner()
+        // Re-probe on every appearance; the VM's monitor additionally re-probes
+        // on app activation, so a permission revoked in iOS Settings while the
+        // screen stayed mounted still lands (#428).
+        viewModel.refreshBackendAvailability()
+        refreshBackendBanner()
         presentStreakModalIfNeeded()
     }
 
@@ -188,18 +210,26 @@ class AlarmsListViewController: UIViewController {
     private func setupLayout() {
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
+        view.addSubview(backendBanner)
         view.addSubview(header)
 
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(AlarmCell.self, forCellReuseIdentifier: AlarmCell.reuseID)
 
+        tableTopToHeader = tableView.topAnchor.constraint(equalTo: header.bottomAnchor)
+        tableTopToBanner = tableView.topAnchor.constraint(equalTo: backendBanner.bottomAnchor)
+        tableTopToHeader.isActive = true
+
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            tableView.topAnchor.constraint(equalTo: header.bottomAnchor),
+            backendBanner.topAnchor.constraint(equalTo: header.bottomAnchor, constant: AppSpacing.sp3),
+            backendBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backendBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -233,6 +263,9 @@ class AlarmsListViewController: UIViewController {
         emptyStateView.onAddAlarmTap = { [weak self] in
             self?.addAlarmTapped()
         }
+        backendBanner.onTap = {
+            AlarmsListViewController.openSystemSettings()
+        }
     }
 
     private func bindViewModel() {
@@ -257,6 +290,14 @@ class AlarmsListViewController: UIViewController {
         viewModel.onBalanceCorrupted = { [weak self] rawValue in
             self?.presentBalanceCorruptedAlert(rawValue: rawValue)
         }
+
+        // Authorization can flip while this screen stays mounted (user walks
+        // into iOS Settings and back). The VM re-probes on activation and
+        // pushes the transition here, so the banner is live rather than
+        // cold-launch-only (#428).
+        viewModel.onBackendAvailabilityChanged = { [weak self] _ in
+            self?.refreshBackendBanner()
+        }
     }
 
     /// Push the latest balance / hint state into the sticky header.
@@ -272,6 +313,22 @@ class AlarmsListViewController: UIViewController {
         // Legacy method preserved for source-compat — the V2 pill already
         // self-toggles its tone from `setBalance` based on the threshold.
         header.setWarning(visible: viewModel.isLowBalance, balance: balance)
+    }
+
+    /// Mount / dismount the "alarms won't ring" banner between the header and
+    /// the list. Driven purely by `viewModel.backendWarning` — the screen never
+    /// asks the OS about permissions itself.
+    private func refreshBackendBanner() {
+        guard let warning = viewModel.backendWarning else {
+            backendBanner.isHidden = true
+            tableTopToBanner.isActive = false
+            tableTopToHeader.isActive = true
+            return
+        }
+        backendBanner.configure(with: warning)
+        backendBanner.isHidden = false
+        tableTopToHeader.isActive = false
+        tableTopToBanner.isActive = true
     }
 
     /// Mount / dismount the streak banner above the alarm rows. When the
@@ -351,9 +408,60 @@ class AlarmsListViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    // MARK: - Backend guard UI (#428)
+
+    /// Shared interception for the create / enable CTAs. Copy comes from the
+    /// same `AlarmBackendWarning` the banner renders, so the screen states the
+    /// problem once and in one voice.
+    private func presentBackendUnavailableAlert(
+        proceedTitle: String,
+        onCancel: (() -> Void)? = nil,
+        onProceed: @escaping () -> Void
+    ) {
+        guard presentedViewController == nil, let warning = viewModel.backendWarning else {
+            onProceed()
+            return
+        }
+        let alert = UIAlertController(
+            title: warning.title,
+            message: warning.message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Настройки", style: .default) { _ in
+            AlarmsListViewController.openSystemSettings()
+            onCancel?()
+        })
+        alert.addAction(UIAlertAction(title: proceedTitle, style: .cancel) { _ in
+            onProceed()
+        })
+        present(alert, animated: true)
+    }
+
+    /// Deeplink into this app's page in iOS Settings — the one place the user
+    /// can actually fix a revoked alarm/notification grant.
+    private static func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
     // MARK: - Actions
 
     @objc private func addAlarmTapped() {
+        // Gate the create CTA on there being a backend at all (#428) — without
+        // it the alarm saves, fails to schedule, and the user learns that one
+        // alarm at a time. The alert is an interception, not a wall: it leads
+        // to Settings but still lets a user who plans to grant permission
+        // later set the alarm up now.
+        guard viewModel.canCreateAlarms else {
+            presentBackendUnavailableAlert(proceedTitle: "Всё равно создать") { [weak self] in
+                self?.presentCreateAlarm()
+            }
+            return
+        }
+        presentCreateAlarm()
+    }
+
+    private func presentCreateAlarm() {
         let createVC = CreateAlarmViewController(alarm: nil)
         createVC.onSave = { [weak self] in
             self?.viewModel.loadData()
@@ -401,7 +509,26 @@ extension AlarmsListViewController: UITableViewDataSource {
 
         let alarmID = alarm.id
         cell.onToggle = { [weak self] isOn in
-            self?.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
+            guard let self else { return }
+            // Same gate as the "+" CTA (#428): switching an alarm ON with no
+            // backend produces a scheduling error the user can't act on from
+            // here. Intercept once, point at Settings, and revert the switch
+            // if they take that route.
+            guard isOn, !self.viewModel.canCreateAlarms else {
+                self.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
+                return
+            }
+            self.presentBackendUnavailableAlert(
+                proceedTitle: "Всё равно включить",
+                onCancel: { [weak self] in
+                    // Cell already flipped its own switch optimistically —
+                    // re-bind from the (unchanged) model to snap it back.
+                    self?.tableView.reloadData()
+                },
+                onProceed: { [weak self] in
+                    self?.viewModel.toggleAlarm(id: alarmID, enabled: true)
+                }
+            )
         }
 
         return cell
