@@ -118,7 +118,13 @@ enum UITourLauncher {
         "streak": { window in
             let root = tabBar(selected: 2)
             window.rootViewController = root
-            presentLater(StreakModalViewController(streakDays: 7), over: root)
+            // Fixed 7 days / 350 ₽ — the `28-streak` artboard's numbers, so the
+            // audit screenshot doesn't depend on whatever alarms the tour
+            // device happens to hold.
+            presentLater(
+                StreakModalViewController(streakDays: 7, savedAmount: 350),
+                over: root
+            )
         }
     ]
 
