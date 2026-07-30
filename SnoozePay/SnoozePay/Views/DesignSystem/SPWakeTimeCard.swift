@@ -1,38 +1,53 @@
 import UIKit
 
 /// "ВРЕМЯ ПОДЪЁМА" card of the statistics screen (#348, `SPMore4.jsx`
-/// `Stats()`, artboard `27-stats`): three columns — "В среднем" (current
-/// two-week mean), "Раньше было" (the two weeks before it, struck through)
-/// and "Раньше на" (the delta in minutes, tinted by direction).
+/// `Stats()`, artboard `27-stats`): three columns — "В среднем" (the typical
+/// wake time of the last two weeks), "Раньше было" (the two weeks before it,
+/// struck through) and "Раньше на" (the delta in minutes, tinted by
+/// direction).
 ///
-/// The host hides the whole card when `StatisticsViewModel.wakeTimeStats`
-/// is `nil`; when only the baseline is missing this card drops the last two
-/// columns and explains why, instead of inventing a comparison.
+/// Three states, in order of how much history exists:
+///   1. No wake instants at all → the host hides the card entirely.
+///   2. Fewer than `minimumSamples` mornings → "Копим историю: нужно ещё N
+///      утр". A median over one or two mornings is noise, not a habit.
+///   3. Median available, baseline still short → the comparison columns drop
+///      out rather than inventing a "раньше было".
 final class SPWakeTimeCard: UIView {
 
     // MARK: - Subviews
 
     private let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
 
-    private let averageValueLabel = SPWakeTimeCard.makeValueLabel(color: AppColors.fg1)
-    private let baselineValueLabel = SPWakeTimeCard.makeValueLabel(color: AppColors.fg3)
-    private let deltaValueLabel = SPWakeTimeCard.makeValueLabel(color: AppColors.money400)
+    private let averageValueLabel = SPSupport.makeMoneyValueLabel(color: AppColors.fg1)
+    private let baselineValueLabel = SPSupport.makeMoneyValueLabel(
+        color: AppColors.fg3, alignment: .center
+    )
+    private let deltaValueLabel = SPSupport.makeMoneyValueLabel(
+        color: AppColors.money400, alignment: .right
+    )
 
-    private let deltaCaptionLabel = SPWakeTimeCard.makeCaptionLabel(alignment: .right)
+    private let deltaCaptionLabel = SPSupport.makeMetaLabel(alignment: .right)
 
+    private var columnsRow = UIStackView()
     private var baselineColumn = UIView()
     private var deltaColumn = UIView()
 
     /// Shown instead of the comparison columns until a previous window's
     /// worth of wake history exists.
     private let pendingLabel: UILabel = {
-        let label = UILabel()
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
+        let label = SPSupport.makeMetaLabel(
+            "Сравнение появится, когда наберётся история", alignment: .right
+        )
         label.numberOfLines = 0
-        label.textAlignment = .right
-        label.text = "Сравнение появится, когда наберётся история"
-        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Replaces the whole columns row while the recent window is below the
+    /// sample threshold.
+    private let accumulatingLabel: UILabel = {
+        let label = SPSupport.makeMetaLabel()
+        label.numberOfLines = 0
+        label.isHidden = true
         return label
     }()
 
@@ -50,9 +65,22 @@ final class SPWakeTimeCard: UIView {
     // MARK: - API
 
     func apply(_ stats: StatisticsViewModel.WakeTimeStats) {
-        averageValueLabel.text = StatisticsViewModel.clockText(minutes: stats.averageMinutes)
+        guard let median = stats.medianMinutes else {
+            // State 2 — some mornings recorded, not enough to call anything
+            // typical yet.
+            columnsRow.isHidden = true
+            pendingLabel.isHidden = true
+            accumulatingLabel.isHidden = false
+            accumulatingLabel.text = StatisticsViewModel.wakeSamplesPendingText(
+                stats.samplesUntilReady
+            )
+            return
+        }
+        columnsRow.isHidden = false
+        accumulatingLabel.isHidden = true
+        averageValueLabel.text = StatisticsViewModel.clockText(minutes: median)
 
-        guard let baseline = stats.baselineMinutes, let delta = stats.deltaMinutes else {
+        guard let baseline = stats.baselineMedianMinutes, let delta = stats.deltaMinutes else {
             baselineColumn.isHidden = true
             deltaColumn.isHidden = true
             pendingLabel.isHidden = false
@@ -67,7 +95,7 @@ final class SPWakeTimeCard: UIView {
             attributes: [
                 .font: AppTypography.moneyMd,
                 .foregroundColor: AppColors.fg3,
-                // The design strikes the old average through — it's the value
+                // The design strikes the old figure through — it's the value
                 // the user has left behind.
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
                 .strikethroughColor: AppColors.fg3
@@ -116,14 +144,14 @@ final class SPWakeTimeCard: UIView {
         card.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
 
-        let caps = SPWakeTimeCard.makeCapsLabel("ВРЕМЯ ПОДЪЁМА", color: AppColors.fg3)
+        let caps = SPSupport.makeCapsLabel("ВРЕМЯ ПОДЪЁМА")
         let averageColumn = SPWakeTimeCard.makeColumn(
-            caption: SPWakeTimeCard.makeCaptionLabel(alignment: .left, text: "В среднем"),
+            caption: SPSupport.makeMetaLabel("В среднем"),
             valueLabel: averageValueLabel,
             alignment: .left
         )
         baselineColumn = SPWakeTimeCard.makeColumn(
-            caption: SPWakeTimeCard.makeCaptionLabel(alignment: .center, text: "Раньше было"),
+            caption: SPSupport.makeMetaLabel("Раньше было", alignment: .center),
             valueLabel: baselineValueLabel,
             alignment: .center
         )
@@ -133,14 +161,16 @@ final class SPWakeTimeCard: UIView {
             alignment: .right
         )
 
-        let columnsRow = UIStackView(arrangedSubviews: [averageColumn, baselineColumn, deltaColumn])
+        columnsRow = UIStackView(arrangedSubviews: [averageColumn, baselineColumn, deltaColumn])
         columnsRow.axis = .horizontal
         columnsRow.alignment = .top
         columnsRow.distribution = .fillEqually
         columnsRow.spacing = AppSpacing.sp2
         columnsRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = UIStackView(arrangedSubviews: [caps, columnsRow, pendingLabel])
+        let stack = UIStackView(arrangedSubviews: [
+            caps, columnsRow, accumulatingLabel, pendingLabel
+        ])
         stack.axis = .vertical
         stack.alignment = .fill
         stack.spacing = AppSpacing.sp2
@@ -167,6 +197,9 @@ final class SPWakeTimeCard: UIView {
         valueLabel: UILabel,
         alignment: NSTextAlignment
     ) -> UIView {
+        caption.textAlignment = alignment
+        caption.adjustsFontSizeToFitWidth = true
+        caption.minimumScaleFactor = 0.8
         valueLabel.textAlignment = alignment
         let column = UIStackView(arrangedSubviews: [caption, valueLabel])
         column.axis = .vertical
@@ -174,44 +207,5 @@ final class SPWakeTimeCard: UIView {
         column.spacing = AppSpacing.sp1
         column.translatesAutoresizingMaskIntoConstraints = false
         return column
-    }
-
-    private static func makeCaptionLabel(
-        alignment: NSTextAlignment,
-        text: String? = nil
-    ) -> UILabel {
-        let label = UILabel()
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
-        label.text = text
-        label.textAlignment = alignment
-        label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.8
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }
-
-    private static func makeValueLabel(color: UIColor) -> UILabel {
-        let label = UILabel()
-        label.font = AppTypography.moneyMd
-        label.textColor = color
-        label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.7
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }
-
-    private static func makeCapsLabel(_ text: String, color: UIColor) -> UILabel {
-        let label = UILabel()
-        label.attributedText = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: color
-            ]
-        )
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
     }
 }

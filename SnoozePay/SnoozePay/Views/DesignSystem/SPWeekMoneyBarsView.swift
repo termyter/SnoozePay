@@ -70,7 +70,7 @@ final class SPWeekMoneyBarsView: UIView {
             addSubview(lostBar)
 
             let savedBar = MoneySegmentView(kind: .saved)
-            savedBar.isHidden = day.saved <= 0
+            savedBar.isHidden = day.savedHeightValue <= 0
             addSubview(savedBar)
 
             let captionLabel = UILabel()
@@ -98,22 +98,25 @@ final class SPWeekMoneyBarsView: UIView {
         let count = CGFloat(columns.count)
         let columnWidth = (bounds.width - Self.columnGap * (count - 1)) / count
         // Scale against the tallest *stack* so the busiest day fills the
-        // chart and every other column stays proportional to it.
-        let peak = days.map { $0.saved + $0.spent }.max() ?? 0
+        // chart and every other column stays proportional to it. (The JSX
+        // mock scales against the tallest single value; stacking is the
+        // honest axis once a day can carry both a saving and a loss.)
+        let peak = days.map { $0.savedHeightValue + $0.spent }.max() ?? 0
         let barAreaBottom = bounds.height - Self.captionHeight - Self.rowGap
         let barAreaHeight = max(0, barAreaBottom)
 
         for (index, column) in columns.enumerated() {
             let day = days[index]
             let originX = CGFloat(index) * (columnWidth + Self.columnGap)
-            let savedHeight = height(for: day.saved, peak: peak, available: barAreaHeight)
+            let savedValue = day.savedHeightValue
+            let savedHeight = height(for: savedValue, peak: peak, available: barAreaHeight)
             let lostHeight = height(for: day.spent, peak: peak, available: barAreaHeight)
 
             let savedTop = barAreaBottom - savedHeight
             column.savedBar.frame = CGRect(
                 x: originX, y: savedTop, width: columnWidth, height: savedHeight
             )
-            let lostBottom = day.saved > 0 ? savedTop - Self.segmentGap : barAreaBottom
+            let lostBottom = savedValue > 0 ? savedTop - Self.segmentGap : barAreaBottom
             column.lostBar.frame = CGRect(
                 x: originX, y: lostBottom - lostHeight, width: columnWidth, height: lostHeight
             )
@@ -123,7 +126,7 @@ final class SPWeekMoneyBarsView: UIView {
             )
             column.lostBar.applyCorners(
                 top: Self.cornerRadius,
-                bottom: day.saved > 0 ? Self.tightRadius : Self.cornerRadius
+                bottom: savedValue > 0 ? Self.tightRadius : Self.cornerRadius
             )
             column.captionLabel.frame = CGRect(
                 x: originX,

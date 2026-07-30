@@ -2,12 +2,12 @@ import XCTest
 @testable import SnoozePay
 
 /// Unit tests for the "ЭТА НЕДЕЛЯ" money summary and the "ВРЕМЯ ПОДЪЁМА"
-/// averages added in #348 (`SPMore4.jsx` `Stats()`, artboard `27-stats`).
+/// figures added in #348 (`SPMore4.jsx` `Stats()`, artboard `27-stats`).
 ///
 /// The aggregation maths is exercised through the pure static functions with
 /// a pinned `today` (2026-01-27 — the Tuesday from the design artboard) so
-/// expectations never race the wall clock; the handful of instance-level
-/// tests use relative dates like the rest of the suite.
+/// expectations never race the wall clock; the instance-level tests use
+/// relative dates like the rest of the suite.
 final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
 
     /// Synchronous scheduler stub — the alarm repository only feeds the
@@ -67,13 +67,40 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
     /// Monday-first week it belongs to starts on 26 January.
     private var referenceToday: Date { date(2026, 1, 27) }
 
+    /// Sunday, 1 February 2026 — the last day of that same week, used to
+    /// prove the seventh column is reachable.
+    private var referenceSunday: Date { date(2026, 2, 1) }
+
     private func charge(_ amount: Double, on day: Date) -> Transaction {
         Transaction(type: .charge, amount: amount, createdAt: day)
     }
 
     private func day(_ date: Date) -> Date { calendar.startOfDay(for: date) }
 
-    // MARK: - snoozePrice
+    private func weekDays(
+        today: Date,
+        inputs: StatisticsViewModel.MoneyInputs
+    ) -> [StatisticsViewModel.WeekMoneyDay] {
+        StatisticsViewModel.weekMoneyDays(today: today, inputs: inputs, calendar: calendar)
+    }
+
+    private func makeDay(
+        _ label: String,
+        saved: Double? = nil,
+        spent: Double = 0,
+        isCleanWake: Bool = false,
+        isPastOrToday: Bool = true
+    ) -> StatisticsViewModel.WeekMoneyDay {
+        StatisticsViewModel.WeekMoneyDay(
+            label: label,
+            saved: saved,
+            spent: spent,
+            isCleanWake: isCleanWake,
+            isPastOrToday: isPastOrToday
+        )
+    }
+
+    // MARK: - snoozePrice (canonical formula, PM decision 2026-07-30)
 
     func testSnoozePrice_averagesEnabledAlarmsOnly() {
         let alarms = [
@@ -82,7 +109,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
             Alarm(time: Date(), penaltyAmount: 1_000, enabled: false)
         ]
 
-        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: alarms), 100, accuracy: 0.0001,
+        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: alarms)!, 100, accuracy: 0.0001,
             "A disabled alarm's penalty is not a price the user is exposed to")
     }
 
@@ -92,92 +119,161 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
             Alarm(time: Date(), penaltyAmount: 150, enabled: false)
         ]
 
-        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: alarms), 100, accuracy: 0.0001,
+        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: alarms)!, 100, accuracy: 0.0001,
             "An approximate price beats no price when every alarm is temporarily off")
     }
 
-    func testSnoozePrice_noAlarms_isZero() {
-        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: []), 0,
-            "With no alarms there is no honest number to value a clean morning at")
+    func testSnoozePrice_noAlarms_isNilNotZero() {
+        XCTAssertNil(StatisticsViewModel.snoozePrice(alarms: []),
+            "No alarms means the price is unknown — not that a clean morning saved 0 ₽")
     }
 
-    func testSnoozePrice_zeroPenaltyAlarmsIgnored() {
+    /// Regression for #348 review finding 4: zero-penalty alarms used to be
+    /// filtered out of the mean, so a clean morning under a free alarm was
+    /// valued at the price of the user's *other* alarm.
+    func testSnoozePrice_freeAlarmsCountTowardsTheMean() {
         let alarms = [
             Alarm(time: Date(), penaltyAmount: 0),
             Alarm(time: Date(), penaltyAmount: 80)
         ]
 
-        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: alarms), 80, accuracy: 0.0001,
-            "A free alarm shouldn't drag the price of a snooze towards zero")
+        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: alarms)!, 40, accuracy: 0.0001,
+            "A free alarm's counterfactual is 0 ₽ and must drag the mean down")
+    }
+
+    func testSnoozePrice_allAlarmsFree_isZeroNotNil() {
+        let alarms = [Alarm(time: Date(), penaltyAmount: 0)]
+
+        XCTAssertEqual(StatisticsViewModel.snoozePrice(alarms: alarms), 0,
+            "A known price of zero is a fact, distinct from an unknown price")
+    }
+
+    /// The shared entry point #347 will adopt for the streak banner + modal.
+    func testSavingsEstimate_sharedEntryPoint() {
+        let alarms = [Alarm(time: Date(), penaltyAmount: 50), Alarm(time: Date(), penaltyAmount: 150)]
+
+        XCTAssertEqual(
+            StatisticsViewModel.SavingsEstimate.saved(cleanDays: 3, alarms: alarms)!,
+            300, accuracy: 0.0001
+        )
+        XCTAssertNil(StatisticsViewModel.SavingsEstimate.saved(cleanDays: 3, alarms: []),
+            "Unknown price must propagate, not collapse to 0 ₽")
+        XCTAssertEqual(
+            StatisticsViewModel.SavingsEstimate.saved(cleanDays: -2, price: 50), 0,
+            accuracy: 0.0001, "Negative day counts can't produce negative savings"
+        )
     }
 
     // MARK: - weekMoneyDays
 
     func testWeekMoneyDays_returnsSevenMondayFirstColumns() {
-        let days = StatisticsViewModel.weekMoneyDays(
-            today: referenceToday, charges: [], wakeDays: [], snoozePrice: 50, calendar: calendar
-        )
+        let days = weekDays(today: referenceToday, inputs: .init(snoozePrice: 50))
 
         XCTAssertEqual(days.count, 7)
         XCTAssertEqual(days.map(\.label), ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"])
     }
 
     func testWeekMoneyDays_futureDaysOfCurrentWeekCarryNoData() {
-        let days = StatisticsViewModel.weekMoneyDays(
-            today: referenceToday, charges: [], wakeDays: [], snoozePrice: 50, calendar: calendar
-        )
+        let days = weekDays(today: referenceToday, inputs: .init(snoozePrice: 50))
 
         // Reference day is Tuesday — Monday + Tuesday happened, the rest hasn't.
         XCTAssertEqual(days.map(\.isPastOrToday), [true, true, false, false, false, false, false])
     }
 
+    /// Sunday is the seventh Monday-first column; on the last day of the week
+    /// every column must be in the past.
+    func testWeekMoneyDays_onSunday_allSevenColumnsArePast() {
+        let days = weekDays(today: referenceSunday, inputs: .init(snoozePrice: 50))
+
+        XCTAssertEqual(days.filter(\.isPastOrToday).count, 7)
+        XCTAssertEqual(days.last?.label, "Вс")
+    }
+
+    func testWeekMoneyDays_sundayWakeIsCredited() {
+        let sunday = date(2026, 2, 1, 8, 0)
+        let days = weekDays(
+            today: referenceSunday,
+            inputs: .init(wakeDays: [day(sunday)], snoozePrice: 60)
+        )
+
+        XCTAssertEqual(days[6].saved, 60)
+        XCTAssertTrue(days[6].isCleanWake)
+    }
+
     func testWeekMoneyDays_chargedDaySpendsAndSavesNothing() {
         let monday = date(2026, 1, 26, 7, 30)
-        let days = StatisticsViewModel.weekMoneyDays(
+        let days = weekDays(
             today: referenceToday,
-            charges: [charge(50, on: monday), charge(100, on: monday)],
-            wakeDays: [day(monday)],
-            snoozePrice: 50,
-            calendar: calendar
+            inputs: .init(
+                charges: [charge(50, on: monday), charge(100, on: monday)],
+                wakeDays: [day(monday)],
+                attemptedSnoozeDays: [day(monday)],
+                snoozePrice: 50
+            )
         )
 
         XCTAssertEqual(days[0].spent, 150, accuracy: 0.0001)
-        XCTAssertEqual(days[0].saved, 0, accuracy: 0.0001,
-            "A morning the user paid for cannot also count as saved")
+        XCTAssertNil(days[0].saved, "A morning the user paid for cannot also count as saved")
+        XCTAssertFalse(days[0].isCleanWake)
     }
 
     func testWeekMoneyDays_cleanWakeDayIsWorthOneSnoozePrice() {
         let tuesday = date(2026, 1, 27, 6, 40)
-        let days = StatisticsViewModel.weekMoneyDays(
+        let days = weekDays(
             today: referenceToday,
-            charges: [],
-            wakeDays: [day(tuesday)],
-            snoozePrice: 75,
-            calendar: calendar
+            inputs: .init(wakeDays: [day(tuesday)], snoozePrice: 75)
         )
 
-        XCTAssertEqual(days[1].saved, 75, accuracy: 0.0001)
+        XCTAssertEqual(days[1].saved, 75)
         XCTAssertEqual(days[1].spent, 0, accuracy: 0.0001)
     }
 
-    func testWeekMoneyDays_dayWithoutWakeEventClaimsNoSavings() {
-        let days = StatisticsViewModel.weekMoneyDays(
-            today: referenceToday, charges: [], wakeDays: [], snoozePrice: 75, calendar: calendar
+    /// Regression for #348 review finding 3: the user pressed snooze, the
+    /// scheduler refused (#130) and the charge was rolled back. `realCharges`
+    /// rightly drops it, but the morning must not flip to "сэкономили".
+    func testWeekMoneyDays_rolledBackSnoozeAttemptIsNotSaved() {
+        let monday = date(2026, 1, 26, 7, 30)
+        let days = weekDays(
+            today: referenceToday,
+            inputs: .init(
+                // `charges` is post-`realCharges`, so the refunded row is gone …
+                charges: [],
+                wakeDays: [day(monday)],
+                // … but the attempt is still on record.
+                attemptedSnoozeDays: [day(monday)],
+                snoozePrice: 100
+            )
         )
 
-        XCTAssertTrue(days.allSatisfy { $0.saved == 0 },
+        XCTAssertNil(days[0].saved, "The user pressed snooze — they didn't resist")
+        XCTAssertFalse(days[0].isCleanWake)
+        XCTAssertEqual(days[0].spent, 0, accuracy: 0.0001, "…but the refund means they paid nothing")
+    }
+
+    func testWeekMoneyDays_dayWithoutWakeEventClaimsNoSavings() {
+        let days = weekDays(today: referenceToday, inputs: .init(snoozePrice: 75))
+
+        XCTAssertTrue(days.allSatisfy { $0.saved == nil },
             "No wake event means no evidence an alarm rang — savings would be invented")
+    }
+
+    func testWeekMoneyDays_unknownPriceKeepsDayCleanButUnpriced() {
+        let tuesday = date(2026, 1, 27, 6, 40)
+        let days = weekDays(
+            today: referenceToday,
+            inputs: .init(wakeDays: [day(tuesday)], snoozePrice: nil)
+        )
+
+        XCTAssertTrue(days[1].isCleanWake, "The morning still happened…")
+        XCTAssertNil(days[1].saved, "…we just can't put a number on it")
     }
 
     func testWeekMoneyDays_previousWeekChargesExcluded() {
         // Sunday 25 January belongs to the *previous* Monday-first week.
         let lastSunday = date(2026, 1, 25, 8, 0)
-        let days = StatisticsViewModel.weekMoneyDays(
+        let days = weekDays(
             today: referenceToday,
-            charges: [charge(500, on: lastSunday)],
-            wakeDays: [],
-            snoozePrice: 50,
-            calendar: calendar
+            inputs: .init(charges: [charge(500, on: lastSunday)], snoozePrice: 50)
         )
 
         XCTAssertEqual(days.reduce(0) { $0 + $1.spent }, 0, accuracy: 0.0001)
@@ -187,168 +283,119 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
 
     func testMoneySummary_sumsColumnsAndDerivesNet() {
         let days = [
-            StatisticsViewModel.WeekMoneyDay(label: "Пн", saved: 0, spent: 150, isPastOrToday: true),
-            StatisticsViewModel.WeekMoneyDay(label: "Вт", saved: 50, spent: 0, isPastOrToday: true),
-            StatisticsViewModel.WeekMoneyDay(label: "Ср", saved: 50, spent: 0, isPastOrToday: true)
+            makeDay("Пн", spent: 150),
+            makeDay("Вт", saved: 50, isCleanWake: true),
+            makeDay("Ср", saved: 50, isCleanWake: true)
         ]
 
         let summary = StatisticsViewModel.moneySummary(days: days)
 
-        XCTAssertEqual(summary.saved, 100, accuracy: 0.0001)
+        XCTAssertEqual(summary.saved!, 100, accuracy: 0.0001)
         XCTAssertEqual(summary.spent, 150, accuracy: 0.0001)
-        XCTAssertEqual(summary.net, -50, accuracy: 0.0001, "A bad week is allowed to go negative")
+        XCTAssertEqual(summary.net!, -50, accuracy: 0.0001, "A bad week is allowed to go negative")
         XCTAssertFalse(summary.isEmpty)
+        XCTAssertFalse(summary.savingsUnavailable)
     }
 
     func testMoneySummary_singleCleanDay() {
-        let days = [
-            StatisticsViewModel.WeekMoneyDay(label: "Пн", saved: 50, spent: 0, isPastOrToday: true)
-        ]
+        let summary = StatisticsViewModel.moneySummary(
+            days: [makeDay("Пн", saved: 50, isCleanWake: true)]
+        )
 
-        let summary = StatisticsViewModel.moneySummary(days: days)
-
-        XCTAssertEqual(summary.saved, 50, accuracy: 0.0001)
-        XCTAssertEqual(summary.net, 50, accuracy: 0.0001)
+        XCTAssertEqual(summary.saved!, 50, accuracy: 0.0001)
+        XCTAssertEqual(summary.net!, 50, accuracy: 0.0001)
     }
 
     func testMoneySummary_noDataIsFlaggedEmpty() {
         let days = (0..<7).map {
-            StatisticsViewModel.WeekMoneyDay(
-                label: StatisticsViewModel.weekdayShortLabels[$0],
-                saved: 0, spent: 0, isPastOrToday: $0 < 2
-            )
+            makeDay(StatisticsViewModel.weekdayShortLabels[$0], isPastOrToday: $0 < 2)
         }
 
         XCTAssertTrue(StatisticsViewModel.moneySummary(days: days).isEmpty,
             "An all-zero week must render its own copy, not a +0 ₽ triplet")
     }
 
-    // MARK: - wakeTimeStats
+    /// Regression for #348 review finding 4: seven confirmed wakes under free
+    /// alarms are *data*, even though the money adds up to zero.
+    func testMoneySummary_freeAlarmsCleanWeek_isNotEmpty() {
+        let days = (0..<7).map {
+            makeDay(StatisticsViewModel.weekdayShortLabels[$0], saved: 0, isCleanWake: true)
+        }
 
-    func testWakeTimeStats_noWakeTimes_isNil() {
-        XCTAssertNil(StatisticsViewModel.wakeTimeStats(
-            today: referenceToday, wakeTimes: [], calendar: calendar
-        ))
+        let summary = StatisticsViewModel.moneySummary(days: days)
+
+        XCTAssertFalse(summary.isEmpty, "Seven confirmed wakes are not 'данных пока нет'")
+        XCTAssertEqual(summary.saved!, 0, accuracy: 0.0001)
+        XCTAssertEqual(summary.observedDays, 7)
     }
 
-    func testWakeTimeStats_legacyDayOnlyHistory_isNil() {
-        // Wakes older than the recent window (the shape a pre-#348 install
-        // ends up with once its day-granular history ages out).
-        let times = [date(2025, 11, 1, 7, 0), date(2025, 11, 2, 7, 0)]
-
-        XCTAssertNil(StatisticsViewModel.wakeTimeStats(
-            today: referenceToday, wakeTimes: times, calendar: calendar
-        ))
-    }
-
-    func testWakeTimeStats_averagesRecentWindow() {
-        let times = [
-            date(2026, 1, 26, 7, 0),
-            date(2026, 1, 27, 6, 30)
+    /// Regression for #348 review finding 4: an unknown price must not read
+    /// as "you saved nothing".
+    func testMoneySummary_unknownPrice_reportsUnavailableNotZero() {
+        let days = [
+            makeDay("Пн", saved: nil, isCleanWake: true),
+            makeDay("Вт", spent: 450)
         ]
 
-        let stats = StatisticsViewModel.wakeTimeStats(
-            today: referenceToday, wakeTimes: times, calendar: calendar
+        let summary = StatisticsViewModel.moneySummary(days: days)
+
+        XCTAssertNil(summary.saved)
+        XCTAssertNil(summary.net, "Net needs both halves")
+        XCTAssertEqual(summary.spent, 450, accuracy: 0.0001, "Spending stays factual")
+        XCTAssertTrue(summary.savingsUnavailable)
+        XCTAssertFalse(summary.isEmpty)
+    }
+
+    func testMoneySummary_pastWeekWithNoCleanDays_savedIsZeroNotUnknown() {
+        let summary = StatisticsViewModel.moneySummary(days: [makeDay("Пн", spent: 100)])
+
+        XCTAssertEqual(summary.saved!, 0, accuracy: 0.0001,
+            "No clean mornings is a known zero, not an unknown")
+    }
+
+    func testSignedMoneyText_carriesSignSeparatorAndCurrency() {
+        XCTAssertEqual(
+            StatisticsViewModel.signedMoneyText(800), "+800\(MoneyFormatter.narrowSpace)₽",
+            "Plain text must match MoneyFormatter exactly — VoiceOver reads this string"
+        )
+        XCTAssertEqual(
+            StatisticsViewModel.signedMoneyText(-400), "−400\(MoneyFormatter.narrowSpace)₽",
+            "Design copy uses U+2212, not a hyphen"
+        )
+        XCTAssertEqual(StatisticsViewModel.signedMoneyText(0), "0\(MoneyFormatter.narrowSpace)₽")
+        XCTAssertEqual(StatisticsViewModel.signedMoneyText(nil), "—")
+    }
+
+    /// Regression for #348 review finding 2: the mono money labels must go
+    /// through `MoneyFormatter.attributed`, whose separator run is re-fonted
+    /// with the proportional sans so "800 ₽" isn't rendered "800  ₽".
+    func testSignedMoneyAttributed_reFontsTheSeparatorRun() {
+        let mono = AppTypography.moneyMd
+        let attributed = StatisticsViewModel.signedMoneyAttributed(
+            800, digitsFont: mono, color: AppColors.money400
         )
 
-        XCTAssertEqual(stats?.averageMinutes, 6 * 60 + 45, "Mean of 7:00 and 6:30 is 6:45")
-        XCTAssertNil(stats?.baselineMinutes, "No wakes in the preceding window")
-        XCTAssertNil(stats?.deltaMinutes)
+        XCTAssertEqual(attributed.string, "+800\(MoneyFormatter.narrowSpace)₽")
+        let separatorIndex = attributed.string.distance(
+            from: attributed.string.startIndex,
+            to: attributed.string.firstIndex(of: Character(MoneyFormatter.narrowSpace))!
+        )
+        let separatorFont = attributed.attribute(
+            .font, at: separatorIndex, effectiveRange: nil
+        ) as? UIFont
+        let digitsFont = attributed.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+
+        XCTAssertEqual(digitsFont, mono)
+        XCTAssertNotEqual(separatorFont, mono, "The gap before ₽ must not take a full mono cell")
+        XCTAssertEqual(separatorFont?.pointSize, mono.pointSize)
     }
 
-    func testWakeTimeStats_singleDayStillProducesAnAverage() {
-        let stats = StatisticsViewModel.wakeTimeStats(
-            today: referenceToday, wakeTimes: [date(2026, 1, 27, 5, 5)], calendar: calendar
+    func testSignedMoneyAttributed_unknownAmountRendersDash() {
+        let attributed = StatisticsViewModel.signedMoneyAttributed(
+            nil, digitsFont: AppTypography.moneyMd, color: AppColors.fg1
         )
 
-        XCTAssertEqual(stats?.averageMinutes, 5 * 60 + 5)
-    }
-
-    func testWakeTimeStats_gettingUpEarlier_positiveDelta() {
-        let times = [
-            // Baseline window (2026-01-01 … 2026-01-13) — 7:30.
-            date(2026, 1, 5, 7, 30),
-            date(2026, 1, 6, 7, 30),
-            // Recent window (2026-01-14 … 2026-01-27) — 7:00.
-            date(2026, 1, 20, 7, 0),
-            date(2026, 1, 21, 7, 0)
-        ]
-
-        let stats = StatisticsViewModel.wakeTimeStats(
-            today: referenceToday, wakeTimes: times, calendar: calendar
-        )
-
-        XCTAssertEqual(stats?.averageMinutes, 7 * 60)
-        XCTAssertEqual(stats?.baselineMinutes, 7 * 60 + 30)
-        XCTAssertEqual(stats?.deltaMinutes, 30, "Positive delta = the user now gets up earlier")
-    }
-
-    func testWakeTimeStats_slippingLater_negativeDelta() {
-        let times = [
-            date(2026, 1, 5, 6, 0),
-            date(2026, 1, 20, 6, 45)
-        ]
-
-        let stats = StatisticsViewModel.wakeTimeStats(
-            today: referenceToday, wakeTimes: times, calendar: calendar
-        )
-
-        XCTAssertEqual(stats?.deltaMinutes, -45)
-    }
-
-    func testWakeTimeStats_flatComparison_zeroDelta() {
-        let times = [date(2026, 1, 5, 6, 30), date(2026, 1, 20, 6, 30)]
-
-        let stats = StatisticsViewModel.wakeTimeStats(
-            today: referenceToday, wakeTimes: times, calendar: calendar
-        )
-
-        XCTAssertEqual(stats?.deltaMinutes, 0)
-    }
-
-    func testFirstWakePerDay_keepsTheEarliestInstant() {
-        let early = date(2026, 1, 27, 6, 10)
-        let nap = date(2026, 1, 27, 9, 40)
-
-        let first = StatisticsViewModel.firstWakePerDay(times: [nap, early], calendar: calendar)
-
-        XCTAssertEqual(first[day(early)], early, "A later nap is not the morning's подъём")
-    }
-
-    func testWakeTimeStats_windowBoundaryIsInclusiveOfToday() {
-        let stats = StatisticsViewModel.wakeTimeStats(
-            today: referenceToday,
-            // 14 days back inclusive → 2026-01-14 is the first recent day.
-            wakeTimes: [date(2026, 1, 14, 8, 0), date(2026, 1, 13, 6, 0)],
-            calendar: calendar
-        )
-
-        XCTAssertEqual(stats?.averageMinutes, 8 * 60, "2026-01-14 belongs to the recent window")
-        XCTAssertEqual(stats?.baselineMinutes, 6 * 60, "2026-01-13 belongs to the baseline")
-    }
-
-    // MARK: - Presentation strings
-
-    func testClockText_padsMinutes() {
-        XCTAssertEqual(StatisticsViewModel.clockText(minutes: 7 * 60 + 4), "7:04")
-        XCTAssertEqual(StatisticsViewModel.clockText(minutes: 0), "0:00")
-        XCTAssertEqual(StatisticsViewModel.clockText(minutes: 23 * 60 + 59), "23:59")
-    }
-
-    func testWakeDeltaCopy_reflectsDirection() {
-        XCTAssertEqual(StatisticsViewModel.wakeDeltaCaption(minutes: 34), "Раньше на")
-        XCTAssertEqual(StatisticsViewModel.wakeDeltaCaption(minutes: -12), "Позже на")
-        XCTAssertEqual(StatisticsViewModel.wakeDeltaCaption(minutes: 0), "Без изменений")
-        XCTAssertEqual(StatisticsViewModel.wakeDeltaValueText(minutes: 34), "34 мин")
-        XCTAssertEqual(StatisticsViewModel.wakeDeltaValueText(minutes: -12), "12 мин")
-        XCTAssertEqual(StatisticsViewModel.wakeDeltaValueText(minutes: 0), "—")
-    }
-
-    func testSignedMoneyText_usesTypographicMinus() {
-        XCTAssertTrue(StatisticsViewModel.signedMoneyText(800).hasPrefix("+800"))
-        XCTAssertTrue(StatisticsViewModel.signedMoneyText(-400).hasPrefix("−400"),
-            "Design copy uses U+2212, not a hyphen")
-        XCTAssertFalse(StatisticsViewModel.signedMoneyText(0).contains("+"))
+        XCTAssertEqual(attributed.string, "—")
     }
 
     // MARK: - Instance wiring
@@ -359,7 +406,8 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         let vm = makeVM()
         vm.loadData()
 
-        XCTAssertEqual(vm.snoozePrice, 120, accuracy: 0.0001)
+        XCTAssertEqual(vm.snoozePrice!, 120, accuracy: 0.0001)
+        XCTAssertTrue(vm.ledgerReadable)
     }
 
     func testLoadData_readsWakeTimestamps() {
@@ -369,15 +417,17 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         vm.loadData()
 
         XCTAssertEqual(vm.wakeTimes.count, 1)
-        XCTAssertNotNil(vm.wakeTimeStats, "A recorded instant is enough for the average")
+        XCTAssertNotNil(vm.wakeTimeStats, "One instant is enough for the card to appear…")
+        XCTAssertNil(vm.wakeTimeStats?.medianMinutes, "…but not enough to publish a median")
     }
 
     func testWeekMoneySummary_excludesRefundedCharges() {
         alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
         let refunded = Transaction(type: .charge, amount: 300, createdAt: Date())
         txRepo.record(refunded)
+        // Production books the reversal as `.refund` since #453 — not `.topup`.
         txRepo.record(Transaction(
-            type: .topup, amount: 300, createdAt: Date(), refundsTransactionID: refunded.id
+            type: .refund, amount: 300, createdAt: Date(), refundsTransactionID: refunded.id
         ))
 
         let vm = makeVM()
@@ -385,6 +435,8 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
 
         XCTAssertEqual(vm.weekMoneySummary.spent, 0, accuracy: 0.0001,
             "A snooze refunded after a scheduler failure never cost the user anything")
+        XCTAssertEqual(vm.weekMoneySummary.saved!, 0, accuracy: 0.0001,
+            "…but the attempt still disqualifies the morning from 'сэкономили'")
     }
 
     func testWeekMoneySummary_topUpsNeverCountAsSpending() {
@@ -397,31 +449,93 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         XCTAssertEqual(vm.weekMoneySummary.spent, 0, accuracy: 0.0001)
     }
 
-    // MARK: - WakeEventStore timestamps (#348)
+    func testWeekMoneyDays_arePublishedAsOneSnapshot() {
+        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
+        wakeStore.recordWake(on: Date(), calendar: calendar)
 
-    func testWakeStore_recordsExactInstantAlongsideTheDay() {
-        let instant = date(2026, 1, 27, 6, 42)
-        wakeStore.recordWake(on: instant, calendar: calendar)
+        let vm = makeVM()
+        vm.loadData()
 
-        XCTAssertEqual(wakeStore.wakeTimes(), [instant])
-        XCTAssertEqual(wakeStore.wakeDays(), [day(instant)], "Legacy day granularity is preserved")
+        XCTAssertEqual(vm.weekMoneyDays, vm.weekMoneyDays,
+            "Repeated reads must return one snapshot, not two clock samples")
+        XCTAssertEqual(
+            StatisticsViewModel.moneySummary(days: vm.weekMoneyDays), vm.weekMoneySummary,
+            "The published totals must be derived from the published bars"
+        )
     }
 
-    func testWakeStore_repeatDismissalSameDayKeepsFirstInstant() {
-        let morning = date(2026, 1, 27, 6, 42)
-        let nap = date(2026, 1, 27, 9, 10)
-        wakeStore.recordWake(on: morning, calendar: calendar)
-        wakeStore.recordWake(on: nap, calendar: calendar)
+    // MARK: - Ledger health gating (#348 review, finding 1)
 
-        XCTAssertEqual(wakeStore.wakeTimes(), [morning])
+    /// A corrupt ledger surfaces an alert, but `wakeDays` survives it. Without
+    /// the health gate every morning looked "clean" and the card invented
+    /// savings out of a blob it never read.
+    func testLoadData_corruptLedger_suppressesMoneySummary() {
+        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
+        for daysAgo in 0..<3 {
+            wakeStore.recordWake(
+                on: calendar.date(byAdding: .day, value: -daysAgo, to: Date())!,
+                calendar: calendar
+            )
+        }
+        testDefaults.set(Data("not json".utf8), forKey: "stored_transactions")
+
+        let vm = makeVM()
+        var surfacedError = false
+        vm.onLoadError = { _ in surfacedError = true }
+        vm.loadData()
+
+        XCTAssertTrue(surfacedError)
+        XCTAssertFalse(vm.ledgerReadable)
+        XCTAssertTrue(vm.weekMoneySummary.isEmpty,
+            "No money statement may be built on a ledger we couldn't read")
+        XCTAssertNil(vm.weekMoneySummary.saved)
+        XCTAssertTrue(vm.weekMoneyDays.allSatisfy { $0.saved == nil })
     }
 
-    func testWakeStore_timesAreSortedAscending() {
-        let later = date(2026, 1, 27, 6, 42)
-        let earlier = date(2026, 1, 26, 7, 5)
-        wakeStore.recordWake(on: later, calendar: calendar)
-        wakeStore.recordWake(on: earlier, calendar: calendar)
+    /// Since #453 an unrecognised `type` token decodes to `.unknown` instead
+    /// of throwing: no alert fires, rows silently drop out of every aggregate,
+    /// and "Сэкономили" grows by exactly the days whose charges vanished.
+    func testLoadData_unrecognizedTransactionType_suppressesMoneySummary() throws {
+        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
+        wakeStore.recordWake(on: Date(), calendar: calendar)
+        let ledger = [Transaction(type: .unknown("teleport"), amount: 50, createdAt: Date())]
+        testDefaults.set(try JSONEncoder().encode(ledger), forKey: "stored_transactions")
 
-        XCTAssertEqual(wakeStore.wakeTimes(), [earlier, later])
+        let vm = makeVM()
+        var surfacedError = false
+        vm.onLoadError = { _ in surfacedError = true }
+        vm.loadData()
+
+        XCTAssertFalse(surfacedError, "A tolerated token doesn't throw — that's the danger")
+        XCTAssertFalse(vm.ledgerReadable)
+        XCTAssertTrue(vm.weekMoneySummary.isEmpty)
+    }
+
+    func testLoadData_healthyLedger_keepsMoneySummary() {
+        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
+        wakeStore.recordWake(on: Date(), calendar: calendar)
+
+        let vm = makeVM()
+        vm.loadData()
+
+        XCTAssertTrue(vm.ledgerReadable)
+        XCTAssertFalse(vm.weekMoneySummary.isEmpty)
+        XCTAssertEqual(vm.weekMoneySummary.saved!, 50, accuracy: 0.0001)
+    }
+
+    /// Regression for #348 review finding 5: `saved_alarms` and
+    /// `stored_transactions` are independent blobs, so a broken alarm store
+    /// raises no ledger banner — the price must degrade to "unknown", not to
+    /// a silent zero.
+    func testLoadData_corruptAlarmStore_leavesPriceUnknown() {
+        wakeStore.recordWake(on: Date(), calendar: calendar)
+        testDefaults.set(Data("not json".utf8), forKey: "stored_alarms")
+
+        let vm = makeVM()
+        vm.loadData()
+
+        XCTAssertNil(vm.snoozePrice, "An unreadable alarm store gives no honest price")
+        XCTAssertTrue(vm.weekMoneySummary.savingsUnavailable)
+        XCTAssertNil(vm.weekMoneySummary.saved)
     }
 }

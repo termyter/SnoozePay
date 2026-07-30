@@ -7,27 +7,40 @@ import UIKit
 /// Composition rather than inheritance — `SPCard` is `final`, so the card
 /// surface is an inner view pinned to this wrapper's edges. That also keeps
 /// `StatisticsViewController` free of another dozen stored labels.
+///
+/// Deliberate departures from the JSX reference, all reviewed and kept:
+/// the caps title and the legend stack on two lines instead of sharing one
+/// baseline row (the legend doesn't fit beside the title at iPhone widths);
+/// and "Чистый" takes a semantic colour instead of the mock's flat white,
+/// because the sign is the whole point of the figure.
 final class SPWeekMoneyCard: UIView {
 
     // MARK: - Subviews
 
     private let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
     private let barsView = SPWeekMoneyBarsView()
-    private let savedValueLabel = SPWeekMoneyCard.makeValueLabel(color: AppColors.money400)
-    private let spentValueLabel = SPWeekMoneyCard.makeValueLabel(color: AppColors.pain400)
-    private let netValueLabel = SPWeekMoneyCard.makeValueLabel(color: AppColors.fg1)
+    private let savedValueLabel = SPSupport.makeMoneyValueLabel(color: AppColors.money400)
+    private let spentValueLabel = SPSupport.makeMoneyValueLabel(color: AppColors.pain400)
+    private let netValueLabel = SPSupport.makeMoneyValueLabel(color: AppColors.fg1)
 
-    /// The totals row — swapped for `emptyLabel` when the week carries
-    /// neither savings nor charges, so the card never shows a `+0 ₽` triplet
-    /// that reads like a rendering bug.
+    /// The totals row — swapped for `emptyLabel` when the week recorded
+    /// nothing at all, so the card never shows a `+0 ₽` triplet that reads
+    /// like a rendering bug.
     private let totalsRow = UIStackView()
     private let emptyLabel: UILabel = {
-        let label = UILabel()
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
+        let label = SPSupport.makeMetaLabel("За эту неделю данных пока нет")
         label.numberOfLines = 0
-        label.text = "За эту неделю данных пока нет"
-        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// Explains a "—" in the savings column instead of leaving the user to
+    /// guess. Shown when there are clean mornings but no alarm to price them.
+    private let priceUnknownLabel: UILabel = {
+        let label = SPSupport.makeMetaLabel(
+            "Сэкономленное появится, когда у будильника будет цена снуза"
+        )
+        label.numberOfLines = 0
+        label.isHidden = true
         return label
     }()
 
@@ -51,24 +64,37 @@ final class SPWeekMoneyCard: UIView {
 
     // MARK: - API
 
-    /// Feeds the chart and the totals. `days` drives the columns; `summary`
-    /// is expected to be `StatisticsViewModel.moneySummary(days:)` of the
-    /// same array so the bars and the numbers can never disagree.
+    /// Feeds the chart and the totals from **one** snapshot — the view model
+    /// computes both in `loadData`, so the bars and the numbers are always
+    /// derived from the same read of the clock and the same ledger.
     func apply(
         days: [StatisticsViewModel.WeekMoneyDay],
         summary: StatisticsViewModel.MoneySummary
     ) {
         barsView.days = days
-        savedValueLabel.text = StatisticsViewModel.signedMoneyText(summary.saved)
-        spentValueLabel.text = StatisticsViewModel.signedMoneyText(-summary.spent)
-        netValueLabel.text = StatisticsViewModel.signedMoneyText(summary.net)
+        applyValue(savedValueLabel, amount: summary.saved, color: AppColors.money400)
+        applyValue(spentValueLabel, amount: -summary.spent, color: AppColors.pain400)
         // The net figure carries the verdict, so it takes the semantic colour
         // rather than staying neutral like the design's static mock.
-        netValueLabel.textColor = summary.net > 0
-            ? AppColors.money400
-            : (summary.net < 0 ? AppColors.pain400 : AppColors.fg1)
+        let netColor: UIColor
+        switch summary.net {
+        case .some(let net) where net > 0: netColor = AppColors.money400
+        case .some(let net) where net < 0: netColor = AppColors.pain400
+        default: netColor = AppColors.fg1
+        }
+        applyValue(netValueLabel, amount: summary.net, color: netColor)
+
         totalsRow.isHidden = summary.isEmpty
         emptyLabel.isHidden = !summary.isEmpty
+        priceUnknownLabel.isHidden = !summary.savingsUnavailable
+    }
+
+    private func applyValue(_ label: UILabel, amount: Double?, color: UIColor) {
+        label.textColor = color
+        label.attributedText = StatisticsViewModel.signedMoneyAttributed(
+            amount, digitsFont: AppTypography.moneyMd, color: color
+        )
+        label.accessibilityLabel = StatisticsViewModel.signedMoneyText(amount)
     }
 
     // MARK: - Layout
@@ -79,18 +105,14 @@ final class SPWeekMoneyCard: UIView {
         barsView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
 
-        let caps = SPWeekMoneyCard.makeCapsLabel("ЭТА НЕДЕЛЯ", color: AppColors.fg3)
-        let legend = UILabel()
-        legend.font = AppTypography.meta
-        legend.textColor = AppColors.fg3
+        let caps = SPSupport.makeCapsLabel("ЭТА НЕДЕЛЯ")
+        let legend = SPSupport.makeMetaLabel("зелёное — сэкономлено · красное — потеряно")
         legend.numberOfLines = 0
-        legend.text = "зелёное — сэкономлено · красное — потеряно"
-        legend.translatesAutoresizingMaskIntoConstraints = false
 
         buildTotalsRow()
 
         let stack = UIStackView(arrangedSubviews: [
-            caps, legend, barsView, divider, totalsRow, emptyLabel
+            caps, legend, barsView, divider, totalsRow, priceUnknownLabel, emptyLabel
         ])
         stack.axis = .vertical
         stack.alignment = .fill
@@ -142,14 +164,9 @@ final class SPWeekMoneyCard: UIView {
         valueLabel: UILabel,
         alignment: NSTextAlignment
     ) -> UIView {
-        let captionLabel = UILabel()
-        captionLabel.font = AppTypography.meta
-        captionLabel.textColor = AppColors.fg3
-        captionLabel.text = caption
-        captionLabel.textAlignment = alignment
+        let captionLabel = SPSupport.makeMetaLabel(caption, alignment: alignment)
         captionLabel.adjustsFontSizeToFitWidth = true
         captionLabel.minimumScaleFactor = 0.8
-        captionLabel.translatesAutoresizingMaskIntoConstraints = false
         valueLabel.textAlignment = alignment
 
         let column = UIStackView(arrangedSubviews: [captionLabel, valueLabel])
@@ -158,29 +175,5 @@ final class SPWeekMoneyCard: UIView {
         column.spacing = AppSpacing.sp1
         column.translatesAutoresizingMaskIntoConstraints = false
         return column
-    }
-
-    private static func makeValueLabel(color: UIColor) -> UILabel {
-        let label = UILabel()
-        label.font = AppTypography.moneyMd
-        label.textColor = color
-        label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.7
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }
-
-    private static func makeCapsLabel(_ text: String, color: UIColor) -> UILabel {
-        let label = UILabel()
-        label.attributedText = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: color
-            ]
-        )
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
     }
 }

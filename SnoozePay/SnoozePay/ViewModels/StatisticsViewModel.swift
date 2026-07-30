@@ -113,13 +113,33 @@ final class StatisticsViewModel {
 
     private(set) var charges: [Transaction] = []
     private(set) var wakeDays: Set<Date> = []
+    /// Days on which the user *attempted* a snooze — every `.charge` row,
+    /// including ones later rolled back by a refund. `charges` deliberately
+    /// drops the rolled-back ones (they never rang), but a morning the user
+    /// pressed snooze on is not a morning they saved money, so the money
+    /// counterfactual keys off this wider set (#348 review, finding 3).
+    private(set) var attemptedSnoozeDays: Set<Date> = []
     /// Exact wake instants (#348) — empty for installs that only recorded
     /// day-granular wakes before the timestamp key shipped.
     private(set) var wakeTimes: [Date] = []
-    /// Snooze price used by the "Сэкономили" counterfactual, refreshed on
-    /// every load so an edited penalty is reflected immediately.
-    private(set) var snoozePrice: Double = 0
+    /// Snooze price behind the "Сэкономили" counterfactual. `nil` means "we
+    /// have no honest price" (no alarms, or the alarm store is unreadable) —
+    /// distinct from a genuine 0 ₽ price when every alarm is free.
+    private(set) var snoozePrice: Double?
+    /// `false` when the ledger could not be read in full — a hard decode
+    /// failure, or rows carrying `type` tokens this build doesn't recognise
+    /// (#453). Money aggregates built on a partial ledger overstate savings
+    /// and understate spending, so the card is suppressed rather than shown
+    /// with plausible-looking numbers (#348 review, finding 1).
+    private(set) var ledgerReadable: Bool = true
     private(set) var streak: Int = 0
+
+    /// Precomputed on `loadData` so the bars and the totals are derived from
+    /// one snapshot — recomputing them lazily read `Date()` twice and ran the
+    /// aggregation twice per `viewWillAppear` (#348 review, finding 6).
+    private(set) var weekMoneyDays: [WeekMoneyDay] = []
+    private(set) var weekMoneySummary = MoneySummary.empty
+    private(set) var wakeTimeStats: WakeTimeStats?
 
     var onDataUpdated: (() -> Void)?
     /// Fired when the transaction repository fails to decode the persisted
@@ -151,34 +171,88 @@ final class StatisticsViewModel {
         // list so the banner and the number can't contradict (issue #117).
         do {
             let allTransactions = try transactionRepository.fetchAllChecked()
-            // Exclude charges that were refunded by an offsetting top-up so a
+            // Exclude charges that were refunded by an offsetting credit so a
             // snooze that failed to schedule (#130) doesn't count as a real
             // snooze in either total spend or count (issue #133). `realCharges`
             // is the shared filter used by `currentStreak` so the count and the
             // streak can never drift on what "a real snooze" means.
             charges = TransactionRepository.realCharges(from: allTransactions)
+            attemptedSnoozeDays = Self.attemptedSnoozeDays(
+                from: allTransactions, calendar: calendar
+            )
             streak = transactionRepository.currentStreak(from: allTransactions)
+            // A successful decode can still be partial: since #453 an
+            // unrecognised `type` token decodes to `.unknown` instead of
+            // throwing, and every aggregate silently skips those rows. That
+            // inflates "Сэкономили" by exactly the days whose charges dropped
+            // out, so it disqualifies the money card just like a hard failure.
+            ledgerReadable = !transactionRepository.lastLoadHadUnrecognizedTypes
         } catch let error as TransactionRepository.RepositoryError {
-            charges = []
-            streak = 0
+            resetLedgerState()
             onLoadError?(error)
         } catch {
-            charges = []
-            streak = 0
+            resetLedgerState()
         }
         wakeDays = wakeStore.wakeDays()
         wakeTimes = wakeStore.wakeTimes()
-        // Lossy read on purpose: alarms only feed the "Сэкономили" price, so a
-        // corrupt alarm store degrades that one figure to 0 instead of raising
-        // a second banner over the ledger error the user is already seeing.
-        snoozePrice = Self.snoozePrice(alarms: alarmRepository.fetchAll())
+        loadSnoozePrice()
 
         // Bump persisted best streak only forward — never reset on streak = 0,
         // so the user's all-time record survives a slip-up.
         if streak > defaults.integer(forKey: Self.bestStreakKey) {
             defaults.set(streak, forKey: Self.bestStreakKey)
         }
+        recomputeMoneyAndWakeTime(today: Date())
         onDataUpdated?()
+    }
+
+    /// Collapses every ledger-derived figure to its "we don't know" value.
+    /// Zeroing `charges` alone used to leave `ledgerReadable == true`, which
+    /// let the money card render "Потратили 0 ₽" off a ledger it never
+    /// managed to read (#348 review, finding 1).
+    private func resetLedgerState() {
+        charges = []
+        attemptedSnoozeDays = []
+        streak = 0
+        ledgerReadable = false
+    }
+
+    /// Reads the alarms that price a saved morning.
+    ///
+    /// Checked read: `saved_alarms` and `stored_transactions` are independent
+    /// blobs, so a broken alarm store raises no ledger banner of its own — a
+    /// lossy read here would silently collapse "Сэкономили" to nothing while
+    /// the Будильники tab loudly reports the same store as corrupt (#348
+    /// review, finding 5). An unreadable store yields `nil`, i.e. "no honest
+    /// price", which the card renders as "—" rather than as 0 ₽.
+    private func loadSnoozePrice() {
+        guard let alarms = try? alarmRepository.fetchAllChecked() else {
+            snoozePrice = nil
+            return
+        }
+        snoozePrice = Self.snoozePrice(alarms: alarms)
+    }
+
+    /// Rebuilds the money + wake-time snapshots from one `today`, so the bars
+    /// and the totals can never come from two different reads of the clock.
+    /// `today` is a parameter purely so tests can pin it.
+    func recomputeMoneyAndWakeTime(today: Date) {
+        weekMoneyDays = Self.weekMoneyDays(
+            today: today,
+            inputs: MoneyInputs(
+                charges: charges,
+                wakeDays: wakeDays,
+                attemptedSnoozeDays: attemptedSnoozeDays,
+                snoozePrice: ledgerReadable ? snoozePrice : nil
+            ),
+            calendar: calendar
+        )
+        weekMoneySummary = ledgerReadable
+            ? Self.moneySummary(days: weekMoneyDays)
+            : .empty
+        wakeTimeStats = Self.wakeTimeStats(
+            today: today, wakeTimes: wakeTimes, calendar: calendar
+        )
     }
 
     // MARK: - Hero (Серия)

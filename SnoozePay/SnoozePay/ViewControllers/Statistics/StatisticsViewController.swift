@@ -307,13 +307,21 @@ final class StatisticsViewController: UIViewController {
         streakMetaLabel.text = viewModel.lastSlipText
         heatmapView.days = viewModel.heatmapDays
 
-        // "Эта неделя" money summary + "Время подъёма" (#348). The wake-time
-        // card drops out entirely when no exact wake instants were recorded —
-        // the alternative would be a fabricated clock reading.
-        weekMoneyCard.apply(
-            days: viewModel.weekMoneyDays,
-            summary: viewModel.weekMoneySummary
-        )
+        // "Эта неделя" money summary + "Время подъёма" (#348). Both cards are
+        // gated on having data honest enough to publish:
+        //   • money — suppressed whenever the ledger couldn't be read in full.
+        //     `wakeDays` survives a broken ledger, so without this gate every
+        //     morning would look "clean" and the card would invent savings out
+        //     of a corrupt blob (#348 review, finding 1).
+        //   • wake time — dropped when no exact wake instants were recorded;
+        //     the alternative would be a fabricated clock reading.
+        weekMoneyCard.isHidden = !viewModel.ledgerReadable
+        if viewModel.ledgerReadable {
+            weekMoneyCard.apply(
+                days: viewModel.weekMoneyDays,
+                summary: viewModel.weekMoneySummary
+            )
+        }
         if let wakeStats = viewModel.wakeTimeStats {
             wakeTimeCard.isHidden = false
             wakeTimeCard.apply(wakeStats)
