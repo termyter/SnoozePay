@@ -116,7 +116,21 @@ final class WalletTransactionHistoryViewController: UIViewController {
         let chipRow = makePeriodChipRow()
         stack.addArrangedSubview(chipRow)
         stack.setCustomSpacing(AppSpacing.sp4, after: chipRow)
-        stack.addArrangedSubview(makeSummaryCard(summary: TxHistorySummary.compute(from: periodVisible)))
+        // Pairing of charge↔refund is resolved against the FULL ledger, not the
+        // period slice — the two rows can straddle a month boundary (#358).
+        stack.addArrangedSubview(makeSummaryCard(
+            summary: TxHistorySummary.compute(from: periodVisible, ledger: all)
+        ))
+
+        // Soft notice (NOT the corrupt-ledger banner): rows this build can't
+        // classify are skipped by every aggregate, so the totals above are
+        // understated relative to the real balance. Say so instead of letting
+        // the numbers quietly lie (#358).
+        if all.contains(where: { $0.type.isUnrecognized }) {
+            let notice = makeUnrecognizedRowsNotice()
+            stack.setCustomSpacing(AppSpacing.sp4, after: stack.arrangedSubviews[stack.arrangedSubviews.count - 1])
+            stack.addArrangedSubview(notice)
+        }
 
         let filterRow = makeTypeFilterRow()
         stack.setCustomSpacing(AppSpacing.sp4, after: stack.arrangedSubviews[stack.arrangedSubviews.count - 1])
@@ -596,6 +610,33 @@ extension WalletTransactionHistoryViewController {
         stack.addArrangedSubview(chipRow)
         stack.setCustomSpacing(AppSpacing.sp4, after: chipRow)
         stack.addArrangedSubview(makeLoadErrorCard())
+    }
+
+    /// Softer sibling of `makeLoadErrorCard`: the ledger DID load, but some
+    /// rows carry a `type` this build can't classify (damage, or a newer
+    /// build's ledger — see `TransactionType.unknown`). They're rendered in the
+    /// list yet excluded from every total, so the card warns that the numbers
+    /// above are incomplete rather than letting them silently understate the
+    /// balance (#358). Warn-toned, not pain-toned — nothing is lost, and the
+    /// wallet stays fully usable.
+    func makeUnrecognizedRowsNotice() -> UIView {
+        let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        let label = UILabel()
+        label.text = "Часть операций не распознана — итоги ниже могут быть неполными"
+        label.font = AppTypography.meta
+        label.textColor = AppColors.warn400
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
+            label.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor),
+            label.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
+            label.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor)
+        ])
+        return card
     }
 
     /// Distinct card for a decode failure (#419) — the corrupt-ledger case

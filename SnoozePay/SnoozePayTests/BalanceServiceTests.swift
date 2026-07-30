@@ -271,8 +271,7 @@ final class BalanceServiceTests: XCTestCase {
 
         let txs = ledger.fetchAll()
         XCTAssertEqual(txs.count, 1)
-        XCTAssertEqual(txs[0].type, .refund)
-        XCTAssertNotEqual(txs[0].type, .topup,
+        XCTAssertEqual(txs[0].type, .refund,
             "Booking a reversal as .topup is exactly the revenue inflation #358 fixes")
     }
 

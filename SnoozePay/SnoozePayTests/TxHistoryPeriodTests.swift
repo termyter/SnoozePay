@@ -99,9 +99,15 @@ final class TxHistoryPeriodTests: XCTestCase {
 
     // MARK: - Summary aggregates
 
+    /// Most cases look at one period whose refunds are all in-window, so the
+    /// visible slice doubles as the ledger.
+    private func summary(of transactions: [Transaction]) -> TxHistorySummary {
+        TxHistorySummary.compute(from: transactions, ledger: transactions)
+    }
+
     func testSummary_aggregatesSpentTopupsAndSnoozeCount() {
         let now = Date()
-        let summary = TxHistorySummary.compute(from: [
+        let summary = summary(of: [
             Transaction(type: .charge, amount: 50, createdAt: now),
             Transaction(type: .charge, amount: 100, createdAt: now),
             Transaction(type: .charge, amount: 200, createdAt: now),
@@ -115,7 +121,7 @@ final class TxHistoryPeriodTests: XCTestCase {
 
     func testSummary_excludesBonusesFromTopups() {
         let now = Date()
-        let summary = TxHistorySummary.compute(from: [
+        let summary = summary(of: [
             Transaction(type: .topup, amount: 500, createdAt: now),
             Transaction(type: .promotion, amount: 200, createdAt: now)
         ])
@@ -128,7 +134,7 @@ final class TxHistoryPeriodTests: XCTestCase {
     /// out of the Пополнения aggregate exactly like a bonus does.
     func testSummary_excludesRefundsFromTopups() {
         let now = Date()
-        let summary = TxHistorySummary.compute(from: [
+        let summary = summary(of: [
             Transaction(type: .topup, amount: 500, createdAt: now),
             Transaction(type: .refund, amount: 50, createdAt: now)
         ])
@@ -141,7 +147,7 @@ final class TxHistoryPeriodTests: XCTestCase {
     func testSummary_refundedChargeExcludedFromSpentAndSnoozeCount() {
         let now = Date()
         let reversed = Transaction(type: .charge, amount: 50, createdAt: now)
-        let summary = TxHistorySummary.compute(from: [
+        let summary = summary(of: [
             reversed,
             Transaction(type: .charge, amount: 100, createdAt: now),
             Transaction(type: .refund, amount: 50, createdAt: now,
@@ -152,33 +158,75 @@ final class TxHistoryPeriodTests: XCTestCase {
         XCTAssertEqual(summary.topups, 0)
     }
 
-    /// Pre-#358 ledgers recorded the reversal as `.topup` with the link. The
-    /// charge still has to drop out (it pairs on the link, not the type) —
-    /// the legacy `.topup` row keeps counting as a top-up, which is the
-    /// historic data we can't retroactively reclassify.
-    func testSummary_legacyTopupShapedRefund_stillCancelsItsCharge() {
+    /// Pre-#358 ledgers recorded the reversal as a `.topup` carrying the link.
+    /// BOTH sides must drop out: the charge (it pairs on the link, not the
+    /// type) and the reversal itself. Asserting only `spent`/`snoozeCount`
+    /// here would miss the card claiming a +50 ₽ top-up that never happened
+    /// against a balance that never moved.
+    func testSummary_legacyTopupShapedRefund_cancelsBothSides() {
         let now = Date()
         let reversed = Transaction(type: .charge, amount: 50, createdAt: now)
-        let summary = TxHistorySummary.compute(from: [
+        let summary = summary(of: [
             reversed,
             Transaction(type: .topup, amount: 50, createdAt: now,
                         refundsTransactionID: reversed.id)
         ])
         XCTAssertEqual(summary.spent, 0)
         XCTAssertEqual(summary.snoozeCount, 0)
+        XCTAssertEqual(summary.topups, 0,
+            "A legacy .topup-shaped reversal is not income — the card must not imply +50 ₽ of movement")
+    }
+
+    /// Only reversals are excluded — an organic top-up (no link) still counts,
+    /// so the guard can't quietly zero out real revenue.
+    func testSummary_organicTopupStillCounts_alongsideALegacyReversal() {
+        let now = Date()
+        let reversed = Transaction(type: .charge, amount: 50, createdAt: now)
+        let summary = summary(of: [
+            reversed,
+            Transaction(type: .topup, amount: 50, createdAt: now,
+                        refundsTransactionID: reversed.id),
+            Transaction(type: .topup, amount: 500, createdAt: now)
+        ])
+        XCTAssertEqual(summary.topups, 500)
+    }
+
+    /// A refund can land in a different period than the charge it reverses
+    /// (23:59 on the 31st → 00:00 on the 1st). The pairing is resolved against
+    /// the full ledger, so the январь card must not bill a reversed snooze.
+    func testSummary_refundInAdjacentPeriod_stillCancelsTheCharge() {
+        let charge = Transaction(
+            type: .charge, amount: 50,
+            createdAt: date(year: 2026, month: 1, day: 31)
+        )
+        let refund = Transaction(
+            type: .refund, amount: 50,
+            createdAt: date(year: 2026, month: 2, day: 1),
+            refundsTransactionID: charge.id
+        )
+        let january = TxHistoryPeriod(month: YearMonth(year: 2026, month: 1))
+            .filter([charge, refund])
+
+        let scoped = TxHistorySummary.compute(from: january, ledger: [charge, refund])
+        XCTAssertEqual(scoped.spent, 0, "A fully reversed snooze must not be billed in either period")
+        XCTAssertEqual(scoped.snoozeCount, 0)
+
+        // Guard the regression the full-ledger argument exists to prevent.
+        let narrow = TxHistorySummary.compute(from: january, ledger: january)
+        XCTAssertEqual(narrow.spent, 50,
+            "Scoping the pairing to the visible slice is exactly the bug — pinned so the argument can't be dropped")
     }
 
     /// A row this build can't classify contributes to nothing.
     func testSummary_unknownType_isIgnored() {
-        let summary = TxHistorySummary.compute(from: [
+        let summary = summary(of: [
             Transaction(type: .unknown("cashback"), amount: 10, createdAt: Date())
         ])
         XCTAssertEqual(summary, TxHistorySummary(spent: 0, topups: 0, snoozeCount: 0))
     }
 
     func testSummary_emptyList_allZero() {
-        let summary = TxHistorySummary.compute(from: [])
-        XCTAssertEqual(summary, TxHistorySummary(spent: 0, topups: 0, snoozeCount: 0))
+        XCTAssertEqual(summary(of: []), TxHistorySummary(spent: 0, topups: 0, snoozeCount: 0))
     }
 
     // MARK: - Captions

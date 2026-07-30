@@ -12,7 +12,7 @@ import Foundation
 /// no revenue was ever earned, so it must NOT be booked as a `topup`
 /// (issue #358). `charge` is a debit (snooze penalty).
 ///
-/// Persisted verbatim (as the raw string) into the `"transactions"`
+/// Persisted verbatim (as the raw string) into the `"stored_transactions"`
 /// UserDefaults ledger, so the token set is an on-disk contract: rename a case
 /// and every historic row becomes unreadable.
 enum TransactionType: Codable, Equatable, Hashable {
@@ -24,15 +24,29 @@ enum TransactionType: Codable, Equatable, Hashable {
     ///
     /// `TransactionRepository` decodes the whole ledger as a single array and
     /// treats ANY decode failure as corruption (locks the ledger, see #72), so
-    /// a strict enum would turn one unknown token into total ledger loss — the
-    /// realistic trigger being a version downgrade (TestFlight rollback) onto a
-    /// build that predates a newer case such as `.refund`. Decoding unknown
-    /// tokens into this case keeps the rest of the ledger readable, and because
-    /// the raw string is carried along, re-encoding round-trips it losslessly
-    /// instead of overwriting it with a sentinel.
+    /// a strict enum turns one unreadable token into total ledger loss. This
+    /// case keeps the surrounding rows readable, and because the raw string is
+    /// carried along, re-encoding round-trips it losslessly rather than
+    /// overwriting it with a sentinel.
     ///
-    /// Never constructed by app code — aggregates deliberately ignore it
-    /// (an unrecognised row can't be classified as credit or debit).
+    /// **This does NOT make `.refund` downgrade-safe.** A rollback to a
+    /// pre-#358 build decodes with *that* build's strict `String`-backed enum,
+    /// which has never heard of `.unknown` — the token `"refund"` throws there
+    /// and locks the ledger. Adopting `.refund` is therefore one-way: once a
+    /// user has posted one, rolling their build back bricks their wallet
+    /// history until the ledger is cleared. The tolerance here only protects
+    /// cases added *after* this build ships, plus in-place string damage to an
+    /// otherwise valid blob.
+    ///
+    /// In production this case can only originate from ledger damage or such a
+    /// future-version skew — both operationally interesting, so
+    /// `TransactionRepository` logs and latches
+    /// `lastLoadHadUnrecognizedTypes` when a load produces one. Aggregates
+    /// deliberately ignore these rows (an unrecognised row can't be classified
+    /// as credit or debit), which means a silently-tolerated one would make
+    /// on-screen totals disagree with `user_balance` — hence the flag.
+    ///
+    /// Never constructed by app code.
     case unknown(String)
 
     /// Stable persisted token.
@@ -68,9 +82,9 @@ enum TransactionType: Codable, Equatable, Hashable {
         try container.encode(rawValue)
     }
 
-    /// `true` when the transaction takes money out of the wallet. Everything
-    /// else either adds money or (for `.unknown`) can't be classified, so it
-    /// renders with the neutral credit styling.
+    /// `true` when the transaction takes money out of the wallet. `.unknown`
+    /// is NOT a debit, but it isn't a credit either — check `isUnrecognized`
+    /// before reading this as "money in".
     var isDebit: Bool { self == .charge }
 
     /// `true` for a token this build can't classify — UI renders such rows
@@ -113,8 +127,11 @@ struct Transaction: Identifiable, Codable {
         self.refundsTransactionID = refundsTransactionID
     }
 
+    /// Signed amount for debug / log output. An unrecognised row gets no sign
+    /// — matching both UI sites, which refuse to assert a direction the ledger
+    /// never stated.
     var formattedAmount: String {
-        let prefix = type.isDebit ? "-" : "+"
+        let prefix = type.isUnrecognized ? "" : (type.isDebit ? "-" : "+")
         return "\(prefix)\(MoneyFormatter.string(amount))"
     }
 
