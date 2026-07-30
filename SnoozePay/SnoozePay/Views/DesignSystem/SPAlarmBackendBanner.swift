@@ -22,18 +22,72 @@ import UIKit
 /// and the table.
 final class SPAlarmBackendBanner: UIView {
 
+    // MARK: - Theme-aware palette
+    //
+    // `warn300` is a STATIC token (`#FFD479`), and `bg0` in light mode is
+    // `#F4F6FB` — the composited banner fill lands on ~`rgb(246,237,227)`,
+    // where `warn300` measures **1.21:1** (WCAG wants ≥3:1 for large text).
+    // The alarms list doesn't force `.dark`, so on a light system theme the
+    // title and the CTA of the one banner whose entire job is to be
+    // unmissable were effectively invisible.
+    //
+    // Measured contrasts of the values below (sRGB, WCAG 2.1):
+    //   dark  — warn300 on fill rgb(41,34,26)   = 11.22:1
+    //   light — fgOnWarn on fill rgb(246,237,227) = 16.33:1
+    //   light — fgOnWarn on the solid warn500 icon tile = 8.79:1
+    // `warn600` was the other candidate but measures 2.90:1 on the fill's
+    // dense end — under the floor, so it's not used.
+
+    /// Caps title + CTA colour. Internal (not private) so
+    /// `SPAlarmBackendBannerContrastTests` can MEASURE the ratio instead of
+    /// trusting a comment.
+    static let emphasisColor = UIColor { trait in
+        trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.fgOnWarn
+    }
+
+    /// Icon tile fill — a faint warn wash on dark, a solid warn chip on light
+    /// (a 18%-alpha wash over a pale background carries no signal at all).
+    static let iconTileColor = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? AppColors.warn400.withAlphaComponent(0.18)
+            : AppColors.warn500
+    }
+
+    /// Icon glyph — reads against whichever tile it sits on.
+    static let iconColor = UIColor { trait in
+        trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.fgOnWarn
+    }
+
+    /// Border — decorative, but the light variant needs real saturation to
+    /// separate the card from `bg0`.
+    static var borderColor: UIColor {
+        UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? AppColors.warn400.withAlphaComponent(0.22)
+                : AppColors.warn500.withAlphaComponent(0.45)
+        }
+    }
+
     // MARK: - Public API
 
     /// Triggered on tap — host wires this to the iOS Settings deeplink.
     var onTap: (() -> Void)?
 
+    /// Last rendered copy — kept so a theme flip can re-resolve the caps
+    /// title's snapshotted colour without the host re-configuring.
+    private var warning: AlarmBackendWarning?
+
     func configure(with warning: AlarmBackendWarning) {
+        self.warning = warning
         capsLabel.attributedText = NSAttributedString(
             string: warning.title.uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.warn300
+                // `attributedText` snapshots the resolved colour, so re-resolve
+                // against the live traits (the label's `textColor` path can't
+                // carry it) — `refreshDynamicColors` re-runs this on a theme flip.
+                .foregroundColor: Self.emphasisColor.resolvedColor(with: traitCollection)
             ]
         )
         metaLabel.text = warning.message
@@ -46,17 +100,21 @@ final class SPAlarmBackendBanner: UIView {
 
     // MARK: - Subviews
 
+    /// Fill alphas of the two-stop tint, densest stop first. Internal so the
+    /// contrast test composites the SAME values the view renders.
+    static let fillAlphas: [CGFloat] = [0.14, 0.05]
+
     private let backgroundView: SPGradientView = {
         let colors: [CGColor] = [
-            AppColors.warn400.withAlphaComponent(0.14).cgColor,
-            AppColors.warn400.withAlphaComponent(0.05).cgColor
+            AppColors.warn400.withAlphaComponent(SPAlarmBackendBanner.fillAlphas[0]).cgColor,
+            AppColors.warn400.withAlphaComponent(SPAlarmBackendBanner.fillAlphas[1]).cgColor
         ]
         let view = SPGradientView(colors: colors, locations: [0.0, 1.0])
         view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerRadius = AppRadius.md
         view.layer.masksToBounds = true
         view.layer.borderWidth = 1
-        view.layer.borderColor = AppColors.warn400.withAlphaComponent(0.22).cgColor
+        view.layer.borderColor = SPAlarmBackendBanner.borderColor.cgColor
         view.isUserInteractionEnabled = false
         return view
     }()
@@ -64,7 +122,7 @@ final class SPAlarmBackendBanner: UIView {
     private let iconHost: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = AppColors.warn400.withAlphaComponent(0.18)
+        view.backgroundColor = SPAlarmBackendBanner.iconTileColor
         view.layer.cornerRadius = 10
         view.layer.masksToBounds = true
         return view
@@ -74,7 +132,7 @@ final class SPAlarmBackendBanner: UIView {
         let view = UIImageView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentMode = .scaleAspectFit
-        view.tintColor = AppColors.warn300
+        view.tintColor = SPAlarmBackendBanner.iconColor
         let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .bold)
         view.image = UIImage(systemName: "exclamationmark.triangle.fill", withConfiguration: config)
         return view
@@ -98,13 +156,13 @@ final class SPAlarmBackendBanner: UIView {
         return label
     }()
 
-    /// "Открыть Настройки" — the banner has to lead somewhere, not just state
-    /// the problem.
+    /// "Разрешить" / "Открыть Настройки" — the banner has to lead somewhere,
+    /// not just state the problem. Which one it is comes from the warning.
     private let actionLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = AppTypography.buttonSm
-        label.textColor = AppColors.warn300
+        label.textColor = SPAlarmBackendBanner.emphasisColor
         label.numberOfLines = 1
         return label
     }()
@@ -133,7 +191,7 @@ final class SPAlarmBackendBanner: UIView {
         configureLayout()
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPAlarmBackendBanner, _) in
-                view.refreshBorderColor()
+                view.refreshDynamicColors()
             }
         }
     }
@@ -146,11 +204,16 @@ final class SPAlarmBackendBanner: UIView {
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         if #available(iOS 17.0, *) { return }
-        refreshBorderColor()
+        refreshDynamicColors()
     }
 
-    private func refreshBorderColor() {
-        backgroundView.layer.borderColor = AppColors.warn400.withAlphaComponent(0.22).cgColor
+    /// `CGColor` and `NSAttributedString` both snapshot the resolved colour, so
+    /// a light/dark flip has to re-resolve them by hand.
+    private func refreshDynamicColors() {
+        backgroundView.layer.borderColor = Self.borderColor.resolvedColor(with: traitCollection).cgColor
+        if let warning {
+            configure(with: warning)
+        }
     }
 
     // MARK: - Layout

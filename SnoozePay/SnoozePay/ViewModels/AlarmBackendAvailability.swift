@@ -13,9 +13,11 @@ import os
 /// function — `SystemAlarmBackendProbe.probe(completion:)` — down to
 /// `alarmKitAuthorized() ? .available : .unavailable`.
 ///
-/// Four cases, deliberately: "we haven't asked yet" and "we asked and couldn't
-/// tell" must never be flattened into "everything is fine" (that flattening is
-/// exactly how the original silent-failure bug reads to the user).
+/// Five cases, deliberately. "We haven't probed yet", "we probed and couldn't
+/// tell" and "the OS was never even asked" must never be flattened into either
+/// "everything is fine" (that flattening IS the silent-failure bug) or "the
+/// user said no" (which sends them five taps deep into Settings for a grant
+/// the app can still request with one tap).
 enum AlarmBackendAvailability: Equatable {
 
     /// No probe has answered yet (app just launched). Claim nothing: no banner,
@@ -25,8 +27,16 @@ enum AlarmBackendAvailability: Equatable {
     /// At least one backend can ring an alarm.
     case available
 
-    /// Every backend is unauthorized — a saved alarm will NOT ring. Drives the
-    /// proactive banner and gates the create / enable CTAs.
+    /// The OS has never been asked (`.notDetermined`) — e.g. the user closed
+    /// `PermissionsViewController` without answering. An alarm still won't
+    /// ring, so the banner and the gate stay on, but the fix is an in-app
+    /// prompt, NOT a trip to Settings: the system dialog is still available in
+    /// this state and nowhere else in the app offers it a second time.
+    case notRequested
+
+    /// Every backend is authorized-and-refused (or authorized in a mode that
+    /// can't wake anyone) — a saved alarm will NOT ring, and only Settings can
+    /// undo it. Drives the proactive banner and gates the create / enable CTAs.
     case unavailable
 
     /// The probe answered with something we can't interpret (a future
@@ -46,6 +56,12 @@ protocol AlarmBackendProbing {
     /// Resolves the current availability. The completion may fire on any
     /// queue; `AlarmBackendMonitor` marshals to main.
     func probe(completion: @escaping (AlarmBackendAvailability) -> Void)
+
+    /// Drives the OS permission prompt(s) for whatever is still undecided.
+    /// Only meaningful in the `.notRequested` state — once the user has
+    /// answered, the OS silently no-ops and only Settings can change the
+    /// answer. Completion fires after the prompt resolves, on any queue.
+    func requestAuthorization(completion: @escaping () -> Void)
 }
 
 /// Production probe: AlarmKit grant first (synchronous), notification
@@ -54,6 +70,7 @@ struct SystemAlarmBackendProbe: AlarmBackendProbing {
 
     private let alarmKitAuthorized: () -> Bool
     private let notificationStatus: (@escaping (UNAuthorizationStatus) -> Void) -> Void
+    private let requestGrants: (@escaping () -> Void) -> Void
 
     init(
         alarmKitAuthorized: @escaping () -> Bool = { AlarmScheduler.shared.usesAlarmKit },
@@ -61,10 +78,21 @@ struct SystemAlarmBackendProbe: AlarmBackendProbing {
             UNUserNotificationCenter.current().getNotificationSettings { settings in
                 completion(settings.authorizationStatus)
             }
+        },
+        // `requestPermission` primes BOTH backends (AlarmKit first, then
+        // notifications), which is exactly the "whatever is undecided" contract
+        // this seam promises.
+        requestGrants: @escaping (@escaping () -> Void) -> Void = { completion in
+            AlarmScheduler.shared.requestPermission { _ in completion() }
         }
     ) {
         self.alarmKitAuthorized = alarmKitAuthorized
         self.notificationStatus = notificationStatus
+        self.requestGrants = requestGrants
+    }
+
+    func requestAuthorization(completion: @escaping () -> Void) {
+        requestGrants(completion)
     }
 
     func probe(completion: @escaping (AlarmBackendAvailability) -> Void) {
@@ -89,13 +117,19 @@ struct SystemAlarmBackendProbe: AlarmBackendProbing {
     /// Notification Center — it cannot wake a sleeping user, so treating it as
     /// a working alarm backend would recreate the silent failure this guard
     /// exists to prevent. `.ephemeral` is App-Clip-only and equally unable to
-    /// carry an alarm. `.notDetermined` is not a backend *yet* — the user still
-    /// has to grant, which is precisely what the banner asks for.
+    /// carry an alarm.
+    ///
+    /// `.notDetermined` is kept SEPARATE from `.denied`: both mean "won't
+    /// ring", but only one of them is fixed in Settings. Telling a user who
+    /// simply skipped the onboarding prompt that "разрешение выключено —
+    /// включите в Настройках" is both false and the long way round.
     static func availability(forNotificationStatus status: UNAuthorizationStatus) -> AlarmBackendAvailability {
         switch status {
         case .authorized:
             return .available
-        case .denied, .notDetermined, .provisional, .ephemeral:
+        case .notDetermined:
+            return .notRequested
+        case .denied, .provisional, .ephemeral:
             return .unavailable
         @unknown default:
             // A status this build doesn't know. Refusing to guess is the point:
@@ -127,7 +161,10 @@ final class AlarmBackendMonitor {
     static let foregroundNotificationName = UIApplication.didBecomeActiveNotification
 
     private let probe: AlarmBackendProbing
-    private let notificationCenter: NotificationCenter
+    /// Internal (not private) so tests can assert the guard listens on the
+    /// center it was handed — a monitor silently observing `.default` would
+    /// drag process-global activation into isolated unit tests.
+    let notificationCenter: NotificationCenter
     private var foregroundObserver: NSObjectProtocol?
 
     /// Latest resolved availability. Starts `.unresolved` — never `.available`,
@@ -174,6 +211,15 @@ final class AlarmBackendMonitor {
         }
     }
 
+    /// Ask the OS for the still-undecided grants, then re-probe so the banner
+    /// reflects the answer immediately. Only reachable from the `.notRequested`
+    /// state — see `AlarmBackendWarning.canRequestInApp`.
+    func requestAuthorization() {
+        probe.requestAuthorization { [weak self] in
+            self?.refresh()
+        }
+    }
+
     private func apply(_ resolved: AlarmBackendAvailability) {
         guard resolved != availability else { return }
         let previous = String(describing: availability)
@@ -197,26 +243,42 @@ struct AlarmBackendWarning: Equatable {
     let actionTitle: String
 
     /// `true` when the state is severe enough to gate the create / enable
-    /// CTAs. We gate on "no backend at all" only — an indeterminate probe is
-    /// our failure, and blocking the user over it would be worse than the bug.
+    /// CTAs. We gate on "this alarm will not ring" only — an indeterminate
+    /// probe is our failure, and blocking the user over it would be worse than
+    /// the bug.
     let gatesAlarmCreation: Bool
+
+    /// `true` when the app can still surface the OS permission dialog itself.
+    /// The host then requests the grant in place instead of deep-linking into
+    /// Settings — one tap versus five, and the only path back for a user who
+    /// skipped the onboarding prompt.
+    let canRequestInApp: Bool
 
     init?(availability: AlarmBackendAvailability) {
         switch availability {
         case .unresolved, .available:
             return nil
+        case .notRequested:
+            title = "Будильники не зазвонят"
+            message = "Приложение ещё не спросило разрешение на будильники и уведомления. "
+                + "Без него созданные будильники не сработают."
+            actionTitle = "Разрешить"
+            gatesAlarmCreation = true
+            canRequestInApp = true
         case .unavailable:
             title = "Будильники не зазвонят"
             message = "Разрешение на будильники и уведомления выключено. "
                 + "Включите его в Настройках — иначе созданные будильники не сработают."
             actionTitle = "Открыть Настройки"
             gatesAlarmCreation = true
+            canRequestInApp = false
         case .indeterminate:
             title = "Не удалось проверить разрешения"
             message = "Приложение не смогло узнать, разрешены ли будильники и уведомления. "
                 + "Проверьте их в Настройках — без разрешения будильники не сработают."
             actionTitle = "Открыть Настройки"
             gatesAlarmCreation = false
+            canRequestInApp = false
         }
     }
 }

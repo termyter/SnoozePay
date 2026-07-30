@@ -13,8 +13,9 @@ final class AlarmsListViewModel {
     private let notificationCenter: NotificationCenter
     /// Single source of truth for "is there any backend that can ring an
     /// alarm" (#428). Owned here rather than queried ad-hoc by the VC so the
-    /// screen has exactly one place to read the state from.
-    private let backendMonitor: AlarmBackendMonitor
+    /// screen has exactly one place to read the state from. Internal (not
+    /// private) so tests can assert which `NotificationCenter` it observes.
+    let backendMonitor: AlarmBackendMonitor
 
     // MARK: - State
 
@@ -90,17 +91,23 @@ final class AlarmsListViewModel {
         balanceService: BalanceService = .shared,
         transactionRepository: TransactionRepository = .shared,
         notificationCenter: NotificationCenter = .default,
-        backendMonitor: AlarmBackendMonitor = AlarmBackendMonitor()
+        backendMonitor: AlarmBackendMonitor? = nil
     ) {
         self.alarmRepository = alarmRepository
         self.balanceService = balanceService
         self.transactionRepository = transactionRepository
         self.notificationCenter = notificationCenter
+        // Default the monitor onto the SAME center that was injected —
+        // building it with a fresh `.default` would make every test that
+        // carefully isolates `notificationCenter:` still observe process-global
+        // activation, and a test-host activation would then drag
+        // `AlarmScheduler.shared` / `UNUserNotificationCenter` into unit tests.
         self.backendMonitor = backendMonitor
+            ?? AlarmBackendMonitor(notificationCenter: notificationCenter)
 
         // The monitor re-probes on every foreground activation on its own;
         // forwarding its transitions is all this VM has to do.
-        backendMonitor.onChange = { [weak self] availability in
+        self.backendMonitor.onChange = { [weak self] availability in
             self?.onBackendAvailabilityChanged?(availability)
         }
 
@@ -197,6 +204,32 @@ final class AlarmsListViewModel {
     /// iOS Settings lands without a cold launch.
     func refreshBackendAvailability() {
         backendMonitor.refresh()
+    }
+
+    /// Surface the OS permission dialog in place. Valid only while
+    /// `backendWarning?.canRequestInApp == true` — afterwards the OS ignores
+    /// the request and Settings is the only route, so callers must branch on
+    /// the flag rather than calling this blindly.
+    func requestAlarmPermissions() {
+        guard backendWarning?.canRequestInApp == true else {
+            AppLogger.ui.notice("requestAlarmPermissions ignored — OS grant already decided")
+            return
+        }
+        backendMonitor.requestAuthorization()
+    }
+
+    /// Should tapping the "+" CTA be intercepted by the backend guard?
+    var shouldInterceptCreate: Bool {
+        !canCreateAlarms
+    }
+
+    /// Should flipping a row's switch be intercepted by the backend guard?
+    /// Only switching ON is gated — turning an alarm OFF always works and must
+    /// never raise the alert. Extracted from the VC so both halves of the
+    /// condition are covered by tests rather than living in an untested
+    /// double negative.
+    func shouldInterceptToggle(isOn: Bool) -> Bool {
+        isOn && !canCreateAlarms
     }
 
     // MARK: - Balance corruption (#119 / #206)

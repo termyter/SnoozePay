@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import UserNotifications
 @testable import SnoozePay
 
@@ -15,6 +16,9 @@ final class AlarmsListBackendGuardTests: XCTestCase {
     final class StubProbe: AlarmBackendProbing {
         var result: AlarmBackendAvailability
         private(set) var probeCount = 0
+        private(set) var authorizationRequestCount = 0
+        /// Value the OS "answers" with once the prompt is dismissed.
+        var resultAfterAuthorizationRequest: AlarmBackendAvailability?
 
         init(result: AlarmBackendAvailability) {
             self.result = result
@@ -23,6 +27,14 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         func probe(completion: @escaping (AlarmBackendAvailability) -> Void) {
             probeCount += 1
             completion(result)
+        }
+
+        func requestAuthorization(completion: @escaping () -> Void) {
+            authorizationRequestCount += 1
+            if let answered = resultAfterAuthorizationRequest {
+                result = answered
+            }
+            completion()
         }
     }
 
@@ -125,12 +137,69 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         XCTAssertEqual(resolved, .unavailable)
     }
 
-    /// Undecided notifications are not a backend *yet* — the guard is exactly
-    /// the nudge that gets them decided.
-    func testNotDetermined_resolvesUnavailable() {
+    /// Undecided notifications are their OWN state: still no alarm, but the
+    /// remedy is the in-app prompt, not a trip to Settings.
+    func testNotDetermined_resolvesNotRequested() {
         XCTAssertEqual(
             SystemAlarmBackendProbe.availability(forNotificationStatus: .notDetermined),
-            .unavailable
+            .notRequested
+        )
+    }
+
+    func testNotRequested_asksInAppInsteadOfSendingToSettings() {
+        let (viewModel, _) = makeViewModel(probe: StubProbe(result: .notRequested))
+
+        viewModel.refreshBackendAvailability()
+
+        XCTAssertEqual(viewModel.backendAvailability, .notRequested)
+        let warning = viewModel.backendWarning
+        XCTAssertNotNil(warning, "an unasked permission still means alarms won't ring")
+        XCTAssertTrue(warning?.gatesAlarmCreation == true, "gate stays on — the alarm would not ring")
+        XCTAssertTrue(warning?.canRequestInApp == true, "the OS prompt is still available in this state")
+        XCTAssertEqual(warning?.actionTitle, "Разрешить")
+        XCTAssertFalse(
+            warning?.message.contains("выключено") == true,
+            "copy must not claim a permission was switched off when it was never requested"
+        )
+    }
+
+    func testDeniedState_routesToSettingsNotAnInAppPrompt() {
+        let (viewModel, _) = makeViewModel(probe: StubProbe(result: .unavailable))
+
+        viewModel.refreshBackendAvailability()
+
+        XCTAssertFalse(
+            viewModel.backendWarning?.canRequestInApp == true,
+            "a decided grant can only be changed in Settings — an in-app prompt would no-op"
+        )
+        XCTAssertEqual(viewModel.backendWarning?.actionTitle, "Открыть Настройки")
+    }
+
+    func testRequestAlarmPermissions_promptsThenRefreshes() {
+        let probe = StubProbe(result: .notRequested)
+        probe.resultAfterAuthorizationRequest = .available
+        let (viewModel, _) = makeViewModel(probe: probe)
+        viewModel.refreshBackendAvailability()
+        XCTAssertFalse(viewModel.canCreateAlarms)
+
+        viewModel.requestAlarmPermissions()
+
+        XCTAssertEqual(probe.authorizationRequestCount, 1)
+        XCTAssertEqual(viewModel.backendAvailability, .available, "the grant must be re-probed, not assumed")
+        XCTAssertNil(viewModel.backendWarning)
+        XCTAssertTrue(viewModel.canCreateAlarms)
+    }
+
+    func testRequestAlarmPermissions_isNoOpOnceTheGrantIsDecided() {
+        let probe = StubProbe(result: .unavailable)
+        let (viewModel, _) = makeViewModel(probe: probe)
+        viewModel.refreshBackendAvailability()
+
+        viewModel.requestAlarmPermissions()
+
+        XCTAssertEqual(
+            probe.authorizationRequestCount, 0,
+            "requesting a decided grant silently does nothing — callers must route to Settings"
         )
     }
 
@@ -175,6 +244,18 @@ final class AlarmsListBackendGuardTests: XCTestCase {
     }
 
     // MARK: - Foreground transition (return from iOS Settings)
+
+    /// The foreground tests below post `foregroundNotificationName` — the same
+    /// constant the monitor subscribes to — so they would stay green if that
+    /// constant were changed to a name UIKit never posts. This pins it to the
+    /// real system notification, which is what actually makes the banner
+    /// refresh on the way back from Settings (#428).
+    func testForegroundNotificationName_isTheRealSystemActivation() {
+        XCTAssertEqual(
+            AlarmBackendMonitor.foregroundNotificationName,
+            UIApplication.didBecomeActiveNotification
+        )
+    }
 
     func testForegroundActivation_reprobesAndPublishesTransition() {
         let probe = StubProbe(result: .available)
@@ -231,5 +312,50 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         viewModel.refreshBackendAvailability()
 
         XCTAssertEqual(publishCount, 1, "only real transitions should re-render the banner")
+    }
+
+    // MARK: - CTA gating decisions
+
+    func testShouldInterceptToggle_coversAllFourCombinations() {
+        let gated = makeViewModel(probe: StubProbe(result: .unavailable)).0
+        gated.refreshBackendAvailability()
+        let open = makeViewModel(probe: StubProbe(result: .available)).0
+        open.refreshBackendAvailability()
+
+        // Switching ON with no backend is the only case worth interrupting.
+        XCTAssertTrue(gated.shouldInterceptToggle(isOn: true))
+        // Switching OFF always works — an alert here would fire on every
+        // disable, which is worse than the bug being guarded against.
+        XCTAssertFalse(gated.shouldInterceptToggle(isOn: false))
+        XCTAssertFalse(open.shouldInterceptToggle(isOn: true))
+        XCTAssertFalse(open.shouldInterceptToggle(isOn: false))
+    }
+
+    func testShouldInterceptCreate_followsTheGate() {
+        let gated = makeViewModel(probe: StubProbe(result: .unavailable)).0
+        gated.refreshBackendAvailability()
+        let open = makeViewModel(probe: StubProbe(result: .available)).0
+        open.refreshBackendAvailability()
+        let unprobed = makeViewModel(probe: StubProbe(result: .unavailable)).0
+
+        XCTAssertTrue(gated.shouldInterceptCreate)
+        XCTAssertFalse(open.shouldInterceptCreate)
+        XCTAssertFalse(unprobed.shouldInterceptCreate, "an un-probed app must not block the CTA")
+    }
+
+    // MARK: - Observation seam
+
+    /// A VM handed an isolated `NotificationCenter` must not quietly build its
+    /// monitor on the process-global one: a test-host activation would then
+    /// drive `AlarmScheduler.shared` / `UNUserNotificationCenter` from inside
+    /// unit tests.
+    func testDefaultMonitor_observesTheInjectedNotificationCenter() {
+        let viewModel = AlarmsListViewModel(
+            alarmRepository: repo,
+            balanceService: .shared,
+            notificationCenter: testCenter
+        )
+
+        XCTAssertTrue(viewModel.backendMonitor.notificationCenter === testCenter)
     }
 }

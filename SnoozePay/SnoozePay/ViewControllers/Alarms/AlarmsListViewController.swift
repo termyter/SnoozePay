@@ -1,4 +1,5 @@
 import UIKit
+import os
 
 /// V2 alarms list screen.
 ///
@@ -263,8 +264,8 @@ class AlarmsListViewController: UIViewController {
         emptyStateView.onAddAlarmTap = { [weak self] in
             self?.addAlarmTapped()
         }
-        backendBanner.onTap = {
-            AlarmsListViewController.openSystemSettings()
+        backendBanner.onTap = { [weak self] in
+            self?.resolveBackendWarning()
         }
     }
 
@@ -413,35 +414,63 @@ class AlarmsListViewController: UIViewController {
     /// Shared interception for the create / enable CTAs. Copy comes from the
     /// same `AlarmBackendWarning` the banner renders, so the screen states the
     /// problem once and in one voice.
+    ///
+    /// Returns `false` when the alert could NOT be shown (another modal is up,
+    /// or the guard cleared between tap and present). It deliberately does not
+    /// fall through to `onProceed` in that case: silently performing the
+    /// guarded action would be exactly the swallowed failure this PR removes.
+    /// Callers decide what "couldn't warn" means for them.
+    @discardableResult
     private func presentBackendUnavailableAlert(
         proceedTitle: String,
         onCancel: (() -> Void)? = nil,
         onProceed: @escaping () -> Void
-    ) {
+    ) -> Bool {
         guard presentedViewController == nil, let warning = viewModel.backendWarning else {
-            onProceed()
-            return
+            return false
         }
         let alert = UIAlertController(
             title: warning.title,
             message: warning.message,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Настройки", style: .default) { _ in
-            AlarmsListViewController.openSystemSettings()
+        // `.notRequested` can still raise the system dialog in place; a decided
+        // grant can only be changed in Settings.
+        alert.addAction(UIAlertAction(title: warning.actionTitle, style: .default) { [weak self] _ in
+            self?.resolveBackendWarning()
             onCancel?()
         })
         alert.addAction(UIAlertAction(title: proceedTitle, style: .cancel) { _ in
             onProceed()
         })
         present(alert, animated: true)
+        return true
+    }
+
+    /// Route the banner / alert action: prompt in place while the OS still
+    /// allows it, otherwise deeplink into Settings.
+    private func resolveBackendWarning() {
+        if viewModel.backendWarning?.canRequestInApp == true {
+            viewModel.requestAlarmPermissions()
+        } else {
+            AlarmsListViewController.openSystemSettings()
+        }
     }
 
     /// Deeplink into this app's page in iOS Settings — the one place the user
-    /// can actually fix a revoked alarm/notification grant.
+    /// can actually fix a decided-and-refused alarm/notification grant.
     private static func openSystemSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
+        guard let url = URL(string: UIApplication.openSettingsURLString) else {
+            AppLogger.ui.error("openSettingsURLString is not a valid URL — cannot route the user to Settings")
+            return
+        }
+        UIApplication.shared.open(url, options: [:]) { opened in
+            // Without this the tap is a no-op the user can only read as "the
+            // banner is broken".
+            if !opened {
+                AppLogger.ui.error("failed to open the Settings deeplink for the alarm-backend guard")
+            }
+        }
     }
 
     // MARK: - Actions
@@ -452,13 +481,15 @@ class AlarmsListViewController: UIViewController {
         // alarm at a time. The alert is an interception, not a wall: it leads
         // to Settings but still lets a user who plans to grant permission
         // later set the alarm up now.
-        guard viewModel.canCreateAlarms else {
-            presentBackendUnavailableAlert(proceedTitle: "Всё равно создать") { [weak self] in
-                self?.presentCreateAlarm()
-            }
+        guard viewModel.shouldInterceptCreate else {
+            presentCreateAlarm()
             return
         }
-        presentCreateAlarm()
+        // If the alert can't be shown (another modal is already up) we simply
+        // do nothing — presenting the editor on top of it would fail anyway.
+        presentBackendUnavailableAlert(proceedTitle: "Всё равно создать") { [weak self] in
+            self?.presentCreateAlarm()
+        }
     }
 
     private func presentCreateAlarm() {
@@ -514,11 +545,11 @@ extension AlarmsListViewController: UITableViewDataSource {
             // backend produces a scheduling error the user can't act on from
             // here. Intercept once, point at Settings, and revert the switch
             // if they take that route.
-            guard isOn, !self.viewModel.canCreateAlarms else {
+            guard self.viewModel.shouldInterceptToggle(isOn: isOn) else {
                 self.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
                 return
             }
-            self.presentBackendUnavailableAlert(
+            let warned = self.presentBackendUnavailableAlert(
                 proceedTitle: "Всё равно включить",
                 onCancel: { [weak self] in
                     // Cell already flipped its own switch optimistically —
@@ -529,6 +560,11 @@ extension AlarmsListViewController: UITableViewDataSource {
                     self?.viewModel.toggleAlarm(id: alarmID, enabled: true)
                 }
             )
+            if !warned {
+                // Couldn't warn ⇒ don't enable behind the user's back; snap the
+                // switch back to the model's truth instead.
+                self.tableView.reloadData()
+            }
         }
 
         return cell
