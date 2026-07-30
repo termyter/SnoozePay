@@ -108,10 +108,16 @@ class AlarmsListViewController: UIViewController {
     func presentStreakModal(streakDays: Int, on viewController: UIViewController? = nil) {
         let host = viewController ?? self
         guard host.presentedViewController == nil else { return }
-        // No `savedAmount` here on purpose (#347): the modal derives it from
-        // the same `estimatedSavings(for:alarms:)` the streak banner above the
-        // list uses, so the banner and the sheet can't quote different numbers.
-        let modal = StreakModalViewController(streakDays: streakDays)
+        // Savings are computed here, from the alarms this screen has already
+        // loaded and error-handled — the modal must never read the repository
+        // itself (a swallowed read used to become a confident "+350 ₽", #347
+        // review). `nil` is a legitimate answer: the sheet then celebrates the
+        // habit without quoting money.
+        let saved = StreakModalViewController.estimatedSavings(
+            for: streakDays,
+            alarms: viewModel.alarms
+        )
+        let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved)
         host.present(modal, animated: true)
     }
 
@@ -277,10 +283,17 @@ class AlarmsListViewController: UIViewController {
             tableView.tableHeaderView = nil
             return
         }
-        let saved = StreakModalViewController.estimatedSavings(
+        // The banner's whole copy is "Сэкономили X ₽" — without a defensible X
+        // (no alarms, unreadable prices, 0 ₽ alarms) it has nothing honest to
+        // say, so it stays unmounted rather than printing a made-up figure
+        // (#347 review).
+        guard let saved = StreakModalViewController.estimatedSavings(
             for: streak,
             alarms: viewModel.alarms
-        )
+        ) else {
+            tableView.tableHeaderView = nil
+            return
+        }
         streakBanner.configure(streakDays: streak, savedAmount: saved)
         // Size the table header view with a layout pass — UITableView's
         // tableHeaderView requires a non-zero frame to render at all.
