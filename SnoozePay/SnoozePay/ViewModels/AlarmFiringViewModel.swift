@@ -127,6 +127,14 @@ final class AlarmFiringViewModel {
     /// snoozed past midnight still reports its pre-midnight charges.
     static let wakeWindow: TimeInterval = 12 * 60 * 60
 
+    /// Largest per-charge amount the summary will believe (1 млрд ₽). Rows this
+    /// big can only come from ledger damage or a pre-#441 write, and they are
+    /// not merely wrong: the display path narrows the total to `Int`, and
+    /// `Int(1e300.rounded())` **traps** (SIGTRAP) rather than saturating. The
+    /// bound keeps that conversion — and the running sum — inside `Int`'s range
+    /// for any plausible row count.
+    static let maxPlausibleCharge: Double = 1e9
+
     /// What the ledger says the user was ACTUALLY billed for this wake.
     ///
     /// Deriving the on-screen money from `snoozeCount` × the doubling rule was
@@ -172,10 +180,14 @@ final class AlarmFiringViewModel {
     }
 
     /// Snoozes the user was actually BILLED for this wake — `snoozeCount`
-    /// minus any attempt whose penalty was refunded. Drives the WokeMorning
-    /// headline so the count and the sum on that screen can't contradict each
-    /// other. `nil` when the ledger is unreadable, same contract as
-    /// `chargedThisMorning`.
+    /// minus any attempt whose penalty was refunded. `nil` when the ledger is
+    /// unreadable, same contract as `chargedThisMorning`.
+    ///
+    /// A caller that renders BOTH the count and the sum must take a single
+    /// `billedSnoozes` snapshot instead of reading these two convenience
+    /// accessors: each one re-reads the ledger, and an async refund landing
+    /// between the two reads would put a count and a total from different
+    /// snapshots on the same screen.
     var billedSnoozeCount: Int? {
         guard case .known(let amounts) = billedSnoozes else { return nil }
         return amounts.count
@@ -218,10 +230,20 @@ final class AlarmFiringViewModel {
             .sorted { $0.createdAt < $1.createdAt }
             .map(\.amount)
         // Legacy rows predate the finite/positive guard in `chargeWithReceipt`
-        // (#441); one NaN would render the summary as "списано nan ₽".
-        guard amounts.allSatisfy({ $0.isFinite && $0 >= 0 }) else {
+        // (#441); one NaN would render the summary as "списано nan ₽", and an
+        // absurd magnitude would TRAP on the `Int` narrowing the summary does.
+        guard amounts.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= Self.maxPlausibleCharge }) else {
             AppLogger.ui.error(
-                "firing summary: ledger holds a non-finite/negative charge — charged total suppressed"
+                "firing summary: ledger holds an implausible charge amount — charged total suppressed"
+            )
+            return .unavailable
+        }
+        // Belt for the same trap on the aggregate: a ledger stuffed with
+        // in-range rows could still sum past what the display can narrow.
+        let total = amounts.reduce(0, +)
+        guard total.isFinite, total <= Self.maxPlausibleCharge else {
+            AppLogger.ui.error(
+                "firing summary: charges sum beyond the plausible range — charged total suppressed"
             )
             return .unavailable
         }

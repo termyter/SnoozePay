@@ -278,8 +278,15 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - Init
 
-    init(alarm: Alarm, snoozeCount: Int = 0) {
-        self.viewModel = AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount)
+    convenience init(alarm: Alarm, snoozeCount: Int = 0) {
+        self.init(viewModel: AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount))
+    }
+
+    /// Designated initializer taking a pre-built view model, so tests can pin
+    /// the ledger the summary reads (`wokeMorningContent()`) instead of the
+    /// shared repository. Production call sites use `init(alarm:snoozeCount:)`.
+    init(viewModel: AlarmFiringViewModel) {
+        self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
@@ -574,18 +581,25 @@ class AlarmFiringViewController: UIViewController {
 
     /// Copy for the morning summary, chosen from what the ledger could confirm.
     ///
-    /// `chargedThisMorning` / `billedSnoozeCount` are `nil` together when the
-    /// ledger is unreadable; that maps to the no-figures variant, since a
-    /// summary that states a rouble amount nobody verified is worse than one
-    /// that admits it doesn't know (#400). `internal` for unit testing.
+    /// ONE `billedSnoozes` read, not `chargedThisMorning` + `billedSnoozeCount`:
+    /// each accessor re-reads the ledger, and a refund landing from the
+    /// scheduler's completion between two reads would print a count and a sum
+    /// taken from different snapshots.
+    ///
+    /// An unreadable ledger maps to the no-figures variant — a summary that
+    /// states a rouble amount nobody verified is worse than one that admits it
+    /// doesn't know (#400). Passing `attempts` lets the copy name a refunded
+    /// snooze instead of quietly showing a billed pair that can't be squared
+    /// with the doubling ladder. `internal` for unit testing.
     func wokeMorningContent() -> WokeMorningContent {
-        guard
-            let charged = viewModel.chargedThisMorning,
-            let billed = viewModel.billedSnoozeCount
-        else {
-            return WokeMorningContent(chargesUnavailableAfter: viewModel.snoozeCount)
+        guard case .known(let amounts) = viewModel.billedSnoozes else {
+            return .chargesUnavailable
         }
-        return WokeMorningContent(snoozes: billed, charged: Int(charged.rounded()))
+        return WokeMorningContent(
+            snoozes: amounts.count,
+            charged: Int(amounts.reduce(0, +).rounded()),
+            attempts: viewModel.snoozeCount
+        )
     }
 
     // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and

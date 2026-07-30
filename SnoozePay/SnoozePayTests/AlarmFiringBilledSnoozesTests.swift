@@ -182,6 +182,33 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
                        "Only this wake's charges belong in «сегодня списано»")
     }
 
+    func testChargeExactlyOnTheWindowEdgeIsIncluded() {
+        // The window is closed at its start (`>= windowStart`); pin it so the
+        // boundary can't drift to exclusive without a test noticing.
+        let alarm = makeAlarm()
+        let startedAt = Date()
+        seedLedger([
+            Transaction(type: .charge, amount: 50, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-AlarmFiringViewModel.wakeWindow))
+        ])
+        let vm = makeViewModel(alarm: alarm, snoozeCount: 1, firingStartedAt: startedAt)
+
+        XCTAssertEqual(vm.chargedThisMorning, 50)
+        XCTAssertEqual(vm.billedSnoozeCount, 1)
+    }
+
+    func testChargeOneSecondBeforeTheWindowEdgeIsExcluded() {
+        let alarm = makeAlarm()
+        let startedAt = Date()
+        seedLedger([
+            Transaction(type: .charge, amount: 50, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-AlarmFiringViewModel.wakeWindow - 1))
+        ])
+        let vm = makeViewModel(alarm: alarm, snoozeCount: 1, firingStartedAt: startedAt)
+
+        XCTAssertEqual(vm.chargedThisMorning, 0)
+    }
+
     func testSnoozesChargedBeforeThisFiringSessionStillCount() {
         // Notification-action snoozes are charged while the firing screen is
         // down; the re-ring builds a fresh VM with the carried count.
@@ -263,6 +290,42 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
         XCTAssertNil(vm.chargedThisMorning)
     }
 
+    func testImplausiblyLargeChargeReportsUnavailable() {
+        // `Int(1e300.rounded())` TRAPS, and the summary narrows the total to
+        // `Int` for display — so an absurd legacy row must be refused here
+        // rather than crash the «Я встал» tap.
+        let alarm = makeAlarm()
+        let vm = AlarmFiringViewModel(
+            alarm: alarm,
+            snoozeCount: 1,
+            balanceService: StubBilledBalance(),
+            scheduler: makeSucceedingScheduler(),
+            ledger: FixedLedger(transactions: [
+                Transaction(type: .charge, amount: 1e300, alarmID: alarm.id.uuidString)
+            ])
+        )
+
+        XCTAssertEqual(vm.billedSnoozes, .unavailable)
+        XCTAssertNil(vm.chargedThisMorning)
+    }
+
+    func testInRangeChargesSummingBeyondTheLimitReportUnavailable() {
+        // Each row passes the per-row bound; their sum doesn't.
+        let alarm = makeAlarm()
+        let rows = (0..<3).map { _ in
+            Transaction(type: .charge, amount: 5e8, alarmID: alarm.id.uuidString)
+        }
+        let vm = AlarmFiringViewModel(
+            alarm: alarm,
+            snoozeCount: 3,
+            balanceService: StubBilledBalance(),
+            scheduler: makeSucceedingScheduler(),
+            ledger: FixedLedger(transactions: rows)
+        )
+
+        XCTAssertEqual(vm.billedSnoozes, .unavailable)
+    }
+
     func testNegativeChargeAmountReportsUnavailable() {
         let alarm = makeAlarm()
         let vm = AlarmFiringViewModel(
@@ -293,32 +356,157 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
         XCTAssertNil(vm.billedSnoozeCount)
     }
 
-    // MARK: - Summary copy wiring
+    // MARK: - The seam VM → screen (`wokeMorningContent()`)
+    //
+    // These drive the ONLY place the ledger figures reach the user. Asserting
+    // on `billedSnoozes` alone left the wiring free to go back to
+    // `snoozeCount` × the doubling rule with the suite still green.
 
-    func testSummaryCopyUsesBilledFiguresNotAttempts() {
-        let content = WokeMorningContent(snoozes: 1, charged: 50)
-        XCTAssertEqual(content.variant, .recovered)
-        XCTAssertEqual(content.headline, "Удержались после 1 откладывания")
-        XCTAssertEqual(content.subtitle, "Сегодня списано 50 ₽. Завтра попробуем не списать ничего.")
+    func testSummaryScreen_refundedSnoozeIsNotBilled() {
+        let alarm = makeAlarm(penalty: 50)
+        let startedAt = Date()
+        // Two attempts, the second reversed: the doubling rule would say
+        // 150 ₽ over 2 snoozes; the ledger says 50 ₽ over 1.
+        let reversedID = UUID()
+        seedLedger([
+            Transaction(type: .charge, amount: 50, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-600)),
+            Transaction(id: reversedID, type: .charge, amount: 100, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-300)),
+            Transaction(type: .refund, amount: 100, createdAt: startedAt.addingTimeInterval(-299),
+                        refundsTransactionID: reversedID)
+        ])
+        let content = makeFiringViewController(
+            alarm: alarm, snoozeCount: 2, firingStartedAt: startedAt
+        ).wokeMorningContent()
+
+        XCTAssertEqual(content.charged, 50, "The refunded 100 ₽ must not reach the screen")
+        XCTAssertEqual(content.snoozes, 1)
+        XCTAssertTrue(content.subtitle.contains("списано 50 ₽"))
+        XCTAssertFalse(content.subtitle.contains("150"))
     }
 
-    func testSummaryCopyForUnreadableLedgerStatesNoNumbers() {
-        let content = WokeMorningContent(chargesUnavailableAfter: 3)
+    func testSummaryScreen_happyPathShowsBilledPair() {
+        let alarm = makeAlarm(penalty: 50)
+        let startedAt = Date()
+        seedLedger([
+            Transaction(type: .charge, amount: 50, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-600)),
+            Transaction(type: .charge, amount: 100, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-300))
+        ])
+        let content = makeFiringViewController(
+            alarm: alarm, snoozeCount: 2, firingStartedAt: startedAt
+        ).wokeMorningContent()
+
+        XCTAssertEqual(content.variant, .recovered)
+        XCTAssertEqual(content.snoozes, 2)
+        XCTAssertEqual(content.charged, 150)
+        XCTAssertEqual(content.headline, "Удержались после 2 откладываний")
+        XCTAssertEqual(content.subtitle, "Сегодня списано 150 ₽. Завтра попробуем не списать ничего.")
+    }
+
+    func testSummaryScreen_cleanWakeShowsCleanCopy() {
+        let content = makeFiringViewController(alarm: makeAlarm(), snoozeCount: 0)
+            .wokeMorningContent()
+
+        XCTAssertEqual(content.variant, .clean)
+        XCTAssertEqual(content.charged, 0)
+        XCTAssertEqual(content.headline, "Встал с первого раза")
+    }
+
+    func testSummaryScreen_unreadableLedgerShowsNoFigures() {
+        defaults.set(Data("{not valid json".utf8), forKey: "stored_transactions")
+        let content = makeFiringViewController(alarm: makeAlarm(), snoozeCount: 3)
+            .wokeMorningContent()
 
         XCTAssertEqual(content.variant, .chargesUnavailable)
-        XCTAssertFalse(content.headline.contains("3"), "No count we couldn't verify")
-        XCTAssertFalse(content.subtitle.contains("₽"), "No sum we couldn't verify")
+        XCTAssertNil(content.charged, "«Не знаем» must not collapse into a confident 0")
+        XCTAssertNil(content.snoozes)
+        XCTAssertFalse(content.subtitle.contains("₽"))
+        XCTAssertFalse(content.headline.contains("3"))
+    }
+
+    func testSummaryScreen_unreadableLedgerNeverClaimsCleanWake() {
+        // The AlarmKit path tears the firing screen down after every snooze, so
+        // the re-ring rebuilds the VM with `snoozeCount: 0` even after the user
+        // paid three times. A `.clean` fallback here would tell them «баланс в
+        // полной сохранности» about money that is gone.
+        defaults.set(Data("{not valid json".utf8), forKey: "stored_transactions")
+        let content = makeFiringViewController(alarm: makeAlarm(), snoozeCount: 0)
+            .wokeMorningContent()
+
+        XCTAssertEqual(content.variant, .chargesUnavailable)
+        XCTAssertNotEqual(content.headline, "Встал с первого раза")
+        XCTAssertFalse(content.subtitle.contains("сохранности"))
+    }
+
+    func testSummaryScreen_reversedAttemptIsNamedSoTheNumbersAddUp() {
+        // Base 50 ₽: attempt 1 fails and is refunded, attempt 2 bills rung 2 =
+        // 100 ₽. "1 откладывание / 100 ₽" alone is arithmetically impossible
+        // under the doubling rule, so the copy must explain the reversal.
+        let alarm = makeAlarm(penalty: 50)
+        let startedAt = Date()
+        seedLedger([
+            Transaction(type: .charge, amount: 100, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-300))
+        ])
+        let content = makeFiringViewController(
+            alarm: alarm, snoozeCount: 2, firingStartedAt: startedAt
+        ).wokeMorningContent()
+
+        XCTAssertEqual(content.variant, .partiallyReversed)
+        XCTAssertEqual(content.reversedSnoozes, 1)
+        XCTAssertTrue(content.subtitle.contains("списано 100 ₽"))
+        XCTAssertTrue(content.subtitle.contains("вернули"),
+                      "The refunded attempt must be named, not silently dropped")
+    }
+
+    func testSummaryScreen_everyAttemptReversedReportsNoCharges() {
+        let alarm = makeAlarm(penalty: 50)
+        let content = makeFiringViewController(alarm: alarm, snoozeCount: 2)
+            .wokeMorningContent()
+
+        XCTAssertEqual(content.variant, .partiallyReversed)
         XCTAssertEqual(content.charged, 0)
+        XCTAssertEqual(content.reversedSnoozes, 2)
+        XCTAssertTrue(content.subtitle.contains("вернули"))
     }
 
-    func testSummaryCopyForUnreadableLedgerWithNoAttemptsStaysClean() {
-        // Nothing was ever charged in this session (a snooze only bumps the
-        // counter once its charge lands), so "баланс в сохранности" is a fact
-        // we hold independently of the ledger.
-        XCTAssertEqual(WokeMorningContent(chargesUnavailableAfter: 0).variant, .clean)
+    func testSummaryScreen_billedMoreThanThisSessionsAttemptsStillReadsRecovered() {
+        // AlarmKit again: the ledger legitimately holds charges from earlier
+        // rings this morning while `snoozeCount` restarted at 0. Fewer attempts
+        // than billed is not a reversal.
+        let alarm = makeAlarm(penalty: 50)
+        let startedAt = Date()
+        seedLedger([
+            Transaction(type: .charge, amount: 50, alarmID: alarm.id.uuidString,
+                        createdAt: startedAt.addingTimeInterval(-600))
+        ])
+        let content = makeFiringViewController(
+            alarm: alarm, snoozeCount: 0, firingStartedAt: startedAt
+        ).wokeMorningContent()
+
+        XCTAssertEqual(content.variant, .recovered)
+        XCTAssertEqual(content.snoozes, 1)
+        XCTAssertEqual(content.charged, 50)
     }
 
-    // MARK: - VM factory
+    // MARK: - VC / VM factories
+
+    private func makeFiringViewController(
+        alarm: Alarm,
+        snoozeCount: Int,
+        firingStartedAt: Date = Date()
+    ) -> AlarmFiringViewController {
+        AlarmFiringViewController(
+            viewModel: makeViewModel(
+                alarm: alarm,
+                snoozeCount: snoozeCount,
+                firingStartedAt: firingStartedAt
+            )
+        )
+    }
 
     private func makeViewModel(
         alarm: Alarm,

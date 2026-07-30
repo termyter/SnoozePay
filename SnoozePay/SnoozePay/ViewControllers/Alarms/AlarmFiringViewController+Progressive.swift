@@ -98,11 +98,16 @@ extension AlarmFiringViewController {
     /// `SPDawnV3.jsx:114-136`.
     ///
     /// The chips list money actually taken (`pastPenalties` now reads the
-    /// ledger, #400), while the pill above counts attempts — so a snooze that
-    /// failed to schedule and was refunded advances the pill but leaves no
-    /// chip. That asymmetry is intended: the pill is about which rung the user
-    /// pays NEXT, the chips are a receipt. An unreadable ledger yields no
-    /// chips, hiding the row rather than inventing amounts.
+    /// ledger, #400), while the pill above — and the `ladderSteps` rungs, which
+    /// keep marking a refunded rung `done` — count ATTEMPTS. So a snooze that
+    /// failed to schedule and was refunded advances the pill and lights its
+    /// rung, but leaves no chip. That asymmetry is intended: pill and ladder
+    /// answer "which rung do I pay next", the chips are a receipt of money
+    /// actually gone. The morning summary reconciles the two by naming the
+    /// reversal outright (`WokeMorningContent.partiallyReversed`), which is
+    /// where the user would otherwise be unable to square the numbers. An
+    /// unreadable ledger yields no chips, hiding the row rather than inventing
+    /// amounts.
     private func rebuildTicker() {
         guard let container = historyTickerContainer else { return }
         container.arrangedSubviews.forEach {
