@@ -291,9 +291,10 @@ final class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        // Empty state — no charges and no wake events means the three cards
-        // would all read empty, so show the "Пока нечего считать" column
-        // instead (`SPMore.jsx` `EmptyStats`, #289).
+        // The shared state column has two honest modes: a new account gets
+        // the no-data copy from `SPMore.jsx` (`EmptyStats`, #289), while an
+        // unreadable or partially read ledger names that failure and withholds
+        // every ledger-derived card (#459).
         let unavailableReason = viewModel.moneyUnavailableReason
         let isEmpty = unavailableReason != nil || (viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty)
         emptyState.isHidden = !isEmpty

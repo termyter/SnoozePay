@@ -123,6 +123,13 @@ final class StatisticsDataHealthTests: XCTestCase {
         XCTAssertFalse(surfacedError, "A tolerated token doesn't throw — that's the danger")
         XCTAssertEqual(viewModel.moneyUnavailableReason, .ledgerPartiallyRead)
         XCTAssertTrue(viewModel.weekMoneySummary.isEmpty)
+        XCTAssertTrue(viewModel.weekMoneyDays.isEmpty)
+        XCTAssertTrue(viewModel.heatmapDays.isEmpty,
+            "A partial ledger must not turn the surviving wake into a clean heatmap cell")
+        XCTAssertTrue(viewModel.weekdayStats.isEmpty)
+        XCTAssertNil(viewModel.worstWeekdayName)
+        XCTAssertTrue(viewModel.weeklyTrend.isEmpty)
+        XCTAssertEqual(viewModel.trendDiff, 0)
     }
 
     /// The two ledger failures must stay distinguishable: the card prints a

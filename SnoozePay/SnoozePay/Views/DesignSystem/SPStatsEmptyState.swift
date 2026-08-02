@@ -1,11 +1,13 @@
 import UIKit
 
-/// Empty-state column for the behavioural statistics screen (V3 design).
+/// State column for the behavioural statistics screen (V3 design).
 ///
 /// Reference: `docs/design/v2-handoff/components/SPMore.jsx` L447-480
-/// (`EmptyStats`). Shown when the user has no charges and no recorded wake
-/// events — there is nothing to aggregate yet, so the three behavioural cards
-/// would all read empty (audit P2-3 #289).
+/// (`EmptyStats`). It has two modes: it is shown when the user has no charges
+/// and no recorded wake events (there is nothing to aggregate yet, #289), or
+/// when the ledger is unreadable / only partially readable (#459). The latter
+/// withholds the whole ledger-derived screen rather than drawing a false clean
+/// streak from surviving wake events.
 ///
 /// Visual:
 /// ```
@@ -106,9 +108,9 @@ final class SPStatsEmptyState: UIView {
         streakChip.isHidden = days <= 0
     }
 
-    /// Replaces the no-data copy when the ledger itself is unreadable. This
-    /// keeps a damaged history distinct from a genuinely new account and
-    /// prevents the surrounding screen from rendering a false clean streak.
+    /// Replaces the no-data copy when the ledger is unavailable or partially
+    /// readable. This keeps an incomplete history distinct from a genuinely
+    /// new account and prevents a false clean streak.
     func setUnavailable(_ message: String) {
         titleLabel.text = "Статистика недоступна"
         subtitleLabel.text = message

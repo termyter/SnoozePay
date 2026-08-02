@@ -553,4 +553,5 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         XCTAssertNotEqual(vm.weekMoneyDays, mondayBars)
         XCTAssertNotEqual(vm.weekMoneySummary, mondayTotals)
     }
+
 }
