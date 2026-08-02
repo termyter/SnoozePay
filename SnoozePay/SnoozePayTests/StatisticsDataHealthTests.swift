@@ -136,9 +136,10 @@ final class StatisticsDataHealthTests: XCTestCase {
         XCTAssertEqual(viewModel.trendDiff, 0)
     }
 
-    /// The two ledger failures must stay distinguishable: the card prints a
-    /// different sentence for each, and for the partial read that sentence is
-    /// the only signal the user gets at all (#348 verification, finding 3).
+    /// The two ledger failures must stay distinguishable: the state column
+    /// prints a different sentence for each, and for the partial read that
+    /// sentence is the only signal the user gets at all (#348 verification,
+    /// finding 3; #459).
     func testLedgerUnavailableReason_carriesDistinctUserFacingCopy() {
         let unreadable = StatisticsViewModel.LedgerUnavailableReason.ledgerUnreadable.message
         let partial = StatisticsViewModel.LedgerUnavailableReason.ledgerPartiallyRead.message

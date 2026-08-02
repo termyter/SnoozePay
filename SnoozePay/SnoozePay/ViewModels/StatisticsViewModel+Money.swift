@@ -16,23 +16,24 @@ extension StatisticsViewModel {
 
     // MARK: - Data-health states
 
-    /// Why the money card can't publish figures.
+    /// Why the ledger-derived statistics screen can't publish figures.
     ///
-    /// Both cases keep the card on screen with an explanation. Hiding it
-    /// instead would swap "lies with numbers" for "disappears without a
-    /// word" — and the states worth noticing (version skew, byte damage to a
-    /// `type` string, a half-finished migration) are exactly the ones that
-    /// would vanish (#348 verification, finding 3).
+    /// Both cases replace the ledger-dependent content with the statistics
+    /// state column and an explanation. Hiding only individual cards would
+    /// swap "lies with numbers" for "disappears without a word" — and the
+    /// states worth noticing (version skew, byte damage to a `type` string, a
+    /// half-finished migration) are exactly the ones that would vanish (#348
+    /// verification, finding 3; #459).
     enum LedgerUnavailableReason: Equatable {
         /// The ledger threw on decode. `onLoadError` has already fired, so the
-        /// user is seeing an alert too — this is the in-card echo of it.
+        /// user is seeing an alert too — the state column echoes the failure.
         case ledgerUnreadable
         /// The ledger decoded, but rows carry `type` tokens this build can't
         /// classify (#453). Nothing throws on this path, so without this state
         /// the failure would be entirely invisible.
         case ledgerPartiallyRead
 
-        /// In-card copy replacing the totals.
+        /// State-column copy explaining why ledger-derived content is hidden.
         var message: String {
             switch self {
             case .ledgerUnreadable:
