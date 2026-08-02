@@ -141,6 +141,28 @@ extension StatisticsViewModel {
         static func saved(cleanDays: Int, price: Double) -> Double {
             Double(max(0, cleanDays)) * price
         }
+
+        /// UI-facing variant of the canonical formula. A zero result is not a
+        /// savings figure worth showing in a streak celebration, and `nil`
+        /// also preserves the distinction between an unknown price and 0 ₽.
+        static func savedDisplayAmount(cleanDays: Int, alarms: [Alarm]) -> Decimal? {
+            guard let saved = saved(cleanDays: cleanDays, alarms: alarms) else { return nil }
+            return displayAmount(from: saved)
+        }
+
+        /// Price-injected display variant for callers that already hold a
+        /// checked alarm-price snapshot.
+        static func savedDisplayAmount(cleanDays: Int, price: Double?) -> Decimal? {
+            guard let price else { return nil }
+            return displayAmount(from: saved(cleanDays: cleanDays, price: price))
+        }
+
+        private static func displayAmount(from saved: Double) -> Decimal? {
+            guard saved.isFinite, saved > 0 else { return nil }
+            // Keep the UI's Decimal amount free of binary Double artefacts
+            // (50.0 must not become 49.999… before MoneyFormatter truncates).
+            return Decimal(string: String(format: "%.2f", saved))
+        }
     }
 
     /// Convenience forwarder kept so existing call sites and tests read

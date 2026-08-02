@@ -109,7 +109,7 @@ final class StreakModalViewController: UIViewController {
     /// - Parameters:
     ///   - streakDays: Consecutive snooze-free days.
     ///   - savedAmount: Money the user did not lose, computed by the caller
-    ///     from alarms it has already loaded (`estimatedSavings(for:alarms:)`).
+    ///     from its checked alarm-price snapshot (`SavingsEstimate`).
     ///     Pass `nil` when there is no trustworthy figure — a corrupted alarm
     ///     store, no priced alarms, a zero-price alarm — and the sheet falls
     ///     back to the behavioral celebration instead of inventing a number.
@@ -505,36 +505,4 @@ extension StreakModalViewController {
     /// "50 ₽/day" in those cases, which is how an unreadable alarm store became
     /// a confident, shareable "+350 ₽".
     ///
-    /// Follow-up #142: replace with the exact `expectedPenalty * snoozesSaved`
-    /// once the per-alarm history surface lands.
-    static func estimatedSavings(for streakDays: Int, alarms: [Alarm]) -> Decimal? {
-        guard streakDays > 0 else { return nil }
-
-        var total = Decimal(0)
-        var priced = 0
-        for alarm in alarms {
-            // Format-string round-trip dodges the `Double → Decimal`
-            // binary-fraction surprise (50.0 → 49.99999…).
-            guard let parsed = Decimal(string: String(format: "%.2f", alarm.penaltyAmount)) else {
-                // Drop the alarm from numerator *and* denominator — counting it
-                // as 0 ₽ silently halved the hero on a single bad row.
-                AppLogger.ui.error(
-                    "streak savings: unparsable penaltyAmount, alarm excluded from the estimate"
-                )
-                assertionFailure("penaltyAmount \(alarm.penaltyAmount) is not representable as Decimal")
-                continue
-            }
-            total += parsed
-            priced += 1
-        }
-        guard priced > 0 else { return nil }
-
-        var average = total
-        var divisor = Decimal(priced)
-        var dailyPenalty = Decimal()
-        NSDecimalDivide(&dailyPenalty, &average, &divisor, .plain)
-
-        let saved = dailyPenalty * Decimal(streakDays)
-        return saved > 0 ? saved : nil
-    }
 }

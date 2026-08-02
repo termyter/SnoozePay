@@ -392,13 +392,12 @@ final class StatisticsViewController: UIViewController {
         // A tap anywhere on the hero card lands here — clear an open tooltip
         // first so the modal doesn't stack on top of a stale selection.
         heatmapView.clearSelection()
-        let alarms = (try? AlarmRepository.shared.fetchAllChecked()) ?? []
-        let saved = StreakModalViewController.estimatedSavings(
-            for: max(viewModel.streak, 1),
-            alarms: alarms
+        let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+            cleanDays: viewModel.streak,
+            price: viewModel.snoozePrice
         )
         let modal = StreakModalViewController(
-            streakDays: max(viewModel.streak, 1),
+            streakDays: viewModel.streak,
             savedAmount: saved
         )
         present(modal, animated: true)
