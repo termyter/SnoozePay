@@ -9,11 +9,11 @@ import os
 ///   2. Average snoozes per weekday over the last 4 weeks (+ worst day).
 ///   3. 8-week snooze trend (better / same / worse than last week).
 ///   4. "Эта неделя" money — saved / spent / net for the current week (#348).
-///   5. "Время подъёма" — mean wake time vs. the preceding window (#348).
+///   5. "Время подъёма" — median wake time vs. the preceding window (#348).
 ///
 /// All aggregation maths lives in pure static functions that take an explicit
-/// `today` so tests pin dates instead of racing the wall clock; the instance
-/// properties are thin wrappers over those functions plus the loaded state.
+/// `today` so tests pin dates instead of racing the wall clock. `loadData()`
+/// then publishes their outputs as one stored snapshot for the screen.
 final class StatisticsViewModel {
 
     // MARK: - Day status (heatmap semantics)
@@ -127,13 +127,13 @@ final class StatisticsViewModel {
     /// have no honest price" — see `snoozePriceState` for *why*. Distinct
     /// from a genuine 0 ₽ price when every alarm is free.
     var snoozePrice: Double? { snoozePriceState.price }
-    /// Why the money card can't publish figures, or `nil` when it can.
+    /// Why ledger-derived statistics can't publish figures, or `nil` when
+    /// they can.
     ///
     /// Money aggregates built on a partial ledger overstate savings and
-    /// understate spending (#348 review, finding 1), so the card refuses to
-    /// print numbers — but it stays on screen and says *which* failure it
-    /// hit, because silently vanishing is its own form of lying
-    /// (#348 verification, finding 3).
+    /// understate spending (#348 review, finding 1), so the screen withholds
+    /// every ledger-derived block and names the failure rather than silently
+    /// rendering a plausible-looking zero (#348 verification, finding 3).
     private(set) var moneyUnavailableReason: MoneyUnavailableReason?
     /// Convenience for call sites that only need "can we publish money".
     var ledgerReadable: Bool { moneyUnavailableReason == nil }
@@ -207,12 +207,6 @@ final class StatisticsViewModel {
             attemptedSnoozeDays = Self.attemptedSnoozeDays(
                 from: allTransactions, calendar: calendar
             )
-            streak = StreakCalculator.currentStreak(
-                transactions: allTransactions,
-                wakeDays: capturedWakeDays,
-                now: now,
-                calendar: calendar
-            )
             // A successful decode can still be partial: since #453 an
             // unrecognised `type` token decodes to `.unknown` instead of
             // throwing, and every aggregate silently skips those rows. That
@@ -221,8 +215,17 @@ final class StatisticsViewModel {
             let unknownTokens = transactionRepository.lastLoadUnrecognizedTypes
             if unknownTokens.isEmpty {
                 moneyUnavailableReason = nil
+                streak = StreakCalculator.currentStreak(
+                    transactions: allTransactions,
+                    wakeDays: capturedWakeDays,
+                    now: now,
+                    calendar: calendar
+                )
             } else {
                 moneyUnavailableReason = .ledgerPartiallyRead
+                // An unrecognised row might be a skipped charge. Do not
+                // promote an uncertain streak into the persisted best record.
+                streak = 0
                 // Nothing throws on this path, so this log is the only trace
                 // an incident leaves — version skew, byte damage to a `type`
                 // string, or a half-finished migration all land here.
@@ -246,7 +249,7 @@ final class StatisticsViewModel {
 
         // Bump persisted best streak only forward — never reset on streak = 0,
         // so the user's all-time record survives a slip-up.
-        if streak > defaults.integer(forKey: Self.bestStreakKey) {
+        if ledgerReadable, streak > defaults.integer(forKey: Self.bestStreakKey) {
             defaults.set(streak, forKey: Self.bestStreakKey)
         }
         recomputeSnapshots(today: now)
@@ -301,10 +304,9 @@ final class StatisticsViewModel {
     /// ledger-dependent publication instead of letting an empty `charges`
     /// array masquerade as a perfect, snooze-free history (#459).
     ///
-    /// `today` is a parameter so tests can pin it — see
-    /// `testRecompute_barsAndTotalsComeFromTheSameDay`, which drives two
-    /// different days through this method to prove the two outputs move
-    /// together.
+    /// `today` is a parameter so tests can pin it — see the money-bars test
+    /// and `StatisticsSnapshotTests`, which drive different days through this
+    /// method to prove every visible aggregate moves together.
     func recomputeSnapshots(today: Date) {
         guard ledgerReadable else {
             weekMoneyDays = []

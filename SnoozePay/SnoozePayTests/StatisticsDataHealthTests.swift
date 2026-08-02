@@ -122,6 +122,9 @@ final class StatisticsDataHealthTests: XCTestCase {
 
         XCTAssertFalse(surfacedError, "A tolerated token doesn't throw — that's the danger")
         XCTAssertEqual(viewModel.moneyUnavailableReason, .ledgerPartiallyRead)
+        XCTAssertEqual(viewModel.streak, 0)
+        XCTAssertEqual(viewModel.bestStreak, 0,
+            "An uncertain streak must never be persisted as the user's record")
         XCTAssertTrue(viewModel.weekMoneySummary.isEmpty)
         XCTAssertTrue(viewModel.weekMoneyDays.isEmpty)
         XCTAssertTrue(viewModel.heatmapDays.isEmpty,
