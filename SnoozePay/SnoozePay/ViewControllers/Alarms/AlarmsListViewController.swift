@@ -136,8 +136,8 @@ class AlarmsListViewController: UIViewController {
         // itself (a swallowed read used to become a confident "+350 ₽", #347
         // review). `nil` is a legitimate answer: the sheet then celebrates the
         // habit without quoting money.
-        let saved = StreakModalViewController.estimatedSavings(
-            for: streakDays,
+        let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+            cleanDays: streakDays,
             alarms: viewModel.alarms
         )
         let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved)
@@ -345,8 +345,8 @@ class AlarmsListViewController: UIViewController {
         // (no alarms, unreadable prices, 0 ₽ alarms) it has nothing honest to
         // say, so it stays unmounted rather than printing a made-up figure
         // (#347 review).
-        guard let saved = StreakModalViewController.estimatedSavings(
-            for: streak,
+        guard let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+            cleanDays: streak,
             alarms: viewModel.alarms
         ) else {
             tableView.tableHeaderView = nil

@@ -1,12 +1,11 @@
 import XCTest
 @testable import SnoozePay
 
-/// Tests for the StreakModal copy + savings helpers.
+/// Tests for the StreakModal copy helpers.
 ///
 /// The sheet leads with the money saved and offers a "Поделиться победой" CTA
 /// again (#347, PM decision 2026-07-30), so the caption / headline / share-text
-/// composers and the savings estimator all carry user-visible strings and are
-/// pinned here.
+/// composers carry user-visible strings and are pinned here.
 final class StreakModalCopyTests: XCTestCase {
 
     // MARK: - dayWord declension
@@ -85,7 +84,10 @@ final class StreakModalCopyTests: XCTestCase {
         // `28-streak` shows "+350 ₽" for a 7-day streak — i.e. one week of the
         // default 50 ₽ alarm price.
         let defaultPriced = Alarm(penaltyAmount: 50, progressiveScale: false)
-        let saved = StreakModalViewController.estimatedSavings(for: 7, alarms: [defaultPriced])
+        let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+            cleanDays: 7,
+            alarms: [defaultPriced]
+        )
         XCTAssertEqual(
             saved.map(StreakModalViewController.formatSavedAmount),
             "+350\(MoneyFormatter.narrowSpace)₽"
@@ -110,65 +112,6 @@ final class StreakModalCopyTests: XCTestCase {
             StreakModalViewController.shareText(streakDays: 3, savedAmount: 150)
                 .hasPrefix("Я не откладываю будильник 3 дня ")
         )
-    }
-
-    // MARK: - estimatedSavings
-
-    func testEstimatedSavingsNonPositiveStreakHasNoFigure() {
-        XCTAssertNil(StreakModalViewController.estimatedSavings(for: 0, alarms: []))
-        XCTAssertNil(StreakModalViewController.estimatedSavings(for: -5, alarms: []))
-        let alarm = Alarm(penaltyAmount: 50, progressiveScale: false)
-        XCTAssertNil(StreakModalViewController.estimatedSavings(for: 0, alarms: [alarm]))
-    }
-
-    /// Replaces the pre-review `testEstimatedSavingsDefaultsToFiftyPerDay…`,
-    /// which froze a fabricated 50 ₽/day into the contract. No alarms → no
-    /// prices → no figure the app is entitled to show or share.
-    func testEstimatedSavingsWithoutAlarmsHasNoFigure() {
-        XCTAssertNil(StreakModalViewController.estimatedSavings(for: 7, alarms: []))
-    }
-
-    /// A 0 ₽ alarm is legal (`Alarm` only requires `penaltyAmount >= 0`), and
-    /// "сэкономили 0 ₽" is not a celebration.
-    func testEstimatedSavingsAllFreeAlarmsHasNoFigure() {
-        let free = Alarm(penaltyAmount: 0, progressiveScale: false)
-        XCTAssertNil(StreakModalViewController.estimatedSavings(for: 7, alarms: [free, free]))
-    }
-
-    func testEstimatedSavingsUsesSingleAlarmPenaltyPerDay() {
-        let alarm = Alarm(penaltyAmount: 200, progressiveScale: false)
-        XCTAssertEqual(StreakModalViewController.estimatedSavings(for: 3, alarms: [alarm]), 600)
-    }
-
-    func testEstimatedSavingsAveragesAcrossAlarms() {
-        let cheap = Alarm(penaltyAmount: 50, progressiveScale: false)
-        let pricey = Alarm(penaltyAmount: 150, progressiveScale: false)
-        // (50 + 150) / 2 = 100 ₽/day × 7 days.
-        XCTAssertEqual(
-            StreakModalViewController.estimatedSavings(for: 7, alarms: [cheap, pricey]),
-            700
-        )
-    }
-
-    /// A free alarm alongside a priced one lowers the average honestly — the
-    /// zero is a real price, unlike an unparsable one (which is excluded from
-    /// both numerator and denominator; that path trips `assertionFailure` and
-    /// so can't be exercised from a Debug test run).
-    func testEstimatedSavingsCountsFreeAlarmInTheAverage() {
-        let free = Alarm(penaltyAmount: 0, progressiveScale: false)
-        let priced = Alarm(penaltyAmount: 100, progressiveScale: false)
-        XCTAssertEqual(
-            StreakModalViewController.estimatedSavings(for: 7, alarms: [free, priced]),
-            350
-        )
-    }
-
-    func testEstimatedSavingsScalesLinearlyWithStreakLength() {
-        let alarm = Alarm(penaltyAmount: 50, progressiveScale: false)
-        let week = StreakModalViewController.estimatedSavings(for: 7, alarms: [alarm])
-        let fortnight = StreakModalViewController.estimatedSavings(for: 14, alarms: [alarm])
-        XCTAssertEqual(fortnight, (week ?? 0) * 2)
-        XCTAssertEqual(week, 350)
     }
 
     // MARK: - Mode — when the sheet is allowed to talk about money
