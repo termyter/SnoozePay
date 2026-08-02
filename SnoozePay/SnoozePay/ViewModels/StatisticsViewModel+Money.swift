@@ -23,7 +23,7 @@ extension StatisticsViewModel {
     /// word" — and the states worth noticing (version skew, byte damage to a
     /// `type` string, a half-finished migration) are exactly the ones that
     /// would vanish (#348 verification, finding 3).
-    enum MoneyUnavailableReason: Equatable {
+    enum LedgerUnavailableReason: Equatable {
         /// The ledger threw on decode. `onLoadError` has already fired, so the
         /// user is seeing an alert too — this is the in-card echo of it.
         case ledgerUnreadable

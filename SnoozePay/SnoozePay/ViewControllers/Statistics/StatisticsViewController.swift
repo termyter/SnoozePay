@@ -295,7 +295,7 @@ final class StatisticsViewController: UIViewController {
         // the no-data copy from `SPMore.jsx` (`EmptyStats`, #289), while an
         // unreadable or partially read ledger names that failure and withholds
         // every ledger-derived card (#459).
-        let unavailableReason = viewModel.moneyUnavailableReason
+        let unavailableReason = viewModel.ledgerUnavailableReason
         let isEmpty = unavailableReason != nil || (viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty)
         emptyState.isHidden = !isEmpty
         if let unavailableReason {
@@ -313,25 +313,14 @@ final class StatisticsViewController: UIViewController {
         streakMetaLabel.text = viewModel.lastSlipText
         heatmapView.days = viewModel.heatmapDays
 
-        // "Эта неделя" money summary + "Время подъёма" (#348). Both cards are
-        // gated on having data honest enough to publish:
-        //   • money — the figures are withheld whenever the ledger couldn't be
-        //     read in full. `wakeDays` survives a broken ledger, so without
-        //     this gate every morning would look "clean" and the card would
-        //     invent savings out of a corrupt blob (#348 review, finding 1).
-        //     The card itself stays on screen and names the failure — hiding
-        //     it swapped a visible lie for a silent one (#348 verification).
-        //   • wake time — dropped when no exact wake instants were recorded;
-        //     the alternative would be a fabricated clock reading.
-        if let reason = viewModel.moneyUnavailableReason {
-            weekMoneyCard.applyUnavailable(reason.message)
-        } else {
-            weekMoneyCard.apply(
-                days: viewModel.weekMoneyDays,
-                summary: viewModel.weekMoneySummary,
-                savingsNote: viewModel.savingsNote
-            )
-        }
+        // "Эта неделя" money summary + "Время подъёма" (#348). The enclosing
+        // state column already withheld this whole content for an unavailable
+        // ledger; wake time alone is dropped when no exact instants exist.
+        weekMoneyCard.apply(
+            days: viewModel.weekMoneyDays,
+            summary: viewModel.weekMoneySummary,
+            savingsNote: viewModel.savingsNote
+        )
         if let wakeStats = viewModel.wakeTimeStats {
             wakeTimeCard.isHidden = false
             wakeTimeCard.apply(wakeStats)

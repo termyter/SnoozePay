@@ -134,9 +134,9 @@ final class StatisticsViewModel {
     /// understate spending (#348 review, finding 1), so the screen withholds
     /// every ledger-derived block and names the failure rather than silently
     /// rendering a plausible-looking zero (#348 verification, finding 3).
-    private(set) var moneyUnavailableReason: MoneyUnavailableReason?
+    private(set) var ledgerUnavailableReason: LedgerUnavailableReason?
     /// Convenience for call sites that only need "can we publish money".
-    var ledgerReadable: Bool { moneyUnavailableReason == nil }
+    var ledgerReadable: Bool { ledgerUnavailableReason == nil }
 
     /// How the snooze price resolved — separates "no alarm to price a morning
     /// with" from "the alarm store is damaged", which used to collapse into
@@ -152,7 +152,7 @@ final class StatisticsViewModel {
     private(set) var weekMoneySummary = MoneySummary.empty
     private(set) var wakeTimeStats: WakeTimeStats?
     /// Every behavioural aggregate is published from the same `loadData()`
-    /// snapshot as the money card. Keeping these stored avoids a midnight
+    /// snapshot as the money summary. Keeping these stored avoids a midnight
     /// split where one card asks `Date()` before the boundary and another
     /// asks after it (#459).
     private(set) var heatmapDays: [HeatmapDay] = []
@@ -211,10 +211,11 @@ final class StatisticsViewModel {
             // unrecognised `type` token decodes to `.unknown` instead of
             // throwing, and every aggregate silently skips those rows. That
             // inflates "Сэкономили" by exactly the days whose charges dropped
-            // out, so it disqualifies the money card just like a hard failure.
+            // out, so it disqualifies every ledger-derived statistic just like
+            // a hard failure.
             let unknownTokens = transactionRepository.lastLoadUnrecognizedTypes
             if unknownTokens.isEmpty {
-                moneyUnavailableReason = nil
+                ledgerUnavailableReason = nil
                 streak = StreakCalculator.currentStreak(
                     transactions: allTransactions,
                     wakeDays: capturedWakeDays,
@@ -222,7 +223,7 @@ final class StatisticsViewModel {
                     calendar: calendar
                 )
             } else {
-                moneyUnavailableReason = .ledgerPartiallyRead
+                ledgerUnavailableReason = .ledgerPartiallyRead
                 // An unrecognised row might be a skipped charge. Do not
                 // promote an uncertain streak into the persisted best record.
                 streak = 0
@@ -231,7 +232,7 @@ final class StatisticsViewModel {
                 // string, or a half-finished migration all land here.
                 AppLogger.repository.error(
                     """
-                    [\(Self.partialLedgerErrorID, privacy: .public)] Money card suppressed: \
+                    [\(Self.partialLedgerErrorID, privacy: .public)] Statistics suppressed: \
                     ledger carries \(unknownTokens.count, privacy: .public) unrecognised \
                     type token(s): \(unknownTokens.sorted().joined(separator: ","), privacy: .public)
                     """
@@ -258,13 +259,13 @@ final class StatisticsViewModel {
 
     /// Collapses every ledger-derived figure to its "we don't know" value.
     /// Zeroing `charges` alone used to leave `ledgerReadable == true`, which
-    /// let the money card render "Потратили 0 ₽" off a ledger it never
-    /// managed to read (#348 review, finding 1).
+    /// let a heatmap, streak or money total render from a ledger it never
+    /// managed to read (#348 review, finding 1; #459).
     private func resetLedgerState() {
         charges = []
         attemptedSnoozeDays = []
         streak = 0
-        moneyUnavailableReason = .ledgerUnreadable
+        ledgerUnavailableReason = .ledgerUnreadable
     }
 
     /// Reads the alarms that price a saved morning.

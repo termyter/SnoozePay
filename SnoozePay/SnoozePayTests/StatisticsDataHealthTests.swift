@@ -1,13 +1,13 @@
 import XCTest
 @testable import SnoozePay
 
-/// Tests for the honesty gates on the "ЭТА НЕДЕЛЯ" card (#348 + its review
-/// and verification rounds).
+/// Tests for the honesty gates on the whole ledger-derived statistics screen
+/// (#348 + its review rounds, expanded by #459).
 ///
-/// The screen makes a *money* claim, so every degraded input has to resolve
-/// to one of three outcomes, never to a plausible-looking number:
-///   1. Ledger unreadable / partially read → figures withheld, and the card
-///      says which failure it hit (it must not silently disappear).
+/// The screen makes money and behavioural claims, so every degraded input has
+/// to resolve to one of three outcomes, never to a plausible-looking number:
+///   1. Ledger unreadable / partially read → figures and behavioural
+///      aggregates withheld; the state column says which failure it hit.
 ///   2. Snooze price unresolvable → "—" plus the reason, and the reason
 ///      distinguishes "no priced alarm" from "alarm store damaged".
 ///   3. A legitimate zero → printed, with a sentence so it doesn't read as a
@@ -78,7 +78,7 @@ final class StatisticsDataHealthTests: XCTestCase {
         viewModel.loadData()
 
         XCTAssertTrue(surfacedError)
-        XCTAssertEqual(viewModel.moneyUnavailableReason, .ledgerUnreadable)
+        XCTAssertEqual(viewModel.ledgerUnavailableReason, .ledgerUnreadable)
         XCTAssertTrue(viewModel.weekMoneySummary.isEmpty,
             "No money statement may be built on a ledger we couldn't read")
         XCTAssertNil(viewModel.weekMoneySummary.saved)
@@ -114,6 +114,7 @@ final class StatisticsDataHealthTests: XCTestCase {
         wakeStore.recordWake(on: Date(), calendar: calendar)
         let ledger = [Transaction(type: .unknown("teleport"), amount: 50, createdAt: Date())]
         testDefaults.set(try JSONEncoder().encode(ledger), forKey: "stored_transactions")
+        testDefaults.set(7, forKey: "best_streak")
 
         let viewModel = makeVM()
         var surfacedError = false
@@ -121,10 +122,10 @@ final class StatisticsDataHealthTests: XCTestCase {
         viewModel.loadData()
 
         XCTAssertFalse(surfacedError, "A tolerated token doesn't throw — that's the danger")
-        XCTAssertEqual(viewModel.moneyUnavailableReason, .ledgerPartiallyRead)
+        XCTAssertEqual(viewModel.ledgerUnavailableReason, .ledgerPartiallyRead)
         XCTAssertEqual(viewModel.streak, 0)
-        XCTAssertEqual(viewModel.bestStreak, 0,
-            "An uncertain streak must never be persisted as the user's record")
+        XCTAssertEqual(viewModel.bestStreak, 7,
+            "An uncertain streak must never modify the user's persisted record")
         XCTAssertTrue(viewModel.weekMoneySummary.isEmpty)
         XCTAssertTrue(viewModel.weekMoneyDays.isEmpty)
         XCTAssertTrue(viewModel.heatmapDays.isEmpty,
@@ -138,9 +139,9 @@ final class StatisticsDataHealthTests: XCTestCase {
     /// The two ledger failures must stay distinguishable: the card prints a
     /// different sentence for each, and for the partial read that sentence is
     /// the only signal the user gets at all (#348 verification, finding 3).
-    func testMoneyUnavailableReason_carriesDistinctUserFacingCopy() {
-        let unreadable = StatisticsViewModel.MoneyUnavailableReason.ledgerUnreadable.message
-        let partial = StatisticsViewModel.MoneyUnavailableReason.ledgerPartiallyRead.message
+    func testLedgerUnavailableReason_carriesDistinctUserFacingCopy() {
+        let unreadable = StatisticsViewModel.LedgerUnavailableReason.ledgerUnreadable.message
+        let partial = StatisticsViewModel.LedgerUnavailableReason.ledgerPartiallyRead.message
 
         XCTAssertFalse(unreadable.isEmpty)
         XCTAssertFalse(partial.isEmpty)
@@ -155,7 +156,7 @@ final class StatisticsDataHealthTests: XCTestCase {
         let viewModel = makeVM()
         viewModel.loadData()
 
-        XCTAssertNil(viewModel.moneyUnavailableReason)
+        XCTAssertNil(viewModel.ledgerUnavailableReason)
         XCTAssertFalse(viewModel.weekMoneySummary.isEmpty)
         XCTAssertEqual(viewModel.weekMoneySummary.saved!, 50, accuracy: 0.0001)
         XCTAssertNil(viewModel.savingsNote, "A priced, readable week needs no explanation")
