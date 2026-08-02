@@ -294,9 +294,14 @@ final class StatisticsViewController: UIViewController {
         // Empty state — no charges and no wake events means the three cards
         // would all read empty, so show the "Пока нечего считать" column
         // instead (`SPMore.jsx` `EmptyStats`, #289).
-        let isEmpty = viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty
+        let unavailableReason = viewModel.moneyUnavailableReason
+        let isEmpty = unavailableReason != nil || (viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty)
         emptyState.isHidden = !isEmpty
-        emptyState.setStreak(viewModel.streak)
+        if let unavailableReason {
+            emptyState.setUnavailable(unavailableReason.message)
+        } else {
+            emptyState.setStreak(viewModel.streak)
+        }
         scrollView.isHidden = isEmpty
         if isEmpty { return }
 

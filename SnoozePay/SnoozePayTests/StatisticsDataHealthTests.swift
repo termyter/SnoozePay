@@ -85,6 +85,27 @@ final class StatisticsDataHealthTests: XCTestCase {
         XCTAssertTrue(viewModel.weekMoneyDays.allSatisfy { $0.saved == nil })
     }
 
+    /// A readable wake store must not turn a broken transaction ledger into a
+    /// plausible behavioural success story. This test would fail if the
+    /// `guard ledgerReadable` in `recomputeSnapshots(today:)` were removed:
+    /// the recorded wake would otherwise yield a `.woke` heatmap cell.
+    func testLoadData_corruptLedger_withWakeHistory_withholdsAllBehaviouralAggregates() {
+        let today = Date()
+        wakeStore.recordWake(on: today, calendar: calendar)
+        testDefaults.set(Data("not json".utf8), forKey: "stored_transactions")
+
+        let viewModel = makeVM()
+        viewModel.loadData()
+
+        XCTAssertFalse(viewModel.ledgerReadable)
+        XCTAssertTrue(viewModel.heatmapDays.isEmpty)
+        XCTAssertTrue(viewModel.weekdayStats.isEmpty)
+        XCTAssertNil(viewModel.worstWeekdayName)
+        XCTAssertTrue(viewModel.weeklyTrend.isEmpty)
+        XCTAssertEqual(viewModel.trendDiff, 0)
+        XCTAssertEqual(viewModel.thisWeekCount, 0)
+    }
+
     /// Since #453 an unrecognised `type` token decodes to `.unknown` instead
     /// of throwing: no alert fires, rows silently drop out of every aggregate,
     /// and "Сэкономили" grows by exactly the days whose charges vanished.

@@ -151,6 +151,15 @@ final class StatisticsViewModel {
     private(set) var weekMoneyDays: [WeekMoneyDay] = []
     private(set) var weekMoneySummary = MoneySummary.empty
     private(set) var wakeTimeStats: WakeTimeStats?
+    /// Every behavioural aggregate is published from the same `loadData()`
+    /// snapshot as the money card. Keeping these stored avoids a midnight
+    /// split where one card asks `Date()` before the boundary and another
+    /// asks after it (#459).
+    private(set) var heatmapDays: [HeatmapDay] = []
+    private(set) var weekdayStats: [WeekdayStat] = []
+    private(set) var worstWeekdayName: String?
+    private(set) var weeklyTrend: [WeekTrendPoint] = []
+    private(set) var trendDiff = 0
 
     var onDataUpdated: (() -> Void)?
     /// Fired when the transaction repository fails to decode the persisted
@@ -228,7 +237,7 @@ final class StatisticsViewModel {
         if streak > defaults.integer(forKey: Self.bestStreakKey) {
             defaults.set(streak, forKey: Self.bestStreakKey)
         }
-        recomputeMoneyAndWakeTime(today: Date())
+        recomputeSnapshots(today: Date())
         onDataUpdated?()
     }
 
@@ -275,14 +284,18 @@ final class StatisticsViewModel {
         }
     }
 
-    /// Rebuilds the money + wake-time snapshots from one `today`, so the bars
-    /// and the totals can never come from two different reads of the clock.
+    /// Rebuilds every statistics snapshot from one `today`, so cards cannot
+    /// come from different reads of the clock. A ledger failure clears every
+    /// transaction-derived value instead of letting an empty `charges` array
+    /// masquerade as a perfect, snooze-free history (#459).
     ///
     /// `today` is a parameter so tests can pin it — see
     /// `testRecompute_barsAndTotalsComeFromTheSameDay`, which drives two
     /// different days through this method to prove the two outputs move
     /// together.
-    func recomputeMoneyAndWakeTime(today: Date) {
+    func recomputeSnapshots(today: Date) {
+        let snoozesByDay = Self.snoozesByDay(charges: charges, calendar: calendar)
+
         weekMoneyDays = Self.weekMoneyDays(
             today: today,
             inputs: MoneyInputs(
@@ -299,6 +312,37 @@ final class StatisticsViewModel {
         wakeTimeStats = Self.wakeTimeStats(
             today: today, wakeTimes: wakeTimes, calendar: calendar
         )
+
+        guard ledgerReadable else {
+            heatmapDays = []
+            weekdayStats = []
+            worstWeekdayName = nil
+            weeklyTrend = []
+            trendDiff = 0
+            return
+        }
+
+        heatmapDays = Self.monthGrid(
+            today: today,
+            snoozesByDay: snoozesByDay,
+            wakeDays: wakeDays,
+            calendar: calendar
+        )
+        let averages = Self.weekdayAverages(
+            today: today, snoozesByDay: snoozesByDay, calendar: calendar
+        )
+        let worst = Self.worstIndex(of: averages)
+        weekdayStats = zip(Self.weekdayShortLabels, averages.indices).map { label, index in
+            WeekdayStat(label: label, average: averages[index], isWorst: index == worst)
+        }
+        worstWeekdayName = worst.map { Self.weekdayFullNames[$0] }
+        let counts = Self.weeklyCounts(
+            today: today, snoozesByDay: snoozesByDay, calendar: calendar
+        )
+        weeklyTrend = counts.enumerated().map { index, count in
+            WeekTrendPoint(count: count, isCurrent: index == counts.count - 1)
+        }
+        trendDiff = Self.trendDiff(weeklyCounts: counts)
     }
 
     // MARK: - Hero (Серия)
@@ -322,18 +366,9 @@ final class StatisticsViewModel {
     /// Weekday header labels for the heatmap grid, Monday-first.
     static let weekdayShortLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
-    /// Calendar grid for the month containing today. Cells run Monday-first,
-    /// row per week, covering full weeks so the count is always a multiple
-    /// of 7 (28–42 cells depending on the month's span).
-    var heatmapDays: [HeatmapDay] {
-        Self.monthGrid(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            wakeDays: wakeDays,
-            calendar: calendar
-        )
-    }
-
+    /// `heatmapDays` is a calendar grid for the snapshot month. Cells run
+    /// Monday-first, one row per week, and cover full weeks so the count is
+    /// always a multiple of 7 (28–42 cells depending on the month's span).
     /// Tooltip payload for a tapped heatmap cell (artboard 27a).
     func tooltip(for day: HeatmapDay) -> HeatmapTooltip {
         HeatmapTooltip(
@@ -346,56 +381,15 @@ final class StatisticsViewModel {
 
     // MARK: - Weekday distribution (last 4 weeks)
 
-    /// 7 bars Monday-first, each the average snooze count for that weekday
-    /// over the trailing 28-day window.
-    var weekdayStats: [WeekdayStat] {
-        let averages = Self.weekdayAverages(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        let worst = Self.worstIndex(of: averages)
-        return zip(Self.weekdayShortLabels, averages.indices).map { label, index in
-            WeekdayStat(label: label, average: averages[index], isWorst: index == worst)
-        }
-    }
-
-    /// Full lowercase name of the worst weekday ("среда"), `nil` when the
-    /// 4-week window carries no snoozes at all.
-    var worstWeekdayName: String? {
-        let averages = Self.weekdayAverages(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        guard let index = Self.worstIndex(of: averages) else { return nil }
-        return Self.weekdayFullNames[index]
-    }
-
+    // `weekdayStats` holds seven Monday-first bars: the average snooze count
+    // per weekday over the snapshot's trailing 28-day window.
+    // `worstWeekdayName` is its full lowercase name ("среда"), or `nil`
+    // when the window carries no snoozes.
     // MARK: - 8-week trend
 
-    /// 8 calendar weeks oldest → newest; the last point is the current week.
-    var weeklyTrend: [WeekTrendPoint] {
-        let counts = Self.weeklyCounts(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        return counts.enumerated().map { index, count in
-            WeekTrendPoint(count: count, isCurrent: index == counts.count - 1)
-        }
-    }
-
+    // `weeklyTrend` holds eight calendar weeks oldest → newest; the last
+    // point is the snapshot's current week.
     /// This week's snoozes minus last week's. Negative = improving.
-    var trendDiff: Int {
-        let counts = Self.weeklyCounts(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        return Self.trendDiff(weeklyCounts: counts)
-    }
-
     var trendDirection: TrendDirection {
         Self.direction(forDiff: trendDiff)
     }
