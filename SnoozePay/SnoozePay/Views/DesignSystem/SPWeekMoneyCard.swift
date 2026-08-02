@@ -44,17 +44,6 @@ final class SPWeekMoneyCard: UIView {
         return label
     }()
 
-    /// Shown instead of the chart + totals when the ledger couldn't be read.
-    /// The card deliberately stays on screen: a card that silently vanishes
-    /// between launches is as dishonest as one that prints made-up money
-    /// (#348 verification, finding 3).
-    private let unavailableLabel: UILabel = {
-        let label = SPSupport.makeMetaLabel(color: AppColors.warn300)
-        label.numberOfLines = 0
-        label.isHidden = true
-        return label
-    }()
-
     private let legendLabel = SPSupport.makeMetaLabel(
         "зелёное — сэкономлено · красное — потеряно"
     )
@@ -103,25 +92,10 @@ final class SPWeekMoneyCard: UIView {
         legendLabel.isHidden = false
         barsView.isHidden = false
         divider.isHidden = false
-        unavailableLabel.isHidden = true
         totalsRow.isHidden = summary.isEmpty
         emptyLabel.isHidden = !summary.isEmpty
         savingsNoteLabel.text = savingsNote
         savingsNoteLabel.isHidden = savingsNote == nil
-    }
-
-    /// Ledger-unavailable state: the title stays, everything numeric goes, and
-    /// `reason` explains which failure hit. Callers pass
-    /// `StatisticsViewModel.MoneyUnavailableReason.message`.
-    func applyUnavailable(_ message: String) {
-        legendLabel.isHidden = true
-        barsView.isHidden = true
-        divider.isHidden = true
-        totalsRow.isHidden = true
-        emptyLabel.isHidden = true
-        savingsNoteLabel.isHidden = true
-        unavailableLabel.isHidden = false
-        unavailableLabel.text = message
     }
 
     private func applyValue(_ label: UILabel, amount: Double?, color: UIColor) {
@@ -147,7 +121,7 @@ final class SPWeekMoneyCard: UIView {
 
         let stack = UIStackView(arrangedSubviews: [
             caps, legendLabel, barsView, divider, totalsRow, savingsNoteLabel,
-            emptyLabel, unavailableLabel
+            emptyLabel
         ])
         stack.axis = .vertical
         stack.alignment = .fill

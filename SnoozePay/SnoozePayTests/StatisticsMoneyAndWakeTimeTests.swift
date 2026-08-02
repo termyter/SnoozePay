@@ -524,7 +524,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
     /// Asserting `moneySummary(days: vm.weekMoneyDays) == vm.weekMoneySummary`
     /// proves nothing — it's the same expression the production code runs, and
     /// it held on the old lazy implementation too. Instead this drives two
-    /// *different* days through `recomputeMoneyAndWakeTime(today:)` and checks
+    /// *different* days through `recomputeSnapshots(today:)` and checks
     /// both outputs moved: a stale total left over from the previous day would
     /// keep `spent` at Monday's value while the bars had already flipped.
     func testRecompute_barsAndTotalsComeFromTheSameDay() {
@@ -536,7 +536,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         let vm = makeVM()
         vm.loadData()
 
-        vm.recomputeMoneyAndWakeTime(today: monday)
+        vm.recomputeSnapshots(today: monday)
         let mondayBars = vm.weekMoneyDays
         let mondayTotals = vm.weekMoneySummary
         XCTAssertEqual(mondayBars[0].spent, 150, accuracy: 0.0001)
@@ -545,7 +545,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
 
         // A week later the charge belongs to the *previous* week, so both the
         // bars and the totals have to drop it — in lockstep.
-        vm.recomputeMoneyAndWakeTime(today: nextMonday)
+        vm.recomputeSnapshots(today: nextMonday)
         XCTAssertEqual(vm.weekMoneyDays[0].spent, 0, accuracy: 0.0001,
             "New week — the old charge is out of range for the bars")
         XCTAssertEqual(vm.weekMoneySummary.spent, 0, accuracy: 0.0001,
@@ -553,4 +553,5 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         XCTAssertNotEqual(vm.weekMoneyDays, mondayBars)
         XCTAssertNotEqual(vm.weekMoneySummary, mondayTotals)
     }
+
 }

@@ -1,11 +1,13 @@
 import UIKit
 
-/// Empty-state column for the behavioural statistics screen (V3 design).
+/// State column for the behavioural statistics screen (V3 design).
 ///
 /// Reference: `docs/design/v2-handoff/components/SPMore.jsx` L447-480
-/// (`EmptyStats`). Shown when the user has no charges and no recorded wake
-/// events — there is nothing to aggregate yet, so the three behavioural cards
-/// would all read empty (audit P2-3 #289).
+/// (`EmptyStats`). It has two modes: it is shown when the user has no charges
+/// and no recorded wake events (there is nothing to aggregate yet, #289), or
+/// when the ledger is unreadable / only partially readable (#459). The latter
+/// withholds the whole ledger-derived screen rather than drawing a false clean
+/// streak from surviving wake events.
 ///
 /// Visual:
 /// ```
@@ -97,12 +99,37 @@ final class SPStatsEmptyState: UIView {
 
     /// Update the streak chip's day count + Russian declension.
     func setStreak(_ days: Int) {
+        restoreEmptyAppearance()
         let word = StreakModalViewController.dayWord(for: days)
         // Canonical term is «Серия», not the «Стрик» anglicism (#318) — the
         // hero card of this same screen already reads «Серия».
         streakChipLabel.text = "Серия · \(days) \(word)"
         // Hide the chip entirely when there is no streak to celebrate.
         streakChip.isHidden = days <= 0
+    }
+
+    /// Replaces the no-data copy when the ledger is unavailable or partially
+    /// readable. This keeps an incomplete history distinct from a genuinely
+    /// new account and prevents a false clean streak.
+    func setUnavailable(_ message: String) {
+        titleLabel.text = "Статистика недоступна"
+        subtitleLabel.text = message
+        iconView.image = UIImage(
+            systemName: "exclamationmark.triangle",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 36, weight: .semibold)
+        )
+        iconView.tintColor = AppColors.warn300
+        streakChip.isHidden = true
+    }
+
+    private func restoreEmptyAppearance() {
+        titleLabel.text = "Пока нечего считать"
+        subtitleLabel.text = "Статистика появится после первой недели использования."
+        iconView.image = UIImage(
+            systemName: "chart.bar.xaxis",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 36, weight: .semibold)
+        )
+        iconView.tintColor = AppColors.money400
     }
 
     // MARK: - Configuration
