@@ -36,9 +36,9 @@ extension UILabel {
     func applyGradientMask(_ gradient: CAGradientLayer) {
         let textBounds = bounds
         guard textBounds.width > 0,
-              textBounds.height > 0,
-              let text, !text.isEmpty,
-              let font else { return }
+              textBounds.height > 0 else { return }
+
+        guard let attributed = gradientAttributedText() else { return }
 
         if gradient.superlayer !== layer {
             layer.addSublayer(gradient)
@@ -49,13 +49,15 @@ extension UILabel {
         paragraph.alignment = textAlignment
         paragraph.lineBreakMode = numberOfLines == 1 ? .byClipping : lineBreakMode
 
-        let attributed = NSMutableAttributedString(
-            string: text,
-            attributes: [
-                .font: font,
-                .foregroundColor: UIColor.white,
-                .paragraphStyle: paragraph
-            ]
+        attributed.addAttribute(
+            .paragraphStyle,
+            value: paragraph,
+            range: NSRange(location: 0, length: attributed.length)
+        )
+        attributed.addAttribute(
+            .foregroundColor,
+            value: UIColor.white,
+            range: NSRange(location: 0, length: attributed.length)
         )
         // Re-font to whatever `adjustsFontSizeToFitWidth` would have shrunk the
         // glyphs to. Same helper (and therefore the same clamping rules) as the
@@ -73,18 +75,7 @@ extension UILabel {
 
         // Vertically centre the drawn run inside the label box the way UILabel
         // does; `draw(with:)` would otherwise top-align it.
-        let fitting = attributed.boundingRect(
-            with: CGSize(width: textBounds.width, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            context: nil
-        ).size
-        let drawHeight = min(ceil(fitting.height), textBounds.height)
-        let drawRect = CGRect(
-            x: 0,
-            y: ((textBounds.height - drawHeight) / 2).rounded(),
-            width: textBounds.width,
-            height: drawHeight
-        )
+        let drawRect = gradientDrawRect(for: attributed, in: textBounds)
 
         let renderer = UIGraphicsImageRenderer(size: textBounds.size)
         let mask = renderer.image { _ in
@@ -99,6 +90,33 @@ extension UILabel {
         maskLayer.contents = mask.cgImage
         gradient.mask = maskLayer
         textColor = .clear
+    }
+
+    private func gradientAttributedText() -> NSMutableAttributedString? {
+        if let source = attributedText, source.length > 0 {
+            return source.mutableCopy() as? NSMutableAttributedString
+                ?? NSMutableAttributedString(attributedString: source)
+        }
+        guard let text, !text.isEmpty, let font else { return nil }
+        return NSMutableAttributedString(string: text, attributes: [.font: font])
+    }
+
+    private func gradientDrawRect(
+        for attributed: NSAttributedString,
+        in textBounds: CGRect
+    ) -> CGRect {
+        let fitting = attributed.boundingRect(
+            with: CGSize(width: textBounds.width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        ).size
+        let height = min(ceil(fitting.height), textBounds.height)
+        return CGRect(
+            x: 0,
+            y: ((textBounds.height - height) / 2).rounded(),
+            width: textBounds.width,
+            height: height
+        )
     }
 
 }

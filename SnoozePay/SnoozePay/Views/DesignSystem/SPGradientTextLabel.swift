@@ -62,6 +62,16 @@ final class SPGradientTextLabel: UILabel {
         }
     }
 
+    override var attributedText: NSAttributedString? {
+        didSet {
+            // A caller can keep the same plain string while changing a run's
+            // font (the balance card does this for the narrower ₽ separator).
+            // The glyph mask must be invalidated for that update as well.
+            appliedKey = nil
+            setNeedsLayout()
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let key = "\(bounds.size)|\(text ?? "")"
