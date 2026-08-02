@@ -278,8 +278,15 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - Init
 
-    init(alarm: Alarm, snoozeCount: Int = 0) {
-        self.viewModel = AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount)
+    convenience init(alarm: Alarm, snoozeCount: Int = 0) {
+        self.init(viewModel: AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount))
+    }
+
+    /// Designated initializer taking a pre-built view model, so tests can pin
+    /// the ledger the summary reads (`wokeMorningContent()`) instead of the
+    /// shared repository. Production call sites use `init(alarm:snoozeCount:)`.
+    init(viewModel: AlarmFiringViewModel) {
+        self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
@@ -535,8 +542,12 @@ class AlarmFiringViewController: UIViewController {
     /// `presentingViewController?.dismiss` on THIS firing VC, unwinding both
     /// screens back to the app.
     @objc func dismissTapped() {
-        let snoozes = viewModel.snoozeCount
-        let charged = viewModel.chargedThisMorning
+        // Read the summary BEFORE `dismiss()` so the numbers describe the wake
+        // that just ended. Both figures come from the ledger (#400) — a snooze
+        // whose trigger the scheduler rejected was refunded, so it must not
+        // inflate either the count or the sum the user is shown. When the
+        // ledger can't be read we say so rather than print a guessed total.
+        let summary = wokeMorningContent()
         viewModel.dismiss()
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
@@ -556,7 +567,7 @@ class AlarmFiringViewController: UIViewController {
         // user would be stranded on the summary with a dead «Закрыть» — fall
         // back to dismissing the summary itself, and log so it isn't swallowed.
         weak var wokeRef: WokeMorningViewController?
-        let woke = WokeMorningViewController(snoozes: snoozes, charged: charged) { [weak self] in
+        let woke = WokeMorningViewController(content: summary) { [weak self] in
             if let presenter = self?.presentingViewController {
                 presenter.dismiss(animated: true)
             } else {
@@ -566,6 +577,29 @@ class AlarmFiringViewController: UIViewController {
         }
         wokeRef = woke
         present(woke, animated: true)
+    }
+
+    /// Copy for the morning summary, chosen from what the ledger could confirm.
+    ///
+    /// ONE `billedSnoozes` read, not `chargedThisMorning` + `billedSnoozeCount`:
+    /// each accessor re-reads the ledger, and a refund landing from the
+    /// scheduler's completion between two reads would print a count and a sum
+    /// taken from different snapshots.
+    ///
+    /// An unreadable ledger maps to the no-figures variant — a summary that
+    /// states a rouble amount nobody verified is worse than one that admits it
+    /// doesn't know (#400). Passing `attempts` lets the copy name a refunded
+    /// snooze instead of quietly showing a billed pair that can't be squared
+    /// with the doubling ladder. `internal` for unit testing.
+    func wokeMorningContent() -> WokeMorningContent {
+        guard case .known(let amounts) = viewModel.billedSnoozes else {
+            return .chargesUnavailable
+        }
+        return WokeMorningContent(
+            snoozes: amounts.count,
+            charged: Int(amounts.reduce(0, +).rounded()),
+            attempts: viewModel.snoozeCount
+        )
     }
 
     // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and

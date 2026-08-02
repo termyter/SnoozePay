@@ -47,14 +47,15 @@ final class WokeMorningViewController: UIViewController {
     // MARK: - Init
 
     /// - Parameters:
-    ///   - snoozes: Times the user snoozed this wake. `0` selects the clean
-    ///     variant; `> 0` the recovered variant.
-    ///   - charged: Roubles charged across those snoozes (whole ₽ for display).
+    ///   - content: Pre-resolved copy. Built by
+    ///     `AlarmFiringViewController.wokeMorningContent()`, which is where the
+    ///     ledger decides between the billed figures and the "we couldn't read
+    ///     it" variant (#400) — this screen only renders what it is handed.
     ///   - onClose: Invoked from «Закрыть». The caller is responsible for
     ///     unwinding the full presentation stack (firing VC + this screen) —
     ///     see `AlarmFiringViewController.dismissTapped()`.
-    init(snoozes: Int, charged: Double, onClose: @escaping () -> Void) {
-        self.content = WokeMorningContent(snoozes: snoozes, charged: Int(charged.rounded()))
+    init(content: WokeMorningContent, onClose: @escaping () -> Void) {
+        self.content = content
         self.onClose = onClose
         super.init(nibName: nil, bundle: nil)
         overrideUserInterfaceStyle = .dark
