@@ -19,12 +19,28 @@ import UIKit
 /// the statistics screen so PM can preview the visual.
 final class AlarmOffWarningViewController: UIViewController {
 
+    // The hero badge caches two `cgColor` payloads — a pain-tinted drop shadow
+    // and the pain gradient fill — and neither re-resolves itself, so it keeps
+    // the dark `#F4523F` after a flip to light where `pain500` is `#9F3529`.
+    private weak var heroBadge: UIView?
+    private weak var heroGradient: CAGradientLayer?
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
         configureLayout()
+        refreshHeroTheme()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (host: AlarmOffWarningViewController, _) in
+            host.refreshHeroTheme()
+        }
+    }
+
+    /// Re-resolve the hero badge's shadow + gradient for the current theme.
+    private func refreshHeroTheme() {
+        heroBadge?.layer.shadowColor = AppColors.pain500.resolvedColor(with: traitCollection).cgColor
+        heroGradient?.colors = SPSupport.painGradientColors(for: traitCollection)
     }
 
     // MARK: - Layout
@@ -124,13 +140,15 @@ final class AlarmOffWarningViewController: UIViewController {
         badge.layer.cornerRadius = AppRadius.lg
         badge.layer.cornerCurve = .continuous
         badge.layer.masksToBounds = false
-        badge.layer.shadowColor = AppColors.pain500.cgColor
+        // `shadowColor` / `gradient.colors` are painted by `refreshHeroTheme()`
+        // so they survive a light/dark flip.
         badge.layer.shadowOpacity = 0.40
         badge.layer.shadowOffset = CGSize(width: 0, height: 16)
         badge.layer.shadowRadius = 24
+        heroBadge = badge
 
         let gradient = CAGradientLayer()
-        gradient.colors = SPSupport.painGradientColors
+        heroGradient = gradient
         gradient.locations = SPSupport.painGradientLocations
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
