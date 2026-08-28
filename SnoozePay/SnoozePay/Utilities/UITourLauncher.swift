@@ -151,7 +151,9 @@ enum UITourLauncher {
     }
 
     private static func createNav(alarm: Alarm?) -> UINavigationController {
-        let nav = UINavigationController(rootViewController: CreateAlarmViewController(alarm: alarm))
+        let nav = AppNavigationBarStyle.makeNavigationController(
+            rootViewController: CreateAlarmViewController(alarm: alarm)
+        )
         nav.modalPresentationStyle = .fullScreen
         return nav
     }

@@ -128,7 +128,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // Alarms tab
         let alarmsVC = AlarmsListViewController()
-        let alarmsNav = UINavigationController(rootViewController: alarmsVC)
+        let alarmsNav = AppNavigationBarStyle.makeNavigationController(rootViewController: alarmsVC)
         alarmsNav.tabBarItem = UITabBarItem(
             title: "Будильники",
             image: UIImage(systemName: "alarm"),
@@ -138,7 +138,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Wallet tab — replaces the legacy Settings tab per V2 design
         // (Settings moved behind a gear icon on Alarms / Wallet headers).
         let walletVC = WalletViewController()
-        let walletNav = UINavigationController(rootViewController: walletVC)
+        let walletNav = AppNavigationBarStyle.makeNavigationController(rootViewController: walletVC)
         // Design-system wallet glyph (SPComponents.jsx `IconWallet`) — a
         // template image, so the appearance's icon colors tint it for both
         // states; no separate "filled" selected variant in the lucide set.
@@ -151,7 +151,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // Statistics tab
         let statsVC = StatisticsViewController()
-        let statsNav = UINavigationController(rootViewController: statsVC)
+        let statsNav = AppNavigationBarStyle.makeNavigationController(rootViewController: statsVC)
         statsNav.tabBarItem = UITabBarItem(
             title: "Статистика",
             image: UIImage(systemName: "chart.bar"),
