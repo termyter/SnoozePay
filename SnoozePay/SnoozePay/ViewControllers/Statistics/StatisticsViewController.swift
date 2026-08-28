@@ -366,7 +366,7 @@ final class StatisticsViewController: UIViewController {
         )
         headline.append(NSAttributedString(
             string: name,
-            attributes: [.font: AppTypography.h3, .foregroundColor: AppColors.pain300]
+            attributes: [.font: AppTypography.h3, .foregroundColor: StatisticsAccentTones.pain]
         ))
         return headline
     }

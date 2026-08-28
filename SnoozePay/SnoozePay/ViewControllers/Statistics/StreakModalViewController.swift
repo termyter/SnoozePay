@@ -53,6 +53,11 @@ final class StreakModalViewController: UIViewController {
 
     // MARK: - Configuration
 
+    /// Traits to resolve anything painted ON the scrim with. The scrim stays
+    /// dark in both themes (see `configureBackdrop`), so its ornaments must
+    /// take the dark-theme value of their token rather than the app's.
+    private static let scrimTrait = UITraitCollection(userInterfaceStyle: .dark)
+
     /// Number of consecutive snooze-free days. Drives the caption + the
     /// completed-square count in the 7-day visualizer.
     private let streakDays: Int
@@ -77,12 +82,23 @@ final class StreakModalViewController: UIViewController {
     /// `viewDidLayoutSubviews` never worked, because the label (sheet → stack →
     /// label) still measures zero when the controller's callback fires (#347
     /// review).
-    private let amountLabel = SPGradientTextLabel(
-        colors: SPSupport.moneyGradientColors,
-        locations: SPSupport.moneyGradientLocations,
-        startPoint: SPSupport.gradientStart,
-        endPoint: SPSupport.gradientEnd
-    )
+    ///
+    /// `lazy` + `performAsCurrent` because the label bakes its stops into
+    /// CGColors at init: as a plain stored property it froze whichever theme
+    /// `UITraitCollection.current` happened to be when the modal was
+    /// allocated, and the dark mint `#2EDB9F` is 2.19:1 on the light sheet.
+    private lazy var amountLabel: SPGradientTextLabel = {
+        var label: SPGradientTextLabel!
+        traitCollection.performAsCurrent {
+            label = SPGradientTextLabel(
+                colors: SPSupport.moneyGradientColors,
+                locations: SPSupport.moneyGradientLocations,
+                startPoint: SPSupport.gradientStart,
+                endPoint: SPSupport.gradientEnd
+            )
+        }
+        return label
+    }()
     private let headlineLabel = UILabel()
     private let bodyLabel = UILabel()
 
@@ -141,6 +157,9 @@ final class StreakModalViewController: UIViewController {
         configureLabels()
         configureButtons()
         layout()
+        // Last, so it wins over the per-widget configuration above: every
+        // CALayer colour on this sheet has to be resolved by hand.
+        refreshLayerColors()
     }
 
     override func viewDidLayoutSubviews() {
@@ -162,7 +181,15 @@ final class StreakModalViewController: UIViewController {
 
     private func configureBackdrop() {
         backdrop.translatesAutoresizingMaskIntoConstraints = false
-        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.92)
+        // Scrim, not a surface: the celebration sheet is meant to float in the
+        // dark in BOTH themes, so this is the brand's deepest background
+        // (`bg0` dark, `#060912`) at 92% rather than a theme-following token.
+        // A light scrim would leave a near-white sheet on a near-white haze
+        // with nothing separating them. Resolved off the token instead of a
+        // black literal so a `tokens.css` bump carries here too.
+        backdrop.backgroundColor = AppColors.bg0
+            .resolvedColor(with: Self.scrimTrait)
+            .withAlphaComponent(0.92)
         view.addSubview(backdrop)
         NSLayoutConstraint.activate([
             backdrop.topAnchor.constraint(equalTo: view.topAnchor),
@@ -171,10 +198,13 @@ final class StreakModalViewController: UIViewController {
             backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
 
-        // Radial money glow as a CAGradientLayer (.radial) above the dim.
+        // Radial money glow as a CAGradientLayer (.radial) above the dim. It is
+        // painted on the scrim, so it takes the scrim's theme: the light
+        // `money400` is `#0B7B56`, a glow that is invisible on 92% black.
         backdropGlow.type = .radial
         backdropGlow.colors = [
-            AppColors.money400.withAlphaComponent(0.30).cgColor,
+            AppColors.money400.resolvedColor(with: Self.scrimTrait)
+                .withAlphaComponent(0.30).cgColor,
             UIColor.clear.cgColor
         ]
         backdropGlow.locations = [0.0, 1.0]
@@ -192,26 +222,40 @@ final class StreakModalViewController: UIViewController {
         sheet.backgroundColor = AppColors.bg2
         sheet.layer.cornerRadius = AppRadius.xl
         sheet.layer.cornerCurve = .continuous
-        sheet.layer.borderColor = AppColors.strokeMoney
-            .resolvedColor(with: traitCollection).cgColor
         sheet.layer.borderWidth = 1
-        sheet.layer.shadowColor = AppColors.money500.cgColor
         sheet.layer.shadowOpacity = 0.30
         sheet.layer.shadowOffset = CGSize(width: 0, height: -12)
         sheet.layer.shadowRadius = 32
         view.addSubview(sheet)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (host: StreakModalViewController, _) in
+            host.refreshLayerColors()
+        }
+    }
+
+    /// Every CGColor the sheet owns, re-resolved. Two different rules apply:
+    /// the border follows the theme (it sits on the sheet), while the outer
+    /// glow does not (it spills onto the always-dark scrim, where the light
+    /// `money500` — `#096647` — would read as a dirty smudge, not a glow).
+    private func refreshLayerColors() {
+        sheet.layer.borderColor = AppColors.strokeMoney
+            .resolvedColor(with: traitCollection).cgColor
+        sheet.layer.shadowColor = AppColors.money500
+            .resolvedColor(with: Self.scrimTrait).cgColor
+        flameBadge.layer.shadowColor = AppColors.money500
+            .resolvedColor(with: traitCollection).cgColor
+        traitCollection.performAsCurrent {
+            flameBadgeGradient.colors = SPSupport.moneyGradientColors
+        }
     }
 
     private func configureFlameBadge() {
         flameBadge.translatesAutoresizingMaskIntoConstraints = false
         flameBadge.layer.cornerRadius = AppRadius.xl
         flameBadge.layer.cornerCurve = .continuous
-        flameBadge.layer.shadowColor = AppColors.money500.cgColor
         flameBadge.layer.shadowOpacity = 0.40
         flameBadge.layer.shadowOffset = CGSize(width: 0, height: 12)
         flameBadge.layer.shadowRadius = 24
 
-        flameBadgeGradient.colors = SPSupport.moneyGradientColors
         flameBadgeGradient.locations = SPSupport.moneyGradientLocations
         flameBadgeGradient.startPoint = SPSupport.gradientStart
         flameBadgeGradient.endPoint = SPSupport.gradientEnd
@@ -241,7 +285,9 @@ final class StreakModalViewController: UIViewController {
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.money300
+                // 12pt caps on the `bg2` sheet: light needs the body step
+                // (6.03:1), `money300` there is 3.02:1.
+                .foregroundColor: StatisticsAccentTones.money
             ]
         )
         capsLabel.textAlignment = .center

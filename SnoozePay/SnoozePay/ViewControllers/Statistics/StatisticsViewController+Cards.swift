@@ -8,6 +8,15 @@ import UIKit
 /// `SPCard`-rooted view ready for insertion into `contentStack`.
 extension StatisticsViewController {
 
+    // MARK: - Constants
+
+    /// Flame badge geometry from the JSX recipe — 56pt square, radius 18.
+    /// Both sit between `AppRadius` steps, so they are named here rather than
+    /// rounded onto a token that would change the artboard.
+    static let flameBadgeSide: CGFloat = 56
+    static let flameBadgeRadius: CGFloat = 18
+    static let flameBadgeIconSize: CGFloat = 26
+
     // MARK: - Hero "Серия" card
 
     /// Top hero card — caps "СЕРИЯ" + huge mono streak count + flame badge
@@ -51,7 +60,7 @@ extension StatisticsViewController {
     /// Top row of the hero card — text column on the left, flame badge on the
     /// right.
     private func makeHeroTopRow() -> UIView {
-        let caps = makeCapsLabel("СЕРИЯ", color: AppColors.warn300)
+        let caps = makeCapsLabel("СЕРИЯ", color: StatisticsAccentTones.warn)
         let numberRow = UIStackView(arrangedSubviews: [streakBigLabel, streakBigWordLabel])
         numberRow.axis = .horizontal
         numberRow.alignment = .firstBaseline
@@ -78,34 +87,53 @@ extension StatisticsViewController {
     private func makeFlameBadge() -> UIView {
         let container = UIView()
         container.translatesAutoresizingMaskIntoConstraints = false
-        container.layer.cornerRadius = 18
+        container.layer.cornerRadius = Self.flameBadgeRadius
         container.layer.masksToBounds = false
-        container.layer.shadowColor = AppColors.warn500.cgColor
         container.layer.shadowOpacity = 0.30
-        container.layer.shadowOffset = CGSize(width: 0, height: 8)
-        container.layer.shadowRadius = 16
+        container.layer.shadowOffset = CGSize(width: 0, height: AppSpacing.sp2)
+        container.layer.shadowRadius = AppSpacing.sp4
 
         let gradient = CAGradientLayer()
-        gradient.colors = SPSupport.warnGradientColors
         gradient.locations = SPSupport.warnGradientLocations
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
-        gradient.cornerRadius = 18
+        gradient.cornerRadius = Self.flameBadgeRadius
         container.layer.insertSublayer(gradient, at: 0)
+
+        // Both the gradient stops and the tinted shadow are CGColors: they
+        // freeze at whatever theme was current when the card was built, and
+        // this card is built once in `viewDidLoad`. Re-resolve on every flip.
+        let applyWarnPalette = { [weak container] in
+            guard let container else { return }
+            container.traitCollection.performAsCurrent {
+                gradient.colors = SPSupport.warnGradientColors
+            }
+            container.layer.shadowColor = AppColors.warn500
+                .resolvedColor(with: container.traitCollection).cgColor
+        }
+        applyWarnPalette()
+        container.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (_: UIView, _) in
+            applyWarnPalette()
+        }
 
         let flame = UIImageView(
             image: UIImage(
                 systemName: "flame.fill",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 26, weight: .semibold)
+                withConfiguration: UIImage.SymbolConfiguration(
+                    pointSize: Self.flameBadgeIconSize, weight: .semibold
+                )
             )
         )
+        // `fgOnWarn` is ink on a SOLID warn fill — white in light, near-black
+        // in dark. Correct here (the badge *is* a solid gradient tile) and
+        // wrong anywhere the warn tone is only a wash.
         flame.tintColor = AppColors.fgOnWarn
         flame.contentMode = .scaleAspectFit
         flame.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(flame)
         NSLayoutConstraint.activate([
-            container.widthAnchor.constraint(equalToConstant: 56),
-            container.heightAnchor.constraint(equalToConstant: 56),
+            container.widthAnchor.constraint(equalToConstant: Self.flameBadgeSide),
+            container.heightAnchor.constraint(equalToConstant: Self.flameBadgeSide),
             flame.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             flame.centerYAnchor.constraint(equalTo: container.centerYAnchor)
         ])
@@ -170,7 +198,8 @@ extension StatisticsViewController {
         let leftColumn = UIStackView(arrangedSubviews: [headlineRow, trendSubtitleLabel])
         leftColumn.axis = .vertical
         leftColumn.alignment = .leading
-        leftColumn.spacing = 2
+        // Half a grid step: the caption and the number below it are one unit.
+        leftColumn.spacing = AppSpacing.sp1 / 2
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
 
         let weekCaption = makeMetaLabel("Эта неделя")
@@ -178,7 +207,7 @@ extension StatisticsViewController {
         let rightColumn = UIStackView(arrangedSubviews: [weekCaption, trendWeekValueLabel])
         rightColumn.axis = .vertical
         rightColumn.alignment = .trailing
-        rightColumn.spacing = 2
+        rightColumn.spacing = AppSpacing.sp1 / 2
         rightColumn.translatesAutoresizingMaskIntoConstraints = false
 
         let summaryRow = UIStackView(arrangedSubviews: [leftColumn, rightColumn])

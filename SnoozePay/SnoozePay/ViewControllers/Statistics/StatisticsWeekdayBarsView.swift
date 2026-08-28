@@ -27,7 +27,9 @@ final class StatisticsWeekdayBarsView: UIView {
     private static let valueHeight: CGFloat = 14
     private static let captionHeight: CGFloat = 14
     private static let rowGap: CGFloat = 6
-    private static let barCornerRadius: CGFloat = 6
+    /// `fileprivate` so the bar itself rounds its gradient to the same radius —
+    /// a private member would be invisible to `WeekdayBarView` below.
+    fileprivate static let barCornerRadius: CGFloat = 6
     private static let zeroBarHeight: CGFloat = 4
     private static let minBarRatio: CGFloat = 0.08
 
@@ -65,8 +67,10 @@ final class StatisticsWeekdayBarsView: UIView {
             valueLabel.font = AppFonts.sans(.bold, 12)
             valueLabel.textAlignment = .center
             valueLabel.text = StatisticsViewModel.barValueText(stat.average)
+            // 12pt bold — small text, so the worst day takes the light
+            // theme's body step rather than the decorative 300 (3.01:1).
             valueLabel.textColor = stat.isWorst
-                ? AppColors.pain300
+                ? StatisticsAccentTones.pain
                 : (stat.average == 0 ? AppColors.fg4 : AppColors.fg2)
             addSubview(valueLabel)
 
@@ -141,22 +145,37 @@ private final class WeekdayBarView: UIView {
 
     private let gradient = CAGradientLayer()
     private let dashLayer = CAShapeLayer()
+    private var isWorst = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        layer.cornerRadius = 6
+        layer.cornerRadius = StatisticsWeekdayBarsView.barCornerRadius
         layer.cornerCurve = .continuous
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
-        gradient.colors = SPSupport.painGradientColors
         gradient.locations = SPSupport.painGradientLocations
-        gradient.cornerRadius = 6
+        gradient.cornerRadius = StatisticsWeekdayBarsView.barCornerRadius
         layer.addSublayer(gradient)
 
         dashLayer.fillColor = UIColor.clear.cgColor
         dashLayer.lineWidth = 1.5
         dashLayer.lineDashPattern = [4, 3]
         layer.addSublayer(dashLayer)
+
+        refreshPalette()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (bar: WeekdayBarView, _) in
+            bar.refreshPalette()
+        }
+    }
+
+    /// Gradient stops and the tinted shadow are CGColors — they don't follow
+    /// a theme flip on their own.
+    private func refreshPalette() {
+        traitCollection.performAsCurrent {
+            gradient.colors = SPSupport.painGradientColors
+        }
+        guard isWorst else { return }
+        layer.shadowColor = AppColors.pain500.resolvedColor(with: traitCollection).cgColor
     }
 
     required init?(coder: NSCoder) {
@@ -164,14 +183,15 @@ private final class WeekdayBarView: UIView {
     }
 
     func apply(isWorst: Bool, isZero: Bool) {
+        self.isWorst = isWorst
         gradient.isHidden = !isWorst
         dashLayer.isHidden = !isZero
         backgroundColor = (isWorst || isZero) ? .clear : AppColors.whiteOverlay12
         if isWorst {
-            layer.shadowColor = AppColors.pain500.cgColor
             layer.shadowOpacity = 0.30
-            layer.shadowOffset = CGSize(width: 0, height: 4)
+            layer.shadowOffset = CGSize(width: 0, height: AppSpacing.sp1)
             layer.shadowRadius = 7
+            refreshPalette()
         } else {
             layer.shadowOpacity = 0
         }
