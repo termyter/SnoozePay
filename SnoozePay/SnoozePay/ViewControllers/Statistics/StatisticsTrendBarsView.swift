@@ -84,15 +84,22 @@ final class StatisticsTrendBarsView: UIView {
 private final class TrendBarView: UIView {
 
     private let gradient = CAGradientLayer()
+    private var isCurrent = false
+    private var direction: StatisticsViewModel.TrendDirection = .same
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        layer.cornerRadius = 4
+        layer.cornerRadius = AppSpacing.sp1
         layer.cornerCurve = .continuous
         layer.masksToBounds = true
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         layer.insertSublayer(gradient, at: 0)
+        // CAGradientLayer holds resolved CGColors; without this the current
+        // week's bar keeps the palette of the theme it was built under.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (bar: TrendBarView, _) in
+            bar.refreshPalette()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -103,25 +110,33 @@ private final class TrendBarView: UIView {
         point: StatisticsViewModel.WeekTrendPoint,
         direction: StatisticsViewModel.TrendDirection
     ) {
-        guard point.isCurrent else {
+        isCurrent = point.isCurrent
+        self.direction = direction
+        refreshPalette()
+    }
+
+    private func refreshPalette() {
+        guard isCurrent else {
             gradient.isHidden = true
             backgroundColor = AppColors.whiteOverlay12
             return
         }
-        switch direction {
-        case .better:
-            gradient.isHidden = false
-            gradient.colors = SPSupport.moneyGradientColors
-            gradient.locations = SPSupport.moneyGradientLocations
-            backgroundColor = .clear
-        case .worse:
-            gradient.isHidden = false
-            gradient.colors = SPSupport.painGradientColors
-            gradient.locations = SPSupport.painGradientLocations
-            backgroundColor = .clear
-        case .same:
-            gradient.isHidden = true
-            backgroundColor = AppColors.whiteOverlay24
+        traitCollection.performAsCurrent {
+            switch direction {
+            case .better:
+                gradient.isHidden = false
+                gradient.colors = SPSupport.moneyGradientColors
+                gradient.locations = SPSupport.moneyGradientLocations
+                backgroundColor = .clear
+            case .worse:
+                gradient.isHidden = false
+                gradient.colors = SPSupport.painGradientColors
+                gradient.locations = SPSupport.painGradientLocations
+                backgroundColor = .clear
+            case .same:
+                gradient.isHidden = true
+                backgroundColor = AppColors.whiteOverlay24
+            }
         }
     }
 
