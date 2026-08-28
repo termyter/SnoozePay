@@ -69,6 +69,21 @@ final class SnoozeSliderCell: UITableViewCell {
         return label
     }()
 
+    /// Range bound labels under the track — «1 мин» / «15 мин» (SPScreensV2.jsx
+    /// :567-570, `fg4` meta) so the slider's extents are legible at a glance.
+    private static func makeBoundLabel(_ text: String, alignment: NSTextAlignment) -> UILabel {
+        let label = UILabel()
+        label.text = text
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg4
+        label.textAlignment = alignment
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
+
+    private lazy var minBoundLabel = Self.makeBoundLabel("\(Self.minMinutes) мин", alignment: .left)
+    private lazy var maxBoundLabel = Self.makeBoundLabel("\(Self.maxMinutes) мин", alignment: .right)
+
     // MARK: - Callbacks
 
     /// Fires whenever the slider settles on a new (integer) minute value
@@ -97,6 +112,8 @@ final class SnoozeSliderCell: UITableViewCell {
         contentView.addSubview(hintLabel)
         contentView.addSubview(slider)
         contentView.addSubview(valueLabel)
+        contentView.addSubview(minBoundLabel)
+        contentView.addSubview(maxBoundLabel)
 
         NSLayoutConstraint.activate([
             captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
@@ -114,7 +131,13 @@ final class SnoozeSliderCell: UITableViewCell {
             slider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
             slider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
             slider.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
-            slider.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
+
+            // Range bounds under the track (space-between, marginTop 8 in JSX).
+            minBoundLabel.leadingAnchor.constraint(equalTo: slider.leadingAnchor),
+            minBoundLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: AppSpacing.sm),
+            maxBoundLabel.trailingAnchor.constraint(equalTo: slider.trailingAnchor),
+            maxBoundLabel.firstBaselineAnchor.constraint(equalTo: minBoundLabel.firstBaselineAnchor),
+            minBoundLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
         ])
     }
 

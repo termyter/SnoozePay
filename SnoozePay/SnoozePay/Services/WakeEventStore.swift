@@ -24,6 +24,17 @@ final class WakeEventStore {
     /// (each normalised to `startOfDay`).
     private let key = "wake_days"
 
+    /// UserDefaults key holding the JSON-encoded `[Date]` of the *exact*
+    /// wake instants — one per calendar day, the first dismissal of that
+    /// morning (#348, "ВРЕМЯ ПОДЪЁМА" card).
+    ///
+    /// Written alongside `wake_days` rather than replacing it: the heatmap
+    /// and the streak only ever ask "did the user get up that day", and
+    /// re-deriving days from timestamps would break every install that
+    /// recorded wakes before this key existed. Days written before #348
+    /// simply carry no timestamp, so the wake-time card ignores them.
+    private let timesKey = "wake_times"
+
     /// Days older than this are pruned on write — the statistics screen only
     /// ever looks back a few months, and an unbounded array would grow by one
     /// entry per morning forever.
@@ -50,7 +61,12 @@ final class WakeEventStore {
     // MARK: - Write
 
     /// Records that the user woke up (dismissed an alarm) on the given date.
-    /// Stored per calendar day — repeat dismissals on the same day dedupe.
+    /// Stored per calendar day — repeat dismissals on the same day dedupe,
+    /// so the persisted timestamp is the *first* dismissal of that morning
+    /// (the actual "подъём"; later dismissals are naps / other alarms).
+    ///
+    /// Callers keep passing a plain `Date` — the exact instant is captured
+    /// here, which is why no firing-flow call site had to change for #348.
     func recordWake(on date: Date = Date(), calendar: Calendar = .current) {
         let day = calendar.startOfDay(for: date)
         queue.sync {
@@ -58,13 +74,19 @@ final class WakeEventStore {
             guard !days.contains(day) else { return }
             days.insert(day)
 
+            var times = readAllTimes()
+            times.append(date)
+
             // Prune anything beyond the retention window so the blob stays
             // bounded. Pruning keys off "now", not the recorded date, so a
             // backdated test fixture can still round-trip recent history.
             if let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: Date()) {
-                days = days.filter { $0 >= calendar.startOfDay(for: cutoff) }
+                let cutoffDay = calendar.startOfDay(for: cutoff)
+                days = days.filter { $0 >= cutoffDay }
+                times = times.filter { $0 >= cutoffDay }
             }
             persist(days)
+            persistTimes(times)
         }
     }
 
@@ -76,6 +98,14 @@ final class WakeEventStore {
     /// would be overkill here; the heatmap degrades to "не было будильника".
     func wakeDays() -> Set<Date> {
         queue.sync { readAll() }
+    }
+
+    /// Exact wake instants, ascending, one per recorded morning (#348).
+    /// Empty for installs that only ever wrote the legacy day-granular blob —
+    /// the "ВРЕМЯ ПОДЪЁМА" card then honestly renders nothing rather than
+    /// inventing a time from a bare calendar day.
+    func wakeTimes() -> [Date] {
+        queue.sync { readAllTimes().sorted() }
     }
 
     // MARK: - Private (must be called inside queue.sync)
@@ -90,6 +120,33 @@ final class WakeEventStore {
                 log: Self.log, type: .error, String(describing: error)
             )
             return []
+        }
+    }
+
+    private func readAllTimes() -> [Date] {
+        guard let data = defaults.data(forKey: timesKey) else { return [] }
+        do {
+            return try JSONDecoder().decode([Date].self, from: data)
+        } catch {
+            os_log(
+                "Decode failed, wake times degrade to empty: %{public}@",
+                log: Self.log, type: .error, String(describing: error)
+            )
+            return []
+        }
+    }
+
+    private func persistTimes(_ times: [Date]) {
+        do {
+            let data = try JSONEncoder().encode(times.sorted())
+            defaults.set(data, forKey: timesKey)
+        } catch {
+            // Same policy as `persist(_:)` — keep the previous blob rather
+            // than erasing legitimate history on a transient encode failure.
+            os_log(
+                "Encode failed, previous wake times preserved: %{public}@",
+                log: Self.log, type: .error, String(describing: error)
+            )
         }
     }
 

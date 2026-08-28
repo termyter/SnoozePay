@@ -9,13 +9,15 @@ import UIKit
 /// tapping through the UI (no UI-automation tooling required).
 ///
 /// Optional arguments:
+///   `-uitour-reset`          wipe persisted alarms before mounting (clean state)
 ///   `-uitour-seed`           seed demo alarms / transactions / wake history
 ///   `-uitour-balance <n>`    force balance to exactly n ₽ (via service APIs)
 ///   `-uitour-theme <id>`     firing-screen theme: dawn|ocean|mountains|forest|neon|abstract
 ///
 /// Supported screens: onboarding, permissions, alarms, wallet, stats,
 /// settings, create, edit, theme-picker, sound-picker, volume-picker,
-/// confirm-delete, firing, firing-snoozed, firing-nobalance, firing-topup,
+/// confirm-delete, firing, firing-snoozed, firing-progressive,
+/// firing-nobalance, firing-topup,
 /// txhistory, periodpicker, deposit, streak.
 enum UITourLauncher {
 
@@ -24,6 +26,7 @@ enum UITourLauncher {
     // MARK: - Mounting
 
     static func mount(_ screen: String, in window: UIWindow) {
+        resetIfRequested()
         seedIfRequested()
         // Unknown screen id — land on the alarms tab so the audit
         // screenshot makes the mistake obvious instead of hanging.
@@ -35,7 +38,21 @@ enum UITourLauncher {
     /// keeps `mount` trivially simple for the linter and makes the supported
     /// screen list greppable in one place.
     private static let mounters: [String: (UIWindow) -> Void] = [
-        "onboarding": { $0.rootViewController = OnboardingViewController() },
+        "onboarding": { window in
+            // Mirror SceneDelegate's onboarding → permissions → main tab bar
+            // chain so an e2e walk can run the whole first-launch journey end
+            // to end (the production wiring lives in SceneDelegate, which the
+            // -uitour direct mount bypasses).
+            let onboarding = OnboardingViewController()
+            onboarding.onFinished = { [weak window] in
+                let permissions = PermissionsViewController()
+                permissions.onFinished = { [weak window] in
+                    window?.rootViewController = SceneDelegate.makeMainTabBar()
+                }
+                window?.rootViewController = permissions
+            }
+            window.rootViewController = onboarding
+        },
         "permissions": { $0.rootViewController = PermissionsViewController() },
         "alarms": { $0.rootViewController = tabBar(selected: 0) },
         "wallet": { $0.rootViewController = tabBar(selected: 1) },
@@ -69,6 +86,9 @@ enum UITourLauncher {
             presentLater(ConfirmDeleteAlarmViewController(), over: nav)
         },
         "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
+        "firing-progressive": {
+            $0.rootViewController = AlarmFiringViewController(alarm: progressiveFiringAlarm())
+        },
         "firing-snoozed": {
             $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm(), snoozeCount: 2)
         },
@@ -98,7 +118,13 @@ enum UITourLauncher {
         "streak": { window in
             let root = tabBar(selected: 2)
             window.rootViewController = root
-            presentLater(StreakModalViewController(streakDays: 7), over: root)
+            // Fixed 7 days / 350 ₽ — the `28-streak` artboard's numbers, so the
+            // audit screenshot doesn't depend on whatever alarms the tour
+            // device happens to hold.
+            presentLater(
+                StreakModalViewController(streakDays: 7, savedAmount: 350),
+                over: root
+            )
         }
     ]
 
@@ -162,19 +188,34 @@ enum UITourLauncher {
     }
 
     /// The firing-screen sample, anchored to the CURRENT time rather than a
-    /// fixed 07:30. A firing alarm is, by definition, ringing *now* — and the
-    /// snoozed-state countdown derives the next ring from the alarm's HH:MM on
-    /// today (`AlarmFiringViewModel.nextRingDate`). With a fixed 07:30 time the
-    /// snooze target lands in the past whenever the tour runs later in the day,
-    /// so `secondsUntilNextRing == 0` and the snoozed chrome never installs.
-    /// Pinning the time to now keeps the snooze countdown positive — both for
-    /// realistic screenshots and for the e2e firing→snooze→wake UI test.
+    /// fixed 07:30. A firing alarm is, by definition, ringing *now*. The
+    /// snoozed-state countdown now anchors to the snooze-tap moment
+    /// (`AlarmFiringViewModel.nextRingDate` = tap + snoozeMinutes, issue #396),
+    /// so the countdown stays positive regardless of the alarm's HH:MM — but a
+    /// now-anchored time still keeps the firing clock and "ringing now" framing
+    /// realistic for screenshots and the e2e firing→snooze→wake UI test.
     private static func firingSampleAlarm() -> Alarm {
         Alarm(
             time: Date(),
             repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
             name: "Работа",
             penaltyAmount: 50,
+            theme: requestedTheme()
+        )
+    }
+
+    /// A progressive-scale variant of the firing sample. Used by the
+    /// `firing-progressive` screen so the snoozed-state progressive pill
+    /// («N-й поспать ещё») and the growing charge ladder render for the e2e
+    /// progressive-snooze test. Anchored to `Date()` for the same
+    /// positive-countdown reason as `firingSampleAlarm()`.
+    private static func progressiveFiringAlarm() -> Alarm {
+        Alarm(
+            time: Date(),
+            repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
+            name: "Спортзал",
+            penaltyAmount: 50,
+            progressiveScale: true,
             theme: requestedTheme()
         )
     }
@@ -191,6 +232,18 @@ enum UITourLauncher {
     }
 
     // MARK: - Seeding
+
+    /// `-uitour-reset` — wipe persisted alarms before mounting so a flow that
+    /// asserts on list contents (e.g. the create-alarm e2e) starts from a known
+    /// empty state. Simulator `UserDefaults` survive across `app.launch()`, so
+    /// without this a previous run's alarms leak into the next test's counts.
+    private static func resetIfRequested() {
+        guard ProcessInfo.processInfo.arguments.contains("-uitour-reset") else { return }
+        let repo = AlarmRepository.shared
+        for alarm in repo.fetchAll() {
+            _ = repo.delete(id: alarm.id)
+        }
+    }
 
     private static func seedIfRequested() {
         if ProcessInfo.processInfo.arguments.contains("-uitour-seed") {
@@ -243,10 +296,18 @@ enum UITourLauncher {
         let calendar = Calendar.current
         // Wake on ~2 of every 3 of the last 45 days — enough texture for the
         // heatmap, weekday bars and the 8-week trend to render all states.
+        //
+        // The recorded instant matters since #348: wake times drift ~1 min
+        // earlier per day into the past, so the trailing two weeks average
+        // out visibly earlier than the two before them and the "Раньше на N
+        // мин" column has something honest to show in the tour.
         for daysAgo in 0...45 where daysAgo % 3 != 1 {
-            if let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) {
-                store.recordWake(on: date)
-            }
+            guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) else { continue }
+            let minutesLater = daysAgo + (daysAgo % 7) * 3
+            let wakeTime = calendar.date(
+                bySettingHour: 6, minute: 45, second: 0, of: day
+            ).flatMap { calendar.date(byAdding: .minute, value: minutesLater, to: $0) }
+            store.recordWake(on: wakeTime ?? day)
         }
     }
 

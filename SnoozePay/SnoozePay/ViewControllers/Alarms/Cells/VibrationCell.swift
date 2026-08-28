@@ -50,6 +50,11 @@ final class VibrationCell: UITableViewCell {
         backgroundColor = AppColors.bg1
         selectionStyle = .none
         toggle.translatesAutoresizingMaskIntoConstraints = false
+        // Without this VoiceOver announces the brand `SPSwitch` as the generic
+        // "Переключатель"; the adjacent title reads separately but the switch
+        // itself carries no context. Mirror AlarmCell's contextual-label pattern
+        // (#425) so the control is self-describing.
+        toggle.accessibilityLabel = titleLabel.text
 
         contentView.addSubview(iconView)
         contentView.addSubview(titleLabel)

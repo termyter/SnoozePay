@@ -66,15 +66,15 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// (#297). Labels / hints follow `SPTopUp.jsx:106-108`.
     static let defaultPresets: [Preset] = [
         Preset(
-            productID: "com.snooze_pay.balance.149",
+            productID: "io.mobilife.snoozepay.balance.149",
             label: "+1 откладывание", hint: "ровно на сейчас", popular: false
         ),
         Preset(
-            productID: "com.snooze_pay.balance.499",
+            productID: "io.mobilife.snoozepay.balance.499",
             label: "+несколько", hint: "на пару дней", popular: true
         ),
         Preset(
-            productID: "com.snooze_pay.balance.999",
+            productID: "io.mobilife.snoozepay.balance.999",
             label: "+неделя", hint: "забыть про баланс", popular: false
         )
     ].compactMap { $0 }
@@ -583,8 +583,11 @@ extension FiringTopUpBottomSheetViewController {
             }
         } else {
             let pid = preset.productID
+            #if DEBUG
+            // DEBUG/simulator without a loaded StoreKit catalogue: credit
+            // locally so the flow stays testable without ASC products.
             AppLogger.storeKit.notice(
-                "FiringTopUpSheet: product \(pid, privacy: .public) not loaded — falling back to BalanceService.topUp"
+                "FiringTopUpSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
             )
             let amount = Double(preset.amount)
             if BalanceService.shared.topUp(amount: amount) {
@@ -592,6 +595,13 @@ extension FiringTopUpBottomSheetViewController {
             } else {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
+            #else
+            // Release: never credit without a real StoreKit transaction.
+            AppLogger.storeKit.error(
+                "FiringTopUpSheet: product \(pid, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
+            )
+            handlePurchaseFailure(message: "Не удалось загрузить пакеты пополнения. Попробуйте позже.")
+            #endif
         }
     }
 

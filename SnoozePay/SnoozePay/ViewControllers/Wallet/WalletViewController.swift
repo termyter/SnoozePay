@@ -40,6 +40,13 @@ final class WalletViewController: UIViewController {
         action: #selector(presentDepositSheet)
     )
 
+    /// Dedupe latch so the balance-corruption alert fires once per episode
+    /// even though `viewWillAppear` runs on every tab switch (and the live
+    /// notification + the pulled cold-start state could otherwise double-fire).
+    /// Reset after the user acknowledges so a future re-corruption surfaces
+    /// again. Mirrors `AlarmsListViewModel.hasSurfacedBalanceCorruption` (#206).
+    private var hasSurfacedBalanceCorruption = false
+
     // MARK: - Init
 
     init() {
@@ -85,6 +92,18 @@ final class WalletViewController: UIViewController {
             name: BalanceService.balanceChangedNotification,
             object: nil
         )
+        // Wallet is the primary balance/top-up surface — it must surface a
+        // corrupt `user_balance` (negative / NaN / infinite), which clamps to
+        // `0` in `BalanceService.balance` and would otherwise render as a
+        // silent "0 ₽" with no recovery path (#419). Covers corruption that
+        // latches while this VC is alive; cold-start corruption is pulled in
+        // `viewWillAppear` since NotificationCenter doesn't retro-deliver (#206).
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(balanceCorrupted),
+            name: BalanceService.balanceCorruptedNotification,
+            object: nil
+        )
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -95,6 +114,10 @@ final class WalletViewController: UIViewController {
         // here re-hides it.
         navigationController?.setNavigationBarHidden(true, animated: animated)
         refresh()
+        // Pull corruption latched BEFORE this VC observed it (cold start: the
+        // BalanceService init-time probe posts with no listener attached, and
+        // NotificationCenter drops it for late subscribers — #206).
+        surfacePendingBalanceCorruption()
     }
 
     // MARK: - Layout
@@ -173,28 +196,79 @@ final class WalletViewController: UIViewController {
     private func refresh() {
         let balance = BalanceService.shared.balance
         let decimal = Decimal(balance)
-        let delta = WalletStats.weeklyDelta()
+        // Checked read so a corrupt ledger drives the error banner instead of
+        // the lossy `fetchAll()` rendering a deceptive empty preview (#419).
+        // Shared across the delta, the chart and the preview so a single
+        // decode failure classifies all three the same way.
+        let load = WalletLedgerLoad.load(from: TransactionRepository.shared)
+        let transactions = load.transactions
+        let delta = load.didFail ? nil : WalletStats.weeklyDelta(from: transactions)
         let hint = WalletHints.affordHint(forBalance: balance, averagePrice: 50)
         balanceCard.update(balance: decimal, delta: delta, hint: hint)
-        weeklyChart.update(values: WalletStats.weeklyPenaltyTotals())
-        rebuildTxPreview()
+        weeklyChart.update(values: WalletStats.weeklyPenaltyTotals(from: transactions))
+        rebuildTxPreview(load: load)
     }
 
-    private func rebuildTxPreview() {
+    private func rebuildTxPreview(load: WalletLedgerLoad) {
         for sub in txPreviewHost.arrangedSubviews {
             txPreviewHost.removeArrangedSubview(sub)
             sub.removeFromSuperview()
         }
+        guard !load.didFail else {
+            txPreviewHost.addArrangedSubview(makeTxPreviewErrorCard())
+            return
+        }
         let items = WalletTransactionPreview.items(
-            from: TransactionRepository.shared.fetchAll(),
+            from: load.transactions,
             alarmLookup: { AlarmRepository.shared.fetch(id: $0) }
         )
         txPreviewHost.addArrangedSubview(makeTxPreviewCard(items: items))
     }
 
+    // MARK: - Balance corruption (#119 / #206 / #419)
+
+    @objc private func balanceCorrupted(_ note: Notification) {
+        let raw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double
+        DispatchQueue.main.async { [weak self] in
+            self?.surfaceBalanceCorruption(rawValue: raw)
+        }
+    }
+
+    /// Pulls corruption state latched before this VC attached its observer.
+    private func surfacePendingBalanceCorruption() {
+        guard BalanceService.shared.balanceCorrupted else { return }
+        surfaceBalanceCorruption(rawValue: BalanceService.shared.corruptedRawValue)
+    }
+
+    private func surfaceBalanceCorruption(rawValue: Double?) {
+        guard !hasSurfacedBalanceCorruption else { return }
+        hasSurfacedBalanceCorruption = true
+
+        let alert = UIAlertController(
+            title: "Баланс повреждён",
+            message: "Сохранённый баланс некорректен и был сброшен в ноль. "
+                + "Пополнения временно недоступны, пока вы не подтвердите сброс.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive) { [weak self] _ in
+            BalanceService.shared.acknowledgeCorruption()
+            // Allow a future re-corruption episode to surface a fresh alert.
+            self?.hasSurfacedBalanceCorruption = false
+            self?.refresh()
+        })
+        alert.addAction(UIAlertAction(title: "Позже", style: .cancel) { [weak self] _ in
+            // Keep the gate visible: a dismissed alert must still re-prompt on
+            // the next appearance until the user resets.
+            self?.hasSurfacedBalanceCorruption = false
+        })
+        present(alert, animated: true)
+    }
+
     // MARK: - Navigation
 
     @objc private func presentDepositSheet() {
+        // Guard against double-present from a fast double-tap (#389).
+        guard presentedViewController == nil else { return }
         let sheet = DepositBottomSheetViewController()
         present(sheet, animated: true)
     }
@@ -218,12 +292,17 @@ enum WalletStats {
 
     /// Net change over the last 7 days. Positive = the user added more
     /// than they paid in penalties; negative = penalties dominated.
-    static func weeklyDelta() -> Decimal? {
+    ///
+    /// Takes a pre-loaded, decode-checked transaction list (#419) so the
+    /// caller's single `WalletLedgerLoad` drives the delta, the chart and the
+    /// preview together — a corrupt ledger surfaces a banner instead of these
+    /// reading a lossy `fetchAll()` and silently rendering a zero delta.
+    static func weeklyDelta(from transactions: [Transaction]) -> Decimal? {
         let calendar = Calendar.current
         guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) else {
             return nil
         }
-        let recent = TransactionRepository.shared.fetchAll().filter {
+        let recent = transactions.filter {
             $0.createdAt >= weekAgo
         }
         guard !recent.isEmpty else { return nil }
@@ -231,10 +310,15 @@ enum WalletStats {
         for transaction in recent {
             let amount = Decimal(transaction.amount)
             switch transaction.type {
-            case .topup, .promotion:
+            case .topup, .promotion, .refund:
+                // `.refund` still moves money INTO the wallet — excluding it
+                // would make the delta contradict the actual balance, which is
+                // why #358 changed the ledger type, not the balance maths.
                 net += amount
             case .charge:
                 net -= amount
+            case .unknown:
+                continue // direction unknown — can't be signed into the delta
             }
         }
         return net
@@ -242,12 +326,12 @@ enum WalletStats {
 
     /// Per-day pain totals for the trailing 7-day window, oldest → newest.
     /// Used by `WalletWeeklyChartView` — only `.charge` rows contribute.
-    static func weeklyPenaltyTotals() -> [Decimal] {
+    /// Takes the caller's decode-checked transaction list (#419).
+    static func weeklyPenaltyTotals(from transactions: [Transaction]) -> [Decimal] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         var totals = Array(repeating: Decimal.zero, count: 7)
-        let all = TransactionRepository.shared.fetchAll()
-        for transaction in all where transaction.type == .charge {
+        for transaction in transactions where transaction.type == .charge {
             let day = calendar.startOfDay(for: transaction.createdAt)
             guard let diff = calendar.dateComponents([.day], from: day, to: today).day else {
                 continue

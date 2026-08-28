@@ -70,9 +70,24 @@ enum WalletTransactionPreview {
             title = "Бонус за друга"
             icon = "gift"
             isDebit = false
+        case .refund:
+            // Penalty returned because the snooze never armed (#358) — the
+            // "undo" glyph reads as a reversal, not as fresh money in.
+            title = "Возврат за откладывание"
+            icon = "arrow.uturn.backward"
+            isDebit = false
+        case .unknown:
+            // Row written by a newer build than this one (see
+            // `TransactionType.unknown`). Render something neutral rather than
+            // hiding it — the ledger row exists and the user should see it.
+            title = "Операция"
+            icon = "questionmark"
+            isDebit = false
         }
         let absolute = Decimal(abs(transaction.amount))
-        let sign = isDebit ? "−" : "+"
+        // An unrecognised row has no known direction — show the bare amount
+        // rather than asserting a "+" the ledger never promised.
+        let sign = transaction.type.isUnrecognized ? "" : (isDebit ? "−" : "+")
         let timestamp = timestampText(for: transaction.createdAt, now: now, calendar: calendar)
         // Charges prepend the resolvable alarm context, mirroring the
         // history screen; orphaned/edited-away alarms degrade to bare time.

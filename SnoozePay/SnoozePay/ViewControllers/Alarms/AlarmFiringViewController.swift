@@ -185,7 +185,7 @@ class AlarmFiringViewController: UIViewController {
     var noBalanceSnoozeCard: SPSnoozePrice?
 
     /// Apple Pay 500 ₽ primary CTA. Single-tap purchase via StoreKitService
-    /// (SKU `com.snooze_pay.balance.499`); falls back to direct
+    /// (SKU `io.mobilife.snoozepay.balance.499`); falls back to direct
     /// `BalanceService.topUp` when the StoreKit product list hasn't loaded
     /// yet (test / debug paths) so the wallet still credits end-to-end.
     var applePayNoBalanceButton: SPButton?
@@ -278,8 +278,15 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - Init
 
-    init(alarm: Alarm, snoozeCount: Int = 0) {
-        self.viewModel = AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount)
+    convenience init(alarm: Alarm, snoozeCount: Int = 0) {
+        self.init(viewModel: AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount))
+    }
+
+    /// Designated initializer taking a pre-built view model, so tests can pin
+    /// the ledger the summary reads (`wokeMorningContent()`) instead of the
+    /// shared repository. Production call sites use `init(alarm:snoozeCount:)`.
+    init(viewModel: AlarmFiringViewModel) {
+        self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
@@ -316,15 +323,22 @@ class AlarmFiringViewController: UIViewController {
         startClockTicker()
         startGlowBreathing()
 
-        // Pass `alarmID` so a stacking-replace race does not silence the next
-        // alarm when this VC's `viewDidDisappear` fires. Volume + fade-in
-        // honour the per-alarm settings.
-        AudioService.shared.startAlarmSound(
-            soundID: viewModel.alarm.soundID,
-            alarmID: viewModel.alarm.id,
-            volume: viewModel.alarm.volume,
-            fadeIn: viewModel.alarm.volumeFadeIn
-        )
+        // On the AlarmKit (Strategy A) path the SYSTEM owns the alarm sound (a
+        // real system alarm that pierces silent mode); the lock-screen button
+        // that opened this screen already silenced it. Starting our own
+        // `AudioService` here would double up the sound (#383). On the
+        // notification (Strategy B) path the in-app screen IS the sound source,
+        // so it starts audio as before. Pass `alarmID` so a stacking-replace race
+        // does not silence the next alarm when this VC's `viewDidDisappear` fires.
+        // Volume + fade-in honour the per-alarm settings.
+        if !viewModel.usesAlarmKit {
+            AudioService.shared.startAlarmSound(
+                soundID: viewModel.alarm.soundID,
+                alarmID: viewModel.alarm.id,
+                volume: viewModel.alarm.volume,
+                fadeIn: viewModel.alarm.volumeFadeIn
+            )
+        }
 
         // Initial transition may have happened synchronously inside
         // `startAlarmSound` before our observer is wired — sync now.
@@ -528,8 +542,12 @@ class AlarmFiringViewController: UIViewController {
     /// `presentingViewController?.dismiss` on THIS firing VC, unwinding both
     /// screens back to the app.
     @objc func dismissTapped() {
-        let snoozes = viewModel.snoozeCount
-        let charged = viewModel.chargedThisMorning
+        // Read the summary BEFORE `dismiss()` so the numbers describe the wake
+        // that just ended. Both figures come from the ledger (#400) — a snooze
+        // whose trigger the scheduler rejected was refunded, so it must not
+        // inflate either the count or the sum the user is shown. When the
+        // ledger can't be read we say so rather than print a guessed total.
+        let summary = wokeMorningContent()
         viewModel.dismiss()
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
@@ -549,7 +567,7 @@ class AlarmFiringViewController: UIViewController {
         // user would be stranded on the summary with a dead «Закрыть» — fall
         // back to dismissing the summary itself, and log so it isn't swallowed.
         weak var wokeRef: WokeMorningViewController?
-        let woke = WokeMorningViewController(snoozes: snoozes, charged: charged) { [weak self] in
+        let woke = WokeMorningViewController(content: summary) { [weak self] in
             if let presenter = self?.presentingViewController {
                 presenter.dismiss(animated: true)
             } else {
@@ -559,6 +577,29 @@ class AlarmFiringViewController: UIViewController {
         }
         wokeRef = woke
         present(woke, animated: true)
+    }
+
+    /// Copy for the morning summary, chosen from what the ledger could confirm.
+    ///
+    /// ONE `billedSnoozes` read, not `chargedThisMorning` + `billedSnoozeCount`:
+    /// each accessor re-reads the ledger, and a refund landing from the
+    /// scheduler's completion between two reads would print a count and a sum
+    /// taken from different snapshots.
+    ///
+    /// An unreadable ledger maps to the no-figures variant — a summary that
+    /// states a rouble amount nobody verified is worse than one that admits it
+    /// doesn't know (#400). Passing `attempts` lets the copy name a refunded
+    /// snooze instead of quietly showing a billed pair that can't be squared
+    /// with the doubling ladder. `internal` for unit testing.
+    func wokeMorningContent() -> WokeMorningContent {
+        guard case .known(let amounts) = viewModel.billedSnoozes else {
+            return .chargesUnavailable
+        }
+        return WokeMorningContent(
+            snoozes: amounts.count,
+            charged: Int(amounts.reduce(0, +).rounded()),
+            attempts: viewModel.snoozeCount
+        )
     }
 
     // Clock ticking, glow breathing, snooze tap handler, top-up sheet, and

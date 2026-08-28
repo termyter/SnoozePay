@@ -16,8 +16,12 @@ final class SPBalanceCard: UIView {
     // MARK: - Subviews
 
     private let capsLabel = UILabel()
-    private let valueLabel = UILabel()
-    private let valueGradient = CAGradientLayer()
+    private let valueLabel = SPGradientTextLabel(
+        colors: SPSupport.moneyGradientColors,
+        locations: SPSupport.moneyGradientLocations,
+        startPoint: SPSupport.gradientStart,
+        endPoint: SPSupport.gradientEnd
+    )
     private let deltaLabel = UILabel()
     private let hintLabel = UILabel()
     private let radialOverlay = RadialOverlayView()
@@ -66,10 +70,6 @@ final class SPBalanceCard: UIView {
         layer.cornerRadius = AppRadius.xl
         radialOverlay.layer.cornerRadius = AppRadius.xl
         radialOverlay.frame = bounds
-        // Re-mask the gradient with the freshly laid-out glyph rect so the
-        // gradient still tracks the digit baseline after font metrics
-        // resolve.
-        applyValueGradient()
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
@@ -142,8 +142,8 @@ final class SPBalanceCard: UIView {
         // glyphs can overflow on narrow devices for large balances
         // ("1 234 567 ₽"), so we let UIKit shrink to 75% before clipping.
         valueLabel.font = AppTypography.moneyXl
-        // Set a neutral text colour as a safety net — `applyValueGradient`
-        // promotes this to a gradient mask once layout resolves.
+        // The gradient label keeps this fallback until its own layout pass has
+        // resolved the glyph bounds, then replaces it with a masked layer.
         valueLabel.textColor = AppColors.fg1
         valueLabel.adjustsFontForContentSizeCategory = false
         valueLabel.numberOfLines = 1
@@ -175,51 +175,47 @@ final class SPBalanceCard: UIView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20)
         ])
 
-        // Add the gradient layer above the label so the mask can clip it.
-        valueGradient.colors = SPSupport.moneyGradientColors
-        valueGradient.locations = SPSupport.moneyGradientLocations
-        valueGradient.startPoint = SPSupport.gradientStart
-        valueGradient.endPoint = SPSupport.gradientEnd
     }
 
-    private func applyValueGradient() {
-        // Position the gradient over the label and mask it to the rendered
-        // text — this is the CALayer equivalent of CSS's
-        // `-webkit-background-clip: text`. We add the gradient as a
-        // sublayer of the label's layer rather than rasterising into the
-        // label so size / theme switches refresh cheaply.
-        let textBounds = valueLabel.bounds
-        guard textBounds.width > 0, textBounds.height > 0 else { return }
-        if valueGradient.superlayer !== valueLabel.layer {
-            valueLabel.layer.addSublayer(valueGradient)
-        }
-        valueGradient.frame = textBounds
+    // MARK: - Auto-shrink mask alignment
 
-        // Mask the gradient to the text shape — re-render every layout pass
-        // so font / weight / size changes refresh.
-        let renderer = UIGraphicsImageRenderer(size: textBounds.size)
-        let mask = renderer.image { ctx in
-            ctx.cgContext.setFillColor(UIColor.white.cgColor)
-            // The value is an attributed string (mono digits + proportional
-            // separator per fmtRub) — render it verbatim so the mask matches
-            // the on-screen glyph layout, forcing white ink for full alpha.
-            guard let attributed = valueLabel.attributedText?.mutableCopy() as? NSMutableAttributedString else {
-                return
-            }
+    /// Compute the scale factor `adjustsFontSizeToFitWidth` would apply to fit
+    /// `attributed` (rendered at its baked-in fonts) into `availableWidth`.
+    ///
+    /// Mirrors UIKit's single-line shrink heuristic: if the natural text width
+    /// already fits, returns `1`; otherwise returns `availableWidth / naturalWidth`
+    /// clamped to `minimumScaleFactor` (UIKit never shrinks below the floor,
+    /// it clips instead — so the mask must match that clamped size, not the
+    /// raw ratio). A pure function so the geometry is unit-testable without a
+    /// live label / layout pass.
+    static func effectiveFontScale(
+        for attributed: NSAttributedString,
+        fitting availableWidth: CGFloat,
+        minimumScaleFactor: CGFloat
+    ) -> CGFloat {
+        guard availableWidth > 0, attributed.length > 0 else { return 1 }
+        let naturalWidth = attributed.size().width
+        guard naturalWidth > availableWidth else { return 1 }
+        let ratio = availableWidth / naturalWidth
+        let floor = minimumScaleFactor > 0 ? minimumScaleFactor : ratio
+        return max(ratio, floor)
+    }
+
+    /// Re-font every run of `attributed` in place at `scale × pointSize`,
+    /// preserving each run's traits / weight (digits stay mono, the separator
+    /// stays proportional). Used to align the gradient mask with the shrunk
+    /// on-screen glyphs.
+    static func scaleFonts(in attributed: NSMutableAttributedString, by scale: CGFloat) {
+        guard scale > 0, scale != 1 else { return }
+        let full = NSRange(location: 0, length: attributed.length)
+        attributed.enumerateAttribute(.font, in: full, options: []) { value, range, _ in
+            guard let font = value as? UIFont else { return }
             attributed.addAttribute(
-                .foregroundColor,
-                value: UIColor.white,
-                range: NSRange(location: 0, length: attributed.length)
+                .font,
+                value: font.withSize(font.pointSize * scale),
+                range: range
             )
-            attributed.draw(in: textBounds)
         }
-        let maskLayer = CALayer()
-        maskLayer.frame = textBounds
-        maskLayer.contents = mask.cgImage
-        valueGradient.mask = maskLayer
-        // Hide the underlying label colour so we don't double-stack glyph
-        // outlines (label paints fg1, gradient paints money tones).
-        valueLabel.textColor = .clear
     }
 
     private func renderDelta(_ delta: Decimal) -> NSAttributedString {

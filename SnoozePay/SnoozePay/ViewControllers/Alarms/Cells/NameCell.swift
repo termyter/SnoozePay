@@ -16,11 +16,12 @@ final class NameCell: UITableViewCell {
         field.font = AppTypography.h3
         field.textColor = AppColors.fg1
         field.translatesAutoresizingMaskIntoConstraints = false
-        // Large attributed placeholder ("Название", #231) tinted with the
-        // disabled foreground role so the field still reads as empty without
-        // a label.
+        // Large attributed placeholder (#231) tinted with the disabled
+        // foreground role so the field still reads as empty without a label.
+        // The «· напр. Будни» example hint matches the prototype (screen 08,
+        // #344) — it nudges the user toward a short, recognisable name.
         field.attributedPlaceholder = NSAttributedString(
-            string: "Название",
+            string: "Название · напр. Будни",
             attributes: [
                 .font: AppTypography.h3,
                 .foregroundColor: AppColors.fg4
@@ -28,6 +29,7 @@ final class NameCell: UITableViewCell {
         )
         field.returnKeyType = .done
         field.clearButtonMode = .whileEditing
+        field.accessibilityIdentifier = "createAlarm.nameField"
         return field
     }()
 

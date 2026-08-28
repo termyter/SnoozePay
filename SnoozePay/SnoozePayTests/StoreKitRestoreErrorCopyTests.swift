@@ -43,4 +43,32 @@ final class StoreKitRestoreErrorCopyTests: XCTestCase {
         XCTAssertTrue(message.contains("Boom"))
         XCTAssertTrue(message.contains("свяжитесь с поддержкой"))
     }
+
+    // MARK: - SKError family (#444)
+
+    /// `SKError` bridges from an `NSError` in `SKErrorDomain`, so construct via
+    /// `NSError` rather than the underscored `init(_nsError:)` SPI.
+    private func skError(_ code: SKError.Code) -> Error {
+        NSError(domain: SKErrorDomain, code: code.rawValue)
+    }
+
+    func testSKPaymentNotAllowed_mapsToScreenTimeAdvice() {
+        XCTAssertEqual(
+            StoreKitRestoreErrorCopy.message(for: skError(.paymentNotAllowed)),
+            "В вашем Apple ID запрещены покупки. Проверьте настройки экранного времени."
+        )
+    }
+
+    func testSKCloudServicePermissionDenied_mapsToICloudAdvice() {
+        XCTAssertEqual(
+            StoreKitRestoreErrorCopy.message(for: skError(.cloudServicePermissionDenied)),
+            "Проверьте подключение к интернету и доступ к iCloud в Настройках."
+        )
+    }
+
+    func testSKUnknownCode_fallsBackToSupportHint() {
+        let message = StoreKitRestoreErrorCopy.message(for: skError(.unknown))
+        XCTAssertTrue(message.contains("свяжитесь с поддержкой"),
+                      "An unmapped SKError code must fall through to the generic support hint")
+    }
 }

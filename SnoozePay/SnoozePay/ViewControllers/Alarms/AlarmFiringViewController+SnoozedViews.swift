@@ -67,6 +67,8 @@ extension AlarmFiringViewController {
             dot.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 12),
             dot.centerYAnchor.constraint(equalTo: pill.centerYAnchor)
         ])
+        pill.isAccessibilityElement = true
+        pill.accessibilityIdentifier = "firing.snoozed.progressivePill"
         return pill
     }
 
@@ -80,6 +82,7 @@ extension AlarmFiringViewController {
         row.axis = .horizontal
         row.alignment = .top
         row.spacing = AppSpacing.sp2   // 8pt
+        row.accessibilityIdentifier = "firing.snoozed.ladder"
         return row
     }
 

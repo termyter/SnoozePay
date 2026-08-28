@@ -23,11 +23,20 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     private let onSelect: (String) -> Void
     private let previewSound: (String) -> Void
 
+    /// Per-alarm volume + fade-in, surfaced via a «Громкость» row that pushes
+    /// `VolumePickerViewController` (#270 — option 2: sound + volume are
+    /// cohesive, so the volume entry point lives on the sound screen rather
+    /// than the create/edit settings card). Kept in sync as the user edits.
+    private var volume: Float
+    private var fadeIn: Bool
+    /// Fired live as the volume/fade-in picker reports changes, so the caller
+    /// can persist. `nil` when the host doesn't surface volume control.
+    private let onVolumeChange: ((Float, Bool) -> Void)?
+
     /// `true` while the «Превью» head is in its "playing" affordance. System
     /// sounds are fire-and-forget, so this is a UI state reset by a timer keyed
     /// to the typical preview length.
     private var isPreviewing = false
-    private var previewResetWorkItem: DispatchWorkItem?
 
     /// The disabled custom-melody slot is appended after the catalogue rows.
     private var rowCount: Int { sounds.count + 1 }
@@ -107,24 +116,55 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     private let previewPlayGradient = CAGradientLayer()
 
-    private let previewTitleLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = AppTypography.bodyLg
-        label.textColor = AppColors.fg1
-        label.numberOfLines = 1
-        return label
+    /// Progress track + fill + timecode, per `SPMore.jsx:358-363` — a 3pt
+    /// white-08 rail with a money-gradient fill and a «0:08 / 0:24» meta label.
+    /// The fill is driven by a `CADisplayLink` keyed to the sound's expected
+    /// preview length (system sounds are fire-and-forget, so the bar reflects
+    /// elapsed-vs-expected rather than true decoder position).
+    private let progressTrack: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = AppColors.whiteOverlay08
+        view.layer.cornerRadius = 1.5
+        view.layer.masksToBounds = true
+        return view
     }()
 
-    private let previewHintLabel: UILabel = {
+    /// Money-gradient fill. `GradientRailFill` sizes its gradient in its own
+    /// `layoutSubviews`, so the colour always tracks the view's bounds with no
+    /// dependency on the view controller's layout timing.
+    private let progressFill = GradientRailFill()
+
+    private let timecodeLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
-        label.text = "Нажмите, чтобы прослушать"
         label.numberOfLines = 1
         return label
     }()
+
+    /// Width of the filled portion of the progress rail. Animated to `0…track`
+    /// each `CADisplayLink` tick; `0` while idle.
+    private var progressFillWidth: NSLayoutConstraint?
+
+    /// Trailing value label on the «Громкость» row — reads e.g. «80% · плавно».
+    /// Refreshed when the volume picker reports a change.
+    private let volumeValueLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = AppTypography.bodyLg
+        label.textColor = AppColors.fg3
+        label.textAlignment = .right
+        return label
+    }()
+
+    /// Drives the progress fill + timecode during a preview. Nil while idle.
+    private var progressLink: CADisplayLink?
+    /// Host time (`CACurrentMediaTime`) at which the current preview started.
+    private var previewStartTime: CFTimeInterval = 0
+    /// Expected length of the in-flight preview, in seconds.
+    private var previewTotalDuration: Double = 0
 
     // MARK: - Init
 
@@ -134,22 +174,41 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     ///   - onSelect: Fired when the user picks a sound. The picker no longer
     ///     pops itself — the user leaves via «Готово» / back.
     ///   - previewSound: Plays a preview for a given sound id.
+    ///   - volume: Initial per-alarm volume in `0.0...1.0`. Drives the
+    ///     «Громкость» row value; defaults to full volume.
+    ///   - fadeIn: Initial fade-in flag for the «Громкость» row.
+    ///   - onVolumeChange: Fired live as the pushed `VolumePickerViewController`
+    ///     reports slider / switch changes. Pass `nil` to hide the volume row.
     init(
         sounds: [SoundCatalogue.Entry],
         selectedID: String,
         onSelect: @escaping (String) -> Void,
-        previewSound: @escaping (String) -> Void
+        previewSound: @escaping (String) -> Void,
+        volume: Float = 1.0,
+        fadeIn: Bool = false,
+        onVolumeChange: ((Float, Bool) -> Void)? = nil
     ) {
         self.sounds = sounds
         self.selectedSoundID = selectedID
         self.onSelect = onSelect
         self.previewSound = previewSound
+        // Clamp the seed so a corrupt persisted volume can't render «-12%».
+        self.volume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
+        self.fadeIn = fadeIn
+        self.onVolumeChange = onVolumeChange
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        // Defence in depth: `CADisplayLink` holds a strong target ref, so a
+        // teardown that skips `viewWillDisappear` would otherwise keep the link
+        // (and this VC) alive and ticking. Normal exits already invalidate it.
+        progressLink?.invalidate()
     }
 
     // MARK: - Lifecycle
@@ -164,8 +223,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        previewResetWorkItem?.cancel()
-        previewResetWorkItem = nil
+        stopPreview()
     }
 
     override func viewDidLayoutSubviews() {
@@ -211,6 +269,13 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
         contentStack.addArrangedSubview(listCard)
         contentStack.addArrangedSubview(makePreviewBlock())
+        // «Громкость» entry point — only when the host wired up a change
+        // handler (#270). Restores the volume/fade-in picker dropped by the
+        // 3-row settings card in #263.
+        if onVolumeChange != nil {
+            contentStack.addArrangedSubview(makeVolumeBlock())
+            refreshVolumeLabel()
+        }
 
         scrollView.addSubview(contentStack)
         view.addSubview(scrollView)
@@ -255,12 +320,25 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         previewPlayGradient.locations = SPSupport.moneyGradientLocations
         previewPlayButton.layer.insertSublayer(previewPlayGradient, at: 0)
         previewPlayButton.addTarget(self, action: #selector(previewTapped), for: .touchUpInside)
+        previewPlayButton.accessibilityLabel = "Прослушать превью"
 
-        let previewTextStack = UIStackView(arrangedSubviews: [previewTitleLabel, previewHintLabel])
+        progressTrack.addSubview(progressFill)
+
+        let fillWidth = progressFill.widthAnchor.constraint(equalToConstant: 0)
+        progressFillWidth = fillWidth
+        NSLayoutConstraint.activate([
+            progressTrack.heightAnchor.constraint(equalToConstant: 3),
+            progressFill.leadingAnchor.constraint(equalTo: progressTrack.leadingAnchor),
+            progressFill.topAnchor.constraint(equalTo: progressTrack.topAnchor),
+            progressFill.bottomAnchor.constraint(equalTo: progressTrack.bottomAnchor),
+            fillWidth
+        ])
+
+        let previewTextStack = UIStackView(arrangedSubviews: [progressTrack, timecodeLabel])
         previewTextStack.translatesAutoresizingMaskIntoConstraints = false
         previewTextStack.axis = .vertical
-        previewTextStack.spacing = 2
-        previewTextStack.alignment = .leading
+        previewTextStack.spacing = AppSpacing.sp1 + 2   // 6pt — matches `marginTop: 6`
+        previewTextStack.alignment = .fill
 
         let previewRow = UIStackView(arrangedSubviews: [previewPlayButton, previewTextStack])
         previewRow.translatesAutoresizingMaskIntoConstraints = false
@@ -347,37 +425,79 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     // MARK: - Preview player
 
+    /// Resets the rail + timecode to the at-rest «0:00 / total» state for the
+    /// currently-selected sound. Called when the selection changes so the total
+    /// reflects the new sound's expected length.
     private func refreshPreviewLabel() {
-        let name = sounds.first(where: { $0.id == selectedSoundID })?.name ?? selectedSoundID
-        previewTitleLabel.text = name
+        resetProgress()
     }
 
     @objc private func previewTapped() {
         if isPreviewing {
-            isPreviewing = false
-            previewResetWorkItem?.cancel()
-            updatePreviewIcon()
+            stopPreview()
             return
         }
         previewSound(selectedSoundID)
         startPreviewAffordance(for: selectedSoundID)
     }
 
-    /// Flip the preview head to its "playing" state and schedule a reset once
-    /// the typical preview length elapses (system sounds can't be stopped).
+    /// Flip the preview head to its "playing" state and start the progress
+    /// rail. System sounds are fire-and-forget, so the rail/timecode track the
+    /// expected preview length rather than a real decoder position; a second
+    /// tap stops and resets.
     private func startPreviewAffordance(for soundID: String) {
-        previewResetWorkItem?.cancel()
         isPreviewing = true
+        previewTotalDuration = Self.previewDurationSeconds(for: soundID)
+        previewStartTime = CACurrentMediaTime()
         updatePreviewIcon()
 
-        let duration = Self.previewDurationSeconds(for: soundID)
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.isPreviewing = false
-            self.updatePreviewIcon()
+        progressLink?.invalidate()
+        let link = CADisplayLink(target: self, selector: #selector(tickProgress))
+        link.add(to: .main, forMode: .common)
+        progressLink = link
+        // Resolve the rail width before the first synchronous tick so frame 0
+        // paints the correct fraction instead of a transient empty bar.
+        view.layoutIfNeeded()
+        tickProgress()
+    }
+
+    /// Stops an in-flight preview (second tap or screen leaving) and snaps the
+    /// rail back to empty. The underlying system sound can't be cancelled, but
+    /// the affordance must reflect "not playing".
+    private func stopPreview() {
+        isPreviewing = false
+        progressLink?.invalidate()
+        progressLink = nil
+        updatePreviewIcon()
+        resetProgress()
+    }
+
+    @objc private func tickProgress() {
+        let elapsed = CACurrentMediaTime() - previewStartTime
+        let total = max(previewTotalDuration, 0.001)
+        let fraction = min(1, max(0, elapsed / total))
+        setProgress(fraction: fraction, elapsed: min(elapsed, total), total: total)
+
+        if fraction >= 1 {
+            // Preview elapsed — drop back to the idle play affordance.
+            isPreviewing = false
+            progressLink?.invalidate()
+            progressLink = nil
+            updatePreviewIcon()
         }
-        previewResetWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: workItem)
+    }
+
+    private func setProgress(fraction: Double, elapsed: Double, total: Double) {
+        progressFillWidth?.constant = progressTrack.bounds.width * CGFloat(fraction)
+        timecodeLabel.text = "\(Self.timecode(elapsed)) / \(Self.timecode(total))"
+    }
+
+    /// Snaps the rail to empty and the timecode to «0:00 / total» for the
+    /// selected sound.
+    private func resetProgress() {
+        let total = Self.previewDurationSeconds(for: selectedSoundID)
+        progressFillWidth?.constant = 0
+        timecodeLabel.text = "\(Self.timecode(0)) / \(Self.timecode(total))"
     }
 
     private func updatePreviewIcon() {
@@ -387,6 +507,13 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
                 .withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)),
             for: .normal
         )
+    }
+
+    /// «M:SS» timecode. Negative inputs are clamped to 0 so an out-of-order
+    /// clock read can never render malformed «0:-3» text.
+    private static func timecode(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     @objc private func doneTapped() {
@@ -403,6 +530,119 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     private static func previewDurationSeconds(for soundID: String) -> Double {
         previewDurations[soundID] ?? 3
+    }
+}
+
+// MARK: - Volume entry point (#270)
+
+/// The «Громкость» entry that PR #263 dropped from the create/edit settings
+/// card lives here instead — sound + volume are cohesive, so the volume/fade-in
+/// picker is reached from the sound screen (issue #270, option 2).
+extension SoundPickerViewController {
+
+    /// Builds the «Громкость» caps label + a single-row `SPCard` whose row
+    /// pushes `VolumePickerViewController`. Mirrors the sound-list card recipe
+    /// (padding-0 card + inset row) so the entry reads as a sibling of the
+    /// sound list.
+    func makeVolumeBlock() -> UIStackView {
+        let capsLabel = UILabel()
+        capsLabel.translatesAutoresizingMaskIntoConstraints = false
+        capsLabel.attributedText = NSAttributedString(
+            string: "Громкость".uppercased(),
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right")?
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)))
+        chevron.tintColor = AppColors.fg3
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
+        let trailingStack = UIStackView(arrangedSubviews: [volumeValueLabel, chevron])
+        trailingStack.axis = .horizontal
+        trailingStack.alignment = .center
+        trailingStack.spacing = AppSpacing.sp2
+
+        let row = SPRow(
+            title: "Громкость и нарастание",
+            trailing: trailingStack,
+            divider: false
+        ) { [weak self] in
+            self?.showVolumePicker()
+        }
+        row.accessibilityLabel = "Громкость и нарастание"
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let card = SPCard(tone: .surface, padding: 0, cornerRadius: AppRadius.lg)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(row)
+        NSLayoutConstraint.activate([
+            // 20pt horizontal inset to match the JSX «padding "4px 20px"» list
+            // recipe used by the sound rows.
+            row.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.sp5),
+            row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.sp5),
+            row.topAnchor.constraint(equalTo: card.topAnchor),
+            row.bottomAnchor.constraint(equalTo: card.bottomAnchor)
+        ])
+
+        let block = UIStackView(arrangedSubviews: [capsLabel, card])
+        block.translatesAutoresizingMaskIntoConstraints = false
+        block.axis = .vertical
+        block.spacing = AppSpacing.sp2 + 2
+        return block
+    }
+
+    /// Refreshes the «Громкость» row value label, e.g. «80% · плавно».
+    func refreshVolumeLabel() {
+        let percent = "\(Int((volume * 100).rounded()))%"
+        volumeValueLabel.text = fadeIn ? "\(percent) · плавно" : percent
+    }
+
+    /// Pushes the existing `VolumePickerViewController` (#150) and forwards its
+    /// live slider / switch changes to both the local label and the host.
+    private func showVolumePicker() {
+        let picker = VolumePickerViewController(
+            volume: volume,
+            fadeIn: fadeIn
+        ) { [weak self] newVolume, newFadeIn in
+            guard let self else { return }
+            self.volume = newVolume
+            self.fadeIn = newFadeIn
+            self.refreshVolumeLabel()
+            self.onVolumeChange?(newVolume, newFadeIn)
+        }
+        navigationController?.pushViewController(picker, animated: true)
+    }
+}
+
+/// Money-gradient progress fill that sizes its own gradient in `layoutSubviews`,
+/// so the colour always fills the view's current bounds with no dependency on
+/// the host view controller's layout timing (silent-failure-hunter, PR #367).
+private final class GradientRailFill: UIView {
+    private let gradient = CAGradientLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        translatesAutoresizingMaskIntoConstraints = false
+        layer.masksToBounds = true
+        gradient.startPoint = SPSupport.gradientStart
+        gradient.endPoint = SPSupport.gradientEnd
+        gradient.colors = SPSupport.moneyGradientColors
+        gradient.locations = SPSupport.moneyGradientLocations
+        layer.addSublayer(gradient)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        gradient.frame = bounds
     }
 }
 

@@ -20,6 +20,21 @@ private final class ObserverBox: @unchecked Sendable {
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
+    /// Tokens for the time-change / activation observers that drive alarm
+    /// re-arming (#427). Held for the app's lifetime so the observers stay
+    /// registered; the `AppDelegate` lives as long as the process, so they are
+    /// never explicitly removed.
+    private var rescheduleObserverTokens: [NSObjectProtocol] = []
+
+    /// Token for the resume-audio-failure observer (#405). Held for the app's
+    /// lifetime alongside `rescheduleObserverTokens`.
+    private var resumeAudioObserverToken: NSObjectProtocol?
+
+    /// Latch so a persistent re-arm failure surfaces a banner only once per
+    /// episode rather than on every foreground (#442). Reset to 0 by a fully-
+    /// successful re-arm.
+    private var lastRescheduleFailedCount = 0
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -51,6 +66,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Handle notification responses
         UNUserNotificationCenter.current().delegate = self
 
+        // Watch AlarmKit's alerting stream so an alarm that fires while the app
+        // is in the foreground mounts our custom firing screen on top of the
+        // system alert (#379). No-op on iOS < 26 / when AlarmKit is absent.
+        AlarmKitAlertObserver.shared.start()
+
+        // Re-arm saved alarms whenever the wall-clock interpretation of their
+        // triggers may have shifted (timezone / DST change, reboot) or the
+        // backend that should own them may have changed (AlarmKit / notification
+        // authorization toggled in Settings). Without this, alarms keep whatever
+        // triggers they had at save time and silently fire at the wrong time —
+        // or never re-arm onto the notification fallback after AlarmKit is
+        // revoked (#427). The first foreground after launch covers reboot.
+        registerAlarmRescheduleObservers()
+
+        // Surface a silent resume-time audio failure as a lock-screen banner
+        // (#405). When the audio session can't be re-activated on resume and the
+        // firing screen isn't visible, the in-app banner never reaches the user;
+        // this observer turns AudioService's process notification into a
+        // time-sensitive local notification they actually see.
+        registerResumeAudioFailedObserver()
+
         // Reclaim orphaned custom-theme JPEGs (#357): re-picking a photo or
         // deleting a `.custom`-themed alarm leaves its image on disk forever.
         // Sweep off the main thread against the live alarm set — only files no
@@ -80,6 +116,135 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didDiscardSceneSessions sceneSessions: Set<UISceneSession>
     ) {}
+
+    // MARK: - Alarm re-arming (#427)
+
+    /// Observe the two system signals that can silently invalidate already
+    /// scheduled alarm triggers and re-arm every saved alarm in response:
+    ///
+    /// - `significantTimeChangeNotification` — posted on timezone change, DST
+    ///   transition, and midnight rollover. This is the primary defence against
+    ///   an alarm firing at the wrong wall-clock after the user crosses a
+    ///   timezone or the clocks shift.
+    /// - `didBecomeActiveNotification` — posted on every foreground, including
+    ///   the first one after a cold launch (so reboot is covered) and after the
+    ///   user returns from Settings having toggled AlarmKit / notification
+    ///   permission (so `usesAlarmKit` is re-evaluated and the alarm moves to
+    ///   the correct backend).
+    ///
+    /// Re-arming is idempotent — for an unchanged alarm `cancel` + `schedule`
+    /// re-adds the same deterministic notification identifiers — so firing it on
+    /// every activation only recomputes triggers, never duplicates them.
+    private func registerAlarmRescheduleObservers() {
+        let names: [Notification.Name] = [
+            UIApplication.significantTimeChangeNotification,
+            UIApplication.didBecomeActiveNotification
+        ]
+        rescheduleObserverTokens = names.map { name in
+            NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.rescheduleSavedAlarms(trigger: name)
+            }
+        }
+    }
+
+    /// Re-arm every saved alarm against the current clock / timezone / backend,
+    /// then surface an aggregate banner if any failed to re-arm (#442). Instance
+    /// method (was `static`) so the outcome can be deduped via
+    /// `lastRescheduleFailedCount`; the observer captures `self` weakly.
+    private func rescheduleSavedAlarms(trigger: Notification.Name) {
+        AppLogger.appDelegate.info(
+            "re-arming saved alarms (trigger=\(trigger.rawValue, privacy: .public))"
+        )
+        AlarmScheduler.shared.rescheduleAll(AlarmRepository.shared.fetchAll()) { [weak self] failedCount in
+            self?.handleRescheduleOutcome(failedCount: failedCount)
+        }
+    }
+
+    /// Surface a re-arm failure ONCE per episode: post a banner when failures
+    /// first appear and stay quiet until a fully-successful re-arm (count 0)
+    /// clears the latch, so a persistent failure (e.g. revoked permission)
+    /// doesn't banner on every foreground (#442).
+    private func handleRescheduleOutcome(failedCount: Int) {
+        defer { lastRescheduleFailedCount = failedCount }
+        guard failedCount > 0, lastRescheduleFailedCount == 0 else { return }
+        AppLogger.appDelegate.fault(
+            "rescheduleAll: \(failedCount, privacy: .public) alarms failed to re-arm"
+        )
+        Self.postRescheduleFailedBanner(failedCount: failedCount)
+    }
+
+    /// Observe `AudioService.resumeAudioFailedNotification` so a silent
+    /// resume-time audio failure is surfaced as a lock-screen banner even when
+    /// no firing screen is visible (#405). `static` handler so the `@Sendable`
+    /// closure doesn't capture `self`.
+    private func registerResumeAudioFailedObserver() {
+        resumeAudioObserverToken = NotificationCenter.default.addObserver(
+            forName: AudioService.resumeAudioFailedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            AppDelegate.postResumeAudioFailedBanner()
+        }
+    }
+
+    /// Post a time-sensitive local notification telling the user their alarm
+    /// is sounding silently because the audio session could not be reclaimed on
+    /// resume. Mirrors `postSnoozeScheduleFailedBanner` — a banner the system
+    /// delivers is the only surface that reaches a user who isn't looking at
+    /// the firing screen (#405).
+    private static func postResumeAudioFailedBanner() {
+        let content = UNMutableNotificationContent()
+        content.title = "Будильник звучит беззвучно"
+        content.body = "Не удалось включить звук — откройте приложение и выключите будильник вручную."
+        content.sound = .default
+        // Time-sensitive so it pierces Focus the way the alarm itself would.
+        content.interruptionLevel = .timeSensitive
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "resume_audio_failed_\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                AppLogger.appDelegate.fault(
+                    "resume-audio-failed banner failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+
+    /// Post a time-sensitive local notification when one or more alarms failed
+    /// to re-arm on a clock/timezone/reboot/permission change (#442). The re-arm
+    /// runs in the background (no UI on screen), so a system-delivered banner is
+    /// the only surface that reaches the user.
+    private static func postRescheduleFailedBanner(failedCount: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Будильники не перевзведены"
+        content.body = "Не удалось перепланировать будильники (\(failedCount)) — "
+            + "откройте приложение и проверьте разрешения на уведомления."
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "reschedule_failed_\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                AppLogger.appDelegate.fault(
+                    "reschedule-failed banner failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
 
     // MARK: - Permission UI
 
@@ -348,35 +513,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             return
         }
 
+        // The window/VC walk + full-screen present (and the stacking-alarm
+        // swap) live in `AlarmFiringPresenter` so the AlarmKit paths (#379)
+        // share them verbatim. Keep the hop to the main queue here: the
+        // notification delegate already runs on main, but `willPresent` may
+        // race a not-yet-attached window on cold launch.
         DispatchQueue.main.async {
-            let firingVC = AlarmFiringViewController(alarm: alarm, snoozeCount: payload.snoozeCount)
-            firingVC.modalPresentationStyle = .fullScreen
-
-            // Find the topmost presented view controller to avoid "already presenting" issues
-            guard
-                let windowScene = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .first,
-                let rootVC = windowScene.windows.first?.rootViewController
-            else {
-                AppLogger.appDelegate.error("no window scene, stopping audio")
-                AudioService.shared.stopAlarmSound()
-                return
-            }
-
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController {
-                // If an alarm firing screen is already showing, dismiss it first
-                if presented is AlarmFiringViewController {
-                    presented.dismiss(animated: false) {
-                        topVC.present(firingVC, animated: false)
-                    }
-                    return
-                }
-                topVC = presented
-            }
-
-            topVC.present(firingVC, animated: false)
+            AlarmFiringPresenter.shared.present(alarm: alarm, snoozeCount: payload.snoozeCount)
         }
     }
 

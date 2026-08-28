@@ -189,6 +189,143 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertEqual(service.balance, 149)
     }
 
+    // MARK: - Refund linkage (issue #133)
+
+    /// `chargeWithReceipt` returns the persisted Transaction so a subsequent
+    /// refund can target it by ID. Without the receipt the coordinator would
+    /// have to look up the most recent charge by alarmID/timestamp — a
+    /// race-prone heuristic that breaks under concurrent snoozes.
+    func testChargeWithReceipt_returnsPersistedTransaction() {
+        let alarmID = UUID()
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 200, notificationCenter: NotificationCenter()
+        )
+
+        let receipt = service.chargeWithReceipt(amount: 75, alarmID: alarmID)
+
+        XCTAssertNotNil(receipt)
+        XCTAssertEqual(receipt?.type, .charge)
+        XCTAssertEqual(receipt?.amount, 75)
+        XCTAssertEqual(receipt?.alarmID, alarmID.uuidString)
+
+        let stored = ledger.fetchAll().first { $0.id == receipt?.id }
+        XCTAssertNotNil(stored,
+            "Receipt's id must match the persisted Transaction so the caller can later refund by ID")
+    }
+
+    /// Insufficient-funds returns `nil` from `chargeWithReceipt` and does not
+    /// touch the ledger — same contract as `charge(...) -> Bool`.
+    func testChargeWithReceipt_insufficientFunds_returnsNil() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 10, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertNil(service.chargeWithReceipt(amount: 50, alarmID: UUID()))
+        XCTAssertTrue(ledger.fetchAll().isEmpty)
+        XCTAssertEqual(service.balance, 10)
+    }
+
+    /// `refund(amount:refundsTransactionID:)` records the link in the ledger
+    /// row so stats can pair the refund with its original charge.
+    func testRefund_withRefundsTransactionID_persistsLink() {
+        let originalChargeID = UUID()
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: originalChargeID))
+
+        let txs = ledger.fetchAll()
+        XCTAssertEqual(txs.count, 1)
+        XCTAssertEqual(txs[0].type, .refund,
+            "A penalty reversal is not paid income — booking it as .topup inflates revenue (#358)")
+        XCTAssertEqual(txs[0].refundsTransactionID, originalChargeID,
+            "Refund link must round-trip through persistence so stats consumers can pair charge + refund")
+    }
+
+    /// Backward compatibility: `topUp(amount:)` (legacy signature) writes a
+    /// Transaction with `refundsTransactionID == nil`. Organic IAP top-ups
+    /// must not be misclassified as refunds.
+    func testTopUp_organic_hasNilRefundLink() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        service.topUp(amount: 100)
+
+        XCTAssertNil(ledger.fetchAll().first?.refundsTransactionID,
+            "Organic top-ups must not look like refunds")
+    }
+
+    // MARK: - Refund is not revenue (issue #358)
+
+    /// The core of #358: a penalty reversal must land as `.refund`, never as
+    /// `.topup`. `.topup` is the key revenue accounting reads, so a reversal
+    /// booked there shows up as paid IAP income that was never earned.
+    func testRefund_recordsRefundType_notTopup() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertTrue(service.refund(amount: 50))
+
+        let txs = ledger.fetchAll()
+        XCTAssertEqual(txs.count, 1)
+        XCTAssertEqual(txs[0].type, .refund,
+            "Booking a reversal as .topup is exactly the revenue inflation #358 fixes")
+    }
+
+    /// The money must actually come back — changing the ledger type must not
+    /// change the wallet maths.
+    func testRefund_restoresChargedAmountToBalance() {
+        let (service, _) = makeServiceWithLedger(
+            balance: 200, notificationCenter: NotificationCenter()
+        )
+
+        let receipt = service.chargeWithReceipt(amount: 50, alarmID: UUID())
+        XCTAssertNotNil(receipt)
+        XCTAssertEqual(service.balance, 150)
+
+        XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: receipt?.id))
+        XCTAssertEqual(service.balance, 200,
+            "A refunded penalty must leave the wallet exactly where it started")
+    }
+
+    /// Revenue aggregation keys off `.topup` alone — a charge/refund pair must
+    /// contribute nothing to it, while the paid top-up still counts in full.
+    func testRefund_excludedFromTopupRevenueAggregate() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertTrue(service.topUp(amount: 500))          // real IAP revenue
+        let receipt = service.chargeWithReceipt(amount: 50, alarmID: UUID())
+        XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: receipt?.id))
+
+        let revenue = ledger.fetchAll()
+            .filter { $0.type == .topup }
+            .reduce(0.0) { $0 + $1.amount }
+        XCTAssertEqual(revenue, 500,
+            "Only the paid top-up is revenue — the refund must not inflate it to 550")
+    }
+
+    /// `refund` inherits `topUp`'s amount contract (#441): non-finite or
+    /// non-positive amounts are rejected before anything is persisted, so a
+    /// bogus reversal can't drive the balance negative and latch #119.
+    func testRefund_rejectsNonPositiveAndNonFiniteAmounts() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 100, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertFalse(service.refund(amount: 0))
+        XCTAssertFalse(service.refund(amount: -50))
+        XCTAssertFalse(service.refund(amount: .nan))
+        XCTAssertFalse(service.refund(amount: .infinity))
+
+        XCTAssertTrue(ledger.fetchAll().isEmpty, "No ledger row may be written for a rejected refund")
+        XCTAssertEqual(service.balance, 100)
+    }
+
     /// Boundary: balance == amount must satisfy `canAfford` (>=, not >).
     /// A subtle off-by-one here would silently disable the user's last snooze.
     func testCanAfford_boundaryAtExactEquality() {
@@ -262,6 +399,99 @@ final class BalanceServiceTests: XCTestCase {
 
         XCTAssertTrue(service.balanceCorrupted, "balanceCorrupted flag must latch on detection")
         XCTAssertEqual(receivedRaw, -42.5, "Notification must carry the raw negative value")
+    }
+
+    /// NaN in `user_balance` (extremely rare, but reachable via concurrent
+    /// race writing arbitrary `Double` bits or external defaults tampering)
+    /// MUST trigger corruption detection. Without this guard `current >= amount`
+    /// is always false for NaN, silently disabling every charge with no signal
+    /// to the user (issue #201).
+    func testNaNStoredBalance_flipsCorruptedFlagAndBroadcasts() {
+        let center = NotificationCenter()
+        // Subscribe BEFORE constructing the service: the corruption probe runs
+        // at init time (#119/#206), so a late observer would miss the one-shot
+        // notification — `corruptedRawValue` is the queryable fallback for that
+        // cold-start gap, asserted below.
+        let exp = expectation(description: "corruption notification fires")
+        var receivedRaw: Double?
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            receivedRaw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double
+            exp.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        testDefaults.set(Double.nan, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        XCTAssertEqual(service.balance, 0,
+                       "NaN-corrupt balance must be reported as 0 to downstream math")
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertTrue(service.corruptedRawValue?.isNaN == true,
+                      "Latched raw value must stay queryable for late observers (#206)")
+        XCTAssertTrue(receivedRaw?.isNaN == true,
+                      "Notification must carry the raw NaN value so support tooling sees what was found")
+    }
+
+    /// Positive infinity in storage MUST flip corruption — same reasoning as
+    /// NaN. `current >= amount` is true for Infinity, which would let the
+    /// charge pass and then subtract from `+inf`, silently producing more
+    /// infinity (not a real failure, but a corrupt state must not propagate).
+    func testPositiveInfinityStoredBalance_flipsCorruptedFlagAndBroadcasts() {
+        let center = NotificationCenter()
+        // Subscribe before construction — see note in the NaN test above (#206).
+        let exp = expectation(description: "corruption notification fires")
+        var receivedRaw: Double?
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            receivedRaw = note.userInfo?[BalanceService.balanceCorruptedRawValueKey] as? Double
+            exp.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        testDefaults.set(Double.infinity, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        XCTAssertEqual(service.balance, 0)
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertEqual(service.corruptedRawValue, .infinity,
+                       "Latched raw value must stay queryable for late observers (#206)")
+        XCTAssertEqual(receivedRaw, .infinity)
+    }
+
+    /// Negative infinity in storage MUST flip corruption — caught by both the
+    /// `isFinite` guard and the `>= 0` guard, but the test pins the path so a
+    /// refactor relaxing either guard cannot silently regress.
+    func testNegativeInfinityStoredBalance_flipsCorruptedFlagAndBroadcasts() {
+        let center = NotificationCenter()
+        // Subscribe before construction — see note in the NaN test above (#206).
+        let exp = expectation(description: "corruption notification fires")
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in exp.fulfill() }
+        defer { center.removeObserver(token) }
+
+        testDefaults.set(-Double.infinity, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+
+        XCTAssertEqual(service.balance, 0)
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertEqual(service.corruptedRawValue, -.infinity,
+                       "Latched raw value must stay queryable for late observers (#206)")
     }
 
     /// Under corruption, `charge` must refuse and return `false` — mirrors the
@@ -559,5 +789,102 @@ final class CreateAlarmViewModelTests: XCTestCase {
         // Verify the alarm was saved with default name
         let saved = AlarmRepository(defaults: .standard).fetchAll().last
         XCTAssertEqual(saved?.name, "Будильник")
+    }
+}
+
+/// Amount-validation guards on the `Double` money APIs (`topUp` / `charge`)
+/// and `creditPromotion` coverage (#441). The guards close the one asymmetric
+/// hole where the sibling `creditPromotion` validated `isFinite && > 0` but
+/// `topUp` / `chargeWithReceipt` did not.
+final class BalanceServiceAmountValidationTests: XCTestCase {
+
+    private var testDefaults: UserDefaults!
+    private var suiteName: String!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.balanceGuard.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
+    }
+
+    override func tearDown() {
+        testDefaults.removePersistentDomain(forName: suiteName)
+        testDefaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
+    private func makeService(balance: Double) -> BalanceService {
+        testDefaults.set(balance, forKey: "user_balance")
+        return BalanceService(defaults: testDefaults, notificationCenter: NotificationCenter())
+    }
+
+    private func promotions() -> [Transaction] {
+        TransactionRepository(defaults: testDefaults).fetchAll().filter { $0.type == .promotion }
+    }
+
+    // MARK: - topUp guard
+
+    func testTopUp_negativeAmount_rejectedNoMutation() {
+        let service = makeService(balance: 100)
+        XCTAssertFalse(service.topUp(amount: -50), "Negative top-up must be rejected")
+        XCTAssertEqual(service.balance, 100, "A rejected top-up must not change the balance")
+    }
+
+    func testTopUp_nonFiniteAmount_rejected() {
+        let service = makeService(balance: 100)
+        XCTAssertFalse(service.topUp(amount: .nan))
+        XCTAssertFalse(service.topUp(amount: .infinity))
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    func testTopUp_zeroAmount_rejected() {
+        let service = makeService(balance: 100)
+        XCTAssertFalse(service.topUp(amount: 0))
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    // MARK: - chargeWithReceipt guard
+
+    func testChargeWithReceipt_negativeAmount_rejectedNoMutation() {
+        let service = makeService(balance: 100)
+        XCTAssertNil(service.chargeWithReceipt(amount: -50, alarmID: nil),
+                     "Negative charge must be rejected (would otherwise INCREASE the balance)")
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    func testChargeWithReceipt_nonFiniteAmount_rejected() {
+        let service = makeService(balance: 100)
+        XCTAssertNil(service.chargeWithReceipt(amount: .nan, alarmID: nil))
+        XCTAssertEqual(service.balance, 100)
+    }
+
+    // MARK: - creditPromotion
+
+    func testCreditPromotion_validAmount_creditsAndRecordsPromotion() {
+        let service = makeService(balance: 0)
+        XCTAssertTrue(service.creditPromotion(amount: 200))
+        XCTAssertEqual(service.balance, 200)
+
+        let recorded = promotions()
+        XCTAssertEqual(recorded.count, 1, "Exactly one .promotion entry must be recorded")
+        XCTAssertEqual(recorded.first?.amount, 200)
+    }
+
+    func testCreditPromotion_nonPositiveOrNaN_rejected() {
+        let service = makeService(balance: 50)
+        XCTAssertFalse(service.creditPromotion(amount: 0))
+        XCTAssertFalse(service.creditPromotion(amount: -10))
+        XCTAssertFalse(service.creditPromotion(amount: .nan))
+        XCTAssertEqual(service.balance, 50)
+        XCTAssertTrue(promotions().isEmpty)
+    }
+
+    func testCreditPromotion_corruptedBalance_rejectedNoMutation() {
+        // A negative stored balance latches the corruption gate at init.
+        let service = makeService(balance: -5)
+        XCTAssertFalse(service.creditPromotion(amount: 100),
+                       "creditPromotion must refuse while the balance is corrupt")
+        XCTAssertTrue(promotions().isEmpty, "No promotion entry may be recorded into a corrupt ledger")
     }
 }

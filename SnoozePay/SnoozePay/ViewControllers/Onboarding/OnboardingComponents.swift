@@ -210,6 +210,8 @@ final class OnboardingPageDot: UIView {
 final class OnboardingDepositOptionView: UIControl {
 
     private let option: OnboardingViewController.DepositOption
+    /// Trims the card's vertical padding on compact-height devices (#244).
+    private let isCompact: Bool
     private let titleLabel = UILabel()
     private let popularLabel = UILabel()
     private let descriptionLabel = UILabel()
@@ -225,8 +227,9 @@ final class OnboardingDepositOptionView: UIControl {
         didSet { SPSupport.animatePress(self, pressed: isHighlighted) }
     }
 
-    init(option: OnboardingViewController.DepositOption) {
+    init(option: OnboardingViewController.DepositOption, isCompact: Bool = false) {
         self.option = option
+        self.isCompact = isCompact
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         configureChrome()
@@ -300,10 +303,12 @@ final class OnboardingDepositOptionView: UIControl {
         rowStack.spacing = AppSpacing.sp3
         rowStack.isUserInteractionEnabled = false
 
+        // 16pt canonical → 12pt vertical on SE so three cards clear the CTA.
+        let verticalPad: CGFloat = isCompact ? 12 : 16
         addSubview(rowStack)
         NSLayoutConstraint.activate([
-            rowStack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            rowStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
+            rowStack.topAnchor.constraint(equalTo: topAnchor, constant: verticalPad),
+            rowStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -verticalPad),
             rowStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             rowStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18)
         ])

@@ -114,6 +114,32 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(penalty, "▲ ПОСПАТЬ ЕЩЁ: −1\u{00A0}000\u{202F}₽")
     }
 
+    // MARK: - alarmMultiplierText(at:)
+
+    /// Progressive-scale alarms surface a «×2» pill in the list card so the
+    /// user sees the price escalates per snooze (#349 — the cell already
+    /// renders it via `AlarmCell.configure(multiplier:)`). Locks the value so
+    /// it can't silently regress to `nil`.
+    func testAlarmMultiplierText_progressiveAlarm_showsMultiplier() {
+        repo.save(Alarm(penaltyAmount: 100, progressiveScale: true))
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        XCTAssertEqual(vm.alarmMultiplierText(at: 0), "×2")
+    }
+
+    /// Flat-penalty alarms have no multiplier pill — the pill must stay hidden
+    /// so a non-progressive card doesn't imply escalation.
+    func testAlarmMultiplierText_nonProgressiveAlarm_isNil() {
+        repo.save(Alarm(penaltyAmount: 50, progressiveScale: false))
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        XCTAssertNil(vm.alarmMultiplierText(at: 0))
+    }
+
     // MARK: - Safe index handling
 
     func testAlarmTimeString_emptyAlarmsReturnsEmptyString() {
@@ -122,6 +148,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(vm.alarmTimeString(at: 0), "")
         XCTAssertEqual(vm.alarmDetail(at: 0), "")
         XCTAssertEqual(vm.alarmPenaltyString(at: 0), "")
+        XCTAssertNil(vm.alarmMultiplierText(at: 0))
     }
 
     func testFormattedBalance_containsRubleSign() {
@@ -262,6 +289,29 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertEqual(
             emissions, 0,
             "Successful toggle must not refire onAlarmsUpdated — the cell already shows the new state"
+        )
+    }
+
+    /// Issue #429: a successful toggle changes `averagePenalty`, which the
+    /// sticky header's `balanceHint` ("Хватит на ~N откладываний") is derived
+    /// from. The cell repaints itself, but the header must also refresh — so the
+    /// success path fires `onBalanceUpdated` (lighter than `onAlarmsUpdated`: no
+    /// table reload). Without it the affordability pill kept a stale number until
+    /// the next viewWillAppear.
+    func testToggleAlarm_successFiresOnBalanceUpdatedForHeaderRefresh() {
+        repo.save(Alarm(penaltyAmount: 50, enabled: true))
+
+        let vm = makeViewModel()
+        vm.loadData()
+
+        var balanceEmissions = 0
+        vm.onBalanceUpdated = { _ in balanceEmissions += 1 }
+
+        vm.toggleAlarm(id: vm.alarms[0].id, enabled: false)
+
+        XCTAssertEqual(
+            balanceEmissions, 1,
+            "Successful toggle must fire onBalanceUpdated so the header re-resolves balanceHint (#429)"
         )
     }
 
@@ -683,5 +733,111 @@ final class AlarmsListViewModelCorruptionTests: XCTestCase {
         vm.loadData()
         XCTAssertEqual(fireCount, 2,
                        "A fresh corruption episode after ack must re-fire the alert")
+    }
+}
+
+/// Weekly-delta refund exclusion + transaction-ledger corruption surfacing on
+/// the alarms list (#440).
+final class AlarmsListWeeklyDeltaTests: XCTestCase {
+
+    private var testDefaults: UserDefaults!
+    private var suiteName: String!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.alarmsListWeeklyDelta.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: suiteName)!
+    }
+
+    override func tearDown() {
+        testDefaults.removePersistentDomain(forName: suiteName)
+        testDefaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
+    private func makeVM(txnRepo: TransactionRepository) -> AlarmsListViewModel {
+        let center = NotificationCenter()
+        return AlarmsListViewModel(
+            alarmRepository: AlarmRepository(
+                defaults: testDefaults,
+                scheduler: AlarmsListViewModelTests.StubScheduler()
+            ),
+            balanceService: BalanceService(defaults: testDefaults, notificationCenter: center),
+            transactionRepository: txnRepo,
+            notificationCenter: center
+        )
+    }
+
+    private func daysAgo(_ number: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -number, to: Date())!
+    }
+
+    // MARK: - Refund exclusion
+
+    func testWeeklyDelta_excludesRefundedCharge() {
+        let repo = TransactionRepository(defaults: testDefaults)
+        let refundedID = UUID()
+        // Two charges this week; one refunded by an offsetting top-up.
+        XCTAssertTrue(repo.record(Transaction(type: .charge, amount: 30, createdAt: daysAgo(1))))
+        XCTAssertTrue(repo.record(Transaction(id: refundedID, type: .charge, amount: 50, createdAt: daysAgo(2))))
+        XCTAssertTrue(repo.record(
+            Transaction(type: .topup, amount: 50, createdAt: daysAgo(2), refundsTransactionID: refundedID)
+        ))
+
+        // Only the 30 non-refunded charge counts → -30, not -80.
+        XCTAssertEqual(makeVM(txnRepo: repo).weeklyDelta, Decimal(-30),
+                       "Refunded charge must be excluded from the weekly delta")
+    }
+
+    func testWeeklyDelta_allChargesRefunded_hidesRow() {
+        let repo = TransactionRepository(defaults: testDefaults)
+        let refundedID = UUID()
+        XCTAssertTrue(repo.record(Transaction(id: refundedID, type: .charge, amount: 50, createdAt: daysAgo(1))))
+        XCTAssertTrue(repo.record(
+            Transaction(type: .topup, amount: 50, createdAt: daysAgo(1), refundsTransactionID: refundedID)
+        ))
+
+        XCTAssertNil(makeVM(txnRepo: repo).weeklyDelta,
+                     "A week whose only charge was refunded must hide the delta row")
+    }
+
+    func testWeeklyDelta_countsNonRefundedCharge() {
+        let repo = TransactionRepository(defaults: testDefaults)
+        XCTAssertTrue(repo.record(Transaction(type: .charge, amount: 40, createdAt: daysAgo(3))))
+        XCTAssertEqual(makeVM(txnRepo: repo).weeklyDelta, Decimal(-40))
+    }
+
+    func testWeeklyDelta_ignoresChargesOlderThanWeek() {
+        let repo = TransactionRepository(defaults: testDefaults)
+        XCTAssertTrue(repo.record(Transaction(type: .charge, amount: 40, createdAt: daysAgo(10))))
+        XCTAssertNil(makeVM(txnRepo: repo).weeklyDelta,
+                     "Charges older than 7 days must not appear in the weekly delta")
+    }
+
+    // MARK: - Ledger corruption surfacing
+
+    func testLoadData_corruptLedger_surfacesOnLoadError() {
+        testDefaults.set(Data("{ not valid json".utf8), forKey: "stored_transactions")
+        let vm = makeVM(txnRepo: TransactionRepository(defaults: testDefaults))
+
+        var received: LocalizedError?
+        vm.onLoadError = { received = $0 }
+        vm.loadData()
+
+        XCTAssertTrue(received is TransactionRepository.RepositoryError,
+                      "A corrupt transaction ledger must surface via onLoadError on the alarms list")
+    }
+
+    func testLoadData_healthyLedger_doesNotSurfaceTransactionError() {
+        let repo = TransactionRepository(defaults: testDefaults)
+        XCTAssertTrue(repo.record(Transaction(type: .charge, amount: 10, createdAt: daysAgo(1))))
+        let vm = makeVM(txnRepo: repo)
+
+        var fired = false
+        vm.onLoadError = { _ in fired = true }
+        vm.loadData()
+
+        XCTAssertFalse(fired, "A healthy ledger must not surface a load error")
     }
 }

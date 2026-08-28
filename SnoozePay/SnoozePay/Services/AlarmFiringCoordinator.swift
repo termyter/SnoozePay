@@ -87,7 +87,7 @@ final class AlarmFiringCoordinator {
     /// distinguish `.scheduled` from `.scheduleFailed` (issue #130).
     ///
     /// On `.scheduleFailed` the penalty is refunded via
-    /// `BalanceService.topUp` so the user is not billed for a snooze that
+    /// `BalanceService.refund` so the user is not billed for a snooze that
     /// will never re-fire. The refund posts an offsetting ledger entry —
     /// transaction history therefore shows both the charge and the refund,
     /// which is the consistent representation for stats/auditing (mirrors the
@@ -130,8 +130,13 @@ final class AlarmFiringCoordinator {
         let newCount = payload.snoozeCount + 1
         let penalty = alarm.penalty(forSnoozeCount: newCount)
 
-        let charged = balanceService.charge(amount: penalty, alarmID: payload.alarmID)
-        guard charged else {
+        // `chargeWithReceipt` returns the persisted Transaction so a later
+        // refund can link back to it (issue #133) — without that link stats
+        // can't tell a refunded charge apart from a real snooze.
+        guard let chargeTransaction = balanceService.chargeWithReceipt(
+            amount: penalty,
+            alarmID: payload.alarmID
+        ) else {
             let alarmID = payload.alarmID
             AppLogger.coordinator.notice(
                 "snooze: insufficient funds alarm=\(alarmID, privacy: .private) penalty=\(penalty, privacy: .public)"
@@ -153,13 +158,14 @@ final class AlarmFiringCoordinator {
                 alarmID: payload.alarmID,
                 newCount: newCount,
                 penalty: penalty,
+                chargeTransactionID: chargeTransaction.id,
                 completion: completion
             )
         }
     }
 
     /// Resolves the async scheduler result into a `SnoozeOutcome`. On failure
-    /// the penalty is refunded via `BalanceService.topUp` so the user is not
+    /// the penalty is refunded via `BalanceService.refund` so the user is not
     /// billed for a snooze that won't re-fire — extracted from `handleSnooze`
     /// to keep the entry-point readable and to give the refund logic its own
     /// log seam.
@@ -168,6 +174,7 @@ final class AlarmFiringCoordinator {
         alarmID: UUID,
         newCount: Int,
         penalty: Double,
+        chargeTransactionID: UUID,
         completion: ((SnoozeOutcome) -> Void)?
     ) {
         switch result {
@@ -178,10 +185,18 @@ final class AlarmFiringCoordinator {
             completion?(.scheduled(newSnoozeCount: newCount, charged: penalty))
         case .failure(let error):
             // Refund the penalty so the user isn't billed for a snooze that
-            // will never re-fire. `topUp` records an offsetting ledger entry
-            // (rather than mutating storage directly) so transaction history
-            // shows both the charge and the refund — stats stay auditable.
-            let refunded = balanceService.topUp(amount: penalty)
+            // will never re-fire. `refund` records an offsetting `.refund`
+            // ledger entry (rather than mutating storage directly) so
+            // transaction history shows both the charge and the reversal —
+            // stats stay auditable and revenue accounting, which keys off
+            // `.topup`, doesn't see phantom income (issue #358).
+            // Link the refund to the original charge ID so stats consumers
+            // can pair the two rows (issue #133); without the link a refund
+            // still inflates snoozeCount/totalSpent and resets streak.
+            let refunded = balanceService.refund(
+                amount: penalty,
+                refundsTransactionID: chargeTransactionID
+            )
             let desc = error.errorDescription ?? error.localizedDescription
             if refunded {
                 AppLogger.coordinator.error(

@@ -109,34 +109,48 @@ final class CreateAlarmViewController: UIViewController {
     // MARK: - Setup
 
     private func setupNavigationBar() {
-        // V2 nav bar — left X close chip, centered caps title, right `Готово`
-        // SPButton(.money, .sm). The UIKit navigation bar still owns layout
-        // (we keep `title` set on viewDidLoad for accessibility), but the
-        // left/right items are custom views so the brand styling sticks.
-        // Matches `SPScreensV2.jsx` lines 496-502.
-        let closeButton = UIButton(type: .system)
-        closeButton.setImage(
-            UIImage(systemName: "xmark")?.withConfiguration(
-                UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-            ),
-            for: .normal
-        )
-        closeButton.tintColor = AppColors.fg1
-        closeButton.backgroundColor = AppColors.whiteOverlay06
-        closeButton.layer.cornerRadius = 18
-        closeButton.layer.masksToBounds = true
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
-        closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-        closeButton.accessibilityLabel = "Закрыть"
-        navigationItem.leftBarButtonItem = UIBarButtonItem(customView: closeButton)
+        // V2 nav bar. Two modes differ by design (SPMore2.jsx `AlarmEdit`
+        // artboard 10 vs `SPScreensV2.jsx` lines 496-502):
+        //   • create — left X close chip, right `Готово` money button
+        //   • edit   — left `Отмена` quiet button, right `Сохранить` money button
+        // The UIKit navigation bar still owns layout (we keep `title` set on
+        // viewDidLoad for accessibility), but the left/right items are custom
+        // views so the brand styling sticks.
+        if viewModel.isEditing {
+            let cancelButton = SPButton(
+                title: "Отмена",
+                variant: .quiet,
+                size: .sm
+            )
+            cancelButton.accessibilityIdentifier = "createAlarm.cancelButton"
+            cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+            navigationItem.leftBarButtonItem = UIBarButtonItem(customView: cancelButton)
+        } else {
+            let closeButton = UIButton(type: .system)
+            closeButton.setImage(
+                UIImage(systemName: "xmark")?.withConfiguration(
+                    UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+                ),
+                for: .normal
+            )
+            closeButton.tintColor = AppColors.fg1
+            closeButton.backgroundColor = AppColors.whiteOverlay06
+            closeButton.layer.cornerRadius = 18
+            closeButton.layer.masksToBounds = true
+            closeButton.translatesAutoresizingMaskIntoConstraints = false
+            closeButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
+            closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+            closeButton.accessibilityLabel = "Закрыть"
+            navigationItem.leftBarButtonItem = UIBarButtonItem(customView: closeButton)
+        }
 
         let saveButton = SPButton(
-            title: "Готово",
+            title: viewModel.isEditing ? "Сохранить" : "Готово",
             variant: .money,
             size: .sm
         )
+        saveButton.accessibilityIdentifier = "createAlarm.saveButton"
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: saveButton)
 
@@ -160,6 +174,10 @@ final class CreateAlarmViewController: UIViewController {
         view.addSubview(tableView)
         tableView.delegate = self
         tableView.dataSource = self
+        // The penalty field uses a `.numberPad` keyboard (no return key), so a
+        // drag over the form dismisses it — otherwise it would cover the cards
+        // below with no way out but Save/Cancel (#410).
+        tableView.keyboardDismissMode = .interactive
         registerSectionCells(in: tableView)
 
         // Pin to safe area on top so the first section's "ПОВТОР" header is
@@ -222,6 +240,11 @@ final class CreateAlarmViewController: UIViewController {
     }
 
     @objc private func saveTapped() {
+        // Commit any focused field first: the penalty `.numberPad` commits its
+        // value on `editingDidEnd` (#410), and tapping the nav-bar Save button
+        // does not blur the field on its own — without this, a value typed and
+        // saved without dismissing the keyboard would be silently dropped.
+        view.endEditing(true)
         // Cells push state into the view-model live via callbacks, so save just
         // forwards the current snapshot to the repository.
         // The async overload waits on `AlarmScheduler.schedule` to resolve so

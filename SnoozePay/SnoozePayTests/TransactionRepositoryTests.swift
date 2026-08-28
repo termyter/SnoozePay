@@ -153,6 +153,51 @@ final class TransactionRepositoryTests: XCTestCase {
         XCTAssertEqual(streak, 6, "All days from first tx to today should be clean")
     }
 
+    // MARK: - Refunded charges (issue #133)
+
+    /// A snooze that fails to schedule is rolled back via a `topup` carrying
+    /// `refundsTransactionID` pointing at the original charge. The streak must
+    /// treat the day as clean — the user did not actually snooze, so penalising
+    /// their streak would punish a permission/system failure they can't avoid.
+    func testCurrentStreak_chargeRefundedSameDay_doesNotResetStreak() {
+        // 5 days ago a charge was attempted and refunded; nothing else.
+        let originalCharge = charge(amount: 50, daysAgo: 5)
+        let refund = Transaction(
+            type: .topup,
+            amount: 50,
+            createdAt: originalCharge.createdAt,
+            refundsTransactionID: originalCharge.id
+        )
+        repo.record(originalCharge)
+        repo.record(refund)
+
+        // Streak should walk back to the day BEFORE the refunded charge
+        // without halting on the refunded entry.
+        let streak = repo.currentStreak()
+        XCTAssertGreaterThanOrEqual(streak, 5,
+            "Refunded charge must not interrupt the streak — the snooze never actually fired")
+    }
+
+    /// A real (non-refunded) charge alongside a refunded one still ends the
+    /// streak on the real charge's day. Guards against the filter being too
+    /// aggressive — only charges with a matching refund row are excluded.
+    func testCurrentStreak_realChargePresent_stillResetsStreak() {
+        let realCharge = charge(amount: 50, daysAgo: 0)
+        let refundedCharge = charge(amount: 50, daysAgo: 1)
+        let refund = Transaction(
+            type: .topup,
+            amount: 50,
+            createdAt: refundedCharge.createdAt,
+            refundsTransactionID: refundedCharge.id
+        )
+        repo.record(realCharge)
+        repo.record(refundedCharge)
+        repo.record(refund)
+
+        XCTAssertEqual(repo.currentStreak(), 0,
+            "Real charge today must end the streak even when an older charge was refunded")
+    }
+
     func testCurrentStreak_intermittentCharges() {
         // Day 0: clean (topup), Day 1: clean, Day 2: charge -> streak = 2
         repo.record(charge(amount: 50, daysAgo: 2))

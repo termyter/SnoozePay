@@ -121,16 +121,31 @@ final class BalanceService {
     /// (mirrors locked-ledger pattern from #72).
     @discardableResult
     func charge(amount: Double, alarmID: UUID?) -> Bool {
+        chargeWithReceipt(amount: amount, alarmID: alarmID) != nil
+    }
+
+    /// Charge variant that returns the persisted `Transaction` so the caller
+    /// can later post a refund linked to this exact ledger entry (issue #133).
+    /// Returns `nil` on the same failure modes as `charge` — insufficient
+    /// funds, corrupted balance, or repository write rejection.
+    func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
+        // Reject non-finite / non-positive amounts up front, matching
+        // `creditPromotion`'s contract (#441). Without this a negative amount
+        // passes the `current >= amount` guard and records a `.charge` that
+        // INCREASES the balance (and injects a phantom snooze day into
+        // streak/stats); a NaN would persist into storage before the read-time
+        // corruption guard catches it.
+        guard amount.isFinite, amount > 0 else { return nil }
+        let transaction = Transaction(
+            type: .charge,
+            amount: amount,
+            alarmID: alarmID?.uuidString
+        )
         let result: (charged: Bool, newBalance: Double) = queue.sync {
             let current = readRawBalance()
             guard !_balanceCorrupted else { return (false, current) }
             guard current >= amount else { return (false, current) }
 
-            let transaction = Transaction(
-                type: .charge,
-                amount: amount,
-                alarmID: alarmID?.uuidString
-            )
             // Record the ledger entry FIRST. If the transaction repository is
             // locked (corrupt blob waiting on user ack) or encoding fails, we
             // refuse to mutate the balance — otherwise money would silently
@@ -147,8 +162,9 @@ final class BalanceService {
 
         if result.charged {
             notifyBalanceChanged(result.newBalance)
+            return transaction
         }
-        return result.charged
+        return nil
     }
 
     // MARK: - Top up (IAP)
@@ -159,28 +175,35 @@ final class BalanceService {
     /// caller should surface this to the user instead of pretending
     /// the IAP credited (silent ledger desync was the regression behind the #72
     /// PR #101 hunter feedback).
+    ///
+    /// Paid credits ONLY. A penalty reversal must go through `refund` — routing
+    /// it here books phantom IAP revenue (issue #358), which is why this method
+    /// no longer accepts a `refundsTransactionID`.
     @discardableResult
     func topUp(amount: Double) -> Bool {
-        let result: (recorded: Bool, newBalance: Double) = queue.sync {
-            let current = readRawBalance()
-            guard !_balanceCorrupted else { return (false, current) }
+        credit(type: .topup, amount: amount)
+    }
 
-            let transaction = Transaction(
-                type: .topup,
-                amount: amount
-            )
-            guard transactionRepository.record(transaction) else {
-                return (false, current)
-            }
-            let updated = current + amount
-            defaults.set(updated, forKey: balanceKey)
-            return (true, updated)
-        }
+    // MARK: - Refund (reversal of a snooze penalty)
 
-        if result.recorded {
-            notifyBalanceChanged(result.newBalance)
-        }
-        return result.recorded
+    /// Returns a charged penalty to the wallet and records a `.refund` ledger
+    /// entry. Used when the penalty was debited but `AlarmScheduler` then
+    /// refused the snooze trigger, so the user must not stay billed for a
+    /// snooze that will never re-fire (issues #197 / #366).
+    ///
+    /// The dedicated `TransactionType.refund` case exists because this credit
+    /// is *not* income: booking it as `.topup` made every reversal show up as
+    /// paid IAP revenue and inflated the Пополнения aggregate by the refunded
+    /// amount (issue #358).
+    ///
+    /// `refundsTransactionID` links back to the exact `charge` being reversed
+    /// so `TransactionRepository.realCharges(from:)` can drop the pair from
+    /// snooze counts / streak (issue #133). Returns `false` on the same failure
+    /// modes as `topUp` — a locked ledger or corrupted balance means the refund
+    /// did NOT land and the caller must surface a wallet-desync warning.
+    @discardableResult
+    func refund(amount: Double, refundsTransactionID: UUID? = nil) -> Bool {
+        credit(type: .refund, amount: amount, refundsTransactionID: refundsTransactionID)
     }
 
     // MARK: - Promotional credit (referral, daily bonus, ...)
@@ -193,6 +216,23 @@ final class BalanceService {
     /// logic that keys off `.topup` (issue #144).
     @discardableResult
     func creditPromotion(amount: Double) -> Bool {
+        credit(type: .promotion, amount: amount)
+    }
+
+    /// Shared implementation behind every credit (`topUp` / `refund` /
+    /// `creditPromotion`). Only the ledger `type` differs — the corruption
+    /// gating, amount validation and ledger-first ordering are identical and
+    /// must stay that way, so they live in one place.
+    private func credit(
+        type: TransactionType,
+        amount: Double,
+        refundsTransactionID: UUID? = nil
+    ) -> Bool {
+        // Reject non-finite / non-positive amounts (#441): a negative credit
+        // would record a positive-typed row while DECREASING the balance
+        // (ledger/balance divergence that can drive `user_balance` negative and
+        // latch #119 corruption); a NaN would persist into storage before the
+        // read-time guard fires.
         guard amount.isFinite, amount > 0 else { return false }
 
         let result: (recorded: Bool, newBalance: Double) = queue.sync {
@@ -200,9 +240,13 @@ final class BalanceService {
             guard !_balanceCorrupted else { return (false, current) }
 
             let transaction = Transaction(
-                type: .promotion,
-                amount: amount
+                type: type,
+                amount: amount,
+                refundsTransactionID: refundsTransactionID
             )
+            // Ledger first: if the repository is locked (corrupt blob awaiting
+            // user ack) or encoding fails, the balance must not move — an
+            // unrecorded credit is a silent desync (#72).
             guard transactionRepository.record(transaction) else {
                 return (false, current)
             }

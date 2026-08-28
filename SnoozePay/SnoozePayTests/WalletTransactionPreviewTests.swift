@@ -65,6 +65,30 @@ final class WalletTransactionPreviewTests: XCTestCase {
         XCTAssertEqual(item.amountText, "+500\u{202F}₽")
     }
 
+    /// #358 introduced `.refund` — the row must render as its own thing, not
+    /// silently fall back to top-up copy (or crash a `default` branch).
+    func testRefundItem_readsAsAReversalNotATopup() {
+        let item = WalletTransactionPreview.item(
+            for: Transaction(type: .refund, amount: 50, createdAt: Date())
+        )
+        XCTAssertEqual(item.title, "Возврат за откладывание")
+        XCTAssertFalse(item.isDebit, "The money comes back to the user")
+        XCTAssertEqual(item.iconSystemName, "arrow.uturn.backward")
+        XCTAssertEqual(item.amountText, "+50\u{202F}₽")
+    }
+
+    /// A row written by a newer build must still render (see
+    /// `TransactionType.unknown`) — with no sign, since the direction is
+    /// genuinely unknown.
+    func testUnknownItem_rendersNeutrallyWithoutASign() {
+        let item = WalletTransactionPreview.item(
+            for: Transaction(type: .unknown("cashback"), amount: 10, createdAt: Date())
+        )
+        XCTAssertEqual(item.title, "Операция")
+        XCTAssertEqual(item.iconSystemName, "questionmark")
+        XCTAssertEqual(item.amountText, "10\u{202F}₽")
+    }
+
     func testPromotionItem_isGreenGiftWithHonestCopy() {
         let item = WalletTransactionPreview.item(
             for: Transaction(type: .promotion, amount: 200, createdAt: Date())

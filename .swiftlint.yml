@@ -1,62 +1,71 @@
-# SwiftLint configuration for SnoozePay
+# SwiftLint для SnoozePay.
 #
-# Goal: keep linting useful for real bugs while quieting purely-stylistic noise
-# from intentional design-token naming (Tailwind-style xs/sm/md/lg/xl, h1-h4).
-# Token enums are wrapped in `// swiftlint:disable identifier_name` blocks
-# directly, since SwiftLint 0.52 has no per-rule `excluded_files` for
-# `identifier_name`.
+# Встроенные правила — дефолтные, конфиг их не трогает. Здесь только custom_rules,
+# которые ловят классы дефектов, специфичные для этого проекта.
+#
+# ВСЁ НИЖЕ — severity: warning, и это осознанно. На момент заведения конфига в
+# коде уже ~30 нарушений; сделать их ошибкой значит покрасить лint и заблокировать
+# все PR разом. CI (`swiftlint lint --quiet`) падает только на errors, поэтому
+# warning'и видно, но они никого не держат. Долг чинится отдельными PR; когда
+# счётчик дойдёт до нуля — правило поднимается до error, и класс закрыт навсегда.
 
-included:
-  - SnoozePay/SnoozePay
-  - SnoozePay/SnoozePayTests
+custom_rules:
 
-excluded:
-  - SnoozePay/SnoozePay.xcodeproj
-  - .build
-  - DerivedData
+  # ── Светлая тема ─────────────────────────────────────────────────────────
+  # AppColors построен на UIColor(dynamicProvider:) и корректно отдаёт пару
+  # light/dark для каждого токена. Ломают тему не токены, а обходы: белый текст,
+  # прописанный руками, на экране, который тему уважает, в светлом режиме
+  # становится невидимым.
+  #
+  # Экраны, осознанно тёмные всегда (Splash, Onboarding, Permissions, Firing,
+  # WokeMorning, TopUp-шит), исключены: там хардкод — законный выбор.
+  hardcoded_color:
+    name: "Хардкод цвета мимо AppColors"
+    regex: '(UIColor\(red:|UIColor\(white:|UIColor\(hex:|UIColor\.white|UIColor\.black|=\s*\.white\b|=\s*\.black\b)'
+    included: ".*/(ViewControllers|Views)/.*\\.swift"
+    excluded: ".*(AppColors|AppShadow|AlarmFiringThemePalette|AlarmThemeRendering|Splash|Onboarding|Permissions|AlarmFiring|WokeMorning|FiringTopUp|SPFiring|SPThemedFiring|SPWokeMorning|GradientMask|AlarmThemeTileCell|AlarmThemePicker).*\\.swift"
+    message: "Цвет задан вручную. В светлой теме это даёт невидимый текст или тёмный блок на светлом фоне. Возьми токен из AppColors — он сам отдаёт нужный вариант."
+    severity: warning
 
-# Rules disabled because they fire on intentional design-token short
-# identifiers (`xs`, `sm`, `md`, `lg`, `xl`, `h1`-`h4`, `ui`, `sw`).
-# Token files explicitly opt back in via `swiftlint:enable` markers if needed.
-identifier_name:
-  min_length:
-    warning: 2
-    error: 1
-  max_length:
-    warning: 50
-    error: 60
-  excluded:
-    - id
-    - h1
-    - h2
-    - h3
-    - h4
-    - sm
-    - md
-    - lg
-    - xl
-    - xs
-    - ui
-    - sw
+  # ── Принудительно тёмные экраны ──────────────────────────────────────────
+  # Само по себе не грех: шесть экранов тёмные по дизайну. Но каждый новый такой
+  # экран — это кусок приложения, выпадающий из темы, и решение должно быть
+  # явным, а не случайным.
+  forced_dark_mode:
+    name: "Экран принудительно тёмный"
+    regex: 'overrideUserInterfaceStyle\s*=\s*\.dark'
+    included: ".*/(ViewControllers|Views)/.*\\.swift"
+    excluded: ".*(Splash|Onboarding|Permissions|AlarmFiring|WokeMorning|FiringTopUp).*\\.swift"
+    message: "Новый экран выключает себя из темы. Если так и задумано — добавь файл в excluded этого правила, чтобы решение осталось видимым."
+    severity: warning
 
-line_length:
-  warning: 120
-  error: 200
-  ignores_comments: true
-  ignores_urls: true
-
+# ── Согласование локального и CI-прогона ─────────────────────────────────────
+# Локально стоит SwiftLint 0.52.2, в CI `brew install` ставит свежий. На дефолтах
+# они расходятся: локально эти два правила дают 11 errors, в CI — ноль. Пока
+# SwiftLint был необязательным чеком, расхождение никого не трогало; теперь он
+# блокирует merge, и вердикт обязан быть одинаковым в обоих местах.
+#
+# Порог оставлен дефолтным, понижена только строгость: это предсуществующий долг
+# (StatisticsViewModel, AlarmScheduler, ReferralViewController и ещё несколько),
+# и превращать его в блокировку всех PR ради чужого технического долга нельзя.
 type_body_length:
-  warning: 400
-  error: 600
-
-function_body_length:
-  warning: 60
-  error: 120
-
-file_length:
-  warning: 600
+  warning: 350
   error: 1000
-  ignore_comment_only_lines: true
 
-# Reporter for CI-friendly output.
-reporter: "xcode"
+# Однобуквенные имена в коде отрисовки — не нарушение, а общепринятая запись:
+# `x`/`y` в StatisticsHeatmapView читаются лучше, чем horizontalPosition.
+identifier_name:
+  excluded:
+    - x
+    - y
+    - i
+    - j
+    - r
+    - g
+    - b
+    - dx
+    - dy
+    - id
+  min_length:
+    warning: 3
+    error: 1

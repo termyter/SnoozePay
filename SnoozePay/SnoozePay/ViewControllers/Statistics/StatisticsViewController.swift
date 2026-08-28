@@ -2,14 +2,18 @@ import UIKit
 
 /// Statistics screen — V3 behavioural redesign (#235, `SPMore4.jsx` `Stats()`,
 /// artboards 27/27a). Top-level tab (no back button, large "Статистика"
-/// title) with three behavioural cards and zero money / wake-time blocks:
+/// title):
 ///   1. Hero "Серия" — streak count + flame badge + calendar-month heatmap
 ///      (tap a cell → tonal ring + tooltip, artboard 27a).
-///   2. "По дням недели" — average snoozes per weekday over 4 weeks, worst
+///   2. "Эта неделя" — saved/lost money chart + "Сэкономили / Потратили /
+///      Чистый" totals (#348).
+///   3. "Время подъёма" — two-week wake-time average against the previous
+///      two weeks (#348). Hidden while no exact wake instants exist.
+///   4. "По дням недели" — average snoozes per weekday over 4 weeks, worst
 ///      day highlighted in the pain gradient.
-///   3. "Динамика откладываний" — 8-week trend with better/same/worse
+///   5. "Динамика откладываний" — 8-week trend with better/same/worse
 ///      headline and a direction arrow.
-///   4. DEBUG buttons for StreakModal / Referral / AlarmOff — `#if DEBUG`.
+///   6. DEBUG buttons for StreakModal / Referral / AlarmOff — `#if DEBUG`.
 ///
 /// Backed by `StatisticsViewModel`. Card-building helpers live in
 /// `StatisticsViewController+Cards.swift` so the main type body stays under
@@ -80,6 +84,23 @@ final class StatisticsViewController: UIViewController {
 
     let heatmapView: StatisticsHeatmapView = {
         let view = StatisticsHeatmapView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    // MARK: - Money / wake-time cards (#348)
+
+    /// "ЭТА НЕДЕЛЯ" — saved/lost week chart + the three money totals.
+    let weekMoneyCard: SPWeekMoneyCard = {
+        let view = SPWeekMoneyCard()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    /// "ВРЕМЯ ПОДЪЁМА" — hidden entirely while no exact wake instants have
+    /// been recorded (see `StatisticsViewModel.wakeTimeStats`).
+    let wakeTimeCard: SPWakeTimeCard = {
+        let view = SPWakeTimeCard()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -176,6 +197,10 @@ final class StatisticsViewController: UIViewController {
         let hero = makeHeroStreakCard()
         heroCard = hero
         contentStack.addArrangedSubview(hero)
+        // Money + wake-time sit right under the hero, matching the artboard's
+        // ordering (streak → неделя в деньгах → время подъёма → поведение).
+        contentStack.addArrangedSubview(weekMoneyCard)
+        contentStack.addArrangedSubview(wakeTimeCard)
         contentStack.addArrangedSubview(makeWeekdayCard())
         contentStack.addArrangedSubview(makeTrendCard())
         #if DEBUG
@@ -266,12 +291,18 @@ final class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        // Empty state — no charges and no wake events means the three cards
-        // would all read empty, so show the "Пока нечего считать" column
-        // instead (`SPMore.jsx` `EmptyStats`, #289).
-        let isEmpty = viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty
+        // The shared state column has two honest modes: a new account gets
+        // the no-data copy from `SPMore.jsx` (`EmptyStats`, #289), while an
+        // unreadable or partially read ledger names that failure and withholds
+        // every ledger-derived card (#459).
+        let unavailableReason = viewModel.ledgerUnavailableReason
+        let isEmpty = unavailableReason != nil || (viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty)
         emptyState.isHidden = !isEmpty
-        emptyState.setStreak(viewModel.streak)
+        if let unavailableReason {
+            emptyState.setUnavailable(unavailableReason.message)
+        } else {
+            emptyState.setStreak(viewModel.streak)
+        }
         scrollView.isHidden = isEmpty
         if isEmpty { return }
 
@@ -281,6 +312,21 @@ final class StatisticsViewController: UIViewController {
         streakBigWordLabel.text = StreakModalViewController.dayWord(for: streak)
         streakMetaLabel.text = viewModel.lastSlipText
         heatmapView.days = viewModel.heatmapDays
+
+        // "Эта неделя" money summary + "Время подъёма" (#348). The enclosing
+        // state column already withheld this whole content for an unavailable
+        // ledger; wake time alone is dropped when no exact instants exist.
+        weekMoneyCard.apply(
+            days: viewModel.weekMoneyDays,
+            summary: viewModel.weekMoneySummary,
+            savingsNote: viewModel.savingsNote
+        )
+        if let wakeStats = viewModel.wakeTimeStats {
+            wakeTimeCard.isHidden = false
+            wakeTimeCard.apply(wakeStats)
+        } else {
+            wakeTimeCard.isHidden = true
+        }
 
         // Weekday distribution.
         weekdayHeadlineLabel.attributedText = Self.weekdayHeadline(
@@ -341,13 +387,12 @@ final class StatisticsViewController: UIViewController {
         // A tap anywhere on the hero card lands here — clear an open tooltip
         // first so the modal doesn't stack on top of a stale selection.
         heatmapView.clearSelection()
-        let alarms = (try? AlarmRepository.shared.fetchAllChecked()) ?? []
-        let saved = StreakModalViewController.estimatedSavings(
-            for: max(viewModel.streak, 1),
-            alarms: alarms
+        let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+            cleanDays: viewModel.streak,
+            price: viewModel.snoozePrice
         )
         let modal = StreakModalViewController(
-            streakDays: max(viewModel.streak, 1),
+            streakDays: viewModel.streak,
             savedAmount: saved
         )
         present(modal, animated: true)

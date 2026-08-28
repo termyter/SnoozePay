@@ -179,6 +179,11 @@ final class SettingsIconRowCell: UITableViewCell {
         trailingSwitch.isOn = isOn
         trailingSwitch.isEnabled = enabled
         trailingSwitch.alpha = enabled ? 1.0 : 0.5
+        // VoiceOver otherwise announces the brand `SPSwitch` as the generic
+        // "Переключатель". This cell is reused for several rows (Critical Alerts,
+        // …), so take the label from the configured row title to stay contextual
+        // (#425), mirroring AlarmCell's pattern.
+        trailingSwitch.accessibilityLabel = title
         onSwitchChange = onChange
     }
 
@@ -194,5 +199,6 @@ final class SettingsIconRowCell: UITableViewCell {
         trailingSwitch.isHidden = true
         trailingSwitch.isEnabled = true
         trailingSwitch.alpha = 1.0
+        trailingSwitch.accessibilityLabel = nil
     }
 }

@@ -169,6 +169,26 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertEqual(vm.progressiveChain, [0, 0, 0, 0])
     }
 
+    func testProgressiveChain_fractionalPenalty_doublesOnDoubleNotTruncatedInt() {
+        // Regression (#373): the old `Int(base) << $0` truncated the fractional
+        // rouble *before* doubling (49 → 98 → 196 → 392). The canonical engine
+        // `Alarm.penalty` doubles on Double via pow, so the preview must too:
+        // 49.5 → 99 → 198 → 396 (the base rounds to 50 for Int display).
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = 49.5
+        XCTAssertEqual(vm.progressiveChain, [50, 99, 198, 396])
+    }
+
+    func testProgressiveChain_largePenalty_clampsInsteadOfTrapping() {
+        // Regression (#373): `base << 3` overflowed Int and trapped for large
+        // penalties (PenaltyCell enforces only a minimum, no upper bound).
+        // The Double path must clamp to Int.max rather than crash.
+        let vm = CreateAlarmViewModel(repository: repo)
+        vm.penaltyAmount = 1e19  // > Int.max (~9.22e18)
+        XCTAssertEqual(vm.progressiveChain.count, 4)
+        XCTAssertEqual(vm.progressiveChain, [.max, .max, .max, .max])
+    }
+
     // MARK: - Progressive scale preview
 
     func testProgressiveScalePreview_format() {

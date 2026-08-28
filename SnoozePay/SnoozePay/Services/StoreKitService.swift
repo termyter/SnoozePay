@@ -27,20 +27,20 @@ final class StoreKitService {
 
     // Product IDs — must match App Store Connect configuration
     static let productIDs = [
-        "com.snooze_pay.balance.49",
-        "com.snooze_pay.balance.149",
-        "com.snooze_pay.balance.299",
-        "com.snooze_pay.balance.499",
-        "com.snooze_pay.balance.999"
+        "io.mobilife.snoozepay.balance.49",
+        "io.mobilife.snoozepay.balance.149",
+        "io.mobilife.snoozepay.balance.299",
+        "io.mobilife.snoozepay.balance.499",
+        "io.mobilife.snoozepay.balance.999"
     ]
 
     // Corresponding RUB amounts to credit
     static let productAmounts: [String: Double] = [
-        "com.snooze_pay.balance.49": 49,
-        "com.snooze_pay.balance.149": 149,
-        "com.snooze_pay.balance.299": 299,
-        "com.snooze_pay.balance.499": 499,
-        "com.snooze_pay.balance.999": 999
+        "io.mobilife.snoozepay.balance.49": 49,
+        "io.mobilife.snoozepay.balance.149": 149,
+        "io.mobilife.snoozepay.balance.299": 299,
+        "io.mobilife.snoozepay.balance.499": 499,
+        "io.mobilife.snoozepay.balance.999": 999
     ]
 
     // MARK: - Notification names
@@ -126,6 +126,12 @@ final class StoreKitService {
         self.notificationPoster = UNUserNotificationCenter.current()
         self.defaults = .standard
         transactionListener = Self.makeTransactionListener()
+        // Fetch the StoreKit catalogue at startup. Without this the `products`
+        // array stays empty for the whole session and every top-up path falls
+        // back to the (DEBUG-only intended) local credit — the purchase sheet
+        // never reaches real StoreKit. `_ = StoreKitService.shared` in
+        // AppDelegate triggers this init, so the load kicks off at launch.
+        Task { await loadProducts() }
     }
 
     /// Test-only initializer. Injects the notification + storage seams and skips
@@ -179,6 +185,17 @@ final class StoreKitService {
         do {
             let loaded = try await Product.products(for: Set(StoreKitService.productIDs))
             products = loaded.sorted { $0.price < $1.price }
+            // `Product.products(for:)` returns the *available* subset and does
+            // NOT throw when an ID is simply unavailable (e.g. the Paid Apps
+            // agreement isn't active, or the SKU hasn't propagated yet) — it
+            // just omits it. Log found/missing so a silent empty result is
+            // diagnosable instead of looking like the call never ran.
+            let missing = Set(StoreKitService.productIDs)
+                .subtracting(loaded.map(\.id))
+                .sorted()
+            AppLogger.storeKit.notice(
+                "loaded \(loaded.count)/\(StoreKitService.productIDs.count) products; missing: \(missing.joined(separator: ", "), privacy: .public)"
+            )
             postProductsLoaded(products)
         } catch {
             AppLogger.storeKit.error("product load failed: \(error.localizedDescription, privacy: .public)")

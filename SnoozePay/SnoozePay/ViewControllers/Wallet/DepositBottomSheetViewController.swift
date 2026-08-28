@@ -353,6 +353,15 @@ final class DepositBottomSheetViewController: UIViewController {
 
     @objc private func depositTapped() {
         guard !purchaseInFlight else { return }
+        // Detect a corrupt balance BEFORE attempting a top-up (#419). The
+        // BalanceService mutation gate stays locked until the user resets via
+        // `acknowledgeCorruption()`, so a top-up here would always fail back
+        // into the generic "Покупка не выполнена" retry loop the user can't
+        // satisfy. Surface a corruption-specific message instead.
+        guard !BalanceService.shared.balanceCorrupted else {
+            presentBalanceCorruptionAlert()
+            return
+        }
         guard let preset = DepositPresets.preset(forAmount: selectedAmount) else { return }
         purchaseInFlight = true
         depositButton.isEnabled = false
@@ -363,14 +372,27 @@ final class DepositBottomSheetViewController: UIViewController {
             }
         } else {
             let pid = preset.productID
+            #if DEBUG
+            // DEBUG/simulator without a loaded StoreKit catalogue: credit
+            // locally so the flow stays testable without ASC products.
             AppLogger.storeKit.notice(
-                "DepositSheet: product \(pid, privacy: .public) not loaded — falling back to BalanceService.topUp"
+                "DepositSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
             )
             if BalanceService.shared.topUp(amount: Double(preset.amount)) {
                 handlePurchaseSuccess(amount: preset.amount)
             } else {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
+            #else
+            // Release: NEVER credit balance without a real StoreKit
+            // transaction. An empty product list (inactive Paid Apps /
+            // unpropagated SKU / offline) must surface as an error, not as
+            // free balance.
+            AppLogger.storeKit.error(
+                "DepositSheet: product \(pid, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
+            )
+            handlePurchaseFailure(message: "Не удалось загрузить пакеты пополнения. Попробуйте позже.")
+            #endif
         }
     }
 
@@ -405,6 +427,25 @@ final class DepositBottomSheetViewController: UIViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.dismiss(animated: true)
         }
+    }
+
+    /// Corruption-specific alert shown when the user taps "Пополнить" while
+    /// the stored balance is corrupt (#419). Unlike the generic purchase
+    /// failure, this routes the user to reset the balance — the top-up gate
+    /// stays locked until `acknowledgeCorruption()` runs, so retrying the
+    /// purchase as the generic copy suggests can never succeed.
+    private func presentBalanceCorruptionAlert() {
+        let alert = UIAlertController(
+            title: "Баланс повреждён",
+            message: "Сохранённый баланс некорректен. Пополнение недоступно, "
+                + "пока вы не сбросите баланс в ноль.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive) { _ in
+            BalanceService.shared.acknowledgeCorruption()
+        })
+        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func handlePurchaseFailure(message: String?) {

@@ -206,6 +206,67 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
                        "Underlying UN error message must reach the outcome verbatim")
         XCTAssertEqual(balanceService.balance, preCharge,
                        "Penalty must be refunded so the user isn't billed for a snooze that won't fire")
+
+        // #358: the reversal is typed `.refund`, not `.topup` — the
+        // notification-action path must not book phantom IAP revenue either.
+        // A second repository over the same suite reads the ledger the
+        // coordinator's BalanceService wrote.
+        let ledger = TransactionRepository(defaults: testDefaults).fetchAll()
+        let reversal = ledger.first { $0.refundsTransactionID != nil }
+        XCTAssertEqual(reversal?.type, .refund)
+        XCTAssertEqual(ledger.filter { $0.type == .topup }.count, 1,
+                       "Only the 200 ₽ seed top-up is revenue")
+    }
+
+    /// Worst-case branch: schedule fails AND the offsetting refund also fails
+    /// (typically because the ledger is locked from a corrupt blob — #72/#119).
+    /// `.scheduleFailedAndRefundFailed` is the ONLY trigger for the stronger
+    /// «обратитесь в поддержку» banner — without test coverage a regression
+    /// silently swaps to `.scheduleFailed` and the user thinks money came back
+    /// when in fact it didn't (issue #200).
+    func testHandleSnooze_schedulerFails_andRefundAlsoFails_reportsDegradedOutcome() {
+        let alarm = makeAlarm(penalty: 50)
+        balanceService.topUp(amount: 200)
+        let pre = balanceService.balance
+
+        // Swap in a center that:
+        //   1. Reports an add() error (so the schedule resolves as .failure)
+        //   2. Corrupts the transaction store BEFORE invoking the completion
+        //      handler — by the time the coordinator tries to refund, record()
+        //      refuses (TransactionRepository locked).
+        let corruptingCenter = CorruptingThenFailingCenter(defaults: testDefaults)
+        let corruptingScheduler = AlarmScheduler(notificationCenter: corruptingCenter)
+        let coord = AlarmFiringCoordinator(
+            alarmRepository: alarmRepo,
+            balanceService: balanceService,
+            scheduler: corruptingScheduler
+        )
+
+        let exp = expectation(description: "outcome")
+        var captured: AlarmFiringCoordinator.SnoozeOutcome?
+        coord.handleSnooze(userInfo: [
+            "alarmID": alarm.id.uuidString,
+            "penaltyAmount": 50.0,
+            "progressiveScale": false,
+            "snoozeCount": 0,
+            "snoozeMinutes": 9,
+            "soundID": "radar"
+        ]) { outcome in
+            captured = outcome
+            exp.fulfill()
+        }
+        // 5.0s, matching the suite's `resolveSnooze` helper. The prior 1.0s was
+        // too tight for a loaded CI runner — the async handleSnooze + refund
+        // chain (≈45ms locally) intermittently overran it under parallel-job
+        // contention, leaving `captured` nil and flaking this test on most PRs
+        // (#434). This is a tolerance budget, not a perf assertion.
+        wait(for: [exp], timeout: 5.0)
+
+        guard case .scheduleFailedAndRefundFailed = captured else {
+            return XCTFail("Expected .scheduleFailedAndRefundFailed, got \(String(describing: captured))")
+        }
+        XCTAssertLessThan(balanceService.balance, pre,
+            "Wallet is in degraded state — charge took money, refund did NOT land. Banner UX must surface this.")
     }
 
     /// 64-pending-limit pre-flight failure path. Same contract as the
@@ -262,6 +323,49 @@ private final class MockNotificationCenter: NotificationScheduling {
         completionHandler(pendingRequests)
     }
 
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
+    func getDeliveredNotifications(
+        completionHandler: @escaping ([UNNotification]) -> Void
+    ) {
+        completionHandler([])
+    }
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {}
+    func removeAllPendingNotificationRequests() {}
+    func requestAuthorization(
+        options: UNAuthorizationOptions,
+        completionHandler: @escaping (Bool, Error?) -> Void
+    ) {
+        completionHandler(false, nil)
+    }
+}
+
+/// Reports an `add()` failure to drive `.scheduleFailed`, but ALSO corrupts
+/// the transaction store the moment before invoking the completion handler.
+/// By the time the coordinator's refund path calls `refund`, the repository
+/// is locked (decode failed on the corrupt blob) and `record()` refuses —
+/// reproducing the `.scheduleFailedAndRefundFailed` outcome (issue #200).
+private final class CorruptingThenFailingCenter: NotificationScheduling {
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults) { self.defaults = defaults }
+
+    func add(
+        _ request: UNNotificationRequest,
+        withCompletionHandler completion: ((Error?) -> Void)?
+    ) {
+        // Corrupt the transaction store so the next `record()` call refuses.
+        defaults.set(Data("not json".utf8), forKey: "stored_transactions")
+        completion?(NSError(
+            domain: "UNErrorDomain", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed"]
+        ))
+    }
+
+    func getPendingNotificationRequests(
+        completionHandler: @escaping ([UNNotificationRequest]) -> Void
+    ) {
+        completionHandler([])
+    }
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
     func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
     func getDeliveredNotifications(

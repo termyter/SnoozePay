@@ -68,6 +68,11 @@ extension CreateAlarmViewController {
     }
 
     func showSoundPicker() {
+        // Volume + fade-in live on the sound screen now (#270) — the 3-row
+        // settings card from #263 has no room for a «Громкость» row, and
+        // sound+volume are cohesive. The picker pushes
+        // `VolumePickerViewController` and reports changes live, so dismissing
+        // on the back chevron is "auto-save".
         let picker = SoundPickerViewController(
             sounds: viewModel.availableSounds,
             selectedID: viewModel.soundID,
@@ -76,6 +81,12 @@ extension CreateAlarmViewController {
             },
             previewSound: { [weak self] soundID in
                 self?.viewModel.previewSound(soundID)
+            },
+            volume: viewModel.volume,
+            fadeIn: viewModel.volumeFadeIn,
+            onVolumeChange: { [weak self] volume, fadeIn in
+                self?.viewModel.volume = volume
+                self?.viewModel.volumeFadeIn = fadeIn
             }
         )
         navigationController?.pushViewController(picker, animated: true)

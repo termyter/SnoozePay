@@ -11,6 +11,11 @@ final class AlarmsListViewModel {
     private let balanceService: BalanceService
     private let transactionRepository: TransactionRepository
     private let notificationCenter: NotificationCenter
+    /// Single source of truth for "is there any backend that can ring an
+    /// alarm" (#428). Owned here rather than queried ad-hoc by the VC so the
+    /// screen has exactly one place to read the state from. Internal (not
+    /// private) so tests can assert which `NotificationCenter` it observes.
+    let backendMonitor: AlarmBackendMonitor
 
     // MARK: - State
 
@@ -34,6 +39,11 @@ final class AlarmsListViewModel {
     /// existed — `loadData()` pulls the latched state from the service, since
     /// `NotificationCenter` does not retro-deliver to late subscribers (#206).
     var onBalanceCorrupted: ((Double) -> Void)?
+    /// Fired on the main queue whenever the alarm-backend availability
+    /// transitions (#428) — including the transition triggered by returning
+    /// from iOS Settings, which is the whole point of the proactive guard.
+    /// The VC re-renders the banner and re-evaluates the create/enable gate.
+    var onBackendAvailabilityChanged: ((AlarmBackendAvailability) -> Void)?
 
     // MARK: - Errors
 
@@ -80,12 +90,26 @@ final class AlarmsListViewModel {
         alarmRepository: AlarmRepository = .shared,
         balanceService: BalanceService = .shared,
         transactionRepository: TransactionRepository = .shared,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        backendMonitor: AlarmBackendMonitor? = nil
     ) {
         self.alarmRepository = alarmRepository
         self.balanceService = balanceService
         self.transactionRepository = transactionRepository
         self.notificationCenter = notificationCenter
+        // Default the monitor onto the SAME center that was injected —
+        // building it with a fresh `.default` would make every test that
+        // carefully isolates `notificationCenter:` still observe process-global
+        // activation, and a test-host activation would then drag
+        // `AlarmScheduler.shared` / `UNUserNotificationCenter` into unit tests.
+        self.backendMonitor = backendMonitor
+            ?? AlarmBackendMonitor(notificationCenter: notificationCenter)
+
+        // The monitor re-probes on every foreground activation on its own;
+        // forwarding its transitions is all this VM has to do.
+        self.backendMonitor.onChange = { [weak self] availability in
+            self?.onBackendAvailabilityChanged?(availability)
+        }
 
         balanceObserver = notificationCenter.addObserver(
             forName: BalanceService.balanceChangedNotification,
@@ -133,10 +157,79 @@ final class AlarmsListViewModel {
         } catch {
             alarms = []
         }
+        // Surface a corrupt transaction ledger here too (#440). The weekly-delta
+        // header reads the lossy `fetchAll`, which collapses a corrupt blob to
+        // "no charges" and silently hides the row — so the main screen would give
+        // no signal that financial history is unreadable (it would otherwise
+        // surface only later on Statistics/Wallet, or when a snooze charge fails
+        // at firing). Probe the checked variant and drive the same `onLoadError`
+        // banner used for alarm/balance corruption.
+        do {
+            _ = try transactionRepository.fetchAllChecked()
+        } catch let error as TransactionRepository.RepositoryError {
+            onLoadError?(error)
+        } catch {
+            // Non-typed decode error — swallow to match the alarm-fetch fallback.
+        }
         balance = balanceService.balance
         onAlarmsUpdated?()
         onBalanceUpdated?(balance)
         surfacePendingBalanceCorruption()
+    }
+
+    // MARK: - Alarm backend guard (#428)
+
+    /// Current answer to "can a saved alarm actually ring". Read-only mirror of
+    /// the monitor so no call site can drift into its own AlarmKit-or-
+    /// notifications condition.
+    var backendAvailability: AlarmBackendAvailability {
+        backendMonitor.availability
+    }
+
+    /// Copy for the proactive banner, or `nil` when there's nothing to warn
+    /// about. The VC mounts/dismounts the banner purely from this.
+    var backendWarning: AlarmBackendWarning? {
+        AlarmBackendWarning(availability: backendAvailability)
+    }
+
+    /// `false` only when we positively know NO backend can ring an alarm.
+    /// An unresolved or indeterminate probe leaves the CTAs open — we never
+    /// block the user on our own ignorance.
+    var canCreateAlarms: Bool {
+        backendWarning?.gatesAlarmCreation != true
+    }
+
+    /// Re-query authorization. Called on `viewWillAppear`; the monitor also
+    /// re-queries itself on every app activation, so a permission flipped in
+    /// iOS Settings lands without a cold launch.
+    func refreshBackendAvailability() {
+        backendMonitor.refresh()
+    }
+
+    /// Surface the OS permission dialog in place. Valid only while
+    /// `backendWarning?.canRequestInApp == true` — afterwards the OS ignores
+    /// the request and Settings is the only route, so callers must branch on
+    /// the flag rather than calling this blindly.
+    func requestAlarmPermissions() {
+        guard backendWarning?.canRequestInApp == true else {
+            AppLogger.ui.notice("requestAlarmPermissions ignored — OS grant already decided")
+            return
+        }
+        backendMonitor.requestAuthorization()
+    }
+
+    /// Should tapping the "+" CTA be intercepted by the backend guard?
+    var shouldInterceptCreate: Bool {
+        !canCreateAlarms
+    }
+
+    /// Should flipping a row's switch be intercepted by the backend guard?
+    /// Only switching ON is gated — turning an alarm OFF always works and must
+    /// never raise the alert. Extracted from the VC so both halves of the
+    /// condition are covered by tests rather than living in an untested
+    /// double negative.
+    func shouldInterceptToggle(isOn: Bool) -> Bool {
+        isOn && !canCreateAlarms
     }
 
     // MARK: - Balance corruption (#119 / #206)
@@ -275,6 +368,17 @@ final class AlarmsListViewModel {
             onAlarmsUpdated?()
             return
         }
+
+        // Success path: the new enabled state is persisted (the `guard` above
+        // passed). The cell repaints its own switch, but the sticky header's
+        // affordability hint (`balanceHint`, derived from `averagePenalty`)
+        // shifts when an alarm with an outlier penalty is toggled — without a
+        // refresh here the header pill keeps the stale "~N откладываний" number
+        // until the next `viewWillAppear` (#429). `onBalanceUpdated` re-resolves
+        // the header without a full table reload (the cell already updated). A
+        // later async scheduling failure re-fires the header via the
+        // rollback path's `onAlarmsUpdated`, re-syncing it to the reverted state.
+        onBalanceUpdated?(balance)
     }
 
     // MARK: - Delete
@@ -406,9 +510,17 @@ final class AlarmsListViewModel {
         guard let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) else {
             return nil
         }
-        let charges = transactionRepository.fetchCharges(since: weekAgo)
-        guard !charges.isEmpty else { return nil }
-        let totalCharged = charges.reduce(0.0) { $0 + $1.amount }
+        // Exclude REFUNDED charges (a snooze that failed to schedule is auto-
+        // refunded and per design "doesn't count") so the header doesn't
+        // overstate the week's spend (#440). `realCharges` is computed over the
+        // FULL ledger first — a charge refunded by a later top-up is still
+        // excluded — then filtered to the rolling 7-day window. Display-only, so
+        // the lossy `fetchAll` is fine; a corrupt ledger is surfaced separately
+        // in `loadData()`.
+        let weekCharges = TransactionRepository.realCharges(from: transactionRepository.fetchAll())
+            .filter { $0.createdAt >= weekAgo }
+        guard !weekCharges.isEmpty else { return nil }
+        let totalCharged = weekCharges.reduce(0.0) { $0 + $1.amount }
         guard totalCharged > 0 else { return nil }
         return -Decimal(totalCharged)
     }
@@ -447,12 +559,16 @@ final class AlarmsListViewModel {
     // MARK: - Helpers for cell display
 
     /// Cached formatter — avoids ~1ms per-call allocation that adds up in lists.
-    /// Locale fixed to `en_US_POSIX` so the 24-hour format `HH:mm` is honoured
-    /// regardless of the user's region (some locales otherwise render `7:00 AM`).
+    /// Locale fixed to `en_US_POSIX` so the 24-hour format is honoured regardless
+    /// of the user's region (some locales otherwise render `7:00 AM`).
+    ///
+    /// The list cells use `H:mm` — hour WITHOUT a leading zero ("7:30", "19:05")
+    /// to match the prototype (artboard 06); the create/edit time picker keeps
+    /// the padded `HH:mm` form (`TimePickerCell`). See #343.
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
+        formatter.dateFormat = "H:mm"
         return formatter
     }()
 

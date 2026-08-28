@@ -1,17 +1,19 @@
 import Foundation
+import os
 
 /// ViewModel for the V3 behavioural statistics screen (#235, `SPMore4.jsx`
 /// `Stats()`, artboards 27/27a).
 ///
-/// V3 drops every money / wake-time metric (those duplicate the Wallet) and
-/// exposes three behavioural aggregations instead:
+/// Aggregations exposed to the screen:
 ///   1. Calendar heatmap of the current month — per-day snooze status.
 ///   2. Average snoozes per weekday over the last 4 weeks (+ worst day).
 ///   3. 8-week snooze trend (better / same / worse than last week).
+///   4. "Эта неделя" money — saved / spent / net for the current week (#348).
+///   5. "Время подъёма" — median wake time vs. the preceding window (#348).
 ///
 /// All aggregation maths lives in pure static functions that take an explicit
-/// `today` so tests pin dates instead of racing the wall clock; the instance
-/// properties are thin wrappers over those functions plus the loaded state.
+/// `today` so tests pin dates instead of racing the wall clock. `loadData()`
+/// then publishes their outputs as one stored snapshot for the screen.
 final class StatisticsViewModel {
 
     // MARK: - Day status (heatmap semantics)
@@ -76,10 +78,16 @@ final class StatisticsViewModel {
         case worse
     }
 
+    // Money / wake-time value types live in `StatisticsViewModel+Money.swift`
+    // (#348) alongside the aggregations that build them.
+
     // MARK: - Dependencies
 
     private let transactionRepository: TransactionRepository
     private let wakeStore: WakeEventStore
+    /// Supplies the snooze price behind the "Сэкономили" counterfactual
+    /// (#348) — a saved morning is worth whatever a snooze would have cost.
+    private let alarmRepository: AlarmRepository
     private let defaults: UserDefaults
 
     /// UserDefaults key under which the all-time best streak is persisted.
@@ -97,11 +105,61 @@ final class StatisticsViewModel {
 
     private let calendar: Calendar
 
+    /// Read-only seam for the aggregations split into
+    /// `StatisticsViewModel+Money.swift` — `private` is file-scoped, so the
+    /// extension in the sibling file can't reach `calendar` directly.
+    var aggregationCalendar: Calendar { calendar }
+
     // MARK: - State
 
     private(set) var charges: [Transaction] = []
     private(set) var wakeDays: Set<Date> = []
+    /// Days on which the user *attempted* a snooze — every `.charge` row,
+    /// including ones later rolled back by a refund. `charges` deliberately
+    /// drops the rolled-back ones (they never rang), but a morning the user
+    /// pressed snooze on is not a morning they saved money, so the money
+    /// counterfactual keys off this wider set (#348 review, finding 3).
+    private(set) var attemptedSnoozeDays: Set<Date> = []
+    /// Exact wake instants (#348) — empty for installs that only recorded
+    /// day-granular wakes before the timestamp key shipped.
+    private(set) var wakeTimes: [Date] = []
+    /// Snooze price behind the "Сэкономили" counterfactual. `nil` means "we
+    /// have no honest price" — see `snoozePriceState` for *why*. Distinct
+    /// from a genuine 0 ₽ price when every alarm is free.
+    var snoozePrice: Double? { snoozePriceState.price }
+    /// Why ledger-derived statistics can't publish figures, or `nil` when
+    /// they can.
+    ///
+    /// Money aggregates built on a partial ledger overstate savings and
+    /// understate spending (#348 review, finding 1), so the screen withholds
+    /// every ledger-derived block and names the failure rather than silently
+    /// rendering a plausible-looking zero (#348 verification, finding 3).
+    private(set) var ledgerUnavailableReason: LedgerUnavailableReason?
+    /// Convenience for call sites that only need "can we publish money".
+    var ledgerReadable: Bool { ledgerUnavailableReason == nil }
+
+    /// How the snooze price resolved — separates "no alarm to price a morning
+    /// with" from "the alarm store is damaged", which used to collapse into
+    /// one `nil` and produce a misleading, unactionable caption
+    /// (#348 verification, finding 4).
+    private(set) var snoozePriceState: SnoozePriceState = .noPricedAlarms
     private(set) var streak: Int = 0
+
+    /// Precomputed on `loadData` so the bars and the totals are derived from
+    /// one snapshot — recomputing them lazily read `Date()` twice and ran the
+    /// aggregation twice per `viewWillAppear` (#348 review, finding 6).
+    private(set) var weekMoneyDays: [WeekMoneyDay] = []
+    private(set) var weekMoneySummary = MoneySummary.empty
+    private(set) var wakeTimeStats: WakeTimeStats?
+    /// Every behavioural aggregate is published from the same `loadData()`
+    /// snapshot as the money summary. Keeping these stored avoids a midnight
+    /// split where one card asks `Date()` before the boundary and another
+    /// asks after it (#459).
+    private(set) var heatmapDays: [HeatmapDay] = []
+    private(set) var weekdayStats: [WeekdayStat] = []
+    private(set) var worstWeekdayName: String?
+    private(set) var weeklyTrend: [WeekTrendPoint] = []
+    private(set) var trendDiff = 0
 
     var onDataUpdated: (() -> Void)?
     /// Fired when the transaction repository fails to decode the persisted
@@ -114,11 +172,13 @@ final class StatisticsViewModel {
     init(
         repository: TransactionRepository = .shared,
         wakeStore: WakeEventStore = .shared,
+        alarmRepository: AlarmRepository = .shared,
         defaults: UserDefaults = .standard,
         calendar: Calendar = StatisticsViewModel.mondayFirstCalendar
     ) {
         self.transactionRepository = repository
         self.wakeStore = wakeStore
+        self.alarmRepository = alarmRepository
         self.defaults = defaults
         self.calendar = calendar
     }
@@ -126,29 +186,181 @@ final class StatisticsViewModel {
     // MARK: - Load
 
     func loadData() {
+        // Capture clock and wake history before any storage read. The hero,
+        // heatmap and money/trend snapshots must describe one instant even if
+        // midnight or a new dismissal lands while the ledger is decoding.
+        let now = Date()
+        let capturedWakeDays = wakeStore.wakeDays()
+        let capturedWakeTimes = wakeStore.wakeTimes()
+
         // Checked read so a corrupt ledger surfaces an alert instead of a
         // deceptive zero-state (issue #72). Streak shares the same in-memory
         // list so the banner and the number can't contradict (issue #117).
         do {
             let allTransactions = try transactionRepository.fetchAllChecked()
-            charges = allTransactions.filter { $0.type == .charge }
-            streak = transactionRepository.currentStreak(from: allTransactions)
+            // Exclude charges that were refunded by an offsetting credit so a
+            // snooze that failed to schedule (#130) doesn't count as a real
+            // snooze in either total spend or count (issue #133). `realCharges`
+            // is the shared filter used by `currentStreak` so the count and the
+            // streak can never drift on what "a real snooze" means.
+            charges = TransactionRepository.realCharges(from: allTransactions)
+            attemptedSnoozeDays = Self.attemptedSnoozeDays(
+                from: allTransactions, calendar: calendar
+            )
+            // A successful decode can still be partial: since #453 an
+            // unrecognised `type` token decodes to `.unknown` instead of
+            // throwing, and every aggregate silently skips those rows. That
+            // inflates "Сэкономили" by exactly the days whose charges dropped
+            // out, so it disqualifies every ledger-derived statistic just like
+            // a hard failure.
+            let unknownTokens = transactionRepository.lastLoadUnrecognizedTypes
+            if unknownTokens.isEmpty {
+                ledgerUnavailableReason = nil
+                streak = StreakCalculator.currentStreak(
+                    transactions: allTransactions,
+                    wakeDays: capturedWakeDays,
+                    now: now,
+                    calendar: calendar
+                )
+            } else {
+                ledgerUnavailableReason = .ledgerPartiallyRead
+                // An unrecognised row might be a skipped charge. Do not
+                // promote an uncertain streak into the persisted best record.
+                streak = 0
+                // Nothing throws on this path, so this log is the only trace
+                // an incident leaves — version skew, byte damage to a `type`
+                // string, or a half-finished migration all land here.
+                AppLogger.repository.error(
+                    """
+                    [\(Self.partialLedgerErrorID, privacy: .public)] Statistics suppressed: \
+                    ledger carries \(unknownTokens.count, privacy: .public) unrecognised \
+                    type token(s): \(unknownTokens.sorted().joined(separator: ","), privacy: .public)
+                    """
+                )
+            }
         } catch let error as TransactionRepository.RepositoryError {
-            charges = []
-            streak = 0
+            resetLedgerState()
             onLoadError?(error)
         } catch {
-            charges = []
-            streak = 0
+            resetLedgerState()
         }
-        wakeDays = wakeStore.wakeDays()
+        wakeDays = capturedWakeDays
+        wakeTimes = capturedWakeTimes
+        loadSnoozePrice()
 
         // Bump persisted best streak only forward — never reset on streak = 0,
         // so the user's all-time record survives a slip-up.
-        if streak > defaults.integer(forKey: Self.bestStreakKey) {
+        if ledgerReadable, streak > defaults.integer(forKey: Self.bestStreakKey) {
             defaults.set(streak, forKey: Self.bestStreakKey)
         }
+        recomputeSnapshots(today: now)
         onDataUpdated?()
+    }
+
+    /// Collapses every ledger-derived figure to its "we don't know" value.
+    /// Zeroing `charges` alone used to leave `ledgerReadable == true`, which
+    /// let a heatmap, streak or money total render from a ledger it never
+    /// managed to read (#348 review, finding 1; #459).
+    private func resetLedgerState() {
+        charges = []
+        attemptedSnoozeDays = []
+        streak = 0
+        ledgerUnavailableReason = .ledgerUnreadable
+    }
+
+    /// Reads the alarms that price a saved morning.
+    ///
+    /// Checked read: `stored_alarms` and `stored_transactions` are independent
+    /// blobs, so a broken alarm store raises no ledger banner of its own — a
+    /// lossy read here would silently collapse "Сэкономили" to nothing while
+    /// the Будильники tab loudly reports the same store as corrupt (#348
+    /// review, finding 5).
+    ///
+    /// The two failure modes stay separate: "you have no alarm with a price"
+    /// is actionable advice, "your alarm store is damaged" is a different
+    /// problem with a different fix, and telling the second user the first
+    /// thing sends them to edit an alarm that is already priced
+    /// (#348 verification, finding 4).
+    private func loadSnoozePrice() {
+        do {
+            let alarms = try alarmRepository.fetchAllChecked()
+            if let price = Self.snoozePrice(alarms: alarms) {
+                snoozePriceState = .known(price)
+            } else {
+                snoozePriceState = .noPricedAlarms
+            }
+        } catch {
+            snoozePriceState = .alarmStoreUnreadable
+            AppLogger.repository.error(
+                """
+                [\(Self.alarmStoreErrorID, privacy: .public)] Savings unpriced: \
+                alarm store unreadable: \(String(describing: error), privacy: .public)
+                """
+            )
+        }
+    }
+
+    /// Rebuilds every statistics snapshot from one `today`, so cards cannot
+    /// come from different reads of the clock. A ledger failure clears every
+    /// ledger-dependent publication instead of letting an empty `charges`
+    /// array masquerade as a perfect, snooze-free history (#459).
+    ///
+    /// `today` is a parameter so tests can pin it — see the money-bars test
+    /// and `StatisticsSnapshotTests`, which drive different days through this
+    /// method to prove every visible aggregate moves together.
+    func recomputeSnapshots(today: Date) {
+        guard ledgerReadable else {
+            weekMoneyDays = []
+            weekMoneySummary = .empty
+            heatmapDays = []
+            weekdayStats = []
+            worstWeekdayName = nil
+            weeklyTrend = []
+            trendDiff = 0
+            wakeTimeStats = Self.wakeTimeStats(
+                today: today, wakeTimes: wakeTimes, calendar: calendar
+            )
+            return
+        }
+
+        weekMoneyDays = Self.weekMoneyDays(
+            today: today,
+            inputs: MoneyInputs(
+                charges: charges,
+                wakeDays: wakeDays,
+                attemptedSnoozeDays: attemptedSnoozeDays,
+                snoozePrice: snoozePrice
+            ),
+            calendar: calendar
+        )
+        weekMoneySummary = Self.moneySummary(days: weekMoneyDays)
+        wakeTimeStats = Self.wakeTimeStats(
+            today: today, wakeTimes: wakeTimes, calendar: calendar
+        )
+
+        let snoozesByDay = Self.snoozesByDay(charges: charges, calendar: calendar)
+
+        heatmapDays = Self.monthGrid(
+            today: today,
+            snoozesByDay: snoozesByDay,
+            wakeDays: wakeDays,
+            calendar: calendar
+        )
+        let averages = Self.weekdayAverages(
+            today: today, snoozesByDay: snoozesByDay, calendar: calendar
+        )
+        let worst = Self.worstIndex(of: averages)
+        weekdayStats = zip(Self.weekdayShortLabels, averages.indices).map { label, index in
+            WeekdayStat(label: label, average: averages[index], isWorst: index == worst)
+        }
+        worstWeekdayName = worst.map { Self.weekdayFullNames[$0] }
+        let counts = Self.weeklyCounts(
+            today: today, snoozesByDay: snoozesByDay, calendar: calendar
+        )
+        weeklyTrend = counts.enumerated().map { index, count in
+            WeekTrendPoint(count: count, isCurrent: index == counts.count - 1)
+        }
+        trendDiff = Self.trendDiff(weeklyCounts: counts)
     }
 
     // MARK: - Hero (Серия)
@@ -172,18 +384,9 @@ final class StatisticsViewModel {
     /// Weekday header labels for the heatmap grid, Monday-first.
     static let weekdayShortLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
-    /// Calendar grid for the month containing today. Cells run Monday-first,
-    /// row per week, covering full weeks so the count is always a multiple
-    /// of 7 (28–42 cells depending on the month's span).
-    var heatmapDays: [HeatmapDay] {
-        Self.monthGrid(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            wakeDays: wakeDays,
-            calendar: calendar
-        )
-    }
-
+    /// `heatmapDays` is a calendar grid for the snapshot month. Cells run
+    /// Monday-first, one row per week, and cover full weeks so the count is
+    /// always a multiple of 7 (28–42 cells depending on the month's span).
     /// Tooltip payload for a tapped heatmap cell (artboard 27a).
     func tooltip(for day: HeatmapDay) -> HeatmapTooltip {
         HeatmapTooltip(
@@ -196,56 +399,15 @@ final class StatisticsViewModel {
 
     // MARK: - Weekday distribution (last 4 weeks)
 
-    /// 7 bars Monday-first, each the average snooze count for that weekday
-    /// over the trailing 28-day window.
-    var weekdayStats: [WeekdayStat] {
-        let averages = Self.weekdayAverages(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        let worst = Self.worstIndex(of: averages)
-        return zip(Self.weekdayShortLabels, averages.indices).map { label, index in
-            WeekdayStat(label: label, average: averages[index], isWorst: index == worst)
-        }
-    }
-
-    /// Full lowercase name of the worst weekday ("среда"), `nil` when the
-    /// 4-week window carries no snoozes at all.
-    var worstWeekdayName: String? {
-        let averages = Self.weekdayAverages(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        guard let index = Self.worstIndex(of: averages) else { return nil }
-        return Self.weekdayFullNames[index]
-    }
-
+    // `weekdayStats` holds seven Monday-first bars: the average snooze count
+    // per weekday over the snapshot's trailing 28-day window.
+    // `worstWeekdayName` is its full lowercase name ("среда"), or `nil`
+    // when the window carries no snoozes.
     // MARK: - 8-week trend
 
-    /// 8 calendar weeks oldest → newest; the last point is the current week.
-    var weeklyTrend: [WeekTrendPoint] {
-        let counts = Self.weeklyCounts(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        return counts.enumerated().map { index, count in
-            WeekTrendPoint(count: count, isCurrent: index == counts.count - 1)
-        }
-    }
-
+    // `weeklyTrend` holds eight calendar weeks oldest → newest; the last
+    // point is the snapshot's current week.
     /// This week's snoozes minus last week's. Negative = improving.
-    var trendDiff: Int {
-        let counts = Self.weeklyCounts(
-            today: Date(),
-            snoozesByDay: Self.snoozesByDay(charges: charges, calendar: calendar),
-            calendar: calendar
-        )
-        return Self.trendDiff(weeklyCounts: counts)
-    }
-
     var trendDirection: TrendDirection {
         Self.direction(forDiff: trendDiff)
     }

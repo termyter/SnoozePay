@@ -24,7 +24,7 @@ extension AlarmFiringViewController {
 
     /// SKU resolved by the no-balance Apple Pay tap. Targets the 499 ₽ tier;
     /// the 500 ₽ SKU doesn't exist in App Store Connect (lineup is PM's #240).
-    static var noBalanceProductID: String { "com.snooze_pay.balance.499" }
+    static var noBalanceProductID: String { "io.mobilife.snoozepay.balance.499" }
 
     /// Display amount (₽) for the no-balance Apple Pay button title. Derived
     /// from the catalogue amount of `noBalanceProductID` so the rendered number
@@ -174,6 +174,7 @@ extension AlarmFiringViewController {
             fullWidth: true
         )
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityIdentifier = "firing.noBalance.topUpButton"
         button.addTarget(
             self,
             action: #selector(noBalanceApplePayTapped),
@@ -225,6 +226,11 @@ extension AlarmFiringViewController {
     /// external top-ups also flip the state).
     func refreshNoBalanceVisibility() {
         let needsNoBalance = !viewModel.canSnooze
+        // #398: while the snoozed countdown owns the screen, never surface the
+        // no-balance stack — even if a mid-snooze balance notification re-runs
+        // this pass with `canSnooze == false`. `exitSnoozedState` re-calls this
+        // after clearing the flag, so the stack returns correctly on teardown.
+        let showNoBalanceStack = needsNoBalance && !isSnoozedStateActive
         // Refresh the disabled card's hint + price each pass so progressive
         // alarms show the correct disabled value even after snoozeCount has
         // bumped the next penalty.
@@ -235,8 +241,8 @@ extension AlarmFiringViewController {
                 hint: "Недостаточно средств"
             )
         }
-        noBalanceContainer?.isHidden = !needsNoBalance
-        noBalanceCenterBlock?.isHidden = !needsNoBalance
+        noBalanceContainer?.isHidden = !showNoBalanceStack
+        noBalanceCenterBlock?.isHidden = !showNoBalanceStack
         // Drained background + red glow + neutral clock + accent wake-border.
         applyDrainedAtmosphere(needsNoBalance)
         // Hide the normal-state group when the no-balance stack takes over.
@@ -305,14 +311,23 @@ extension AlarmFiringViewController {
             return
         }
 
-        // Product list hasn't loaded yet — fall back to a direct top-up.
+        // Product list hasn't loaded yet.
+        #if DEBUG
+        // DEBUG/simulator: credit locally so the flow stays testable.
         AppLogger.storeKit.notice(
-            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — fallback to topUp"
+            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — DEBUG fallback to topUp"
         )
         let amount = Double(Self.noBalanceDisplayAmount)
         if BalanceService.shared.topUp(amount: amount) {
             return
         }
+        #else
+        // Release: never credit without a real StoreKit transaction —
+        // fall through to reset + the failure alert below.
+        AppLogger.storeKit.error(
+            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
+        )
+        #endif
         noBalancePurchaseInFlight = false
         applePayNoBalanceButton?.isEnabled = true
         presentNoBalancePurchaseFailureAlert(
