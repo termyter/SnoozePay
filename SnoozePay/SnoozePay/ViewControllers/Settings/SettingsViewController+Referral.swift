@@ -118,12 +118,6 @@ extension SettingsViewController {
 
         let toast = SettingsToastLabel()
         toast.text = message
-        toast.font = AppTypography.body
-        toast.textColor = .white
-        toast.backgroundColor = UIColor.label.withAlphaComponent(0.9)
-        toast.textAlignment = .center
-        toast.layer.cornerRadius = AppRadius.sm
-        toast.layer.masksToBounds = true
         toast.alpha = 0
         toast.translatesAutoresizingMaskIntoConstraints = false
         window.addSubview(toast)
@@ -132,9 +126,9 @@ extension SettingsViewController {
             toast.centerXAnchor.constraint(equalTo: window.centerXAnchor),
             toast.bottomAnchor.constraint(
                 equalTo: window.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.xl
+                constant: -AppSpacing.sp6
             ),
-            toast.heightAnchor.constraint(greaterThanOrEqualToConstant: 36)
+            toast.heightAnchor.constraint(greaterThanOrEqualToConstant: SettingsToastLabel.minimumHeight)
         ])
 
         UIView.animate(
@@ -229,12 +223,58 @@ enum ReferralCodeInput {
 
 // MARK: - SettingsToastLabel
 
-/// Small UILabel subclass that bakes 16/8 padding into its intrinsic size so
+/// Small UILabel subclass that bakes its padding into the intrinsic size so
 /// the toast pill renders without an external container. Inline because no
 /// other screen uses it yet — promote to its own file if a second caller
 /// shows up.
 final class SettingsToastLabel: UILabel {
-    private let inset = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+
+    /// Pill fill. Exposed so `SettingsLightThemeTests` measures the values
+    /// actually rendered rather than a copy.
+    ///
+    /// The previous recipe was `.white` text on `UIColor.label` at 90% — which
+    /// inverts with the theme. In dark, `label` *is* white, so the toast drew
+    /// white text on a white pill: 1.24:1 once composited, i.e. text-shaped
+    /// noise (#496). `bg3` is the design system's raised-chip surface and
+    /// stays a surface in both themes, so `fg1` reads on it either way.
+    static let fillColor = AppColors.bg3
+    /// Pill ink — primary foreground, dark on light and near-white on dark.
+    static let inkColor = AppColors.fg1
+    /// Floor height so a one-line toast keeps a pill silhouette.
+    static let minimumHeight: CGFloat = AppSpacing.sp8 - AppSpacing.sp1
+
+    private let inset = UIEdgeInsets(
+        top: AppSpacing.sp2,
+        left: AppSpacing.sp4,
+        bottom: AppSpacing.sp2,
+        right: AppSpacing.sp4
+    )
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        font = AppTypography.body
+        textAlignment = .center
+        textColor = Self.inkColor
+        backgroundColor = Self.fillColor
+        layer.cornerRadius = AppRadius.sm
+        // A shadow can't render through `masksToBounds`; the horizontal inset
+        // keeps the glyphs well clear of the rounded corners without clipping.
+        layer.masksToBounds = false
+        applyThemedDecoration()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (label: SettingsToastLabel, _) in
+            label.applyThemedDecoration()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: AppRadius.sm).cgPath
+    }
 
     override func drawText(in rect: CGRect) {
         super.drawText(in: rect.inset(by: inset))
@@ -246,5 +286,15 @@ final class SettingsToastLabel: UILabel {
             width: size.width + inset.left + inset.right,
             height: size.height + inset.top + inset.bottom
         )
+    }
+
+    /// Border + shadow both cache a `cgColor`, so re-resolve on theme flip.
+    /// The pill floats over arbitrary content, and in light `bg3` (`#DFE3F0`)
+    /// against a near-white screen needs the outline as much as the lift.
+    private func applyThemedDecoration() {
+        AppShadow.shadow2(for: traitCollection).apply(to: layer)
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+        layer.borderWidth = 1.0 / scale
+        layer.borderColor = AppColors.stroke2.resolvedColor(with: traitCollection).cgColor
     }
 }

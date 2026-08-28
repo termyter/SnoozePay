@@ -139,6 +139,31 @@ enum AppColors {
     /// that token's dark-theme mint ink would vanish into the deep-green panel.
     static let fgOnHeroDeep = UIColor.white
 
+    // MARK: - Payment instrument card (Apple Pay tile)
+    //
+    // Same class as `heroDeep*`: a *filled* panel, not a surface, so it does
+    // NOT flip with the theme. The canon calls it «чёрная карточка а-ля iOS
+    // Wallet» (`SPMore3.jsx` L549) and iOS Wallet keeps a dark instrument dark
+    // on a white page — flipping this fill to `bg1` in light would turn a
+    // payment card into an app card and lose the metaphor the screen is built
+    // on. Measured against the page: 1.09:1 on dark `bg0` (the canon leans on
+    // the rim, not the fill) and 16.83:1 on light `bg0`.
+    /// Apple Pay card fill — `#15151A` in BOTH themes.
+    static let paymentCard = UIColor(hex: 0x15151A)
+    /// Glassy rim of `paymentCard`. Deliberately NOT `stroke1`: that token is
+    /// near-black ink in light and would disappear into the dark card. Static
+    /// white, so `.cgColor` on it needs no trait re-resolution.
+    static let paymentCardEdge = UIColor(white: 1.0, alpha: 0.10)
+    /// Primary ink on `paymentCard` — the Apple glyph and the "Pay" wordmark.
+    /// 18.2:1 in both themes. Not interchangeable with `fg1`, which is
+    /// near-black ink in light and would vanish here.
+    static let fgOnPaymentCard = UIColor.white
+    /// Secondary ink on `paymentCard` — caps state labels and meta copy.
+    /// 5.28:1. The canon carried two steps here (50% and 40% white); the 40%
+    /// one measured 3.83:1 and failed AA for 12pt caps in BOTH themes, so the
+    /// pair collapses onto the step that passes.
+    static let fgOnPaymentCardMeta = UIColor(white: 1.0, alpha: 0.5)
+
     // MARK: - Warn wash (tinted chip — NOT a solid fill)
     //
     // `fgOnWarn` is ink for a SOLID `warn500` fill. A *wash* — the brand colour
@@ -158,6 +183,19 @@ enum AppColors {
         trait.userInterfaceStyle == .light
             ? AppColors.warn600.resolvedColor(with: trait)
             : AppColors.warn300.resolvedColor(with: trait)
+    }
+
+    /// Ink on a *pain*-tinted wash — same shape as `fgOnWarnWash`, and needed
+    /// for the same reason. The zero-balance pill on the alarms list lays a
+    /// `pain500` gradient at 10%→2% over the page; `pain300` glows on that in
+    /// dark (10.82:1) but measures **2.77:1** in light, because the light
+    /// `pain300` is a bright coral on a near-white wash. The light branch takes
+    /// `pain600`, the darkest tone in the scale (7.41:1). Not interchangeable
+    /// with `fgOnPain`, which is ink for a SOLID `pain500` fill.
+    static let fgOnPainWash = UIColor { trait in
+        trait.userInterfaceStyle == .light
+            ? AppColors.pain600.resolvedColor(with: trait)
+            : AppColors.pain300.resolvedColor(with: trait)
     }
 
     // MARK: - Theme-aware overlays (alpha on white / near-black ink)

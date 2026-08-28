@@ -134,6 +134,10 @@ class SettingsViewController: UIViewController {
 
     private func setupUI() {
         view.addSubview(tableView)
+        // The table covers the whole view: without these it painted
+        // `systemGroupedBackground` over `bg0`, and a heavier divider (#496).
+        tableView.backgroundColor = AppColors.bg0
+        tableView.separatorColor = AppColors.stroke1
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(SettingsIconRowCell.self, forCellReuseIdentifier: SettingsIconRowCell.reuseID)
@@ -177,6 +181,8 @@ class SettingsViewController: UIViewController {
         // Theme flips overrideUserInterfaceStyle live, but already-displayed rows
         // baked their mode-specific shadow + (light-only) ambient layer in
         // willDisplay. Reload so willDisplay re-runs styleAsCardRow for visible rows.
+        // Still needed after #496: CardRowBackgroundView self-heals on a trait
+        // change, cell *content* layers (SPSegmented, SPInput) don't.
         tableView.reloadData()
     }
 }
