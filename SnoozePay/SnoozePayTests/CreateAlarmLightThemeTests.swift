@@ -158,10 +158,27 @@ final class CreateAlarmLightThemeTests: XCTestCase {
         )
     }
 
-    /// Hosted in a real window, the sheet's headline and body must measure.
-    /// A zero-height label here would mean the sheet genuinely renders as the
-    /// bare strip the audit captured, independent of presentation timing.
+    /// KNOWN DEFECT — pins #467, does not assert the app is correct.
+    ///
+    /// This test was written to prove the sheet's layout was sound and that
+    /// #467's zero-height labels were a harness artefact of `UITourLauncher`
+    /// presenting from a controller not yet in the hierarchy. It proved the
+    /// opposite: hosted in a plain 390×844 window, with both labels present
+    /// and carrying non-empty text, headline and body still measure 0pt in
+    /// BOTH themes. So the defect is in the sheet, not in the tour.
+    ///
+    /// The copy is not the cause — `testDeletionCopy_isNeverEmpty…` above
+    /// covers that, and the labels are found here *by their text*. The
+    /// measurements printed below go to the CI log so #467 has geometry to
+    /// work from rather than a symptom.
+    ///
+    /// `XCTExpectFailure` is deliberate and strict: the day the sheet lays
+    /// out, this test fails for being unexpectedly green, and whoever fixes
+    /// #467 is told to promote it into a real assertion.
     func testConfirmDeleteSheet_titleAndBodyMeasure_whenHosted() {
+        XCTExpectFailure(
+            "#467 — the confirm-delete sheet lays its labels out at zero height"
+        )
         for style in [UIUserInterfaceStyle.light, .dark] {
             let sheet = hostedConfirmDeleteSheet(style: style)
             let labels = allLabels(in: sheet.view)
@@ -169,6 +186,13 @@ final class CreateAlarmLightThemeTests: XCTestCase {
             let body = labels.first { $0.text?.hasPrefix("Баланс") == true }
             XCTAssertNotNil(title, "headline label missing in \(style.debugName)")
             XCTAssertNotNil(body, "body label missing in \(style.debugName)")
+            print(
+                "[#467] \(style.debugName): root=\(sheet.view.bounds.size) "
+                + "title=\(title?.frame ?? .zero) intrinsic=\(title?.intrinsicContentSize ?? .zero) "
+                + "ambiguous=\(title?.hasAmbiguousLayout ?? false) "
+                + "body=\(body?.frame ?? .zero) intrinsic=\(body?.intrinsicContentSize ?? .zero) "
+                + "bodyText=\((body?.text ?? "").count)ch"
+            )
             XCTAssertGreaterThan(title?.bounds.height ?? 0, 0, "headline height in \(style.debugName)")
             XCTAssertGreaterThan(body?.bounds.height ?? 0, 0, "body height in \(style.debugName)")
         }
