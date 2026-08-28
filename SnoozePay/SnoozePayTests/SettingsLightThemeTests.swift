@@ -22,6 +22,16 @@ final class SettingsLightThemeTests: XCTestCase {
     /// WCAG 2.1 floor for normal-size text. The toast is 15pt medium.
     private let minimumContrast: CGFloat = 4.5
 
+    /// Windows hosting the surfaces under test. Held for the lifetime of the
+    /// test case: a released window takes its subtree's traits with it.
+    private var hostWindows: [UIWindow] = []
+
+    override func tearDown() {
+        hostWindows.forEach { $0.isHidden = true }
+        hostWindows.removeAll()
+        super.tearDown()
+    }
+
     // MARK: - Toast
 
     func testToastInk_readsOnItsPill_inBothThemes() {
@@ -194,15 +204,26 @@ final class SettingsLightThemeTests: XCTestCase {
         return cell
     }
 
+    /// The row decoration resolves its `cgColor`s once at `init` and after that
+    /// only from `registerForTraitChanges`. UIKit propagates a style change
+    /// down a real hierarchy, so a detached view never gets that callback and
+    /// keeps whatever `UITraitCollection.current` happened to be when it was
+    /// constructed — which is how both themes previously measured as light.
+    /// Hosting the surface in a window is what makes `style` mean anything.
     private func laidOutSurface(
         position: CardRowPosition,
         style: UIUserInterfaceStyle
     ) -> CardRowBackgroundView {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 343, height: 52))
+        window.overrideUserInterfaceStyle = style
+        window.isHidden = false
+        hostWindows.append(window)
+
         let surface = CardRowBackgroundView(position: position, cornerRadius: AppRadius.sm)
-        surface.overrideUserInterfaceStyle = style
-        surface.frame = CGRect(x: 0, y: 0, width: 343, height: 52)
-        surface.setNeedsLayout()
-        surface.layoutIfNeeded()
+        surface.frame = window.bounds
+        window.addSubview(surface)
+        window.setNeedsLayout()
+        window.layoutIfNeeded()
         return surface
     }
 
