@@ -6,12 +6,46 @@ import UIKit
 /// (700 18pt mono per `.sp-preset__value`) and an optional secondary label
 /// (`meta` 13pt). When `selected` is true the border switches to `money400`,
 /// the fill takes a 10% money tint, and a 4pt outer glow ring renders. A
-/// "Популярно" badge with the money gradient fill floats above the top edge
-/// when `popular` is true.
+/// "Популярно" badge floats above the top edge when `popular` is true.
+///
+/// Light theme: `bg1` is pure white and the page under the tile is `bg0`
+/// (`#F4F6FB`) — about 4% of luminance apart. The hairline alone reads as a
+/// flat table cell and a shadow alone doesn't separate white from near-white,
+/// so the idle tile gets `--sp-shadow-1` *and* the border in light mode. Dark
+/// mode is the canon and stays flat.
 final class SPAmountPreset: UIControl {
 
     /// `.sp-preset__value { font: 700 18px/22px var(--sp-font-mono) }`.
     private static var valueFont: UIFont { AppFonts.mono(.bold, 18) }
+
+    // MARK: - Tokens & metrics
+    //
+    // Exposed so `SPDesignSystemLightThemeTests` measures the colours the badge
+    // actually renders rather than a copy of them.
+
+    /// «Популярно» badge fill. A **solid** `money500`, not `--sp-grad-money`.
+    ///
+    /// The gradient version could not carry a single ink in the dark theme:
+    /// its stops run `money400 → money700`, and 12pt bold caps measure
+    /// 1.79:1 in white on the `#2EDB9F` end versus 3.20:1 in `fgOnMoney` ink
+    /// on the `#0B7A56` end. Whichever ink you pick, one half of an 90×22
+    /// pill fails. A solid `money500` clears 6.7:1 (dark) / 7.0:1 (light) —
+    /// `SPDesignSystemLightThemeTests` pins both.
+    static let popularBadgeFill = AppColors.money500
+    /// Ink on `popularBadgeFill` — dark mint on the bright dark-theme fill,
+    /// white on the light theme's dark-green fill.
+    static let popularBadgeInk = AppColors.fgOnMoney
+
+    /// `.sp-preset__pop` badge height; the corner radius is half of it so the
+    /// pill stays fully rounded.
+    private static let popularBadgeHeight: CGFloat = 22
+    /// `.sp-preset__pop { padding: 3px 10px }` — off the 4pt grid on purpose,
+    /// it is optical padding around caps text, not layout rhythm.
+    private static let popularBadgeHorizontalInset: CGFloat = 10
+    /// `.sp-preset { min-height: 88px }`.
+    private static let minimumHeight: CGFloat = 88
+    /// `.sp-preset` outline weight.
+    private static let borderWidth: CGFloat = 1.5
 
     // MARK: - State
 
@@ -42,14 +76,19 @@ final class SPAmountPreset: UIControl {
 
     private let valueLabel = UILabel()
     private let labelView = UILabel()
-    private let popularBadge = InsetLabel(insets: UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10))
-    /// Money-gradient backing for the «Популярно» badge (`.sp-preset__pop`
-    /// fills with `--sp-grad-money`). Lives in `popularBackground` *behind* the
-    /// label — a `UILabel` draws its text as the layer's own content, which
-    /// composites below any sublayer, so a gradient inserted into the label's
-    /// own layer painted over the text (badge showed an empty green pill).
+    private let popularBadge = InsetLabel(
+        insets: UIEdgeInsets(
+            top: 0,
+            left: SPAmountPreset.popularBadgeHorizontalInset,
+            bottom: 0,
+            right: SPAmountPreset.popularBadgeHorizontalInset
+        )
+    )
+    /// Fill backing for the «Популярно» badge. Lives *behind* the label — a
+    /// `UILabel` draws its text as the layer's own content, which composites
+    /// below any sublayer, so a fill inserted into the label's own layer
+    /// painted over the text (the badge showed as an empty green pill).
     private let popularBackground = UIView()
-    private let popularGradient = CAGradientLayer()
     private let stack = UIStackView()
     /// Tile outline drawn as a *sublayer* rather than `layer.borderWidth`: a
     /// CALayer border renders above all sublayers, so the real border painted
@@ -105,14 +144,18 @@ final class SPAmountPreset: UIControl {
         layer.cornerRadius = AppRadius.md     // 16pt — matches sp-r-md
         borderLayer.frame = bounds
         borderLayer.cornerRadius = AppRadius.md
-        // Outer ring is faked via shadow when selected — pre-rasterise the
-        // path so it tracks the rounded corners cleanly.
+        // The outer ring (selected) and `--sp-shadow-1` (idle, light theme)
+        // both render through `layer.shadow*` — pre-rasterise the path so
+        // either one tracks the rounded corners cleanly.
         layer.shadowPath = UIBezierPath(
             roundedRect: bounds,
             cornerRadius: AppRadius.md
         ).cgPath
-        // Keep the «Популярно» gradient backing matched to its backing view.
-        popularGradient.frame = popularBackground.bounds
+        // The ambient stop of `--sp-shadow-1` is a sublayer whose frame has to
+        // follow the tile, so re-install it once geometry has settled.
+        if !isSelected {
+            applyIdleElevation()
+        }
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
@@ -148,7 +191,7 @@ final class SPAmountPreset: UIControl {
         layer.masksToBounds = false
         // Border as a bottom sublayer (not `layer.borderWidth`) so it draws
         // *below* the badge — see `borderLayer`.
-        borderLayer.borderWidth = 1.5
+        borderLayer.borderWidth = Self.borderWidth
         layer.insertSublayer(borderLayer, at: 0)
 
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -173,64 +216,25 @@ final class SPAmountPreset: UIControl {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
         stack.alignment = .center
-        stack.spacing = 4
+        stack.spacing = AppSpacing.sp1
         stack.isUserInteractionEnabled = false
         stack.addArrangedSubview(valueLabel)
         stack.addArrangedSubview(labelView)
         addSubview(stack)
 
-        // Popular badge — small caps pill that floats above the top edge.
-        // `.sp-preset__pop` uses mixed-case «Популярно», the money gradient
-        // fill, and `3px 10px` padding (no fixed width — it hugs its text).
-        popularBadge.translatesAutoresizingMaskIntoConstraints = false
-        popularBadge.attributedText = NSAttributedString(
-            string: "Популярно",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                // White reads with even contrast across the whole money
-                // gradient — the dark `fgOnMoney` ink vanished on the gradient's
-                // darker (#0B7A56) end and made the badge look empty.
-                .foregroundColor: UIColor.white
-            ]
-        )
-        popularBadge.textAlignment = .center
-        popularBadge.backgroundColor = .clear
-
-        // Gradient backing view — sits strictly *behind* the label so the text
-        // composites on top (see `popularBackground` doc). The label keeps a
-        // clear background and hugs its text via `InsetLabel`'s 10pt insets;
-        // the backing is pinned to the label's bounds.
-        popularBackground.translatesAutoresizingMaskIntoConstraints = false
-        popularBackground.isUserInteractionEnabled = false
-        // Solid opaque fill under the gradient — guarantees the badge never
-        // shows through even before the gradient layer lays out its frame.
-        popularBackground.backgroundColor = AppColors.money500
-        popularGradient.colors = SPSupport.moneyGradientColors
-        popularGradient.locations = SPSupport.moneyGradientLocations
-        popularGradient.startPoint = SPSupport.gradientStart
-        popularGradient.endPoint = SPSupport.gradientEnd
-        // No corner radius on the gradient itself — the backing view's
-        // `masksToBounds` does all the rounding. Two independently-rounded
-        // layers misaligned by a sub-pixel, exposing a hairline of the solid
-        // fill at the corners (read as a faint border around the badge).
-        popularBackground.layer.insertSublayer(popularGradient, at: 0)
-        popularBackground.layer.cornerRadius = 11
-        popularBackground.layer.masksToBounds = true
-        addSubview(popularBackground)
-        addSubview(popularBadge)
+        configurePopularBadge()
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 88),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumHeight),
             // `.sp-preset` padding 16px 16px (design v3; was 18px 12px).
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.sp4),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sp4),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: AppSpacing.sp4),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -AppSpacing.sp4),
 
             popularBadge.centerXAnchor.constraint(equalTo: centerXAnchor),
             popularBadge.centerYAnchor.constraint(equalTo: topAnchor),
-            popularBadge.heightAnchor.constraint(equalToConstant: 22),
+            popularBadge.heightAnchor.constraint(equalToConstant: Self.popularBadgeHeight),
 
             popularBackground.leadingAnchor.constraint(equalTo: popularBadge.leadingAnchor),
             popularBackground.trailingAnchor.constraint(equalTo: popularBadge.trailingAnchor),
@@ -239,27 +243,66 @@ final class SPAmountPreset: UIControl {
         ])
     }
 
+    /// Small caps pill that floats above the top edge. `.sp-preset__pop` uses
+    /// mixed-case «Популярно» and `3px 10px` padding — no fixed width, it hugs
+    /// its own text.
+    private func configurePopularBadge() {
+        popularBadge.translatesAutoresizingMaskIntoConstraints = false
+        popularBadge.attributedText = NSAttributedString(
+            string: "Популярно",
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                // `fgOnMoney` is defined as ink on a SOLID money fill, which is
+                // exactly what `popularBadgeFill` now is — see its doc for why
+                // the gradient had to go.
+                .foregroundColor: Self.popularBadgeInk
+            ]
+        )
+        popularBadge.textAlignment = .center
+        popularBadge.backgroundColor = .clear
+
+        // Fill backing view — sits strictly *behind* the label so the text
+        // composites on top (see `popularBackground` doc). The label keeps a
+        // clear background and hugs its text via `InsetLabel`'s insets; the
+        // backing is pinned to the label's bounds.
+        popularBackground.translatesAutoresizingMaskIntoConstraints = false
+        popularBackground.isUserInteractionEnabled = false
+        popularBackground.backgroundColor = Self.popularBadgeFill
+        popularBackground.layer.cornerRadius = Self.popularBadgeHeight / 2
+        popularBackground.layer.masksToBounds = true
+        addSubview(popularBackground)
+        addSubview(popularBadge)
+    }
+
     private func applySelectionState(animated: Bool) {
         let apply: () -> Void = {
             if self.isSelected {
-                // `.sp-preset.is-selected` tints with money400 (`#2EDB9F` —
-                // `rgba(46,219,159,…)`), a hair brighter than money500, so the
-                // selected fill/ring pop against the surface.
-                self.backgroundColor = AppColors.money400.withAlphaComponent(0.10)
-                self.borderLayer.borderColor = AppColors.money400.cgColor
+                // `.sp-preset.is-selected` tints with money400 — a hair
+                // brighter than money500 on dark, a step lighter than it on
+                // light — so the selected fill/ring pop against the surface.
+                //
+                // `.cgColor` on a dynamic token snapshots whatever
+                // `UITraitCollection.current` happens to be, which inside a
+                // view method is not necessarily this view's trait collection.
+                // Resolve explicitly, as the idle branch already did.
+                let accent = AppColors.money400.resolvedColor(with: self.traitCollection)
+                self.backgroundColor = accent.withAlphaComponent(0.10)
+                self.borderLayer.borderColor = accent.cgColor
                 // Tight selection ring: 4pt radius / 0.10 opacity reads as a
                 // crisp brand outline rather than a diffuse glow that bled
                 // into adjacent presets at radius 8 / opacity 0.18.
-                self.layer.shadowColor = AppColors.money400.cgColor
+                self.layer.shadowColor = accent.cgColor
                 self.layer.shadowOpacity = 0.10
                 self.layer.shadowOffset = .zero
                 self.layer.shadowRadius = 4
                 self.layer.masksToBounds = false
+                self.removeAmbientShadowLayer()
             } else {
                 self.backgroundColor = AppColors.bg1
                 self.borderLayer.borderColor = AppColors.stroke1
                     .resolvedColor(with: self.traitCollection).cgColor
-                self.layer.shadowOpacity = 0
+                self.applyIdleElevation()
             }
         }
         if animated {
@@ -269,6 +312,37 @@ final class SPAmountPreset: UIControl {
         }
     }
 
+    /// Idle-tile elevation.
+    ///
+    /// Dark keeps the flat outlined card of the canon: `bg1` (`#0E1320`) on
+    /// `bg0` (`#060912`) is a visible surface step and the hairline finishes
+    /// it. Light has `bg1` = `#FFFFFF` on `bg0` = `#F4F6FB` — a shadow alone
+    /// cannot separate white from near-white, and a border alone reads as a
+    /// flat table cell, so the tile gets both.
+    private func applyIdleElevation() {
+        layer.masksToBounds = false
+        guard traitCollection.userInterfaceStyle != .dark else {
+            layer.shadowOpacity = 0
+            removeAmbientShadowLayer()
+            return
+        }
+        AppShadow.shadow1(for: traitCollection).apply(to: layer)
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: AppRadius.md,
+            trait: traitCollection
+        )
+    }
+
+    /// Drop the ambient stop of `--sp-shadow-1`. The selected state owns
+    /// `layer.shadow*` for its money ring, so the sibling ambient layer must
+    /// not linger underneath it.
+    private func removeAmbientShadowLayer() {
+        layer.sublayers?
+            .first { $0.name == AppShadow.ambientShadow1LayerName }?
+            .removeFromSuperlayer()
+    }
+
     @objc
     private func handleTap() {
         onTap?()
@@ -276,8 +350,8 @@ final class SPAmountPreset: UIControl {
 }
 
 /// `UILabel` that pads its text content — used for the «Популярно» badge so it
-/// hugs its (mixed-case) text plus a 10pt horizontal inset rather than relying
-/// on a fixed width.
+/// hugs its (mixed-case) text plus a horizontal inset rather than relying on a
+/// fixed width.
 private final class InsetLabel: UILabel {
 
     private let insets: UIEdgeInsets
