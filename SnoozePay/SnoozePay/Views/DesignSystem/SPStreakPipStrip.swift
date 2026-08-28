@@ -41,7 +41,9 @@ final class SPStreakPipStrip: UIView {
 
         let lit = max(0, min(total, completed))
         for index in 0..<max(0, total) {
-            stack.addArrangedSubview(Self.makePip(number: index + 1, lit: index < lit))
+            stack.addArrangedSubview(
+                StreakPipView(number: index + 1, lit: index < lit, side: Self.pipSide)
+            )
         }
 
         // The strip centres inside its container; the container itself is free
@@ -58,30 +60,50 @@ final class SPStreakPipStrip: UIView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+}
 
-    private static func makePip(number: Int, lit: Bool) -> UIView {
-        let pip = UIView()
-        pip.translatesAutoresizingMaskIntoConstraints = false
-        pip.layer.cornerRadius = AppRadius.sm
-        pip.layer.cornerCurve = .continuous
-        pip.layer.masksToBounds = true
-        pip.heightAnchor.constraint(equalToConstant: pipSide).isActive = true
-        pip.widthAnchor.constraint(equalToConstant: pipSide).isActive = true
+// MARK: - Pip
 
-        if lit {
-            let gradient = CAGradientLayer()
-            gradient.colors = SPSupport.moneyGradientColors
+/// One 32×32 day pip.
+///
+/// A class rather than a `static` factory returning a configured `UIView` so
+/// the lit variant has somewhere to hang a trait observer:
+/// `CAGradientLayer.colors` stores plain `CGColor`s that never follow the
+/// dynamic token they came from, so a strip built in one theme kept that
+/// theme's money ramp under `fgOnMoney` digits that did re-resolve (#507).
+private final class StreakPipView: UIView {
+
+    /// Nil for unlit pips — they are a flat `whiteOverlay08` chip.
+    private let gradient: CAGradientLayer?
+
+    init(number: Int, lit: Bool, side: CGFloat) {
+        self.gradient = lit ? CAGradientLayer() : nil
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        layer.cornerRadius = AppRadius.sm
+        layer.cornerCurve = .continuous
+        layer.masksToBounds = true
+        heightAnchor.constraint(equalToConstant: side).isActive = true
+        widthAnchor.constraint(equalToConstant: side).isActive = true
+
+        if let gradient = gradient {
             gradient.locations = SPSupport.moneyGradientLocations
             gradient.startPoint = SPSupport.gradientStart
             gradient.endPoint = SPSupport.gradientEnd
             gradient.cornerRadius = AppRadius.sm
             // Fixed 32×32 anchors mean the frame never changes after the first
-            // layout pass, so a one-shot assignment on the next runloop turn is
-            // enough — no `layoutSubviews` bookkeeping needed.
-            gradient.frame = CGRect(x: 0, y: 0, width: pipSide, height: pipSide)
-            pip.layer.insertSublayer(gradient, at: 0)
+            // layout pass, so a one-shot assignment is enough — no
+            // `layoutSubviews` bookkeeping needed.
+            gradient.frame = CGRect(x: 0, y: 0, width: side, height: side)
+            layer.insertSublayer(gradient, at: 0)
+            refreshGradientColors()
+            if #available(iOS 17.0, *) {
+                registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: StreakPipView, _) in
+                    view.refreshGradientColors()
+                }
+            }
         } else {
-            pip.backgroundColor = AppColors.whiteOverlay08
+            backgroundColor = AppColors.whiteOverlay08
         }
 
         let label = UILabel()
@@ -90,11 +112,26 @@ final class SPStreakPipStrip: UIView {
         label.textColor = lit ? AppColors.fgOnMoney : AppColors.fg3
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
-        pip.addSubview(label)
+        addSubview(label)
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: pip.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: pip.centerYAnchor)
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
-        return pip
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if #available(iOS 17.0, *) { return }
+        refreshGradientColors()
+    }
+
+    /// Re-resolve the money ramp against THIS pip's traits.
+    private func refreshGradientColors() {
+        gradient?.colors = SPSupport.moneyGradientColors(for: traitCollection)
     }
 }
