@@ -48,7 +48,10 @@ final class AlarmThemePickerViewController: UIViewController {
         return view
     }()
 
-    private var previewGradient: CAGradientLayer?
+    /// Theme miniature inside the preview block — identical recipe to the grid
+    /// tiles (base gradient + bottom accent glow), so "what I tapped" and
+    /// "what I'll wake up to" are the same picture (#463).
+    private let previewThemeView = SPThemePreviewView()
 
     private let previewImageView: UIImageView = {
         let view = UIImageView()
@@ -146,6 +149,7 @@ final class AlarmThemePickerViewController: UIViewController {
         // V2: preview block + grid, stacked vertically. The preview reflects
         // the live `currentTheme` so the user gets a 180pt-tall sample of
         // the firing screen as they cycle through tiles below.
+        previewContainer.addSubview(previewThemeView)
         previewContainer.addSubview(previewImageView)
         previewContainer.addSubview(previewClockLabel)
 
@@ -179,6 +183,11 @@ final class AlarmThemePickerViewController: UIViewController {
             previewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp4),
             previewContainer.heightAnchor.constraint(equalToConstant: 180),
 
+            previewThemeView.topAnchor.constraint(equalTo: previewContainer.topAnchor),
+            previewThemeView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            previewThemeView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            previewThemeView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+
             previewImageView.topAnchor.constraint(equalTo: previewContainer.topAnchor),
             previewImageView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
             previewImageView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
@@ -196,36 +205,25 @@ final class AlarmThemePickerViewController: UIViewController {
         renderPreview(for: currentTheme)
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        previewGradient?.frame = previewContainer.bounds
-    }
-
     /// Re-render the preview block with the given theme's gradient or photo.
     /// Called once on setup and again every time the user taps a tile.
     private func renderPreview(for theme: AlarmTheme) {
-        previewGradient?.removeFromSuperlayer()
-        previewGradient = nil
         previewImageView.image = nil
         previewImageView.isHidden = true
 
         if case .custom(let url) = theme, let image = AlarmThemeImageStore.loadImage(at: url) {
             previewImageView.image = image
             previewImageView.isHidden = false
+            previewThemeView.isHidden = true
             return
         }
 
-        guard let colors = AlarmThemeRendering.gradientColors(for: theme) else { return }
-        let gradient = CAGradientLayer()
-        gradient.colors = colors
-        gradient.locations = AlarmThemeRendering.gradientLocations(for: theme)
-        // 135° diagonal everywhere (top-left → bottom-right) — matches
-        // ThemeRowCell + the design's `linear-gradient(135deg, …)`.
-        gradient.startPoint = SPSupport.gradientStart
-        gradient.endPoint = SPSupport.gradientEnd
-        gradient.frame = previewContainer.bounds
-        previewContainer.layer.insertSublayer(gradient, at: 0)
-        previewGradient = gradient
+        // `.custom` whose file is gone resolves to no gradient — fall back to
+        // Dawn so the block is never an empty hole, matching what the firing
+        // screen does in the same situation.
+        if !previewThemeView.apply(theme: theme) {
+            previewThemeView.apply(theme: .dawn)
+        }
     }
 
     /// Three-column compositional grid, tile aspect 1:1.2 (V3 — SPMore2.jsx:
