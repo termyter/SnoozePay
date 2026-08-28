@@ -48,6 +48,21 @@ enum SPSupport {
     }
     static let warnGradientLocations: [NSNumber] = [0.0, 0.6, 1.0]
 
+    /// Deep-green promo fill used by the referral hero. `tokens.css` has no
+    /// named token for it — the prototype inlines
+    /// `linear-gradient(135deg, #1A2810 0%, #2C4A1F 50%, #4F8A3A 100%)` — so
+    /// the stops live on `AppColors.heroDeep*`, which resolve per theme.
+    ///
+    /// Takes an explicit `trait` rather than reading `UITraitCollection.current`
+    /// because the result lands in `CAGradientLayer.colors`, which stores plain
+    /// `CGColor`s that never re-resolve: the owner must re-apply them on a
+    /// theme flip (see `ReferralHeroCardView`).
+    static func heroDeepGradientColors(for trait: UITraitCollection) -> [CGColor] {
+        [AppColors.heroDeep700, AppColors.heroDeep500, AppColors.heroDeep300]
+            .map { $0.resolvedColor(with: trait).cgColor }
+    }
+    static let heroDeepGradientLocations: [NSNumber] = [0.0, 0.5, 1.0]
+
     // MARK: - Progressive (warn → pain) interpolation
 
     /// Linear-interpolate between the warn and pain gradient stops to render

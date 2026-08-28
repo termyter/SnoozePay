@@ -117,6 +117,49 @@ enum AppColors {
     /// the light `warn500` is bronze, so it takes white rather than dark ink.
     static let fgOnWarn = dynamicColor(dark: 0x1A0F00, light: 0xFFFFFF)
 
+    // MARK: - Deep promo fill (referral hero)
+    //
+    // The referral hero is a *filled* promo panel, not a surface: it stays
+    // DARK in both themes, the same way `--sp-grad-night` / `--sp-grad-dawn`
+    // keep their night values inside the light block of `tokens.css`. The dark
+    // stops are the canon literals inlined in `SPMore4.jsx`
+    // (`#1A2810 → #2C4A1F → #4F8A3A`) and do not move. The light stops are the
+    // light money ramp read deep-to-bright (`money700 → money600 → money400`),
+    // so the panel keeps the same "deep green, brightening toward the
+    // bottom-right" shape while sitting on a near-white page instead of
+    // becoming a white card that its white copy would disappear into.
+    /// Deepest stop — gradient origin (top-left), where the copy sits.
+    static let heroDeep700 = dynamicColor(dark: 0x1A2810, light: 0x053D2B)
+    /// Middle stop.
+    static let heroDeep500 = dynamicColor(dark: 0x2C4A1F, light: 0x075139)
+    /// Brightest stop — gradient end (bottom-right), decorative only.
+    static let heroDeep300 = dynamicColor(dark: 0x4F8A3A, light: 0x0B7A56)
+    /// Ink on `heroDeep*` — white in BOTH themes, because unlike `money500`
+    /// this fill is dark on light too. Not interchangeable with `fgOnMoney`:
+    /// that token's dark-theme mint ink would vanish into the deep-green panel.
+    static let fgOnHeroDeep = UIColor.white
+
+    // MARK: - Warn wash (tinted chip — NOT a solid fill)
+    //
+    // `fgOnWarn` is ink for a SOLID `warn500` fill. A *wash* — the brand colour
+    // laid at partial alpha over a card — is a different surface and needs
+    // different ink: white on a wash measures ~1.2:1, the defect fixed in
+    // `SPAlarmBackendBanner`. The wash inverts between themes: a deep 60%
+    // bronze over the dark card, a faint 18% tint (the `SPPill` strength) over
+    // the light one, so the ink can be dark bronze instead of white.
+    /// Warn-tinted chip fill — the avatar of a friend mid-streak.
+    static let warnWash = UIColor { trait in
+        let base = AppColors.warn600.resolvedColor(with: trait)
+        return base.withAlphaComponent(trait.userInterfaceStyle == .light ? 0.18 : 0.60)
+    }
+    /// Ink on `warnWash`. `warn300` glows on the deep dark wash; the pale light
+    /// wash takes `warn600`, the darkest bronze in the scale.
+    static let fgOnWarnWash = UIColor { trait in
+        trait.userInterfaceStyle == .light
+            ? AppColors.warn600.resolvedColor(with: trait)
+            : AppColors.warn300.resolvedColor(with: trait)
+    }
+
     // MARK: - Theme-aware overlays (alpha on white / near-black ink)
     //
     // Dark mode lays white over surfaces (`rgba(255,255,255,X)`); light mode

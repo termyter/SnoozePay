@@ -4,9 +4,9 @@ import UIKit
 /// `components/SPMore4.jsx` lines 228-323, `Referral()`).
 ///
 /// Layout (top → bottom):
-///   1. Hero card with a money-toned dark gradient + radial corner glow.
-///      Caps "Реферальная программа" + h1 "+200 ₽ вам / +200 ₽ другу" +
-///      body explainer.
+///   1. `ReferralHeroCardView` — deep-green promo panel (dark fill in BOTH
+///      themes, so its copy is white in both). Caps "Реферальная программа" +
+///      h1 "+200 ₽ вам / +200 ₽ другу" + body explainer.
 ///   2. "Ваш код" — caps caption + `SPCard(.surface)` containing the
 ///      mono-spaced personal code + a "Копировать" `SPButton(.money, .sm)`
 ///      that copies the code onto the pasteboard.
@@ -27,6 +27,11 @@ final class ReferralViewController: UIViewController {
     /// Placeholder personal code rendered until the referral backend lands.
     /// Mono-spaced + uppercase per the JSX `font: var(--sp-font-mono)` recipe.
     private static let personalCode = "WAKEUP-7K2"
+
+    /// Avatar diameter in the "Друзья" list — 36pt per the JSX
+    /// (`width: 36, height: 36, borderRadius: 18`). Deliberately off the 4pt
+    /// `AppSpacing` grid: it is a component size, not spacing.
+    private static let avatarDiameter: CGFloat = 36
 
     // MARK: - Subviews
 
@@ -90,80 +95,15 @@ final class ReferralViewController: UIViewController {
 
     // MARK: - Hero card
 
-    /// Bespoke hero card — money-toned dark gradient + radial corner glow.
-    /// Built as a plain `UIView` rather than an `SPCard` because the
-    /// gradient recipe is unique to this screen (135° linear with three
-    /// brand-money stops instead of the canonical `SPSupport.money*`).
+    /// Deep-green promo panel. The gradient stops, the ink and the theme
+    /// bookkeeping live in `ReferralHeroCardView` — the fill is dark in both
+    /// themes (like `--sp-grad-night`), so the copy stays white in both.
     private func makeHeroCard() -> UIView {
-        let card = UIView()
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.layer.cornerRadius = AppRadius.xl
-        card.layer.cornerCurve = .continuous
-        card.layer.masksToBounds = true
-
-        // Background gradient — dark money camo (#1A2810 → #2C4A1F → #4F8A3A).
-        let gradient = CAGradientLayer()
-        gradient.colors = [
-            UIColor(red: 0x1A / 255.0, green: 0x28 / 255.0, blue: 0x10 / 255.0, alpha: 1).cgColor,
-            UIColor(red: 0x2C / 255.0, green: 0x4A / 255.0, blue: 0x1F / 255.0, alpha: 1).cgColor,
-            UIColor(red: 0x4F / 255.0, green: 0x8A / 255.0, blue: 0x3A / 255.0, alpha: 1).cgColor
-        ]
-        gradient.locations = [0.0, 0.5, 1.0]
-        gradient.startPoint = SPSupport.gradientStart
-        gradient.endPoint = SPSupport.gradientEnd
-        card.layer.insertSublayer(gradient, at: 0)
-
-        let caps = UILabel()
-        caps.attributedText = NSAttributedString(
-            string: "РЕФЕРАЛЬНАЯ ПРОГРАММА",
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: UIColor.white.withAlphaComponent(0.7)
-            ]
+        ReferralHeroCardView(
+            caps: "РЕФЕРАЛЬНАЯ ПРОГРАММА",
+            headline: "+\(MoneyFormatter.string(200)) вам\n+\(MoneyFormatter.string(200)) другу",
+            body: "Когда друг продержится 7 дней — оба получаете бонус в баланс."
         )
-        caps.numberOfLines = 0
-        caps.translatesAutoresizingMaskIntoConstraints = false
-
-        let headline = UILabel()
-        headline.font = AppTypography.h1
-        headline.textColor = .white
-        headline.numberOfLines = 0
-        headline.text = "+\(MoneyFormatter.string(200)) вам\n+\(MoneyFormatter.string(200)) другу"
-        headline.translatesAutoresizingMaskIntoConstraints = false
-
-        let body = UILabel()
-        body.text = "Когда друг продержится 7 дней — оба получаете бонус в баланс."
-        body.font = AppTypography.body
-        body.textColor = UIColor.white.withAlphaComponent(0.85)
-        body.numberOfLines = 0
-        body.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = UIStackView(arrangedSubviews: [caps, headline, body])
-        stack.axis = .vertical
-        stack.alignment = .leading
-        stack.spacing = AppSpacing.sp2
-        stack.setCustomSpacing(AppSpacing.sp3, after: headline)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: AppSpacing.sp7),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -AppSpacing.sp7),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.sp7),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.sp7)
-        ])
-
-        // Resize the gradient sublayer on next runloop tick so it adopts the
-        // resolved bounds after Auto Layout settles.
-        DispatchQueue.main.async {
-            gradient.frame = card.bounds
-        }
-        // Keep the gradient frame in sync on bounds change via a tiny KVO-free
-        // helper layer: intercept layoutSubviews on a private subclass would
-        // be cleaner, but a single dispatched assignment + an extra one on
-        // device-rotation `viewWillTransition` covers the practical cases.
-        return card
     }
 
     // MARK: - "Ваш код"
@@ -235,7 +175,7 @@ final class ReferralViewController: UIViewController {
             row.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor),
             row.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
             row.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
-            friendCodeField.heightAnchor.constraint(greaterThanOrEqualToConstant: 32)
+            friendCodeField.heightAnchor.constraint(greaterThanOrEqualToConstant: AppSpacing.sp7)
         ])
 
         let hint = UILabel()
@@ -276,9 +216,13 @@ final class ReferralViewController: UIViewController {
         let rowDima = makeFriendRow(
             FriendRowSpec(
                 initial: "Д",
-                badgeColor: UIColor(hex: 0xC97A06).withAlphaComponent(0.6),
+                // `--sp-warn-700` in the JSX, a token that does not exist in
+                // `tokens.css`; the wash token carries the same 60% bronze in
+                // the dark theme and inverts to a faint tint + dark ink on the
+                // light card, where 60% bronze left the initial at 1.08:1.
+                badgeColor: AppColors.warnWash,
                 badgeGradient: nil,
-                badgeTextColor: AppColors.warn300,
+                badgeTextColor: AppColors.fgOnWarnWash,
                 title: "Дима Р.",
                 subtitle: "День 4 из 7",
                 trailing: makeMetaLabel(text: "скоро", color: AppColors.warn400),
@@ -336,11 +280,11 @@ final class ReferralViewController: UIViewController {
     private func makeFriendRow(_ spec: FriendRowSpec) -> UIView {
         let badge = UIView()
         badge.translatesAutoresizingMaskIntoConstraints = false
-        badge.layer.cornerRadius = 18
+        badge.layer.cornerRadius = Self.avatarDiameter / 2
         badge.layer.masksToBounds = true
         NSLayoutConstraint.activate([
-            badge.widthAnchor.constraint(equalToConstant: 36),
-            badge.heightAnchor.constraint(equalToConstant: 36)
+            badge.widthAnchor.constraint(equalToConstant: Self.avatarDiameter),
+            badge.heightAnchor.constraint(equalToConstant: Self.avatarDiameter)
         ])
         if let gradient = spec.badgeGradient {
             let layer = CAGradientLayer()
@@ -348,7 +292,7 @@ final class ReferralViewController: UIViewController {
             layer.locations = SPSupport.moneyGradientLocations
             layer.startPoint = SPSupport.gradientStart
             layer.endPoint = SPSupport.gradientEnd
-            layer.cornerRadius = 18
+            layer.cornerRadius = Self.avatarDiameter / 2
             badge.layer.insertSublayer(layer, at: 0)
             DispatchQueue.main.async {
                 layer.frame = badge.bounds
@@ -466,16 +410,5 @@ final class ReferralViewController: UIViewController {
         activity.popoverPresentationController?.sourceView = view
         activity.popoverPresentationController?.sourceRect = view.bounds
         present(activity, animated: true)
-    }
-}
-
-// MARK: - UIColor hex helper
-
-private extension UIColor {
-    convenience init(hex: UInt32, alpha: CGFloat = 1) {
-        let red = CGFloat((hex >> 16) & 0xFF) / 255.0
-        let green = CGFloat((hex >> 8) & 0xFF) / 255.0
-        let blue = CGFloat(hex & 0xFF) / 255.0
-        self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
