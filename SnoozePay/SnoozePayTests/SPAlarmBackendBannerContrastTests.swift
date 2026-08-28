@@ -5,7 +5,7 @@ import UIKit
 /// Contrast floor for the alarm-backend banner (#428 review).
 ///
 /// The banner's entire job is to be unmissable, and its first implementation
-/// used the STATIC `warn300` token, which measures **1.21:1** against the
+/// used `warn300` in both themes, which measured **1.21:1** against the
 /// composited fill in light mode — invisible on any device whose system theme
 /// is light (the alarms list does not force `.dark`). Eyeballing missed it, so
 /// the ratio is asserted here in WCAG 2.1 terms instead of described in a
@@ -37,8 +37,10 @@ final class SPAlarmBackendBannerContrastTests: XCTestCase {
 
     /// The regression this suite exists for: the token the banner originally
     /// used must still be measurably unusable in light mode, so a future
-    /// "simplify back to `warn300`" cannot pass unnoticed.
-    func testStaticWarn300_isBelowTheFloorOnLightFill() {
+    /// "simplify back to `warn300`" cannot pass unnoticed. It stayed unusable
+    /// after #489 made the scale theme-aware — the light value reaches only
+    /// 2.68:1 on the dense end of the fill.
+    func testWarn300_isBelowTheFloorOnLightFill() {
         let fill = bannerFill(in: .light, alpha: SPAlarmBackendBanner.fillAlphas[0])
         let ratio = contrastRatio(AppColors.warn300, fill)
         XCTAssertLessThan(

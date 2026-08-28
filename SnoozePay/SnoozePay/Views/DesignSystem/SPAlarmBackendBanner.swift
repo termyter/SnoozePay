@@ -24,25 +24,39 @@ final class SPAlarmBackendBanner: UIView {
 
     // MARK: - Theme-aware palette
     //
-    // `warn300` is a STATIC token (`#FFD479`), and `bg0` in light mode is
-    // `#F4F6FB` — the composited banner fill lands on ~`rgb(246,237,227)`,
-    // where `warn300` measures **1.21:1** (WCAG wants ≥3:1 for large text).
-    // The alarms list doesn't force `.dark`, so on a light system theme the
-    // title and the CTA of the one banner whose entire job is to be
-    // unmissable were effectively invisible.
+    // The original bug (#428 review): the banner painted its title with
+    // `warn300` in both themes. `bg0` in light mode is `#F4F6FB`, so the
+    // composited fill lands on a near-white wash and the amber measured
+    // **1.21:1** on it. The alarms list doesn't force `.dark`, so on a light
+    // system theme the title and the CTA of the one banner whose entire job
+    // is to be unmissable were effectively invisible.
+    //
+    // `warn300` is theme-aware since #489, but that did not retire the
+    // problem: its light value (`#BE7B09`) still only reaches 2.68:1 on the
+    // dense end of the fill, so it remains unusable here and
+    // `testWarn300_isBelowTheFloorOnLightFill` keeps measuring it.
+    //
+    // The light emphasis used to be `fgOnWarn`, which worked only while that
+    // token was near-black ink. Once the accent scales became theme-aware
+    // (#489) `fgOnWarn` inverted to white — correct for its actual job, text
+    // on a SOLID warn fill, but wrong here: the banner's fill is `warn400` at
+    // 5–14% alpha, i.e. barely tinted background. White on it measures
+    // 1.15:1. The token was being used for the wrong surface, and the light
+    // emphasis now takes a dark warn TONE instead of on-fill ink.
     //
     // Measured contrasts of the values below (sRGB, WCAG 2.1):
-    //   dark  — warn300 on fill rgb(41,34,26)   = 11.22:1
-    //   light — fgOnWarn on fill rgb(246,237,227) = 16.33:1
-    //   light — fgOnWarn on the solid warn500 icon tile = 8.79:1
-    // `warn600` was the other candidate but measures 2.90:1 on the fill's
-    // dense end — under the floor, so it's not used.
+    //   dark  — warn300 on fill rgb(41,34,26)     = 11.17:1 / 13.31:1
+    //   light — warn600 on fill rgb(231,225,217)  =  7.14:1 /  8.06:1
+    //   light — fgOnWarn on the solid warn500 icon tile = 6.98:1
+    // `warn500` also clears the floor (5.38:1) but `warn600` keeps the
+    // headroom the dark side has — this is the one banner whose entire job is
+    // to be unmissable.
 
     /// Caps title + CTA colour. Internal (not private) so
     /// `SPAlarmBackendBannerContrastTests` can MEASURE the ratio instead of
     /// trusting a comment.
     static let emphasisColor = UIColor { trait in
-        trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.fgOnWarn
+        trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.warn600
     }
 
     /// Icon tile fill — a faint warn wash on dark, a solid warn chip on light
