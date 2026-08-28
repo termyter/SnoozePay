@@ -1,11 +1,16 @@
 name: CI
 
-# Цель — быстрый PR-фидбек. Замеры на прогоне 30763680898 (428 с суммарно):
-#   компиляция ~228 с | 5 UI-тестов 145 с | 1034 unit-теста 22 с | lint 16 с
+# Цель — быстрый PR-фидбек. Два замера, второй опроверг первый:
+#
+#   run 30763680898 (428 с одним блоком): казалось, что всё съедает компиляция.
+#   run 33156328491 (шаги разделены):     компиляция 48 с, а 157 с — простой
+#                                         в ожидании загрузки симулятора.
+#
 # Отсюда раскладка:
-#   * компиляцию режем кэшем DerivedData + выключенным индексатором;
-#   * UI-тесты (145 с ради 5 кейсов) уводим с критического пути PR;
-#   * 1034 unit-теста стоят 22 с — им место на КАЖДОМ PR, это почти бесплатно.
+#   * буст симулятора стартует в фоне и идёт параллельно со сборкой;
+#   * UI-тесты (145 с ради 5 кейсов) уведены с критического пути PR;
+#   * 1034 unit-теста исполняются за 22 с — им место на КАЖДОМ PR;
+#   * DerivedData кэшируется, индексатор выключен (Xcode.app тут некому).
 # Ночью гоняется clean-build без кэша: он ловит «ложный green», когда
 # инкрементальная сборка не заметила новый файл.
 on:
@@ -74,7 +79,11 @@ jobs:
             dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
             dd-xc26.5-
 
-      - name: Pick a simulator
+      # Замер прогона 33156328491: от старта xcodebuild до первого теста прошло
+      # 157 с — это загрузка симулятора и установка тест-хоста, при том что
+      # компиляция занимает 48 с и к тому моменту давно закончена. Стартуем
+      # буст в фоне СРАЗУ, чтобы он шёл параллельно со сборкой.
+      - name: Pick and pre-boot a simulator
         id: sim
         run: |
           UDID=$(xcrun simctl list devices available -j | jq -r '
@@ -85,6 +94,8 @@ jobs:
             echo "::error::No iPhone simulator available"; exit 1
           fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          nohup xcrun simctl boot "$UDID" >/dev/null 2>&1 &
+          echo "boot started for $UDID"
 
       # Сборка и прогон — РАЗНЫМИ шагами, чтобы в логе было видно, сколько
       # стоит каждая половина, и чтобы кэш можно было оценить по одному числу.
@@ -94,7 +105,11 @@ jobs:
             -project "$PROJECT" -scheme "$SCHEME" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath "$DD" \
+            -quiet \
             $FAST_BUILD
+
+      - name: Wait for simulator to finish booting
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       # -only-testing:SnoozePayTests — UI-тесты живут в отдельном job'е.
       # -parallel-testing-enabled NO: параллельные клоны симулятора роняют
@@ -154,7 +169,11 @@ jobs:
             dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
             dd-xc26.5-
 
-      - name: Pick a simulator
+      # Замер прогона 33156328491: от старта xcodebuild до первого теста прошло
+      # 157 с — это загрузка симулятора и установка тест-хоста, при том что
+      # компиляция занимает 48 с и к тому моменту давно закончена. Стартуем
+      # буст в фоне СРАЗУ, чтобы он шёл параллельно со сборкой.
+      - name: Pick and pre-boot a simulator
         id: sim
         run: |
           UDID=$(xcrun simctl list devices available -j | jq -r '
@@ -165,6 +184,8 @@ jobs:
             echo "::error::No iPhone simulator available"; exit 1
           fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          nohup xcrun simctl boot "$UDID" >/dev/null 2>&1 &
+          echo "boot started for $UDID"
 
       - name: Build for testing
         run: |
@@ -172,7 +193,11 @@ jobs:
             -project "$PROJECT" -scheme "$SCHEME" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath "$DD" \
+            -quiet \
             $FAST_BUILD
+
+      - name: Wait for simulator to finish booting
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       - name: Run UI tests
         run: |
