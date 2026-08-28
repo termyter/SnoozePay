@@ -36,23 +36,6 @@ enum SPSupport {
             AppColors.pain600.cgColor
         ]
     }
-    /// Trait-explicit sibling of `painGradientColors`.
-    ///
-    /// The computed property above reads `UITraitCollection.current`, which
-    /// inside a view method is not necessarily that view's traits — and the
-    /// `CGColor`s it produces land in `CAGradientLayer.colors`, which never
-    /// re-resolve on a theme flip. Owners that install the gradient once (the
-    /// wallet's weekly chart) must re-apply it from
-    /// `registerForTraitChanges([UITraitUserInterfaceStyle.self])` using this
-    /// overload — same reasoning as `heroDeepGradientColors(for:)`.
-    static func painGradientColors(for trait: UITraitCollection) -> [CGColor] {
-        [
-            AppColors.pain300.resolvedColor(with: trait).cgColor,
-            AppColors.pain500.resolvedColor(with: trait).cgColor,
-            AppColors.pain600.resolvedColor(with: trait).cgColor
-        ]
-    }
-
     static let painGradientLocations: [NSNumber] = [0.0, 0.55, 1.0]
 
     /// Trait-resolved variants of the money / pain ramps.
