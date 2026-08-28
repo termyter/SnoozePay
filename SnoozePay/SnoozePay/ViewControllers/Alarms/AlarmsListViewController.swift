@@ -613,7 +613,11 @@ extension AlarmsListViewController: UITableViewDelegate {
             completion(true)
         }
         delete.image = UIImage(systemName: "trash")
-        delete.backgroundColor = .systemRed
+        // Brand destructive tone, not the system red: `pain500` is theme-aware
+        // (`#F4523F` dark / `#9F3529` light), so the swipe action stays part of
+        // the same palette as the rest of the screen and keeps the white
+        // trash glyph readable on it in both themes.
+        delete.backgroundColor = AppColors.pain500
         return UISwipeActionsConfiguration(actions: [delete])
     }
 }

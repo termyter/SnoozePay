@@ -47,6 +47,18 @@ final class SPGradientTextLabel: UILabel {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// Re-apply the gradient stops after a theme flip.
+    ///
+    /// `CAGradientLayer.colors` holds plain `CGColor`s: they are resolved once,
+    /// at the moment they are handed over, and never follow a light/dark
+    /// switch. The owner must call this from `registerForTraitChanges` with
+    /// stops resolved against its own `traitCollection` — otherwise the hero
+    /// number keeps the dark-theme mint ramp on a near-white card.
+    /// The glyph mask depends on the text and bounds only, so it is untouched.
+    func setGradientColors(_ colors: [CGColor]) {
+        gradient.colors = colors
+    }
+
     override var text: String? {
         didSet {
             guard text != oldValue else { return }
