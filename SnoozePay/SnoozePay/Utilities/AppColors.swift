@@ -16,31 +16,63 @@ enum AppColors {
     static let textSecondary = UIColor.secondaryLabel
     static let textTertiary = UIColor.tertiaryLabel
 
+    // MARK: - Brand accent scales (theme-aware)
+    //
+    // The dark values are the brand palette from `tokens.css`. The light ones
+    // are *derived* from them — same hue, reduced value — because the dark
+    // scale cannot simply carry over: it was picked to glow on `#060912`, and
+    // on a light surface it stops being readable. Measured contrast of the
+    // dark values on the light raised card (`bg2` = `#ECEEF6`):
+    //
+    //     money500 2.19    money600 2.99    money700 4.61
+    //     pain500  2.96    pain600  4.09
+    //     warn500  1.85    warn600  2.89
+    //     info500  2.80
+    //
+    // So "shift one or two steps darker" does not work — of the whole existing
+    // palette exactly one value (`money700`) clears 4.5:1 on a light card. Each
+    // light step below is instead solved for its ROLE: 300 ≈ 3:1 (decorative /
+    // borders), 400 ≈ 4.5:1 (large text), 500 ≈ 6:1 (body text), 600 ≈ 8:1,
+    // 700 ≈ 10.5:1.
+    //
+    // Contrast is solved against `bg2`, not `bg0`: accents sit on cards far
+    // more often than on the app background, and `bg2` is the worse surface in
+    // BOTH themes (lighter than `bg0` on dark, darker than `bg0` on light). A
+    // value that clears there clears everywhere. `AppColorsContrastTests` pins
+    // this — it fails if any step drops below its role's threshold.
+    //
+    // Canvas with the full comparison and the reasoning: see #474.
+
     // MARK: - Brand · Money (positive / earnings / "deposit recovered")
-    static let money300 = UIColor(hex: 0x5EEAB8)
-    static let money400 = UIColor(hex: 0x2EDB9F)
+    static let money300 = dynamicColor(dark: 0x5EEAB8, light: 0x0E9C6D)
+    static let money400 = dynamicColor(dark: 0x2EDB9F, light: 0x0B7B56)
     /// Primary money tone — used for the deposit / balance hero.
-    static let money500 = UIColor(hex: 0x10B981)
-    static let money600 = UIColor(hex: 0x0E9D6E)
-    static let money700 = UIColor(hex: 0x0B7A56)
+    static let money500 = dynamicColor(dark: 0x10B981, light: 0x096647)
+    static let money600 = dynamicColor(dark: 0x0E9D6E, light: 0x075139)
+    static let money700 = dynamicColor(dark: 0x0B7A56, light: 0x053D2B)
 
     // MARK: - Brand · Pain (progressive snooze / penalty / loss)
-    static let pain300 = UIColor(hex: 0xFFB4A8)
-    static let pain400 = UIColor(hex: 0xFF7A6B)
+    static let pain300 = dynamicColor(dark: 0xFFB4A8, light: 0xF2513F)
+    static let pain400 = dynamicColor(dark: 0xFF7A6B, light: 0xC04032)
     /// Default "progressive snooze charged" red.
-    static let pain500 = UIColor(hex: 0xF4523F)
-    static let pain600 = UIColor(hex: 0xD43A28)
+    static let pain500 = dynamicColor(dark: 0xF4523F, light: 0x9F3529)
+    static let pain600 = dynamicColor(dark: 0xD43A28, light: 0x7E2B21)
 
     // MARK: - Brand · Warn (snooze affordance / amber CTA)
-    static let warn300 = UIColor(hex: 0xFFD479)
-    static let warn400 = UIColor(hex: 0xFFB84D)
+    //
+    // Note the light scale is bronze, not amber. `warn500` on a light card is
+    // 1.85:1 — amber simply cannot carry text on a near-white surface at any
+    // step of the existing ramp. Where the design wants amber *as* amber it
+    // stays a FILL with white text (`fgOnWarn`), never text on the background.
+    static let warn300 = dynamicColor(dark: 0xFFD479, light: 0xBE7B09)
+    static let warn400 = dynamicColor(dark: 0xFFB84D, light: 0x966107)
     /// Default snooze-button amber.
-    static let warn500 = UIColor(hex: 0xF59E0B)
-    static let warn600 = UIColor(hex: 0xC97A06)
+    static let warn500 = dynamicColor(dark: 0xF59E0B, light: 0x7C5006)
+    static let warn600 = dynamicColor(dark: 0xC97A06, light: 0x634004)
 
     // MARK: - Brand · Info
     /// Informational links only — `--sp-info-500` in `tokens.css`.
-    static let info500 = UIColor(hex: 0x4F8BFF)
+    static let info500 = dynamicColor(dark: 0x4F8BFF, light: 0x3257A1)
 
     // MARK: - Theme-aware surfaces (`bg0`...`bg4`)
     //
@@ -75,12 +107,15 @@ enum AppColors {
     /// Disabled / placeholder. Dark 32%, Light 32%.
     static let fg4 = foreground(darkAlpha: 0.32, lightAlpha: 0.32)
 
-    /// Text rendered ON top of `money500` fills. Dark mint hue.
-    static let fgOnMoney = UIColor(hex: 0x052016)
-    /// Text rendered ON top of `pain500` fills.
+    /// Text rendered ON top of `money500` fills. Dark mint ink on the bright
+    /// dark-theme fill; white on the light theme's dark-green fill, which is
+    /// far too dark to carry the mint ink (`#052016` on `#096647` is 1.5:1).
+    static let fgOnMoney = dynamicColor(dark: 0x052016, light: 0xFFFFFF)
+    /// Text rendered ON top of `pain500` fills — white in both themes.
     static let fgOnPain = UIColor.white
-    /// Text rendered ON top of `warn500` fills.
-    static let fgOnWarn = UIColor(hex: 0x1A0F00)
+    /// Text rendered ON top of `warn500` fills. Same inversion as `fgOnMoney`:
+    /// the light `warn500` is bronze, so it takes white rather than dark ink.
+    static let fgOnWarn = dynamicColor(dark: 0x1A0F00, light: 0xFFFFFF)
 
     // MARK: - Theme-aware overlays (alpha on white / near-black ink)
     //
