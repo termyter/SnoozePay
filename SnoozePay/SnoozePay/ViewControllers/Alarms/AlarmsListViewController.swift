@@ -497,7 +497,7 @@ class AlarmsListViewController: UIViewController {
         createVC.onSave = { [weak self] in
             self?.viewModel.loadData()
         }
-        let nav = UINavigationController(rootViewController: createVC)
+        let nav = AppNavigationBarStyle.makeNavigationController(rootViewController: createVC)
         present(nav, animated: true)
     }
 
@@ -585,7 +585,7 @@ extension AlarmsListViewController: UITableViewDelegate {
         editVC.onDelete = { [weak self] in
             self?.viewModel.loadData()
         }
-        let nav = UINavigationController(rootViewController: editVC)
+        let nav = AppNavigationBarStyle.makeNavigationController(rootViewController: editVC)
         present(nav, animated: true)
     }
 
