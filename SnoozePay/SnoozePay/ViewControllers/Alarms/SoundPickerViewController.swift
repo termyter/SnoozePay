@@ -219,6 +219,21 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         setupHeader()
         setupContent()
         refreshPreviewLabel()
+        // `CAGradientLayer.colors` are `cgColor`s: they freeze whichever theme
+        // was current when the layer was configured. The play head carries
+        // `fgOnMoney` ink, which DOES follow the theme — leave the gradient
+        // frozen and a theme flip pairs the light theme's white glyph with the
+        // dark theme's bright mint disc (1.4:1).
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (host: SoundPickerViewController, _) in
+            host.refreshPreviewGradient()
+        }
+    }
+
+    /// Re-resolve the money gradient behind the preview play head through the
+    /// trait-aware ramp (#491) rather than the `UITraitCollection.current`
+    /// snapshot the plain `moneyGradientColors` property takes.
+    private func refreshPreviewGradient() {
+        previewPlayGradient.colors = SPSupport.moneyGradientColors(for: traitCollection)
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -316,8 +331,8 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     private func makePreviewBlock() -> UIStackView {
         previewPlayGradient.startPoint = SPSupport.gradientStart
         previewPlayGradient.endPoint = SPSupport.gradientEnd
-        previewPlayGradient.colors = SPSupport.moneyGradientColors
         previewPlayGradient.locations = SPSupport.moneyGradientLocations
+        refreshPreviewGradient()
         previewPlayButton.layer.insertSublayer(previewPlayGradient, at: 0)
         previewPlayButton.addTarget(self, action: #selector(previewTapped), for: .touchUpInside)
         previewPlayButton.accessibilityLabel = "Прослушать превью"
@@ -630,9 +645,18 @@ private final class GradientRailFill: UIView {
         layer.masksToBounds = true
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
-        gradient.colors = SPSupport.moneyGradientColors
         gradient.locations = SPSupport.moneyGradientLocations
         layer.addSublayer(gradient)
+        refreshGradientColors()
+        // Same `cgColor` freeze as the play head above: without this the rail
+        // keeps the mint of whichever theme built it.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: GradientRailFill, _) in
+            view.refreshGradientColors()
+        }
+    }
+
+    private func refreshGradientColors() {
+        gradient.colors = SPSupport.moneyGradientColors(for: traitCollection)
     }
 
     @available(*, unavailable)

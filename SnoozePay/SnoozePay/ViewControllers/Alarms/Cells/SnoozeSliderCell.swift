@@ -52,8 +52,14 @@ final class SnoozeSliderCell: UITableViewCell {
         // as "amber affordance" matching the JSX recipe in `SPScreensV2.jsx`
         // line 563.
         view.minimumTrackTintColor = AppColors.warn500
-        view.setThumbImage(SnoozeSliderCell.makeThumb(diameter: 28), for: .normal)
-        view.setThumbImage(SnoozeSliderCell.makeThumb(diameter: 30), for: .highlighted)
+        // The unfilled remainder is `rgba(255,255,255,.10)` in the same JSX
+        // gradient. UIKit's default maximum track is a fixed system grey that
+        // neither theme asked for — on the light card it is a near-invisible
+        // #E5E5EA on #FFFFFF. `whiteOverlay12` is the token for that literal
+        // and darkens instead of lightening on the light theme.
+        view.maximumTrackTintColor = AppColors.whiteOverlay12
+        // Thumb images are installed in `init` (and re-installed on theme
+        // flips) — a bitmap cannot resolve a dynamic colour on its own.
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -96,6 +102,12 @@ final class SnoozeSliderCell: UITableViewCell {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
         slider.addTarget(self, action: #selector(sliderChanged), for: .valueChanged)
+        // The thumb is a rendered bitmap, so it can't re-resolve its own
+        // dynamic colours — re-render it whenever the theme flips.
+        SPSliderThumb.install(on: slider, trait: traitCollection)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: SnoozeSliderCell, _) in
+            SPSliderThumb.install(on: cell.slider, trait: cell.traitCollection)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -188,32 +200,9 @@ final class SnoozeSliderCell: UITableViewCell {
         ))
         return text
     }
-
-    // MARK: - Thumb image
-
-    /// Render a money-tinted circle into a UIImage for use as the slider
-    /// thumb. Sizing the thumb via `setThumbImage` is the only supported
-    /// path on `UISlider` — there's no `thumbDiameter` knob. Mirrors the
-    /// recipe in `VolumePickerViewController` so the two sliders that sit
-    /// on the CreateAlarm screen render with visual parity (#179).
-    private static func makeThumb(diameter: CGFloat) -> UIImage {
-        let size = CGSize(width: diameter, height: diameter)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { context in
-            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
-            // Soft ring shadow so the thumb lifts off the track in light mode.
-            context.cgContext.setShadow(
-                offset: CGSize(width: 0, height: 1),
-                blur: 2,
-                color: UIColor.black.withAlphaComponent(0.25).cgColor
-            )
-            AppColors.money500.setFill()
-            UIBezierPath(ovalIn: rect).fill()
-            // White inner dot so the thumb reads on dark + light alike.
-            context.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
-            UIColor.white.withAlphaComponent(0.35).setFill()
-            let inner = rect.insetBy(dx: rect.width * 0.32, dy: rect.height * 0.32)
-            UIBezierPath(ovalIn: inner).fill()
-        }
-    }
 }
+
+// The thumb bitmap used to be rendered by a private `makeThumb` here, byte
+// for byte identical to the one in `VolumePickerViewController` (#179). Both
+// now call the shared, trait-aware `SPSliderThumb` so the two sliders on this
+// screen cannot drift apart and neither freezes its theme (#492).
