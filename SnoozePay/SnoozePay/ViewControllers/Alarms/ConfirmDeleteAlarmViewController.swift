@@ -165,6 +165,14 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        // Stable selectors for the audit harness and the `-uitour
+        // confirm-delete` regression tests (#467) — the sheet's copy is
+        // localized, so tests must not key off it.
+        titleLabel.accessibilityIdentifier = "confirmDelete.title"
+        bodyLabel.accessibilityIdentifier = "confirmDelete.body"
+        deleteButton.accessibilityIdentifier = "confirmDelete.deleteButton"
+        cancelButton.accessibilityIdentifier = "confirmDelete.cancelButton"
+
         view.addSubview(blurView)
         view.addSubview(scrimView)
         view.addSubview(card)
