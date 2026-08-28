@@ -207,11 +207,19 @@ final class AlarmFiringThemePaletteTests: XCTestCase {
         }
     }
 
-    func testDawnPickerTileKeepsHistoricalFourStopRecipe() {
+    func testDawnPickerTileMirrorsTheDawnAtmosphericBase() {
         // Dawn's firing background is the tone-reactive SPDawnBackgroundView,
-        // not the palette gradient — the tile keeps its pre-#225 night look.
-        XCTAssertEqual(AlarmThemeRendering.gradientColors(for: .dawn)?.count, 4)
-        XCTAssertEqual(AlarmThemeRendering.gradientLocations(for: .dawn), [0.0, 0.4, 0.7, 1.0] as [NSNumber])
+        // not the palette gradient — so the tile mirrors that view's calm base
+        // instead of the stale pre-#151 blue-black recipe it used to carry
+        // (#463: the picker read as one dark surface).
+        XCTAssertEqual(
+            AlarmThemeRendering.gradientColors(for: .dawn),
+            SPDawnBackgroundView.calmBaseColors.map { $0.cgColor }
+        )
+        XCTAssertEqual(
+            AlarmThemeRendering.gradientLocations(for: .dawn),
+            SPDawnBackgroundView.calmBaseLocations
+        )
     }
 
     // MARK: - Hero title

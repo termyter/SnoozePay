@@ -35,6 +35,27 @@ final class SPDawnBackgroundView: UIView {
 
     private(set) var tone: Tone
 
+    // MARK: - Calm recipe (shared with the theme picker)
+
+    /// Calm-tone base stops — `#0A0E1A → #0E1320 → #1A1410` (cool night to
+    /// warm horizon). Exposed so `AlarmThemeRendering` can render the Dawn
+    /// picker tile / preview as a true miniature of this background instead
+    /// of the stale pre-#151 night gradient it used to carry (#463).
+    static let calmBaseColors: [UIColor] = [
+        UIColor(dawnRGB: 0x0A0E1A),
+        UIColor(dawnRGB: 0x0E1320),
+        UIColor(dawnRGB: 0x1A1410)
+    ]
+
+    /// Stop locations paired with `calmBaseColors` — mid-stop at 55% per
+    /// `SPDawnV3.jsx:20` (`#0E1320 55%`).
+    static let calmBaseLocations: [NSNumber] = [0.0, 0.55, 1.0]
+
+    /// Core colour of the calm sun radial. The picker preview reuses it as the
+    /// bottom glow so the Dawn thumbnail reads "тёплый янтарь" the way the
+    /// firing screen does (#463).
+    static let calmSunCoreColor = UIColor(dawnRGB: 0xFFB84D, alpha: 0.45)
+
     // MARK: - Layers
 
     /// Vertical 3-stop base. Spec colours come from JSX `palettes[tone].base`.
@@ -136,14 +157,10 @@ final class SPDawnBackgroundView: UIView {
     }
 
     private func applyCalmTone() {
-        // Base: #0A0E1A → #0E1320 → #1A1410
-        baseLayer.colors = [
-            UIColor(dawnRGB: 0x0A0E1A).cgColor,
-            UIColor(dawnRGB: 0x0E1320).cgColor,
-            UIColor(dawnRGB: 0x1A1410).cgColor
-        ]
-        // Mid-stop 0.55 per `SPDawnV3.jsx:20` (`#0E1320 55%`).
-        baseLayer.locations = [0.0, 0.55, 1.0]
+        // Base: #0A0E1A → #0E1320 → #1A1410, mid-stop 0.55. Single table —
+        // the picker preview reads the same statics (#463).
+        baseLayer.colors = Self.calmBaseColors.map { $0.cgColor }
+        baseLayer.locations = Self.calmBaseLocations
         // Overlay: warn 22% → pain 10% → transparent
         overlayLayer.colors = [
             UIColor(dawnRGB: 0xF59E0B, alpha: 0.22).cgColor,
@@ -153,7 +170,7 @@ final class SPDawnBackgroundView: UIView {
         overlayLayer.locations = [0.0, 0.3, 0.6]
         // Sun: warm amber radial
         sunLayer.colors = [
-            UIColor(dawnRGB: 0xFFB84D, alpha: 0.45).cgColor,
+            Self.calmSunCoreColor.cgColor,
             UIColor(dawnRGB: 0xF59E0B, alpha: 0.10).cgColor,
             UIColor(dawnRGB: 0xF59E0B, alpha: 0.0).cgColor
         ]

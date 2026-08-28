@@ -11,19 +11,17 @@ enum AlarmThemeRendering {
 
     // MARK: - Gradient stops
 
-    /// Vertical (top → bottom) gradient stops for a built-in theme. The Dawn
-    /// recipe matches the literal layer in `AlarmFiringViewController` so
-    /// switching `.dawn` keeps the historical look untouched.
+    /// Gradient stops for a built-in theme. Every stock theme resolves to the
+    /// stops its own firing background actually paints: Dawn mirrors the calm
+    /// `SPDawnBackgroundView` base, the other five mirror
+    /// `AlarmFiringThemePalette`. Before #463 Dawn returned a stale pre-#151
+    /// blue-black recipe that matched no screen in the app and made the picker
+    /// read as a single dark surface.
     /// Returns nil for `.custom` — that case renders an image, not a gradient.
     static func gradientColors(for theme: AlarmTheme) -> [CGColor]? {
         switch theme {
         case .dawn:
-            return [
-                UIColor(themeRGB: 0x14122A).cgColor,
-                UIColor(themeRGB: 0x0F1A2E).cgColor,
-                UIColor(themeRGB: 0x0A1320).cgColor,
-                UIColor(themeRGB: 0x050912).cgColor
-            ]
+            return SPDawnBackgroundView.calmBaseColors.map { $0.cgColor }
         case .mountains, .ocean, .forest, .neon, .abstract:
             // FIRING_THEMES stops from the v3 handoff (`SPThemedFiring.jsx`)
             // via `AlarmFiringThemePalette` — single table so the picker tile
@@ -41,13 +39,34 @@ enum AlarmThemeRendering {
     static func gradientLocations(for theme: AlarmTheme) -> [NSNumber]? {
         switch theme {
         case .dawn:
-            return [0.0, 0.4, 0.7, 1.0]
+            return SPDawnBackgroundView.calmBaseLocations
         case .mountains, .ocean, .forest, .neon, .abstract:
             // Paired with the `AlarmFiringThemePalette` stop tables above —
             // midpoint pinned at 50% per the design's
             // `linear-gradient(160deg, … 0%, … 50%, … 100%)` recipe
             // (Abstract is the lone two-stop theme).
             return AlarmFiringThemePalette.palette(for: theme)?.backgroundLocations
+        case .custom:
+            return nil
+        }
+    }
+
+    // MARK: - Accent glow
+
+    /// Colour of the bottom-centre radial glow that pairs with
+    /// `gradientColors(for:)` in `SPThemePreviewView` (#463).
+    ///
+    /// It is the same light-from-below-the-horizon cue the firing screen
+    /// paints — the calm sun for Dawn, `accentSoft` for the five themed
+    /// backgrounds — and it is what makes a tile identifiable at 100pt:
+    /// the base stops alone read as "dark" on Dawn / Forest / Abstract.
+    /// Returns nil for `.custom`, which shows a photo and no glow.
+    static func accentGlowColor(for theme: AlarmTheme) -> UIColor? {
+        switch theme {
+        case .dawn:
+            return SPDawnBackgroundView.calmSunCoreColor
+        case .mountains, .ocean, .forest, .neon, .abstract:
+            return AlarmFiringThemePalette.palette(for: theme)?.accentSoft
         case .custom:
             return nil
         }
@@ -64,16 +83,6 @@ enum AlarmThemeRendering {
     }
 }
 
-// MARK: - Hex helper (file-scoped)
-
-private extension UIColor {
-    /// `0xRRGGBB` literal initializer used by the gradient stop tables above.
-    /// File-scoped so it doesn't clash with the identical helper inside
-    /// `AlarmFiringViewController`.
-    convenience init(themeRGB rgb: UInt32, alpha: CGFloat = 1) {
-        let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
-        let green = CGFloat((rgb >> 8) & 0xFF) / 255.0
-        let blue = CGFloat(rgb & 0xFF) / 255.0
-        self.init(red: red, green: green, blue: blue, alpha: alpha)
-    }
-}
+// No hex helper here any more: every stop this file hands out now comes from
+// `SPDawnBackgroundView` or `AlarmFiringThemePalette`, so there is exactly one
+// place per theme where a literal colour is written down (#463).
