@@ -82,20 +82,19 @@ final class AlarmKitAlertObserver {
     }
     #endif
 
-    /// Build the production stream when AlarmKit is available on this OS, else
-    /// `nil` (iOS < 26 — there are no AlarmKit alarms to observe).
+    /// Build the production stream when AlarmKit can be imported, else `nil`
+    /// (no AlarmKit alarms to observe).
     private static func makeDefaultStream() -> AlertingAlarmStream? {
         #if canImport(AlarmKit)
-        if #available(iOS 26.0, *) {
-            return AlarmManagerAlertingStream()
-        }
-        #endif
+        return AlarmManagerAlertingStream()
+        #else
         return nil
+        #endif
     }
 
     /// Begin observing. Idempotent — a second call while already running is a
     /// no-op so AppDelegate / SceneDelegate can both arm it without
-    /// coordinating. No-op when there's no stream (iOS < 26).
+    /// coordinating. No-op when there's no stream.
     func start() {
         guard task == nil, let stream else { return }
         AppLogger.scheduler.info("AlarmKit alert observer started")
