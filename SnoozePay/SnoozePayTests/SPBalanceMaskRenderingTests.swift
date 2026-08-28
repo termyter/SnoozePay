@@ -141,6 +141,43 @@ final class SPBalanceMaskRenderingTests: XCTestCase {
         )
     }
 
+    /// TEMPORARY diagnostic (#407): dumps the geometry both sides measure so
+    /// the CI log says *why* the mask and the control label disagree.
+    func testDiagnostic_dumpGeometry() {
+        let natural = wideBalance.size().width
+        let width = (natural * 0.85).rounded()
+        let label = makeGradientLabel(width: width)
+        let control = makeControlLabel(width: width)
+
+        // Same configuration, but digits only — no narrow space, no ₽.
+        let digitsOnly = UILabel()
+        digitsOnly.font = AppTypography.moneyXl
+        digitsOnly.textColor = .black
+        digitsOnly.numberOfLines = 1
+        digitsOnly.adjustsFontSizeToFitWidth = true
+        digitsOnly.minimumScaleFactor = 0.75
+        digitsOnly.attributedText = NSAttributedString(
+            string: MoneyFormatter.digits(1_234_567),
+            attributes: [.font: AppTypography.moneyXl]
+        )
+        digitsOnly.frame = CGRect(x: 0, y: 0, width: width, height: 60)
+        digitsOnly.layoutIfNeeded()
+
+        let scale = SPBalanceCard.effectiveFontScale(
+            for: NSMutableAttributedString(attributedString: wideBalance),
+            fitting: width,
+            minimumScaleFactor: 0.75
+        )
+
+        XCTFail("""
+        DIAG natural=\(natural) width=\(width) maskScale=\(scale)
+        DIAG masked=\(String(describing: maskInkBounds(of: label)))
+        DIAG painted=\(String(describing: paintedInkBounds(of: control)))
+        DIAG digitsOnly=\(String(describing: paintedInkBounds(of: digitsOnly)))
+        DIAG controlLineBreak=\(control.lineBreakMode.rawValue)
+        """)
+    }
+
     // MARK: - Helpers
 
     private func assertInkMatches(
