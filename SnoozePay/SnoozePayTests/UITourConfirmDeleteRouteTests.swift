@@ -12,8 +12,16 @@ import XCTest
 ///
 /// The route now chains off the edit form's presentation completion, so this
 /// test asserts exactly what the harness needs to see: the sheet mounted over
-/// the edit form, with its title, body and BOTH actions on screen.
+/// the edit form, with its title, body and BOTH actions laid out on screen.
 final class UITourConfirmDeleteRouteTests: XCTestCase {
+
+    /// Everything the harness must be able to photograph.
+    private let contentIdentifiers = [
+        "confirmDelete.title",
+        "confirmDelete.body",
+        "confirmDelete.deleteButton",
+        "confirmDelete.cancelButton"
+    ]
 
     private var window: UIWindow!
     private var previousKeyWindow: UIWindow?
@@ -37,12 +45,14 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - Route
+    // MARK: - Routing
 
+    /// Deliberately waits only for "sheet is in the hierarchy", so a routing
+    /// regression stays distinguishable from a layout-timing problem.
     func testConfirmDeleteRoutePresentsSheetOverTheEditForm() {
         UITourLauncher.mount("confirm-delete", in: window)
 
-        guard let sheet = waitForConfirmSheet() else {
+        guard let sheet = waitForPresentedSheet() else {
             return XCTFail("`-uitour confirm-delete` never presented the confirmation sheet")
         }
 
@@ -57,59 +67,60 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         XCTAssertNotNil(nav?.viewIfLoaded?.window, "The presenter must be in the window hierarchy")
     }
 
+    // MARK: - Content
+
     func testConfirmDeleteSheetShowsTitleBodyAndBothActions() {
         let expectedBody = AlarmDeletionCopy.body(balance: BalanceService.shared.balance)
 
         UITourLauncher.mount("confirm-delete", in: window)
 
-        guard let sheet = waitForConfirmSheet() else {
-            return XCTFail("`-uitour confirm-delete` never presented the confirmation sheet")
+        guard let sheet = waitForLaidOutSheet() else {
+            return XCTFail("Confirmation content never laid out. \(layoutDiagnostics())")
         }
-        sheet.view.layoutIfNeeded()
 
-        let title = view(withID: "confirmDelete.title", in: sheet.view) as? UILabel
+        let title = contentView("confirmDelete.title", in: sheet) as? UILabel
         XCTAssertEqual(title?.text, "Удалить будильник?", "Sheet headline must be on screen")
         XCTAssertTrue(isVisible(title), "Sheet headline must be visible, not just allocated")
 
-        let body = view(withID: "confirmDelete.body", in: sheet.view) as? UILabel
+        let body = contentView("confirmDelete.body", in: sheet) as? UILabel
         XCTAssertEqual(body?.text, expectedBody, "Sheet body must carry the balance reassurance copy")
         XCTAssertTrue(isVisible(body), "Sheet body must be visible")
 
-        let delete = view(withID: "confirmDelete.deleteButton") as? SPButton
+        let delete = contentView("confirmDelete.deleteButton", in: sheet) as? SPButton
         XCTAssertTrue(isVisible(delete), "Destructive action must be visible")
         XCTAssertEqual(delete?.accessibilityLabel, "Удалить")
 
-        let cancel = view(withID: "confirmDelete.cancelButton") as? SPButton
+        let cancel = contentView("confirmDelete.cancelButton", in: sheet) as? SPButton
         XCTAssertTrue(isVisible(cancel), "Cancel action must be visible")
         XCTAssertEqual(cancel?.accessibilityLabel, "Отмена")
     }
 
-    /// The audit only ever saw a narrow strip at the bottom: the card was never
-    /// laid out because the sheet was never presented. Assert the content sits
-    /// inside the window instead of trusting mere existence.
+    /// The audit only ever saw a dimmed backdrop with a narrow strip at the
+    /// bottom. Non-zero frames alone would not have caught that — assert the
+    /// content actually lands INSIDE the window, which the wait predicate
+    /// (size only) deliberately does not check.
     func testConfirmDeleteSheetContentIsOnScreen() {
         UITourLauncher.mount("confirm-delete", in: window)
 
-        guard let sheet = waitForConfirmSheet() else {
-            return XCTFail("`-uitour confirm-delete` never presented the confirmation sheet")
+        guard let sheet = waitForLaidOutSheet() else {
+            return XCTFail("Confirmation content never laid out. \(layoutDiagnostics())")
         }
-        sheet.view.layoutIfNeeded()
 
-        for identifier in ["confirmDelete.title", "confirmDelete.deleteButton", "confirmDelete.cancelButton"] {
-            guard let found = view(withID: identifier, in: sheet.view) else {
+        for identifier in contentIdentifiers {
+            guard let found = contentView(identifier, in: sheet) else {
                 XCTFail("\(identifier) missing from the presented sheet")
                 continue
             }
             let frame = found.convert(found.bounds, to: window)
             XCTAssertFalse(frame.isEmpty, "\(identifier) must have a non-empty frame")
             XCTAssertTrue(
-                window.bounds.intersects(frame),
+                window.bounds.insetBy(dx: -1, dy: -1).contains(frame),
                 "\(identifier) must lie inside the window, got \(frame) in \(window.bounds)"
             )
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Host window
 
     /// A key window on the host app's scene — a scene-less window would let
     /// UIKit drop the presentation, which is the very failure under test.
@@ -117,33 +128,68 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         let scene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first
-        let fallbackFrame = previousKeyWindow?.bounds ?? CGRect(x: 0, y: 0, width: 393, height: 852)
-        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: fallbackFrame)
-        if window.frame.isEmpty {
-            window.frame = scene?.coordinateSpace.bounds ?? fallbackFrame
-        }
+        let bounds = previousKeyWindow?.bounds
+            ?? scene?.coordinateSpace.bounds
+            ?? CGRect(x: 0, y: 0, width: 393, height: 852)
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: bounds)
+        window.frame = bounds
         window.makeKeyAndVisible()
         return window
     }
 
-    /// Polls the presentation chain while pumping the main run loop, so the
-    /// launcher's own `asyncAfter` mount actually gets a chance to run. The
-    /// condition is "sheet is IN the window hierarchy", not merely "sheet
-    /// exists": `presentedViewController` is set the instant `present` is
-    /// called, one run-loop turn before the view is actually mounted.
-    private func waitForConfirmSheet(timeout: TimeInterval = 10) -> ConfirmDeleteAlarmViewController? {
+    // MARK: - Waiting
+
+    /// Waits until the sheet is merely in the window hierarchy.
+    private func waitForPresentedSheet(timeout: TimeInterval = 10) -> ConfirmDeleteAlarmViewController? {
+        return waitForSheet(timeout: timeout) { sheet in
+            sheet.viewIfLoaded?.window != nil
+        }
+    }
+
+    /// Waits until the sheet's content has REAL frames.
+    ///
+    /// Being in the hierarchy is not the same as being laid out: the presented
+    /// view's own frame is set by the presentation container, not by the sheet,
+    /// so the run-loop turn on which `present` completes can still leave
+    /// `sheet.view.bounds` at zero — and then every child collapses with it.
+    /// That is what made the first CI run red while the routing test passed.
+    private func waitForLaidOutSheet(timeout: TimeInterval = 15) -> ConfirmDeleteAlarmViewController? {
+        return waitForSheet(timeout: timeout) { [weak self] sheet in
+            guard let self, sheet.viewIfLoaded?.window != nil else { return false }
+            self.forceLayout()
+            return self.contentIdentifiers.allSatisfy { identifier in
+                self.contentView(identifier, in: sheet).map { !$0.bounds.isEmpty } ?? false
+            }
+        }
+    }
+
+    private func waitForSheet(
+        timeout: TimeInterval,
+        until isReady: @escaping (ConfirmDeleteAlarmViewController) -> Bool
+    ) -> ConfirmDeleteAlarmViewController? {
         var found: ConfirmDeleteAlarmViewController?
-        let presented = XCTestExpectation(description: "confirm-delete sheet presented")
+        let ready = XCTestExpectation(description: "confirm-delete sheet ready")
         let poll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] timer in
-            guard let sheet = self?.presentedConfirmSheet(),
-                  sheet.viewIfLoaded?.window != nil else { return }
+            guard let sheet = self?.presentedConfirmSheet(), isReady(sheet) else { return }
             found = sheet
             timer.invalidate()
-            presented.fulfill()
+            ready.fulfill()
         }
         defer { poll.invalidate() }
-        return XCTWaiter.wait(for: [presented], timeout: timeout) == .completed ? found : nil
+        return XCTWaiter.wait(for: [ready], timeout: timeout) == .completed ? found : nil
     }
+
+    /// Drives layout from the WINDOW down. Laying out `sheet.view` alone is
+    /// useless while its own frame is still zero — the parent owns that frame.
+    private func forceLayout() {
+        window?.setNeedsLayout()
+        window?.layoutIfNeeded()
+        guard let sheetView = presentedConfirmSheet()?.viewIfLoaded else { return }
+        sheetView.setNeedsLayout()
+        sheetView.layoutIfNeeded()
+    }
+
+    // MARK: - Lookup
 
     private func presentedConfirmSheet() -> ConfirmDeleteAlarmViewController? {
         var current = window?.rootViewController
@@ -154,8 +200,14 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         return nil
     }
 
-    private func view(withID identifier: String, in root: UIView? = nil) -> UIView? {
-        guard let root = root ?? presentedConfirmSheet()?.viewIfLoaded else { return nil }
+    private func contentView(
+        _ identifier: String,
+        in sheet: ConfirmDeleteAlarmViewController
+    ) -> UIView? {
+        return sheet.viewIfLoaded.flatMap { view(withID: identifier, in: $0) }
+    }
+
+    private func view(withID identifier: String, in root: UIView) -> UIView? {
         if root.accessibilityIdentifier == identifier { return root }
         for subview in root.subviews {
             if let match = view(withID: identifier, in: subview) { return match }
@@ -170,7 +222,23 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             if current.isHidden || current.alpha < 0.01 { return false }
             node = current.superview
         }
-        return candidate.bounds.width > 0 && candidate.bounds.height > 0
+        return !candidate.bounds.isEmpty
+    }
+
+    /// Printed on timeout so a future failure says WHAT was zero-sized instead
+    /// of only that something was.
+    private func layoutDiagnostics() -> String {
+        guard let sheet = presentedConfirmSheet() else {
+            return "No ConfirmDeleteAlarmViewController in the presentation chain."
+        }
+        guard let sheetView = sheet.viewIfLoaded else {
+            return "Sheet presented but its view was never loaded."
+        }
+        let frames = contentIdentifiers.map { identifier in
+            let found = view(withID: identifier, in: sheetView)
+            return "\(identifier)=\(found.map { "\($0.frame)" } ?? "missing")"
+        }
+        return "window=\(window?.bounds ?? .zero) sheet=\(sheetView.frame) " + frames.joined(separator: " ")
     }
 }
 #endif
