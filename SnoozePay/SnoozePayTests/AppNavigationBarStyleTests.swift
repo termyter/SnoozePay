@@ -53,14 +53,22 @@ final class AppNavigationBarStyleTests: XCTestCase {
     /// same stylesheet deliberately gives a `border-top`. UIKit models the
     /// bar's bottom edge as its "shadow", and it is what stays visible as a
     /// hard line even once the fill matches the page.
-    func testAppearance_hasNoBottomHairline() throws {
+    ///
+    /// UIKit stores "no line" two ways and treats them as one: we assign
+    /// `.clear`, and reading the property back yields `nil`. It normalises the
+    /// explicit clear into nil, which it would not do if nil meant "draw the
+    /// system default" — so both spellings are accepted here. What the bar
+    /// actually renders is settled by `testRenderedBar_repaintsOnAThemeFlip`,
+    /// which samples pixels instead of trusting the model.
+    func testAppearance_hasNoBottomHairline() {
         let appearance = AppNavigationBarStyle.makeAppearance()
-        let shadow = try XCTUnwrap(appearance.shadowColor, "shadowColor nil means the system default line")
-        XCTAssertEqual(
-            channels(shadow.resolved(.light)),
-            channels(UIColor.clear),
-            "a hairline under the bar is exactly the seam #508 is about"
-        )
+        if let shadow = appearance.shadowColor {
+            XCTAssertEqual(
+                channels(shadow.resolved(.light)),
+                channels(UIColor.clear),
+                "a hairline under the bar is exactly the seam #508 is about"
+            )
+        }
         XCTAssertNil(appearance.shadowImage)
     }
 
