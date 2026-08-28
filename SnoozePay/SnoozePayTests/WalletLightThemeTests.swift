@@ -178,16 +178,17 @@ final class WalletLightThemeTests: XCTestCase {
 
     // MARK: - Footer disclaimer
 
-    /// Hosted in a real `UIWindow` with the override set on the WINDOW: a
-    /// detached view never receives the trait-change callback, so it keeps
-    /// whatever it resolved at `init` and both themes measure identical.
+    /// Hosted in a real `UIWindow` — a detached view never gets the
+    /// trait-change callback, so both themes measure identical. The override
+    /// goes on the CONTROLLER: an invisible, scene-less window does not push a
+    /// style change down through its `rootViewController`. Both directions are
+    /// skip-guarded, or a harness that fails to flip asserts light twice.
     func testFooterDisclaimer_liftsInLightAndKeepsTheCanonQuietInkInDark() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         let controller = WalletViewController()
         window.rootViewController = controller
-        // Deliberately NOT made visible: the window only has to own the trait
-        // environment. Making it visible would run the appearance cycle, and
-        // `viewWillAppear` can present the balance-corruption alert.
+        // Deliberately NOT made visible: making it visible runs the appearance
+        // cycle, and `viewWillAppear` can present the corruption alert.
         controller.loadViewIfNeeded()
 
         let footer = try XCTUnwrap(
@@ -195,11 +196,11 @@ final class WalletLightThemeTests: XCTestCase {
             "footer disclaimer is no longer on the Wallet tab"
         )
 
-        window.overrideUserInterfaceStyle = .light
+        controller.overrideUserInterfaceStyle = .light
         window.layoutIfNeeded()
         try XCTSkipUnless(
             footer.traitCollection.userInterfaceStyle == .light,
-            "window override did not propagate — a harness fact, not a component one"
+            "controller override did not propagate — a harness fact, not a component one"
         )
         // The `fgN` tokens are ALPHA over an ink, so both the measurement and
         // the identity check have to composite over the page first — `fg3`
@@ -208,10 +209,8 @@ final class WalletLightThemeTests: XCTestCase {
         let lightInk = footer.textColor.resolvedColor(with: footer.traitCollection)
         let light = contrast(composite(lightInk, over: lightPage), lightPage)
         // `fg4` measures 2.10:1 on the light page — unreadable for copy the
-        // user is expected to act on. `fg3` is 4.26:1: the meta step every
-        // other quiet line in the light theme already sits at. The next rung
-        // up, `fg2`, is 10.66:1 and would make a disclaimer as loud as body
-        // copy, so the bar here is "clearly above the fg4 floor", not AA.
+        // user must act on. `fg3` is 4.26:1, the meta step every other quiet
+        // light line sits at; the next rung `fg2` is 10.66:1 and would shout.
         XCTAssertGreaterThanOrEqual(
             light, quietMetaFloor - tolerance,
             "footer disclaimer is \(light.ratioText):1 in light — it must not slide back "
@@ -224,8 +223,12 @@ final class WalletLightThemeTests: XCTestCase {
         )
 
         // Dark is the canon and deliberately quiet: the fix is light-only.
-        window.overrideUserInterfaceStyle = .dark
+        controller.overrideUserInterfaceStyle = .dark
         window.layoutIfNeeded()
+        try XCTSkipUnless(
+            footer.traitCollection.userInterfaceStyle == .dark,
+            "controller override did not propagate — a harness fact, not a component one"
+        )
         let darkPage = AppColors.bg0.resolved(.dark)
         XCTAssertEqual(
             flattened(footer.textColor.resolvedColor(with: footer.traitCollection), over: darkPage),
