@@ -105,11 +105,10 @@ final class AlarmOffWarningViewController: UIViewController {
         caps.textAlignment = .center
         caps.translatesAutoresizingMaskIntoConstraints = false
 
-        // Right-side spacer mirrors the close button's width so the caps land
-        // visually centred.
+        // Right-side spacer mirrors the close button's width (constrained
+        // below) so the caps land visually centred.
         let spacer = UIView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
-        spacer.widthAnchor.constraint(equalTo: closeButton.widthAnchor).isActive = true
 
         let row = UIStackView(arrangedSubviews: [closeButton, caps, spacer])
         row.axis = .horizontal
@@ -126,7 +125,11 @@ final class AlarmOffWarningViewController: UIViewController {
             row.topAnchor.constraint(equalTo: wrap.topAnchor),
             row.bottomAnchor.constraint(equalTo: wrap.bottomAnchor),
             row.leadingAnchor.constraint(equalTo: wrap.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: wrap.trailingAnchor)
+            row.trailingAnchor.constraint(equalTo: wrap.trailingAnchor),
+            // Activated HERE, not beside `spacer`: autolayout resolves the common
+            // ancestor at ACTIVATION time, and these two only share one once `row`
+            // owns both (#514 — activating earlier raised "no common ancestor").
+            spacer.widthAnchor.constraint(equalTo: closeButton.widthAnchor)
         ])
         return wrap
     }
