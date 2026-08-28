@@ -19,11 +19,11 @@ ID — источник истины — это константы `StoreKitServ
 
 | productID | Сумма зачисления |
 |-----------|------------------|
-| `com.snooze_pay.balance.49`  | 49 ₽  |
-| `com.snooze_pay.balance.149` | 149 ₽ |
-| `com.snooze_pay.balance.299` | 299 ₽ |
-| `com.snooze_pay.balance.499` | 499 ₽ |
-| `com.snooze_pay.balance.999` | 999 ₽ |
+| `io.mobilife.snoozepay.balance.49`  | 49 ₽  |
+| `io.mobilife.snoozepay.balance.149` | 149 ₽ |
+| `io.mobilife.snoozepay.balance.299` | 299 ₽ |
+| `io.mobilife.snoozepay.balance.499` | 499 ₽ |
+| `io.mobilife.snoozepay.balance.999` | 999 ₽ |
 
 > ⚠️ При изменении ID/сумм в `.storekit` — синхронно править `StoreKitService.swift`
 > (и наоборот). Расхождение → продукт не загрузится / зачислится не та сумма.

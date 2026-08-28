@@ -15,7 +15,7 @@
           "locale" : "ru"
         }
       ],
-      "productID" : "com.snooze_pay.balance.49",
+      "productID" : "io.mobilife.snoozepay.balance.49",
       "referenceName" : "Balance 49 ₽",
       "type" : "Consumable"
     },
@@ -30,7 +30,7 @@
           "locale" : "ru"
         }
       ],
-      "productID" : "com.snooze_pay.balance.149",
+      "productID" : "io.mobilife.snoozepay.balance.149",
       "referenceName" : "Balance 149 ₽",
       "type" : "Consumable"
     },
@@ -45,7 +45,7 @@
           "locale" : "ru"
         }
       ],
-      "productID" : "com.snooze_pay.balance.299",
+      "productID" : "io.mobilife.snoozepay.balance.299",
       "referenceName" : "Balance 299 ₽",
       "type" : "Consumable"
     },
@@ -60,7 +60,7 @@
           "locale" : "ru"
         }
       ],
-      "productID" : "com.snooze_pay.balance.499",
+      "productID" : "io.mobilife.snoozepay.balance.499",
       "referenceName" : "Balance 499 ₽",
       "type" : "Consumable"
     },
@@ -75,7 +75,7 @@
           "locale" : "ru"
         }
       ],
-      "productID" : "com.snooze_pay.balance.999",
+      "productID" : "io.mobilife.snoozepay.balance.999",
       "referenceName" : "Balance 999 ₽",
       "type" : "Consumable"
     }
