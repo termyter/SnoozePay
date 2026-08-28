@@ -21,6 +21,14 @@ import os
 /// auto-dismisses after 2 seconds.
 final class DepositBottomSheetViewController: UIViewController {
 
+    // MARK: - Metrics
+    //
+    // `SPMore3.jsx` L430 renders the drag handle as a 36x4 pill; the success
+    // check is an 80pt circle. Both radii are derived from their own size so
+    // a metric bump can't leave a stale corner behind.
+    private static let dragHandleSize = CGSize(width: 36, height: 4)
+    private static let successCheckDiameter: CGFloat = 80
+
     // MARK: - State
 
     private let presets = DepositPresets.presets
@@ -44,7 +52,7 @@ final class DepositBottomSheetViewController: UIViewController {
     private let dragHandle: UIView = {
         let view = UIView()
         view.backgroundColor = AppColors.whiteOverlay12
-        view.layer.cornerRadius = 2
+        view.layer.cornerRadius = DepositBottomSheetViewController.dragHandleSize.height / 2
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -125,7 +133,7 @@ final class DepositBottomSheetViewController: UIViewController {
         view.tintColor = AppColors.fgOnMoney
         view.contentMode = .center
         view.backgroundColor = AppColors.money500
-        view.layer.cornerRadius = 40
+        view.layer.cornerRadius = DepositBottomSheetViewController.successCheckDiameter / 2
         view.layer.masksToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -235,10 +243,10 @@ final class DepositBottomSheetViewController: UIViewController {
 
         let inset = AppSpacing.screenInset
         NSLayoutConstraint.activate([
-            dragHandle.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+            dragHandle.topAnchor.constraint(equalTo: view.topAnchor, constant: AppSpacing.sp2),
             dragHandle.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dragHandle.widthAnchor.constraint(equalToConstant: 36),
-            dragHandle.heightAnchor.constraint(equalToConstant: 4),
+            dragHandle.widthAnchor.constraint(equalToConstant: Self.dragHandleSize.width),
+            dragHandle.heightAnchor.constraint(equalToConstant: Self.dragHandleSize.height),
 
             contentStack.topAnchor.constraint(equalTo: dragHandle.bottomAnchor, constant: AppSpacing.sp4),
             contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
@@ -251,8 +259,8 @@ final class DepositBottomSheetViewController: UIViewController {
 
             successCheck.centerXAnchor.constraint(equalTo: successContainer.centerXAnchor),
             successCheck.centerYAnchor.constraint(equalTo: successContainer.centerYAnchor, constant: -52),
-            successCheck.widthAnchor.constraint(equalToConstant: 80),
-            successCheck.heightAnchor.constraint(equalToConstant: 80),
+            successCheck.widthAnchor.constraint(equalToConstant: Self.successCheckDiameter),
+            successCheck.heightAnchor.constraint(equalToConstant: Self.successCheckDiameter),
 
             successAmountLabel.topAnchor.constraint(equalTo: successCheck.bottomAnchor, constant: AppSpacing.sp4),
             successAmountLabel.leadingAnchor.constraint(equalTo: successContainer.leadingAnchor, constant: inset),
