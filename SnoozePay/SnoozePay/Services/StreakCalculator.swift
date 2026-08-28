@@ -61,7 +61,7 @@ enum StreakCalculator {
         }
 
         // Exclude REFUNDED charges — a snooze charge that failed to schedule
-        // is auto-refunded (its offsetting `.topup` carries
+        // is auto-refunded (its offsetting `.refund` carries
         // `refundsTransactionID`) and per design "doesn't count", so it must not
         // break the streak. The Statistics heatmap is already built from
         // `realCharges`; consulting the same helper here is what stops streak

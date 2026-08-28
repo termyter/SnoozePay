@@ -176,39 +176,34 @@ final class BalanceService {
     /// the IAP credited (silent ledger desync was the regression behind the #72
     /// PR #101 hunter feedback).
     ///
-    /// `refundsTransactionID` links the top-up to the original `charge` it
-    /// reverses. `AlarmFiringCoordinator` sets it after a snooze schedule
-    /// fails so stats can pair the two rows and avoid counting the snooze
-    /// (issue #133). Organic top-ups (IAP, dev tools) leave it `nil`.
+    /// Paid credits ONLY. A penalty reversal must go through `refund` — routing
+    /// it here books phantom IAP revenue (issue #358), which is why this method
+    /// no longer accepts a `refundsTransactionID`.
     @discardableResult
-    func topUp(amount: Double, refundsTransactionID: UUID? = nil) -> Bool {
-        // Reject non-finite / non-positive amounts, matching `creditPromotion`
-        // (#441): a negative top-up would record a positive-typed `.topup` while
-        // DECREASING the balance (ledger/balance divergence that can drive
-        // `user_balance` negative and latch #119 corruption); a NaN would
-        // persist into storage before the read-time guard fires.
-        guard amount.isFinite, amount > 0 else { return false }
-        let result: (recorded: Bool, newBalance: Double) = queue.sync {
-            let current = readRawBalance()
-            guard !_balanceCorrupted else { return (false, current) }
+    func topUp(amount: Double) -> Bool {
+        credit(type: .topup, amount: amount)
+    }
 
-            let transaction = Transaction(
-                type: .topup,
-                amount: amount,
-                refundsTransactionID: refundsTransactionID
-            )
-            guard transactionRepository.record(transaction) else {
-                return (false, current)
-            }
-            let updated = current + amount
-            defaults.set(updated, forKey: balanceKey)
-            return (true, updated)
-        }
+    // MARK: - Refund (reversal of a snooze penalty)
 
-        if result.recorded {
-            notifyBalanceChanged(result.newBalance)
-        }
-        return result.recorded
+    /// Returns a charged penalty to the wallet and records a `.refund` ledger
+    /// entry. Used when the penalty was debited but `AlarmScheduler` then
+    /// refused the snooze trigger, so the user must not stay billed for a
+    /// snooze that will never re-fire (issues #197 / #366).
+    ///
+    /// The dedicated `TransactionType.refund` case exists because this credit
+    /// is *not* income: booking it as `.topup` made every reversal show up as
+    /// paid IAP revenue and inflated the Пополнения aggregate by the refunded
+    /// amount (issue #358).
+    ///
+    /// `refundsTransactionID` links back to the exact `charge` being reversed
+    /// so `TransactionRepository.realCharges(from:)` can drop the pair from
+    /// snooze counts / streak (issue #133). Returns `false` on the same failure
+    /// modes as `topUp` — a locked ledger or corrupted balance means the refund
+    /// did NOT land and the caller must surface a wallet-desync warning.
+    @discardableResult
+    func refund(amount: Double, refundsTransactionID: UUID? = nil) -> Bool {
+        credit(type: .refund, amount: amount, refundsTransactionID: refundsTransactionID)
     }
 
     // MARK: - Promotional credit (referral, daily bonus, ...)
@@ -221,6 +216,23 @@ final class BalanceService {
     /// logic that keys off `.topup` (issue #144).
     @discardableResult
     func creditPromotion(amount: Double) -> Bool {
+        credit(type: .promotion, amount: amount)
+    }
+
+    /// Shared implementation behind every credit (`topUp` / `refund` /
+    /// `creditPromotion`). Only the ledger `type` differs — the corruption
+    /// gating, amount validation and ledger-first ordering are identical and
+    /// must stay that way, so they live in one place.
+    private func credit(
+        type: TransactionType,
+        amount: Double,
+        refundsTransactionID: UUID? = nil
+    ) -> Bool {
+        // Reject non-finite / non-positive amounts (#441): a negative credit
+        // would record a positive-typed row while DECREASING the balance
+        // (ledger/balance divergence that can drive `user_balance` negative and
+        // latch #119 corruption); a NaN would persist into storage before the
+        // read-time guard fires.
         guard amount.isFinite, amount > 0 else { return false }
 
         let result: (recorded: Bool, newBalance: Double) = queue.sync {
@@ -228,9 +240,13 @@ final class BalanceService {
             guard !_balanceCorrupted else { return (false, current) }
 
             let transaction = Transaction(
-                type: .promotion,
-                amount: amount
+                type: type,
+                amount: amount,
+                refundsTransactionID: refundsTransactionID
             )
+            // Ledger first: if the repository is locked (corrupt blob awaiting
+            // user ack) or encoding fails, the balance must not move — an
+            // unrecorded credit is a silent desync (#72).
             guard transactionRepository.record(transaction) else {
                 return (false, current)
             }

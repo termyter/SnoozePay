@@ -152,6 +152,57 @@ enum SPSupport {
             completion: nil
         )
     }
+
+    // MARK: - Shared label constructors
+
+    /// Caps-styled section label — 12pt bold uppercase with the token
+    /// tracking. Lived in three near-identical private copies across the
+    /// statistics cards before #348 review; one owner now.
+    static func makeCapsLabel(_ text: String, color: UIColor = AppColors.fg3) -> UILabel {
+        let label = UILabel()
+        label.attributedText = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: AppTypography.caps,
+                .kern: AppTypography.capsKerning,
+                .foregroundColor: color
+            ]
+        )
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
+
+    /// Mono money/clock value label used by the statistics summary columns.
+    /// Shrinks a touch rather than truncating — three columns of a
+    /// four-digit rouble total get tight on the narrowest devices.
+    static func makeMoneyValueLabel(
+        color: UIColor,
+        alignment: NSTextAlignment = .left
+    ) -> UILabel {
+        let label = UILabel()
+        label.font = AppTypography.moneyMd
+        label.textColor = color
+        label.textAlignment = alignment
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.7
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
+
+    /// Meta-styled caption — 13pt fg3, optionally pre-filled and aligned.
+    static func makeMetaLabel(
+        _ text: String? = nil,
+        alignment: NSTextAlignment = .left,
+        color: UIColor = AppColors.fg3
+    ) -> UILabel {
+        let label = UILabel()
+        label.font = AppTypography.meta
+        label.textColor = color
+        label.text = text
+        label.textAlignment = alignment
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
 }
 
 /// Reusable `UIView` wrapping a `CAGradientLayer` that resizes its layer to

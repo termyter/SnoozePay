@@ -351,7 +351,7 @@ private final class SnoozedStubBalance: AlarmFiringBalancing {
     }
 
     @discardableResult
-    func topUp(amount: Double, refundsTransactionID: UUID?) -> Bool {
+    func refund(amount: Double, refundsTransactionID: UUID?) -> Bool {
         balance += amount
         return true
     }

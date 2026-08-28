@@ -1,99 +1,258 @@
 name: CI
 
-# Когда запускать пайплайн:
-#  - на каждый push в основные ветки (main + интеграционная design-refresh)
-#  - на каждый pull request (любой), чтобы красные тесты ловились ДО merge
+# Цель — быстрый PR-фидбек. Два замера, второй опроверг первый:
+#
+#   run 30763680898 (428 с одним блоком): казалось, что всё съедает компиляция.
+#   run 33156328491 (шаги разделены):     компиляция 48 с, тесты 252 с. Внутри
+#                                         тестового шага 157 с уходит на буст
+#                                         симулятора и установку тест-хоста.
+#   run 33157073616 (буст в фоне):        444 с — ХУЖЕ. Сборка распухла 48→258 с.
+#
+# Вывод третьего прогона: раннер трёхъядерный и упирается в CPU, а не в
+# последовательность. Буст симулятора — не простой в ожидании, а такая же
+# вычислительная работа, поэтому совмещать её с компиляцией нечем. Откачено.
+#
+# Раскладка:
+#   * UI-тесты (145 с ради 5 кейсов) уведены с критического пути PR;
+#   * 1034 unit-теста исполняются за 22 с — им место на КАЖДОМ PR;
+#   * DerivedData кэшируется, индексатор выключен (Xcode.app тут некому).
+#
+# Потолок ~325 с упирается в буст симулятора. Пробить его можно только сняв
+# у тест-таргета TEST_HOST (логические тесты без хост-приложения), а это
+# правка project.pbxproj — зона PM.
+# Ночью гоняется clean-build без кэша: он ловит «ложный green», когда
+# инкрементальная сборка не заметила новый файл.
 on:
   push:
     branches:
       - main
       - design-refresh-2026-04-27
   pull_request:
+  schedule:
+    # 02:00 UTC — ночная полная проверка без кэша.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
-# Если в ту же ветку/PR прилетает новый коммит — отменяем предыдущий прогон,
-# чтобы не жечь раннеры на устаревших коммитах.
+# Новый коммит в ту же ветку/PR отменяет предыдущий прогон.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PROJECT: SnoozePay/SnoozePay.xcodeproj
+  SCHEME: SnoozePay
+  # Относительный путь: одинаковый на раннере и в любом worktree, поэтому
+  # кэш DerivedData переносится между прогонами без инвалидации по пути.
+  DD: DerivedData
+  # COMPILER_INDEX_STORE_ENABLE=NO — индекс нужен Xcode.app для автодополнения,
+  # на CI это чистые потери. DEBUG_INFORMATION_FORMAT=dwarf — не генерим dSYM.
+  FAST_BUILD: >-
+    COMPILER_INDEX_STORE_ENABLE=NO
+    DEBUG_INFORMATION_FORMAT=dwarf
+    CODE_SIGNING_ALLOWED=NO
+
 jobs:
+  # ── 16 с. Дёшево, гоняется всегда. ────────────────────────────────────────
   lint:
     name: SwiftLint
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      # На свежих образах GitHub swiftlint больше НЕ предустановлен — ставим сами.
       - name: Install SwiftLint
         run: brew install swiftlint
+      # Версию печатаем осознанно: локально у PM стоит 0.52.2, здесь brew ставит
+      # свежий, и на дефолтах они расходились на 11 errors. Теперь пороги
+      # зафиксированы в .swiftlint.yml, но при следующем расхождении первым
+      # вопросом будет «а какая тут версия».
       - name: SwiftLint version
         run: swiftlint version
-      # Дефолтный конфиг (как в проекте) — падаем только на ошибках, не на warnings.
       - name: Run SwiftLint
         run: swiftlint lint --quiet SnoozePay/SnoozePay
 
-  build-test:
-    name: Build & Test (iOS Simulator)
-    # macos-26 — единственный образ с Xcode 26 / iOS 26 SDK. Проект требует
-    # IPHONEOS_DEPLOYMENT_TARGET = 26.2, поэтому macos-15 (Xcode 16) не соберёт.
+  # ── Главный гейт PR. Цель — уложиться в ~90 с. ────────────────────────────
+  unit:
+    name: Unit tests
     runs-on: macos-26
-    env:
-      PROJECT: SnoozePay/SnoozePay.xcodeproj
-      SCHEME: SnoozePay
     steps:
       - uses: actions/checkout@v4
 
-      # Выбираем Xcode 26.5 — ту же версию, что и локально. На Xcode 26.4.1 +
-      # старом iOS-runtime test host системно падал с malloc-ошибкой
-      # («pointer being freed was not allocated») на каждом тесте.
+      # Xcode 26.5 — та же версия, что локально. На 26.4.1 + старом runtime
+      # test host падал с malloc-ошибкой на каждом тесте.
       - name: Select Xcode 26.5
         run: sudo xcode-select -switch /Applications/Xcode_26.5.app
 
-      - name: Show toolchain
-        run: |
-          xcodebuild -version
-          xcrun simctl list devices available | grep -E 'iPhone' || true
+      # Кэш только ВОССТАНАВЛИВАЕМ на PR — писать с каждого PR значит выбить
+      # из 10-гигабайтного лимита все полезные записи. Пишет только push
+      # в основную ветку (см. шаг «Save DerivedData» ниже).
+      - name: Restore DerivedData
+        id: dd
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DD }}
+          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          restore-keys: |
+            dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
+            dd-xc26.5-
 
-      # Берём iPhone из САМОГО НОВОГО iOS-runtime на раннере (старый pick
-      # хватал первый попавшийся UDID — мог быть runtime 26.2, см. выше).
       - name: Pick a simulator
         id: sim
         run: |
           UDID=$(xcrun simctl list devices available -j | jq -r '
-            .devices
-            | to_entries
-            | map(select(.key | contains("iOS")))
-            | sort_by(.key)
-            | last
-            | .value
-            | map(select(.name | contains("iPhone")))
-            | first
-            | .udid')
+            .devices | to_entries
+            | map(select(.key | contains("iOS"))) | sort_by(.key) | last
+            | .value | map(select(.name | contains("iPhone"))) | first | .udid')
           if [ -z "$UDID" ] || [ "$UDID" = "null" ]; then
             echo "::error::No iPhone simulator available"; exit 1
           fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-          xcrun simctl list devices available | grep "$UDID"
 
-      # -parallel-testing-enabled NO: дефолтный параллельный прогон на клонах
-      # симулятора роняет worker-процессы на слабом CI-раннере (3-4 vCPU) —
-      # тесты массово «падают» за 0.000s, не запустившись. Последовательный
-      # прогон медленнее, но детерминированный.
-      - name: Build & Test
+      # Сборка и прогон — РАЗНЫМИ шагами, чтобы в логе было видно, сколько
+      # стоит каждая половина, и чтобы кэш можно было оценить по одному числу.
+      - name: Build for testing
+        run: |
+          xcodebuild build-for-testing \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$DD" \
+            -quiet \
+            $FAST_BUILD
+
+      # -only-testing:SnoozePayTests — UI-тесты живут в отдельном job'е.
+      # -parallel-testing-enabled NO: параллельные клоны симулятора роняют
+      # worker-процессы на 3-ядерном раннере (тесты «падают» за 0.000 с).
+      # 1034 теста и так проходят за 22 с последовательно.
+      - name: Run unit tests
+        run: |
+          xcodebuild test-without-building \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$DD" \
+            -only-testing:SnoozePayTests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath TestResults.xcresult
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: TestResults.xcresult
+          retention-days: 7
+
+      # Индекс и логи в кэше не нужны — только раздувают запись.
+      - name: Prune DerivedData
+        if: github.event_name == 'push'
+        run: rm -rf "$DD/Index" "$DD/Logs" "$DD/ModuleCache.noindex/Session"* || true
+
+      - name: Save DerivedData
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.DD }}
+          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+
+  # ── 145 с ради 5 кейсов. Уведено с критического пути PR. ──────────────────
+  # Гоняется после merge, ночью и по кнопке. На PR — только если поставить
+  # лейбл `ui-test` (когда правка реально трогает экраны и хочется проверить
+  # до merge, не дожидаясь ночи).
+  uitests:
+    name: UI tests (E2E)
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'ui-test')
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26.5
+        run: sudo xcode-select -switch /Applications/Xcode_26.5.app
+
+      - name: Restore DerivedData
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DD }}
+          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          restore-keys: |
+            dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
+            dd-xc26.5-
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | jq -r '
+            .devices | to_entries
+            | map(select(.key | contains("iOS"))) | sort_by(.key) | last
+            | .value | map(select(.name | contains("iPhone"))) | first | .udid')
+          if [ -z "$UDID" ] || [ "$UDID" = "null" ]; then
+            echo "::error::No iPhone simulator available"; exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build for testing
+        run: |
+          xcodebuild build-for-testing \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$DD" \
+            -quiet \
+            $FAST_BUILD
+
+      - name: Run UI tests
+        run: |
+          xcodebuild test-without-building \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$DD" \
+            -only-testing:SnoozePayUITests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath UITestResults.xcresult
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: UITestResults.xcresult
+          retention-days: 7
+
+  # ── Страховка от «ложного green». ─────────────────────────────────────────
+  # Кэш DerivedData ускоряет PR, но инкрементальная сборка теоретически может
+  # не заметить новый файл и дать зелёный прогон на непроверенном коде. Раз в
+  # сутки собираем с нуля, без кэша, и гоняем ВЕСЬ набор. Если ночной прогон
+  # красный, а дневные зелёные — виноват кэш, а не код.
+  clean-build:
+    name: Clean build (no cache)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26.5
+        run: sudo xcode-select -switch /Applications/Xcode_26.5.app
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | jq -r '
+            .devices | to_entries
+            | map(select(.key | contains("iOS"))) | sort_by(.key) | last
+            | .value | map(select(.name | contains("iPhone"))) | first | .udid')
+          if [ -z "$UDID" ] || [ "$UDID" = "null" ]; then
+            echo "::error::No iPhone simulator available"; exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build & Test (clean, full suite)
         run: |
           xcodebuild test \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
+            -project "$PROJECT" -scheme "$SCHEME" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -parallel-testing-enabled NO \
-            -resultBundlePath TestResults.xcresult \
+            -resultBundlePath CleanTestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
 
-      # Сохраняем .xcresult как артефакт даже при падении — можно скачать и
-      # открыть в Xcode, чтобы посмотреть какой именно тест упал.
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: TestResults.xcresult
+          name: clean-test-results
+          path: CleanTestResults.xcresult
           retention-days: 7

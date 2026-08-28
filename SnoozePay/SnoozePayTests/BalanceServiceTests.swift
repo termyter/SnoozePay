@@ -225,19 +225,20 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertEqual(service.balance, 10)
     }
 
-    /// `topUp(amount:refundsTransactionID:)` records the link in the ledger
+    /// `refund(amount:refundsTransactionID:)` records the link in the ledger
     /// row so stats can pair the refund with its original charge.
-    func testTopUp_withRefundsTransactionID_persistsLink() {
+    func testRefund_withRefundsTransactionID_persistsLink() {
         let originalChargeID = UUID()
         let (service, ledger) = makeServiceWithLedger(
             balance: 0, notificationCenter: NotificationCenter()
         )
 
-        XCTAssertTrue(service.topUp(amount: 50, refundsTransactionID: originalChargeID))
+        XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: originalChargeID))
 
         let txs = ledger.fetchAll()
         XCTAssertEqual(txs.count, 1)
-        XCTAssertEqual(txs[0].type, .topup)
+        XCTAssertEqual(txs[0].type, .refund,
+            "A penalty reversal is not paid income — booking it as .topup inflates revenue (#358)")
         XCTAssertEqual(txs[0].refundsTransactionID, originalChargeID,
             "Refund link must round-trip through persistence so stats consumers can pair charge + refund")
     }
@@ -254,6 +255,75 @@ final class BalanceServiceTests: XCTestCase {
 
         XCTAssertNil(ledger.fetchAll().first?.refundsTransactionID,
             "Organic top-ups must not look like refunds")
+    }
+
+    // MARK: - Refund is not revenue (issue #358)
+
+    /// The core of #358: a penalty reversal must land as `.refund`, never as
+    /// `.topup`. `.topup` is the key revenue accounting reads, so a reversal
+    /// booked there shows up as paid IAP income that was never earned.
+    func testRefund_recordsRefundType_notTopup() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertTrue(service.refund(amount: 50))
+
+        let txs = ledger.fetchAll()
+        XCTAssertEqual(txs.count, 1)
+        XCTAssertEqual(txs[0].type, .refund,
+            "Booking a reversal as .topup is exactly the revenue inflation #358 fixes")
+    }
+
+    /// The money must actually come back — changing the ledger type must not
+    /// change the wallet maths.
+    func testRefund_restoresChargedAmountToBalance() {
+        let (service, _) = makeServiceWithLedger(
+            balance: 200, notificationCenter: NotificationCenter()
+        )
+
+        let receipt = service.chargeWithReceipt(amount: 50, alarmID: UUID())
+        XCTAssertNotNil(receipt)
+        XCTAssertEqual(service.balance, 150)
+
+        XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: receipt?.id))
+        XCTAssertEqual(service.balance, 200,
+            "A refunded penalty must leave the wallet exactly where it started")
+    }
+
+    /// Revenue aggregation keys off `.topup` alone — a charge/refund pair must
+    /// contribute nothing to it, while the paid top-up still counts in full.
+    func testRefund_excludedFromTopupRevenueAggregate() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 0, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertTrue(service.topUp(amount: 500))          // real IAP revenue
+        let receipt = service.chargeWithReceipt(amount: 50, alarmID: UUID())
+        XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: receipt?.id))
+
+        let revenue = ledger.fetchAll()
+            .filter { $0.type == .topup }
+            .reduce(0.0) { $0 + $1.amount }
+        XCTAssertEqual(revenue, 500,
+            "Only the paid top-up is revenue — the refund must not inflate it to 550")
+    }
+
+    /// `refund` inherits `topUp`'s amount contract (#441): non-finite or
+    /// non-positive amounts are rejected before anything is persisted, so a
+    /// bogus reversal can't drive the balance negative and latch #119.
+    func testRefund_rejectsNonPositiveAndNonFiniteAmounts() {
+        let (service, ledger) = makeServiceWithLedger(
+            balance: 100, notificationCenter: NotificationCenter()
+        )
+
+        XCTAssertFalse(service.refund(amount: 0))
+        XCTAssertFalse(service.refund(amount: -50))
+        XCTAssertFalse(service.refund(amount: .nan))
+        XCTAssertFalse(service.refund(amount: .infinity))
+
+        XCTAssertTrue(ledger.fetchAll().isEmpty, "No ledger row may be written for a rejected refund")
+        XCTAssertEqual(service.balance, 100)
     }
 
     /// Boundary: balance == amount must satisfy `canAfford` (>=, not >).

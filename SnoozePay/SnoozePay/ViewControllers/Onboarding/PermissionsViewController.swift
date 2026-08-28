@@ -268,12 +268,20 @@ final class PermissionsViewController: UIViewController {
     }
 
     private func notificationsStatus() -> PermissionStatus {
+        Self.notificationPermissionStatus(for: notificationStatus)
+    }
+
+    /// Uses the same alarm-safety interpretation as
+    /// `SystemAlarmBackendProbe`: only a fully authorized notification can
+    /// wake someone. Provisional and ephemeral delivery must stay actionable,
+    /// not receive the green "granted" treatment.
+    static func notificationPermissionStatus(
+        for notificationStatus: UNAuthorizationStatus
+    ) -> PermissionStatus {
         switch notificationStatus {
-        case .authorized, .provisional, .ephemeral:
+        case .authorized:
             return .granted
-        case .denied, .notDetermined:
-            // Once denied, iOS won't show the prompt again — the tap handler
-            // routes the user to Settings instead.
+        case .denied, .notDetermined, .provisional, .ephemeral:
             return .actionable
         @unknown default:
             return .actionable

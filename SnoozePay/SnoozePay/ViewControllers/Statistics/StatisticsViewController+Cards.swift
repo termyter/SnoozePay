@@ -217,29 +217,16 @@ extension StatisticsViewController {
 
     // MARK: - Shared label constructors
 
-    /// Convenience caps-styled label constructor used across the cards.
+    /// Thin forwarders onto the design-system constructors. The recipes moved
+    /// into `SPSupport` once #348 added two more cards that needed byte-identical
+    /// copies of them; these stay so the call sites below keep reading as
+    /// `makeCapsLabel(…)` rather than a fully-qualified mouthful.
     private func makeCapsLabel(_ text: String, color: UIColor) -> UILabel {
-        let label = UILabel()
-        label.attributedText = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: color
-            ]
-        )
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
+        SPSupport.makeCapsLabel(text, color: color)
     }
 
-    /// Meta-styled label constructor — 13pt fg3.
     private func makeMetaLabel(_ text: String) -> UILabel {
-        let label = UILabel()
-        label.font = AppTypography.meta
-        label.textColor = AppColors.fg3
-        label.text = text
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
+        SPSupport.makeMetaLabel(text)
     }
 
     // MARK: - Debug
