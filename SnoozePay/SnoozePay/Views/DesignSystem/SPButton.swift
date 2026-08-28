@@ -325,23 +325,28 @@ final class SPButton: UIControl {
         layer.shadowOpacity = 0
 
         switch variant {
+        // The trait-explicit `SPSupport` overloads, not the plain computed
+        // properties: those snapshot `UITraitCollection.current`, which inside
+        // a view method is not necessarily this button's trait collection.
+        // `applyVariant()` re-installs the layer on every flip, so the stops
+        // themselves are never stale — only mis-resolved without this.
         case .money:
             installGradient(
-                colors: SPSupport.moneyGradientColors,
+                colors: SPSupport.moneyGradientColors(for: traitCollection),
                 locations: SPSupport.moneyGradientLocations
             )
             applyColoredShadow(color: AppColors.money500)
             setForeground(AppColors.fgOnMoney)
         case .pain:
             installGradient(
-                colors: SPSupport.painGradientColors,
+                colors: SPSupport.painGradientColors(for: traitCollection),
                 locations: SPSupport.painGradientLocations
             )
             applyColoredShadow(color: AppColors.pain500, painLike: true)
             setForeground(AppColors.fgOnPain)
         case .warn:
             installGradient(
-                colors: SPSupport.warnGradientColors,
+                colors: SPSupport.warnGradientColors(for: traitCollection),
                 locations: SPSupport.warnGradientLocations
             )
             applyColoredShadow(color: AppColors.warn500)
@@ -393,7 +398,7 @@ final class SPButton: UIControl {
         // `--sp-shadow-pain: ... .45`. CSS blur 22 ≈ CALayer shadowRadius 11
         // (CALayer radius is roughly half the CSS blur). The −6 spread is
         // reproduced by insetting the shadowPath in `layoutSubviews`.
-        layer.shadowColor = color.cgColor
+        layer.shadowColor = color.resolvedColor(with: traitCollection).cgColor
         let base: Float = painLike ? 0.45 : 0.40
         layer.shadowOpacity = traitCollection.userInterfaceStyle == .light ? base - 0.10 : base
         layer.shadowOffset = CGSize(width: 0, height: 8)

@@ -158,25 +158,49 @@ private final class MoneySegmentView: UIView {
     }
 
     private let gradient = CAGradientLayer()
+    private let kind: Kind
 
     init(kind: Kind) {
+        self.kind = kind
         super.init(frame: .zero)
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         switch kind {
-        case .saved:
-            gradient.colors = SPSupport.moneyGradientColors
-            gradient.locations = SPSupport.moneyGradientLocations
-        case .lost:
-            gradient.colors = SPSupport.painGradientColors
-            gradient.locations = SPSupport.painGradientLocations
+        case .saved: gradient.locations = SPSupport.moneyGradientLocations
+        case .lost: gradient.locations = SPSupport.painGradientLocations
         }
         layer.addSublayer(gradient)
         layer.masksToBounds = true
+        refreshGradientColors()
+        // `CAGradientLayer.colors` holds plain `CGColor`s — resolved once and
+        // frozen, so a segment built in one theme kept that theme's ramp for
+        // the rest of the session. Same defect as `WalletWeeklyChartView`
+        // (#494) and `SPCard` (#507).
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: MoneySegmentView, _) in
+                view.refreshGradientColors()
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if #available(iOS 17.0, *) { return }
+        refreshGradientColors()
+    }
+
+    /// Re-resolve the ramp against THIS view's traits. Called from `init` and
+    /// from the trait-change registration above.
+    private func refreshGradientColors() {
+        switch kind {
+        case .saved: gradient.colors = SPSupport.moneyGradientColors(for: traitCollection)
+        case .lost: gradient.colors = SPSupport.painGradientColors(for: traitCollection)
+        }
     }
 
     /// Rounds the two ends independently so stacked segments meet flush.

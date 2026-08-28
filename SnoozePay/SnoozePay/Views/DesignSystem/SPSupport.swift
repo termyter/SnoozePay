@@ -67,6 +67,15 @@ enum SPSupport {
     }
     static let warnGradientLocations: [NSNumber] = [0.0, 0.6, 1.0]
 
+    /// Trait-resolved variant of the warn ramp — same contract as
+    /// `moneyGradientColors(for:)` / `painGradientColors(for:)` above. The
+    /// light warn scale is bronze rather than amber, so a frozen dark ramp is
+    /// the most visible of the three when the theme flips under a live view.
+    static func warnGradientColors(for trait: UITraitCollection) -> [CGColor] {
+        [AppColors.warn300, AppColors.warn500, AppColors.warn600]
+            .map { $0.resolvedColor(with: trait).cgColor }
+    }
+
     /// Deep-green promo fill used by the referral hero. `tokens.css` has no
     /// named token for it — the prototype inlines
     /// `linear-gradient(135deg, #1A2810 0%, #2C4A1F 50%, #4F8A3A 100%)` — so

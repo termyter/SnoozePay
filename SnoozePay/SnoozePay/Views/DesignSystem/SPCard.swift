@@ -44,7 +44,10 @@ final class SPCard: UIView {
     /// Optional gradient layer for `.money`/`.pain`/`.warn` tones — added as a
     /// sublayer at zero index so subviews stack above it. Nil for non-gradient
     /// tones to keep the layer tree shallow.
-    private var gradientLayer: CAGradientLayer?
+    ///
+    /// Readable (not settable) from outside so `SPCardGradientThemeTests`
+    /// measures the stops the card actually renders rather than a copy of them.
+    private(set) var gradientLayer: CAGradientLayer?
 
     // MARK: - Init
 
@@ -168,25 +171,45 @@ final class SPCard: UIView {
             applyOutlineStroke()
         case .money:
             backgroundColor = .clear
-            installGradient(
-                colors: SPSupport.moneyGradientColors,
-                locations: SPSupport.moneyGradientLocations
-            )
+            installGradient()
             applyColoredShadow(.money)
         case .pain:
             backgroundColor = .clear
-            installGradient(
-                colors: SPSupport.painGradientColors,
-                locations: SPSupport.painGradientLocations
-            )
+            installGradient()
             applyColoredShadow(.pain)
         case .warn:
             backgroundColor = .clear
-            installGradient(
-                colors: SPSupport.warnGradientColors,
-                locations: SPSupport.warnGradientLocations
-            )
+            installGradient()
             applyColoredShadow(.warn)
+        }
+    }
+
+    /// Stops + locations of the tonal fill, resolved against THIS view's
+    /// traits. Nil for the non-gradient tones.
+    ///
+    /// The trait-explicit `SPSupport` overloads are mandatory here: the plain
+    /// `moneyGradientColors` computed properties snapshot
+    /// `UITraitCollection.current`, which inside a view method is not
+    /// necessarily this view's trait collection.
+    private var tonalGradient: (colors: [CGColor], locations: [NSNumber])? {
+        switch tone {
+        case .money:
+            return (
+                SPSupport.moneyGradientColors(for: traitCollection),
+                SPSupport.moneyGradientLocations
+            )
+        case .pain:
+            return (
+                SPSupport.painGradientColors(for: traitCollection),
+                SPSupport.painGradientLocations
+            )
+        case .warn:
+            return (
+                SPSupport.warnGradientColors(for: traitCollection),
+                SPSupport.warnGradientLocations
+            )
+        case .surface, .raised, .outline:
+            return nil
         }
     }
 
@@ -242,7 +265,10 @@ final class SPCard: UIView {
         case .pain:  color = AppColors.pain500
         case .warn:  color = AppColors.warn500
         }
-        layer.shadowColor = color.cgColor
+        // Explicit resolve, not `.cgColor`: the latter snapshots
+        // `UITraitCollection.current`, which is not guaranteed to be this
+        // view's traits inside a method.
+        layer.shadowColor = color.resolvedColor(with: traitCollection).cgColor
         layer.shadowOpacity = traitCollection.userInterfaceStyle == .light ? 0.30 : 0.40
         layer.shadowOffset = CGSize(width: 0, height: 8)
         layer.shadowRadius = 16
@@ -250,15 +276,35 @@ final class SPCard: UIView {
 
     private enum ColoredShadow { case money, pain, warn }
 
-    private func installGradient(colors: [CGColor], locations: [NSNumber]) {
+    private func installGradient() {
+        guard let recipe = tonalGradient else { return }
         let gradient = CAGradientLayer()
-        gradient.colors = colors
-        gradient.locations = locations
+        gradient.colors = recipe.colors
+        gradient.locations = recipe.locations
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         gradient.cornerRadius = cardCornerRadius
         layer.insertSublayer(gradient, at: 0)
         gradientLayer = gradient
+    }
+
+    /// Re-tint the tonal fill in place.
+    ///
+    /// `CAGradientLayer.colors` is an array of plain `CGColor` — resolved once
+    /// at install and frozen there, with no link back to the dynamic
+    /// `UIColor` it came from. Without this a card built in dark and then
+    /// shown in light keeps the dark ramp while the ink on top re-resolves to
+    /// the light one: white `fgOnMoney` on the frozen dark `money400`
+    /// (`#2EDB9F`) measures 1.79:1. Same defect class as `SPAmountPreset`
+    /// (#498), `SPAlarmsListHeader` (#491) and `WalletWeeklyChartView` (#494).
+    ///
+    /// Re-tinting rather than re-installing keeps the layer's frame, which
+    /// `layoutSubviews` owns — a freshly inserted sublayer would sit at
+    /// `.zero` until the next layout pass.
+    private func refreshGradientColors() {
+        guard let recipe = tonalGradient else { return }
+        gradientLayer?.colors = recipe.colors
+        gradientLayer?.locations = recipe.locations
     }
 
     private func refreshDynamicColors() {
@@ -273,10 +319,13 @@ final class SPCard: UIView {
         case .outline:
             applyOutlineStroke()
         case .money:
+            refreshGradientColors()
             applyColoredShadow(.money)
         case .pain:
+            refreshGradientColors()
             applyColoredShadow(.pain)
         case .warn:
+            refreshGradientColors()
             applyColoredShadow(.warn)
         }
     }
