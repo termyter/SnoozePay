@@ -91,12 +91,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // deleting a `.custom`-themed alarm leaves its image on disk forever.
         // Sweep off the main thread against the live alarm set — only files no
         // current alarm references are removed.
+        // The read is CHECKED (#271): with the lossy `fetchAll()` a corrupt
+        // store decoded to `[]`, which the sweep reads as "nothing is
+        // referenced" and deletes every custom theme photo — permanent loss
+        // caused by a recoverable decode glitch.
         DispatchQueue.global(qos: .utility).async {
-            let referenced = Set(AlarmRepository.shared.fetchAll().compactMap { alarm -> URL? in
-                if case .custom(let url) = alarm.theme { return url }
-                return nil
-            })
-            AlarmThemeImageStore.reconcileCaches(referencedURLs: referenced)
+            AlarmThemeImageStore.reconcileCaches(
+                readingAlarms: { try AlarmRepository.shared.fetchAllChecked() }
+            )
         }
 
         return true
@@ -159,7 +161,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AppLogger.appDelegate.info(
             "re-arming saved alarms (trigger=\(trigger.rawValue, privacy: .public))"
         )
-        AlarmScheduler.shared.rescheduleAll(AlarmRepository.shared.fetchAll()) { [weak self] failedCount in
+        // Checked read (#271). The lossy `fetchAll()` handed `rescheduleAll` an
+        // empty list on a corrupt store, which reports `failedCount == 0` —
+        // "everything re-armed" while nothing was armed at all, AND that zero
+        // cleared the #442 latch, so a genuine earlier failure stopped being
+        // reported too. An unreadable store is not evidence of success: skip
+        // the re-arm and leave the latch as it was. The corruption itself is
+        // surfaced to the user by `AlarmsListViewModel.loadData()`.
+        let saved: [Alarm]
+        do {
+            saved = try AlarmRepository.shared.fetchAllChecked()
+        } catch {
+            AppLogger.appDelegate.fault(
+                "re-arm skipped: alarm store unreadable (\(String(describing: error), privacy: .public))"
+            )
+            return
+        }
+        AlarmScheduler.shared.rescheduleAll(saved) { [weak self] failedCount in
             self?.handleRescheduleOutcome(failedCount: failedCount)
         }
     }

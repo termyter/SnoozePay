@@ -94,7 +94,7 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
         XCTAssertEqual(store.append(transaction), .recorded)
         XCTAssertEqual(store.append(transaction), .duplicate,
                        "Replaying an id must be reported, not appended")
-        XCTAssertEqual(ledger.fetchAll().count, 1)
+        XCTAssertEqual(ledger.fetchAllOrFail().count, 1)
     }
 
     /// The end-to-end shape of a resync: the ledger physically holds the same

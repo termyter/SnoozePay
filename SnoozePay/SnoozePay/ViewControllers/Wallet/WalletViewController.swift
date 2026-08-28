@@ -220,7 +220,10 @@ final class WalletViewController: UIViewController {
         }
         let items = WalletTransactionPreview.items(
             from: load.transactions,
-            alarmLookup: { AlarmRepository.shared.fetch(id: $0) }
+            // Checked read collapsed with `try?` (#271) — see the sibling site
+            // in `WalletTransactionHistoryViewController`: an unreadable alarm
+            // store degrades the row's caption, it does not fake an empty list.
+            alarmLookup: { try? AlarmRepository.shared.fetchChecked(id: $0) }
         )
         txPreviewHost.addArrangedSubview(makeTxPreviewCard(items: items))
     }

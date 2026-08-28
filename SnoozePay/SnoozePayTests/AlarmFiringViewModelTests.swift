@@ -150,7 +150,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
         vm.dismiss()
 
-        let saved = repo.fetch(id: alarm.id)
+        let saved = repo.fetchOrFail(id: alarm.id)
         XCTAssertEqual(saved?.enabled, false,
                        "Non-repeating alarm should be disabled after dismiss")
 
@@ -166,7 +166,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
         vm.dismiss()
 
-        let saved = repo.fetch(id: alarm.id)
+        let saved = repo.fetchOrFail(id: alarm.id)
         XCTAssertEqual(saved?.enabled, true,
                        "Repeating alarm should stay enabled after dismiss")
 
@@ -208,7 +208,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         // Should complete without throwing/crashing; returned Bool is consumed inside dismiss().
         vm.dismiss()
 
-        XCTAssertNil(repo.fetch(id: alarm.id),
+        XCTAssertNil(repo.fetchOrFail(id: alarm.id),
                      "Alarm should remain absent from repo after dismiss on missing alarm")
     }
 

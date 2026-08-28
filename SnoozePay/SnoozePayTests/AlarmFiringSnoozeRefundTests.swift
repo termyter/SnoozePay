@@ -78,7 +78,7 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
         let repo = TransactionRepository(defaults: defaults)
         let balance = BalanceService(defaults: defaults, transactionRepository: repo)
         balance.topUp(amount: 200)
-        let preCount = repo.fetchAll().count
+        let preCount = repo.fetchAllOrFail().count
 
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(penalty: 50),
@@ -92,7 +92,7 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
 
         // Charge + offsetting refund = two new ledger entries, so stats can
         // reconcile the failed snooze.
-        let ledger = repo.fetchAll()
+        let ledger = repo.fetchAllOrFail()
         XCTAssertEqual(ledger.count, preCount + 2,
                        "Both the charge and the refund must be recorded")
 
@@ -168,7 +168,7 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
         vm.snooze { _ in exp.fulfill() }
         wait(for: [exp], timeout: 10)
 
-        let realCharges = TransactionRepository.realCharges(from: repo.fetchAll())
+        let realCharges = TransactionRepository.realCharges(from: repo.fetchAllOrFail())
         XCTAssertTrue(realCharges.isEmpty,
                       "A refunded foreground snooze must be excluded from real charges (#366)")
     }

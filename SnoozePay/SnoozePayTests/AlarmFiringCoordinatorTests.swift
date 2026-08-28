@@ -211,7 +211,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         // notification-action path must not book phantom IAP revenue either.
         // A second repository over the same suite reads the ledger the
         // coordinator's BalanceService wrote.
-        let ledger = TransactionRepository(defaults: testDefaults).fetchAll()
+        let ledger = TransactionRepository(defaults: testDefaults).fetchAllOrFail()
         let reversal = ledger.first { $0.refundsTransactionID != nil }
         XCTAssertEqual(reversal?.type, .refund)
         XCTAssertEqual(ledger.filter { $0.type == .topup }.count, 1,

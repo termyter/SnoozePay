@@ -228,7 +228,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
         vm.progressiveScale = true
         vm.save()
-        let saved = repo.fetchAll().first
+        let saved = repo.fetchAllOrFail().first
         XCTAssertTrue(saved?.progressiveScale ?? false)
 
         // A non-editing VM mints a fresh UUID per save, so a second save()
@@ -239,8 +239,8 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertTrue(editVM.progressiveScale, "Edit VM must pick up the persisted toggle state")
         editVM.progressiveScale = false
         editVM.save()
-        XCTAssertEqual(repo.fetchAll().count, 1, "Edit-mode save must update, not append")
-        XCTAssertFalse(repo.fetchAll().first?.progressiveScale ?? true)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1, "Edit-mode save must update, not append")
+        XCTAssertFalse(repo.fetchAllOrFail().first?.progressiveScale ?? true)
     }
 
     func testProgressiveScalePreview_recomputesAfterPenaltyChange() {
@@ -271,7 +271,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let result = vm.save()
         XCTAssertTrue(result)
 
-        let alarms = repo.fetchAll()
+        let alarms = repo.fetchAllOrFail()
         XCTAssertEqual(alarms.count, 1)
 
         let saved = alarms.first!
@@ -286,7 +286,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         vm.name = ""
         vm.save()
 
-        let saved = repo.fetchAll().first
+        let saved = repo.fetchAllOrFail().first
         XCTAssertEqual(saved?.name, "Будильник")
     }
 
@@ -294,7 +294,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         // Create an alarm first
         let original = Alarm(name: "Оригинал", penaltyAmount: 50)
         repo.save(original)
-        XCTAssertEqual(repo.fetchAll().count, 1)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1)
 
         // Edit it
         let vm = CreateAlarmViewModel(alarm: original, repository: repo)
@@ -304,7 +304,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         vm.save()
 
         // Should still be 1 alarm, updated
-        let alarms = repo.fetchAll()
+        let alarms = repo.fetchAllOrFail()
         XCTAssertEqual(alarms.count, 1)
         XCTAssertEqual(alarms.first?.name, "Изменённый")
         XCTAssertEqual(alarms.first?.penaltyAmount, 200)
@@ -316,14 +316,14 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         // Persist an alarm directly so the VM thinks it's editing an existing one.
         let original = Alarm(name: "Утро", penaltyAmount: 100)
         repo.save(original)
-        XCTAssertEqual(repo.fetchAll().count, 1)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1)
 
         let vm = CreateAlarmViewModel(alarm: original, repository: repo)
         XCTAssertTrue(vm.isEditing)
 
         let didDelete = vm.delete()
         XCTAssertTrue(didDelete)
-        XCTAssertEqual(repo.fetchAll().count, 0)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 0)
     }
 
     func testDelete_newAlarm_isNoOp() {
@@ -334,7 +334,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
         let didDelete = vm.delete()
         XCTAssertFalse(didDelete)
-        XCTAssertEqual(repo.fetchAll().count, 0)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 0)
     }
 
     func testDelete_existingAlarm_doesNotAffectOtherAlarms() {
@@ -343,12 +343,12 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let beta = Alarm(name: "Бета")
         repo.save(alpha)
         repo.save(beta)
-        XCTAssertEqual(repo.fetchAll().count, 2)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 2)
 
         let vm = CreateAlarmViewModel(alarm: alpha, repository: repo)
         vm.delete()
 
-        let remaining = repo.fetchAll()
+        let remaining = repo.fetchAllOrFail()
         XCTAssertEqual(remaining.count, 1)
         XCTAssertEqual(remaining.first?.name, "Бета")
     }

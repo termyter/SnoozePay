@@ -31,8 +31,8 @@ enum WalletTransactionPreview {
     ///
     /// `alarmLookup` resolves a charge's owning alarm so its context
     /// ("Будни · 07:00") can prefix the timestamp; production passes
-    /// `AlarmRepository.shared.fetch(id:)`. The default no-op lookup keeps
-    /// existing tests (and any context-free call site) bare.
+    /// a `try?`-collapsed `AlarmRepository.shared.fetchChecked(id:)`. The default
+    /// no-op lookup keeps existing tests (and any context-free call site) bare.
     static func items(
         from transactions: [Transaction],
         now: Date = Date(),

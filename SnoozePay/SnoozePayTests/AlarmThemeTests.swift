@@ -259,4 +259,57 @@ final class AlarmThemeImageStoreReconcileTests: XCTestCase {
         // Second call on an already-gone file must not throw/crash.
         AlarmThemeImageStore.deleteImage(at: url)
     }
+
+    // MARK: - Checked-read sweep (#271)
+
+    private struct StubReadFailure: Error {}
+
+    /// The whole point of routing the sweep through a *checked* read: an
+    /// unreadable alarm store used to decode to `[]`, and `[]` is precisely
+    /// the sweep's instruction to delete everything. A transient decode glitch
+    /// therefore destroyed every custom theme photo the user had picked.
+    func testReconcileWithFailingAlarmReadDeletesNothing() throws {
+        let first = try makeFile("alarm-theme-A.jpg")
+        let second = try makeFile("alarm-theme-B.jpg")
+
+        let didSweep = AlarmThemeImageStore.reconcile(
+            in: tempDir,
+            readingAlarms: { throw StubReadFailure() }
+        )
+
+        XCTAssertFalse(didSweep, "An unreadable store must abort the sweep, not run it with []")
+        XCTAssertTrue(exists(first), "A decode failure must never be read as 'unreferenced'")
+        XCTAssertTrue(exists(second))
+    }
+
+    /// A readable store still reclaims orphans — the guard above must not have
+    /// quietly disabled the feature it protects.
+    func testReconcileWithSucceedingAlarmReadStillReclaimsOrphans() throws {
+        let kept = try makeFile("alarm-theme-KEEP.jpg")
+        let orphan = try makeFile("alarm-theme-ORPHAN.jpg")
+        let alarm = Alarm(theme: .custom(imagePath: kept))
+
+        let didSweep = AlarmThemeImageStore.reconcile(
+            in: tempDir,
+            readingAlarms: { [alarm] }
+        )
+
+        XCTAssertTrue(didSweep)
+        XCTAssertTrue(exists(kept), "The referenced image must survive")
+        XCTAssertFalse(exists(orphan), "Orphans are still reclaimed")
+    }
+
+    /// A store that genuinely holds no `.custom` themes is a legitimate
+    /// "delete everything" instruction — only a *failed read* is not.
+    func testReferencedImageURLsCollectsOnlyCustomThemes() throws {
+        let customURL = try makeFile("alarm-theme-X.jpg")
+        let alarms = [
+            Alarm(theme: .custom(imagePath: customURL)),
+            Alarm(theme: .ocean)
+        ]
+
+        XCTAssertEqual(AlarmThemeImageStore.referencedImageURLs(in: alarms), [customURL])
+        XCTAssertTrue(AlarmThemeImageStore.referencedImageURLs(in: []).isEmpty,
+                      "An empty (but successfully read) store references nothing")
+    }
 }

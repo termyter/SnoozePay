@@ -19,7 +19,7 @@ enum TransactionAlarmContext {
     /// - Parameters:
     ///   - alarmID: the transaction's persisted alarm id (UUID string).
     ///   - lookup: resolves a `UUID` to an `Alarm`, or `nil` if unknown.
-    ///     Production passes `AlarmRepository.shared.fetch(id:)`.
+    ///     Production passes a `try?`-collapsed `AlarmRepository.shared.fetchChecked(id:)`.
     static func caption(
         for alarmID: String?,
         calendar: Calendar = .current,
