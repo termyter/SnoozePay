@@ -100,4 +100,39 @@ enum AlarmThemeImageStore {
         guard let directory = try? directoryURL() else { return }
         reconcile(in: directory, referencedURLs: referencedURLs)
     }
+
+    /// The `keep` set for a sweep: every image URL still referenced by a
+    /// `.custom` theme in `alarms`.
+    static func referencedImageURLs(in alarms: [Alarm]) -> Set<URL> {
+        Set(alarms.compactMap { alarm -> URL? in
+            if case .custom(let url) = alarm.theme { return url }
+            return nil
+        })
+    }
+
+    /// Sweep driven by a **checked** alarm read (#271).
+    ///
+    /// The lossy `fetchAll()` collapses a decode failure into `[]`, and `[]`
+    /// here does not mean "read failed" — it means "no alarm references any
+    /// image", i.e. delete every custom theme JPEG on disk. That would turn a
+    /// transient, recoverable decode glitch into permanent photo loss, so an
+    /// unreadable store skips the sweep entirely and leaves the files for a
+    /// later launch that can read the alarms.
+    /// - Returns: `true` when a sweep ran, `false` when it was skipped.
+    @discardableResult
+    static func reconcile(in directory: URL, readingAlarms read: () throws -> [Alarm]) -> Bool {
+        guard let alarms = try? read() else {
+            os_log("Theme-image sweep skipped: alarm store unreadable", log: log, type: .error)
+            return false
+        }
+        reconcile(in: directory, referencedURLs: referencedImageURLs(in: alarms))
+        return true
+    }
+
+    /// `reconcile(in:readingAlarms:)` against the real Caches directory.
+    @discardableResult
+    static func reconcileCaches(readingAlarms read: () throws -> [Alarm]) -> Bool {
+        guard let directory = try? directoryURL() else { return false }
+        return reconcile(in: directory, readingAlarms: read)
+    }
 }

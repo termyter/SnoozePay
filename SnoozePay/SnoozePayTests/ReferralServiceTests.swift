@@ -33,7 +33,7 @@ final class ReferralServiceTests: XCTestCase {
     }
 
     private func promotions() -> [Transaction] {
-        TransactionRepository(defaults: testDefaults).fetchAll().filter { $0.type == .promotion }
+        TransactionRepository(defaults: testDefaults).fetchAllOrFail().filter { $0.type == .promotion }
     }
 
     // MARK: - Rejections

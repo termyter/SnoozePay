@@ -89,7 +89,7 @@ final class TransactionTypeCodableTests: XCTestCase {
         ]
         """)
 
-        XCTAssertEqual(repo.fetchAll().count, 2)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 2)
         XCTAssertFalse(repo.lastLoadFailed,
             "A pre-#358 ledger must not be mistaken for a corrupt blob")
         XCTAssertFalse(repo.lastLoadHadUnrecognizedTypes,
@@ -126,7 +126,7 @@ final class TransactionTypeCodableTests: XCTestCase {
         ]
         """)
 
-        XCTAssertEqual(repo.fetchAll().count, 2, "The intact rows stay readable")
+        XCTAssertEqual(repo.fetchAllOrFail().count, 2, "The intact rows stay readable")
         XCTAssertFalse(repo.lastLoadFailed, "The blob itself is fine — writes must not be locked")
         XCTAssertTrue(repo.lastLoadHadUnrecognizedTypes,
             "Damaged type strings must not be silently absorbed (#358 review)")
@@ -142,7 +142,7 @@ final class TransactionTypeCodableTests: XCTestCase {
           {"id":"\(UUID().uuidString)","type":"Charge","amount":50,"createdAt":760000100}
         ]
         """)
-        _ = repo.fetchAll()
+        _ = repo.fetchAllOrFail()
 
         XCTAssertEqual(repo.lastLoadUnrecognizedTypes, ["", "Charge"],
             "Token matching is exact — an empty or re-cased string is not a charge")
@@ -156,7 +156,7 @@ final class TransactionTypeCodableTests: XCTestCase {
         """)
 
         XCTAssertFalse(repo.lastLoadHadUnrecognizedTypes)
-        _ = repo.fetchAll()
+        _ = repo.fetchAllOrFail()
         XCTAssertTrue(repo.lastLoadHadUnrecognizedTypes)
     }
 
@@ -166,14 +166,14 @@ final class TransactionTypeCodableTests: XCTestCase {
         let repo = makeRepo(withBlob: """
         [{"id":"\(UUID().uuidString)","type":"cashback","amount":10,"createdAt":760000000}]
         """)
-        _ = repo.fetchAll()
+        _ = repo.fetchAllOrFail()
         XCTAssertTrue(repo.lastLoadHadUnrecognizedTypes)
 
         testDefaults.set(Data("""
         [{"id":"\(UUID().uuidString)","type":"charge","amount":50,"createdAt":760000000}]
         """.utf8), forKey: "stored_transactions")
 
-        XCTAssertEqual(repo.fetchAll().count, 1)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1)
         XCTAssertFalse(repo.lastLoadHadUnrecognizedTypes)
         XCTAssertTrue(repo.lastLoadUnrecognizedTypes.isEmpty)
     }

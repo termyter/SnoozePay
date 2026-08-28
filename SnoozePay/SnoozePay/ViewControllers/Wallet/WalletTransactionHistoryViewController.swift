@@ -371,7 +371,11 @@ final class WalletTransactionHistoryViewController: UIViewController {
         subtitle(
             for: transaction,
             time: timeString(for: transaction.createdAt),
-            lookup: { AlarmRepository.shared.fetch(id: $0) }
+            // Checked read collapsed with `try?` (#271): the caption is
+            // decoration, so an unreadable alarm store degrades to the charge
+            // time exactly like a deleted alarm does. `try?` keeps that
+            // fallback while routing new code at the checked fetcher.
+            lookup: { try? AlarmRepository.shared.fetchChecked(id: $0) }
         )
     }
 

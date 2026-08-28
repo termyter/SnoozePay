@@ -180,7 +180,7 @@ final class AlarmRepeatModeTests: XCTestCase {
         let viewModel = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
         viewModel.dismiss()
 
-        XCTAssertEqual(repo.fetch(id: alarm.id)?.enabled, false,
+        XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.enabled, false,
                        "One-shot alarm must auto-disable after dismiss")
     }
 
@@ -193,7 +193,7 @@ final class AlarmRepeatModeTests: XCTestCase {
         let viewModel = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
         viewModel.dismiss()
 
-        XCTAssertEqual(repo.fetch(id: alarm.id)?.enabled, true,
+        XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.enabled, true,
                        "Weekly alarms keep firing every week — dismiss must not disable them")
     }
 
@@ -216,7 +216,7 @@ final class AlarmRepeatModeTests: XCTestCase {
 
         XCTAssertTrue(viewModel.save())
 
-        let saved = repo.fetchAll().first { $0.repeatDays == [0, 2] && $0.repeatMode == .never }
+        let saved = repo.fetchAllOrFail().first { $0.repeatDays == [0, 2] && $0.repeatMode == .never }
         XCTAssertNotNil(saved, "Saved alarm must carry the one-shot mode")
         if let saved { repo.delete(id: saved.id) }
     }

@@ -240,7 +240,10 @@ enum UITourLauncher {
     private static func resetIfRequested() {
         guard ProcessInfo.processInfo.arguments.contains("-uitour-reset") else { return }
         let repo = AlarmRepository.shared
-        for alarm in repo.fetchAll() {
+        // Checked read collapsed with `try?` (#271): a wipe driven by an
+        // unreadable store would silently do nothing, and the tour must not
+        // depend on the lossy fetcher.
+        for alarm in (try? repo.fetchAllChecked()) ?? [] {
             _ = repo.delete(id: alarm.id)
         }
     }
@@ -258,7 +261,7 @@ enum UITourLauncher {
 
     private static func seedAlarms() {
         let repo = AlarmRepository.shared
-        guard repo.fetchAll().isEmpty else { return }
+        guard ((try? repo.fetchAllChecked()) ?? []).isEmpty else { return }
         let calendar = Calendar.current
         func at(_ hour: Int, _ minute: Int) -> Date {
             calendar.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
@@ -278,7 +281,7 @@ enum UITourLauncher {
 
     private static func seedTransactions() {
         let repo = TransactionRepository.shared
-        guard repo.fetchAll().isEmpty else { return }
+        guard ((try? repo.fetchAllChecked()) ?? []).isEmpty else { return }
         let day: TimeInterval = 86_400
         let now = Date()
         let seeds: [(TransactionType, Double, Double)] = [

@@ -152,7 +152,7 @@ final class BalanceServiceTests: XCTestCase {
 
         XCTAssertFalse(charged, "charge must report failure on insufficient funds")
         XCTAssertEqual(service.balance, 30, "Balance must be untouched on failed charge")
-        XCTAssertTrue(ledger.fetchAll().isEmpty,
+        XCTAssertTrue(ledger.fetchAllOrFail().isEmpty,
                       "No transaction may be recorded for a failed charge")
         wait(for: [didFire], timeout: 0.5)
     }
@@ -165,7 +165,7 @@ final class BalanceServiceTests: XCTestCase {
 
         XCTAssertTrue(service.charge(amount: 75, alarmID: alarmID))
 
-        let transactions = ledger.fetchAll()
+        let transactions = ledger.fetchAllOrFail()
         XCTAssertEqual(transactions.count, 1)
         let transaction = transactions[0]
         XCTAssertEqual(transaction.type, .charge)
@@ -181,7 +181,7 @@ final class BalanceServiceTests: XCTestCase {
 
         service.topUp(amount: 149)
 
-        let transactions = ledger.fetchAll()
+        let transactions = ledger.fetchAllOrFail()
         XCTAssertEqual(transactions.count, 1)
         XCTAssertEqual(transactions[0].type, .topup)
         XCTAssertEqual(transactions[0].amount, 149)
@@ -208,7 +208,7 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertEqual(receipt?.amount, 75)
         XCTAssertEqual(receipt?.alarmID, alarmID.uuidString)
 
-        let stored = ledger.fetchAll().first { $0.id == receipt?.id }
+        let stored = ledger.fetchAllOrFail().first { $0.id == receipt?.id }
         XCTAssertNotNil(stored,
             "Receipt's id must match the persisted Transaction so the caller can later refund by ID")
     }
@@ -221,7 +221,7 @@ final class BalanceServiceTests: XCTestCase {
         )
 
         XCTAssertNil(service.chargeWithReceipt(amount: 50, alarmID: UUID()))
-        XCTAssertTrue(ledger.fetchAll().isEmpty)
+        XCTAssertTrue(ledger.fetchAllOrFail().isEmpty)
         XCTAssertEqual(service.balance, 10)
     }
 
@@ -235,7 +235,7 @@ final class BalanceServiceTests: XCTestCase {
 
         XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: originalChargeID))
 
-        let txs = ledger.fetchAll()
+        let txs = ledger.fetchAllOrFail()
         XCTAssertEqual(txs.count, 1)
         XCTAssertEqual(txs[0].type, .refund,
             "A penalty reversal is not paid income — booking it as .topup inflates revenue (#358)")
@@ -253,7 +253,7 @@ final class BalanceServiceTests: XCTestCase {
 
         service.topUp(amount: 100)
 
-        XCTAssertNil(ledger.fetchAll().first?.refundsTransactionID,
+        XCTAssertNil(ledger.fetchAllOrFail().first?.refundsTransactionID,
             "Organic top-ups must not look like refunds")
     }
 
@@ -269,7 +269,7 @@ final class BalanceServiceTests: XCTestCase {
 
         XCTAssertTrue(service.refund(amount: 50))
 
-        let txs = ledger.fetchAll()
+        let txs = ledger.fetchAllOrFail()
         XCTAssertEqual(txs.count, 1)
         XCTAssertEqual(txs[0].type, .refund,
             "Booking a reversal as .topup is exactly the revenue inflation #358 fixes")
@@ -302,7 +302,7 @@ final class BalanceServiceTests: XCTestCase {
         let receipt = service.chargeWithReceipt(amount: 50, alarmID: UUID())
         XCTAssertTrue(service.refund(amount: 50, refundsTransactionID: receipt?.id))
 
-        let revenue = ledger.fetchAll()
+        let revenue = ledger.fetchAllOrFail()
             .filter { $0.type == .topup }
             .reduce(0.0) { $0 + $1.amount }
         XCTAssertEqual(revenue, 500,
@@ -322,7 +322,7 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertFalse(service.refund(amount: .nan))
         XCTAssertFalse(service.refund(amount: .infinity))
 
-        XCTAssertTrue(ledger.fetchAll().isEmpty, "No ledger row may be written for a rejected refund")
+        XCTAssertTrue(ledger.fetchAllOrFail().isEmpty, "No ledger row may be written for a rejected refund")
         XCTAssertEqual(service.balance, 100)
     }
 
@@ -504,7 +504,7 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertTrue(service.balanceCorrupted)
         XCTAssertFalse(service.charge(amount: 1, alarmID: nil),
                        "charge must refuse when balance store is corrupted")
-        XCTAssertTrue(ledger.fetchAll().isEmpty,
+        XCTAssertTrue(ledger.fetchAllOrFail().isEmpty,
                       "No transaction may land while balance is corrupted")
     }
 
@@ -518,7 +518,7 @@ final class BalanceServiceTests: XCTestCase {
         XCTAssertTrue(service.balanceCorrupted)
         XCTAssertFalse(service.topUp(amount: 100),
                        "topUp must refuse when balance store is corrupted")
-        XCTAssertTrue(ledger.fetchAll().isEmpty,
+        XCTAssertTrue(ledger.fetchAllOrFail().isEmpty,
                       "No transaction may land while balance is corrupted")
     }
 
@@ -787,7 +787,7 @@ final class CreateAlarmViewModelTests: XCTestCase {
         vm.name = ""
         vm.save()
         // Verify the alarm was saved with default name
-        let saved = AlarmRepository(defaults: .standard).fetchAll().last
+        let saved = AlarmRepository(defaults: .standard).fetchAllOrFail().last
         XCTAssertEqual(saved?.name, "Будильник")
     }
 }
@@ -820,7 +820,7 @@ final class BalanceServiceAmountValidationTests: XCTestCase {
     }
 
     private func promotions() -> [Transaction] {
-        TransactionRepository(defaults: testDefaults).fetchAll().filter { $0.type == .promotion }
+        TransactionRepository(defaults: testDefaults).fetchAllOrFail().filter { $0.type == .promotion }
     }
 
     // MARK: - topUp guard

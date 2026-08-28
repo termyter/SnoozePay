@@ -514,10 +514,15 @@ final class AlarmsListViewModel {
         // refunded and per design "doesn't count") so the header doesn't
         // overstate the week's spend (#440). `realCharges` is computed over the
         // FULL ledger first — a charge refunded by a later top-up is still
-        // excluded — then filtered to the rolling 7-day window. Display-only, so
-        // the lossy `fetchAll` is fine; a corrupt ledger is surfaced separately
-        // in `loadData()`.
-        let weekCharges = TransactionRepository.realCharges(from: transactionRepository.fetchAll())
+        // excluded — then filtered to the rolling 7-day window.
+        //
+        // Checked read collapsed with `try?` (#271): this is a non-throwing
+        // computed property, and a corrupt ledger must hide the row rather than
+        // render a confident "0 ₽ за неделю". `loadData()` already raises the
+        // banner that explains WHY the row is missing, so the collapse here is
+        // deliberate and not a silent swallow.
+        let ledger = (try? transactionRepository.fetchAllChecked()) ?? []
+        let weekCharges = TransactionRepository.realCharges(from: ledger)
             .filter { $0.createdAt >= weekAgo }
         guard !weekCharges.isEmpty else { return nil }
         let totalCharged = weekCharges.reduce(0.0) { $0 + $1.amount }

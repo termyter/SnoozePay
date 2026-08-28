@@ -51,7 +51,7 @@ final class TransactionRepositoryTests: XCTestCase {
 
         XCTAssertTrue(result)
 
-        let all = repo.fetchAll()
+        let all = repo.fetchAllOrFail()
         XCTAssertEqual(all.count, 1)
         XCTAssertEqual(all.first?.amount, 100)
         XCTAssertEqual(all.first?.type, .charge)
@@ -63,7 +63,7 @@ final class TransactionRepositoryTests: XCTestCase {
         repo.record(topup(amount: 300))
         repo.record(charge(amount: 100))
 
-        XCTAssertEqual(repo.fetchAll().count, 3)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 3)
     }
 
     func testFetchAll_sortedByDateDescending() {
@@ -71,7 +71,7 @@ final class TransactionRepositoryTests: XCTestCase {
         repo.record(charge(amount: 100, daysAgo: 1))
         repo.record(charge(amount: 200, daysAgo: 10))
 
-        let all = repo.fetchAll()
+        let all = repo.fetchAllOrFail()
         XCTAssertEqual(all.count, 3)
         // Should be sorted newest first
         XCTAssertEqual(all[0].amount, 100) // 1 day ago
@@ -301,14 +301,14 @@ final class TransactionRepositoryTests: XCTestCase {
     // MARK: - Edge cases
 
     func testFetchAll_emptyByDefault() {
-        XCTAssertTrue(repo.fetchAll().isEmpty)
+        XCTAssertTrue(repo.fetchAllOrFail().isEmpty)
     }
 
     func testRecord_preservesAlarmID() {
         let tx = Transaction(type: .charge, amount: 50, alarmID: "alarm-123")
         repo.record(tx)
 
-        let fetched = repo.fetchAll().first
+        let fetched = repo.fetchAllOrFail().first
         XCTAssertEqual(fetched?.alarmID, "alarm-123")
     }
 
@@ -316,7 +316,7 @@ final class TransactionRepositoryTests: XCTestCase {
         let tx = Transaction(type: .charge, amount: 50, alarmID: nil)
         repo.record(tx)
 
-        let fetched = repo.fetchAll().first
+        let fetched = repo.fetchAllOrFail().first
         XCTAssertNil(fetched?.alarmID)
     }
 
@@ -328,8 +328,8 @@ final class TransactionRepositoryTests: XCTestCase {
 
         repo.record(charge(amount: 50))
 
-        XCTAssertEqual(repo.fetchAll().count, 1)
-        XCTAssertEqual(otherRepo.fetchAll().count, 0, "Different suites should be isolated")
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1)
+        XCTAssertEqual(otherRepo.fetchAllOrFail().count, 0, "Different suites should be isolated")
 
         otherDefaults.removePersistentDomain(forName: otherSuiteName)
     }
@@ -339,6 +339,10 @@ final class TransactionRepositoryTests: XCTestCase {
     /// When stored JSON can't be decoded, the read must return `[]`
     /// without silently overwriting the corrupted blob — the raw bytes stay
     /// on disk so we can diagnose what got broken.
+    // Deliberately exercises the deprecated lossy fetcher — this test IS the
+    // contract for it (#271). The annotation is what keeps the call
+    // warning-free; Swift does not warn inside a deprecated declaration.
+    @available(*, deprecated, message: "Pins the deprecated lossy read on purpose")
     func testFetchAll_corruptedJSON_returnsEmptyAndPreservesRawData() {
         let corruptBytes = Data("{ this is not valid json".utf8)
         testDefaults.set(corruptBytes, forKey: "stored_transactions")
@@ -350,6 +354,10 @@ final class TransactionRepositoryTests: XCTestCase {
                        "Corrupt JSON must remain untouched on disk for debugging")
     }
 
+    // Deliberately exercises the deprecated lossy fetcher — this test IS the
+    // contract for it (#271). The annotation is what keeps the call
+    // warning-free; Swift does not warn inside a deprecated declaration.
+    @available(*, deprecated, message: "Pins the deprecated lossy read on purpose")
     func testFetchAll_corruptedJSON_repeatedReadDoesNotMutateStorage() {
         let corruptBytes = Data("not json".utf8)
         testDefaults.set(corruptBytes, forKey: "stored_transactions")
@@ -365,7 +373,7 @@ final class TransactionRepositoryTests: XCTestCase {
     func testFetchAll_keyAbsent_returnsEmptyAndDoesNotCreateKey() {
         testDefaults.removeObject(forKey: "stored_transactions")
 
-        XCTAssertTrue(repo.fetchAll().isEmpty)
+        XCTAssertTrue(repo.fetchAllOrFail().isEmpty)
         XCTAssertNil(testDefaults.data(forKey: "stored_transactions"),
                      "Read on missing key must not materialize an empty value")
     }
@@ -391,7 +399,7 @@ final class TransactionRepositoryTests: XCTestCase {
         XCTAssertTrue(repo.record(charge(amount: 99)),
                       "record() must succeed once the lock is cleared")
 
-        let all = repo.fetchAll()
+        let all = repo.fetchAllOrFail()
         XCTAssertEqual(all.count, 1)
         XCTAssertEqual(all.first?.amount, 99)
     }
@@ -469,7 +477,7 @@ final class TransactionRepositoryTests: XCTestCase {
         repo.record(charge(amount: 50, daysAgo: 3))
         repo.record(topup(amount: 500, daysAgo: 0))
 
-        let allTransactions = repo.fetchAll()
+        let allTransactions = repo.fetchAllOrFail()
 
         XCTAssertEqual(repo.currentStreak(from: allTransactions), repo.currentStreak(),
                        "Pre-loaded variant must match the internal-read variant on identical data")
@@ -509,7 +517,7 @@ final class TransactionRepositoryTests: XCTestCase {
             self.repo.record(tx)
         }
 
-        XCTAssertEqual(repo.fetchAll().count, iterations,
+        XCTAssertEqual(repo.fetchAllOrFail().count, iterations,
                        "All concurrently-recorded transactions must be persisted")
     }
 }

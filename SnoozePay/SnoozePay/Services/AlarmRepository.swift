@@ -78,9 +78,11 @@ final class AlarmRepository {
     // MARK: - Read
 
     /// Lossy read: a decode failure is indistinguishable from "no alarms"
-    /// (#210). Prefer `fetchAllChecked()` in production paths that render
-    /// state to the user — this variant is kept for tests and callers that
-    /// genuinely cannot surface an error.
+    /// (#210). Every production call site now uses `fetchAllChecked()` and
+    /// decides explicitly what an unreadable store means (#271) — this
+    /// variant survives only for the tests that pin the lossy contract
+    /// itself, which is why it is deprecated rather than deleted.
+    @available(*, deprecated, message: "Lossy: a decode failure reads as []. Use fetchAllChecked() (#271).")
     func fetchAll() -> [Alarm] {
         queue.sync { (try? readAll()) ?? [] }
     }
@@ -93,8 +95,9 @@ final class AlarmRepository {
     }
 
     /// Lossy read: a decode failure is indistinguishable from "alarm doesn't
-    /// exist" (#210). Prefer `fetchChecked(id:)` on hot paths — this variant
-    /// is kept for tests and callers that cannot surface an error.
+    /// exist" (#210). All production call sites moved to `fetchChecked(id:)`
+    /// (#271); kept for the tests that pin the lossy contract.
+    @available(*, deprecated, message: "Lossy: a decode failure reads as nil. Use fetchChecked(id:) (#271).")
     func fetch(id: UUID) -> Alarm? {
         queue.sync { (try? readAll())?.first { $0.id == id } }
     }
