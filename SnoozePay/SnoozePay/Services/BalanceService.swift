@@ -3,6 +3,12 @@ import os
 
 /// Manages the user's local balance stored in UserDefaults.
 /// All operations are synchronous and offline-first.
+///
+/// The balance is **derived from the ledger** — `openingBalance + Σ(rows)` via
+/// `BalanceLedgerStore` (#483). `user_balance` is kept as a cache of that sum
+/// so every existing reader keeps working, but the rows are what count: a
+/// replayed `Transaction.id` credits nothing, and a cache that disagrees with
+/// the ledger is repaired on read.
 /// Mutations and reads are serialized via a private serial queue
 /// to prevent check-then-write races between concurrent callers
 /// (e.g. notification action + foreground UI).
@@ -30,7 +36,9 @@ final class BalanceService {
 
     private let defaults: UserDefaults
     private let balanceKey = "user_balance"
-    private let transactionRepository: TransactionRepository
+    /// Source of truth for the balance (#483): every mutation is an append
+    /// here, and `user_balance` is a cache of `openingBalance + Σ(ledger)`.
+    private let ledgerStore: BalanceLedgerStore
     private let queue = DispatchQueue(label: "com.snoozepay.balance.serial")
     private let notificationCenter: NotificationCenter
     private static let log = OSLog(
@@ -72,7 +80,10 @@ final class BalanceService {
         notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
-        self.transactionRepository = transactionRepository
+        self.ledgerStore = BalanceLedgerStoreFactory.makeStore(
+            repository: transactionRepository,
+            defaults: defaults
+        )
         self.notificationCenter = notificationCenter
         // Detect corruption at construction time so the gate is set BEFORE any
         // background `charge` (notification action handler) can silently hit the
@@ -146,18 +157,19 @@ final class BalanceService {
             guard !_balanceCorrupted else { return (false, current) }
             guard current >= amount else { return (false, current) }
 
-            // Record the ledger entry FIRST. If the transaction repository is
-            // locked (corrupt blob waiting on user ack) or encoding fails, we
-            // refuse to mutate the balance — otherwise money would silently
-            // disappear from the wallet with no record in stats (see #72 hunter
-            // review of PR #101).
-            guard transactionRepository.record(transaction) else {
+            // The ledger append IS the mutation (#483). If the store is locked
+            // (corrupt blob waiting on user ack), encoding fails, or the row is
+            // a replay of one already present, the balance must not move —
+            // otherwise money disappears from the wallet with no record in
+            // stats (see #72 hunter review of PR #101).
+            guard ledgerStore.append(transaction) == .recorded else {
                 return (false, current)
             }
 
-            let newBalance = current - amount
-            defaults.set(newBalance, forKey: balanceKey)
-            return (true, newBalance)
+            // Recompute from the ledger rather than `current - amount`: the sum
+            // over the rows is the balance, and this call also refreshes the
+            // `user_balance` cache.
+            return (true, readRawBalance())
         }
 
         if result.charged {
@@ -244,15 +256,14 @@ final class BalanceService {
                 amount: amount,
                 refundsTransactionID: refundsTransactionID
             )
-            // Ledger first: if the repository is locked (corrupt blob awaiting
-            // user ack) or encoding fails, the balance must not move — an
-            // unrecorded credit is a silent desync (#72).
-            guard transactionRepository.record(transaction) else {
+            // Ledger first: if the store is locked (corrupt blob awaiting user
+            // ack), encoding fails, or the row is a replay of an id already in
+            // the ledger, the balance must not move — an unrecorded credit is a
+            // silent desync (#72), a replayed one is double-crediting (#483).
+            guard ledgerStore.append(transaction) == .recorded else {
                 return (false, current)
             }
-            let updated = current + amount
-            defaults.set(updated, forKey: balanceKey)
-            return (true, updated)
+            return (true, readRawBalance())
         }
 
         if result.recorded {
@@ -277,6 +288,10 @@ final class BalanceService {
         let cleared: Bool = queue.sync {
             guard _balanceCorrupted else { return false }
             defaults.set(0.0, forKey: balanceKey)
+            // The cache alone isn't the wallet any more — without re-pinning
+            // the opening balance the ledger would derive the pre-wipe number
+            // straight back on the next read (#483).
+            rebaseLedger(to: 0)
             _balanceCorrupted = false
             _corruptedRawValue = nil
             return true
@@ -346,8 +361,9 @@ final class BalanceService {
         )
     }
 
-    /// Reads the raw balance from storage and side-effects the corruption
-    /// flag if a negative value is observed. MUST be called inside `queue.sync`.
+    /// Reads the cached balance from storage, side-effects the corruption flag
+    /// if an invalid value is observed, and otherwise defers to the ledger
+    /// (`ledgerDerivedBalance`). MUST be called inside `queue.sync`.
     /// Returns `0` to callers when corrupt so downstream math (e.g. `canAfford`)
     /// behaves as if the wallet is empty rather than negative — the corruption
     /// flag is the single source of truth for whether further mutation is
@@ -364,7 +380,52 @@ final class BalanceService {
         guard raw.isFinite, raw >= 0 else {
             return latchCorruption(raw: raw)
         }
-        return raw
+        return ledgerDerivedBalance(cached: raw)
+    }
+
+    /// The balance the ledger says the wallet holds: `openingBalance + Σ(rows)`.
+    ///
+    /// `user_balance` is only a cache of this sum, so a disagreement is
+    /// repaired in favour of the ledger — that's what "ledger is the source of
+    /// truth" buys (#483). Two escapes:
+    ///
+    ///   * **Unreadable ledger** — a partial sum would silently invent or erase
+    ///     money, so the cached value stands until the user acknowledges.
+    ///   * **No opening balance yet** — the first read of an existing install
+    ///     adopts `cached − Σ(rows)`, which makes the derived value identical to
+    ///     what the user saw before this change. That's the whole migration:
+    ///     no pass over storage, no window in which money can be lost.
+    ///
+    /// MUST be called inside `queue.sync`.
+    private func ledgerDerivedBalance(cached: Double) -> Double {
+        guard ledgerStore.isReadable, let entries = try? ledgerStore.loadEntries() else {
+            return cached
+        }
+        let net = BalanceLedger.net(of: entries)
+        guard let opening = ledgerStore.openingBalance else {
+            ledgerStore.openingBalance = cached - net
+            return cached
+        }
+        let derived = opening + net
+        // A ledger that sums below zero is a desync, not a wallet the user can
+        // spend from — route it through the same #119 gate as a negative
+        // `user_balance` instead of handing back a negative number.
+        guard derived.isFinite, derived >= 0 else {
+            return latchCorruption(raw: derived)
+        }
+        if derived != cached {
+            defaults.set(derived, forKey: balanceKey)
+        }
+        return derived
+    }
+
+    /// Re-pins the opening balance so the ledger derives exactly `target`.
+    /// Used after the user wipes a corrupt balance: the rows stay for stats,
+    /// but they must not re-inflate the wallet on the next read.
+    /// MUST be called inside `queue.sync`.
+    private func rebaseLedger(to target: Double) {
+        let net = (try? ledgerStore.loadEntries()).map(BalanceLedger.net(of:)) ?? 0
+        ledgerStore.openingBalance = target - net
     }
 
     /// Latches the corruption flag, logs once, and broadcasts the notification.
