@@ -160,6 +160,19 @@ enum AppColors {
             : AppColors.warn300.resolvedColor(with: trait)
     }
 
+    /// Ink on a *pain*-tinted wash — same shape as `fgOnWarnWash`, and needed
+    /// for the same reason. The zero-balance pill on the alarms list lays a
+    /// `pain500` gradient at 10%→2% over the page; `pain300` glows on that in
+    /// dark (10.82:1) but measures **2.77:1** in light, because the light
+    /// `pain300` is a bright coral on a near-white wash. The light branch takes
+    /// `pain600`, the darkest tone in the scale (7.41:1). Not interchangeable
+    /// with `fgOnPain`, which is ink for a SOLID `pain500` fill.
+    static let fgOnPainWash = UIColor { trait in
+        trait.userInterfaceStyle == .light
+            ? AppColors.pain600.resolvedColor(with: trait)
+            : AppColors.pain300.resolvedColor(with: trait)
+    }
+
     // MARK: - Theme-aware overlays (alpha on white / near-black ink)
     //
     // Dark mode lays white over surfaces (`rgba(255,255,255,X)`); light mode

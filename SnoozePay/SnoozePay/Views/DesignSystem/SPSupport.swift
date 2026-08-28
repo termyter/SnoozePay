@@ -38,6 +38,25 @@ enum SPSupport {
     }
     static let painGradientLocations: [NSNumber] = [0.0, 0.55, 1.0]
 
+    /// Trait-resolved variants of the money / pain ramps.
+    ///
+    /// The `.cgColor` properties above snapshot `UITraitCollection.current`,
+    /// which inside a `static let` initializer or a view method is not
+    /// necessarily the host view's trait collection — and a `CGColor` in
+    /// `CAGradientLayer.colors` never re-resolves on a theme flip. Views that
+    /// live through a light/dark switch must take the stops through these and
+    /// re-apply them from `registerForTraitChanges`, exactly as
+    /// `heroDeepGradientColors(for:)` documents.
+    static func moneyGradientColors(for trait: UITraitCollection) -> [CGColor] {
+        [AppColors.money400, AppColors.money500, AppColors.money700]
+            .map { $0.resolvedColor(with: trait).cgColor }
+    }
+
+    static func painGradientColors(for trait: UITraitCollection) -> [CGColor] {
+        [AppColors.pain300, AppColors.pain500, AppColors.pain600]
+            .map { $0.resolvedColor(with: trait).cgColor }
+    }
+
     /// `--sp-grad-warn: linear-gradient(135deg, #FFD479 0%, #F59E0B 60%, #C97A06 100%)`.
     static var warnGradientColors: [CGColor] {
         [
