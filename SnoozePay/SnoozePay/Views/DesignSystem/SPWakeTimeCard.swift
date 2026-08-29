@@ -1,17 +1,17 @@
 import UIKit
 
-/// "ВРЕМЯ ПОДЪЁМА" card of the statistics screen (#348, `SPMore4.jsx`
-/// `Stats()`, artboard `27-stats`): three columns — "В среднем" (the typical
-/// wake time of the last two weeks), "Раньше было" (the two weeks before it,
-/// struck through) and "Раньше на" (the delta in minutes, tinted by
+/// «ВРЕМЯ ПОДЪЁМА» card of the statistics screen (#348, `SPMore4.jsx`
+/// `Stats()`, artboard `27-stats`): three columns — «В среднем» (the typical
+/// wake time of the last two weeks), «Раньше было» (the two weeks before it,
+/// struck through) and «Раньше на» (the delta in minutes, tinted by
 /// direction).
 ///
 /// Three states, in order of how much history exists:
 ///   1. No wake instants at all → the host hides the card entirely.
-///   2. Fewer than `minimumSamples` mornings → "Копим историю: нужно ещё N
-///      утр". A median over one or two mornings is noise, not a habit.
+///   2. Fewer than `minimumSamples` mornings → «Копим историю: нужно ещё N
+///      утр». A median over one or two mornings is noise, not a habit.
 ///   3. Median available, baseline still short → the comparison columns drop
-///      out rather than inventing a "раньше было".
+///      out rather than inventing a «раньше было».
 final class SPWakeTimeCard: UIView {
 
     // MARK: - Subviews
@@ -36,7 +36,7 @@ final class SPWakeTimeCard: UIView {
     /// worth of wake history exists.
     private let pendingLabel: UILabel = {
         let label = SPSupport.makeMetaLabel(
-            "Сравнение появится, когда наберётся история", alignment: .right
+            Localized.text("statistics.wake_time.pending"), alignment: .right
         )
         label.numberOfLines = 0
         return label
@@ -112,9 +112,9 @@ final class SPWakeTimeCard: UIView {
         )
     }
 
-    /// Re-fonts the space before "мин" with the proportional sans — the same
+    /// Re-fonts the space before «мин» with the proportional sans — the same
     /// trick `MoneyFormatter.attributed` uses for `₽`. JetBrains Mono renders
-    /// U+0020 at a full ~0.6em advance, which made "14 мин" read as "14  мин".
+    /// U+0020 at a full ~0.6em advance, which made «14 мин» read as «14  мин».
     private static func deltaAttributed(_ text: String, color: UIColor) -> NSAttributedString {
         let mono = AppTypography.moneyMd
         let attributes: [NSAttributedString.Key: Any] = [.font: mono, .foregroundColor: color]
@@ -144,14 +144,14 @@ final class SPWakeTimeCard: UIView {
         card.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
 
-        let caps = SPSupport.makeCapsLabel("ВРЕМЯ ПОДЪЁМА")
+        let caps = SPSupport.makeCapsLabel(Localized.text("statistics.wake_time.caps"))
         let averageColumn = SPWakeTimeCard.makeColumn(
-            caption: SPSupport.makeMetaLabel("В среднем"),
+            caption: SPSupport.makeMetaLabel(Localized.text("statistics.wake_time.average")),
             valueLabel: averageValueLabel,
             alignment: .left
         )
         baselineColumn = SPWakeTimeCard.makeColumn(
-            caption: SPSupport.makeMetaLabel("Раньше было", alignment: .center),
+            caption: SPSupport.makeMetaLabel(Localized.text("statistics.wake_time.baseline"), alignment: .center),
             valueLabel: baselineValueLabel,
             alignment: .center
         )

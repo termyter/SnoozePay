@@ -3,7 +3,7 @@ import UIKit
 /// Hero balance card — `.sp-balance` in `components.css`.
 ///
 /// Visual: 28pt vertical / 20pt horizontal padding, `bg2` fill with a soft
-/// money-tinted radial highlight in the top-right corner. Caps "Баланс"
+/// money-tinted radial highlight in the top-right corner. Caps «Баланс»
 /// header sits on top of the big mono number; optional weekly delta
 /// (`↑/↓ amount за неделю`) and hint line stack underneath.
 ///
@@ -41,7 +41,7 @@ final class SPBalanceCard: UIView {
     ///     the up arrow + money tint; negative with the down arrow + pain
     ///     tint. `nil` hides the row.
     ///   - hint: Optional secondary line (`meta` 13pt). Used for context
-    ///     such as "обновлено 2 ч назад" or "ближайшее списание завтра".
+    ///     such as «обновлено 2 ч назад» or «ближайшее списание завтра».
     init(balance: Decimal, delta: Decimal? = nil, hint: String? = nil) {
         self.balance = balance
         self.delta = delta
@@ -171,7 +171,7 @@ final class SPBalanceCard: UIView {
 
         capsLabel.translatesAutoresizingMaskIntoConstraints = false
         capsLabel.attributedText = NSAttributedString(
-            string: "БАЛАНС",
+            string: Localized.text("common.caps.balance"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -281,7 +281,7 @@ final class SPBalanceCard: UIView {
     private func renderDelta(_ delta: Decimal) -> NSAttributedString {
         let arrow = delta < 0 ? "↓" : "↑"
         let abs = NSDecimalNumber(decimal: delta < 0 ? -delta : delta).decimalValue
-        let str = "\(arrow) \(abs.formattedRubles()) за неделю"
+        let str = Localized.format("wallet.balance.delta_week", arrow, abs.formattedRubles())
         let color = delta < 0 ? AppColors.pain400 : AppColors.money400
         return NSAttributedString(
             string: str,

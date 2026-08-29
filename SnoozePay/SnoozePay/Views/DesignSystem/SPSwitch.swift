@@ -14,7 +14,7 @@ import UIKit
 /// `.button`/switch trait, the on/off value and double-tap activation for free
 /// — there's nothing custom to re-implement. What it can't infer is *which*
 /// setting the toggle controls, so every call site is responsible for setting a
-/// context `accessibilityLabel` (e.g. the alarm card sets "Будильник"). We seed
+/// context `accessibilityLabel` (e.g. the alarm card sets «Будильник»). We seed
 /// a neutral fallback here so a switch that's never given one isn't announced
 /// as an anonymous control.
 final class SPSwitch: UISwitch {
@@ -33,7 +33,7 @@ final class SPSwitch: UISwitch {
 
     private func seedAccessibility() {
         // Neutral fallback label; call sites override with a contextual one.
-        accessibilityLabel = "Переключатель"
+        accessibilityLabel = Localized.text("common.switch.accessibility")
     }
 
     private func applyBrandTint() {

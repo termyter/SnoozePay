@@ -1,8 +1,8 @@
 import UIKit
 
-/// "ЭТА НЕДЕЛЯ" card of the statistics screen (#348, `SPMore4.jsx` `Stats()`,
+/// «ЭТА НЕДЕЛЯ» card of the statistics screen (#348, `SPMore4.jsx` `Stats()`,
 /// artboard `27-stats`): a seven-column saved/lost money chart with the
-/// "Сэкономили / Потратили / Чистый" totals below a hairline divider.
+/// «Сэкономили / Потратили / Чистый» totals below a hairline divider.
 ///
 /// Composition rather than inheritance — `SPCard` is `final`, so the card
 /// surface is an inner view pinned to this wrapper's edges. That also keeps
@@ -11,7 +11,7 @@ import UIKit
 /// Deliberate departures from the JSX reference, all reviewed and kept:
 /// the caps title and the legend stack on two lines instead of sharing one
 /// baseline row (the legend doesn't fit beside the title at iPhone widths);
-/// and "Чистый" takes a semantic colour instead of the mock's flat white,
+/// and «Чистый» takes a semantic colour instead of the mock's flat white,
 /// because the sign is the whole point of the figure.
 final class SPWeekMoneyCard: UIView {
 
@@ -29,7 +29,7 @@ final class SPWeekMoneyCard: UIView {
     /// print, with `savingsNoteLabel` explaining it.
     private let totalsRow = UIStackView()
     private let emptyLabel: UILabel = {
-        let label = SPSupport.makeMetaLabel("За эту неделю данных пока нет")
+        let label = SPSupport.makeMetaLabel(Localized.text("statistics.week.empty"))
         label.numberOfLines = 0
         return label
     }()
@@ -45,7 +45,7 @@ final class SPWeekMoneyCard: UIView {
     }()
 
     private let legendLabel = SPSupport.makeMetaLabel(
-        "зелёное — сэкономлено · красное — потеряно"
+        Localized.text("statistics.week.legend")
     )
 
     private let divider: UIView = {
@@ -114,7 +114,7 @@ final class SPWeekMoneyCard: UIView {
         barsView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
 
-        let caps = SPSupport.makeCapsLabel("ЭТА НЕДЕЛЯ")
+        let caps = SPSupport.makeCapsLabel(Localized.text("statistics.week.caps"))
         legendLabel.numberOfLines = 0
 
         buildTotalsRow()
@@ -154,9 +154,9 @@ final class SPWeekMoneyCard: UIView {
         totalsRow.spacing = AppSpacing.sp2
         totalsRow.translatesAutoresizingMaskIntoConstraints = false
         [
-            ("Сэкономили", savedValueLabel, NSTextAlignment.left),
-            ("Потратили", spentValueLabel, .center),
-            ("Чистый", netValueLabel, .right)
+            (Localized.text("statistics.week.saved"), savedValueLabel, NSTextAlignment.left),
+            (Localized.text("statistics.week.spent"), spentValueLabel, .center),
+            (Localized.text("statistics.week.net"), netValueLabel, .right)
         ].forEach { caption, valueLabel, alignment in
             totalsRow.addArrangedSubview(
                 SPWeekMoneyCard.makeTotalColumn(

@@ -52,7 +52,7 @@ final class SPDawnBackgroundView: UIView {
     static let calmBaseLocations: [NSNumber] = [0.0, 0.55, 1.0]
 
     /// Core colour of the calm sun radial. The picker preview reuses it as the
-    /// bottom glow so the Dawn thumbnail reads "тёплый янтарь" the way the
+    /// bottom glow so the Dawn thumbnail reads «тёплый янтарь» the way the
     /// firing screen does (#463).
     static let calmSunCoreColor = UIColor(dawnRGB: 0xFFB84D, alpha: 0.45)
 
