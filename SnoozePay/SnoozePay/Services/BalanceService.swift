@@ -36,6 +36,10 @@ final class BalanceService {
 
     private let defaults: UserDefaults
     private let balanceKey = "user_balance"
+    /// What this wallet's amounts are denominated in — established by the first
+    /// paid top-up, then fixed (#563). Deliberately free of `queue.sync`: it is
+    /// read from inside the serial queue while stamping ledger rows.
+    private let currencyStore: WalletCurrencyStore
     /// Source of truth for the balance (#483): every mutation is an append
     /// here, and `user_balance` is a cache of `openingBalance + Σ(ledger)`.
     private let ledgerStore: BalanceLedgerStore
@@ -80,6 +84,7 @@ final class BalanceService {
         notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
+        self.currencyStore = WalletCurrencyStore(defaults: defaults)
         self.ledgerStore = BalanceLedgerStoreFactory.makeStore(
             repository: transactionRepository,
             defaults: defaults
@@ -318,23 +323,117 @@ final class BalanceService {
     /// keep rendering while the user is prompted to acknowledge the loss
     /// (issue #119). Subsequent `charge`/`topUp` are gated until cleared via
     /// `acknowledgeCorruption()`.
+    ///
+    /// Denominated in `walletCurrency`, not in `Money.legacy`'s assumed rouble:
+    /// once a wallet has been established as, say, USD by its first paid top-up
+    /// (#563), reporting its balance as roubles would be a plain lie — and
+    /// would make `charge(_ amount: Money)` refuse every amount derived from it.
     var balanceMoney: Money {
-        Money.legacy(balance) ?? .zero(walletCurrency)
+        let currency = walletCurrency
+        return Money(balance, currency: currency) ?? .zero(currency)
     }
 
     /// The currency the stored `Double` balance is denominated in.
     ///
-    /// `"user_balance"` is a bare number with no currency beside it, and every
-    /// balance ever written was roubles — so today this is the legacy default.
-    /// #563 replaces the body with the currency persisted at the wallet's first
-    /// paid top-up; the seam exists so that change lands in one place instead of
-    /// four.
+    /// Established by the wallet's first paid top-up and fixed from then on
+    /// (#563). A wallet with no record — fresh install before any purchase, or
+    /// any install predating #563 — reads as `Currency.legacyDefault`, because
+    /// the store has only ever sold a rouble balance.
     ///
     /// ⚠️ Since #562 this is also read from **inside** `queue.sync` (every ledger
     /// row is stamped with it, and the derived balance sums only rows that match
-    /// it). Whatever #563 puts here must therefore stay free of `queue.sync` —
-    /// a `defaults` read is fine, calling back into `balance` would deadlock.
-    var walletCurrency: Currency { .legacyDefault }
+    /// it), so it must stay free of `queue.sync` — a `defaults` read is fine,
+    /// calling back into `balance` would deadlock.
+    var walletCurrency: Currency { currencyStore.currency }
+
+    /// Records this wallet's currency, once. See `WalletCurrencyFreeze` for why
+    /// the result is a value the caller has to look at rather than a silent
+    /// no-op.
+    ///
+    /// Callers are the *paid* credit paths only. In particular the DEBUG
+    /// fallback behind `topUp(amount:)` (used when the StoreKit catalogue is
+    /// empty on a simulator) must never reach here: a debug top-up would
+    /// otherwise permanently denominate the wallet.
+    func freezeCurrency(_ currency: Currency) -> WalletCurrencyFreeze {
+        currencyStore.freeze(currency)
+    }
+
+    /// Whether a paid top-up denominated in `currency` can be accepted.
+    ///
+    /// Called by the top-up screens *before* `Product.purchase(_:)` so a
+    /// foreign-storefront purchase is refused while it is still free to refuse
+    /// — after Apple has taken the money the only options left are crediting a
+    /// number that means something else (#558) or keeping money with nothing
+    /// credited.
+    ///
+    /// Three cases:
+    /// - **currency already established** — only that currency is accepted;
+    /// - **no record, wallet untouched** — anything is accepted; this purchase
+    ///   is what establishes the currency;
+    /// - **no record, wallet has history** — it is a legacy rouble wallet
+    ///   (`Currency.legacyDefault`) whose balance, ledger rows and configured
+    ///   penalties are all in roubles, so only roubles are accepted. Adopting a
+    ///   foreign currency here would also drop every existing row out of
+    ///   `BalanceLedger.net(of:in:)` and restate the balance.
+    func acceptsPurchase(in currency: Currency) -> Bool {
+        if let established = currencyStore.storedCurrency {
+            return currency == established
+        }
+        return currency == .legacyDefault || walletIsPristine
+    }
+
+    /// True only for a wallet that has never held or moved money: zero balance,
+    /// no ledger rows, no latched corruption. Such a wallet has nothing to
+    /// restate, so it may adopt any currency.
+    private var walletIsPristine: Bool {
+        queue.sync {
+            let current = readRawBalance()
+            guard !_balanceCorrupted, current == 0 else { return false }
+            guard let entries = try? ledgerStore.loadEntries() else { return false }
+            return entries.isEmpty
+        }
+    }
+
+    /// Outcome of crediting a real StoreKit purchase.
+    enum PurchaseCredit: Equatable {
+        /// Balance moved and a ledger row was written.
+        case credited
+        /// The purchase is denominated in a currency this wallet does not hold.
+        /// Nothing was credited — the caller must surface this rather than
+        /// crediting the bare number (that is #558).
+        case refusedCurrency(wallet: Currency, purchase: Currency)
+        /// Ledger locked / encoding failed / replayed row — same failure modes
+        /// as `topUp(amount:)` returning `false`.
+        case notRecorded
+    }
+
+    /// Credits a verified paid top-up, establishing the wallet currency if this
+    /// is the first one.
+    ///
+    /// `currency` is `StoreKit.Transaction.currency`, which is optional: when
+    /// StoreKit does not report one, the amount is credited into the wallet's
+    /// existing currency and **nothing is frozen**. Guessing there is exactly
+    /// how a wallet would quietly acquire a currency nobody chose.
+    func topUpFromPurchase(amount: Double, currency: Currency?) -> PurchaseCredit {
+        guard let currency else {
+            return topUp(amount: amount) ? .credited : .notRecorded
+        }
+        guard acceptsPurchase(in: currency) else {
+            return .refusedCurrency(wallet: walletCurrency, purchase: currency)
+        }
+        // Freeze BEFORE crediting: the ledger row is stamped with
+        // `walletCurrency`, so a row written first would carry the old currency
+        // and then be excluded from the sum by `BalanceLedger.net(of:in:)`.
+        switch freezeCurrency(currency) {
+        case .frozen, .unchanged:
+            break
+        case .refused(let existing, let attempted):
+            // Only reachable if the currency was established between the check
+            // above and here. Refuse rather than credit into the wrong wallet.
+            return .refusedCurrency(wallet: existing, purchase: attempted)
+        }
+        return topUp(amount: amount) ? .credited : .notRecorded
+    }
 
     /// Money-typed charge. Returns `false` when funds are insufficient,
     /// matching the legacy `charge(amount:alarmID:)` contract — or when the

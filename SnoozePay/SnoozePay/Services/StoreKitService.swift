@@ -77,6 +77,15 @@ final class StoreKitService {
     static let degradedDedupFailureMessage =
         "Не удалось обработать покупку. Перезапустите приложение или свяжитесь с поддержкой."
 
+    /// User-facing copy when a verified purchase arrives in a currency the
+    /// wallet does not hold (#563). The top-up screens refuse such a purchase
+    /// before it starts (`ForeignCurrencyNotice`), so reaching this means the
+    /// transaction came from outside that gate — an Ask-to-Buy approval or a
+    /// restore that resolved after the storefront changed.
+    static let foreignCurrencyFailureMessage =
+        "Покупка оплачена в другой валюте, чем баланс кошелька, и зачислить её не получилось. "
+        + "Свяжитесь с поддержкой."
+
     private(set) var products: [Product] = []
 
     /// Background listener for `Transaction.updates`. Required by StoreKit 2 to
@@ -277,16 +286,7 @@ final class StoreKitService {
                 case .recorded:
                     break
                 }
-                guard BalanceService.shared.topUp(amount: amount) else {
-                    // Ledger locked / record() failed — money already collected by
-                    // Apple. Roll back the dedup mark and DO NOT finish() so StoreKit
-                    // replays the transaction on next launch (giving us another shot
-                    // at crediting). Surface to the user immediately.
-                    unmarkProcessed(transactionID: transaction.id)
-                    AppLogger.storeKit.error(
-                        "topUp failed tx=\(transaction.id, privacy: .private) pid=\(transaction.productID, privacy: .public)"
-                    )
-                    postPurchaseFailed(Self.ledgerLockedFailureMessage)
+                guard creditVerifiedPurchase(amount: amount, transaction: transaction) else {
                     return
                 }
                 await transaction.finish()
@@ -361,16 +361,7 @@ final class StoreKitService {
             case .recorded:
                 break
             }
-            guard BalanceService.shared.topUp(amount: amount) else {
-                // Ledger locked / record() failed — money already collected by Apple.
-                // Roll back the dedup mark and DO NOT finish() so StoreKit replays
-                // the transaction on next launch. Surface to the user immediately.
-                unmarkProcessed(transactionID: transaction.id)
-                let pid = transaction.productID
-                AppLogger.storeKit.error(
-                    "topUp failed tx=\(transaction.id, privacy: .private) pid=\(pid, privacy: .public) — not finishing"
-                )
-                postPurchaseFailed(Self.ledgerLockedFailureMessage)
+            guard creditVerifiedPurchase(amount: amount, transaction: transaction) else {
                 return
             }
             await transaction.finish()
@@ -385,6 +376,58 @@ final class StoreKitService {
                 "unverified tx=\(transaction.id, privacy: .private) productID=\(transaction.productID, privacy: .public) error=\(errDesc, privacy: .public)"
             )
             postPurchaseFailed("Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.")
+        }
+    }
+
+    // MARK: - Crediting a verified purchase
+
+    /// Credits a verified paid transaction and, if this is the wallet's first
+    /// one, establishes the wallet currency from `Transaction.currency` (#563).
+    ///
+    /// Returns `false` when nothing was credited. In that case the dedup mark
+    /// has been rolled back and the failure surfaced, and the caller must NOT
+    /// `finish()` — money has already been collected by Apple, so the
+    /// transaction is left in the queue rather than discarded. Both credit
+    /// paths (foreground purchase and the `Transaction.updates` listener) go
+    /// through here so they cannot drift apart.
+    private func creditVerifiedPurchase(
+        amount: Double,
+        transaction: StoreKit.Transaction
+    ) -> Bool {
+        let currency = transaction.currency.flatMap { Currency($0) }
+        switch BalanceService.shared.topUpFromPurchase(amount: amount, currency: currency) {
+        case .credited:
+            return true
+
+        case .refusedCurrency(let wallet, let purchase):
+            // The top-up screens refuse a foreign-currency purchase before it
+            // starts, so this is the residue: a deferred approval or restore
+            // that resolved after the storefront changed. Crediting the bare
+            // number would book `purchase` money as `wallet` money (#558).
+            unmarkProcessed(transactionID: transaction.id)
+            AppLogger.storeKit.fault(
+                """
+                tx=\(transaction.id, privacy: .private) paid in \(purchase.code, privacy: .public) \
+                but wallet holds \(wallet.code, privacy: .public) — not crediting, not finishing
+                """
+            )
+            postPurchaseFailed(Self.foreignCurrencyFailureMessage)
+            return false
+
+        case .notRecorded:
+            // Ledger locked / record() failed — money already collected by
+            // Apple. Roll back the dedup mark and don't finish, so StoreKit
+            // replays the transaction on next launch (another shot at
+            // crediting). Surface to the user immediately.
+            unmarkProcessed(transactionID: transaction.id)
+            AppLogger.storeKit.error(
+                """
+                topUp failed tx=\(transaction.id, privacy: .private) \
+                pid=\(transaction.productID, privacy: .public) — not finishing
+                """
+            )
+            postPurchaseFailed(Self.ledgerLockedFailureMessage)
+            return false
         }
     }
 
