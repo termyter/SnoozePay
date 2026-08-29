@@ -90,6 +90,32 @@ enum AppColors {
     static let bg1 = dynamicColor(dark: 0x0E1320, light: 0xFFFFFF)
     /// Raised card. Dark `#161C2E`, Light `#ECEEF6`.
     static let bg2 = dynamicColor(dark: 0x161C2E, light: 0xECEEF6)
+    /// Fill of a **raised** surface — the semantic token `SPCard(tone:
+    /// .raised)` and the enabled alarm row ask for, as opposed to the raw
+    /// `bg2` ramp step they used to hardcode.
+    ///
+    /// The `bg` ramp does not mean the same thing in both themes. In dark it
+    /// is a height ladder: every step is lighter than the page, so `bg2`
+    /// (`#161C2E`) reads as *above* `bg1` (`#0E1320`) on `bg0` (`#060912`).
+    /// In light the page is already near-white — `bg1` (`#FFFFFF`) *is* the
+    /// card, and `bg2` (`#ECEEF6`) sits **below** `bg0` (`#F4F6FB`): it is a
+    /// recessed tone, not a raised one. Mapping `.raised` onto `bg2`
+    /// unconditionally therefore inverts elevation in exactly one theme of
+    /// two, and wherever a pair of tones encodes state — enabled vs disabled
+    /// alarm rows — the meaning flips with it: the switched-OFF alarm was the
+    /// brightest card on the light list (#543).
+    ///
+    /// So light keeps the white card and lets `--sp-shadow-2` carry the
+    /// height (shadow is what elevation is made of on a white page); dark
+    /// keeps the ramp step it always had, and does not move.
+    ///
+    /// Ordering is pinned by `SPCardElevationOrderTests`, which measures the
+    /// *pair* rather than either fill on its own.
+    static let bgRaised = UIColor { trait in
+        trait.userInterfaceStyle == .light
+            ? AppColors.bg1.resolvedColor(with: trait)
+            : AppColors.bg2.resolvedColor(with: trait)
+    }
     /// Active chip / sheet header. Dark `#1F2740`, Light `#DFE3F0`.
     static let bg3 = dynamicColor(dark: 0x1F2740, light: 0xDFE3F0)
     /// Hover / focus surface. Dark `#2A3354`, Light `#C9D0E3`.
