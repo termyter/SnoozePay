@@ -134,24 +134,15 @@ function SettingsV2() {
         </div>
 
         <div style={{ padding: "20px 20px 0", flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Profile */}
-          <SPCard padding={20} radius={20}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 56, height: 56, borderRadius: 28, background: "var(--sp-grad-warn)",
-                display: "flex", alignItems: "center", justifyContent: "center", font: "var(--sp-t-h2)", color: "var(--sp-fg-on-warn)" }}>А</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ font: "var(--sp-t-h3)", color: "#FFF" }}>Алексей Иванов</div>
-                <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 2 }}>+7 ••• ••• 24 18</div>
-              </div>
-              <SPButton variant="quiet" size="sm">Изменить</SPButton>
-            </div>
-          </SPCard>
+          {/* Профиль-карточки нет: аккаунта в MVP нет (#237). Экран открывается
+              сразу секцией «Финансы». */}
 
           {/* Section: финансы */}
           <div>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)", padding: "0 4px 8px" }}>Финансы</div>
             <SPCard padding={4} radius={16}>
-              <SPRow leading={<IconWallet size={20} style={{color:"var(--sp-money-400)"}}/>} title="Способы оплаты" trailing={<><span className="sp-meta">Apple Pay</span><IconChevR size={16}/></>}/>
+              {/* «Способы оплаты» убраны: оплата идёт через StoreKit, отдельного
+                  экрана карт в MVP нет (#237, подтверждено #521). */}
               <SPRow leading={<IconCoin size={20} style={{color:"var(--sp-warn-400)"}}/>} title="Цена откладывания по умолчанию" trailing={<><span style={{font:"var(--sp-t-money-md)", color: "var(--sp-warn-400)"}}>50 ₽</span><IconChevR size={16}/></>}/>
               <SPRow divider={false} leading={<IconClock size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Длительность откладывания" trailing={<><span className="sp-meta">9 мин</span><IconChevR size={16}/></>}/>
             </SPCard>
@@ -205,13 +196,24 @@ function SettingsV2() {
             </SPCard>
           </div>
 
-          {/* Section: остальное */}
+          {/* Section: остальное. Строки «Выйти из аккаунта» нет — аккаунта в MVP
+              нет (#237). Тема приложения живёт здесь же сегментом (#283). */}
           <div>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)", padding: "0 4px 8px" }}>Прочее</div>
             <SPCard padding={4} radius={16}>
-              <SPRow leading={<IconBell size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Поддержка"/>
-              <SPRow leading={<IconLock size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Конфиденциальность"/>
-              <SPRow divider={false} title={<span style={{color:"var(--sp-pain-400)"}}>Выйти из аккаунта</span>}/>
+              <SPRow leading={<IconLock size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Политика конфиденциальности" trailing={<IconChevR size={16}/>}/>
+              <SPRow leading={<IconLock size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Пользовательское соглашение" trailing={<IconChevR size={16}/>}/>
+              <SPRow leading={<IconBell size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Связаться с нами" subtitle="support@snoozepay.app" trailing={<IconChevR size={16}/>}/>
+              <div style={{ padding: "4px 20px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0" }}>
+                  <IconMoon size={20} style={{color:"var(--sp-fg-3)"}}/>
+                  <span style={{ font: "var(--sp-t-h4)", color: "var(--sp-fg-1)" }}>Тема</span>
+                </div>
+                <SPSegmented
+                  options={[{value:"system",label:"Системная"},{value:"light",label:"Светлая"},{value:"dark",label:"Тёмная"}]}
+                  value="system" onChange={()=>{}}
+                />
+              </div>
             </SPCard>
           </div>
 

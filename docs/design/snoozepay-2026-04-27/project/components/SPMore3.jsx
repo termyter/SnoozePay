@@ -105,60 +105,52 @@ function TxHistory() {
 }
 
 /* 24. DEPOSIT (пополнить) */
+/* Пополнение — BOTTOM SHEET поверх затемнённого живого кошелька (#233), а не
+   отдельный полноэкранный шаг. Выбора способа оплаты в шите нет: платит
+   StoreKit, экран «Способы оплаты» из MVP убран (#237/#521).
+   Суммы — живые SKU 49/149/299/499/999 («Популярно» на 149), а не
+   дизайнерская линейка 500/1000/2000/5000: продукты в App Store Connect
+   заведены под первую (#233, п. 8). */
 function Deposit() {
-  const [amount, setAmount] = oS3(1000);
-  const presets = [500, 1000, 2000, 5000];
+  const [amount, setAmount] = oS3(149);
+  const presets = [
+    { v: 49,  l: "≈ 1 откладывание" },
+    { v: 149, l: "≈ 3 откладывания", popular: true },
+    { v: 299, l: "≈ 6 откладываний" },
+    { v: 499, l: "≈ 10 откладываний" },
+    { v: 999, l: "≈ 20 откладываний" },
+  ];
   return (
-    <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      <SPStatusBar time="9:42" tone="light"/>
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "8px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
-          <SPButton variant="quiet" size="sm">Закрыть</SPButton>
-          <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Пополнить баланс</div>
-          <div style={{ width: 60 }}/>
-        </div>
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+      <WalletV2/>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(6,9,18,.55)", backdropFilter: "blur(2px)" }}/>
 
-        <div style={{ padding: "20px 20px 0", textAlign: "center" }}>
-          <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Сумма</div>
-          <div style={{ display: "inline-flex", alignItems: "baseline", marginTop: 8 }}>
-            <span style={{ font: "var(--sp-t-money-xl)", color: "#FFF", fontVariantNumeric: "tabular-nums" }}>{amount.toLocaleString("ru-RU")}</span>
-            <span style={{ font: "var(--sp-t-money-xl)", color: "var(--sp-fg-3)", marginLeft: 6 }}>₽</span>
-          </div>
-          <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 6 }}>≈ {Math.floor(amount/50)} откладываний · {Math.floor(amount/200)} плохих утра</div>
-        </div>
+      <div style={{
+        position: "absolute", left: 0, right: 0, bottom: 0,
+        background: "var(--sp-bg-1)", borderTopLeftRadius: 28, borderTopRightRadius: 28,
+        padding: "16px 20px 28px", boxShadow: "0 -24px 64px rgba(0,0,0,.5)",
+      }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--sp-white-12)", margin: "0 auto 16px" }}/>
 
-        {/* Presets */}
-        <div style={{ padding: "20px 20px 0", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+        <div style={{ font: "var(--sp-t-h2)", color: "#FFF", letterSpacing: "-.01em" }}>Пополнить баланс</div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 16 }}>
           {presets.map(p => (
-            <button key={p} onClick={()=>setAmount(p)} style={{
-              padding: "12px 0", borderRadius: 12, border: 0, cursor: "pointer",
-              font: "var(--sp-t-button-md)",
-              background: amount===p ? "var(--sp-grad-money)" : "var(--sp-white-06)",
-              color: amount===p ? "var(--sp-fg-on-money)" : "var(--sp-fg-1)",
-              fontVariantNumeric: "tabular-nums",
-            }}>{p}</button>
+            <SPAmountPreset key={p.v} value={p.v} label={p.l} popular={p.popular}
+              selected={amount === p.v} onClick={()=>setAmount(p.v)} />
           ))}
         </div>
 
-        <div style={{ padding: "20px 20px 0", flex: 1 }}>
-          <div className="sp-caps" style={{ color: "var(--sp-fg-3)", marginBottom: 10 }}>Способ оплаты</div>
-          <SPCard padding={4} radius={16}>
-            <SPRow
-              leading={<ApplePayMark/>}
-              title="Apple Pay"
-              subtitle="Привязанная карта · •••• 4827"
-              trailing={<><span className="sp-caps" style={{ color: "var(--sp-money-400)" }}>По умолчанию</span><IconChevR size={16}/></>}
-            />
-          </SPCard>
-        </div>
-
-        <div style={{ padding: "0 20px 32px" }}>
-          <SPButton variant="money" size="lg" full>
-            Пополнить на {amount.toLocaleString("ru-RU")} ₽
+        <div style={{ marginTop: 20 }}>
+          <SPButton variant="money" size="lg" full icon={<IconWallet size={18}/>} suffix={fmtRub(amount)}>
+            Пополнить
           </SPButton>
-          <div className="sp-meta" style={{ color: "var(--sp-fg-3)", textAlign: "center", marginTop: 10 }}>
-            Деньги попадают в баланс. Вернуть можно в любой момент.
-          </div>
+        </div>
+        <div className="sp-meta" style={{ color: "var(--sp-fg-3)", textAlign: "center", marginTop: 10 }}>
+          Деньги попадают в баланс. Списываются только при откладывании.
+        </div>
+        <div className="sp-meta" style={{ color: "var(--sp-fg-2)", textAlign: "center", marginTop: 12, cursor: "pointer" }}>
+          Восстановить покупки
         </div>
       </div>
     </div>

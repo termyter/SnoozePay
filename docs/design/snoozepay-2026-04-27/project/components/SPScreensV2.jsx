@@ -413,41 +413,36 @@ function AlarmsListV2() {
 /* ============================================================
    WALLET v2
    ============================================================ */
+/* Кошелёк — ИНФОРМАЦИОННЫЙ таб (#233): баланс, недельный чарт, превью истории.
+   Грида пресетов и нижнего CTA здесь нет — выбор суммы переехал в Deposit
+   bottom sheet (артборд 19), который открывает money-пилюля «Пополнить»
+   в шапке. Строки «Способы оплаты» нет: экран не входит в MVP (#237/#521). */
 function WalletV2() {
-  const [sel, setSel] = uS(500);
+  const tx = [
+    { title: "Поспать ещё",        when: "Сегодня · 07:09", amount: "−50 ₽",  debit: true,  icon: <IconFlame size={18}/> },
+    { title: "Пополнение баланса", when: "Вчера · 21:32",   amount: "+500 ₽", debit: false, icon: <IconPlus size={18}/> },
+    { title: "Бонус за друга",     when: "12 апр. · 09:00", amount: "+200 ₽", debit: false, icon: <IconCoin size={18}/> },
+  ];
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column" }}>
       <SPStatusBar time="9:42" tone="light" />
-      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "8px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center", height: 44 }}>
-          <button style={{ width: 36, height: 36, borderRadius: 18, border: 0, background: "var(--sp-white-06)", color: "var(--sp-fg-1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <IconBack size={18}/>
-          </button>
-          <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Кошелёк</div>
-          <button style={{ width: 36, height: 36, borderRadius: 18, border: 0, background: "var(--sp-white-06)", color: "var(--sp-fg-1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <IconChart size={18}/>
-          </button>
+      <div style={{ paddingTop: 54, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+        {/* Page-title header: h1 + money-пилюля «Пополнить» + hairline —
+            та же раскладка, что у AlarmsListV2, чтобы табы читались одинаково. */}
+        <div style={{
+          padding: "8px 20px 16px", background: "var(--sp-bg-0)",
+          borderBottom: "1px solid var(--sp-white-06)", flexShrink: 0,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <div style={{ font: "var(--sp-t-h1)", color: "var(--sp-fg-1)", letterSpacing: "-.02em" }}>Кошелёк</div>
+          <SPButton variant="money" size="sm" icon={<IconPlus size={16}/>}>Пополнить</SPButton>
         </div>
 
-        <div style={{ padding: "16px 20px 0" }}>
+        <div style={{ padding: "16px 20px 20px", flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 24 }}>
           <SPBalanceCard balance={840} delta={-160} hint="Хватит на ~17 откладываний при текущей цене" />
-        </div>
 
-        <div style={{ padding: "24px 20px 0", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-            <div className="sp-caps">Положить под расписку</div>
-            <div className="sp-meta" style={{ color: "var(--sp-fg-3)" }}>Apple Pay</div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <SPAmountPreset value={100}  label="≈ 2 откладывания"   selected={sel===100}  onClick={()=>setSel(100)} />
-            <SPAmountPreset value={500}  label="≈ 10 откладываний" popular selected={sel===500}  onClick={()=>setSel(500)} />
-            <SPAmountPreset value={1000} label="≈ 20 откладываний" selected={sel===1000} onClick={()=>setSel(1000)} />
-            <SPAmountPreset value={2000} label="≈ 40 откладываний" selected={sel===2000} onClick={()=>setSel(2000)} />
-            <SPAmountPreset value={5000} label="на месяц"    selected={sel===5000} onClick={()=>setSel(5000)} />
-            <SPAmountPreset value={10000} label="макс."      selected={sel===10000} onClick={()=>setSel(10000)} />
-          </div>
-
-          <div style={{ marginTop: 24 }}>
+          <div>
             <div className="sp-caps" style={{ marginBottom: 10 }}>Последние 7 дней</div>
             <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 60 }}>
               {[40, 0, 80, 50, 0, 0, 30].map((v, i) => (
@@ -466,13 +461,39 @@ function WalletV2() {
             </div>
           </div>
 
-          <div style={{ marginTop: "auto", paddingBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-            <SPButton variant="money" size="lg" full icon={<IconShield size={18}/>} suffix={fmtRub(sel)}>
-              Положить
-            </SPButton>
-            <div className="sp-meta" style={{ textAlign: "center", color: "var(--sp-fg-4)" }}>
-              Покупка не возвращается · штрафы списываются с баланса
+          {/* Превью истории: 3 последние операции + ссылка в полный TxHistory. */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <div className="sp-caps">История операций</div>
+              <span style={{ font: "var(--sp-t-button-sm)", color: "var(--sp-money-400)", cursor: "pointer" }}>Все операции →</span>
             </div>
+            <SPCard padding={4} radius={16}>
+              {tx.map((t, i) => (
+                <SPRow
+                  key={t.title}
+                  divider={i < tx.length - 1}
+                  leading={
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10,
+                      background: t.debit ? "rgba(244,82,63,.14)" : "rgba(46,219,159,.14)",
+                      color: t.debit ? "var(--sp-pain-400)" : "var(--sp-money-400)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>{t.icon}</div>
+                  }
+                  title={t.title}
+                  subtitle={t.when}
+                  trailing={
+                    <span style={{ font: "var(--sp-t-money-md)", color: t.debit ? "var(--sp-pain-400)" : "var(--sp-money-400)", fontVariantNumeric: "tabular-nums" }}>
+                      {t.amount}
+                    </span>
+                  }
+                />
+              ))}
+            </SPCard>
+          </div>
+
+          <div className="sp-meta" style={{ textAlign: "center", color: "var(--sp-fg-4)" }}>
+            Покупка не возвращается · списывается только при откладывании
           </div>
         </div>
       </div>
@@ -506,7 +527,7 @@ function CreateAlarmV2() {
           <input
             value={name}
             onChange={(e)=>setName(e.target.value)}
-            placeholder="Название · напр. Будни, Спорт"
+            placeholder="Название · напр. Будни"
             style={{
               width: "100%", border: 0, outline: "none", background: "transparent",
               color: "var(--sp-fg-1)", caretColor: "var(--sp-warn-400)",
@@ -538,6 +559,19 @@ function CreateAlarmV2() {
                 }}>{d}</button>
               );
             })}
+          </div>
+
+          {/* ПОВТОР — сегмент «Никогда / Еженедельно» + подсказка под чипами
+              дней (#229). Живёт в обоих режимах формы, Create и Edit. */}
+          <div style={{ marginTop: 16, textAlign: "left" }}>
+            <div className="sp-caps" style={{ color: "var(--sp-fg-3)", marginBottom: 8 }}>Повтор</div>
+            <SPSegmented
+              options={[{value:"never",label:"Никогда"},{value:"weekly",label:"Еженедельно"}]}
+              value="weekly" onChange={()=>{}}
+            />
+            <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 8, textAlign: "center" }}>
+              Будет повторяться каждую неделю по выбранным дням.
+            </div>
           </div>
         </div>
 
@@ -597,7 +631,12 @@ function CreateAlarmV2() {
                 <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Цена откладывания</div>
                 <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 2 }}>Сколько спишется при «отложить»</div>
               </div>
-              <div style={{ font: "var(--sp-t-money-md)", color: "var(--sp-warn-400)" }}>{fmtRub(price)}</div>
+            </div>
+            {/* Сумма — свободный ввод (numberPad), пресеты только ускоряют.
+                Минимум 1 ₽, максимума нет (#231). */}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 12 }}>
+              <span style={{ font: "700 32px/36px var(--sp-font-mono)", color: "var(--sp-warn-400)", fontVariantNumeric: "tabular-nums" }}>{price}</span>
+              <span style={{ font: "700 32px/36px var(--sp-font-mono)", color: "var(--sp-warn-400)" }}>₽</span>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               {[20, 50, 100, 200, 500].map(v => (

@@ -286,6 +286,7 @@ const IconTrash   = (p) => <Ico {...p}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-
 const IconClock   = (p) => <Ico {...p}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></Ico>;
 const IconUser    = (p) => <Ico {...p}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></Ico>;
 const IconLock    = (p) => <Ico {...p}><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></Ico>;
+const IconMoon    = (p) => <Ico {...p}><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></Ico>;
 
 /* expose for other babel scripts */
 Object.assign(window, {
@@ -294,5 +295,5 @@ Object.assign(window, {
   SPBalanceCard, SPSegmented, SPSwitch, SPStatusBar, SPNavBar, SPTabBar, SPInput,
   IconAlarm, IconWallet, IconStats, IconPlus, IconBack, IconClose, IconCheck,
   IconChevR, IconBell, IconFlame, IconCoin, IconArrowDn, IconArrowUp, IconShield,
-  IconSound, IconChart, IconTrash, IconClock, IconUser, IconLock,
+  IconSound, IconChart, IconTrash, IconClock, IconUser, IconLock, IconMoon,
 });
