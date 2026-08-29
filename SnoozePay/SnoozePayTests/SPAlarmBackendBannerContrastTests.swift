@@ -164,6 +164,76 @@ final class SPAlarmBackendBannerContrastTests: XCTestCase {
         let sparse: CGFloat
     }
 
+    // MARK: - The icon tile (#580)
+
+    /// The tile was the one deliberate theme asymmetry in this file: a solid
+    /// `warnFill500` in light, `warn400@18%` in dark. The dark half carried the
+    /// composite defect #580 measured on the price chip — it landed on
+    /// `#4F3D23`, 1.52:1 from the banner's own wash, so the tile behind the
+    /// glyph was just a slightly warmer rectangle. Dark now takes the same
+    /// solid chip, which makes this ONE number instead of two.
+    func testIconTile_isTheSameSolidChipInBothThemes() {
+        let dark = components(resolved(SPAlarmBackendBanner.iconTileColor, in: .dark))
+        let light = components(resolved(SPAlarmBackendBanner.iconTileColor, in: .light))
+        XCTAssertEqual(dark.alpha, 1, accuracy: 0.001, "the dark tile is translucent again")
+        XCTAssertEqual(dark.red, light.red, accuracy: 0.001, "tile red drifted apart per theme")
+        XCTAssertEqual(dark.green, light.green, accuracy: 0.001, "tile green drifted apart per theme")
+        XCTAssertEqual(dark.blue, light.blue, accuracy: 0.001, "tile blue drifted apart per theme")
+    }
+
+    /// Tile against the dense stop of the wash it sits on.
+    ///
+    /// Dark is what moved (1.52:1 → 7.34:1) and is floored. Light is pinned but
+    /// NOT floored: 1.65:1 is amber's ceiling against a near-white page, it did
+    /// not move with #580, and what marks the tile out there is the near-black
+    /// glyph on it — which is the whole reason `fgOnWarn` exists.
+    func testIconTile_standsOutFromTheWashItSitsOn() {
+        let expected = [
+            TileMeasurement(style: .dark, ratio: 7.34, floored: true),
+            TileMeasurement(style: .light, ratio: 1.65, floored: false)
+        ]
+        for entry in expected {
+            let wash = bannerFill(in: entry.style, alpha: SPAlarmBackendBanner.fillAlphas[0])
+            let tile = resolved(SPAlarmBackendBanner.iconTileColor, in: entry.style)
+            let measured = contrastRatio(composite(tile, over: wash), wash)
+            XCTAssertEqual(
+                measured, entry.ratio, accuracy: tolerance,
+                "\(entry.style.debugName) tile moved off its recorded measurement"
+            )
+            if entry.floored {
+                XCTAssertGreaterThanOrEqual(
+                    measured, nonTextFloor,
+                    "\(entry.style.debugName) tile measured \(measured):1 against the wash"
+                )
+            }
+        }
+    }
+
+    /// Tile against the wash, per theme. `floored` marks the side that is
+    /// asked to clear 1.4.11 — see the doc comment above for why light is not.
+    private struct TileMeasurement {
+        let style: UIUserInterfaceStyle
+        let ratio: CGFloat
+        let floored: Bool
+    }
+
+    /// The regression guard for the tile, in the shape the rest of this suite
+    /// uses: the recipe dark used before #580 must stay measurably unusable, so
+    /// "restore the wash, it was subtler" cannot pass unnoticed.
+    func testPreviousDarkTileWash_didNotSeparateFromTheBanner() {
+        let wash = bannerFill(in: .dark, alpha: SPAlarmBackendBanner.fillAlphas[0])
+        let previous = composite(
+            AppColors.warn400
+                .resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+                .withAlphaComponent(0.18),
+            over: wash
+        )
+        XCTAssertLessThan(
+            contrastRatio(previous, wash), nonTextFloor,
+            "warn400@18% now clears 1.4.11 on the dark wash — re-derive the #580 decision"
+        )
+    }
+
     // MARK: - Assertions
 
     private func assertEmphasisReadable(
@@ -243,6 +313,10 @@ final class SPAlarmBackendBannerContrastTests: XCTestCase {
         let green: CGFloat
         let blue: CGFloat
         let alpha: CGFloat
+    }
+
+    private func resolved(_ color: UIColor, in style: UIUserInterfaceStyle) -> UIColor {
+        color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
     }
 
     private func components(_ color: UIColor) -> Channels {
