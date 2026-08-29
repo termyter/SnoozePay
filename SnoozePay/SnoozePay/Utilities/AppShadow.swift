@@ -9,7 +9,8 @@ import UIKit
 /// installed on the host layer via `apply(to:)` and the narrower ambient stop
 /// is rendered through a dedicated sibling sublayer inserted at index 0 by
 /// ``installAmbientShadow1Layer(on:cornerRadius:trait:)``. The sublayer is a
-/// `CAShapeLayer` clipped to a clear path so only its shadow is visible.
+/// clear-filled `CAShapeLayer` masked to the region outside the card, so it
+/// contributes the halo without washing the card's own surface.
 ///
 /// Apply via `apply(to: layer)` from `traitCollectionDidChange` so the shadow
 /// re-resolves on theme switch, and call
@@ -25,6 +26,12 @@ struct AppShadow {
     /// Sublayer name used to identify the ambient (narrow) shadow stop layer.
     /// Stored as a constant so callers can never spell it differently.
     static let ambientShadow1LayerName = "AppShadow.ambientShadow1"
+
+    /// How far the ambient layer is outset past its host so the halo has room
+    /// to render. The `0 1px 3px` stop can travel at most `offset + radius`
+    /// = 4pt from the card edge; 8pt leaves slack without inflating the layer
+    /// enough to matter.
+    static let ambientShadow1Spread: CGFloat = 8
 
     /// Default card shadow — the wider/key stop only. Dark
     /// `0 2px 8px rgba(0,0,0,.35)`. Light is the dominant stop of
@@ -85,10 +92,12 @@ struct AppShadow {
     /// wider stop is rendered by `shadow1(for:).apply(to: layer)` directly on
     /// the host layer; this method maintains a sibling `CAShapeLayer` named
     /// ``ambientShadow1LayerName`` inserted at sublayer index 0 to render the
-    /// narrower `0 1px 3px` ambient stop. The ambient layer fills with
-    /// `clear` and uses its own shadow chain so the visible card surface
-    /// (drawn by the host's `backgroundColor` / `borderColor` on the host
-    /// layer itself) is unaffected.
+    /// narrower `0 1px 3px` ambient stop.
+    ///
+    /// The ambient layer is outset past the host by ``ambientShadow1Spread``
+    /// and masked to the region *outside* the card, so only the halo composites
+    /// onto the page. Without that mask the stop also washes the card's own
+    /// interior — see ``installHaloMask(on:cardRect:cornerRadius:)`` (#515).
     ///
     /// Dark mode collapses back to a single stop, so this method removes the
     /// ambient layer if `trait.userInterfaceStyle == .dark`.
@@ -118,15 +127,20 @@ struct AppShadow {
             let layer = CAShapeLayer()
             layer.name = ambientShadow1LayerName
             // Insert at index 0 so it sits behind any gradient/content
-            // sublayers a card might own. The ambient layer renders only
-            // its shadow (fill is clear), so z-order doesn't bleed visible
-            // pixels onto the card surface.
+            // sublayers a card might own.
             hostLayer.insertSublayer(layer, at: 0)
             ambient = layer
         }
 
-        ambient.frame = hostLayer.bounds
-        let path = UIBezierPath(roundedRect: hostLayer.bounds, cornerRadius: cornerRadius).cgPath
+        // Outset so the halo isn't cut off at the host's edge, and keep the
+        // card's own footprint in the layer's coordinate space for the path,
+        // the shadow and the mask.
+        ambient.frame = hostLayer.bounds.insetBy(dx: -ambientShadow1Spread, dy: -ambientShadow1Spread)
+        let cardRect = CGRect(
+            origin: CGPoint(x: ambientShadow1Spread, y: ambientShadow1Spread),
+            size: hostLayer.bounds.size
+        )
+        let path = UIBezierPath(roundedRect: cardRect, cornerRadius: cornerRadius).cgPath
         ambient.path = path
         ambient.fillColor = UIColor.clear.cgColor
         // Narrow ambient stop: `0 1px 3px rgba(8,14,30,.06)`.
@@ -140,5 +154,38 @@ struct AppShadow {
         // same offscreen-pass reasons as the wider stop.
         ambient.shadowPath = path
         ambient.masksToBounds = false
+        installHaloMask(on: ambient, cardRect: cardRect, cornerRadius: cornerRadius)
+    }
+
+    /// Clip the ambient layer to the region *outside* the card it decorates.
+    ///
+    /// Core Animation draws a layer's shadow beneath that layer's own content
+    /// but on top of everything already composited behind it — including the
+    /// parent's `backgroundColor`. The ambient layer's content is a `clear`
+    /// fill, so the blurred silhouette is not just a halo: its solid interior
+    /// lands on the card surface at full strength. On a light `bg1` card that
+    /// is `#FFFFFF` under 6% of `rgb(8,14,30)`, i.e. **`#F0F1F2`** — and since
+    /// only section caps carry the ambient stop, the middle rows stayed
+    /// `#FFFFFF` and the card read as striped (#515). Dark never showed it
+    /// because dark drops the ambient layer altogether.
+    ///
+    /// Masking to `layerBounds − cardRect` (even-odd) keeps the outward halo
+    /// and removes the interior wash. A mask clips a layer's shadow along with
+    /// its content, which is exactly the lever needed here.
+    private static func installHaloMask(
+        on ambient: CAShapeLayer,
+        cardRect: CGRect,
+        cornerRadius: CGFloat
+    ) {
+        let mask = (ambient.mask as? CAShapeLayer) ?? CAShapeLayer()
+        mask.frame = ambient.bounds
+        mask.fillRule = .evenOdd
+        let halo = UIBezierPath(rect: ambient.bounds)
+        halo.append(UIBezierPath(roundedRect: cardRect, cornerRadius: cornerRadius))
+        halo.usesEvenOddFillRule = true
+        mask.path = halo.cgPath
+        if ambient.mask !== mask {
+            ambient.mask = mask
+        }
     }
 }

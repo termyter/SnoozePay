@@ -86,7 +86,10 @@ final class SettingsIconRowCell: UITableViewCell {
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = .secondarySystemBackground
+        // The brand card surface, not the system grey — see ThemeSegmentCell
+        // for why this matters even though `styleAsCardRow` overwrites it on
+        // the Settings table (#515).
+        backgroundColor = AppColors.bg1
 
         let textStack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
         textStack.axis = .vertical
