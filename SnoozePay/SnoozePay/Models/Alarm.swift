@@ -328,8 +328,11 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// Typed view of `penaltyAmount`. Since #207 every construction path
     /// guarantees a non-negative finite amount, so this never returns `nil`
     /// in practice; the optional shape stays until phase 2 retypes storage.
+    ///
+    /// `penaltyAmount` is a currency-less `Double` written before the app knew
+    /// about currencies, hence the legacy bridge (#561).
     var penaltyMoney: Money? {
-        Money(penaltyAmount)
+        Money.legacy(penaltyAmount)
     }
 }
 

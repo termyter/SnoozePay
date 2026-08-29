@@ -317,26 +317,40 @@ final class BalanceService {
     /// (issue #119). Subsequent `charge`/`topUp` are gated until cleared via
     /// `acknowledgeCorruption()`.
     var balanceMoney: Money {
-        Money(balance) ?? .zero
+        Money.legacy(balance) ?? .zero(walletCurrency)
     }
 
+    /// The currency the stored `Double` balance is denominated in.
+    ///
+    /// `"user_balance"` is a bare number with no currency beside it, and every
+    /// balance ever written was roubles — so today this is the legacy default.
+    /// #563 replaces the body with the currency persisted at the wallet's first
+    /// paid top-up; the seam exists so that change lands in one place instead of
+    /// four.
+    var walletCurrency: Currency { .legacyDefault }
+
     /// Money-typed charge. Returns `false` when funds are insufficient,
-    /// matching the legacy `charge(amount:alarmID:)` contract.
+    /// matching the legacy `charge(amount:alarmID:)` contract — or when the
+    /// amount is in a currency this wallet does not hold, since there is no
+    /// conversion (#559) and debiting the number alone would be plain wrong.
     @discardableResult
     func charge(_ amount: Money, alarmID: UUID?) -> Bool {
-        charge(amount: amount.toDouble(), alarmID: alarmID)
+        guard amount.currency == walletCurrency else { return false }
+        return charge(amount: amount.toDouble(), alarmID: alarmID)
     }
 
     /// Money-typed top-up. The `Money` invariant guarantees non-negative,
     /// finite — replacing the loose `Double` precondition. Returns whether
-    /// the credit actually landed (see legacy `topUp(amount:)`).
+    /// the credit actually landed (see legacy `topUp(amount:)`); a foreign
+    /// currency never lands.
     @discardableResult
     func topUp(_ amount: Money) -> Bool {
-        topUp(amount: amount.toDouble())
+        guard amount.currency == walletCurrency else { return false }
+        return topUp(amount: amount.toDouble())
     }
 
     func canAfford(_ amount: Money) -> Bool {
-        canAfford(amount.toDouble())
+        amount.currency == walletCurrency && canAfford(amount.toDouble())
     }
 
     /// Hop to main since `charge`/`topUp` may be called from a background queue
