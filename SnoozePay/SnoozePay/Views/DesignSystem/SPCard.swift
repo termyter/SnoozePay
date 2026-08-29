@@ -171,9 +171,10 @@ final class SPCard: UIView {
             // therefore keeps the white `bg1` fill and spends `--sp-shadow-2`
             // on the height instead of `--sp-shadow-1` (#543).
             backgroundColor = AppColors.bgRaised
-            // Both themes keep the hairline for the same reason `.surface`
-            // does: a near-white card on a near-white page is 1.03:1 of
-            // separation, and a shadow alone does not carry that edge.
+            // Same hairline rule as `.surface`, and for the same reason:
+            // light needs it because a near-white card on a near-white page
+            // is 1.03:1 of separation and a shadow alone does not carry that
+            // edge; dark has the ramp step and takes no border.
             applyHairlineStrokeIfLight()
             applyElevationShadow()
         case .outline:
