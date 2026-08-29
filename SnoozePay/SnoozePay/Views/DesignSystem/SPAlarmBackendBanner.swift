@@ -162,18 +162,28 @@ final class SPAlarmBackendBanner: UIView {
     /// Fill alphas of the two-stop tint, densest stop first. Internal so the
     /// contrast test composites the SAME values the view renders.
     static let fillAlphas: [CGFloat] = [0.14, 0.05]
+    static let fillLocations: [NSNumber] = [0.0, 1.0]
 
+    /// Fill stops resolved against `trait`. Trait-explicit on purpose: the
+    /// plain `.cgColor` path snapshots `UITraitCollection.current`, which is
+    /// not necessarily this view's traits — and a `CGColor` has no link back
+    /// to the token it came from, so it never re-resolves afterwards. That is
+    /// the freeze `AlarmsStreakBannerView` had in #531; this file had the same
+    /// one, hidden because `refreshDynamicColors()` repainted the border and
+    /// the caps title but never the ramp.
+    static func fillColors(for trait: UITraitCollection) -> [CGColor] {
+        let warn = AppColors.warn400.resolvedColor(with: trait)
+        return fillAlphas.map { warn.withAlphaComponent($0).cgColor }
+    }
+
+    /// Warn-tinted glass. Stops start empty on purpose — see `fillColors`;
+    /// `refreshDynamicColors()` owns them, and `init` runs it once.
     private let backgroundView: SPGradientView = {
-        let colors: [CGColor] = [
-            AppColors.warn400.withAlphaComponent(SPAlarmBackendBanner.fillAlphas[0]).cgColor,
-            AppColors.warn400.withAlphaComponent(SPAlarmBackendBanner.fillAlphas[1]).cgColor
-        ]
-        let view = SPGradientView(colors: colors, locations: [0.0, 1.0])
+        let view = SPGradientView(colors: [], locations: SPAlarmBackendBanner.fillLocations)
         view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerRadius = AppRadius.md
         view.layer.masksToBounds = true
         view.layer.borderWidth = 1
-        view.layer.borderColor = SPAlarmBackendBanner.borderColor.cgColor
         view.isUserInteractionEnabled = false
         return view
     }()
@@ -248,6 +258,7 @@ final class SPAlarmBackendBanner: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         configureLayout()
+        refreshDynamicColors()
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPAlarmBackendBanner, _) in
                 view.refreshDynamicColors()
@@ -267,8 +278,15 @@ final class SPAlarmBackendBanner: UIView {
     }
 
     /// `CGColor` and `NSAttributedString` both snapshot the resolved colour, so
-    /// a light/dark flip has to re-resolve them by hand.
+    /// a light/dark flip has to re-resolve them by hand. The FILL is named
+    /// first deliberately: it was missing here until #538, so the ramp kept
+    /// whatever theme was current when the banner was built while the ink
+    /// above it re-resolved.
     private func refreshDynamicColors() {
+        backgroundView.refresh(
+            colors: Self.fillColors(for: traitCollection),
+            locations: Self.fillLocations
+        )
         backgroundView.layer.borderColor = Self.borderColor.resolvedColor(with: traitCollection).cgColor
         if let warning {
             configure(with: warning)

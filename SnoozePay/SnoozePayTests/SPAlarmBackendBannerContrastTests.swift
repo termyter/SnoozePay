@@ -141,10 +141,11 @@ final class SPAlarmBackendBannerContrastTests: XCTestCase {
         for entry in expected {
             let traits = UITraitCollection(userInterfaceStyle: entry.style)
             let page = AppColors.bg0.resolvedColor(with: traits)
-            XCTAssertEqual(SPAlarmBackendBanner.fillAlphas.count, 2, "the wash is a two-stop recipe")
+            let stops = SPAlarmBackendBanner.fillColors(for: traits).map { UIColor(cgColor: $0) }
+            XCTAssertEqual(stops.count, 2, "the wash is a two-stop recipe")
 
-            let dense = bannerFill(in: entry.style, alpha: SPAlarmBackendBanner.fillAlphas[0])
-            let sparse = bannerFill(in: entry.style, alpha: SPAlarmBackendBanner.fillAlphas[1])
+            let dense = composite(stops[0], over: page)
+            let sparse = composite(stops[1], over: page)
 
             XCTAssertEqual(
                 contrastRatio(dense, page), entry.dense, accuracy: tolerance,
@@ -210,10 +211,16 @@ final class SPAlarmBackendBannerContrastTests: XCTestCase {
     // MARK: - Colour maths
 
     /// The banner's fill as actually rendered: `warn400` at `alpha` over `bg0`.
+    ///
+    /// `warn400` is resolved against `style` explicitly. It used to be passed
+    /// unresolved, so on a light-trait runner every "dark" measurement here
+    /// was light amber over the dark page — a number that appears nowhere on
+    /// screen. Nothing caught it while the assertions were one-sided
+    /// inequalities; the pins added in #538 failed on it immediately.
     private func bannerFill(in style: UIUserInterfaceStyle, alpha: CGFloat) -> UIColor {
         let traits = UITraitCollection(userInterfaceStyle: style)
         return composite(
-            AppColors.warn400.withAlphaComponent(alpha),
+            AppColors.warn400.resolvedColor(with: traits).withAlphaComponent(alpha),
             over: AppColors.bg0.resolvedColor(with: traits)
         )
     }
