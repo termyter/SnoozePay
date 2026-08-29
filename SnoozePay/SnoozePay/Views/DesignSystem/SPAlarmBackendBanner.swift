@@ -72,13 +72,58 @@ final class SPAlarmBackendBanner: UIView {
         trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.fgOnWarn
     }
 
-    /// Border — decorative, but the light variant needs real saturation to
-    /// separate the card from `bg0`.
+    // MARK: - The edge (#538)
+    //
+    // Measured against the page the banner sits on (`bg0`, set by
+    // `AlarmsListViewController`), sRGB / WCAG 2.1, BEFORE this change:
+    //
+    //     dense fill  warn400@14%              dark 1.26:1   light 1.20:1
+    //     sparse fill warn400@5%               dark 1.06:1   light 1.07:1
+    //     border      warn400@22% / warn500@45%
+    //                                          dark 1.55:1   light 2.06:1
+    //
+    // So the banner had no edge in either theme — the same half of the defect
+    // `AlarmsStreakBannerView` carried until #531. It matters more here: this
+    // is the one banner that exists only in a broken state, to say the alarms
+    // will not ring. A warning that melts into the page is not doing its job,
+    // and the two banners are supposed to read as one family.
+    //
+    // **The fill stays a decorative wash.** Not taste, arithmetic: pushing
+    // `warn400` to the alpha that would reach 3:1 against the page costs the
+    // ink sitting on it. 45% on dark drops the title from 11.22:1 to 4.68:1;
+    // 74% on light drops `warn600` to 2.83:1 — under the 4.5:1 floor this
+    // whole file exists to defend. A denser surface buys a container and
+    // sells the text. Stepping the surface "one darker" is not on the table
+    // either: the entire `bg0`…`bg4` ramp measures 1.07–1.61:1 against the
+    // page in both themes (#518).
+    //
+    // **So the border carries the edge alone, and has to earn it.** Alphas
+    // raised to the pair below — the same pair `AlarmsStreakBannerView` took
+    // in #531 (0.50 / 0.75), so the family keeps one recipe. The TONES are
+    // unchanged: dark stays `warn400`, light stays `warn500`, because the
+    // light bronze is the saturated end of the scale and gives the louder
+    // banner its headroom.
+    //
+    //     border      warn400@50% / warn500@75%
+    //                                          dark 3.50:1   light 3.72:1
+    //
+    // That is border-over-page, the conservative reading. The 1pt stroke
+    // actually composites over the wash, measuring 4.25:1 dark / 3.98:1 light
+    // against the page and 3.37:1 / 3.31:1 against the wash on its inner
+    // side, so both sides of the line clear 3:1.
+    // `SPAlarmBackendBannerContrastTests` pins all of the numbers above.
+
+    /// Border alpha per theme. Internal so the contrast test measures the SAME
+    /// alphas the view renders instead of a copy of them.
+    static let borderAlphas: (dark: CGFloat, light: CGFloat) = (0.50, 0.75)
+
+    /// Border — decorative in origin, load-bearing in fact: it is the only
+    /// thing separating this banner from the page, in either theme.
     static var borderColor: UIColor {
         UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? AppColors.warn400.withAlphaComponent(0.22)
-                : AppColors.warn500.withAlphaComponent(0.45)
+            let tone = trait.userInterfaceStyle == .dark ? AppColors.warn400 : AppColors.warn500
+            let alpha = trait.userInterfaceStyle == .dark ? Self.borderAlphas.dark : Self.borderAlphas.light
+            return tone.resolvedColor(with: trait).withAlphaComponent(alpha)
         }
     }
 
