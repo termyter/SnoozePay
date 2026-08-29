@@ -272,6 +272,10 @@ final class OnboardingDepositOptionView: UIControl {
         descriptionLabel.font = AppTypography.meta
         descriptionLabel.textColor = AppColors.fg3
         descriptionLabel.numberOfLines = 0
+        // The amount label is incompressible; the description is the side that
+        // must give. Saying so explicitly keeps the engine from ever widening
+        // the text column to satisfy this label's single-line intrinsic width.
+        descriptionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
         amountLabel.attributedText = MoneyFormatter.attributed(
@@ -284,17 +288,30 @@ final class OnboardingDepositOptionView: UIControl {
     }
 
     private func installLayout() {
-        let titleRow = UIStackView(arrangedSubviews: [titleLabel, popularLabel])
+        // The spacer soaks up the slack once the row is stretched to the
+        // stack's width (below), so the two labels keep their intrinsic
+        // widths instead of one of them growing on a hugging tie (#519).
+        let titleSpacer = UIView()
+        titleSpacer.translatesAutoresizingMaskIntoConstraints = false
+        titleSpacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
+        let titleRow = UIStackView(arrangedSubviews: [titleLabel, popularLabel, titleSpacer])
         titleRow.translatesAutoresizingMaskIntoConstraints = false
         titleRow.axis = .horizontal
         titleRow.spacing = AppSpacing.sp2
         titleRow.alignment = .center
 
+        // `.fill`, not `.leading`: under `.leading` each arranged subview keeps
+        // its own intrinsic width, so the multi-line description asked for its
+        // full single-line width inside a column the incompressible amount
+        // label had already capped. On the one card whose title row carries a
+        // second visible label — the "ПОПУЛЯРНО" tag — the engine settled that
+        // by squeezing the description to 8pt and wrapping it one character
+        // per line, 550pt tall, blowing the card up to 608pt (#534).
         let textStack = UIStackView(arrangedSubviews: [titleRow, descriptionLabel])
         textStack.translatesAutoresizingMaskIntoConstraints = false
         textStack.axis = .vertical
         textStack.spacing = 2
-        textStack.alignment = .leading
+        textStack.alignment = .fill
 
         let rowStack = UIStackView(arrangedSubviews: [textStack, amountLabel])
         rowStack.translatesAutoresizingMaskIntoConstraints = false
