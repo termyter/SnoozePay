@@ -13,8 +13,9 @@ enum PluralCategory: Equatable {
 ///
 /// This is the half of #569 that makes English possible: call sites ask for
 /// "the form for N", never for "the Russian form", so adding a language means
-/// adding forms — here or, later, in the string catalogue — without touching a
-/// single caller.
+/// adding forms to `Localizable.xcstrings` without touching a single caller.
+/// The literal initialiser below stays for tests and for forms that are built
+/// rather than read.
 struct PluralForms {
     let one: String
     let few: String
@@ -77,30 +78,55 @@ enum Plural {
     }
 }
 
-/// The nouns the UI pluralises. Russian copy lives here as data; when the
-/// string catalogue lands (#569) these move into it unchanged in meaning.
+extension PluralForms {
+
+    /// Reads the three forms of `catalogKey` out of `Localizable.xcstrings`.
+    ///
+    /// The catalogue stores them as three top-level keys — `<catalogKey>.one`,
+    /// `.few`, `.many` — rather than one entry with `Variations → Plural`,
+    /// because `xcstringstool` rejects a plural variation whose value does not
+    /// contain the number, and these values are bare nouns; the count is
+    /// rendered by the call site. ``Localized`` carries the tool's own wording.
+    ///
+    /// `.few` is looked up as optional so a two-form language can simply omit
+    /// it and inherit `many`, which is the behaviour `init(one:few:many:)`
+    /// already promises.
+    init(catalogKey: String) {
+        self.init(
+            one: Localized.text("\(catalogKey).one"),
+            few: Localized.optionalText("\(catalogKey).few"),
+            many: Localized.text("\(catalogKey).many")
+        )
+    }
+}
+
+/// The nouns the UI pluralises.
+///
+/// The Russian words themselves are **not here** — they live in
+/// `Resources/Localizable.xcstrings`, which is the half of #569 that lets
+/// English arrive as a catalogue edit rather than a Swift edit. What remains in
+/// code is the mapping from a call site to a catalogue key.
+///
+/// These are computed rather than `static let` on purpose: a stored property
+/// would freeze the copy at first access, which is fine in the app but hides
+/// catalogue misses behind whichever test ran first.
 extension PluralForms {
 
     /// "1 день / 2 дня / 5 дней" — streak length.
-    static let days = PluralForms(one: "день", few: "дня", many: "дней")
+    static var days: PluralForms { PluralForms(catalogKey: "plural.days") }
 
     /// "1 откладывание / 2 откладывания / 5 откладываний" — nominative, the
     /// form used when the numeral is the subject ("≈ 3 откладывания").
-    static let snoozes = PluralForms(
-        one: "откладывание",
-        few: "откладывания",
-        many: "откладываний"
-    )
+    static var snoozes: PluralForms { PluralForms(catalogKey: "plural.snoozes") }
 
     /// Genitive of the same noun, governed by «после»: "после 1 откладывания",
     /// "после 2 откладываний". The preposition forces the genitive throughout,
     /// so 2-4 collapses onto the many form — deliberately different from
-    /// `snoozes`, not a copy that drifted.
-    static let snoozesAfter = PluralForms(
-        one: "откладывания",
-        many: "откладываний"
-    )
+    /// `snoozes`, not a copy that drifted. The catalogue spells `.few` out
+    /// instead of omitting it, so that the collapse stays visible to whoever
+    /// translates the file next.
+    static var snoozesAfter: PluralForms { PluralForms(catalogKey: "plural.snoozes_after") }
 
     /// "1 утро / 2 утра / 5 утр" — mornings of collected wake-time history.
-    static let mornings = PluralForms(one: "утро", few: "утра", many: "утр")
+    static var mornings: PluralForms { PluralForms(catalogKey: "plural.mornings") }
 }

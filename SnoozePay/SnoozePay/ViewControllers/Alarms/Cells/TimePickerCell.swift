@@ -25,8 +25,7 @@ final class TimePickerCell: UITableViewCell {
     /// "Подъём" — caps header above the readout (`sp-caps`, `fg3`).
     private let headerLabel: UILabel = {
         let label = UILabel()
-        label.text = NSLocalizedString("create_alarm.wake_up", value: "Подъём", comment: "Time picker header")
-            .uppercased()
+        label.text = Localized.text("create_alarm.wake_up").uppercased()
         label.font = AppTypography.caps
         label.textColor = AppColors.fg3
         label.textAlignment = .center
