@@ -11,10 +11,10 @@ import XCTest
 /// button appeared in the statistics screen. Two defects survived on those two
 /// screens (#514, #538) for exactly that reason — nobody could look at them.
 ///
-/// So what's pinned here is reachability, not pixels: each route mounts the
-/// controller it advertises, every warning variant is selectable and carries
-/// real copy, and none of the forcing leaks into a caller that wired its own
-/// dependencies.
+/// So what's pinned here is reachability, not pixels: each route opens the
+/// controller it advertises the way the app opens it, every warning variant is
+/// selectable and carries real copy, and none of the forcing leaks into a
+/// caller that wired its own dependencies.
 @MainActor
 final class UITourWarningRoutesTests: XCTestCase {
 
@@ -44,6 +44,9 @@ final class UITourWarningRoutesTests: XCTestCase {
         // monitor a fixed answer — the exact cross-contamination this seam is
         // shaped to avoid.
         AlarmBackendMonitor.uiTourForcedAvailability = nil
+        // Hide before releasing: a visible window holding a presented sheet
+        // outlives the test case otherwise.
+        window?.isHidden = true
         window = nil
         testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
@@ -51,13 +54,58 @@ final class UITourWarningRoutesTests: XCTestCase {
 
     // MARK: - alarm-off-warning
 
-    func testAlarmOffWarningRoute_mountsTheWarningScreenItself() {
-        UITourLauncher.mount("alarm-off-warning", in: window)
+    /// The route has to OPEN the screen the way the app does — as a pageSheet
+    /// over the statistics tab. #514 was a crash on opening, so a route that
+    /// merely built and laid out the controller would walk around the exact
+    /// path it exists to exercise.
+    func testAlarmOffWarningRoute_presentsTheSheetOverStatistics() {
+        // A local binding, not the property: the poll below runs inside an
+        // escaping closure, and capturing the test case there is what makes
+        // Swift ask for an explicit `self`.
+        let host: UIWindow = window
+        host.isHidden = false
+        UITourLauncher.mount("alarm-off-warning", in: host)
 
+        let tabBar = host.rootViewController as? UITabBarController
+        XCTAssertEqual(tabBar?.selectedIndex, 2, "the sheet's production presenter is the stats tab")
+
+        // `presentLater` waits a beat for the root to lay out, so poll instead
+        // of hard-coding that delay — same shape as `AlarmSchedulerTests`.
+        let presented = expectation(description: "warning sheet presented")
+        let deadline = Date().addingTimeInterval(4)
+        func poll() {
+            if host.rootViewController?.presentedViewController != nil || Date() >= deadline {
+                presented.fulfill()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { poll() }
+        }
+        poll()
+        wait(for: [presented], timeout: 5)
+
+        let sheet = host.rootViewController?.presentedViewController
         XCTAssertTrue(
-            window.rootViewController is AlarmOffWarningViewController,
-            "route must land on the warning screen, not on \(type(of: window.rootViewController))"
+            sheet is AlarmOffWarningViewController,
+            "route presented \(type(of: sheet)) over the stats tab, expected the warning sheet"
         )
+    }
+
+    /// The presentation shape itself, asserted without waiting: a `.large`
+    /// pageSheet, same as `StatisticsViewController` builds.
+    func testAlarmOffWarningSheet_matchesTheProductionPresentation() {
+        let sheet = UITourLauncher.makeAlarmOffWarningSheet()
+
+        XCTAssertEqual(sheet.modalPresentationStyle, .pageSheet)
+        // `Detent` instances compare by identity, so match on the identifier.
+        let detents = sheet.sheetPresentationController?.detents ?? []
+        XCTAssertEqual(detents.count, 1)
+        let expectedIdentifier: UISheetPresentationController.Detent.Identifier? = .large
+        XCTAssertEqual(
+            detents.first?.identifier, expectedIdentifier,
+            "the warning fills the sheet, it isn't a peek"
+        )
+        let expectedRadius: CGFloat? = AppRadius.xl
+        XCTAssertEqual(sheet.sheetPresentationController?.preferredCornerRadius, expectedRadius)
     }
 
     // MARK: - alarms-nobackend
@@ -201,7 +249,7 @@ final class UITourWarningRoutesTests: XCTestCase {
 
         // And the full mount path, which reads real launch arguments (none of
         // which are present under `xcodebuild test`), leaves it alone too.
-        UITourLauncher.mount("alarm-off-warning", in: window)
+        UITourLauncher.mount("alarms", in: window)
         XCTAssertEqual(window.overrideUserInterfaceStyle, .dark)
     }
 

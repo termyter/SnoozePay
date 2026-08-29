@@ -15,9 +15,8 @@ import UIKit
 ///   `-uitour-theme <id>`     firing-screen `AlarmTheme`, NOT the light/dark
 ///                            appearance: dawn|ocean|mountains|forest|neon|abstract
 ///   `-uitour-appearance <id>` window appearance: light|dark. Beats the
-///                            `preferred_theme` left in the simulator sandbox
-///                            by an earlier run — which is what made every
-///                            "checked in both themes" run check one twice
+///                            `preferred_theme` stuck in the sandbox — what
+///                            made "both themes" runs check one theme twice
 ///   `-uitour-backend-warning <case>`
 ///                            non-ringing state `alarms-nobackend` forces:
 ///                            unavailable|notrequested|indeterminate
@@ -25,8 +24,8 @@ import UIKit
 /// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
 /// wallet, stats, settings, create, edit, theme-picker, sound-picker,
 /// volume-picker, confirm-delete, firing, firing-snoozed, firing-progressive,
-/// firing-nobalance, firing-topup, alarm-off-warning,
-/// txhistory, periodpicker, deposit, streak.
+/// firing-nobalance, firing-topup, alarm-off-warning, txhistory, periodpicker,
+/// deposit, streak.
 enum UITourLauncher {
 
     static var requestedScreen: String? { value(after: "-uitour") }
@@ -67,19 +66,16 @@ enum UITourLauncher {
         "permissions": { $0.rootViewController = PermissionsViewController() },
         "alarms": { $0.rootViewController = tabBar(selected: 0) },
         // The alarms list with the "будильники не зазвонят" banner up (#428).
-        // Forced through the monitor's DEBUG seam *before* the tab bar is
-        // built, since that's what constructs `AlarmsListViewModel` and its
-        // monitor. Which of the three warning states you get — they differ in
-        // copy, in `actionTitle` and in whether they gate alarm creation — is
-        // picked by `-uitour-backend-warning`.
+        // Forced through the monitor's DEBUG seam *before* the tab bar builds
+        // the VM. Which state you get: `-uitour-backend-warning`.
         "alarms-nobackend": { window in
             AlarmBackendMonitor.uiTourForcedAvailability = requestedBackendAvailability()
             window.rootViewController = tabBar(selected: 0)
         },
-        // Root-mounted rather than presented as the pageSheet the statistics
-        // DEBUG button uses: a full-bleed root renders synchronously, so an
-        // audit screenshot can't catch it mid-presentation (#545).
-        "alarm-off-warning": { $0.rootViewController = AlarmOffWarningViewController() },
+        // A pageSheet over the stats tab — NOT root-mounted. #514 was a crash
+        // on OPENING this screen and #467 is a sheet that doesn't lay out:
+        // presentation is itself the failure mode, so the route must run it.
+        "alarm-off-warning": { mountPresented(makeAlarmOffWarningSheet(), onTab: 2, in: $0) },
         "wallet": { $0.rootViewController = tabBar(selected: 1) },
         "stats": { $0.rootViewController = tabBar(selected: 2) },
         "settings": { mountPushed(SettingsViewController(), onTab: 0, in: $0) },
@@ -247,15 +243,24 @@ enum UITourLauncher {
         )
     }
 
+    /// The warning sheet shaped exactly as `StatisticsViewController` presents
+    /// it — the tour must open the screen the way the app does, or it stops
+    /// being evidence about the app. Internal so a test can assert the shape.
+    static func makeAlarmOffWarningSheet() -> AlarmOffWarningViewController {
+        let warning = AlarmOffWarningViewController()
+        warning.modalPresentationStyle = .pageSheet
+        if let sheet = warning.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.preferredCornerRadius = AppRadius.xl
+        }
+        return warning
+    }
+
     /// `-uitour-backend-warning <case>` — which non-ringing state
-    /// `alarms-nobackend` shows. Defaults to `.unavailable`: the state a user
-    /// actually lands in after denying the prompt, and the one that gates
-    /// alarm creation. `.available` / `.unresolved` are deliberately not
-    /// reachable here — they render no banner, which is what plain
-    /// `-uitour alarms` already shows.
-    ///
-    /// Split from the `ProcessInfo` read so tests can walk every variant
-    /// without launching one process per argument.
+    /// `alarms-nobackend` shows. Defaults to `.unavailable`: where a user
+    /// lands after denying the prompt. `.available` / `.unresolved` are not
+    /// reachable here — no banner is what plain `-uitour alarms` shows.
+    /// Split from the `ProcessInfo` read so tests can walk every variant.
     static func backendAvailability(forArgument raw: String?) -> AlarmBackendAvailability {
         switch raw {
         case "notrequested": return .notRequested
@@ -269,11 +274,9 @@ enum UITourLauncher {
     }
 
     /// `-uitour-appearance light|dark` — pin the window's interface style.
-    ///
     /// Writes ONLY the window, never `ThemeService`/`preferred_theme`: the next
-    /// flag-less launch must read exactly what the user left. An absent or
-    /// unrecognised value leaves the window on whatever `SceneDelegate`
-    /// already applied. Internal so a test can pass a literal argument.
+    /// flag-less launch must read what the user left. An absent or unknown
+    /// value leaves whatever `SceneDelegate` applied. Internal for tests.
     static func applyAppearance(_ raw: String?, to window: UIWindow) {
         switch raw {
         case "light": window.overrideUserInterfaceStyle = .light
