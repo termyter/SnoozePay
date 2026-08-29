@@ -230,8 +230,27 @@ final class AlarmSchedulerTests: XCTestCase {
         }
         wait(for: [beforeCancel], timeout: 5.0)
 
-        // If permission denied or scheduling silently dropped them, skip — the cancel
-        // logic is what we're testing, not UN's pre-permission scheduling behaviour.
+        // The one skip in this target that is kept on purpose (#568).
+        //
+        // Every other `XCTSkipUnless` in `SnoozePayTests/` was a harness guard that
+        // fired on every run and hid a case that had simply never been written to
+        // run; those are now `XCTFail`. This one is different in kind: it is not a
+        // claim about our own harness, it is a measured precondition about a system
+        // service. `UNUserNotificationCenter` drops `add(_:)` on the floor when the
+        // process has no notification authorization, and a CI test host has none —
+        // nobody can tap "Allow", and the scheme cannot pre-grant it.
+        //
+        // Be clear about the cost: this case does skip on CI, on every run, so the
+        // IOS-070 cancel-all-variants regression is currently pinned only by the
+        // unit-level tests above it. It executes when the suite is run against a
+        // simulator whose notification permission has been granted for this bundle
+        // id (`xcrun simctl privacy <udid> grant notifications <bundle>`), which is
+        // exactly what a would-be fix looks like: a CI step, i.e. a workflow change,
+        // which is PM's call — or a notification-center seam on `AlarmScheduler`,
+        // which is a production refactor rather than a test fix. Until one of those
+        // happens, skipping is the honest report: the precondition is genuinely
+        // absent, so asserting would measure UN's pre-permission behaviour, not
+        // `cancel(_:)`.
         let landedIDs = beforeIDs.intersection(scheduledIDs)
         try XCTSkipIf(landedIDs.isEmpty,
                       "UNUserNotificationCenter did not accept test requests in this environment")

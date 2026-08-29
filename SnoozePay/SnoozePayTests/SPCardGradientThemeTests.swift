@@ -13,9 +13,14 @@ import XCTest
 /// **The window is load-bearing.** A detached view never receives the
 /// trait-change callback, keeps whatever it resolved at `init`, and both
 /// themes measure identical — i.e. the test would pass against the broken
-/// code. The override goes on the WINDOW, and each direction is skip-guarded
-/// so a harness that silently fails to flip cannot assert the same theme twice
-/// and call it a pass.
+/// code. The override goes on the WINDOW — and the window is UNHIDDEN, which
+/// it was not until #568: a window that is never shown propagates its override
+/// to nobody, so the guard fired and the flip case below reported `skipped` on
+/// every single run. #507 was pinned by nothing.
+///
+/// **No `XCTSkip` in this file, on purpose.** A skip that fires every run is
+/// indistinguishable from a test nobody wrote. The harness guards are
+/// `XCTFail`.
 final class SPCardGradientThemeTests: XCTestCase {
 
     /// WCAG 2.1 floor for normal-size text.
@@ -26,7 +31,10 @@ final class SPCardGradientThemeTests: XCTestCase {
     private var hostWindows: [UIWindow] = []
 
     override func tearDown() {
-        hostWindows.forEach { $0.rootViewController = nil }
+        hostWindows.forEach {
+            $0.isHidden = true
+            $0.rootViewController = nil
+        }
         hostWindows = []
         super.tearDown()
     }
@@ -49,21 +57,21 @@ final class SPCardGradientThemeTests: XCTestCase {
 
             window.overrideUserInterfaceStyle = .dark
             window.layoutIfNeeded()
-            try XCTSkipUnless(
-                card.traitCollection.userInterfaceStyle == .dark,
-                "window override did not propagate — a harness fact, not a component one"
+            XCTAssertEqual(
+                card.traitCollection.userInterfaceStyle, .dark,
+                "the harness stopped propagating dark — fix the harness, do not skip"
             )
             let inDark = stops(of: card)
-            try XCTSkipUnless(
-                !inDark.isEmpty,
+            XCTAssertFalse(
+                inDark.isEmpty,
                 "the \(entry.tone) card installed no gradient layer at all"
             )
 
             window.overrideUserInterfaceStyle = .light
             window.layoutIfNeeded()
-            try XCTSkipUnless(
-                card.traitCollection.userInterfaceStyle == .light,
-                "window override did not propagate — a harness fact, not a component one"
+            XCTAssertEqual(
+                card.traitCollection.userInterfaceStyle, .light,
+                "the harness stopped propagating the flip to light — fix the harness, do not skip"
             )
             let inLight = stops(of: card)
 
@@ -81,9 +89,10 @@ final class SPCardGradientThemeTests: XCTestCase {
             // flipped to dark froze just as hard.
             window.overrideUserInterfaceStyle = .dark
             window.layoutIfNeeded()
-            try XCTSkipUnless(
-                card.traitCollection.userInterfaceStyle == .dark,
-                "window override did not propagate — a harness fact, not a component one"
+            XCTAssertEqual(
+                card.traitCollection.userInterfaceStyle, .dark,
+                "the harness stopped propagating the flip back to dark — fix the harness, "
+                + "do not skip"
             )
             XCTAssertEqual(
                 stops(of: card), inDark,
@@ -170,8 +179,14 @@ final class SPCardGradientThemeTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    /// A card in a window that actually propagates its theme.
+    ///
+    /// `isHidden = false` is the whole fix for #568 here: a window that is never
+    /// unhidden hands its `overrideUserInterfaceStyle` to nobody, so the guard in
+    /// the flip case fired on every run and the case never executed.
     private func makeHostedCard(tone: SPCard.Tone) -> (SPCard, UIWindow) {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.isHidden = false
         let host = UIViewController()
         let card = SPCard(tone: tone)
         card.frame = CGRect(x: 0, y: 0, width: 320, height: 120)

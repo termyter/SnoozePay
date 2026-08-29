@@ -78,14 +78,10 @@ final class CardRowBandingTests: XCTestCase {
     /// The assertion the issue actually asks for: a cap row and a middle row of
     /// the same section must render the same fill, in both themes.
     func testCapRowAndMiddleRow_renderTheSameFill_inBothThemes() throws {
-        try XCTSkipUnless(
-            rendererReproducesShadows(),
-            "`CALayer.render(in:)` does not composite shadows here — this "
-            + "measurement cannot see the defect, so it must not claim to"
-        )
+        let path = try shadowCapableRenderPath()
         for style in [UIUserInterfaceStyle.light, .dark] {
-            let cap = renderedFill(position: .first, style: style)
-            let middle = renderedFill(position: .middle, style: style)
+            let cap = renderedFill(position: .first, style: style, using: path)
+            let middle = renderedFill(position: .middle, style: style, using: path)
             assertSameColour(cap, middle, "cap vs middle row fill in \(style.debugName)")
             assertSameColour(
                 cap, AppColors.bg1.resolved(style),
@@ -137,19 +133,61 @@ final class CardRowBandingTests: XCTestCase {
     /// Composite the row over its page and read the pixel at the row's centre.
     private func renderedFill(
         position: CardRowPosition,
-        style: UIUserInterfaceStyle
+        style: UIUserInterfaceStyle,
+        using path: RenderPath
     ) -> UIColor {
         let row = laidOutRow(position: position, style: style)
         guard let window = row.window else {
             XCTFail("the row lost its host window")
             return .clear
         }
-        return pixel(of: window, at: CGPoint(x: window.bounds.midX, y: window.bounds.midY))
+        return pixel(
+            of: window,
+            at: CGPoint(x: window.bounds.midX, y: window.bounds.midY),
+            using: path
+        )
+    }
+
+    /// How the sample bitmap is produced. Two paths, because they do not see
+    /// the same thing.
+    private enum RenderPath {
+        /// Through the render server. Composites shadows.
+        case hierarchy
+        /// Straight off the layer tree. Documented not to render shadows —
+        /// which is why this file used to skip its only measured case.
+        case layer
+    }
+
+    /// The render path that can actually see a shadow here, or a failure
+    /// (#568).
+    ///
+    /// This used to be a `XCTSkipUnless(rendererReproducesShadows())` over the
+    /// layer path alone, and `CALayer.render(in:)` does not composite shadows —
+    /// so the guard was true on every run and the one case in this file that
+    /// measures pixels never executed once. The probe is still honest about what
+    /// it can see; it just tries the render server first instead of giving up,
+    /// and says so in red if neither path works.
+    private func shadowCapableRenderPath() throws -> RenderPath {
+        var seen: [String] = []
+        for candidate in [RenderPath.hierarchy, .layer] {
+            let red = probeShadowRed(using: candidate)
+            seen.append("\(candidate) → red \(red)")
+            if red < 0.5 { return candidate }
+        }
+        XCTFail(
+            "no render path composited a shadow here (\(seen.joined(separator: ", "))) — the "
+            + "measurement cannot see the defect. Fix the harness; do not skip"
+        )
+        throw HarnessFailure.noShadowCapableRenderPath
+    }
+
+    private enum HarnessFailure: Error {
+        case noShadowCapableRenderPath
     }
 
     /// A clear-filled shape layer with an opaque shadow over white: if the
     /// renderer sees shadows at all, the centre pixel comes back dark.
-    private func rendererReproducesShadows() -> Bool {
+    private func probeShadowRed(using renderPath: RenderPath) -> CGFloat {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
         window.backgroundColor = .white
         window.isHidden = false
@@ -168,14 +206,19 @@ final class CardRowBandingTests: XCTestCase {
         window.layer.addSublayer(probe)
 
         let centre = CGPoint(x: window.bounds.midX, y: window.bounds.midY)
-        return channels(pixel(of: window, at: centre)).red < 0.5
+        return channels(pixel(of: window, at: centre, using: renderPath)).red
     }
 
     // MARK: - Pixels
 
-    private func pixel(of view: UIView, at point: CGPoint) -> UIColor {
+    private func pixel(of view: UIView, at point: CGPoint, using renderPath: RenderPath) -> UIColor {
         let image = UIGraphicsImageRenderer(bounds: view.bounds).image { context in
-            view.layer.render(in: context.cgContext)
+            switch renderPath {
+            case .hierarchy:
+                view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+            case .layer:
+                view.layer.render(in: context.cgContext)
+            }
         }
         guard let bitmap = image.cgImage else {
             XCTFail("rendering produced no bitmap")
