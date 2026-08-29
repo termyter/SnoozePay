@@ -52,7 +52,7 @@ enum SPFiringTicker {
 
         let eyebrow = UILabel()
         eyebrow.attributedText = NSAttributedString(
-            string: "СЕГОДНЯ",
+            string: Localized.text("firing.ticker.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: 12 * 0.18,

@@ -243,7 +243,7 @@ final class SPAlarmBackendBanner: UIView {
         return label
     }()
 
-    /// "Разрешить" / "Открыть Настройки" — the banner has to lead somewhere,
+    /// «Разрешить» / «Открыть Настройки» — the banner has to lead somewhere,
     /// not just state the problem. Which one it is comes from the warning.
     private let actionLabel: UILabel = {
         let label = UILabel()

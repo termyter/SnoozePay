@@ -24,7 +24,7 @@ final class SPAlarmsListEmptyState: UIView {
 
     // MARK: - Public API
 
-    /// Triggered when the user taps "Создать будильник".
+    /// Triggered when the user taps «Создать будильник».
     var onAddAlarmTap: (() -> Void)?
 
     // MARK: - Subviews
@@ -57,7 +57,7 @@ final class SPAlarmsListEmptyState: UIView {
         label.translatesAutoresizingMaskIntoConstraints = false
         // h2 24pt bold with −0.01em tracking per SPMore.jsx L431.
         label.attributedText = NSAttributedString(
-            string: "Ни одного будильника",
+            string: Localized.text("alarms.empty.title"),
             attributes: [
                 .font: AppTypography.h2,
                 .kern: AppTypography.h2Kerning,
@@ -73,7 +73,7 @@ final class SPAlarmsListEmptyState: UIView {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         // Drops the previously banned «снуз» word — copy per SPMore.jsx L435.
-        label.text = "Создайте первый — выставите время, цену откладывания и положите баланс."
+        label.text = Localized.text("alarms.empty.body")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg2
         label.textAlignment = .center
@@ -85,7 +85,7 @@ final class SPAlarmsListEmptyState: UIView {
     /// the button in a plain `<div>` so it hugs its label).
     private let addButton: SPButton = {
         let button = SPButton(
-            title: "Создать будильник",
+            title: Localized.text("alarms.empty.button"),
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "plus")
