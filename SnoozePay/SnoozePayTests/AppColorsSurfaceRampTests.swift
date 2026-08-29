@@ -48,10 +48,17 @@ final class AppColorsSurfaceRampTests: XCTestCase {
 
     /// The foreground ramp is a tint of one ink per theme at four alphas, so it
     /// is pinned as (ink, alpha) rather than as a flat hex.
+    ///
+    /// Light `fg3` is `0.62`, and that is the one number here that is NOT the
+    /// canon: `tokens.css` says `.56`, which measures 4.19–4.37:1 on the light
+    /// surfaces against a 4.5:1 bar (#504). The deviation is deliberate and
+    /// lives in the `AppColors.fg3` doc comment; the contrast that justifies it
+    /// is pinned in `AppColorsForegroundContrastTests`. Everything else in this
+    /// ramp still tracks `tokens.css` literally.
     private static let foregroundRamp: [ForegroundStep] = [
         ForegroundStep(name: "fg1", color: AppColors.fg1, darkAlpha: 1.00, lightAlpha: 1.00),
         ForegroundStep(name: "fg2", color: AppColors.fg2, darkAlpha: 0.86, lightAlpha: 0.82),
-        ForegroundStep(name: "fg3", color: AppColors.fg3, darkAlpha: 0.58, lightAlpha: 0.56),
+        ForegroundStep(name: "fg3", color: AppColors.fg3, darkAlpha: 0.58, lightAlpha: 0.62),
         ForegroundStep(name: "fg4", color: AppColors.fg4, darkAlpha: 0.32, lightAlpha: 0.32)
     ]
 
@@ -197,7 +204,8 @@ final class AppColorsSurfaceRampTests: XCTestCase {
 
     /// The «Подъём» caps header documents itself as `fg3` and was painted
     /// `tertiaryLabel` — 30% ink, where every other caps header on the form is
-    /// 56%. On the white card that is 1.71:1; `fg3` is 4.41:1.
+    /// the `fg3` meta step. On the white card that is 1.71:1; `fg3` is 5.38:1
+    /// since #504 raised the light step to 62% (4.37:1 before).
     func testTimePickerCapsHeader_usesTheBrandMetaInk() {
         let cell = TimePickerCell(style: .default, reuseIdentifier: nil)
         // Matched by size + non-empty text rather than by font identity: the

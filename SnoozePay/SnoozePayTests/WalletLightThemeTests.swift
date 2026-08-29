@@ -38,9 +38,11 @@ final class WalletLightThemeTests: XCTestCase {
     private let normalTextFloor: CGFloat = 4.5
     /// WCAG 2.1 floor for large text and for non-text graphics (icon glyphs).
     private let largeTextFloor: CGFloat = 3.0
-    /// Floor for quiet meta copy in light. Not a WCAG level — it is the
-    /// measured value of the `fg3` meta step on `bg0` (4.26:1), pinned so the
-    /// wallet's disclaimer can't drift back down to `fg4` (2.10:1).
+    /// Floor for quiet meta copy in light. Not a WCAG level — it is the value
+    /// the `fg3` meta step measured on `bg0` when this file was written
+    /// (4.28:1), pinned so the wallet's disclaimer can't drift back down to
+    /// `fg4` (2.10:1). #504 has since raised the step to 5.24:1; the floor
+    /// stays where it is because what it guards against is the step BELOW.
     private let quietMetaFloor: CGFloat = 4.2
     /// Absorbs sRGB rounding only.
     private let tolerance: CGFloat = 0.05
@@ -63,11 +65,14 @@ final class WalletLightThemeTests: XCTestCase {
         }
     }
 
-    /// The neutral `.unclassified` ink is `fg3`, the meta token — 4.35:1 on
-    /// the light card, i.e. just under the body-text bar. That is acceptable
-    /// *here specifically* because the row sum is 20pt bold mono, which WCAG
-    /// counts as large text (3:1). Pinned at the bar it actually has to clear
-    /// so nobody "fixes" it by promoting the whole scale.
+    /// The neutral `.unclassified` ink is `fg3`, the meta token. It measured
+    /// 4.37:1 on the light card — just under the body-text bar — and was
+    /// acceptable *here specifically* because the row sum is 20pt bold mono,
+    /// which WCAG counts as large text (3:1). #504 promoted the whole light
+    /// meta step to 62% alpha, so it is now 5.38:1 and clears body text too.
+    /// The assertion stays pinned at the bar this row actually has to clear:
+    /// tying it to the higher number would make an unrelated `fg3` tweak red
+    /// a test about a mono row sum.
     func testUnclassifiedRowSum_clearsTheLargeTextBar_inBothThemes() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let card = AppColors.bg1.resolved(style)
@@ -222,8 +227,8 @@ final class WalletLightThemeTests: XCTestCase {
         let lightInk = footer.textColor.resolvedColor(with: footer.traitCollection)
         let light = contrast(composite(lightInk, over: lightPage), lightPage)
         // `fg4` measures 2.10:1 on the light page — unreadable for copy the
-        // user must act on. `fg3` is 4.26:1, the meta step every other quiet
-        // light line sits at; the next rung `fg2` is 10.66:1 and would shout.
+        // user must act on. `fg3` is 5.24:1 (4.28:1 before #504), the meta step
+        // every other quiet light line sits at; `fg2` is 10.71:1 and would shout.
         XCTAssertGreaterThanOrEqual(
             light, quietMetaFloor - tolerance,
             "footer disclaimer is \(light.ratioText):1 in light — it must not slide back "

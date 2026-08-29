@@ -170,14 +170,34 @@ enum AppColors {
     //
     // Primary → disabled scale. Dark mode tints `#EBEDF5` (near-white) at
     // 1.0 / 0.86 / 0.58 / 0.32 alpha; light mode tints `#0A0F1F` (brand
-    // near-black ink) at 1.0 / 0.82 / 0.56 / 0.32. Step scale matches
-    // `tokens.css`.
+    // near-black ink) at 1.0 / 0.82 / 0.62 / 0.32. Step scale matches
+    // `tokens.css` everywhere except the light `fg3` step — see below.
     /// Primary headings & hero numbers.
     static let fg1 = foreground(darkAlpha: 1.0, lightAlpha: 1.0, darkIsPureWhite: true)
     /// Body copy. Dark 86% white-ish, Light 82% near-black.
     static let fg2 = foreground(darkAlpha: 0.86, lightAlpha: 0.82)
-    /// Meta. Dark 58%, Light 56%.
-    static let fg3 = foreground(darkAlpha: 0.58, lightAlpha: 0.56)
+    /// Meta. Dark 58%, Light **62%** — the one step that deviates from
+    /// `tokens.css`, which says `rgba(10,15,31,.56)` in its light block (#504).
+    ///
+    /// 0.56 failed AA on every light surface, not by a hair: 4.28:1 on `bg0`,
+    /// 4.37:1 on `bg1`, 4.19:1 on `bg2` and 3.83:1 on `bg4`, against the 4.5:1
+    /// bar for normal-size text. That bar is the right one — the canon paints
+    /// `.sp-meta` (`500 13px/18px`) and `.sp-caps` (`700 12px/16px`) with this
+    /// token, and WCAG counts large text from 18pt, or 14pt bold. So "fg3 is a
+    /// large-text token at 3:1" is not available as an out; it would be a
+    /// comment that says something the prototype contradicts.
+    ///
+    /// 0.62 is the smallest two-decimal step that clears 4.5:1 across the whole
+    /// light ramp — 5.24 / 5.38 / 5.11 / 4.92 / 4.57 on `bg0`...`bg4`, where
+    /// 0.60 still leaves `bg4` at 4.31:1. Going further is
+    /// what would actually cost something: 0.66 measures 6.03:1 but leaves only
+    /// 0.16 of alpha between meta and the `fg2` body step, and the ramp stops
+    /// reading as three distinct voices. `AppColorsForegroundContrastTests`
+    /// pins both halves of that trade.
+    ///
+    /// Dark stays at the canon 0.58 — it measures 5.68:1 on its worst of the
+    /// three main surfaces and never had the problem.
+    static let fg3 = foreground(darkAlpha: 0.58, lightAlpha: 0.62)
     /// Disabled / placeholder. Dark 32%, Light 32%.
     static let fg4 = foreground(darkAlpha: 0.32, lightAlpha: 0.32)
 
