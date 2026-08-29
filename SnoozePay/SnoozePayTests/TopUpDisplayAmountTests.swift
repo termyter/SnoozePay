@@ -67,8 +67,6 @@ final class TopUpDisplayAmountTests: XCTestCase {
     func testPresetInit_rejectsUnknownSKU() {
         let preset = FiringTopUpBottomSheetViewController.Preset(
             productID: "io.mobilife.snoozepay.balance.does_not_exist",
-            label: "fake",
-            hint: "fake",
             popular: false
         )
         XCTAssertNil(preset, "Preset must not be created for an unknown SKU")

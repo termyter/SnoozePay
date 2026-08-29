@@ -37,11 +37,6 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         /// of `productID` for the current catalogue (or the real product price
         /// once `StoreKitService` has loaded it).
         let amount: Int
-        /// Row title — «+1 откладывание» / «+несколько» / «+неделя»
-        /// (`SPTopUp.jsx:106-108`).
-        let label: String
-        /// Row subtitle hint — «ровно на сейчас» etc (`SPTopUp.jsx:106-108`).
-        let hint: String
         let popular: Bool
         /// StoreKit product ID. Falls back to `BalanceService.topUp(amount:)`
         /// when not loaded so debug paths still credit the wallet — with the
@@ -51,11 +46,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         /// Build a preset whose displayed amount is the catalogue amount of the
         /// supplied SKU. Returns nil for an unknown SKU so we never render an
         /// invented number.
-        init?(productID: String, label: String, hint: String, popular: Bool) {
+        init?(productID: String, popular: Bool) {
             guard let catalogAmount = StoreKitService.catalogAmount(for: productID) else { return nil }
             self.amount = catalogAmount
-            self.label = label
-            self.hint = hint
             self.popular = popular
             self.productID = productID
         }
@@ -63,25 +56,32 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     /// Default preset list. Amounts are resolved from the SKU catalogue so each
     /// row shows exactly what the App Store charges and the ledger credits
-    /// (#297). Labels / hints follow `SPTopUp.jsx:106-108`.
+    /// (#297).
+    ///
+    /// Row titles and hints used to live here as literals from the design comp
+    /// («+1 откладывание · ровно на сейчас» over the 149 ₽ SKU). They are gone:
+    /// the copy is a function of the CURRENT snooze price, so it is computed at
+    /// render time by `FiringTopUpCopy` (#548).
     static let defaultPresets: [Preset] = [
-        Preset(
-            productID: "io.mobilife.snoozepay.balance.149",
-            label: "+1 откладывание", hint: "ровно на сейчас", popular: false
-        ),
-        Preset(
-            productID: "io.mobilife.snoozepay.balance.499",
-            label: "+несколько", hint: "на пару дней", popular: true
-        ),
-        Preset(
-            productID: "io.mobilife.snoozepay.balance.999",
-            label: "+неделя", hint: "забыть про баланс", popular: false
-        )
+        Preset(productID: "io.mobilife.snoozepay.balance.149", popular: false),
+        Preset(productID: "io.mobilife.snoozepay.balance.499", popular: true),
+        Preset(productID: "io.mobilife.snoozepay.balance.999", popular: false)
     ].compactMap { $0 }
 
     // MARK: - Configuration
 
     private let presets: [Preset]
+
+    /// Price of the NEXT snooze — `AlarmFiringViewModel.currentPenalty`, so the
+    /// progressive rung the user is about to pay, not the alarm's base price.
+    /// Every label on the sheet is derived from it (#548); `0` means the caller
+    /// had no price to give (free alarm / preview route) and the copy degrades
+    /// to price-free wording rather than assuming a default.
+    private let snoozePrice: Double
+
+    /// Wallet balance the purchase lands on top of. Part of the arithmetic:
+    /// with 100 ₽ already banked a 149 ₽ top-up DOES unlock a 200 ₽ snooze.
+    private let currentBalance: Double
 
     /// Auto-resume timeout. Spec is 60 seconds. Stored as a constant so the
     /// controller doesn't re-read a magic literal across timer setup, label
@@ -174,9 +174,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         label.font = AppTypography.body
         label.textColor = AppColors.fg2
         label.numberOfLines = 0
-        // Text seeded in `setupUI` so the "Минимум — N ₽" amount reflects the
-        // actual smallest preset (catalogue amount), not a hardcoded literal
-        // that diverged from the charged SKU — see #275.
+        // Text seeded in `setupUI` from `FiringTopUpCopy.subtitle` so the copy
+        // follows the current snooze price instead of naming the cheapest SKU
+        // and calling it the amount a snooze needs — #275/#548.
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -255,12 +255,24 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     // MARK: - Init
 
-    init(presets: [Preset] = defaultPresets) {
+    init(
+        presets: [Preset] = defaultPresets,
+        snoozePrice: Double = 0,
+        currentBalance: Double = BalanceService.shared.balance
+    ) {
         self.presets = presets
-        // Default-select the SMALLEST preset per `SPTopUp.jsx:118` (the sheet
-        // opens pre-selecting the cheapest "ровно на сейчас" tier). Falls back
-        // to 0 (no invented literal) if the list is empty — see #275/#297.
-        self.selectedAmount = presets.map(\.amount).min() ?? 0
+        self.snoozePrice = snoozePrice
+        self.currentBalance = currentBalance
+        // Pre-select the cheapest tier that actually unlocks a snooze at the
+        // current price (#548). The comp pre-selected the SMALLEST tier
+        // (`SPTopUp.jsx:118`) — correct only while the cheapest SKU covered the
+        // price; at 200 ₽ it opened on a 149 ₽ tier that buys nothing. Falls
+        // back to 0 (no invented literal) if the list is empty — #275/#297.
+        self.selectedAmount = FiringTopUpCopy.recommendedAmount(
+            from: presets.map(\.amount),
+            balance: currentBalance,
+            price: snoozePrice
+        ) ?? 0
         self.remainingSeconds = 60
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
@@ -357,12 +369,15 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         // pause countdown on top, then the h2 «Пополнить баланс». Close X sits
         // top-right of the row.
 
-        // Seed the subtitle with the real smallest preset amount (catalogue
-        // amount of the cheapest SKU) so the "Минимум — N ₽" copy matches what
-        // the App Store actually charges — see #275/#297.
-        let minimumAmount = presets.map(\.amount).min() ?? 0
-        subtitleLabel.text = "Минимум — \(MoneyFormatter.string(minimumAmount)) на следующее откладывание. "
-            + "Можно больше, чтобы не возвращаться сюда."
+        // Subtitle derived from the live snooze price (#548). It used to read
+        // "Минимум — 149 ₽ на следующее откладывание", naming the cheapest SKU
+        // while claiming it was the amount a snooze needs — two different
+        // numbers at every price except exactly 149 ₽.
+        subtitleLabel.text = FiringTopUpCopy.subtitle(
+            amounts: presets.map(\.amount),
+            balance: currentBalance,
+            price: snoozePrice
+        )
 
         let pauseRow = UIStackView(arrangedSubviews: [pauseDot, pauseLabel])
         pauseRow.translatesAutoresizingMaskIntoConstraints = false
@@ -476,10 +491,17 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private func setupPresetTiles() {
         for preset in presets {
             let row = FiringTopUpPresetRow(
-                title: preset.label,
-                hint: preset.hint,
+                title: FiringTopUpCopy.rowTitle(
+                    topUp: preset.amount, balance: currentBalance, price: snoozePrice
+                ),
+                hint: FiringTopUpCopy.rowHint(
+                    topUp: preset.amount, balance: currentBalance, price: snoozePrice
+                ),
                 amount: preset.amount,
-                selected: preset.amount == selectedAmount
+                selected: preset.amount == selectedAmount,
+                insufficient: !FiringTopUpCopy.isSufficient(
+                    topUp: preset.amount, balance: currentBalance, price: snoozePrice
+                )
             ) { [weak self] in
                 self?.selectAmount(preset.amount)
             }
