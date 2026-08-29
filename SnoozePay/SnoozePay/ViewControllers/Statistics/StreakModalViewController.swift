@@ -72,8 +72,24 @@ final class StreakModalViewController: UIViewController {
     private let backdrop = UIView()
     private let backdropGlow = CAGradientLayer()
 
-    private let flameBadge = UIView()
-    private let flameBadgeGradient = CAGradientLayer()
+    /// 96×96 money-gradient disc the flame glyph sits on.
+    ///
+    /// An `SPGradientView` — the gradient IS the view's layer, so Auto Layout
+    /// sizes it — not a `CAGradientLayer` inserted as a sublayer. The sublayer
+    /// version (#516) never rendered: its frame was assigned from the
+    /// controller's `viewDidLayoutSubviews`, which fires before `sheet → stack
+    /// → badge` has a resolved size (the same timing the `amountLabel` note
+    /// below records for the money hero). It stayed at `.zero`, the `fgOnMoney`
+    /// glyph landed on the sheet fill, and the badge measured ~1.0:1 dark /
+    /// ~1.2:1 light. A sublayer needs an owner that resizes it; a `layerClass`
+    /// gradient cannot be forgotten.
+    ///
+    /// Stops start empty on purpose — reading `SPSupport.moneyGradientColors`
+    /// in a property initializer bakes whichever theme `UITraitCollection.current`
+    /// happened to be into a `CGColor` that never re-resolves. Internal rather
+    /// than private so `StreakModalFlameBadgeTests` can measure the rendered
+    /// disc; no token-level assertion could have caught this.
+    let flameBadge = SPGradientView(colors: [], locations: SPSupport.moneyGradientLocations)
     private let flameIcon = UIImageView()
 
     private let capsLabel = UILabel()
@@ -165,7 +181,10 @@ final class StreakModalViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         backdropGlow.frame = view.bounds
-        flameBadgeGradient.frame = flameBadge.bounds
+        // `backdropGlow` is safe to size from here because it hangs off
+        // `view.layer` — this callback runs after the controller's own view
+        // has its bounds. Nothing nested inside `sheet` may be sized from
+        // here; see `flameBadge` (#516) and the money hero below.
         // NB: the money hero is deliberately absent here — `SPGradientTextLabel`
         // owns its own mask timing. This callback runs before the label has a
         // resolved size, so masking from here is a no-op.
@@ -243,9 +262,13 @@ final class StreakModalViewController: UIViewController {
             .resolvedColor(with: Self.scrimTrait).cgColor
         flameBadge.layer.shadowColor = AppColors.money500
             .resolvedColor(with: traitCollection).cgColor
-        traitCollection.performAsCurrent {
-            flameBadgeGradient.colors = SPSupport.moneyGradientColors
-        }
+        // Trait-explicit overload, not the `UITraitCollection.current`-reading
+        // computed property: these stops land in `CAGradientLayer.colors` as
+        // plain `CGColor`, which never re-resolves itself on a theme flip.
+        flameBadge.refresh(
+            colors: SPSupport.moneyGradientColors(for: traitCollection),
+            locations: SPSupport.moneyGradientLocations
+        )
     }
 
     private func configureFlameBadge() {
@@ -256,12 +279,9 @@ final class StreakModalViewController: UIViewController {
         flameBadge.layer.shadowOffset = CGSize(width: 0, height: 12)
         flameBadge.layer.shadowRadius = 24
 
-        flameBadgeGradient.locations = SPSupport.moneyGradientLocations
-        flameBadgeGradient.startPoint = SPSupport.gradientStart
-        flameBadgeGradient.endPoint = SPSupport.gradientEnd
-        flameBadgeGradient.cornerRadius = AppRadius.xl
-        flameBadge.layer.insertSublayer(flameBadgeGradient, at: 0)
-
+        // No `masksToBounds`: the gradient is the view's own layer, so
+        // `cornerRadius` already rounds the fill, and clipping would eat the
+        // money-tinted shadow above.
         let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .bold)
         flameIcon.image = UIImage(systemName: "flame.fill", withConfiguration: config)
         flameIcon.tintColor = AppColors.fgOnMoney
