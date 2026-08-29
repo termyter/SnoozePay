@@ -103,13 +103,10 @@ enum UITourLauncher {
         },
         "confirm-delete": { window in
             let nav = createNav(alarm: sampleAlarm())
-            // Sequence, don't race (#467). Both presentations used to be
-            // scheduled on the SAME 0.8 s deadline, so the sheet asked a
-            // navigation controller that was still mid-transition to present:
-            // a silent no-op, and every audit capture showed the scrim with an
-            // empty strip instead of the confirmation. Chaining off the edit
-            // form's own presentation completion guarantees the presenter is
-            // already in the window hierarchy.
+            // Sequence, don't race (#467): both presentations used to share
+            // one 0.8 s deadline, so the sheet asked a navigation controller
+            // still mid-transition to present — a silent no-op. Chaining off
+            // the form's completion guarantees the presenter is in the window.
             mountPresented(nav, onTab: 0, in: window) {
                 nav.present(ConfirmDeleteAlarmViewController(), animated: false)
             }
@@ -200,8 +197,7 @@ enum UITourLauncher {
         makePicker: @escaping (AlarmTheme) -> UIViewController
     ) {
         let nav = createNav(alarm: sampleAlarm())
-        // Same chaining as `confirm-delete`: one timer, then a completion —
-        // never two timers sharing a deadline (#467).
+        // Same chaining as `confirm-delete`: one timer, then a completion (#467).
         mountPresented(nav, onTab: 0, in: window) {
             nav.pushViewController(makePicker(.dawn), animated: false)
         }
