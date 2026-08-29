@@ -148,6 +148,20 @@ extension AlarmFiringViewController {
         inset: CGFloat,
         gap: CGFloat
     ) {
+        // Two of the hero's constraints are handed to the no-balance column
+        // (#547): that state has to be able to slide the hero up into unused
+        // room and to park the bell tile, and it can only do that if it holds
+        // the constraints that pin them. Both stay required here — the normal
+        // screen is laid out exactly as before.
+        let heroCenterY = timeLabel.centerYAnchor.constraint(
+            equalTo: view.centerYAnchor, constant: -60
+        )
+        let bellToName = bellTile.bottomAnchor.constraint(
+            equalTo: nameLabel.topAnchor, constant: -AppSpacing.sp4
+        )
+        noBalanceColumn.heroDesignCenterY = heroCenterY
+        noBalanceColumn.bellToName = bellToName
+
         NSLayoutConstraint.activate([
             // Center the clock vertically — pull it slightly above geometric
             // center so the bottom CTAs have generous room. The rest of the
@@ -155,12 +169,12 @@ extension AlarmFiringViewController {
             // (V3 order per `SPThemedFiring.jsx` — 12pt flex gap + 4pt
             // element margins ≈ sp4 between neighbours).
             timeLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            timeLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -60),
+            heroCenterY,
             timeLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             timeLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
 
             bellTile.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            bellTile.bottomAnchor.constraint(equalTo: nameLabel.topAnchor, constant: -AppSpacing.sp4),
+            bellToName,
 
             nameLabel.bottomAnchor.constraint(equalTo: timeLabel.topAnchor, constant: -AppSpacing.sp3),
             nameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
