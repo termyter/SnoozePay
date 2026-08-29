@@ -28,9 +28,10 @@ on:
       - main
       - design-refresh-2026-04-27
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   schedule:
-    # 02:00 UTC — ночная полная проверка без кэша.
-    - cron: '0 2 * * *'
+    # 02:37 UTC — некруглая минута намеренно: на '0 2' GitHub задерживал прогон на 6.5 ч (#524).
+    - cron: '37 2 * * *'
   workflow_dispatch:
 
 # Новый коммит в ту же ветку/PR отменяет предыдущий прогон.
