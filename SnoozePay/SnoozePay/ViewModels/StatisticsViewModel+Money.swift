@@ -487,14 +487,7 @@ extension StatisticsViewModel {
 
     /// "1 утро / 2 утра / 5 утр".
     static func morningWord(_ count: Int) -> String {
-        let mod100 = count % 100
-        let mod10 = count % 10
-        if mod100 >= 11 && mod100 <= 14 { return "утр" }
-        switch mod10 {
-        case 1: return "утро"
-        case 2, 3, 4: return "утра"
-        default: return "утр"
-        }
+        Plural.word(count, .mornings)
     }
 
     /// Plain-text signed money — "+800 ₽" / "−400 ₽" / "0 ₽", with the

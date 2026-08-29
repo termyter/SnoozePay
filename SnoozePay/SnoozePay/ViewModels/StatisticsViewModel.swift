@@ -605,20 +605,13 @@ final class StatisticsViewModel {
 
     /// "1 откладывание / 2 откладывания / 5 откладываний".
     static func snoozeWord(_ count: Int) -> String {
-        let mod100 = count % 100
-        let mod10 = count % 10
-        if mod100 >= 11 && mod100 <= 14 { return "откладываний" }
-        switch mod10 {
-        case 1: return "откладывание"
-        case 2, 3, 4: return "откладывания"
-        default: return "откладываний"
-        }
+        Plural.word(count, .snoozes)
     }
 
     /// "8 января" — shared by the hero meta line and the heatmap tooltip.
     static func dayMonthText(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLocale.display
         formatter.dateFormat = "d MMMM"
         return formatter.string(from: date)
     }

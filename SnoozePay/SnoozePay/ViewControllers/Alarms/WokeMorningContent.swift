@@ -129,19 +129,12 @@ struct WokeMorningContent {
 
     /// Genitive of «откладывание» governed by the numeral after «после N …».
     ///
-    /// Unlike the nominative 2–4 rule used in `StreakModalViewController
-    /// .dayWord` (день/дня/дней), the preposition «после» forces the genitive
-    /// throughout, so the only split is singular-vs-rest:
-    ///   • `N % 10 == 1 && N % 100 != 11` → "откладывания"
-    ///     ("после 1 откладывания", "после 21 откладывания")
-    ///   • otherwise → "откладываний"
-    ///     ("после 2 откладываний", "после 5 откладываний", "после 11 …")
+    /// Unlike the nominative forms in `PluralForms.snoozes`, the preposition
+    /// «после» forces the genitive throughout, so 2–4 collapses onto the many
+    /// form ("после 1 откладывания", "после 2 откладываний"). That is what
+    /// `PluralForms.snoozesAfter` encodes — the rule is shared, the words are
+    /// not.
     static func snoozeWord(for count: Int) -> String {
-        let mod100 = count % 100
-        let mod10 = count % 10
-        if mod10 == 1 && mod100 != 11 {
-            return "откладывания"
-        }
-        return "откладываний"
+        Plural.word(count, .snoozesAfter)
     }
 }

@@ -221,7 +221,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
         let caption = UILabel()
         caption.attributedText = NSAttributedString(
-            string: "За \(period.summaryCaption)".uppercased(with: Locale(identifier: "ru_RU")),
+            string: "За \(period.summaryCaption)".uppercased(with: AppLocale.display),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -478,7 +478,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
     private static func timeString(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLocale.display
         formatter.dateFormat = "HH:mm"
         return formatter.string(from: date)
     }
@@ -509,7 +509,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         if calendar.isDateInYesterday(date) { return "Вчера" }
         // "12 января" — full genitive month, sentence case (artboard 21b).
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLocale.display
         formatter.dateFormat = "d MMMM"
         return formatter.string(from: date)
     }

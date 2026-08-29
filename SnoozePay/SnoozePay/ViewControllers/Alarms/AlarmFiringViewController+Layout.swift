@@ -219,7 +219,7 @@ extension AlarmFiringViewController {
     // "EEE · d MMM" matches `SPScreensV2.jsx` line 64.
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLocale.display
         formatter.dateFormat = "EEE · d MMM"
         return formatter
     }()

@@ -559,19 +559,11 @@ extension StreakModalViewController {
             + "и сэкономил \(savedAmount.formattedRubles()) — SnoozePay"
     }
 
-    /// Russian plural for "день / дня / дней". The streak-modal caption hits
-    /// all three forms across the 3 / 7 / 14 / 30 milestones plus future
-    /// arbitrary streaks, so we do the full Slavic-plural switch instead of
-    /// hardcoding "дней".
+    /// Plural for "день / дня / дней". The streak-modal caption hits all three
+    /// forms across the 3 / 7 / 14 / 30 milestones plus future arbitrary
+    /// streaks, so it asks for the form instead of hardcoding "дней".
     static func dayWord(for count: Int) -> String {
-        let mod100 = count % 100
-        let mod10 = count % 10
-        if mod100 >= 11 && mod100 <= 14 { return "дней" }
-        switch mod10 {
-        case 1: return "день"
-        case 2, 3, 4: return "дня"
-        default: return "дней"
-        }
+        Plural.word(count, .days)
     }
 
     /// Money the user did **not** spend across `streakDays` snooze-free days,

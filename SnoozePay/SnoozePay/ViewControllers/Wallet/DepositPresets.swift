@@ -51,12 +51,8 @@ enum DepositPresets {
         return "≈ \(count) \(snoozeNoun(for: count))"
     }
 
-    /// Russian pluralisation for "откладывание".
+    /// Pluralisation for "откладывание".
     static func snoozeNoun(for count: Int) -> String {
-        let mod100 = count % 100
-        let mod10 = count % 10
-        if mod10 == 1 && mod100 != 11 { return "откладывание" }
-        if (2...4).contains(mod10) && !(12...14).contains(mod100) { return "откладывания" }
-        return "откладываний"
+        Plural.word(count, .snoozes)
     }
 }

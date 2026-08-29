@@ -96,10 +96,16 @@ enum MoneyFormatter {
     /// Shared grouping formatter — `NumberFormatter` construction costs
     /// ~0.5ms; money strings rebuild on every balance tick so cache it.
     /// `NumberFormatter.string(from:)` is documented thread-safe for reads.
+    ///
+    /// The locale comes from `AppLocale.display`, so the grouping separator
+    /// follows the app's display language: today NBSP ("1 234"), and a comma
+    /// ("1,234") on the day #569 flips `display` to the device locale. That is
+    /// the intended behaviour — `fmtRub` specifies *grouped* digits, not the
+    /// Russian separator specifically.
     private static let groupingFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLocale.display
         formatter.maximumFractionDigits = 0
         formatter.roundingMode = .down
         return formatter
