@@ -8,14 +8,24 @@ import XCTest
 ///
 ///   1. No-balance layout up — the «Пополнить» top-up CTA is present and the
 ///      normal snooze CTA is NOT (it lives behind the no-balance swap).
-///   2. Tap «Пополнить» → with StoreKit products not loaded in the test
-///      environment, `noBalanceApplePayTapped` falls back to a direct
+///   2. Tap «Пополнить» → `noBalanceApplePayTapped` falls back to a direct
 ///      `BalanceService.topUp`, crediting the balance deterministically.
+///      The empty catalogue is FORCED by `-uitour-storekit-empty`, not assumed:
+///      see the launch arguments below.
 ///   3. The balance observer re-runs `updateUI`, the no-balance swap flips back,
 ///      and the normal `firing.snoozeButton` becomes available again.
 ///
 /// Selectors are stable `accessibilityIdentifier`s, not localized button copy
 /// (the top-up CTA reads «Пополнить», so id-targeting is mandatory here).
+///
+/// #575 — this test used to leave step 2 to chance. It relied on the catalogue
+/// being empty without saying so, which held only while the app was built under
+/// a bundle ID that matched no app in App Store Connect. The moment the real
+/// `io.mobilife.SnoozePay` landed, all five SKUs resolved on the CI simulator,
+/// the tap reached the real `StoreKitService.purchase(_:)`, and iOS put up a
+/// "Sign in to Apple Account" dialog — balance stayed 0 ₽ and the snooze CTA
+/// never came back. `-uitour-storekit-empty` states the precondition instead,
+/// so the result no longer depends on whether the App Store answered.
 final class NoBalanceTopUpUITests: XCTestCase {
 
     override func setUp() {
@@ -33,7 +43,7 @@ final class NoBalanceTopUpUITests: XCTestCase {
 
     func testNoBalanceTopUpReenablesSnooze() {
         let app = XCUIApplication()
-        app.launchArguments = ["-uitour", "firing-nobalance"]
+        app.launchArguments = ["-uitour", "firing-nobalance", "-uitour-storekit-empty"]
         app.launch()
 
         // 1. No-balance layout — top-up CTA present, normal snooze absent.

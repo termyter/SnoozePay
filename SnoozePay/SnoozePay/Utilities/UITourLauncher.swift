@@ -20,6 +20,11 @@ import UIKit
 ///   `-uitour-backend-warning <case>`
 ///                            non-ringing state `alarms-nobackend` forces:
 ///                            unavailable|notrequested|indeterminate
+///   `-uitour-storekit-empty` pin the StoreKit catalogue empty so every top-up
+///                            CTA takes its DEBUG local-credit fallback instead
+///                            of the real `purchase(_:)` (#575). Read by
+///                            `StoreKitService`, not by this file — the service
+///                            loads at `AppDelegate` time, before any mount.
 ///
 /// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
 /// wallet, stats, settings, create, edit, theme-picker, sound-picker,
