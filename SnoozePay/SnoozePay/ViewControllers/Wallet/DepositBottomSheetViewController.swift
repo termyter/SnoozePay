@@ -7,9 +7,9 @@ import os
 ///
 /// Presented over the live (dimmed) Wallet tab via a page-sheet with a
 /// custom detent, so the underlying screen stays visible behind the scrim.
-/// Layout, top-down: drag handle → "Пополнить баланс" (h2) → 3-column
+/// Layout, top-down: drag handle → «Пополнить баланс» (h2) → 3-column
 /// preset grid (live StoreKit SKUs from `DepositPresets`) → money CTA
-/// "Пополнить" with wallet icon + selected-amount suffix → disclaimer.
+/// «Пополнить» with wallet icon + selected-amount suffix → disclaimer.
 ///
 /// Purchase flow mirrors `FiringTopUpBottomSheetViewController`: tap →
 /// `StoreKitService.purchase(_:)`; success / failure arrive via the
@@ -60,7 +60,7 @@ final class DepositBottomSheetViewController: UIViewController {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.attributedText = NSAttributedString(
-            string: "Пополнить баланс",
+            string: Localized.text("deposit.title"),
             attributes: [
                 .font: AppTypography.h2,
                 .kern: -24 * 0.01,
@@ -97,7 +97,7 @@ final class DepositBottomSheetViewController: UIViewController {
         label.textColor = AppColors.fg3
         label.textAlignment = .center
         label.numberOfLines = 0
-        label.text = "Деньги попадают в баланс. Списываются только при откладывании."
+        label.text = Localized.text("deposit.disclaimer")
         return label
     }()
 
@@ -106,7 +106,7 @@ final class DepositBottomSheetViewController: UIViewController {
     private lazy var restoreButton: UIButton = {
         var config = UIButton.Configuration.plain()
         config.attributedTitle = AttributedString(
-            "Восстановить покупки",
+            Localized.text("deposit.button.restore"),
             attributes: AttributeContainer([
                 .font: AppTypography.meta,
                 .foregroundColor: AppColors.fg2
@@ -153,7 +153,7 @@ final class DepositBottomSheetViewController: UIViewController {
         label.font = AppTypography.body
         label.textColor = AppColors.fg2
         label.textAlignment = .center
-        label.text = "Зачислено на баланс"
+        label.text = Localized.text("deposit.success.caption")
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -308,7 +308,7 @@ final class DepositBottomSheetViewController: UIViewController {
 
     private func makeDepositButton(amount: Int) -> SPButton {
         let button = SPButton(
-            title: "Пополнить",
+            title: Localized.text("common.button.top_up"),
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "wallet.pass"),
@@ -364,7 +364,7 @@ final class DepositBottomSheetViewController: UIViewController {
         // Detect a corrupt balance BEFORE attempting a top-up (#419). The
         // BalanceService mutation gate stays locked until the user resets via
         // `acknowledgeCorruption()`, so a top-up here would always fail back
-        // into the generic "Покупка не выполнена" retry loop the user can't
+        // into the generic «Покупка не выполнена» retry loop the user can't
         // satisfy. Surface a corruption-specific message instead.
         guard !BalanceService.shared.balanceCorrupted else {
             presentBalanceCorruptionAlert()
@@ -407,7 +407,7 @@ final class DepositBottomSheetViewController: UIViewController {
             AppLogger.storeKit.error(
                 "DepositSheet: product \(pid, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
             )
-            handlePurchaseFailure(message: "Не удалось загрузить пакеты пополнения. Попробуйте позже.")
+            handlePurchaseFailure(message: Localized.text("deposit.error.products_unavailable"))
             #endif
         }
     }
@@ -445,22 +445,22 @@ final class DepositBottomSheetViewController: UIViewController {
         }
     }
 
-    /// Corruption-specific alert shown when the user taps "Пополнить" while
+    /// Corruption-specific alert shown when the user taps «Пополнить» while
     /// the stored balance is corrupt (#419). Unlike the generic purchase
     /// failure, this routes the user to reset the balance — the top-up gate
     /// stays locked until `acknowledgeCorruption()` runs, so retrying the
     /// purchase as the generic copy suggests can never succeed.
     private func presentBalanceCorruptionAlert() {
         let alert = UIAlertController(
-            title: "Баланс повреждён",
-            message: "Сохранённый баланс некорректен. Пополнение недоступно, "
-                + "пока вы не сбросите баланс в ноль.",
+            title: Localized.text("common.balance_corrupted.title"),
+            message: Localized.text("deposit.balance_corrupted.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive) { _ in
+        let reset = Localized.text("common.button.reset")
+        alert.addAction(UIAlertAction(title: reset, style: .destructive) { _ in
             BalanceService.shared.acknowledgeCorruption()
         })
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -469,11 +469,11 @@ final class DepositBottomSheetViewController: UIViewController {
         depositButton.isEnabled = true
 
         let alert = UIAlertController(
-            title: "Покупка не выполнена",
-            message: message ?? "Попробуйте ещё раз.",
+            title: Localized.text("common.purchase_failed.title"),
+            message: message ?? Localized.text("common.purchase_failed.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 }

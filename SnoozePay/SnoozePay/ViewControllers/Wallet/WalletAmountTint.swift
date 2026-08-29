@@ -89,7 +89,7 @@ enum WalletAmountTint {
 /// The light block of `tokens.css` reuses the same 32% alpha over the
 /// near-black ink, which on `bg0` (`#F4F6FB`) measures **2.10:1** — below even
 /// the 3:1 large-text floor, on 13pt copy the user is expected to actually
-/// read ("покупка не возвращается"). Light therefore steps up one rung to
+/// read («покупка не возвращается»). Light therefore steps up one rung to
 /// `fg3` — **5.24:1** since #504 raised the light meta step from 56% to 62%
 /// alpha (4.28:1 before, i.e. under AA) — which is the "meta" role these
 /// lines have always had

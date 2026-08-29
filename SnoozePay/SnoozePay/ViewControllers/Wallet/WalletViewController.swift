@@ -3,16 +3,16 @@ import UIKit
 /// Wallet tab — V3 informational layout (issue #233, artboard 18 in
 /// `docs/design/v2-handoff/components/SPScreensV2.jsx` `WalletV2`). Hosts:
 ///
-/// - Page-title header: h1 «Кошелёк» + small money "Пополнить" pill +
+/// - Page-title header: h1 «Кошелёк» + small money «Пополнить» pill +
 ///   bottom hairline (same pattern as `SPAlarmsListHeader`)
 /// - SPBalanceCard hero with live weekly delta + affordability hint
 /// - 7-day mini chart (`WalletWeeklyChartView`) summing pain transactions
-/// - "История операций" preview — last 3 transactions + "Все операции →"
+/// - «История операций» preview — last 3 transactions + «Все операции →»
 ///   link into `WalletTransactionHistoryViewController`
 /// - Quiet footer disclaimer
 ///
 /// Amount selection moved into `DepositBottomSheetViewController`
-/// (artboard 19) — the preset grid, bottom CTA and the "Способы оплаты"
+/// (artboard 19) — the preset grid, bottom CTA and the «Способы оплаты»
 /// row were removed from this tab per #233.
 ///
 /// Layout helpers live in `WalletViewController+Layout.swift`; balance
@@ -55,7 +55,7 @@ final class WalletViewController: UIViewController {
             balance: Decimal(initialBalance),
             delta: nil,
             // Real hint from the first frame (#546). The placeholder this
-            // replaced was a hardcoded "~17 откладываний" that the first
+            // replaced was a hardcoded «~17 откладываний» that the first
             // `refresh()` then contradicted.
             hint: WalletHints.affordHint(
                 forBalance: initialBalance,
@@ -210,7 +210,7 @@ final class WalletViewController: UIViewController {
         let load = WalletLedgerLoad.load(from: TransactionRepository.shared)
         let transactions = load.transactions
         let delta = load.didFail ? nil : WalletStats.weeklyDelta(from: transactions)
-        // Alarms feed the "Хватит на ~N" price (#546) — the number used to be
+        // Alarms feed the «Хватит на ~N» price (#546) — the number used to be
         // divided by a hardcoded 50 ₽ here, which is why this card and the
         // alarms list disagreed. The lossy `fetchAll` is deliberate: an
         // unreadable alarm store degrades the hint to the user's configured
@@ -263,18 +263,19 @@ final class WalletViewController: UIViewController {
         hasSurfacedBalanceCorruption = true
 
         let alert = UIAlertController(
-            title: "Баланс повреждён",
-            message: "Сохранённый баланс некорректен и был сброшен в ноль. "
-                + "Пополнения временно недоступны, пока вы не подтвердите сброс.",
+            title: Localized.text("common.balance_corrupted.title"),
+            message: Localized.text("wallet.balance_corrupted.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive) { [weak self] _ in
+        let reset = Localized.text("common.button.reset")
+        alert.addAction(UIAlertAction(title: reset, style: .destructive) { [weak self] _ in
             BalanceService.shared.acknowledgeCorruption()
             // Allow a future re-corruption episode to surface a fresh alert.
             self?.hasSurfacedBalanceCorruption = false
             self?.refresh()
         })
-        alert.addAction(UIAlertAction(title: "Позже", style: .cancel) { [weak self] _ in
+        let later = Localized.text("common.button.later")
+        alert.addAction(UIAlertAction(title: later, style: .cancel) { [weak self] _ in
             // Keep the gate visible: a dismissed alert must still re-prompt on
             // the next appearance until the user resets.
             self?.hasSurfacedBalanceCorruption = false

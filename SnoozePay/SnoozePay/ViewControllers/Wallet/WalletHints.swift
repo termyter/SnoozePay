@@ -13,16 +13,16 @@ import Foundation
 enum WalletHints {
 
     /// Shown while the balance is empty. Wallet-specific on purpose — the
-    /// alarms list says "Откладывать не получится", which is the right line
+    /// alarms list says «Откладывать не получится», which is the right line
     /// on a screen with no way to top up; here the user is one tap away.
-    static let emptyBalanceHint = "Пока баланс пуст — пополните, чтобы откладывать"
+    static var emptyBalanceHint: String { Localized.text("wallet.hint.empty_balance") }
 
     /// Derives the wallet-card hint from the live balance and the user's
     /// alarms. Identical string to `AlarmsListViewModel.affordabilityHint` for
     /// the same inputs — that equality is the point of #546, where the wallet
-    /// divided by a hardcoded 50 ₽ (and still claimed "при текущей цене") while
-    /// the list divided by the priciest alarm, so 298 ₽ read as "~5" here and
-    /// "~1" one tap away.
+    /// divided by a hardcoded 50 ₽ (and still claimed «при текущей цене») while
+    /// the list divided by the priciest alarm, so 298 ₽ read as «~5» here and
+    /// «~1» one tap away.
     static func affordHint(
         forBalance balance: Double,
         alarms: [Alarm],

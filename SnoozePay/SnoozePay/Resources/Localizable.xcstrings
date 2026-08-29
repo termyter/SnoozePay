@@ -421,8 +421,20 @@
         }
       }
     },
+    "common.balance_corrupted.title" : {
+      "comment" : "Alert title for a corrupt stored balance (#419). Three screens raise it — alarms list, wallet and the deposit sheet — with different bodies, so only the title is shared.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс повреждён"
+          }
+        }
+      }
+    },
     "common.button.cancel" : {
-      "comment" : "Dismisses a screen or sheet without applying the change.",
+      "comment" : "Cancelling action of an alert or action sheet; also dismisses a screen or sheet without applying the change.",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {
@@ -457,14 +469,38 @@
         }
       }
     },
+    "common.button.later" : {
+      "comment" : "Defers a prompt without acting on it — the balance-corruption alert keeps re-asking on the next appearance.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Позже"
+          }
+        }
+      }
+    },
     "common.button.ok" : {
-      "comment" : "Sole action of an informational UIAlertController. Acknowledges, never confirms — no alert using it destroys anything.",
+      "comment" : "Sole action of an informational UIAlertController. Acknowledges, never confirms — no alert using it destroys anything. Spelled «Ок», not «ОК» or «OK» — that is how it reads on screen today.",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ок"
+          }
+        }
+      }
+    },
+    "common.button.reset" : {
+      "comment" : "Destructive action that zeroes a corrupt balance. Separate from wallet.period.button.reset, which clears a filter and may translate differently («Clear»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сбросить"
           }
         }
       }
@@ -489,6 +525,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "БАЛАНС"
+          }
+        }
+      }
+    },
+    "common.purchase_failed.message" : {
+      "comment" : "Fallback body of the purchase-failure alert, used when StoreKit supplies no message of its own.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "common.purchase_failed.title" : {
+      "comment" : "Title of the purchase-failure alert — deposit sheet and both firing top-up surfaces.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупка не выполнена"
           }
         }
       }
@@ -1057,6 +1117,54 @@
         }
       }
     },
+    "deposit.balance_corrupted.message" : {
+      "comment" : "Body shown when the user taps «Пополнить» on a corrupt balance: the top-up gate stays locked until acknowledgeCorruption() runs, so the generic retry copy would send the user in a loop (#419).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранённый баланс некорректен. Пополнение недоступно, пока вы не сбросите баланс в ноль."
+          }
+        }
+      }
+    },
+    "deposit.button.restore" : {
+      "comment" : "App Store-required restore affordance under the deposit form.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Восстановить покупки"
+          }
+        }
+      }
+    },
+    "deposit.disclaimer" : {
+      "comment" : "Footnote under the deposit CTA.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Деньги попадают в баланс. Списываются только при откладывании."
+          }
+        }
+      }
+    },
+    "deposit.error.products_unavailable" : {
+      "comment" : "Release-build failure body when the StoreKit catalogue is empty: no balance is credited without a real transaction.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить пакеты пополнения. Попробуйте позже."
+          }
+        }
+      }
+    },
     "deposit.foreign_currency.dismiss" : {
       "comment" : "The single, acknowledging button on the foreign-currency alert. Nothing is offered to cancel, because nothing was started.",
       "extractionState" : "manual",
@@ -1101,6 +1209,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Популярно"
+          }
+        }
+      }
+    },
+    "deposit.preset.snooze_count" : {
+      "comment" : "Secondary line on an amount tile: how many snoozes the amount buys. Positional because the count and the declined noun («откладываний», from plural.snoozes) reorder in other languages; assembling this from two keys would freeze Russian word order.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "deposit.success.caption" : {
+      "comment" : "Caption under the green check of the deposit success state.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зачислено на баланс"
+          }
+        }
+      }
+    },
+    "deposit.title" : {
+      "comment" : "Header of the deposit bottom sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пополнить баланс"
           }
         }
       }
@@ -2569,6 +2713,30 @@
         }
       }
     },
+    "wallet.balance_corrupted.message" : {
+      "comment" : "Body of the corruption alert as raised by the wallet tab, which reports the clamp that already happened (#419 / #206).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранённый баланс некорректен и был сброшен в ноль. Пополнения временно недоступны, пока вы не подтвердите сброс."
+          }
+        }
+      }
+    },
+    "wallet.chart.caps" : {
+      "comment" : "Caps header above the 7-day mini chart. Stored uppercase: the call site only applies the caps font, it does not uppercase.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПОСЛЕДНИЕ 7 ДНЕЙ"
+          }
+        }
+      }
+    },
     "wallet.error.load_failed" : {
       "comment" : "Alert body when the stored transaction ledger cannot be decoded (TransactionRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
@@ -2601,6 +2769,330 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Не удалось записать транзакцию. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "wallet.footer.disclaimer" : {
+      "comment" : "Quiet footer of the wallet tab — one-way stake framing (#322); the word «штрафы» is deliberately absent (#278).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупка не возвращается · списывается только при откладывании"
+          }
+        }
+      }
+    },
+    "wallet.hint.empty_balance" : {
+      "comment" : "Balance-card hint at zero. Wallet-specific: the alarms list says «Откладывать не получится» (alarms.hint.zero_balance), which is the right line on a screen with no way to top up.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока баланс пуст — пополните, чтобы откладывать"
+          }
+        }
+      }
+    },
+    "wallet.history.caps" : {
+      "comment" : "Caps header above the three-row transaction preview. Stored uppercase — the call site only applies the caps font.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ИСТОРИЯ ОПЕРАЦИЙ"
+          }
+        }
+      }
+    },
+    "wallet.history.day.today" : {
+      "comment" : "Day-group header for today's transactions.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сегодня"
+          }
+        }
+      }
+    },
+    "wallet.history.day.yesterday" : {
+      "comment" : "Day-group header for yesterday's transactions. Older days render a formatted date instead («12 января»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вчера"
+          }
+        }
+      }
+    },
+    "wallet.history.empty" : {
+      "comment" : "Empty state of an untouched ledger — both the wallet preview card and the history screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Здесь появятся пополнения, списания и бонусы."
+          }
+        }
+      }
+    },
+    "wallet.history.empty_period" : {
+      "comment" : "Empty state when the chosen period holds no transactions at all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За выбранный период операций нет."
+          }
+        }
+      }
+    },
+    "wallet.history.empty_period_type" : {
+      "comment" : "Empty state when the period does hold transactions but the active type chip filtered them all out.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За выбранный период таких операций нет."
+          }
+        }
+      }
+    },
+    "wallet.history.link_all" : {
+      "comment" : "Link from the wallet preview into the full history screen. The arrow is part of the copy so a translation can move it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Все операции →"
+          }
+        }
+      }
+    },
+    "wallet.history.load_failed" : {
+      "comment" : "Distinct error card for a ledger that fails to decode (#419) — it must NOT read as the friendly empty state, or the user assumes their history was wiped.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить историю"
+          }
+        }
+      }
+    },
+    "wallet.history.period.accessibility" : {
+      "comment" : "VoiceOver label of the period chip; %@ is the caption («Январь 2026»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Период: %@"
+          }
+        }
+      }
+    },
+    "wallet.history.summary.caps" : {
+      "comment" : "Caps caption of the summary card; %@ is the period («январь 2026»). Stored in sentence case — the call site uppercases with the display locale, which is what keeps «Ё» intact.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За %@"
+          }
+        }
+      }
+    },
+    "wallet.history.summary.snoozes" : {
+      "comment" : "Summary-card column: how many snooze charges the period holds.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладываний"
+          }
+        }
+      }
+    },
+    "wallet.history.summary.spent" : {
+      "comment" : "Summary-card column: total charged in the period.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Списано"
+          }
+        }
+      }
+    },
+    "wallet.history.summary.topups" : {
+      "comment" : "Summary-card column: total topped up in the period (bonuses excluded).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пополнения"
+          }
+        }
+      }
+    },
+    "wallet.history.title" : {
+      "comment" : "Navigation title of the transaction-history screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "История"
+          }
+        }
+      }
+    },
+    "wallet.history.unrecognized_notice" : {
+      "comment" : "Soft warning (not the corrupt-ledger banner) when rows carry a type this build cannot classify: they render but are excluded from every total (#358).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часть операций не распознана — итоги ниже могут быть неполными"
+          }
+        }
+      }
+    },
+    "wallet.period.button.apply" : {
+      "comment" : "Confirming CTA of the period picker sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Применить"
+          }
+        }
+      }
+    },
+    "wallet.period.button.reset" : {
+      "comment" : "Clears the period selection back to the current month. Separate from common.button.reset, which zeroes a corrupt balance — same Russian word, different senses.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сбросить"
+          }
+        }
+      }
+    },
+    "wallet.period.empty" : {
+      "comment" : "Summary row of the period picker while nothing is selected.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите месяц"
+          }
+        }
+      }
+    },
+    "wallet.period.title" : {
+      "comment" : "Header of the period picker sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Период"
+          }
+        }
+      }
+    },
+    "wallet.title" : {
+      "comment" : "Page title (h1) of the wallet tab.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кошелёк"
+          }
+        }
+      }
+    },
+    "wallet.tx.charge" : {
+      "comment" : "Transaction row title for a snooze charge.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поспать ещё"
+          }
+        }
+      }
+    },
+    "wallet.tx.promotion" : {
+      "comment" : "Transaction row title for a referral bonus. There is no 7-day hold today, so the copy must not claim one (#282).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бонус за друга"
+          }
+        }
+      }
+    },
+    "wallet.tx.refund" : {
+      "comment" : "Transaction row title for a penalty returned because the snooze never armed (#358).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Возврат за откладывание"
+          }
+        }
+      }
+    },
+    "wallet.tx.topup" : {
+      "comment" : "Transaction row title for a balance top-up.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пополнение баланса"
+          }
+        }
+      }
+    },
+    "wallet.tx.unknown" : {
+      "comment" : "Transaction row title for a row written by a newer build (TransactionType.unknown).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Операция"
           }
         }
       }
