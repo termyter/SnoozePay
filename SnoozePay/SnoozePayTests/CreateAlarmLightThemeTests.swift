@@ -158,27 +158,29 @@ final class CreateAlarmLightThemeTests: XCTestCase {
         )
     }
 
-    /// KNOWN DEFECT — pins #467, does not assert the app is correct.
+    /// Was a pinned KNOWN DEFECT for #467; now a real assertion (#485).
     ///
     /// This test was written to prove the sheet's layout was sound and that
     /// #467's zero-height labels were a harness artefact of `UITourLauncher`
     /// presenting from a controller not yet in the hierarchy. It proved the
     /// opposite: hosted in a plain 390×844 window, with both labels present
-    /// and carrying non-empty text, headline and body still measure 0pt in
-    /// BOTH themes. So the defect is in the sheet, not in the tour.
+    /// and carrying non-empty text, headline and body still measured 0pt in
+    /// BOTH themes. So the defect was in the sheet, not in the tour — this
+    /// measurement is what ruled the router out.
     ///
-    /// The copy is not the cause — `testDeletionCopy_isNeverEmpty…` above
+    /// The cause was `deleteButton`/`cancelButton` keeping
+    /// `translatesAutoresizingMaskIntoConstraints`, which pinned both to a
+    /// required 0×0 frame and made Auto Layout break the badge's height and
+    /// both labels' intrinsic heights to satisfy the card's vertical chain.
+    /// With the flag cleared the headline now measures 33pt at y=104
+    /// (24 top margin + 64 badge + 16), so the expectation is promoted to a
+    /// plain assertion exactly as this comment used to instruct.
+    ///
+    /// The copy is not involved — `testDeletionCopy_isNeverEmpty…` above
     /// covers that, and the labels are found here *by their text*. The
-    /// measurements printed below go to the CI log so #467 has geometry to
-    /// work from rather than a symptom.
-    ///
-    /// `XCTExpectFailure` is deliberate and strict: the day the sheet lays
-    /// out, this test fails for being unexpectedly green, and whoever fixes
-    /// #467 is told to promote it into a real assertion.
+    /// measurements still print to the CI log so a regression arrives with
+    /// geometry rather than a symptom.
     func testConfirmDeleteSheet_titleAndBodyMeasure_whenHosted() {
-        XCTExpectFailure(
-            "#467 — the confirm-delete sheet lays its labels out at zero height"
-        )
         for style in [UIUserInterfaceStyle.light, .dark] {
             let sheet = hostedConfirmDeleteSheet(style: style)
             let labels = allLabels(in: sheet.view)
