@@ -16,9 +16,18 @@ import XCTest
 /// **The window is load-bearing.** A detached view never receives the
 /// trait-change callback, keeps whatever it resolved at `init`, and both
 /// themes measure identical — i.e. the test would pass against the broken
-/// code. The override goes on the WINDOW, and each direction is skip-guarded
-/// so a harness that silently fails to flip cannot assert the same theme
-/// twice and call it a pass.
+/// code. The override goes on the WINDOW.
+///
+/// **And the window has to be unhidden (#568).** It was not, and a window that
+/// is never unhidden does not propagate its override: the guard in `flip` fired
+/// on every run, so all four flip cases below reported `skipped` on every run
+/// since the file was written. #531 was pinned by nothing. `isHidden = false`
+/// is the whole difference — the same one measured in #565.
+///
+/// **No `XCTSkip` in this file, on purpose.** A guard that skips is a guard
+/// that hides; a skip firing on every run is indistinguishable from a test
+/// nobody wrote. The harness guards are `XCTFail`, so a harness that stops
+/// propagating the flip fails loudly instead.
 final class AlarmsStreakBannerThemeTests: XCTestCase {
 
     /// WCAG 2.1 non-text contrast floor (1.4.11).
@@ -29,7 +38,10 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
     private var hostWindows: [UIWindow] = []
 
     override func tearDown() {
-        hostWindows.forEach { $0.rootViewController = nil }
+        hostWindows.forEach {
+            $0.isHidden = true
+            $0.rootViewController = nil
+        }
         hostWindows = []
         super.tearDown()
     }
@@ -43,11 +55,11 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
     func testFill_reresolvesUnderAnAlreadyRenderedBanner() throws {
         let (banner, window) = makeHostedBanner()
 
-        try flip(window, to: .dark, banner)
+        flip(window, to: .dark, banner)
         let inDark = banner.renderedFillStops.map { hex($0) }
-        try XCTSkipUnless(!inDark.isEmpty, "the banner installed no fill gradient at all")
+        XCTAssertFalse(inDark.isEmpty, "the banner installed no fill gradient at all")
 
-        try flip(window, to: .light, banner)
+        flip(window, to: .light, banner)
         let inLight = banner.renderedFillStops.map { hex($0) }
 
         XCTAssertNotEqual(
@@ -64,7 +76,7 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
 
         // And back — the defect is symmetric: a banner built in light and
         // flipped to dark froze just as hard.
-        try flip(window, to: .dark, banner)
+        flip(window, to: .dark, banner)
         XCTAssertEqual(
             banner.renderedFillStops.map { hex($0) }, inDark,
             "the banner did not return to the dark fill"
@@ -77,11 +89,11 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
     func testIconTile_reresolvesItsMoneyRampOnAFlip() throws {
         let (banner, window) = makeHostedBanner()
 
-        try flip(window, to: .dark, banner)
+        flip(window, to: .dark, banner)
         let inDark = banner.renderedIconStops.map { hex($0) }
-        try XCTSkipUnless(!inDark.isEmpty, "the banner installed no icon gradient at all")
+        XCTAssertFalse(inDark.isEmpty, "the banner installed no icon gradient at all")
 
-        try flip(window, to: .light, banner)
+        flip(window, to: .light, banner)
         XCTAssertNotEqual(inDark, banner.renderedIconStops.map { hex($0) })
         XCTAssertEqual(
             banner.renderedIconStops.map { hex($0) },
@@ -97,10 +109,10 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
     func testBorder_reresolvesOnAFlip() throws {
         let (banner, window) = makeHostedBanner()
 
-        try flip(window, to: .dark, banner)
+        flip(window, to: .dark, banner)
         let inDark = try XCTUnwrap(banner.renderedBorderColor)
 
-        try flip(window, to: .light, banner)
+        flip(window, to: .light, banner)
         let inLight = try XCTUnwrap(banner.renderedBorderColor)
 
         XCTAssertNotEqual(hex(inDark), hex(inLight), "the border kept its dark value")
@@ -117,10 +129,10 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
         let (banner, window) = makeHostedBanner()
         banner.configure(streakDays: 5, savedAmount: 250)
 
-        try flip(window, to: .dark, banner)
+        flip(window, to: .dark, banner)
         let inDark = try XCTUnwrap(capsColor(of: banner))
 
-        try flip(window, to: .light, banner)
+        flip(window, to: .light, banner)
         let inLight = try XCTUnwrap(capsColor(of: banner))
 
         XCTAssertNotEqual(
@@ -215,8 +227,15 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    /// A banner in a window that actually propagates its override.
+    ///
+    /// `isHidden = false` is load-bearing and was the single reason every flip
+    /// case in this file skipped (#568): a window that is never unhidden hands
+    /// its `overrideUserInterfaceStyle` to nobody, so the banner kept the
+    /// launch theme and `flip` could never confirm the direction it asked for.
     private func makeHostedBanner() -> (AlarmsStreakBannerView, UIWindow) {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.isHidden = false
         let host = UIViewController()
         let banner = AlarmsStreakBannerView(frame: CGRect(x: 0, y: 0, width: 393, height: 84))
         host.view.addSubview(banner)
@@ -225,16 +244,20 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
         return (banner, window)
     }
 
+    /// Flip the window and confirm it landed. `XCTFail`, not `XCTSkip`: a
+    /// harness that stops propagating has to say so in red, or this file goes
+    /// back to reporting four cases that never ran.
     private func flip(
         _ window: UIWindow,
         to style: UIUserInterfaceStyle,
         _ banner: AlarmsStreakBannerView
-    ) throws {
+    ) {
         window.overrideUserInterfaceStyle = style
         window.layoutIfNeeded()
-        try XCTSkipUnless(
-            banner.traitCollection.userInterfaceStyle == style,
-            "window override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            banner.traitCollection.userInterfaceStyle, style,
+            "the harness stopped propagating the flip to \(style) — fix the harness, "
+            + "do not skip"
         )
     }
 
