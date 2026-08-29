@@ -99,13 +99,24 @@ final class StreakModalViewController: UIViewController {
     /// label) still measures zero when the controller's callback fires (#347
     /// review).
     ///
-    /// `lazy` + `performAsCurrent` because the label bakes its stops into
-    /// CGColors at init: as a plain stored property it froze whichever theme
-    /// `UITraitCollection.current` happened to be when the modal was
-    /// allocated, and the dark mint `#2EDB9F` is 2.19:1 on the light sheet.
+    /// The stops handed over here are a **placeholder**. They land in a
+    /// `CAGradientLayer` as plain `CGColor`s, which never re-resolve on a theme
+    /// flip, so `init` cannot be the last word whatever it reads —
+    /// `refreshLayerColors()` owns the real ramp, exactly as for `flameBadge`.
     ///
-    /// Internal rather than private so `StreakModalMoneyHeroThemeTests` can read
-    /// the stops the label actually paints with.
+    /// `lazy` + `performAsCurrent` narrows the placeholder from "whatever
+    /// `UITraitCollection.current` was when the modal was allocated" to "the
+    /// controller's traits when the label is first touched", and that is **not**
+    /// a fix: `configureLabels()` touches it from `viewDidLoad`, where the
+    /// controller is not in a window yet and its traits are the screen's — the
+    /// SYSTEM theme, not the app's. When the two disagreed the hero baked the
+    /// dark ramp onto the light sheet (`#2EDB9F` is 1.54:1 on `bg2` light; the
+    /// sampled glyph measured 2.14:1) while the flame tile one row up took the
+    /// light one (#552). Kept because it is now only the first frame, before
+    /// the sheet reaches the window.
+    ///
+    /// Internal rather than private so `StreakModalMoneyHeroThemeTests` can
+    /// read the stops the label actually paints with.
     lazy var amountLabel: SPGradientTextLabel = {
         var label: SPGradientTextLabel!
         traitCollection.performAsCurrent {
@@ -255,9 +266,14 @@ final class StreakModalViewController: UIViewController {
     }
 
     /// Every CGColor the sheet owns, re-resolved. Two different rules apply:
-    /// the border follows the theme (it sits on the sheet), while the outer
-    /// glow does not (it spills onto the always-dark scrim, where the light
-    /// `money500` — `#096647` — would read as a dirty smudge, not a glow).
+    /// anything painted ON the sheet follows the theme (border, flame ramp,
+    /// money hero ramp), while the outer glow does not — it spills onto the
+    /// always-dark scrim, where the light `money500` (`#096647`) would read as
+    /// a dirty smudge rather than a glow.
+    ///
+    /// Adding a gradient to this sheet without adding it here is the #552 bug:
+    /// the widget keeps whatever theme happened to be current when its
+    /// `CGColor`s were made, and can end up disagreeing with its neighbours.
     private func refreshLayerColors() {
         sheet.layer.borderColor = AppColors.strokeMoney
             .resolvedColor(with: traitCollection).cgColor
@@ -272,6 +288,13 @@ final class StreakModalViewController: UIViewController {
             colors: SPSupport.moneyGradientColors(for: traitCollection),
             locations: SPSupport.moneyGradientLocations
         )
+        // The money hero is the same kind of layer and needs the same
+        // treatment — it was missing here, so the badge and the number on ONE
+        // sheet could be painted in two different themes (#552). Guarded on the
+        // mode: `.behavioral` never shows the label and must not allocate it.
+        if mode != .behavioral {
+            amountLabel.setGradientColors(SPSupport.moneyGradientColors(for: traitCollection))
+        }
     }
 
     private func configureFlameBadge() {
