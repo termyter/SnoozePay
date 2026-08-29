@@ -58,10 +58,9 @@ extension SettingsViewController {
 
     func makeSoundCell(at indexPath: IndexPath) -> UITableViewCell {
         switch SoundRow(rawValue: indexPath.row) {
-        case .volume:         return makeVolumeRow(at: indexPath)
-        case .criticalAlerts: return makeCriticalAlertsRow(at: indexPath)
-        case .vibration:      return makeVibrationRow(at: indexPath)
-        case .none:           return UITableViewCell()
+        case .volume:    return makeVolumeRow(at: indexPath)
+        case .vibration: return makeVibrationRow(at: indexPath)
+        case .none:      return UITableViewCell()
         }
     }
 
@@ -78,23 +77,6 @@ extension SettingsViewController {
             trailingColor: AppColors.fg3,
             accessory: .disclosureIndicator,
             selectionStyle: .default
-        )
-        return cell
-    }
-
-    /// Critical Alerts row — rendered DISABLED with a hint. The entitlement is
-    /// a no-touch / PM concern (Personal team, not granted by Apple), so the
-    /// switch is greyed-out and the subtitle explains why (#283).
-    func makeCriticalAlertsRow(at indexPath: IndexPath) -> UITableViewCell {
-        let cell = dequeueIconRowCell(at: indexPath)
-        cell.configureSwitch(
-            systemName: "bell.badge",
-            iconColor: AppColors.fg3,
-            title: "Critical Alerts",
-            subtitle: "Недоступно — нужно одобрение Apple",
-            isOn: false,
-            enabled: false,
-            onChange: { _ in }
         )
         return cell
     }

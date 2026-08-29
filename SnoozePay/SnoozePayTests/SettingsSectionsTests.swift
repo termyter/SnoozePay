@@ -68,14 +68,21 @@ final class SettingsSectionsTests: XCTestCase {
         XCTAssertEqual(SettingsViewController.FinanceRow.snoozeDuration.rawValue, 1)
     }
 
-    func testSoundSection_volumeCriticalVibration() {
+    /// The section lost its middle row when #566 dropped the Critical Alerts
+    /// affordance — AlarmKit already rings through silent mode, and the
+    /// entitlement that row advertised is not one Apple grants alarm apps.
+    /// Pinning the count as well as the case list keeps a re-added row from
+    /// silently shifting `indexPath.row` under the two survivors.
+    func testSoundSection_volumeThenVibration() {
         let sut = makeSUT()
         let section = SettingsViewController.Section.soundNotifications.rawValue
-        XCTAssertEqual(sut.tableView(sut.tableView, numberOfRowsInSection: section), 3)
+        XCTAssertEqual(sut.tableView(sut.tableView, numberOfRowsInSection: section), 2)
         XCTAssertEqual(
             SettingsViewController.SoundRow.allCases,
-            [.volume, .criticalAlerts, .vibration]
+            [.volume, .vibration]
         )
+        XCTAssertEqual(SettingsViewController.SoundRow.volume.rawValue, 0)
+        XCTAssertEqual(SettingsViewController.SoundRow.vibration.rawValue, 1)
     }
 
     func testRulesSection_progressiveOnly() {
