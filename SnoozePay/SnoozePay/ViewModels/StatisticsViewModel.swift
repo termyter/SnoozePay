@@ -374,15 +374,16 @@ final class StatisticsViewModel {
     /// "no slips yet" caption for a clean ledger.
     var lastSlipText: String {
         guard let latest = charges.map(\.createdAt).max() else {
-            return "Срывов ещё не было"
+            return Localized.text("statistics.last_slip.none")
         }
-        return "Последний срыв: \(Self.dayMonthText(latest))"
+        return Localized.format("statistics.last_slip", Self.dayMonthText(latest))
     }
 
     // MARK: - Heatmap
 
-    /// Weekday header labels for the heatmap grid, Monday-first.
-    static let weekdayShortLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    /// Weekday header labels for the heatmap grid, Monday-first. Calendar
+    /// data rather than catalogue copy — see ``WeekdayNames``.
+    static var weekdayShortLabels: [String] { WeekdayNames.short }
 
     /// `heatmapDays` is a calendar grid for the snapshot month. Cells run
     /// Monday-first, one row per week, and cover full weeks so the count is
@@ -560,26 +561,25 @@ final class StatisticsViewModel {
 
     static func headline(for direction: TrendDirection) -> String {
         switch direction {
-        case .better: return "Становится лучше"
-        case .same: return "Стабильно"
-        case .worse: return "Чаще, чем неделю назад"
+        case .better: return Localized.text("statistics.trend.better")
+        case .same: return Localized.text("statistics.trend.same")
+        case .worse: return Localized.text("statistics.trend.worse")
         }
     }
 
     /// "−2 к прошлой неделе" / "+3 к прошлой неделе" / the same-level caption.
     /// Uses the typographic minus (U+2212) per the design copy.
     static func subtitle(forDiff diff: Int) -> String {
-        if diff == 0 { return "Столько же, сколько на прошлой неделе" }
+        if diff == 0 { return Localized.text("statistics.trend.no_change") }
         let sign = diff < 0 ? "−" : "+"
-        return "\(sign)\(abs(diff)) к прошлой неделе"
+        return Localized.format("statistics.trend.delta", "\(sign)\(abs(diff))")
     }
 
     // MARK: - Presentation strings
 
     /// Full lowercase weekday names, Monday-first — "Чаще всего — среда".
-    static let weekdayFullNames = [
-        "понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"
-    ]
+    /// Calendar data rather than catalogue copy — see ``WeekdayNames``.
+    static var weekdayFullNames: [String] { WeekdayNames.full }
 
     /// Value rendered above a weekday bar: whole averages drop the fraction
     /// ("4"), fractional ones keep a single decimal with the Russian comma
@@ -595,11 +595,11 @@ final class StatisticsViewModel {
     static func statusText(for day: HeatmapDay) -> String {
         switch day.status {
         case .woke:
-            return "Встал сразу"
+            return Localized.text("statistics.tooltip.woke")
         case .light, .heavy:
             return "\(day.snoozes) \(snoozeWord(day.snoozes))"
         case .empty:
-            return "Не было будильника"
+            return Localized.text("statistics.tooltip.no_alarm")
         }
     }
 
@@ -612,7 +612,11 @@ final class StatisticsViewModel {
     static func dayMonthText(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = AppLocale.display
-        formatter.dateFormat = "d MMMM"
+        // Template, not a literal pattern: the day/month ORDER is a property of
+        // the locale («8 января» vs "January 8"), so it is behaviour to derive
+        // rather than copy to translate (#569). Resolves to the same "d MMMM"
+        // under `ru_RU`, so nothing on screen moves today.
+        formatter.setLocalizedDateFormatFromTemplate("dMMMM")
         return formatter.string(from: date)
     }
 }
