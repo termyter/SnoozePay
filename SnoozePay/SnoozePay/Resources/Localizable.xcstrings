@@ -1,6 +1,102 @@
 {
   "sourceLanguage" : "ru",
   "strings" : {
+    "alarms.days.every_day" : {
+      "comment" : "Alarm-card caps row: the alarm repeats on all seven weekdays.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый день"
+          }
+        }
+      }
+    },
+    "alarms.days.once" : {
+      "comment" : "Alarm-card caps row: a one-shot alarm with no weekday set.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Единожды"
+          }
+        }
+      }
+    },
+    "alarms.days.once_on" : {
+      "comment" : "Alarm-card caps row: a one-shot alarm limited to the listed weekdays (%@ is «Вт, Чт»). Kept as one string rather than assembled from parts so the separator and the word order stay translatable.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Единожды · %@"
+          }
+        }
+      }
+    },
+    "alarms.days.weekdays" : {
+      "comment" : "Alarm-card caps row: Mon-Fri. The weekday abbreviations are part of the copy here — another language may want a different range notation entirely.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будни · Пн–Пт"
+          }
+        }
+      }
+    },
+    "alarms.days.weekend" : {
+      "comment" : "Alarm-card caps row: Sat+Sun.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выходные"
+          }
+        }
+      }
+    },
+    "alarms.error.rollback_persist_failed" : {
+      "comment" : "Alert body when enabling an alarm failed AND undoing that failure also failed (#205); only a relaunch reconciles memory with disk.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось включить будильник и откатить изменение — данные могут быть в рассинхроне. Перезапустите приложение и проверьте список будильников."
+          }
+        }
+      }
+    },
+    "alarms.hint.zero_balance" : {
+      "comment" : "Caption under a 0 ₽ balance on the alarms list. Deliberately NOT «будильники не зазвонят» — the alarm still rings, the user just cannot pay to snooze it (#232).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывать не получится"
+          }
+        }
+      }
+    },
+    "alarms.penalty" : {
+      "comment" : "Alarm-card penalty line; %@ is the formatted price («50 ₽»). The minus is U+2212, per the design copy.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "▲ ПОСПАТЬ ЕЩЁ: −%@"
+          }
+        }
+      }
+    },
     "create_alarm.wake_up" : {
       "comment" : "Header above the time wheel on the create-alarm sheet.",
       "extractionState" : "manual",
@@ -681,6 +777,114 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Пригласить"
+          }
+        }
+      }
+    },
+    "statistics.last_slip" : {
+      "comment" : "Hero meta line; %@ is a day-and-month date («8 января»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Последний срыв: %@"
+          }
+        }
+      }
+    },
+    "statistics.last_slip.none" : {
+      "comment" : "Hero meta line for a ledger with no charges at all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Срывов ещё не было"
+          }
+        }
+      }
+    },
+    "statistics.tooltip.no_alarm" : {
+      "comment" : "Heatmap tooltip: no alarm was scheduled that day.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не было будильника"
+          }
+        }
+      }
+    },
+    "statistics.tooltip.woke" : {
+      "comment" : "Heatmap tooltip: alarm dismissed with zero snoozes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Встал сразу"
+          }
+        }
+      }
+    },
+    "statistics.trend.better" : {
+      "comment" : "8-week trend headline: fewer snoozes than last week.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Становится лучше"
+          }
+        }
+      }
+    },
+    "statistics.trend.delta" : {
+      "comment" : "8-week trend subtitle; %@ is the signed difference («−2», «+3») with a U+2212 minus.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ к прошлой неделе"
+          }
+        }
+      }
+    },
+    "statistics.trend.no_change" : {
+      "comment" : "8-week trend subtitle when the difference is exactly zero.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Столько же, сколько на прошлой неделе"
+          }
+        }
+      }
+    },
+    "statistics.trend.same" : {
+      "comment" : "8-week trend headline: same as last week.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стабильно"
+          }
+        }
+      }
+    },
+    "statistics.trend.worse" : {
+      "comment" : "8-week trend headline: more snoozes than last week.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чаще, чем неделю назад"
           }
         }
       }
