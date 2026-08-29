@@ -30,7 +30,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
   schedule:
-    # 02:00 UTC — ночная полная проверка без кэша.
+    # 02:37 UTC — некруглая минута намеренно: на '0 2' GitHub задерживал прогон на 6.5 ч (#524).
     - cron: '37 2 * * *'
   workflow_dispatch:
 
