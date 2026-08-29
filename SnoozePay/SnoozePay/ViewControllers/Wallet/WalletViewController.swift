@@ -50,11 +50,17 @@ final class WalletViewController: UIViewController {
     // MARK: - Init
 
     init() {
-        let initialBalance = Decimal(BalanceService.shared.balance)
+        let initialBalance = BalanceService.shared.balance
         balanceCard = SPBalanceCard(
-            balance: initialBalance,
+            balance: Decimal(initialBalance),
             delta: nil,
-            hint: WalletHints.defaultBalanceHint()
+            // Real hint from the first frame (#546). The placeholder this
+            // replaced was a hardcoded "~17 откладываний" that the first
+            // `refresh()` then contradicted.
+            hint: WalletHints.affordHint(
+                forBalance: initialBalance,
+                alarms: AlarmRepository.shared.fetchAll()
+            )
         )
         super.init(nibName: nil, bundle: nil)
     }
@@ -204,7 +210,15 @@ final class WalletViewController: UIViewController {
         let load = WalletLedgerLoad.load(from: TransactionRepository.shared)
         let transactions = load.transactions
         let delta = load.didFail ? nil : WalletStats.weeklyDelta(from: transactions)
-        let hint = WalletHints.affordHint(forBalance: balance, averagePrice: 50)
+        // Alarms feed the "Хватит на ~N" price (#546) — the number used to be
+        // divided by a hardcoded 50 ₽ here, which is why this card and the
+        // alarms list disagreed. The lossy `fetchAll` is deliberate: an
+        // unreadable alarm store degrades the hint to the user's configured
+        // default price, it does not put an error banner on the wallet.
+        let hint = WalletHints.affordHint(
+            forBalance: balance,
+            alarms: AlarmRepository.shared.fetchAll()
+        )
         balanceCard.update(balance: decimal, delta: delta, hint: hint)
         weeklyChart.update(values: WalletStats.weeklyPenaltyTotals(from: transactions))
         rebuildTxPreview(load: load)

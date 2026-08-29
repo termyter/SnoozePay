@@ -5,25 +5,30 @@ import Foundation
 /// Renamed from `WalletPresets` in #233 — the 3×2 preset grid moved into
 /// `DepositBottomSheetViewController` (see `DepositPresets`), leaving only
 /// the affordability hint logic on this screen.
+///
+/// The arithmetic itself lives in `SnoozeAffordability` (#546): this screen and
+/// the alarms list answer the same question and must not answer it twice. What
+/// stays here is the wallet-only empty-balance copy, which nudges toward the
+/// deposit button this screen owns.
 enum WalletHints {
 
-    /// Localised "Хватит на ~N откладываний при текущей цене" hint —
-    /// matches the JSX hardcoded copy. The N defaults to 17 (840 ÷ 50 ≈ 17)
-    /// when balance / price are not yet bound; live callers should compute
-    /// it via `affordHint(forBalance:averagePrice:)`.
-    static func defaultBalanceHint() -> String {
-        "Хватит на ~17 откладываний при текущей цене"
-    }
+    /// Shown while the balance is empty. Wallet-specific on purpose — the
+    /// alarms list says "Откладывать не получится", which is the right line
+    /// on a screen with no way to top up; here the user is one tap away.
+    static let emptyBalanceHint = "Пока баланс пуст — пополните, чтобы откладывать"
 
     /// Derives the wallet-card hint from the live balance and the user's
-    /// average snooze price. Falls back to the static copy when price is
-    /// non-positive or balance is zero — avoids divide-by-zero noise and
-    /// also keeps the empty state from showing "Хватит на ~0".
-    static func affordHint(forBalance balance: Double, averagePrice: Double) -> String {
-        guard balance > 0, averagePrice > 0 else {
-            return "Пока баланс пуст — пополните, чтобы откладывать"
-        }
-        let count = max(1, Int(balance / averagePrice))
-        return "Хватит на ~\(count) откладываний при текущей цене"
+    /// alarms. Identical string to `AlarmsListViewModel.affordabilityHint` for
+    /// the same inputs — that equality is the point of #546, where the wallet
+    /// divided by a hardcoded 50 ₽ (and still claimed "при текущей цене") while
+    /// the list divided by the priciest alarm, so 298 ₽ read as "~5" here and
+    /// "~1" one tap away.
+    static func affordHint(
+        forBalance balance: Double,
+        alarms: [Alarm],
+        defaults: AlarmDefaults = .shared
+    ) -> String {
+        guard balance > 0 else { return emptyBalanceHint }
+        return SnoozeAffordability.hint(balance: balance, alarms: alarms, defaults: defaults)
     }
 }
