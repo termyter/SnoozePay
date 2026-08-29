@@ -174,26 +174,26 @@ final class AppNavigationBarStyleTests: XCTestCase {
     /// measure identical, so without the window this passes against a
     /// snapshotted (broken) appearance.
     func testStoredFill_reresolvesAgainstTheBarsLiveTraits_onAThemeFlip() throws {
-        let window = makeHostWindow()
+        let window = makeHostWindow(style: .dark)
         let stack = AppNavigationBarStyle.makeNavigationController(rootViewController: UIViewController())
         window.rootViewController = stack
         let bar = stack.navigationBar
 
-        // The override goes on the CONTROLLER: an invisible, scene-less window
-        // does not push a style change down through its `rootViewController`.
-        stack.overrideUserInterfaceStyle = .dark
+        // The override goes on the WINDOW, and the window is unhidden — the
+        // arrangement measured in #565. The previous one (hidden window,
+        // override on the controller) propagated nothing at all.
         window.layoutIfNeeded()
-        try XCTSkipUnless(
-            bar.traitCollection.userInterfaceStyle == .dark,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            bar.traitCollection.userInterfaceStyle, .dark,
+            "the harness stopped propagating dark — fix the harness, do not skip"
         )
         let inDark = channels(bar.standardAppearance.backgroundColor?.resolvedColor(with: bar.traitCollection))
 
-        stack.overrideUserInterfaceStyle = .light
+        window.overrideUserInterfaceStyle = .light
         window.layoutIfNeeded()
-        try XCTSkipUnless(
-            bar.traitCollection.userInterfaceStyle == .light,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            bar.traitCollection.userInterfaceStyle, .light,
+            "the harness stopped propagating the flip to light — fix the harness, do not skip"
         )
         let inLight = channels(bar.standardAppearance.backgroundColor?.resolvedColor(with: bar.traitCollection))
 
@@ -208,24 +208,22 @@ final class AppNavigationBarStyleTests: XCTestCase {
 
     /// The stronger half of the same claim: not just "the stored colour is
     /// dynamic" but "UIKit actually repaints the bar with the other theme's
-    /// value". Renders the bar's layer tree and samples a pixel. Skip-guarded
-    /// on the render succeeding at all, so it can only fail by measuring two
-    /// opaque, identical bars — i.e. by the appearance genuinely not tracking.
+    /// value". Renders the bar and samples a pixel. A render that comes back
+    /// transparent is now a FAILURE carrying both readings, not a skip (#568):
+    /// the skip fired on every run, because a window that was never unhidden
+    /// gives the bar no drawable area.
     func testRenderedBar_repaintsOnAThemeFlip() throws {
-        let window = makeHostWindow()
+        let window = makeHostWindow(style: .dark)
         let stack = AppNavigationBarStyle.makeNavigationController(rootViewController: UIViewController())
         window.rootViewController = stack
         let bar = stack.navigationBar
 
-        stack.overrideUserInterfaceStyle = .dark
         window.layoutIfNeeded()
-        let dark = renderCentrePixel(of: bar)
-        try XCTSkipUnless((dark?.last ?? 0) > 200, "bar background did not render offscreen — a harness fact")
+        let dark = try opaqueCentrePixel(of: bar, in: "dark")
 
-        stack.overrideUserInterfaceStyle = .light
+        window.overrideUserInterfaceStyle = .light
         window.layoutIfNeeded()
-        let light = renderCentrePixel(of: bar)
-        try XCTSkipUnless((light?.last ?? 0) > 200, "bar background did not render offscreen — a harness fact")
+        let light = try opaqueCentrePixel(of: bar, in: "light")
 
         XCTAssertNotEqual(
             dark, light,
@@ -234,17 +232,87 @@ final class AppNavigationBarStyleTests: XCTestCase {
         // Light `bg0` is #F4F6FB, dark is #060912. Only the direction is
         // asserted, so a palette tweak doesn't false-fail this test.
         XCTAssertGreaterThan(
-            light?.first ?? 0, dark?.first ?? 0,
+            light.first ?? 0, dark.first ?? 0,
             "the light bar must be the brighter of the two"
         )
     }
 
     // MARK: - Helpers
 
-    private func makeHostWindow() -> UIWindow {
+    /// A window that actually propagates its theme and lays its bar out.
+    ///
+    /// `isHidden = false` is the whole fix for #568 here: this helper built a
+    /// window and never showed it, so the override reached nobody and both flip
+    /// cases below reported `skipped` on every run. `tearDown` already hid these
+    /// windows again — it was hiding windows that had never been shown.
+    private func makeHostWindow(style: UIUserInterfaceStyle) -> UIWindow {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.overrideUserInterfaceStyle = style
+        window.isHidden = false
         hostWindows.append(window)
         return window
+    }
+
+    /// The bar's centre pixel, or a failure carrying what was actually
+    /// measured — never a skip (#568).
+    ///
+    /// The old guard skipped whenever the render came back transparent, which
+    /// on a hidden window it always did — the bar had no drawable area at all,
+    /// so the case never ran. Both render paths are tried before giving up:
+    /// `CALayer.render(in:)` first, because it is the measurement this case was
+    /// written around, and `drawHierarchy` second, because it goes through the
+    /// render server and composites a bar background a bare layer render can
+    /// drop.
+    private func opaqueCentrePixel(of bar: UIView, in style: String) throws -> [UInt8] {
+        let layered = renderCentrePixel(of: bar)
+        if (layered?.last ?? 0) > 200 { return layered ?? [] }
+        let drawn = drawnCentrePixel(of: bar)
+        if (drawn?.last ?? 0) > 200 { return drawn ?? [] }
+        XCTFail(
+            "the \(style) bar did not render an opaque background: drawHierarchy gave "
+            + "\(drawn.map(String.init(describing:)) ?? "nil"), CALayer.render gave "
+            + "\(layered.map(String.init(describing:)) ?? "nil") for a bar of \(bar.bounds.size) "
+            + "— fix the harness, do not skip"
+        )
+        throw HarnessFailure.barDidNotRender
+    }
+
+    /// Thrown after `XCTFail` so the case stops instead of reading a pixel it
+    /// already knows is blank. The failure is the `XCTFail` above; this only
+    /// unwinds.
+    private enum HarnessFailure: Error {
+        case barDidNotRender
+    }
+
+    /// Centre pixel via the render server, which composites bar backgrounds
+    /// that a bare layer render can drop.
+    private func drawnCentrePixel(of view: UIView) -> [UInt8]? {
+        let size = view.bounds.size
+        guard size.width > 2, size.height > 2 else { return nil }
+        let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
+        let image = renderer.image { _ in
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+        }
+        guard let cgImage = image.cgImage else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let drawn = pixel.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: 1,
+                height: 1,
+                bitsPerComponent: 8,
+                bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.translateBy(x: -CGFloat(cgImage.width) / 2, y: -CGFloat(cgImage.height) / 2)
+            context.draw(
+                cgImage,
+                in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
+            )
+            return true
+        }
+        return drawn ? pixel : nil
     }
 
     /// Render `view`'s layer tree into a 1×1 bitmap positioned over the view's
