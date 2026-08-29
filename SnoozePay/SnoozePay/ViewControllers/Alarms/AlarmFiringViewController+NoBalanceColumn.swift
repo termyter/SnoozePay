@@ -172,6 +172,11 @@ extension AlarmFiringViewController {
         block.axis = .vertical
         block.alignment = .center
         block.spacing = AppSpacing.sp4
+        // The warning is the one thing on this screen that must never be
+        // squeezed: required resistance sends any remaining shortage to the
+        // hero's top guard (which can always yield upward) instead of into the
+        // text the state exists to deliver.
+        block.setContentCompressionResistancePriority(.required, for: .vertical)
         block.isHidden = true
         view.addSubview(block)
         noBalanceCenterBlock = block
@@ -284,18 +289,31 @@ extension AlarmFiringViewController {
         applyNoBalanceColumnFit(clockSize: size, reserveBell: reserveBell)
     }
 
-    /// Everything in the column except the clock, at its design spacing.
+    /// Everything in the column except the clock, at its design spacing and its
+    /// NATURAL height.
     ///
-    /// Measured from element heights and constants rather than from the laid-out
-    /// gaps: a gap the solver has already squeezed would understate the column
-    /// and the next pass would grow the clock straight back into the squeeze.
+    /// Every term is a fitting size, never a laid-out frame. Frames are the
+    /// output of the very constraints this measurement feeds, and they are what
+    /// the solver squeezes when it runs short: reading `block.bounds.height`
+    /// back understated the column by exactly the amount already lost, the next
+    /// pass sized the clock to that understatement, and the deficit settled into
+    /// the warning as a 9pt overflow of its own body text (caught by this
+    /// suite's first green-looking CI run on the compact screen).
     private func noBalanceColumnHeightWithoutClock(block: UIView) -> CGFloat {
-        nameLabel.bounds.height
+        let width = block.bounds.width > 0
+            ? block.bounds.width
+            : view.bounds.width - AppSpacing.sp4 * 2
+        let blockHeight = block.systemLayoutSizeFitting(
+            CGSize(width: width, height: 0),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        ).height
+        return nameLabel.intrinsicContentSize.height
             + AppSpacing.sp3            // name → clock
             + AppSpacing.sp3            // clock → caps
-            + wakeUpCapsLabel.bounds.height
+            + wakeUpCapsLabel.intrinsicContentSize.height
             + AppSpacing.sp6            // caps → block, the design gap
-            + block.bounds.height
+            + blockHeight
     }
 
     private func applyNoBalanceColumnFit(clockSize: CGFloat, reserveBell: Bool) {
