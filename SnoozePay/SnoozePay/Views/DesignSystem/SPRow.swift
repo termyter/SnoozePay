@@ -105,6 +105,21 @@ final class SPRow: UIControl {
     // MARK: - Configuration
 
     private func configure() {
+        // Owns its autoresizing flag. This view activates a required
+        // `heightAnchor` on ITSELF (below), which cannot coexist with the
+        // constraints UIKit synthesises from the `.zero` frame it is born
+        // with. A caller who forgets the reset gets no error: the engine pays
+        // for the collision out of whatever else is breakable, which in #467
+        // was the intrinsic height of the SIBLINGS — they kept their
+        // x/y/width and measured 0 tall, and the screen read as blank.
+        //
+        // Quieter here than in `SPButton`'s `==` case: an unsatisfiable `>=`
+        // need not print "Unable to simultaneously satisfy constraints" at
+        // all, so the collapsed neighbour is the only symptom. Owning the flag
+        // makes forgetting impossible; call sites that still set it are
+        // harmlessly redundant (#584).
+        translatesAutoresizingMaskIntoConstraints = false
+
         backgroundColor = .clear
 
         leadingContainer.translatesAutoresizingMaskIntoConstraints = false

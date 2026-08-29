@@ -229,6 +229,18 @@
         }
       }
     },
+    "common.button.close" : {
+      "comment" : "Dismisses a modal that has nothing else to decide — the WokeMorning summary, the streak modal, the alarm-off warning.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Закрыть"
+          }
+        }
+      }
+    },
     "common.button.later" : {
       "comment" : "Defers a prompt without acting on it — the balance-corruption alert keeps re-asking on the next appearance.",
       "extractionState" : "manual",
@@ -242,7 +254,7 @@
       }
     },
     "common.button.ok" : {
-      "comment" : "Acknowledging action of an informational alert. Spelled «Ок», not «ОК» or «OK» — that is how it reads on screen today.",
+      "comment" : "Sole action of an informational UIAlertController. Acknowledges, never confirms — no alert using it destroys anything. Spelled «Ок», not «ОК» or «OK» — that is how it reads on screen today.",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {
@@ -565,6 +577,234 @@
         }
       }
     },
+    "firing.alert.purchase_failed.message" : {
+      "comment" : "Fallback body of the failed-purchase alert, used only when StoreKit gives no message of its own.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "firing.alert.purchase_failed.title" : {
+      "comment" : "Alert title after a failed StoreKit purchase started from the firing screen or its top-up sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупка не выполнена"
+          }
+        }
+      }
+    },
+    "firing.alert.refund_failed.message" : {
+      "comment" : "Body of the refund-failed alert; %@ is the scheduler's own error description. Routes to support instead of implying the money came back.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Будильник не зазвенит повторно, а вернуть деньги автоматически не вышло. Напишите в поддержку — спишем вручную."
+          }
+        }
+      }
+    },
+    "firing.alert.refund_failed.title" : {
+      "comment" : "Alert title for the worse case: the snooze did not schedule AND the refund failed, so the user is out of pocket.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось вернуть списание"
+          }
+        }
+      }
+    },
+    "firing.alert.snooze_not_scheduled.message" : {
+      "comment" : "Body of the snooze-not-scheduled alert; %@ is the scheduler's own error description. One string rather than «error + our sentence» so a translator can move the explanation ahead of the cause.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Будильник не зазвенит повторно — установите запасной. Списанные деньги возвращены на баланс."
+          }
+        }
+      }
+    },
+    "firing.alert.snooze_not_scheduled.title" : {
+      "comment" : "Alert title when the money was taken but the scheduler refused the next ring.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывание не запланировано"
+          }
+        }
+      }
+    },
+    "firing.audio.config_failed" : {
+      "comment" : "Banner shown when the audio session could not be configured because another app holds it. Also used as the banner's accessibility label.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звук недоступен — другое приложение использует аудио. Проверьте режим звука."
+          }
+        }
+      }
+    },
+    "firing.audio.vibration_only" : {
+      "comment" : "Banner shown when playback failed and the alarm falls back to vibration only. Also used as the banner's accessibility label.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звук не воспроизводится — будильник вибрирует."
+          }
+        }
+      }
+    },
+    "firing.button.dismiss" : {
+      "comment" : "Full-width ghost button that ends the alarm. First person on purpose: the user asserts they are up.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Я встал — выключить"
+          }
+        }
+      }
+    },
+    "firing.eyebrow.get_up_only" : {
+      "comment" : "Caps eyebrow under the firing clock once the wallet cannot pay for another snooze — getting up is the only move left.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Только встать"
+          }
+        }
+      }
+    },
+    "firing.eyebrow.wake_up" : {
+      "comment" : "Caps eyebrow under the firing clock while the wallet can still pay for a snooze.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пора вставать"
+          }
+        }
+      }
+    },
+    "firing.hint.max_price" : {
+      "comment" : "Replaces firing.hint.next_price once the progressive ladder hits its ceiling and there is no higher price to quote.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "максимум — дальше только встать"
+          }
+        }
+      }
+    },
+    "firing.hint.next_price" : {
+      "comment" : "Hint under the snooze CTA on a progressive alarm, naming what the NEXT snooze will cost (%@ is a formatted sum). Lowercase per SPDawnV3.jsx:240.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "следующее откладывание: %@"
+          }
+        }
+      }
+    },
+    "firing.no_balance.body" : {
+      "comment" : "Body line under firing.no_balance.pill — states the consequence rather than repeating the balance.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывать больше не получится. Только встать."
+          }
+        }
+      }
+    },
+    "firing.no_balance.choose_amount" : {
+      "comment" : "Quiet link under the no-balance CTA; opens the top-up sheet for an amount other than the pre-selected one.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбрать другую сумму"
+          }
+        }
+      }
+    },
+    "firing.no_balance.hint" : {
+      "comment" : "Hint on the disabled snooze card in the no-balance state, explaining why the card cannot be tapped.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недостаточно средств"
+          }
+        }
+      }
+    },
+    "firing.no_balance.pill" : {
+      "comment" : "Pain pill at the centre of the firing screen once the wallet cannot cover a snooze.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланса не осталось"
+          }
+        }
+      }
+    },
+    "firing.pill.balance" : {
+      "comment" : "Muted label segment of the two-tier balance pill in the firing top bar, read as «Баланс  840 ₽». Mixed case on purpose: SPPill renders it in the caps face without transforming it, which is why this is not common.caps.balance («БАЛАНС»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс"
+          }
+        }
+      }
+    },
+    "firing.progressive.pill" : {
+      "comment" : "Pain-toned pill in the firing hero on a progressive alarm; %lld is the ordinal of the snooze about to be bought (snoozeCount + 1).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прогрессив · %lld-й поспать ещё"
+          }
+        }
+      }
+    },
     "firing.snooze.accessibility" : {
       "comment" : "VoiceOver label of the snooze CTA on the firing screen. %lld is the snooze length in minutes.",
       "extractionState" : "manual",
@@ -597,6 +837,174 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "СЕГОДНЯ"
+          }
+        }
+      }
+    },
+    "firing.top_up.footer" : {
+      "comment" : "Meta line under the purchase CTA of the firing top-up sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зачислится мгновенно. Откладывание будет доступно сразу."
+          }
+        }
+      }
+    },
+    "firing.top_up.load_failed" : {
+      "comment" : "Release-build failure when the StoreKit catalogue never loaded, so there is no product to buy.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить пакеты пополнения. Попробуйте позже."
+          }
+        }
+      }
+    },
+    "firing.top_up.pause" : {
+      "comment" : "Caps countdown above the sheet header; %@ is MM:SS until the alarm resumes. The call site uppercases the whole line, so the catalogue keeps it in sentence case.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник на паузе · %@"
+          }
+        }
+      }
+    },
+    "firing.top_up.row.hint.missing" : {
+      "comment" : "Tier row hint naming the exact shortfall when the tier buys no snooze; %@ is a formatted sum.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "не хватает %@"
+          }
+        }
+      }
+    },
+    "firing.top_up.row.hint.price" : {
+      "comment" : "Tier row hint naming the price the count was divided by; %@ is a formatted sum.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "по %@ за откладывание"
+          }
+        }
+      }
+    },
+    "firing.top_up.row.title.generic" : {
+      "comment" : "Tier row title when the snooze price is unknown or free, so no promise about snoozes can be made. Same words as firing.top_up.title but a different role — a row label, free to diverge from the sheet header.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пополнить баланс"
+          }
+        }
+      }
+    },
+    "firing.top_up.row.title.insufficient" : {
+      "comment" : "Tier row title when buying this tier still leaves the user short of one snooze.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не хватит на откладывание"
+          }
+        }
+      }
+    },
+    "firing.top_up.row.title.snoozes" : {
+      "comment" : "Tier row title naming how many snoozes the tier unlocks: %1$lld is the count, %2$@ the matching form of «откладывание» (plural.snoozes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%1$lld %2$@"
+          }
+        }
+      }
+    },
+    "firing.top_up.subtitle.insufficient" : {
+      "comment" : "Sheet subtitle when not even the largest tier unlocks a snooze; %1$@ is the snooze price, %2$@ the largest tier.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывание сейчас стоит %1$@. Даже %2$@ на него не хватит — понадобится несколько пополнений."
+          }
+        }
+      }
+    },
+    "firing.top_up.subtitle.no_price" : {
+      "comment" : "Sheet subtitle when there is no usable snooze price to reason about; %@ is the cheapest tier.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Самое маленькое пополнение — %@. Можно больше, чтобы не возвращаться сюда."
+          }
+        }
+      }
+    },
+    "firing.top_up.subtitle.smallest" : {
+      "comment" : "Sheet subtitle when the cheapest tier already unlocks a snooze; %1$@ is the snooze price, %2$@ the cheapest tier.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывание сейчас стоит %1$@. Хватит самого маленького пополнения — %2$@. Можно больше, чтобы не возвращаться сюда."
+          }
+        }
+      }
+    },
+    "firing.top_up.subtitle.threshold" : {
+      "comment" : "Sheet subtitle when a middle tier is the first that unlocks a snooze; %1$@ is the snooze price, %2$@ that tier.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывание сейчас стоит %1$@. Хватит начиная с %2$@ — меньшие пополнения откладывание не разблокируют."
+          }
+        }
+      }
+    },
+    "firing.top_up.success" : {
+      "comment" : "Caption of the success overlay in the firing top-up sheet, shown while the sheet auto-dismisses.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Возвращаем к будильнику через 2 секунды"
+          }
+        }
+      }
+    },
+    "firing.top_up.title" : {
+      "comment" : "h2 header of the top-up sheet opened while the alarm is ringing.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пополнить баланс"
           }
         }
       }
@@ -1953,6 +2361,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Операция"
+          }
+        }
+      }
+    },
+    "woke_morning.eyebrow" : {
+      "comment" : "Caps eyebrow of the wake-up summary. The one line that does not vary by scenario.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Доброе утро"
+          }
+        }
+      }
+    },
+    "woke_morning.headline.clean" : {
+      "comment" : "Summary headline when nothing was charged: the user got up on the first ring.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Встал с первого раза"
+          }
+        }
+      }
+    },
+    "woke_morning.headline.recovered" : {
+      "comment" : "Summary headline naming the billed snoozes: %1$lld is the count, %2$@ the genitive form governed by «после» (plural.snoozes_after).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удержались после %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "woke_morning.headline.unavailable" : {
+      "comment" : "Summary headline when the ledger could not be read — states the fact without any number behind it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы встали"
+          }
+        }
+      }
+    },
+    "woke_morning.headline.unchanged" : {
+      "comment" : "Summary headline for a wake the ledger billed zero times, reached without the clean path (e.g. every attempt was refunded).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс не изменился"
+          }
+        }
+      }
+    },
+    "woke_morning.subtitle.clean" : {
+      "comment" : "Summary subtitle for a wake with no charges at all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс в полной сохранности. Так держать."
+          }
+        }
+      }
+    },
+    "woke_morning.subtitle.recovered" : {
+      "comment" : "Summary subtitle naming what this morning cost; %lld is whole roubles.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сегодня списано %lld ₽. Завтра попробуем не списать ничего."
+          }
+        }
+      }
+    },
+    "woke_morning.subtitle.reversed_charged" : {
+      "comment" : "Summary subtitle when some charges stuck and some were reversed; %1$lld is roubles charged, %2$lld the reversed count.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сегодня списано %1$lld ₽. Не состоявшихся откладываний: %2$lld — деньги за них вернули."
+          }
+        }
+      }
+    },
+    "woke_morning.subtitle.reversed_none" : {
+      "comment" : "Summary subtitle when every charge was reversed; %lld is the reversed count. Kept whole rather than assembled from a lead-in plus a shared tail, so the two sentences can be reordered per language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Списаний не осталось. Не состоявшихся откладываний: %lld — деньги за них вернули."
+          }
+        }
+      }
+    },
+    "woke_morning.subtitle.unavailable" : {
+      "comment" : "Summary subtitle when the transaction ledger could not be read. Says so instead of printing a number nobody verified.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Историю списаний прочитать не удалось, поэтому сумму за это утро мы не показываем. Текущий баланс — на главном экране."
           }
         }
       }

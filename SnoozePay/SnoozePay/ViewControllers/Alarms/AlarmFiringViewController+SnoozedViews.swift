@@ -37,7 +37,7 @@ extension AlarmFiringViewController {
 
     // MARK: - Progressive pill
 
-    /// "Прогрессив · N-й поспать ещё" pill — pad 6×12 r999, pain-tinted fill +
+    /// «Прогрессив · N-й поспать ещё» pill — pad 6×12 r999, pain-tinted fill +
     /// border, leading 8pt glowing dot, caps `#FFB4A8` text.
     func makeProgressivePill() -> PaddedLabel {
         let pill = PaddedLabel(insets: UIEdgeInsets(top: 6, left: 30, bottom: 6, right: 12))

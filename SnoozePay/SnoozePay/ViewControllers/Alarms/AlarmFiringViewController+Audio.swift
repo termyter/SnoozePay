@@ -37,13 +37,12 @@ extension AlarmFiringViewController {
             audioWarningBanner.text = nil
             audioWarningBanner.accessibilityLabel = nil
         case .silentBecauseConfigFailed:
-            let text = "Звук недоступен — другое приложение использует аудио. " +
-                "Проверьте режим звука."
+            let text = Localized.text("firing.audio.config_failed")
             audioWarningBanner.text = "  \(text)  "
             audioWarningBanner.accessibilityLabel = text
             audioWarningBanner.isHidden = false
         case .vibrationOnly:
-            let text = "Звук не воспроизводится — будильник вибрирует."
+            let text = Localized.text("firing.audio.vibration_only")
             audioWarningBanner.text = "  \(text)  "
             audioWarningBanner.accessibilityLabel = text
             audioWarningBanner.isHidden = false

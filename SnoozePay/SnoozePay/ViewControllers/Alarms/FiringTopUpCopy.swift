@@ -82,10 +82,21 @@ enum FiringTopUpCopy {
     /// Tier row title — «+2 откладывания» when the purchase unlocks snoozes,
     /// «Не хватит на откладывание» when it does not.
     static func rowTitle(topUp amount: Int, balance: Double, price: Double) -> String {
-        guard usablePrice(price) != nil else { return "Пополнить баланс" }
+        guard usablePrice(price) != nil else {
+            return Localized.text("firing.top_up.row.title.generic")
+        }
         let count = affordableSnoozes(topUp: amount, balance: balance, price: price)
-        guard count > 0 else { return "Не хватит на откладывание" }
-        return "+\(count) \(SnoozeAffordability.snoozeWord(for: count))"
+        guard count > 0 else {
+            return Localized.text("firing.top_up.row.title.insufficient")
+        }
+        // Count and noun travel together in one entry: «+2 откладывания» puts
+        // the number first, «2 more snoozes» does not, and only the catalogue
+        // can know which.
+        return Localized.format(
+            "firing.top_up.row.title.snoozes",
+            count,
+            SnoozeAffordability.snoozeWord(for: count)
+        )
     }
 
     /// Tier row hint — the price the count was divided by, or the exact
@@ -93,10 +104,10 @@ enum FiringTopUpCopy {
     static func rowHint(topUp amount: Int, balance: Double, price: Double) -> String {
         guard let price = usablePrice(price) else { return "" }
         if isSufficient(topUp: amount, balance: balance, price: price) {
-            return "по \(MoneyFormatter.string(price)) за откладывание"
+            return Localized.format("firing.top_up.row.hint.price", MoneyFormatter.string(price))
         }
         let missing = shortfall(topUp: amount, balance: balance, price: price)
-        return "не хватает \(MoneyFormatter.string(missing))"
+        return Localized.format("firing.top_up.row.hint.missing", MoneyFormatter.string(missing))
     }
 
     /// Which tier the sheet opens pre-selected: the cheapest one that unlocks a
@@ -115,21 +126,29 @@ enum FiringTopUpCopy {
     static func subtitle(amounts: [Int], balance: Double, price: Double) -> String {
         let sorted = amounts.sorted()
         guard let smallest = sorted.first, let largest = sorted.last else { return "" }
+        // Each branch is one catalogue entry holding BOTH sentences. Splitting
+        // «the snooze costs X» from «Y is enough» would look tidier here and
+        // freeze the Russian order — a translator who needs the amount before
+        // the price could no longer get it.
         guard let price = usablePrice(price) else {
-            return "Самое маленькое пополнение — \(MoneyFormatter.string(smallest)). "
-                + "Можно больше, чтобы не возвращаться сюда."
+            return Localized.format(
+                "firing.top_up.subtitle.no_price", MoneyFormatter.string(smallest)
+            )
         }
-        let priceText = "Откладывание сейчас стоит \(MoneyFormatter.string(price))."
+        let priceText = MoneyFormatter.string(price)
         guard let enough = recommendedAmount(from: sorted, balance: balance, price: price),
               isSufficient(topUp: enough, balance: balance, price: price) else {
-            return "\(priceText) Даже \(MoneyFormatter.string(largest)) на него не хватит — "
-                + "понадобится несколько пополнений."
+            return Localized.format(
+                "firing.top_up.subtitle.insufficient", priceText, MoneyFormatter.string(largest)
+            )
         }
         if enough == smallest {
-            return "\(priceText) Хватит самого маленького пополнения — "
-                + "\(MoneyFormatter.string(smallest)). Можно больше, чтобы не возвращаться сюда."
+            return Localized.format(
+                "firing.top_up.subtitle.smallest", priceText, MoneyFormatter.string(smallest)
+            )
         }
-        return "\(priceText) Хватит начиная с \(MoneyFormatter.string(enough)) — "
-            + "меньшие пополнения откладывание не разблокируют."
+        return Localized.format(
+            "firing.top_up.subtitle.threshold", priceText, MoneyFormatter.string(enough)
+        )
     }
 }
