@@ -148,7 +148,13 @@ extension AlarmFiringViewController {
     /// escalation is owned by the sheet itself via `AlarmFiringCoordinator
     /// .pauseEscalation()`, so callers don't need to coordinate audio state.
     func presentTopUpSheet() {
-        let sheet = FiringTopUpBottomSheetViewController()
+        // Hand the sheet the price of the NEXT snooze (the progressive rung the
+        // user is about to pay) and the live balance, so every label it shows
+        // is derived from what this snooze actually costs — #548.
+        let sheet = FiringTopUpBottomSheetViewController(
+            snoozePrice: viewModel.currentPenalty,
+            currentBalance: BalanceService.shared.balance
+        )
         present(sheet, animated: true)
     }
 

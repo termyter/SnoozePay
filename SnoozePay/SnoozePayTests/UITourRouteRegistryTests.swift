@@ -41,6 +41,7 @@ final class UITourRouteRegistryTests: XCTestCase {
         "firing-progressive",
         "firing-nobalance",
         "firing-topup",
+        "firing-topup-expensive",
         "txhistory",
         "periodpicker",
         "deposit",

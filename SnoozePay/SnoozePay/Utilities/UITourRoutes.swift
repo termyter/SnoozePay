@@ -15,8 +15,8 @@ import UIKit
 /// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
 /// wallet, stats, settings, create, edit, theme-picker, sound-picker,
 /// volume-picker, confirm-delete, firing, firing-snoozed, firing-progressive,
-/// firing-nobalance, firing-topup, alarm-off-warning, txhistory, periodpicker,
-/// deposit, streak.
+/// firing-nobalance, firing-topup, firing-topup-expensive, alarm-off-warning,
+/// txhistory, periodpicker, deposit, streak.
 enum UITourRoutes {
 
     /// The mounter for `screen`, or the fallback. An unknown screen id lands on
@@ -105,9 +105,28 @@ enum UITourRoutes {
             window.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm())
         },
         "firing-topup": { window in
-            let firing = AlarmFiringViewController(alarm: firingSampleAlarm())
+            let alarm = firingSampleAlarm()
+            let firing = AlarmFiringViewController(alarm: alarm)
             window.rootViewController = firing
-            presentLater(FiringTopUpBottomSheetViewController(), over: firing)
+            presentLater(
+                FiringTopUpBottomSheetViewController(snoozePrice: alarm.penaltyAmount),
+                over: firing
+            )
+        },
+        // #548 — the case the static labels got wrong: a snooze price ABOVE the
+        // cheapest offered tier, where buying 149 ₽ unlocks nothing. Kept as its
+        // own route so the copy can be screenshotted without editing an alarm.
+        "firing-topup-expensive": { window in
+            UITourLauncher.forceBalance(to: 0)
+            let alarm = firingSampleAlarm(penalty: 200)
+            let firing = AlarmFiringViewController(alarm: alarm)
+            window.rootViewController = firing
+            presentLater(
+                FiringTopUpBottomSheetViewController(
+                    snoozePrice: alarm.penaltyAmount, currentBalance: 0
+                ),
+                over: firing
+            )
         },
         "txhistory": { mountPushed(WalletTransactionHistoryViewController(), onTab: 1, in: $0) },
         "periodpicker": { window in
@@ -230,12 +249,12 @@ enum UITourRoutes {
     /// so the countdown stays positive regardless of the alarm's HH:MM — but a
     /// now-anchored time still keeps the firing clock and "ringing now" framing
     /// realistic for screenshots and the e2e firing→snooze→wake UI test.
-    private static func firingSampleAlarm() -> Alarm {
+    private static func firingSampleAlarm(penalty: Double = 50) -> Alarm {
         Alarm(
             time: Date(),
             repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
             name: "Работа",
-            penaltyAmount: 50,
+            penaltyAmount: penalty,
             theme: UITourLauncher.requestedTheme()
         )
     }
