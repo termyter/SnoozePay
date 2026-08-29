@@ -83,6 +83,29 @@ enum SPSupport {
             .map { $0.resolvedColor(with: trait).cgColor }
     }
 
+    /// The warn ramp on the INK scale — bronze in light, amber in dark.
+    ///
+    /// Not a duplicate of `warnGradientColors`, and the difference is the whole
+    /// point of #520. That ramp is a surface that carries `fgOnWarn` on top, so
+    /// it is solved against its own ink. This one is for a surface that carries
+    /// nothing and instead has to be told apart from the CARD BEHIND IT — a
+    /// data fill. The canon amber measures 1.85:1 on the light `bg2`, so a data
+    /// cell painted with it is very nearly invisible.
+    ///
+    /// The one consumer today is the statistics heatmap's `light` day, whose
+    /// sibling tokens (`toneColor`, `ringColor`) already resolve through
+    /// `StatisticsAccentTones.warn`, i.e. the ink scale. Splitting the cell fill
+    /// away from them was the regression `StatisticsHeatmapPaletteTests` caught.
+    /// Theme-aware, matching `moneyGradientColors` / `painGradientColors` — the
+    /// heatmap's other two statuses were never on a theme-flat ramp.
+    static var warnInkGradientColors: [CGColor] {
+        [
+            AppColors.warn300.cgColor,
+            AppColors.warn500.cgColor,
+            AppColors.warn600.cgColor
+        ]
+    }
+
     /// Deep-green promo fill used by the referral hero. `tokens.css` has no
     /// named token for it — the prototype inlines
     /// `linear-gradient(135deg, #1A2810 0%, #2C4A1F 50%, #4F8A3A 100%)` — so

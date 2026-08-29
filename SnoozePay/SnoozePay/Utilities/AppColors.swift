@@ -88,16 +88,25 @@ enum AppColors {
     // differed only in hue, and the control read as one smudge. On the canon
     // amber the same pair measures 3.26:1.
     //
-    // Which half a call site wants is decided by what the colour has to
-    // out-contrast, not by what it looks like:
+    // Which half a call site wants is decided by ONE question — what does this
+    // colour have to be told apart from? — and not by whether it is "a fill":
     //
-    //     surface under ink  → warnFill*   track, chip, tile, wash, shadow, gradient
-    //     read against page  → warn*       label text, and BORDERS
+    //     ink sits on it        → warnFill*   track, chip, tile, wash, shadow,
+    //                                         CTA gradient
+    //     must beat the page    → warn*       label text, BORDERS, and data
+    //                                         fills that carry nothing
     //
-    // Borders are the counter-intuitive one and stay on the ink scale: the
-    // `SPAlarmBackendBanner` edge #538 bought measures 3.71:1 as bronze over the
-    // light page and would collapse to 1.69:1 as amber. A stroke is ink shaped
-    // like a rectangle.
+    // Two entries on the right are counter-intuitive and both were paid for:
+    //
+    //  - **Borders.** The `SPAlarmBackendBanner` edge #538 bought measures
+    //    3.71:1 as bronze over the light page and would collapse to 1.69:1 as
+    //    amber. A stroke is ink shaped like a rectangle.
+    //  - **Data fills.** A statistics-heatmap day cell is a surface with nothing
+    //    on top, so "it's a fill" says amber — but its entire job is to differ
+    //    from the `bg2` card, where amber is 1.85:1. It reads as an empty day.
+    //    This one shipped red in CI on the first pass of #520 and is the reason
+    //    the rule above is phrased as a question rather than a list of widgets.
+    //    Its ramp is `SPSupport.warnInkGradientColors`.
     //
     // Being flat also removes these from the `CGColor`-baking class (#531/#538/
     // #552/#553): a colour that does not vary by trait has nothing to re-resolve

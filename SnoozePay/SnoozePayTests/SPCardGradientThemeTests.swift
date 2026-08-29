@@ -180,6 +180,38 @@ final class SPCardGradientThemeTests: XCTestCase {
         }
     }
 
+    /// The two warn ramps must NOT collapse into each other.
+    ///
+    /// They look like duplicates — same three steps, same locations — and the
+    /// obvious cleanup is to delete one. That cleanup is the #520 regression
+    /// replayed: `warnGradientColors` is a CTA surface solved against the
+    /// `fgOnWarn` sitting on it, `warnInkGradientColors` is a data fill solved
+    /// against the card behind it. In light they are bronze and amber and only
+    /// one of them can be right for a given call site.
+    func testWarnRamps_stayDistinctInLight() {
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let fill = SPSupport.warnGradientColors(for: light).map { hex($0) }
+        var ink: [UInt32] = []
+        light.performAsCurrent { ink = SPSupport.warnInkGradientColors.map { hex($0) } }
+        XCTAssertNotEqual(
+            fill, ink,
+            "the warn fill and ink ramps resolved identically in light — one of "
+            + "them lost its role, and the heatmap or the CTA is now wrong"
+        )
+        XCTAssertEqual(ink, [0xBE7B09, 0x7C5006, 0x634004], "the ink ramp drifted off the warn ink scale")
+    }
+
+    /// In DARK the two ramps are *supposed* to be identical: the ink and fill
+    /// halves of the warn role only diverge on a light surface. Pinned so the
+    /// test above is not read as "these must always differ".
+    func testWarnRamps_areIdenticalInDark() {
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+        let fill = SPSupport.warnGradientColors(for: dark).map { hex($0) }
+        var ink: [UInt32] = []
+        dark.performAsCurrent { ink = SPSupport.warnInkGradientColors.map { hex($0) } }
+        XCTAssertEqual(fill, ink, "the warn ramps diverged in dark, where both are the brand amber")
+    }
+
     /// The new overload must describe the SAME ramp as the canon
     /// `--sp-grad-warn` scale its computed-property twin uses — otherwise
     /// switching a call site from one to the other silently re-skins the
