@@ -314,15 +314,23 @@ final class AlarmFiringNoBalanceColumnLayoutTests: XCTestCase {
         return sut
     }
 
-    /// Force layout to settle. The fit pass runs in `viewDidLayoutSubviews` and
-    /// may resize the clock, which dirties layout once more — so drive the pass
-    /// until it stops changing rather than assuming a single pass is final.
+    /// Force layout to settle.
+    ///
+    /// `layoutIfNeeded()` is sent to the controller's view as well as to the
+    /// window: a window that is never made visible does not reliably drive a
+    /// pass down into its root view, and a root view that never lays out leaves
+    /// every rectangle in this suite at `.zero` — the vacuous green the sanity
+    /// checks exist to catch (and did, on the first CI run of this file).
+    ///
+    /// Repeated because the fit pass runs in `viewDidLayoutSubviews` and may
+    /// resize the clock, which dirties layout once more.
     private func layOut(_ sut: Hosted) {
         sut.firing.view.frame = sut.window.bounds
         for _ in 0..<4 {
             sut.window.setNeedsLayout()
-            sut.firing.view.setNeedsLayout()
             sut.window.layoutIfNeeded()
+            sut.firing.view.setNeedsLayout()
+            sut.firing.view.layoutIfNeeded()
         }
     }
 
