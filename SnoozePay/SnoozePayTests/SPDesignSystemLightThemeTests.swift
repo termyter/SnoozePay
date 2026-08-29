@@ -17,6 +17,16 @@ import XCTest
 ///    not separate them, so idle tiles must carry a border *and* a shadow.
 final class SPDesignSystemLightThemeTests: XCTestCase {
 
+    /// The tile fixture hosts in an unhidden window, so the windows are hidden
+    /// and released again here rather than outliving the case that made them.
+    private var hostWindows: [UIWindow] = []
+
+    override func tearDown() {
+        hostWindows.forEach { $0.isHidden = true }
+        hostWindows.removeAll()
+        super.tearDown()
+    }
+
     /// WCAG 2.1 floor for normal-size text.
     private let normalTextFloor: CGFloat = 4.5
     /// WCAG 2.1 floor for large text (≥14pt bold). The segmented labels are
@@ -122,21 +132,37 @@ final class SPDesignSystemLightThemeTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    /// A laid-out preset tile forced into `style`.
+    /// A laid-out preset tile in a window that actually carries `style`.
     ///
-    /// Skips rather than fails if the runtime declines to propagate the
-    /// override onto a view that is not in a window — that would be a fact
-    /// about the harness, not about the component.
+    /// It used to be a DETACHED view with the override set on itself, guarded by
+    /// `XCTSkipUnless` on the override having been adopted — and a detached view
+    /// resolves against the process's current traits, not its own override, so
+    /// the guard fired for whichever direction did not happen to match the
+    /// runtime default. `testIdleTile_inDark_staysFlat` therefore never ran
+    /// (#568), which is precisely the direction that pins "the light-only
+    /// treatment must not leak into dark".
+    ///
+    /// The window is unhidden and carries the override, per #565: that is the
+    /// arrangement measured to propagate. The guard is `XCTFail` — a harness
+    /// that stops propagating must say so in red.
     private func makeLaidOutTile(style: UIUserInterfaceStyle) throws -> SPAmountPreset {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 110, height: 88))
+        window.overrideUserInterfaceStyle = style
+        window.isHidden = false
+        hostWindows.append(window)
+
         let tile = SPAmountPreset(value: 149, label: "Бонус 5%", popular: true)
-        tile.overrideUserInterfaceStyle = style
-        tile.frame = CGRect(x: 0, y: 0, width: 110, height: 88)
-        tile.setNeedsLayout()
-        tile.layoutIfNeeded()
-        try XCTSkipUnless(
-            tile.traitCollection.userInterfaceStyle == style,
-            "detached view did not adopt overrideUserInterfaceStyle"
+        tile.frame = window.bounds
+        window.addSubview(tile)
+        window.setNeedsLayout()
+        window.layoutIfNeeded()
+
+        XCTAssertEqual(
+            tile.traitCollection.userInterfaceStyle, style,
+            "the harness stopped propagating \(style) to the tile — fix the harness, "
+            + "do not skip"
         )
+        XCTAssertFalse(tile.bounds.isEmpty, "the tile did not lay out at all")
         return tile
     }
 
