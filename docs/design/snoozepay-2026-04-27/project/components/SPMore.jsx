@@ -205,7 +205,7 @@ function Statistics() {
         <div style={{ padding: "20px 20px 0", flex: 1 }}>
           <div className="sp-caps" style={{ marginBottom: 10 }}>По дням недели · среднее</div>
           <SPCard padding={20} radius={16}>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 100 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
               {[
                 {d:"Пн", v: 95},
                 {d:"Вт", v: 60},
@@ -216,10 +216,13 @@ function Statistics() {
                 {d:"Вс", v: 12},
               ].map(b => (
                 <div key={b.d} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <div style={{
-                    width: "100%", height: `${b.v}%`, borderRadius: 6, minHeight: 4,
-                    background: b.v > 60 ? "var(--sp-grad-pain)" : (b.v > 30 ? "var(--sp-grad-warn)" : "var(--sp-white-12)"),
-                  }}/>
+                  {/* Plot height belongs to the track, not the row — see #466. */}
+                  <div style={{ width: "100%", height: 100, display: "flex", alignItems: "flex-end" }}>
+                    <div style={{
+                      width: "100%", height: `${b.v}%`, borderRadius: 6, minHeight: 4,
+                      background: b.v > 60 ? "var(--sp-grad-pain)" : (b.v > 30 ? "var(--sp-grad-warn)" : "var(--sp-white-12)"),
+                    }}/>
+                  </div>
                   <div className="sp-meta" style={{ color: "var(--sp-fg-3)", fontSize: 10 }}>{b.d}</div>
                 </div>
               ))}
