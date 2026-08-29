@@ -444,15 +444,18 @@ function WalletV2() {
 
           <div>
             <div className="sp-caps" style={{ marginBottom: 10 }}>Последние 7 дней</div>
-            <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 60 }}>
+            <div style={{ display: "flex", gap: 4, alignItems: "flex-end" }}>
               {[40, 0, 80, 50, 0, 0, 30].map((v, i) => (
                 <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <div style={{
-                    width: "100%", height: v ? `${v}%` : 4,
-                    borderRadius: 4, minHeight: 4,
-                    background: v ? "var(--sp-grad-pain)" : "var(--sp-white-08)",
-                    opacity: v ? 1 : .5,
-                  }} />
+                  {/* Plot height belongs to the track, not the row — see #466. */}
+                  <div style={{ width: "100%", height: 60, display: "flex", alignItems: "flex-end" }}>
+                    <div style={{
+                      width: "100%", height: v ? `${v}%` : 4,
+                      borderRadius: 4, minHeight: 4,
+                      background: v ? "var(--sp-grad-pain)" : "var(--sp-white-08)",
+                      opacity: v ? 1 : .5,
+                    }} />
+                  </div>
                   <div className="sp-meta" style={{ color: "var(--sp-fg-4)", fontSize: 10 }}>
                     {["П","В","С","Ч","П","С","В"][i]}
                   </div>

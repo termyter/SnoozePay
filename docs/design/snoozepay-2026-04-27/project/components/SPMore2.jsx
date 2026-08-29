@@ -105,10 +105,13 @@ function AlarmDetail() {
 
           <SPCard padding={20} radius={20}>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)", marginBottom: 10 }}>Последняя неделя</div>
-            <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 50 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
               {[0,50,0,100,0,0,0].map((v,i)=>(
                 <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-                  <div style={{ width:"100%", height: v?`${v}%`:4, minHeight:4, borderRadius:4, background: v?"var(--sp-grad-pain)":"var(--sp-white-08)" }}/>
+                  {/* Plot height belongs to the track, not the row — see #466. */}
+                  <div style={{ width:"100%", height:50, display:"flex", alignItems:"flex-end" }}>
+                    <div style={{ width:"100%", height: v?`${v}%`:4, minHeight:4, borderRadius:4, background: v?"var(--sp-grad-pain)":"var(--sp-white-08)" }}/>
+                  </div>
                   <div className="sp-meta" style={{ color: "var(--sp-fg-4)", fontSize: 10 }}>{["П","В","С","Ч","П","С","В"][i]}</div>
                 </div>
               ))}

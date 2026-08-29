@@ -64,10 +64,15 @@ function Stats() {
               <div className="sp-caps">Эта неделя</div>
               <span className="sp-meta" style={{ color: "var(--sp-fg-3)" }}>зелёное — сэкономлено · красное — потеряно</span>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 120, marginTop: 16 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 16 }}>
               {days.map((d, i) => (
                 <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <div style={{ flex: 1, width: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 2 }}>
+                  {/* `flex: 1` inside a column whose own height was auto left this
+                      track indefinite, so both stacked bars resolved their `%`
+                      heights to zero and the chart rendered as nothing but the
+                      day labels. The 120px moves off the row and onto the track,
+                      where a percentage can actually resolve (#466). */}
+                  <div style={{ height: 120, width: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 2 }}>
                     {d.lost > 0 && (
                       <div style={{ width: "100%", height: `${(d.lost/max)*100}%`, borderRadius: "6px 6px 2px 2px", background: "var(--sp-grad-pain)" }}/>
                     )}
