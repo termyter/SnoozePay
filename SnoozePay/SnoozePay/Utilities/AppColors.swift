@@ -198,6 +198,42 @@ enum AppColors {
             : AppColors.pain300.resolvedColor(with: trait)
     }
 
+    // MARK: - Transient overlay (toast / snackbar)
+    //
+    // A toast is not a card. It floats over arbitrary content for 1.5s, so it
+    // has no fixed page relationship to lean on, and it cannot be solved by
+    // reaching for a higher step of the surface ramp: measured against the app
+    // background (`bg0`), the whole ramp is flat.
+    //
+    //     light   bg1 1.08   bg2 1.07   bg3 1.19   bg4 1.43
+    //     dark    bg1 1.07   bg2 1.17   bg3 1.35   bg4 1.61
+    //
+    // Not one step reaches the 3:1 that WCAG 1.4.11 asks of a UI surface —
+    // which is why the pill shipped at 1.19:1 in light (#518), and why the
+    // recipe before it failed the same way in dark (#496). Two attempts inside
+    // the ramp, two failures; the ramp is the wrong tool.
+    //
+    // So the toast takes the INVERSE surface — a dark pill on the light page,
+    // a light pill on the dark one, the standard snackbar shape — which
+    // measures ~17:1 in both themes. The border and the lift stay (see
+    // `SettingsToastLabel`), but they are now decoration rather than the only
+    // thing holding the pill together.
+    /// Toast pill fill. Inverse of the page: the brand near-black ink in
+    /// light, the near-white foreground base in dark.
+    static let toastSurface = dynamicColor(dark: 0xEBEDF5, light: 0x0A0F1F)
+    /// Ink on `toastSurface`. Flips *with* the fill, so it must not be swapped
+    /// for `fg1`: `fg1` is ink for a normal surface, and on the inverse pill it
+    /// lands same-on-same — exactly the 1.24:1 defect of #496.
+    static let fgOnToast = dynamicColor(dark: 0x0A0F1F, light: 0xEBEDF5)
+    /// Rim of the toast pill — `stroke2` mirrored, for the same reason the fill
+    /// is: on the light theme's dark pill the hairline has to be white, and on
+    /// the dark theme's light pill near-black. Using `stroke2` directly would
+    /// paint near-black ink onto a near-black pill.
+    static let toastEdge = UIColor { trait in
+        let mirrored: UIUserInterfaceStyle = trait.userInterfaceStyle == .light ? .dark : .light
+        return AppColors.stroke2.resolvedColor(with: UITraitCollection(userInterfaceStyle: mirrored))
+    }
+
     // MARK: - Theme-aware overlays (alpha on white / near-black ink)
     //
     // Dark mode lays white over surfaces (`rgba(255,255,255,X)`); light mode
