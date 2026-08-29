@@ -313,13 +313,8 @@ final class AlarmsStreakBannerView: UIView {
 
     // MARK: - Pluralisation
 
-    /// Russian plural for "день" — `1 день / 2-4 дня / 5+ дней`.
+    /// Plural for "день" — `1 день / 2-4 дня / 5+ дней`.
     private static func daysWord(for count: Int) -> String {
-        let abs = Swift.abs(count)
-        let mod10 = abs % 10
-        let mod100 = abs % 100
-        if mod10 == 1 && mod100 != 11 { return "день" }
-        if (2...4).contains(mod10) && !(12...14).contains(mod100) { return "дня" }
-        return "дней"
+        Plural.word(count, .days)
     }
 }

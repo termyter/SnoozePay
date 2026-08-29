@@ -73,22 +73,14 @@ enum SnoozeAffordability {
         return "Хватит на ~\(count) \(snoozeWord(for: count))"
     }
 
-    /// Russian pluralisation for "откладывание" in the nominative — picks
-    /// between `откладывание` (n=1, 21, 31…), `откладывания` (2-4, 22-24…) and
-    /// `откладываний` (everything else, including 0 and 5-20). Moved here from
+    /// Pluralisation for "откладывание" in the nominative — `откладывание`
+    /// (n=1, 21, 31…), `откладывания` (2-4, 22-24…), `откладываний`
+    /// (everything else, including 0 and 5-20). Moved here from
     /// `AlarmsListViewModel` in #546, where it was private and therefore
     /// unreachable from the wallet — which is exactly how the wallet ended up
-    /// able to render "~1 откладываний".
+    /// able to render "~1 откладываний". The rule itself now lives in `Plural`
+    /// (#569); this stays as the name the affordability copy calls.
     static func snoozeWord(for count: Int) -> String {
-        let normalisedCount = abs(count)
-        let mod10 = normalisedCount % 10
-        let mod100 = normalisedCount % 100
-        if mod10 == 1 && mod100 != 11 {
-            return "откладывание"
-        }
-        if (2...4).contains(mod10) && !(12...14).contains(mod100) {
-            return "откладывания"
-        }
-        return "откладываний"
+        Plural.word(count, .snoozes)
     }
 }

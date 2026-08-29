@@ -47,16 +47,16 @@ struct YearMonth: Equatable, Hashable, Comparable {
     var shortCaption: String { "\(Self.shortNames[month - 1]) \(year)" }
     /// "Январь 2026" — picker-sheet selected-range row.
     var capitalizedCaption: String {
-        "\(Self.fullNames[month - 1].capitalized(with: Locale(identifier: "ru_RU"))) \(year)"
+        "\(Self.fullNames[month - 1].capitalized(with: AppLocale.display)) \(year)"
     }
     /// "Янв" — month-grid cell label.
     var gridLabel: String {
-        Self.shortNames[month - 1].capitalized(with: Locale(identifier: "ru_RU"))
+        Self.shortNames[month - 1].capitalized(with: AppLocale.display)
     }
     /// "Янв 2026" — capitalized compact caption for the (sentence-start)
     /// header chip when a range is selected.
     var capitalizedShortCaption: String {
-        "\(Self.shortNames[month - 1].capitalized(with: Locale(identifier: "ru_RU"))) \(year)"
+        "\(Self.shortNames[month - 1].capitalized(with: AppLocale.display)) \(year)"
     }
 }
 

@@ -113,7 +113,7 @@ enum WalletTransactionPreview {
     /// the injected `now` (so tests don't depend on the wall clock).
     static func timestampText(for date: Date, now: Date, calendar: Calendar = .current) -> String {
         let timeFormatter = DateFormatter()
-        timeFormatter.locale = Locale(identifier: "ru_RU")
+        timeFormatter.locale = AppLocale.display
         timeFormatter.calendar = calendar
         timeFormatter.timeZone = calendar.timeZone
         timeFormatter.dateFormat = "HH:mm"
@@ -127,7 +127,7 @@ enum WalletTransactionPreview {
             return "Вчера · \(time)"
         }
         let dayFormatter = DateFormatter()
-        dayFormatter.locale = Locale(identifier: "ru_RU")
+        dayFormatter.locale = AppLocale.display
         dayFormatter.calendar = calendar
         dayFormatter.timeZone = calendar.timeZone
         dayFormatter.dateFormat = "d MMM"

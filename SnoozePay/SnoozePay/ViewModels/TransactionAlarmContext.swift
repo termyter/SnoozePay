@@ -42,7 +42,7 @@ enum TransactionAlarmContext {
 
     private static func timeString(for date: Date, calendar: Calendar) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLocale.display
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "HH:mm"
