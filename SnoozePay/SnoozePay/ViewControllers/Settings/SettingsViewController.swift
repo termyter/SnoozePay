@@ -4,7 +4,7 @@ import os
 /// Settings screen, V3 layout per design (`SPMore4.jsx:344-431`, #283).
 ///
 /// Sections: Финансы (default price · snooze duration) · Звук и уведомления
-/// (volume → picker · Critical Alerts · vibration) · Правила (progressive
+/// (volume → picker · vibration) · Правила (progressive
 /// price) · Пригласить друга · Прочее (privacy · terms · contact · theme) +
 /// a `SnoozePay {version} · build {build}` footer.
 ///
@@ -47,7 +47,7 @@ class SettingsViewController: UIViewController {
     /// call (issue #144).
     enum Section: Int, CaseIterable {
         case finance            // Default price + snooze duration
-        case soundNotifications // Volume → picker · Critical Alerts · vibration
+        case soundNotifications // Volume → picker · vibration
         case rules              // Progressive price default
         case referral           // My code (copyable) + friend's code input + caption
         case other              // Privacy · Terms · Contact · Theme segment
@@ -82,7 +82,6 @@ class SettingsViewController: UIViewController {
     /// Row layout inside `.soundNotifications`.
     enum SoundRow: Int, CaseIterable {
         case volume          // "Громкость · 80%" → VolumePickerViewController
-        case criticalAlerts  // disabled switch + "Недоступно" hint
         case vibration       // switch (global default)
     }
 
@@ -272,9 +271,6 @@ extension SettingsViewController: UITableViewDelegate {
             return UITableView.automaticDimension
         case .referral:
             return referralRowHeight(row: indexPath.row)
-        case .soundNotifications where SoundRow(rawValue: indexPath.row) == .criticalAlerts:
-            // Two-line subtitle hint ("Недоступно — нужно одобрение Apple").
-            return UITableView.automaticDimension
         case .diagnostics:
             // Title + subtitle ("Хранилище повреждено и заблокировано") — let it
             // self-size so the hint isn't clipped on narrow screens (#102).

@@ -9,8 +9,8 @@ import UIKit
 /// V3 (#283) drops the iOS-style 30×30 colored chip in favour of a bare
 /// tinted glyph per the design (`SPMore4.jsx` `IconCoin/IconClock/…` —
 /// `size={20}` with a `--sp-*` tint, no container fill). The cell can also
-/// host a trailing `SPSwitch` (Critical Alerts / vibration) and renders a
-/// chevron via the standard `.disclosureIndicator` accessory.
+/// host a trailing `SPSwitch` (вибрация) and renders a chevron via the
+/// standard `.disclosureIndicator` accessory.
 ///
 /// `configure` resets every mutable bit of state, so no `prepareForReuse`
 /// override is needed: a recycled cell is always fully re-specified before
@@ -73,7 +73,7 @@ final class SettingsIconRowCell: UITableViewCell {
         return label
     }()
 
-    /// Optional trailing toggle (Critical Alerts / vibration).
+    /// Optional trailing toggle (вибрация).
     private let trailingSwitch: SPSwitch = {
         let toggle = SPSwitch()
         toggle.isHidden = true
@@ -178,9 +178,10 @@ final class SettingsIconRowCell: UITableViewCell {
         self.selectionStyle = selectionStyle
     }
 
-    /// Switch-row variant (Critical Alerts / vibration). When `enabled` is
-    /// `false` the toggle renders greyed-out and non-interactive — used for the
-    /// Critical Alerts row whose entitlement isn't granted (no-touch / PM).
+    /// Switch-row variant (вибрация). When `enabled` is `false` the toggle
+    /// renders greyed-out and non-interactive. No row passes `false` since
+    /// #566 removed the Critical Alerts row — the only one that was gated on
+    /// an entitlement — but the rendering is kept for the next gated toggle.
     func configureSwitch(
         systemName: String,
         iconColor: UIColor,
@@ -206,8 +207,8 @@ final class SettingsIconRowCell: UITableViewCell {
         trailingSwitch.isEnabled = enabled
         trailingSwitch.alpha = enabled ? 1.0 : 0.5
         // VoiceOver otherwise announces the brand `SPSwitch` as the generic
-        // "Переключатель". This cell is reused for several rows (Critical Alerts,
-        // …), so take the label from the configured row title to stay contextual
+        // "Переключатель". This cell is reused for several rows (Вибрация, …),
+        // so take the label from the configured row title to stay contextual
         // (#425), mirroring AlarmCell's pattern.
         trailingSwitch.accessibilityLabel = title
         onSwitchChange = onChange

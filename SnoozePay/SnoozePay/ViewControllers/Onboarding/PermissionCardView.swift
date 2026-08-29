@@ -10,13 +10,11 @@ import UIKit
 /// when actionable, otherwise tap interaction is disabled.
 enum PermissionKind {
     case notifications
-    case criticalAlerts
     case sound
 
     var iconName: String {
         switch self {
         case .notifications: return "bell.fill"
-        case .criticalAlerts: return "speaker.wave.3.fill"
         case .sound: return "clock.badge.fill"
         }
     }
@@ -24,7 +22,6 @@ enum PermissionKind {
     var title: String {
         switch self {
         case .notifications: return "Уведомления"
-        case .criticalAlerts: return "Critical Alerts"
         case .sound: return "Фоновый режим"
         }
     }
@@ -33,8 +30,6 @@ enum PermissionKind {
         switch self {
         case .notifications:
             return "Чтобы показать будильник на экране"
-        case .criticalAlerts:
-            return "Чтобы звук прошёл через беззвучный режим"
         case .sound:
             return "Чтобы таймеры не убивались системой"
         }
@@ -50,8 +45,11 @@ enum PermissionStatus {
     /// Show check glyph + money-tinted icon — capability is auto-on (e.g.
     /// AVAudioSession config). Behaviourally identical to `.granted`.
     case enabled
-    /// Show neutral "—" + ungranted icon — entitlement is missing and the
-    /// user can't fix this from the app. Tap is a no-op.
+    /// Show neutral "—" + ungranted icon — the capability is missing and the
+    /// user can't fix it from the app. Tap is a no-op. No kind currently
+    /// resolves to this: the only one that did was Critical Alerts, removed in
+    /// #566. Kept because it is the rendering a future entitlement-gated card
+    /// would need, and `PermissionCardIconTileTests` pins how it draws.
     case unavailable
 }
 

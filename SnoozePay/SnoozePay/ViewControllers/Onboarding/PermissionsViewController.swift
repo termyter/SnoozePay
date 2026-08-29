@@ -4,20 +4,25 @@ import UserNotifications
 /// Permissions screen — V3 (`docs/design/v2-handoff/components/SPMore2.jsx`
 /// `Permissions`, artboard 05). Shown once after Onboarding finishes, before
 /// the main alarms list. Caps "последний шаг" eyebrow → h1 "Чтобы будильник
-/// работал" → body copy → three permission cards (Notifications, Critical
-/// Alerts, Background) → "Готово" CTA in flow 28pt after the cards (not
-/// pinned to the bottom). Layout padding follows the JSX `70px 16px 52px`
-/// frame: 16pt below the safe-area top, 16pt sides.
+/// работал" → body copy → two permission cards (Notifications, Background)
+/// → "Готово" CTA in flow 28pt after the cards (not pinned to the bottom).
+/// Layout padding follows the JSX `70px 16px 52px` frame: 16pt below the
+/// safe-area top, 16pt sides.
+///
+/// The JSX draws a third card, "Critical Alerts", which #566 removed: the
+/// only thing it promised — ringing through silent mode and Do Not Disturb —
+/// is already delivered by AlarmKit, the current scheduling backend, while
+/// the `com.apple.developer.usernotifications.critical-alerts` entitlement
+/// is granted by Apple on application and effectively never to alarm apps.
+/// The card therefore sat permanently on "Недоступно". Card spacing is
+/// unchanged (`AppSpacing.sp3`, the JSX `gap: 12`); the column is simply one
+/// card shorter.
 ///
 /// Flow preserves the V1 wiring:
 /// 1. Notifications card → tapping the card calls
 ///    `AlarmScheduler.requestPermission` with the same option ladder used at
 ///    AppDelegate launch.
-/// 2. Critical Alerts — hard-gated on the entitlement in
-///    `SnoozePay.entitlements`. The entitlement is currently commented out
-///    (PM-only edit), so the card surfaces a neutral "Недоступно" caption
-///    until it lands. Once flipped, this card mirrors the notification grant.
-/// 3. Background — `UIBackgroundModes` is declared in Info.plist for the
+/// 2. Background — `UIBackgroundModes` is declared in Info.plist for the
 ///    audio playback / processing categories, so this card is informational
 ///    and renders as granted.
 ///
@@ -50,8 +55,6 @@ final class PermissionsViewController: UIViewController {
     // MARK: - State
 
     private var notificationStatus: UNAuthorizationStatus = .notDetermined
-    private var criticalAlertsAvailable: Bool = false
-    private var criticalAlertsGranted: Bool = false
 
     // MARK: - Subviews
 
@@ -233,7 +236,7 @@ final class PermissionsViewController: UIViewController {
             )
         ])
 
-        for kind in [PermissionKind.notifications, .criticalAlerts, .sound] {
+        for kind in [PermissionKind.notifications, .sound] {
             let card = PermissionCardView(kind: kind)
             card.onPrimaryTap = { [weak self] in self?.handleGrantTap(for: kind) }
             cardViews[kind] = card
@@ -251,11 +254,6 @@ final class PermissionsViewController: UIViewController {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.notificationStatus = settings.authorizationStatus
-                // `.notSupported` means the Critical Alerts entitlement is
-                // absent (commented out in `.entitlements`). Any other value
-                // means the capability is wired and reflects the user-grant.
-                self.criticalAlertsAvailable = settings.criticalAlertSetting != .notSupported
-                self.criticalAlertsGranted = settings.criticalAlertSetting == .enabled
                 self.applyStatusToCards()
             }
         }
@@ -263,7 +261,6 @@ final class PermissionsViewController: UIViewController {
 
     private func applyStatusToCards() {
         cardViews[.notifications]?.apply(status: notificationsStatus())
-        cardViews[.criticalAlerts]?.apply(status: criticalAlertsStatus())
         cardViews[.sound]?.apply(status: soundStatus())
     }
 
@@ -288,16 +285,6 @@ final class PermissionsViewController: UIViewController {
         }
     }
 
-    private func criticalAlertsStatus() -> PermissionStatus {
-        guard criticalAlertsAvailable else {
-            // Entitlement is missing from `.entitlements` — user cannot grant
-            // this from the app. Documented as a follow-up for PM to flip the
-            // entitlement key once Critical Alerts is approved.
-            return .unavailable
-        }
-        return criticalAlertsGranted ? .granted : .actionable
-    }
-
     private func soundStatus() -> PermissionStatus {
         // `UIBackgroundModes` is declared in Info.plist for audio playback /
         // processing — the system grants it implicitly. No user action exists.
@@ -308,7 +295,7 @@ final class PermissionsViewController: UIViewController {
 
     private func handleGrantTap(for kind: PermissionKind) {
         switch kind {
-        case .notifications, .criticalAlerts:
+        case .notifications:
             handleNotificationsTap()
         case .sound:
             // Background mode card is informational — no tap path.
@@ -322,12 +309,10 @@ final class PermissionsViewController: UIViewController {
             return
         }
         // Route through `AlarmScheduler.requestPermission` so the same
-        // critical-alert-with-fallback request ladder runs as on AppDelegate
-        // launch — keeping `AlarmScheduler.criticalAlertsAvailable` in sync.
+        // request ladder runs as on AppDelegate launch.
         AlarmScheduler.shared.requestPermission { [weak self] _ in
             // Refresh from settings rather than trusting the `granted` flag
-            // alone — `criticalAlertSetting` may resolve differently on
-            // legacy iOS versions.
+            // alone — the authorization status is the value the cards render.
             self?.refreshNotificationSettings()
         }
     }
