@@ -2,19 +2,22 @@ import UIKit
 
 /// App-wide color tokens. The "money / pain / warn" scales are the SnoozePay
 /// brand palette (see `docs/design/snoozepay-2026-04-27/project/tokens.css`);
-/// the legacy `accentBlue` / `accentOrange` / `snoozeButton` aliases at the
+/// the legacy `accentGreen` / `accentOrange` / `snoozeButton` aliases at the
 /// bottom map onto the new scales so existing screens keep compiling until
 /// each one is migrated in its own UI issue.
+///
+/// Nothing here resolves to a *system* colour, and `AppColorsSurfaceRampTests`
+/// keeps it that way: the system palette has its own values (`#F2F2F7`,
+/// `#1C1C1E`, …) that appear nowhere in `tokens.css`, so a token backed by one
+/// is a token that silently disagrees with the design canon.
 enum AppColors {
-    // MARK: - Backgrounds
-    static let background = UIColor.systemBackground
-    static let surface = UIColor.secondarySystemBackground
-    static let surface2 = UIColor.tertiarySystemBackground
-
-    // MARK: - Text
-    static let textPrimary = UIColor.label
-    static let textSecondary = UIColor.secondaryLabel
-    static let textTertiary = UIColor.tertiaryLabel
+    // Surfaces are `bg0`...`bg4` and foregrounds are `fg1`...`fg4`, both
+    // further down. The pre-token aliases that used to sit here
+    // (`background`, `surface`, `surface2`, `textPrimary`, `textSecondary`,
+    // `textTertiary`) were the palette's last references to the *system*
+    // colours, and system colours cannot be canon: `secondarySystemBackground`
+    // is `#F2F2F7` / `#1C1C1E`, neither of which is a value in `tokens.css`.
+    // They are gone (#527) — reach for the token that names the role.
 
     // MARK: - Brand accent scales (theme-aware)
     //
@@ -265,18 +268,12 @@ enum AppColors {
         return UIColor(red: 244.0 / 255.0, green: 82.0 / 255.0, blue: 63.0 / 255.0, alpha: alpha)
     }
 
-    // MARK: - Separator
-    static let separator = UIColor.separator
-
     // MARK: - Legacy aliases
     //
     // Existing screens reach for these names. Each one is now a thin alias on
     // top of the brand scales, so a future PR can grep-and-replace call sites
     // without changing the rendered colour.
 
-    /// Legacy "accent" — kept as systemBlue for now (pre-brand info actions).
-    /// Migrate sites individually before retiring.
-    static let accentBlue = UIColor.systemBlue
     /// Legacy green accent → maps onto the new `money500`.
     static let accentGreen = money500
     /// Legacy orange accent → maps onto the new `warn500`.
@@ -289,7 +286,6 @@ enum AppColors {
     static let snoozeButton = warn500
     /// Dismiss button green → `money500`.
     static let dismissButton = money500
-    static let disabledButton = UIColor.systemGray
 
     /// Warm gold used for the active "Поспать ещё" pill on the alarm-firing
     /// screen (#E8A838). Kept as its own literal because the firing UI uses a
