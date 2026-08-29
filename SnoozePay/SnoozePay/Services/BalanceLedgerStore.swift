@@ -51,7 +51,8 @@ protocol BalanceLedgerStore: AnyObject {
 /// the recomputation has exactly one definition.
 enum BalanceLedger {
 
-    /// Net movement recorded by `entries`: `Σ(topup + promotion + refund − charge)`.
+    /// Net movement recorded by `entries` **in `currency`**:
+    /// `Σ(topup + promotion + refund − charge)` over the rows denominated in it.
     ///
     /// Rows are deduplicated by `Transaction.id` — a resync or a Restore that
     /// replays the same purchase must not credit it twice. Rows this build
@@ -59,13 +60,27 @@ enum BalanceLedger {
     /// amount are skipped: their direction is genuinely unknown, and guessing
     /// one would move real money (#358, #441).
     ///
+    /// **A row in another currency is skipped for the same reason** (#562).
+    /// `Σ` over mixed currencies is not a quantity — 100 ₽ + 2 $ has no value
+    /// without a rate, and this app has no rate source (#559). So the answer to
+    /// "what happens to the balance cache when the ledger holds mixed
+    /// currencies" is: the cache stays the sum of the wallet's own currency, and
+    /// a foreign row neither inflates nor deflates it. It is visible in history
+    /// and invisible to the balance.
+    ///
+    /// Today this changes nothing: nothing writes a foreign row, legacy rows
+    /// decode as `Currency.legacyDefault`, and `BalanceService.walletCurrency`
+    /// is that same value — so every existing row still counts. The filter is
+    /// what keeps that true once #563 gives the wallet a real currency.
+    ///
     /// Order-independent by construction — a shuffled or newest-first ledger
     /// yields the same number as a chronological one.
-    static func net(of entries: [Transaction]) -> Double {
+    static func net(of entries: [Transaction], in currency: Currency) -> Double {
         var seenIdentifiers = Set<UUID>()
         var total: Double = 0
         for entry in entries {
             guard seenIdentifiers.insert(entry.id).inserted else { continue }
+            guard entry.currency == currency else { continue }
             guard entry.amount.isFinite, entry.amount > 0 else { continue }
             switch entry.type {
             case .topup, .promotion, .refund:

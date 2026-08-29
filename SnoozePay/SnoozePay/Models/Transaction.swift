@@ -100,6 +100,20 @@ struct Transaction: Identifiable, Codable {
     let id: UUID
     let type: TransactionType
     let amount: Double
+    /// What `amount` is denominated in (#562).
+    ///
+    /// A ledger row states its own currency instead of inheriting the wallet's:
+    /// the wallet's currency can be established later (#563) and a historic row
+    /// must keep meaning what it meant when it was written. There is no
+    /// conversion anywhere in the app (#559), so a row in another currency is
+    /// carried and shown as written — never restated in roubles.
+    ///
+    /// Absent from every row written before this change. The default lands in
+    /// exactly two places, both named `Currency.legacyDefault`: `init(from:)`
+    /// below (the decoding boundary) and the memberwise `init` (whose default
+    /// serves legacy call sites and tests — `BalanceService`, the only writer in
+    /// production, passes its `walletCurrency` explicitly).
+    let currency: Currency
     let alarmID: String?
     let createdAt: Date
     /// When this transaction is a `refund` posted to offset a failed snooze
@@ -115,6 +129,7 @@ struct Transaction: Identifiable, Codable {
         id: UUID = UUID(),
         type: TransactionType,
         amount: Double,
+        currency: Currency = .legacyDefault,
         alarmID: String? = nil,
         createdAt: Date = Date(),
         refundsTransactionID: UUID? = nil
@@ -122,6 +137,7 @@ struct Transaction: Identifiable, Codable {
         self.id = id
         self.type = type
         self.amount = amount
+        self.currency = currency
         self.alarmID = alarmID
         self.createdAt = createdAt
         self.refundsTransactionID = refundsTransactionID
@@ -132,17 +148,80 @@ struct Transaction: Identifiable, Codable {
     /// never stated.
     var formattedAmount: String {
         let prefix = type.isUnrecognized ? "" : (type.isDebit ? "-" : "+")
-        return "\(prefix)\(MoneyFormatter.string(amount))"
+        return "\(prefix)\(renderedAmount)"
+    }
+
+    /// `MoneyFormatter` is the rouble renderer (`fmtRub`: grouped digits, narrow
+    /// space, `₽`) — it hardcodes the glyph, so it may only be handed rouble
+    /// rows. Anything else goes through `Money.formatted()`, which labels the
+    /// amount with its own currency: with no rate source (#559), a dollar row
+    /// printed as "50 ₽" would not be a rounding error, it would be a wrong
+    /// number.
+    private var renderedAmount: String {
+        guard currency == .rub else {
+            return money?.formatted() ?? "\(amount) \(currency.code)"
+        }
+        return MoneyFormatter.string(amount)
     }
 
     // MARK: - Typed views (phase 1 of #31)
 
-    /// Typed view of the transaction amount. `nil` if the legacy `Double`
-    /// is negative or non-finite — old data may have leaked such values
-    /// since the primitive API never validated. Denominated via the legacy
-    /// bridge: persisted transactions carry no currency of their own (#561),
-    /// per-transaction currency lands with the typed ledger (#562).
+    /// Typed view of the transaction amount, denominated in the row's own
+    /// `currency` (#562). `nil` if the stored `Double` is negative or
+    /// non-finite — old data may have leaked such values since the primitive
+    /// API never validated.
     var money: Money? {
-        Money.legacy(amount)
+        Money(amount, currency: currency)
+    }
+
+    // MARK: - Codable
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case amount
+        case currency
+        case alarmID
+        case createdAt
+        case refundsTransactionID
+    }
+
+    /// Hand-written so the *absence* of `currency` is tolerated: every row in
+    /// every existing install predates the field, and `TransactionRepository`
+    /// treats any decode failure as corruption of the whole ledger (#72). A
+    /// synthesized decoder would therefore not have thrown a visible error on
+    /// upgrade — it would have quietly locked every user's history.
+    ///
+    /// A `currency` that is *present but unparseable* still throws, unlike an
+    /// unrecognised `type` token (#358). The asymmetry is deliberate: an
+    /// unknown type is excluded from every aggregate, so tolerating it moves no
+    /// money, whereas silently reading a damaged currency as roubles would fold
+    /// the row's amount into a rouble wallet. Between "loud, recoverable lock
+    /// with the blob preserved" and "silently wrong balance", this field sits on
+    /// the same side as `id`, `amount` and `createdAt`.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        type = try container.decode(TransactionType.self, forKey: .type)
+        amount = try container.decode(Double.self, forKey: .amount)
+        currency = try container.decodeIfPresent(Currency.self, forKey: .currency) ?? .legacyDefault
+        alarmID = try container.decodeIfPresent(String.self, forKey: .alarmID)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        refundsTransactionID = try container.decodeIfPresent(UUID.self, forKey: .refundsTransactionID)
+    }
+
+    /// Written out rather than synthesized so the on-disk shape stays an
+    /// explicit statement: optionals are omitted (not `null`) exactly as the
+    /// synthesized encoder did, and `currency` is always written — a row whose
+    /// currency is implicit is what this change exists to stop producing.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(type, forKey: .type)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(currency, forKey: .currency)
+        try container.encodeIfPresent(alarmID, forKey: .alarmID)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(refundsTransactionID, forKey: .refundsTransactionID)
     }
 }

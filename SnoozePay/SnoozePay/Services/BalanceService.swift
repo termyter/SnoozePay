@@ -150,6 +150,7 @@ final class BalanceService {
         let transaction = Transaction(
             type: .charge,
             amount: amount,
+            currency: walletCurrency,
             alarmID: alarmID?.uuidString
         )
         let result: (charged: Bool, newBalance: Double) = queue.sync {
@@ -254,6 +255,7 @@ final class BalanceService {
             let transaction = Transaction(
                 type: type,
                 amount: amount,
+                currency: walletCurrency,
                 refundsTransactionID: refundsTransactionID
             )
             // Ledger first: if the store is locked (corrupt blob awaiting user
@@ -327,6 +329,11 @@ final class BalanceService {
     /// #563 replaces the body with the currency persisted at the wallet's first
     /// paid top-up; the seam exists so that change lands in one place instead of
     /// four.
+    ///
+    /// ⚠️ Since #562 this is also read from **inside** `queue.sync` (every ledger
+    /// row is stamped with it, and the derived balance sums only rows that match
+    /// it). Whatever #563 puts here must therefore stay free of `queue.sync` —
+    /// a `defaults` read is fine, calling back into `balance` would deadlock.
     var walletCurrency: Currency { .legacyDefault }
 
     /// Money-typed charge. Returns `false` when funds are insufficient,
@@ -415,7 +422,7 @@ final class BalanceService {
         guard ledgerStore.isReadable, let entries = try? ledgerStore.loadEntries() else {
             return cached
         }
-        let net = BalanceLedger.net(of: entries)
+        let net = BalanceLedger.net(of: entries, in: walletCurrency)
         guard let opening = ledgerStore.openingBalance else {
             ledgerStore.openingBalance = cached - net
             return cached
@@ -438,7 +445,8 @@ final class BalanceService {
     /// but they must not re-inflate the wallet on the next read.
     /// MUST be called inside `queue.sync`.
     private func rebaseLedger(to target: Double) {
-        let net = (try? ledgerStore.loadEntries()).map(BalanceLedger.net(of:)) ?? 0
+        let net = (try? ledgerStore.loadEntries())
+            .map { BalanceLedger.net(of: $0, in: walletCurrency) } ?? 0
         ledgerStore.openingBalance = target - net
     }
 
