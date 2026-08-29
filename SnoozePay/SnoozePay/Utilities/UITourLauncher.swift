@@ -25,6 +25,11 @@ import UIKit
 ///   `-uitour-backend-warning <case>`
 ///                            non-ringing state `alarms-nobackend` forces:
 ///                            unavailable|notrequested|indeterminate
+///   `-uitour-alarmkit <state>`
+///                            pin the AlarmKit backend: granted|denied. The
+///                            only way an E2E run can have (or provably lack)
+///                            alarm authorization — a simulator offers no way
+///                            to set it. See `UITourAlarmKitBackend` (#606)
 ///   `-uitour-storekit-empty` pin the StoreKit catalogue empty so every top-up
 ///                            CTA takes its DEBUG local-credit fallback instead
 ///                            of the real `purchase(_:)` (#575). Read by
@@ -40,6 +45,9 @@ enum UITourLauncher {
         // Before the mounters: a screen that pins its own appearance (firing,
         // splash) must be able to overrule the tour, not the other way round.
         applyAppearance(value(after: "-uitour-appearance"), to: window)
+        // Before `resetIfRequested`, which cancels through the scheduler, and
+        // well before any screen can save an alarm.
+        applyForcedAlarmKitBackend()
         resetIfRequested()
         seedIfRequested()
         UITourRoutes.mounter(for: screen)(window)
@@ -76,6 +84,38 @@ enum UITourLauncher {
         }
     }
 
+    /// Spelled once, here, because it is a contract with
+    /// `CreateAlarmUITests.launchArguments` — a typo on either side silently
+    /// puts that test back on ambient simulator state, which is what #606 was
+    /// (`StoreKitService.emptyCatalogArgument` exists for the same reason).
+    static let alarmKitArgument = "-uitour-alarmkit"
+
+    /// The AlarmKit backend `arguments` pins, or `nil` for "leave the real one
+    /// alone". Pure over `arguments` so a unit test can walk every spelling
+    /// without launching an app.
+    ///
+    /// Opt-in by construction: anything other than the two known values —
+    /// including no flag at all — must return `nil`, or a DEBUG build would
+    /// start faking authorization for a human running the app by hand.
+    static func forcedAlarmKitBackend(arguments: [String]) -> UITourAlarmKitBackend? {
+        switch value(after: alarmKitArgument, in: arguments) {
+        case "granted": return UITourAlarmKitBackend(isAuthorized: true)
+        case "denied": return UITourAlarmKitBackend(isAuthorized: false)
+        default: return nil
+        }
+    }
+
+    /// Installs the pinned backend, if any. Idempotent, and called from BOTH
+    /// `AppDelegate.didFinishLaunching` and `mount` — `AppDelegate` already
+    /// asks the scheduler for permission before any scene exists, and on the
+    /// real backend that ask can put a system prompt on screen mid-test.
+    static func applyForcedAlarmKitBackend() {
+        guard let backend = forcedAlarmKitBackend(
+            arguments: ProcessInfo.processInfo.arguments
+        ) else { return }
+        AlarmScheduler.uiTourForcedBackend = backend
+    }
+
     static func requestedTheme() -> AlarmTheme {
         switch value(after: "-uitour-theme") {
         case "ocean": return .ocean
@@ -88,7 +128,11 @@ enum UITourLauncher {
     }
 
     private static func value(after flag: String) -> String? {
-        let args = ProcessInfo.processInfo.arguments
+        value(after: flag, in: ProcessInfo.processInfo.arguments)
+    }
+
+    /// The `ProcessInfo`-free half, so parsing can be unit-tested.
+    private static func value(after flag: String, in args: [String]) -> String? {
         guard let idx = args.firstIndex(of: flag), args.count > idx + 1 else { return nil }
         return args[idx + 1]
     }

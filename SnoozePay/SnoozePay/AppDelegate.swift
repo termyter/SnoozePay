@@ -39,6 +39,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        #if DEBUG
+        // Before ANY scheduler call: `-uitour-alarmkit granted|denied` decides
+        // what AlarmKit answers for this launch (#606). `requestPermission`
+        // below would otherwise reach the real backend, whose prompt is both
+        // unanswerable from a UI test and able to cover the screen mid-run.
+        // `SceneDelegate`'s tour mount re-applies it; the call is idempotent.
+        UITourLauncher.applyForcedAlarmKitBackend()
+        #endif
+
         // Register notification categories on every cold launch so the actions
         // of a notification left pending by a pre-#472 build stay wired up.
         AlarmScheduler.shared.registerCategories()
