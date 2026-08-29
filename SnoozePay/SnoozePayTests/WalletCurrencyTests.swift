@@ -60,11 +60,11 @@ final class WalletCurrencyTests: XCTestCase {
     /// currency the wallet had a moment earlier — otherwise
     /// `BalanceLedger.net(of:in:)` drops it and the credit evaporates on the
     /// next read.
-    func testFirstPaidTopUp_stampsLedgerRowWithTheNewCurrency() {
+    func testFirstPaidTopUp_stampsLedgerRowWithTheNewCurrency() throws {
         let service = makeService()
         XCTAssertEqual(service.topUpFromPurchase(amount: 299, currency: usd), .credited)
 
-        let rows = TransactionRepository(defaults: testDefaults).fetchAll()
+        let rows = try TransactionRepository(defaults: testDefaults).fetchAllChecked()
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?.currency, usd)
         XCTAssertEqual(service.balance, 299, "the row must survive the currency-filtered sum")
@@ -106,7 +106,7 @@ final class WalletCurrencyTests: XCTestCase {
         XCTAssertFalse(service.acceptsPurchase(in: .rub))
     }
 
-    func testForeignCurrency_creditsNothingIfItSomehowReachesTheWallet() {
+    func testForeignCurrency_creditsNothingIfItSomehowReachesTheWallet() throws {
         let service = makeService()
         XCTAssertEqual(service.topUpFromPurchase(amount: 299, currency: usd), .credited)
 
@@ -117,7 +117,8 @@ final class WalletCurrencyTests: XCTestCase {
 
         XCTAssertEqual(service.balance, 299, "a refused purchase must not move the balance")
         XCTAssertEqual(service.walletCurrency, usd, "and must not re-denominate the wallet")
-        XCTAssertEqual(TransactionRepository(defaults: testDefaults).fetchAll().count, 1)
+        let rows = try TransactionRepository(defaults: testDefaults).fetchAllChecked()
+        XCTAssertEqual(rows.count, 1)
     }
 
     /// StoreKit does not always report a currency. Crediting into the wallet's
