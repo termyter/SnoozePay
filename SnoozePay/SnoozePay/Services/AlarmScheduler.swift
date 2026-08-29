@@ -8,6 +8,10 @@ import os
 /// process-wide singleton whose `add(_:)` failure modes (permission revoked
 /// mid-session, malformed trigger, 64-pending limit) cannot otherwise be
 /// reproduced deterministically.
+///
+/// Since #472 the app never SCHEDULES a notification; what is left of this seam
+/// serves the legacy sweep in `cancel(_:)`, which removes alarm notifications
+/// left pending by a pre-#472 build.
 protocol NotificationScheduling: AnyObject {
     // Sendable closures match `UNUserNotificationCenter`'s post-Swift-6
     // signature. Without them the implicit conformance is a warning
@@ -44,130 +48,85 @@ protocol AlarmScheduling: AnyObject {
     func cancel(_ alarmID: UUID)
 }
 
-/// Handles scheduling and cancelling alarms across two backends (`docs/SPEC.md`
-/// §3.2.1):
+/// Schedules and cancels alarms through AlarmKit — the ONLY backend
+/// (`docs/SPEC.md` §3.2.1, #472).
 ///
-/// - **Strategy A — AlarmKit.** By default alarms are
-///   scheduled through `AlarmKitScheduler` (the `AlarmManager` wrapper). This
-///   is a real system alarm: it rings continuously, pierces silent mode and
-///   Focus/DND, and shows a full-screen lock-screen alert — like Clock.app —
-///   without the (unapproved) Critical Alerts entitlement. Stop / snooze
-///   buttons on the system alert route back through `AlarmKitActionRouter`.
-/// - **Strategy B — UNUserNotificationCenter (fallback).** When AlarmKit
-///   scheduling fails or is unauthorized the alarm is a
-///   `.timeSensitive` notification with the lock-screen fallback burst (#19).
-///   This is the only backend that ran before #377.
+/// An AlarmKit alarm is a real system alarm: it rings continuously, pierces
+/// silent mode and Focus/DND, and shows a full-screen lock-screen alert — like
+/// Clock.app — without the (unapproved) Critical Alerts entitlement. Stop /
+/// snooze buttons on the system alert route back through `AlarmKitActionRouter`.
 ///
-/// The two paths share `AlarmFiringCoordinator` for paid-snooze charging and
-/// refund-on-failure, so the wallet semantics are identical regardless of
-/// backend.
+/// **There is no notification fallback (#472).** Until then a denied or failed
+/// AlarmKit schedule silently degraded to a `.timeSensitive` notification, which
+/// pings once and cannot wake a sleeping user. Holding two backends at once made
+/// "is this alarm armed?" ambiguous and produced #456, #459 and #460 in a row.
+/// Now the answer is single-valued: either AlarmKit armed the alarm, or
+/// `schedule` fails with a typed error and the UI must say so. `AlarmRepository`
+/// surfaces that failure to the caller, and the create / enable CTAs are gated
+/// upstream by `AlarmBackendAvailability`.
 final class AlarmScheduler: AlarmScheduling {
 
     static let shared = AlarmScheduler()
 
     /// Errors surfaced to UI callers so the user sees a real explanation
-    /// instead of a fake "Будильник создан" toast on a notification that
-    /// never registered (issue #118).
+    /// instead of a fake "Будильник создан" toast on an alarm that never
+    /// registered (issue #118).
     enum SchedulingError: LocalizedError, Equatable {
-        /// `UNUserNotificationCenter.add` returned an error — typically a
-        /// revoked notification permission or a malformed trigger.
+        /// AlarmKit rejected the schedule — a revoked authorization, the
+        /// per-app alarm limit, or a backend error.
         case system(message: String)
-        /// Pre-flight check found we are at or above the iOS 64-pending
-        /// notification cap. Adding another would silently evict an
-        /// existing one, so we refuse and let the user delete old alarms.
-        case pendingLimitReached(currentCount: Int)
-        /// The scheduler was torn down (or the operation cancelled) while the
-        /// async 64-pending pre-flight was in flight, so nothing was actually
-        /// registered. Previously this branch reported `.success(())`, which
-        /// produced a phantom "scheduled" outcome — the penalty stayed charged
-        /// but no notification existed (issue #199). Surfacing a typed failure
-        /// lets callers refund / retry instead of trusting a fake success.
-        case cancelled
+        /// No AlarmKit authorization, so nothing can be armed at all. Distinct
+        /// from `.system`: nothing failed, we refused. Saving an alarm anyway
+        /// would leave the user with a switch that reads "on" and an alarm that
+        /// never rings — the worst outcome of the two (#472).
+        case backendUnavailable
 
         var errorDescription: String? {
             switch self {
             case .system(let message):
                 return "Не удалось запланировать будильник: \(message). "
-                     + "Включите уведомления в Настройках или удалите старые будильники."
-            case .pendingLimitReached(let count):
-                return "Достигнут лимит iOS на запланированные уведомления (\(count) из 64). "
-                     + "Удалите старые будильники, чтобы освободить место."
-            case .cancelled:
-                return "Планирование будильника было прервано. Попробуйте ещё раз."
+                     + "Попробуйте ещё раз или удалите старые будильники."
+            case .backendUnavailable:
+                return "Приложению не разрешено ставить будильники, "
+                     + "поэтому будильник не зазвонит. Разрешите будильники в Настройках."
             }
         }
-        // Equatable synthesis is automatic — `String` and `Int` associated
-        // values both conform out of the box.
+        // Equatable synthesis is automatic — `String` associated values
+        // conform out of the box.
     }
-
-    /// iOS hard-cap on pending notification requests per app. Above this the
-    /// system silently drops additional requests (oldest-first), so we
-    /// pre-flight check and refuse rather than scheduling a request that may
-    /// or may not survive eviction.
-    static let pendingNotificationLimit = 64
-
-    /// Lock-screen fallback burst (issue #19). Without the Critical Alerts
-    /// entitlement the alarm arrives as a single `.timeSensitive` notification
-    /// — one ping, no continuous sound. If the user doesn't catch that one
-    /// banner the alarm is effectively missed. To make the fallback more
-    /// insistent within standard-notification limits we schedule a small set
-    /// of follow-up notifications a few seconds apart, so a missed first ping
-    /// re-pings instead of going silent.
-    ///
-    /// Offsets are in SECONDS after the primary fire time. Kept deliberately
-    /// short and few (3 follow-ups over 90s) so we never spam dozens of
-    /// notifications or crowd out the 64-pending cap. The follow-ups share the
-    /// alarm's `alarm_<id>_` identifier prefix, so the existing prefix-sweep in
-    /// `cancel(_:)` removes them the moment the alarm is dismissed / snoozed —
-    /// no orphan notifications survive a handled alarm.
-    static let fallbackBurstOffsetsSeconds = [30, 60, 90]
 
     private let notificationCenter: NotificationScheduling
 
-    /// Strategy A backend (#377). Non-nil in production; injectable (and
-    /// omittable) in tests so the backend-vs-fallback branching can be
-    /// exercised without a real AlarmKit backend.
+    /// The AlarmKit backend. Non-nil in production; injectable (and omittable)
+    /// in tests so the "no backend at all" refusal can be exercised.
     private let alarmKitScheduler: AlarmKitScheduling?
 
-    /// Whether the AlarmKit (Strategy A) path is active for this app/device.
-    /// True only when a backend is wired AND the user has authorized
-    /// AlarmKit. Otherwise we fall through to the notification
-    /// fallback so a denied / undetermined AlarmKit grant never leaves the user
-    /// without any alarm. `internal` (#383) so the firing screen can mirror the
-    /// scheduler's backend choice — on the AlarmKit path the system owns the
-    /// alarm sound and the snooze re-fires as a system alarm, so the in-app
-    /// screen must NOT start its own `AudioService` and must dismiss (rather than
-    /// run the in-place notification snooze countdown) after a snooze.
+    /// Whether AlarmKit can arm an alarm right now — a backend is wired AND the
+    /// user has authorized it. `internal` (#383) so the firing screen can mirror
+    /// the scheduler: the system owns the alarm sound and the snooze re-fires as
+    /// a system alarm, so the in-app screen must NOT start its own
+    /// `AudioService` and must dismiss after a snooze.
+    ///
+    /// Since #472 this is also the answer to "will a saved alarm ring at all".
     var usesAlarmKit: Bool {
         guard let alarmKitScheduler else { return false }
         return alarmKitScheduler.isAuthorized
     }
 
-    // Notification category and action IDs
+    /// Full AlarmKit authorization state for `SystemAlarmBackendProbe`. With no
+    /// backend wired we answer `.denied` rather than `.notDetermined`: offering
+    /// an in-app prompt that cannot possibly resolve would be worse than
+    /// pointing at Settings.
+    var alarmKitAuthorization: AlarmKitAuthorization {
+        alarmKitScheduler?.authorization ?? .denied
+    }
+
+    // Notification category and action IDs. Legacy (#472): no new alarm
+    // notification is ever scheduled, but a notification left pending by an
+    // older build still routes its actions through this category.
     private let categoryID = "ALARM_CATEGORY"
     private let dismissActionID = "DISMISS_ACTION"
     private let snoozeActionID = "SNOOZE_ACTION"
-
-    /// Whether the app has the critical alerts entitlement (set after permission request).
-    ///
-    /// Writes come from the UN-delegate background thread (`requestAuthorization`
-    /// callback), reads come from `makeContent` on whatever thread is scheduling.
-    /// Without synchronization there was a brief window after permission grant
-    /// where a parallel `schedule` call read a stale `false` and built a
-    /// non-critical alert content (issue #204). `os_unfair_lock` is enough
-    /// here — both halves are constant-time and contention is rare.
-    private static let criticalAlertsLock = NSLock()
-    private static var _criticalAlertsAvailable = false
-    static var criticalAlertsAvailable: Bool {
-        criticalAlertsLock.lock()
-        defer { criticalAlertsLock.unlock() }
-        return _criticalAlertsAvailable
-    }
-    private static func setCriticalAlertsAvailable(_ value: Bool) {
-        criticalAlertsLock.lock()
-        _criticalAlertsAvailable = value
-        criticalAlertsLock.unlock()
-    }
 
     private init() {
         self.notificationCenter = UNUserNotificationCenter.current()
@@ -177,7 +136,8 @@ final class AlarmScheduler: AlarmScheduling {
     /// Test-only initializer that swaps the notification-center seam and,
     /// optionally, the AlarmKit backend. Production code MUST use
     /// `AlarmScheduler.shared` (see `singleton`). Passing an `alarmKit` mock
-    /// lets tests drive the Strategy-A path with a stub backend.
+    /// lets tests drive the scheduling path with a stub backend; passing `nil`
+    /// models "no backend authorized", which must refuse rather than schedule.
     init(
         notificationCenter: NotificationScheduling,
         alarmKit: AlarmKitScheduling? = nil
@@ -188,10 +148,8 @@ final class AlarmScheduler: AlarmScheduling {
 
     // MARK: - Permission
 
-    /// Request AlarmKit (Strategy A) authorization. No-op when no backend is
-    /// wired. Completes with the resolved grant.
-    /// Called alongside the notification permission request so the onboarding /
-    /// first-enable flow primes both backends (#377).
+    /// Request AlarmKit authorization. No-op when no backend is wired.
+    /// Completes with the resolved grant.
     func requestAlarmKitAuthorization(completion: @escaping (Bool) -> Void) {
         guard let alarmKitScheduler else {
             completion(false)
@@ -200,49 +158,26 @@ final class AlarmScheduler: AlarmScheduling {
         alarmKitScheduler.requestAuthorization(completion: completion)
     }
 
+    /// Drive the OS permission prompt for the alarm backend and report the
+    /// grant on the main queue.
+    ///
+    /// Before #472 this also requested notification authorization, so the
+    /// `.timeSensitive` fallback would stay available and the reported grant was
+    /// the NOTIFICATION one. Both are gone: notifications no longer ring
+    /// anything, so asking for them would train the user to dismiss a prompt
+    /// that buys them nothing, and reporting their grant would tell the caller
+    /// "you're covered" while AlarmKit is still denied.
     func requestPermission(completion: @escaping (Bool) -> Void) {
-        // Prime AlarmKit authorization first (Strategy A). Its grant
-        // does not gate the notification request — we always also request
-        // notifications so the Strategy-B fallback stays available if AlarmKit
-        // is denied. The result reported to the caller is the NOTIFICATION
-        // grant, preserving the existing PermissionsViewController contract.
-        if let alarmKitScheduler {
-            alarmKitScheduler.requestAuthorization { granted in
-                AppLogger.scheduler.notice(
-                    "AlarmKit authorization granted=\(granted, privacy: .public)"
-                )
-            }
-        }
-        // Request critical alerts if entitled, fall back to standard alerts otherwise.
-        // Always log the resolved state so QA can tell if we're on the degraded
-        // (no critical-alert) path even when standard permission succeeds.
-        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge, .criticalAlert]) { granted, error in
-            if let error = error {
-                let desc = error.localizedDescription
-                AppLogger.scheduler.error(
-                    "critical-alert request failed: \(desc, privacy: .public). Falling back to standard."
-                )
-                Self.setCriticalAlertsAvailable(false)
-                let standardOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
-                self.notificationCenter.requestAuthorization(options: standardOptions) { granted, fallbackError in
-                    Self.setCriticalAlertsAvailable(false)
-                    if let fallbackError = fallbackError {
-                        let fallbackDesc = fallbackError.localizedDescription
-                        AppLogger.scheduler.error(
-                            "resolved path=fallback granted=\(granted, privacy: .public) critical=false error=\(fallbackDesc, privacy: .public)"
-                        )
-                    } else {
-                        AppLogger.scheduler.notice(
-                            "resolved path=fallback granted=\(granted, privacy: .public) critical=false"
-                        )
-                    }
-                    DispatchQueue.main.async { completion(granted) }
-                }
+        requestAlarmKitAuthorization { granted in
+            AppLogger.scheduler.notice(
+                "AlarmKit authorization granted=\(granted, privacy: .public)"
+            )
+            // Already-decided grants resolve synchronously on the calling
+            // thread; the prompt path resolves on the main actor. Normalize so
+            // UI callers never have to check.
+            if Thread.isMainThread {
+                completion(granted)
             } else {
-                Self.setCriticalAlertsAvailable(granted)
-                AppLogger.scheduler.notice(
-                    "resolved path=primary granted=\(granted, privacy: .public) critical=\(granted, privacy: .public)"
-                )
                 DispatchQueue.main.async { completion(granted) }
             }
         }
@@ -250,6 +185,9 @@ final class AlarmScheduler: AlarmScheduling {
 
     // MARK: - Register notification categories
 
+    /// Legacy (#472): registers the actions for alarm notifications scheduled by
+    /// a pre-#472 build that may still be pending on the device. Nothing new is
+    /// ever scheduled against this category.
     func registerCategories() {
         let dismissAction = UNNotificationAction(
             identifier: dismissActionID,
@@ -274,299 +212,105 @@ final class AlarmScheduler: AlarmScheduling {
 
     // MARK: - Schedule alarm
 
-    /// Schedule the user's alarm.
+    /// Schedule the user's alarm as an AlarmKit system alarm.
     /// - Parameters:
     ///   - alarm: alarm model to schedule (no-op when `enabled == false`).
-    ///   - completion: optional callback invoked once on the main queue once
-    ///     all triggers have either landed or one of them failed. Failures
-    ///     are reported as `SchedulingError.system(message:)`. Default `nil`
-    ///     keeps the scheduler-driven call sites (`AlarmRepository.save`)
+    ///   - completion: optional callback invoked once with the outcome.
+    ///     `.failure(.backendUnavailable)` when AlarmKit is not authorized,
+    ///     `.failure(.system)` when AlarmKit rejected the schedule. Default
+    ///     `nil` keeps the scheduler-driven call sites (`AlarmRepository.save`)
     ///     backwards compatible (issue #118).
+    ///
+    /// The AlarmKit `schedule` is async: we report `.success` ONLY after that
+    /// await resolves. A success reported earlier could tell the user "Будильник
+    /// создан" with nothing armed (#417, same phantom-success class as
+    /// #118/#199).
     func schedule(_ alarm: Alarm, completion: ((Result<Void, SchedulingError>) -> Void)? = nil) {
         guard alarm.enabled else {
             completion?(.success(()))
             return
         }
 
-        // Strategy A (#377): with AlarmKit authorized, schedule a
-        // real system alarm. The AlarmKit `schedule` is async: we report
-        // `.success` ONLY after that await resolves, and on ANY failure (sync
-        // config build OR async reject — alarm limit, revoked auth, backend
-        // reject) we arm the notification fallback below instead. A success
-        // reported before the await could tell the user "Будильник создан" with
-        // nothing armed and no fallback (#417, same phantom-success class as
-        // #118/#199 but on the primary AlarmKit path).
-        if usesAlarmKit, let alarmKitScheduler {
-            alarmKitScheduler.schedule(alarm) { [weak self] result in
-                switch result {
-                case .success:
-                    AppLogger.scheduler.info(
-                        "scheduled via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
-                    )
-                    completion?(.success(()))
-                case .failure(let error):
-                    let desc = error.localizedDescription
-                    AppLogger.scheduler.error(
-                        """
-                        AlarmKit schedule failed alarm=\(alarm.id, privacy: .private): \
-                        \(desc, privacy: .public) — arming notification fallback
-                        """
-                    )
-                    guard let self else {
-                        // Scheduler gone before the async result — report a typed
-                        // failure so the caller never sees a phantom success with
-                        // no alarm armed (#199 / #417).
-                        completion?(.failure(.cancelled))
-                        return
-                    }
-                    self.scheduleNotificationFallback(for: alarm, completion: completion)
-                }
-            }
-            return
-        }
-
-        scheduleNotificationFallback(for: alarm, completion: completion)
-    }
-
-    /// Strategy B (fallback) initial schedule: the `.timeSensitive`
-    /// notification trigger(s) at the alarm's configured time, plus the
-    /// 64-pending preflight. Used when AlarmKit is unauthorized and as the
-    /// fallback when the AlarmKit system schedule fails (#417) so the user is
-    /// never left without an alarm after being told it was created.
-    private func scheduleNotificationFallback(
-        for alarm: Alarm,
-        completion: ((Result<Void, SchedulingError>) -> Void)?
-    ) {
-        let content = makeContent(for: alarm, snoozeCount: 0)
-        let triggers = makeTriggers(for: alarm)
-
-        guard !triggers.isEmpty else {
-            completion?(.success(()))
-            return
-        }
-
-        // Pre-flight 64-pending limit check. We refuse to schedule when the
-        // batch we're about to add would push us over — iOS would otherwise
-        // silently evict our oldest pending request. Surface the situation
-        // to the user instead so they know to delete old alarms.
-        runPendingLimitPreflight(triggerCount: triggers.count) { [weak self] preflight in
-            guard let self else {
-                // Scheduler deallocated mid-preflight — report a typed failure,
-                // never a phantom success (issue #199).
-                completion?(.failure(.cancelled))
-                return
-            }
-            if case .failure(let error) = preflight {
-                completion?(.failure(error))
-                return
-            }
-            self.dispatchAdds(
-                requests: triggers.map { trigger in
-                    UNNotificationRequest(
-                        identifier: self.notificationID(for: alarm.id, trigger: trigger.label),
-                        content: content,
-                        trigger: trigger.trigger
-                    )
-                },
-                completion: completion
+        guard usesAlarmKit, let alarmKitScheduler else {
+            AppLogger.scheduler.error(
+                """
+                schedule refused: AlarmKit not authorized alarm=\(alarm.id, privacy: .private) \
+                — no alarm armed (#472)
+                """
             )
+            completion?(.failure(.backendUnavailable))
+            return
+        }
+
+        alarmKitScheduler.schedule(alarm) { result in
+            switch result {
+            case .success:
+                AppLogger.scheduler.info(
+                    "scheduled via AlarmKit alarm=\(alarm.id, privacy: .private)"
+                )
+                completion?(.success(()))
+            case .failure(let error):
+                let desc = error.localizedDescription
+                AppLogger.scheduler.error(
+                    "AlarmKit schedule failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
+                )
+                completion?(.failure(.system(message: desc)))
+            }
         }
     }
 
     // MARK: - Schedule snooze
 
-    /// Schedule a follow-up snooze notification.
-    /// Carries the same `completion` semantics as `schedule(_:completion:)`
-    /// so `AlarmFiringViewModel` / `AlarmFiringCoordinator` can surface
-    /// scheduling failures instead of silently leaving the user without a
-    /// re-fire (issue #118).
+    /// Reschedule the alarm as a one-shot AlarmKit alarm at now + snoozeMinutes.
+    ///
+    /// Stops the currently-alerting system alarm first (the in-app firing screen
+    /// also silences its audio), then reschedules under a separate snooze id
+    /// (#394) so a repeating original keeps its weekday schedule.
+    ///
+    /// Carries the same `completion` semantics as `schedule(_:completion:)` so
+    /// `AlarmFiringViewModel` / `AlarmFiringCoordinator` refund the already
+    /// charged penalty instead of leaving the user with nothing re-ringing
+    /// (#118, #394 Finding 1).
     func scheduleSnooze(
         for alarm: Alarm,
         snoozeCount: Int,
         completion: ((Result<Void, SchedulingError>) -> Void)? = nil
     ) {
-        // Strategy A (#383): with AlarmKit authorized, the snooze must
-        // re-fire as a real system alarm — not a notification — to match the
-        // original firing and keep piercing silent mode / Focus. Stop the
-        // currently-alerting system alarm first (the in-app firing screen also
-        // silences its audio), then reschedule (under a separate snooze id, #394)
-        // a one-shot `.fixed` alarm at now + snoozeMinutes.
-        //
-        // The AlarmKit `schedule` is async: we report `.success` ONLY after that
-        // await resolves, and on ANY failure (sync config build OR async reject —
-        // alarm limit, revoked auth, backend reject) we arm the notification
-        // burst below instead. A success reported before the await could leave
-        // the penalty charged with nothing re-ringing (#394 Finding 1). Without
-        // an authorized backend (Strategy B) the notification burst is the only path.
-        if usesAlarmKit, let alarmKitScheduler {
-            let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
-            alarmKitScheduler.stop(alarm.id)
-            alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate) { [weak self] result in
-                switch result {
-                case .success:
-                    AppLogger.scheduler.info(
-                        "scheduled snooze via AlarmKit (Strategy A) alarm=\(alarm.id, privacy: .private)"
-                    )
-                    completion?(.success(()))
-                case .failure(let error):
-                    let desc = error.localizedDescription
-                    AppLogger.scheduler.error(
-                        """
-                        AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \
-                        \(desc, privacy: .public) — arming notification fallback
-                        """
-                    )
-                    guard let self else {
-                        // Scheduler gone before the async result — report a typed
-                        // failure so the penalty is refunded, never a phantom
-                        // success with no re-ring (#199 / #394).
-                        completion?(.failure(.cancelled))
-                        return
-                    }
-                    self.scheduleSnoozeNotification(
-                        for: alarm,
-                        snoozeCount: snoozeCount,
-                        completion: completion
-                    )
-                }
-            }
+        guard usesAlarmKit, let alarmKitScheduler else {
+            AppLogger.scheduler.error(
+                """
+                snooze refused: AlarmKit not authorized alarm=\(alarm.id, privacy: .private) \
+                — penalty must be refunded (#472)
+                """
+            )
+            completion?(.failure(.backendUnavailable))
             return
         }
-
-        scheduleSnoozeNotification(for: alarm, snoozeCount: snoozeCount, completion: completion)
-    }
-
-    /// Strategy B (fallback) snooze: a `.timeSensitive` notification at
-    /// now + snoozeMinutes plus the lock-screen insistence burst (#19). Used
-    /// when AlarmKit is unauthorized and as the re-ring fallback when it
-    /// fails to schedule (#394 Finding 1) so the user is never left without a
-    /// re-ring after the penalty is charged.
-    private func scheduleSnoozeNotification(
-        for alarm: Alarm,
-        snoozeCount: Int,
-        completion: ((Result<Void, SchedulingError>) -> Void)?
-    ) {
-        let content = makeContent(for: alarm, snoozeCount: snoozeCount)
 
         let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
-        var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
-        components.second = 0
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-
-        let request = UNNotificationRequest(
-            identifier: snoozeNotificationID(for: alarm.id),
-            content: content,
-            trigger: trigger
-        )
-
-        // Lock-screen fallback burst (#19): make the snooze re-fire as
-        // insistent as the original alarm. Follow-ups carry the snooze
-        // identifier prefix so `cancel(_:)` sweeps them away once the alarm is
-        // handled. Skipped on the critical-alerts path (continuous sound).
-        var requests = [request]
-        if !Self.criticalAlertsAvailable {
-            // Build the burst identifier from the index directly — `snooze_<id>
-            // _burstN` — so it matches the explicit-ID set `cancel(_:)` /
-            // `cancelFallbackBursts(_:)` remove (`"\(snoozeID)_burst\(i)"`).
-            // Routing through `burst.label` would double the suffix
-            // (`burst_burst0`) and the belt-and-suspenders removal would miss it,
-            // orphaning the snooze burst (#19 QA).
-            requests += Self.burstTriggers(after: components, label: "burst", repeats: false)
-                .enumerated()
-                .map { index, burst in
-                    UNNotificationRequest(
-                        identifier: "\(snoozeNotificationID(for: alarm.id))_burst\(index)",
-                        content: content,
-                        trigger: burst.trigger
-                    )
-                }
-        }
-
-        runPendingLimitPreflight(triggerCount: requests.count) { [weak self] preflight in
-            guard let self else {
-                // Scheduler deallocated mid-preflight — report a typed failure,
-                // never a phantom success (issue #199). The coordinator refunds
-                // the already-charged penalty on this failure.
-                completion?(.failure(.cancelled))
-                return
-            }
-            if case .failure(let error) = preflight {
-                completion?(.failure(error))
-                return
-            }
-            self.dispatchAdds(requests: requests, completion: completion)
-        }
-    }
-
-    // MARK: - Private scheduling helpers
-
-    /// Run the iOS 64-pending-limit pre-flight. Resolves to `.failure` when
-    /// adding `triggerCount` requests would push us over the cap.
-    /// Always resolves on the main queue so callers don't need to bounce.
-    private func runPendingLimitPreflight(
-        triggerCount: Int,
-        completion: @escaping (Result<Void, SchedulingError>) -> Void
-    ) {
-        notificationCenter.getPendingNotificationRequests { requests in
-            let pending = requests.count
-            DispatchQueue.main.async {
-                if pending + triggerCount > Self.pendingNotificationLimit {
-                    let limit = Self.pendingNotificationLimit
-                    AppLogger.scheduler.error(
-                        "schedule blocked: pending=\(pending, privacy: .public) batch=\(triggerCount, privacy: .public) limit=\(limit, privacy: .public)"
-                    )
-                    completion(.failure(.pendingLimitReached(currentCount: pending)))
-                } else {
-                    completion(.success(()))
-                }
-            }
-        }
-    }
-
-    /// Add a batch of notification requests sequentially, fan-in their
-    /// completion blocks, and report the first error to the caller. We
-    /// fan-in instead of bailing on the first failure so partial success
-    /// (e.g. 5/7 weekday triggers landed, 2 rejected) is logged for every
-    /// failure even though only the first is surfaced to the UI.
-    private func dispatchAdds(
-        requests: [UNNotificationRequest],
-        completion: ((Result<Void, SchedulingError>) -> Void)?
-    ) {
-        guard !requests.isEmpty else {
-            completion?(.success(()))
-            return
-        }
-
-        let group = DispatchGroup()
-        var firstError: Error?
-        let errorLock = NSLock()
-
-        for request in requests {
-            group.enter()
-            notificationCenter.add(request) { error in
-                if let error = error {
-                    AppLogger.scheduler.error(
-                        "schedule failed: \(error.localizedDescription, privacy: .public)"
-                    )
-                    errorLock.lock()
-                    if firstError == nil { firstError = error }
-                    errorLock.unlock()
-                }
-                group.leave()
-            }
-        }
-
-        group.notify(queue: .main) {
-            if let error = firstError {
-                completion?(.failure(.system(message: error.localizedDescription)))
-            } else {
+        alarmKitScheduler.stop(alarm.id)
+        alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate) { result in
+            switch result {
+            case .success:
+                AppLogger.scheduler.info(
+                    "scheduled snooze via AlarmKit alarm=\(alarm.id, privacy: .private)"
+                )
                 completion?(.success(()))
+            case .failure(let error):
+                let desc = error.localizedDescription
+                AppLogger.scheduler.error(
+                    """
+                    AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \
+                    \(desc, privacy: .public)
+                    """
+                )
+                completion?(.failure(.system(message: desc)))
             }
         }
     }
 
     /// Pure factory for the snooze fire date — extracted so unit tests can pin the
-    /// arithmetic without touching UNUserNotificationCenter. Bug guard for mistaken
+    /// arithmetic without touching the backend. Bug guard for mistaken
     /// unit conversions (minutes vs seconds vs hours).
     static func scheduledFireDate(now: Date, snoozeMinutes: Int) -> Date {
         now.addingTimeInterval(TimeInterval(snoozeMinutes * 60))
@@ -574,27 +318,26 @@ final class AlarmScheduler: AlarmScheduling {
 
     // MARK: - Cancel
 
-    /// Cancel every notification scheduled for the given alarm, regardless of trigger label
-    /// (e.g. `day0`-`day6`, `once`, future labels) and the snooze follow-up.
+    /// Cancel the alarm on every backend it could have been armed on: the
+    /// AlarmKit system alarm, plus any notification a pre-#472 build left
+    /// pending for this alarm.
     ///
-    /// We fetch pending requests and filter by `alarmID` prefix instead of hard-coding the
-    /// label list — this prevents regressions like IOS-070 where a one-off (`once`) alarm
-    /// kept ringing after deletion because its identifier was missing from the cancel set.
+    /// The notification half filters by `alarmID` prefix instead of hard-coding
+    /// the label list — this prevents regressions like IOS-070 where a one-off
+    /// (`once`) alarm kept ringing after deletion because its identifier was
+    /// missing from the cancel set.
     func cancel(_ alarmID: UUID) {
-        // Strategy A (#377): also cancel the AlarmKit system alarm. Always
-        // attempt it regardless of `usesAlarmKit` so an alarm
-        // scheduled while authorized is still cancellable if authorization
-        // later changed. The notification sweep below runs unconditionally
-        // because an alarm may have been scheduled via either backend.
+        // Always attempt the AlarmKit cancel regardless of `usesAlarmKit` so an
+        // alarm scheduled while authorized is still cancellable if the
+        // authorization later changed.
         if let alarmKitScheduler {
             alarmKitScheduler.cancel(alarmID)
         }
 
         let prefix = notificationIDPrefix(for: alarmID)
         let snoozeID = snoozeNotificationID(for: alarmID)
-        // Match the snooze identifier itself AND its fallback-burst follow-ups
-        // (`snooze_<id>_burstN`, #19) — using a prefix check rather than an
-        // exact match so a handled alarm leaves no orphan burst notifications.
+        // Prefix match rather than an exact one, so legacy per-day, one-off and
+        // `_burstN` follow-up identifiers are all covered.
         let belongsToAlarm: (String) -> Bool = {
             $0.hasPrefix(prefix) || $0 == snoozeID || $0.hasPrefix("\(snoozeID)_")
         }
@@ -603,26 +346,25 @@ final class AlarmScheduler: AlarmScheduling {
         // If the async `getPendingNotificationRequests` completion returns an empty
         // array — system glitch, background suspension, permission revoked — the
         // prefix sweep below silently exits without removing anything. The sync
-        // call here guarantees the canonical day0..day6 / once / snooze IDs and
-        // their burst follow-ups (#19) are removed regardless. Per #92 follow-up to #70.
+        // call here guarantees the canonical day0..day6 / once / snooze IDs are
+        // removed regardless. Per #92 follow-up to #70.
         let labels = (0..<7).map { "day\($0)" } + ["once"]
-        let explicitIDs = labels.map { notificationID(for: alarmID, trigger: $0) }
-            + labels.flatMap { label in
-                Self.fallbackBurstOffsetsSeconds.indices.map {
-                    notificationID(for: alarmID, trigger: "\(label)_burst\($0)")
-                }
-            }
-            + [snoozeID]
-            + Self.fallbackBurstOffsetsSeconds.indices.map { "\(snoozeID)_burst\($0)" }
+        let explicitIDs = labels.map { notificationID(for: alarmID, trigger: $0) } + [snoozeID]
         notificationCenter.removePendingNotificationRequests(withIdentifiers: explicitIDs)
         notificationCenter.removeDeliveredNotifications(withIdentifiers: explicitIDs)
 
-        // Then prefix sweep for any future label additions / stragglers the
-        // explicit set didn't cover (idempotent — already-removed IDs are no-ops).
+        // Then prefix sweep for stragglers the explicit set didn't cover —
+        // including the `_burstN` follow-ups of a pre-#472 install (idempotent:
+        // already-removed IDs are no-ops).
         notificationCenter.getPendingNotificationRequests { [notificationCenter] requests in
             let ids = requests.map { $0.identifier }.filter(belongsToAlarm)
             if ids.isEmpty {
-                AppLogger.scheduler.info("cancel sweep: no pending requests matched alarmID \(alarmID, privacy: .private) (explicit removal already ran)")
+                AppLogger.scheduler.info(
+                    """
+                    cancel sweep: no pending requests matched alarmID \
+                    \(alarmID, privacy: .private) (explicit removal already ran)
+                    """
+                )
                 return
             }
             notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
@@ -634,83 +376,39 @@ final class AlarmScheduler: AlarmScheduling {
         }
     }
 
-    /// Cancel ONLY the lock-screen fallback-burst follow-ups (`#19`) for an
-    /// alarm — the `_burstN` notifications — while leaving the primary triggers
-    /// (`day0…day6`, `once`, `snooze`) armed. Called from the lock-screen
-    /// dismiss / snooze action paths, where the current firing's bursts are
-    /// still pending at +30/60/90s and would spuriously re-ring after the user
-    /// already got up or snoozed (#19 QA — the orphan-re-ring fix). A blanket
-    /// `cancel(_:)` would also drop a repeating alarm's future weekday triggers,
-    /// disabling it — so this is deliberately burst-only.
-    func cancelFallbackBursts(_ alarmID: UUID) {
-        let prefix = notificationIDPrefix(for: alarmID)
-        let snoozeID = snoozeNotificationID(for: alarmID)
-        // A burst id is the alarm/snooze id plus a `_burstN` suffix. Primary
-        // triggers never contain `_burst`, so this never touches them.
-        let isBurst: (String) -> Bool = {
-            ($0.hasPrefix(prefix) || $0.hasPrefix(snoozeID)) && $0.contains("_burst")
-        }
-
-        // Belt-and-suspenders explicit removal (sync, no async dependency —
-        // mirrors `cancel(_:)`): covers day0..day6 / once / snooze burst IDs.
-        let labels = (0..<7).map { "day\($0)" } + ["once"]
-        let explicitBurstIDs = labels.flatMap { label in
-            Self.fallbackBurstOffsetsSeconds.indices.map {
-                notificationID(for: alarmID, trigger: "\(label)_burst\($0)")
-            }
-        }
-            + Self.fallbackBurstOffsetsSeconds.indices.map { "\(snoozeID)_burst\($0)" }
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: explicitBurstIDs)
-        notificationCenter.removeDeliveredNotifications(withIdentifiers: explicitBurstIDs)
-
-        // Prefix sweep for any stragglers the explicit set didn't cover.
-        notificationCenter.getPendingNotificationRequests { [notificationCenter] requests in
-            let ids = requests.map { $0.identifier }.filter(isBurst)
-            guard !ids.isEmpty else { return }
-            notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
-        }
-        notificationCenter.getDeliveredNotifications { [notificationCenter] notifications in
-            let ids = notifications.map { $0.request.identifier }.filter(isBurst)
-            guard !ids.isEmpty else { return }
-            notificationCenter.removeDeliveredNotifications(withIdentifiers: ids)
-        }
-    }
-
     func cancelAll() {
         notificationCenter.removeAllPendingNotificationRequests()
     }
 
     /// Re-arm every enabled alarm from scratch — cancel its existing triggers
-    /// (both backends) and schedule it again. Mirrors the `cancel` → `schedule`
-    /// sequence `AlarmRepository.save(_:)` already uses, so the wallet / backend
-    /// semantics are identical to a normal save.
+    /// and schedule it again. Mirrors the `cancel` → `schedule` sequence
+    /// `AlarmRepository.save(_:)` already uses, so the wallet semantics are
+    /// identical to a normal save.
     ///
     /// Called when something that silently invalidates already-scheduled
-    /// triggers may have changed out from under us (#427):
+    /// alarms may have changed out from under us (#427):
     ///
-    /// - **Timezone / DST shift.** `UNCalendarNotificationTrigger` interprets
-    ///   its date components in `Calendar.current` at fire time, so a one-time
-    ///   alarm armed in TZ A fires at the wrong wall-clock after moving to TZ B,
-    ///   and a repeating trigger drifts an hour across a DST boundary. Re-arming
-    ///   recomputes every trigger against the current calendar.
-    /// - **Reboot.** Re-evaluates triggers in case the clock / timezone changed
-    ///   while the device was powered off.
-    /// - **Authorization change.** `usesAlarmKit` is computed live from the
-    ///   AlarmKit grant, so toggling AlarmKit / notification permission in
-    ///   Settings flips which backend should own each alarm. Without re-arming,
-    ///   an alarm scheduled under the old grant is never moved to the now-correct
-    ///   backend (e.g. AlarmKit revoked → no notification fallback is ever armed).
+    /// - **Timezone / DST shift.** An alarm armed in TZ A can fire at the wrong
+    ///   wall-clock after moving to TZ B, and a repeating schedule drifts an
+    ///   hour across a DST boundary. Re-arming recomputes it against the current
+    ///   calendar.
+    /// - **Reboot.** Re-evaluates the schedule in case the clock / timezone
+    ///   changed while the device was powered off.
+    /// - **Authorization change.** `usesAlarmKit` is computed live, so toggling
+    ///   the AlarmKit grant in Settings changes whether an alarm can be armed at
+    ///   all. Re-arming after a re-grant is what turns saved alarms back on;
+    ///   after a revoke it is what makes the failures countable instead of
+    ///   invisible.
     ///
-    /// Disabled alarms are skipped: they hold no triggers to re-arm and
+    /// Disabled alarms are skipped: they hold nothing to re-arm and
     /// `schedule(_:)` is already a no-op for them.
     /// - Parameter completion: invoked on the main queue once every re-arm has
     ///   resolved, carrying the number that FAILED to re-arm. Previously each
     ///   `schedule` was fired with a `nil` completion, so every typed
-    ///   `SchedulingError` (pending-limit, system, cancelled, AlarmKit reject +
-    ///   fallback-also-failed) was silently dropped — an alarm could fail to
-    ///   re-arm after a DST/TZ shift, reboot or permission change and never
-    ///   ring, with only a Console log (#442). Aggregating the outcomes lets the
-    ///   caller surface it (see `AppDelegate.handleRescheduleOutcome`).
+    ///   `SchedulingError` was silently dropped — an alarm could fail to re-arm
+    ///   after a DST/TZ shift, reboot or permission change and never ring, with
+    ///   only a Console log (#442). Aggregating the outcomes lets the caller
+    ///   surface it (see `AppDelegate.handleRescheduleOutcome`).
     func rescheduleAll(_ alarms: [Alarm], completion: ((_ failedCount: Int) -> Void)? = nil) {
         let enabled = alarms.filter { $0.enabled }
         AppLogger.scheduler.info(
@@ -749,10 +447,9 @@ final class AlarmScheduler: AlarmScheduling {
         }
     }
 
-    /// Stop a currently-alerting AlarmKit (Strategy A) system alarm — invoked
-    /// from `AlarmKitActionRouter` when the user taps stop / snooze on the
-    /// system alert. No-op when no AlarmKit backend is wired
-    /// (the notification path stops audio via `AudioService` instead). (#377)
+    /// Stop a currently-alerting AlarmKit system alarm — invoked from
+    /// `AlarmKitActionRouter` when the user taps stop / snooze on the system
+    /// alert. No-op when no AlarmKit backend is wired. (#377)
     func stopSystemAlarm(_ alarmID: UUID) {
         if let alarmKitScheduler {
             alarmKitScheduler.stop(alarmID)
@@ -761,136 +458,12 @@ final class AlarmScheduler: AlarmScheduling {
 
     // MARK: - Private helpers
 
-    func makeContent(for alarm: Alarm, snoozeCount: Int) -> UNMutableNotificationContent {
-        let content = UNMutableNotificationContent()
-        content.title = alarm.name
-        content.body = "Время вставать!"
-
-        let penalty = alarm.penalty(forSnoozeCount: snoozeCount + 1)
-        content.subtitle = "+\(alarm.snoozeMinutes) минут · −\(MoneyFormatter.string(penalty))"
-
-        // Use critical sound if entitled, otherwise fall back to standard sound.
-        // Critical alerts bypass DND and silent mode (requires Apple approval).
-        if let soundName = alarmSoundFileName(for: alarm.soundID) {
-            let soundN = UNNotificationSoundName(soundName)
-            content.sound = Self.criticalAlertsAvailable
-                ? UNNotificationSound.criticalSoundNamed(soundN, withAudioVolume: 1.0)
-                : UNNotificationSound(named: soundN)
-        } else {
-            content.sound = Self.criticalAlertsAvailable
-                ? UNNotificationSound.defaultCriticalSound(withAudioVolume: 1.0)
-                : .default
-        }
-
-        content.categoryIdentifier = categoryID
-        content.interruptionLevel = Self.criticalAlertsAvailable ? .critical : .timeSensitive
-
-        // Pass alarm metadata via a typed payload so AppDelegate /
-        // AlarmFiringCoordinator can decode it without ad-hoc `as?` casts.
-        content.userInfo = AlarmNotificationPayload(alarm: alarm, snoozeCount: snoozeCount)
-            .asUserInfo()
-
-        return content
-    }
-
-    struct TriggerWithLabel {
-        let label: String
-        let trigger: UNNotificationTrigger
-    }
-
-    /// Build triggers for all active repeat days, or a one-time trigger if no repeat days.
-    /// Exposed as `internal` so tests can pin the legacy 0=Mon → Calendar.weekday 1=Sun
-    /// mapping; an off-by-one here means "alarm on Saturday rings on Sunday".
-    func makeTriggers(for alarm: Alarm) -> [TriggerWithLabel] {
-        let calendar = Calendar.current
-        let timeComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
-
-        // Critical alerts (when entitled) deliver continuous lock-screen sound,
-        // so the lock-screen fallback burst (#19) is only added on the degraded
-        // `.timeSensitive` path where a single ping can be missed.
-        let withBurst = !Self.criticalAlertsAvailable
-
-        if alarm.repeatDays.isEmpty {
-            // One-time alarm: fire at the next occurrence of this time, plus a
-            // short self-cancelling follow-up burst (#19).
-            var components = DateComponents()
-            components.hour = timeComponents.hour
-            components.minute = timeComponents.minute
-            components.second = 0
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-            let primary = TriggerWithLabel(label: "once", trigger: trigger)
-            guard withBurst else { return [primary] }
-            return [primary] + Self.burstTriggers(after: components, label: "once", repeats: false)
-        }
-
-        // One-shot mode (#229): non-repeating triggers fire once at the next
-        // occurrence of each selected weekday and are never re-armed by iOS.
-        // The alarm itself is auto-disabled on dismiss
-        // (`AlarmFiringViewModel.dismiss`), which also cancels the remaining
-        // per-day triggers via `cancel(_:)`.
-        let repeats = alarm.repeatMode == .weekly
-
-        // Map our 0=Mon system to iOS weekday (1=Sun, 2=Mon, ..., 7=Sat)
-        return alarm.repeatDays.flatMap { day -> [TriggerWithLabel] in
-            let weekday = ((day + 1) % 7) + 1 // Convert: 0(Mon)->2, 6(Sun)->1
-            var components = DateComponents()
-            components.weekday = weekday
-            components.hour = timeComponents.hour
-            components.minute = timeComponents.minute
-            components.second = 0
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: repeats)
-            let primary = TriggerWithLabel(label: "day\(day)", trigger: trigger)
-            guard withBurst else { return [primary] }
-            return [primary] + Self.burstTriggers(after: components, label: "day\(day)", repeats: repeats)
-        }
-    }
-
-    /// Build the self-cancelling follow-up burst for a primary trigger (#19).
-    ///
-    /// Each follow-up reuses the primary's date components and shifts them
-    /// forward by one of `fallbackBurstOffsetsSeconds`, carrying any weekday so
-    /// the burst lands on the same day as the alarm. Labels are suffixed
-    /// `<label>_burstN` so they share the alarm's identifier prefix and are
-    /// swept away by `cancel(_:)` on dismiss/snooze — no orphans survive a
-    /// handled alarm. Exposed `static` + `internal` so unit tests can pin the
-    /// second/minute/hour roll-over arithmetic without touching UN.
-    static func burstTriggers(
-        after base: DateComponents,
-        label: String,
-        repeats: Bool
-    ) -> [TriggerWithLabel] {
-        fallbackBurstOffsetsSeconds.enumerated().map { index, offset in
-            let shifted = burstComponents(base: base, offsetSeconds: offset)
-            let trigger = UNCalendarNotificationTrigger(dateMatching: shifted, repeats: repeats)
-            return TriggerWithLabel(label: "\(label)_burst\(index)", trigger: trigger)
-        }
-    }
-
-    /// Shift `base`'s hour/minute/second forward by `offsetSeconds`, rolling
-    /// minutes and hours over correctly (e.g. 07:59:00 + 90s = 08:00:30).
-    /// `weekday` is preserved unchanged — the small offsets used here (≤90s)
-    /// never cross midnight in practice, and crossing a day boundary would only
-    /// move a follow-up to the wrong weekday, which we accept over the
-    /// complexity of weekday roll-over for a best-effort fallback burst.
-    static func burstComponents(base: DateComponents, offsetSeconds: Int) -> DateComponents {
-        let totalSeconds = (base.hour ?? 0) * 3600
-            + (base.minute ?? 0) * 60
-            + (base.second ?? 0)
-            + offsetSeconds
-        let dayWrapped = ((totalSeconds % 86_400) + 86_400) % 86_400
-        var shifted = base
-        shifted.hour = dayWrapped / 3600
-        shifted.minute = (dayWrapped % 3600) / 60
-        shifted.second = dayWrapped % 60
-        return shifted
-    }
-
     private func notificationID(for alarmID: UUID, trigger: String) -> String {
         "\(notificationIDPrefix(for: alarmID))\(trigger)"
     }
 
-    /// Shared prefix for every per-trigger notification belonging to an alarm.
-    /// Used by `cancel(_:)` to remove pending requests for any trigger label.
+    /// Shared prefix for every legacy per-trigger notification belonging to an
+    /// alarm. Used by `cancel(_:)` to remove pending requests for any label.
     private func notificationIDPrefix(for alarmID: UUID) -> String {
         "alarm_\(alarmID.uuidString)_"
     }
@@ -900,7 +473,8 @@ final class AlarmScheduler: AlarmScheduling {
     }
 
     /// Resolve alarm soundID to an actual file name with extension in the bundle.
-    /// Returns nil if no matching file is found (falls back to default critical sound).
+    /// Returns nil if no matching file is found (AlarmKit then uses its default
+    /// alert sound).
     func alarmSoundFileName(for soundID: String) -> String? {
         let extensions = ["caf", "m4a", "wav", "mp3"]
         for ext in extensions where Bundle.main.url(forResource: soundID, withExtension: ext) != nil {

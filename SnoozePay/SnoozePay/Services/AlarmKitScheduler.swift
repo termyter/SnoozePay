@@ -7,18 +7,38 @@ import AppIntents
 import SwiftUI
 #endif
 
-// MARK: - Strategy A: AlarmKit (#377)
+// MARK: - AlarmKit — the only alarm backend (#377, #472)
 //
-// `docs/SPEC.md` §3.2.1 defines Strategy A — a real system-level alarm via the
-// AlarmKit framework (iOS 26+). Unlike a `UNUserNotificationCenter` notification
-// (Strategy B, the fallback), an AlarmKit alarm rings continuously, pierces
-// silent mode and Focus/DND, and shows a full-screen alert on the lock screen —
-// exactly like Clock.app — WITHOUT the Critical Alerts entitlement (which is
-// not approved on the Personal team).
+// `docs/SPEC.md` §3.2.1: a real system-level alarm via the AlarmKit framework.
+// It rings continuously, pierces silent mode and Focus/DND, and shows a
+// full-screen alert on the lock screen — exactly like Clock.app — WITHOUT the
+// Critical Alerts entitlement (which is not approved on the Personal team).
 //
-// This file owns the AlarmKit wrapper. `AlarmScheduler` (Strategy B) decides at
-// runtime which backend to use: AlarmKit on iOS 26+, the existing notification
-// scheduler below it.
+// This file owns the AlarmKit wrapper. `AlarmScheduler` drives it. There is no
+// second backend: the `.timeSensitive` notification fallback was removed in
+// #472 because two sources of truth for "is an alarm armed" produced #456,
+// #459 and #460. Without an AlarmKit grant the app refuses to arm an alarm and
+// says so, instead of silently degrading to a notification that cannot wake a
+// sleeping user.
+
+/// Tri-state AlarmKit authorization, mirrored into a framework-free enum.
+///
+/// Deliberately NOT collapsed to a `Bool`: "the user said no" and "we never
+/// asked" both mean "no alarm will ring", but only one of them is fixable with
+/// a single in-app tap — the other needs a trip to Settings. Flattening them is
+/// what sends a user who merely skipped the onboarding prompt five taps deep
+/// for a grant the app could still request itself (#428, #472).
+enum AlarmKitAuthorization: Equatable {
+    /// The OS has never been asked. The system dialog is still available.
+    case notDetermined
+    /// Alarms can be scheduled.
+    case authorized
+    /// The user refused. Only Settings can undo this.
+    case denied
+    /// AlarmKit answered with a state this build doesn't know. We refuse to
+    /// guess in either direction — callers surface "couldn't verify".
+    case unrecognized
+}
 
 /// Backend-agnostic seam over the AlarmKit `AlarmManager`. Extracted as a
 /// protocol — exactly like `NotificationScheduling` for `UNUserNotificationCenter`
@@ -35,6 +55,11 @@ protocol AlarmKitScheduling: AnyObject {
     /// Whether AlarmKit reports the user has authorized scheduling alarms.
     var isAuthorized: Bool { get }
 
+    /// The full authorization state. `AlarmScheduler` forwards it to
+    /// `SystemAlarmBackendProbe`, which needs "never asked" and "refused" kept
+    /// apart to choose between an in-app prompt and a deep link to Settings.
+    var authorization: AlarmKitAuthorization { get }
+
     /// Request AlarmKit authorization. Completes with `true` when authorized.
     /// Idempotent — AlarmKit returns the cached state once decided.
     func requestAuthorization(completion: @escaping (Bool) -> Void)
@@ -47,12 +72,12 @@ protocol AlarmKitScheduling: AnyObject {
     /// would have to report success before the await resolves, so an async
     /// rejection (alarm limit, revoked auth, backend reject) would be swallowed
     /// while the caller (`AlarmRepository.save`) already told the user "Будильник
-    /// создан" — nothing would ring and no notification fallback would arm
-    /// (#417, same phantom-success class as #118/#199 but on the primary iOS 26
-    /// path). `completion` fires with `.success` ONLY after the await succeeds,
-    /// and `.failure` on any (sync config build or async schedule) error so the
-    /// caller can fall through to the notification fallback instead. Mirrors the
-    /// `scheduleSnooze` plumbing landed in #394/#401.
+    /// создан" and nothing would ring (#417, same phantom-success class as
+    /// #118/#199). `completion` fires with `.success` ONLY after the await
+    /// succeeds, and `.failure` on any (sync config build or async schedule)
+    /// error so the caller can surface it — since #472 there is no second
+    /// backend to fail over to. Mirrors the `scheduleSnooze` plumbing landed in
+    /// #394/#401.
     func schedule(
         _ alarm: Alarm,
         completion: @escaping (Result<Void, Error>) -> Void
@@ -74,7 +99,7 @@ protocol AlarmKitScheduling: AnyObject {
     /// already charged the snooze penalty and stopped the original — nothing
     /// would ring (#394 Finding 1). `completion` fires with `.success` ONLY after
     /// the await succeeds, and `.failure` on any (sync config or async schedule)
-    /// error so the caller can arm the notification-burst fallback instead.
+    /// error so the caller refunds the penalty instead of leaving it charged.
     func scheduleSnooze(
         _ alarm: Alarm,
         fireDate: Date,
@@ -86,6 +111,14 @@ protocol AlarmKitScheduling: AnyObject {
 
     /// Stop a currently-alerting system alarm (user tapped stop / snooze).
     func stop(_ alarmID: UUID)
+}
+
+/// Default derivation for test doubles that only model the yes/no axis: they
+/// keep implementing `isAuthorized` alone and get the coarse mapping for free.
+/// The production `AlarmKitScheduler` overrides this with the real tri-state,
+/// which is the only place the distinction can actually be observed.
+extension AlarmKitScheduling {
+    var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
 }
 
 #if canImport(AlarmKit)
@@ -111,7 +144,23 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     private let manager = AlarmManager.shared
 
     var isAuthorized: Bool {
-        manager.authorizationState == .authorized
+        authorization == .authorized
+    }
+
+    var authorization: AlarmKitAuthorization {
+        switch manager.authorizationState {
+        case .notDetermined:
+            return .notDetermined
+        case .authorized:
+            return .authorized
+        case .denied:
+            return .denied
+        @unknown default:
+            AppLogger.scheduler.error(
+                "unknown AlarmKit authorizationState — treating as unrecognized"
+            )
+            return .unrecognized
+        }
     }
 
     func requestAuthorization(completion: @escaping (Bool) -> Void) {
@@ -154,7 +203,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
             configuration = try Self.makeConfiguration(for: alarm)
         } catch {
             // Synchronous config-build failure — report immediately so the
-            // caller arms the notification fallback (#417).
+            // caller surfaces it instead of claiming the alarm is armed (#417).
             let desc = error.localizedDescription
             AppLogger.scheduler.error(
                 "AlarmKit schedule config failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
@@ -166,7 +215,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         // Report success/failure ONLY after the async schedule resolves, on the
         // main actor (the caller tells the user "Будильник создан" off this
         // result). A swallowed async error here would mean the user sees the
-        // alarm as created with nothing armed and no fallback (#417).
+        // alarm as created with nothing armed (#417).
         Task {
             do {
                 _ = try await manager.schedule(id: alarmID, configuration: configuration)

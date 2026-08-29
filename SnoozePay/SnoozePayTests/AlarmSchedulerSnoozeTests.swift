@@ -1,5 +1,4 @@
 import XCTest
-import UserNotifications
 @testable import SnoozePay
 
 /// Pins the snooze fire-date arithmetic and identifier scheme.
@@ -90,26 +89,5 @@ final class AlarmSchedulerSnoozeTests: XCTestCase {
         XCTAssertFalse(snoozeID.hasPrefix("alarm_"),
                        "Snooze ID must use a distinct prefix from scheduled-day IDs " +
                        "so cancel(_:) can filter both sets independently")
-    }
-
-    // MARK: - Snooze notification content (payload contents)
-
-    func testScheduleSnooze_contentReflectsSnoozeCount() {
-        let alarm = Alarm(penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 1)
-
-        XCTAssertEqual(content.userInfo["snoozeCount"] as? Int, 1,
-                       "Snooze re-fire payload must carry the running snooze count " +
-                       "so the next charge is calculated from the right base")
-    }
-
-    func testScheduleSnooze_contentEscalatesPenaltyForProgressiveScale() {
-        let alarm = Alarm(penaltyAmount: 50, progressiveScale: true)
-
-        // After 1 snooze, the next charge would be the 2nd snooze → 50 * 2 = 100
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 1)
-
-        XCTAssertEqual(content.subtitle, "+9 минут \u{00B7} −100\u{202F}₽",
-                       "Progressive scale must compound the penalty across snooze re-fires")
     }
 }

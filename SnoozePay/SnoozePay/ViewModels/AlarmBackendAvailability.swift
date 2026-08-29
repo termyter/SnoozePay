@@ -1,17 +1,15 @@
 import Foundation
 import UIKit
-import UserNotifications
 import os
 
 /// Can the app actually ring an alarm right now? (#428)
 ///
-/// This is THE single source of truth for that question — no screen should
-/// re-derive it by hand-rolling an "AlarmKit OR notifications" condition.
-/// Everything user-facing (the alarms-list banner, the create / enable gate)
-/// reads this enum, so when the notification fallback is retired in favour of
-/// AlarmKit-only scheduling the whole guard collapses by editing exactly one
-/// function — `SystemAlarmBackendProbe.probe(completion:)` — down to
-/// `alarmKitAuthorized() ? .available : .unavailable`.
+/// This is THE single source of truth for that question — no screen re-derives
+/// it. Everything user-facing (the alarms-list banner, the create / enable
+/// gate) reads this enum. Since #472 the question has exactly one input: the
+/// AlarmKit grant. The `.timeSensitive` notification fallback that used to be
+/// its second half is gone — it pings once and cannot wake a sleeping user, so
+/// counting it as "available" was the silent failure this guard prevents.
 ///
 /// Five cases, deliberately. "We haven't probed yet", "we probed and couldn't
 /// tell" and "the OS was never even asked" must never be flattened into either
@@ -24,23 +22,22 @@ enum AlarmBackendAvailability: Equatable {
     /// no gate.
     case unresolved
 
-    /// At least one backend can ring an alarm.
+    /// AlarmKit is authorized — an alarm will ring.
     case available
 
-    /// The OS has never been asked (`.notDetermined`) — e.g. the user closed
+    /// The OS has never been asked — e.g. the user closed
     /// `PermissionsViewController` without answering. An alarm still won't
     /// ring, so the banner and the gate stay on, but the fix is an in-app
     /// prompt, NOT a trip to Settings: the system dialog is still available in
     /// this state and nowhere else in the app offers it a second time.
     case notRequested
 
-    /// Every backend is authorized-and-refused (or authorized in a mode that
-    /// can't wake anyone) — a saved alarm will NOT ring, and only Settings can
+    /// The user refused — a saved alarm will NOT ring, and only Settings can
     /// undo it. Drives the proactive banner and gates the create / enable CTAs.
     case unavailable
 
-    /// The probe answered with something we can't interpret (a future
-    /// `UNAuthorizationStatus` case). We surface a "couldn't verify" banner
+    /// The probe answered with something we can't interpret (an authorization
+    /// state this build doesn't know). We surface a "couldn't verify" banner
     /// rather than pretending the alarms are armed — but we do NOT gate the
     /// CTAs, because the failure is ours, not the user's.
     case indeterminate
@@ -48,46 +45,38 @@ enum AlarmBackendAvailability: Equatable {
 
 // MARK: - Probe
 
-/// Seam over the two OS authorization queries. Injectable so the availability
-/// logic is unit-testable without `UNUserNotificationCenter` / AlarmKit —
-/// deliberately NOT bolted onto `NotificationScheduling`, whose 6+ test doubles
-/// would all need updating for a status query none of them care about.
+/// Seam over the OS authorization query. Injectable so the availability logic
+/// is unit-testable without AlarmKit — deliberately NOT bolted onto
+/// `NotificationScheduling`, whose 6+ test doubles would all need updating for
+/// a status query none of them care about.
 protocol AlarmBackendProbing {
     /// Resolves the current availability. The completion may fire on any
     /// queue; `AlarmBackendMonitor` marshals to main.
     func probe(completion: @escaping (AlarmBackendAvailability) -> Void)
 
-    /// Drives the OS permission prompt(s) for whatever is still undecided.
+    /// Drives the OS permission prompt while the grant is still undecided.
     /// Only meaningful in the `.notRequested` state — once the user has
     /// answered, the OS silently no-ops and only Settings can change the
     /// answer. Completion fires after the prompt resolves, on any queue.
     func requestAuthorization(completion: @escaping () -> Void)
 }
 
-/// Production probe: AlarmKit grant first (synchronous), notification
-/// authorization second.
+/// Production probe: the AlarmKit grant, and nothing else (#472). Synchronous —
+/// AlarmKit answers from cached state, so unlike the old notification
+/// round-trip there is no queue hop to marshal.
 struct SystemAlarmBackendProbe: AlarmBackendProbing {
 
-    private let alarmKitAuthorized: () -> Bool
-    private let notificationStatus: (@escaping (UNAuthorizationStatus) -> Void) -> Void
+    private let alarmKitAuthorization: () -> AlarmKitAuthorization
     private let requestGrants: (@escaping () -> Void) -> Void
 
     init(
-        alarmKitAuthorized: @escaping () -> Bool = { AlarmScheduler.shared.usesAlarmKit },
-        notificationStatus: @escaping (@escaping (UNAuthorizationStatus) -> Void) -> Void = { completion in
-            UNUserNotificationCenter.current().getNotificationSettings { settings in
-                completion(settings.authorizationStatus)
-            }
-        },
-        // `requestPermission` primes BOTH backends (AlarmKit first, then
-        // notifications), which is exactly the "whatever is undecided" contract
-        // this seam promises.
+        alarmKitAuthorization: @escaping () -> AlarmKitAuthorization
+            = { AlarmScheduler.shared.alarmKitAuthorization },
         requestGrants: @escaping (@escaping () -> Void) -> Void = { completion in
             AlarmScheduler.shared.requestPermission { _ in completion() }
         }
     ) {
-        self.alarmKitAuthorized = alarmKitAuthorized
-        self.notificationStatus = notificationStatus
+        self.alarmKitAuthorization = alarmKitAuthorization
         self.requestGrants = requestGrants
     }
 
@@ -96,50 +85,31 @@ struct SystemAlarmBackendProbe: AlarmBackendProbing {
     }
 
     func probe(completion: @escaping (AlarmBackendAvailability) -> Void) {
-        // Strategy A. `usesAlarmKit` already folds in "iOS 26+, backend wired,
-        // user authorized" — the deployment target is 26.2, so in practice this
-        // is purely the authorization question.
-        if alarmKitAuthorized() {
-            completion(.available)
-            return
-        }
-        // Strategy B (notification fallback). DELETE THIS BRANCH when the
-        // fallback is retired — the AlarmKit check above is then the whole
-        // answer and this type stays synchronous.
-        notificationStatus { status in
-            completion(Self.availability(forNotificationStatus: status))
-        }
+        completion(Self.availability(forAlarmKitAuthorization: alarmKitAuthorization()))
     }
 
-    /// Maps a notification authorization status onto "can this ring an alarm".
-    ///
-    /// Only `.authorized` counts. `.provisional` delivers quietly straight to
-    /// Notification Center — it cannot wake a sleeping user, so treating it as
-    /// a working alarm backend would recreate the silent failure this guard
-    /// exists to prevent. `.ephemeral` is App-Clip-only and equally unable to
-    /// carry an alarm.
+    /// Maps the AlarmKit grant onto "can this ring an alarm".
     ///
     /// `.notDetermined` is kept SEPARATE from `.denied`: both mean "won't
     /// ring", but only one of them is fixed in Settings. Telling a user who
     /// simply skipped the onboarding prompt that "разрешение выключено —
     /// включите в Настройках" is both false and the long way round.
-    static func availability(forNotificationStatus status: UNAuthorizationStatus) -> AlarmBackendAvailability {
-        switch status {
+    static func availability(
+        forAlarmKitAuthorization authorization: AlarmKitAuthorization
+    ) -> AlarmBackendAvailability {
+        switch authorization {
         case .authorized:
             return .available
         case .notDetermined:
             return .notRequested
-        case .denied, .provisional, .ephemeral:
+        case .denied:
             return .unavailable
-        @unknown default:
-            // A status this build doesn't know. Refusing to guess is the point:
+        case .unrecognized:
+            // A state this build doesn't know. Refusing to guess is the point:
             // reporting `.available` here would be the exact "swallowed the
             // error and claimed everything is fine" behaviour we're fixing.
             AppLogger.scheduler.error(
-                """
-                unknown UNAuthorizationStatus raw=\(status.rawValue, privacy: .public); \
-                alarm backend availability indeterminate
-                """
+                "unrecognized AlarmKit authorization; alarm backend availability indeterminate"
             )
             return .indeterminate
         }
@@ -250,7 +220,7 @@ final class AlarmBackendMonitor {
     /// real transition.
     func refresh() {
         probe.probe { [weak self] resolved in
-            // `getNotificationSettings` answers on an arbitrary queue, so hop
+            // A probe may answer on an arbitrary queue, so hop
             // to main before touching UI-facing state. A probe that already
             // resolved on main (AlarmKit fast path, test stubs) stays
             // synchronous so callers observe the new value immediately.
@@ -262,7 +232,7 @@ final class AlarmBackendMonitor {
         }
     }
 
-    /// Ask the OS for the still-undecided grants, then re-probe so the banner
+    /// Ask the OS for the still-undecided grant, then re-probe so the banner
     /// reflects the answer immediately. Only reachable from the `.notRequested`
     /// state — see `AlarmBackendWarning.canRequestInApp`.
     func requestAuthorization() {

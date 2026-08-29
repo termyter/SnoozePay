@@ -2,137 +2,17 @@ import XCTest
 import UserNotifications
 @testable import SnoozePay
 
-/// Unit tests for AlarmScheduler — notification content creation and sound file resolution.
+/// Unit tests for AlarmScheduler — sound-file resolution, the permission
+/// request, and the cancel sweep.
+///
+/// The notification-content cases that used to live here are gone with #472:
+/// they pinned the title / subtitle / sound / interruption level of a
+/// `UNMutableNotificationContent` the app no longer builds, because AlarmKit
+/// renders the alert itself. The equivalent AlarmKit mapping (schedule,
+/// presentation, sound) is pinned by `AlarmKitSchedulerTests`.
 final class AlarmSchedulerTests: XCTestCase {
 
     private let scheduler = AlarmScheduler.shared
-
-    // MARK: - Notification content
-
-    /// The interruption level must follow the resolved permission state:
-    /// `.critical` only when the critical-alert grant succeeded, `.timeSensitive`
-    /// otherwise. The old version asserted `.critical` unconditionally, which
-    /// only passed on simulators where a previous run had already granted the
-    /// permission — on a fresh CI simulator the flag is false and the test
-    /// went red. Driving the flag through `requestPermission` with a stub
-    /// center makes both branches deterministic in any environment.
-    func testNotificationContent_interruptionLevelFollowsCriticalGrant() {
-        let alarm = Alarm(penaltyAmount: 50)
-
-        // Granted critical-alert permission → .critical (bypasses DND).
-        let granting = PermissionStubCenter(grant: true)
-        let grantedScheduler = AlarmScheduler(notificationCenter: granting)
-        let grantedExp = expectation(description: "granted permission resolves")
-        grantedScheduler.requestPermission { _ in grantedExp.fulfill() }
-        wait(for: [grantedExp], timeout: 2.0)
-        XCTAssertEqual(
-            grantedScheduler.makeContent(for: alarm, snoozeCount: 0).interruptionLevel,
-            .critical,
-            "With critical-alert grant the alarm must bypass DND"
-        )
-
-        // Denied → degrade to .timeSensitive, never silently `.active`.
-        // Running this branch LAST also restores the static flag to false so
-        // no state leaks into other tests.
-        let denying = PermissionStubCenter(grant: false)
-        let deniedScheduler = AlarmScheduler(notificationCenter: denying)
-        let deniedExp = expectation(description: "denied permission resolves")
-        deniedScheduler.requestPermission { _ in deniedExp.fulfill() }
-        wait(for: [deniedExp], timeout: 2.0)
-        XCTAssertEqual(
-            deniedScheduler.makeContent(for: alarm, snoozeCount: 0).interruptionLevel,
-            .timeSensitive,
-            "Without the critical grant the alarm must degrade to time-sensitive"
-        )
-    }
-
-    func testNotificationContent_includesSoundIDInUserInfo() {
-        let alarm = Alarm(soundID: "morning_bells", penaltyAmount: 100)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        let soundID = content.userInfo["soundID"] as? String
-        XCTAssertEqual(soundID, "morning_bells",
-                       "userInfo should contain the alarm's soundID for AudioService")
-    }
-
-    func testNotificationContent_includesAlarmIDInUserInfo() {
-        let alarmID = UUID()
-        let alarm = Alarm(id: alarmID, penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        let storedID = content.userInfo["alarmID"] as? String
-        XCTAssertEqual(storedID, alarmID.uuidString)
-    }
-
-    func testNotificationContent_includesSnoozeCountInUserInfo() {
-        let alarm = Alarm(penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 3)
-
-        let count = content.userInfo["snoozeCount"] as? Int
-        XCTAssertEqual(count, 3)
-    }
-
-    func testNotificationContent_includesPenaltyInUserInfo() {
-        let alarm = Alarm(penaltyAmount: 75)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        let penalty = content.userInfo["penaltyAmount"] as? Double
-        XCTAssertEqual(penalty, 75)
-    }
-
-    func testNotificationContent_includesProgressiveScaleInUserInfo() {
-        let alarm = Alarm(penaltyAmount: 50, progressiveScale: true)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        let progressive = content.userInfo["progressiveScale"] as? Bool
-        XCTAssertEqual(progressive, true)
-    }
-
-    func testNotificationContent_hasCriticalSound() {
-        let alarm = Alarm(penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        // The content must have a sound set (either named critical or default critical)
-        XCTAssertNotNil(content.sound,
-                        "Alarm notification must include a critical sound")
-    }
-
-    func testNotificationContent_hasCorrectCategoryIdentifier() {
-        let alarm = Alarm(penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        XCTAssertEqual(content.categoryIdentifier, "ALARM_CATEGORY")
-    }
-
-    func testNotificationContent_subtitleShowsNextPenalty() {
-        let alarm = Alarm(penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        // snoozeCount=0, so penalty(forSnoozeCount: 1) = 50
-        XCTAssertEqual(content.subtitle, "+9 минут \u{00B7} −50\u{202F}₽")
-    }
-
-    func testNotificationContent_subtitleWithProgressiveScale() {
-        let alarm = Alarm(penaltyAmount: 50, progressiveScale: true)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 2)
-
-        // snoozeCount=2, penalty(forSnoozeCount: 3) = 50 * 4 = 200
-        XCTAssertEqual(content.subtitle, "+9 минут \u{00B7} −200\u{202F}₽")
-    }
-
-    func testNotificationContent_titleIsAlarmName() {
-        let alarm = Alarm(name: "Утренний", penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        XCTAssertEqual(content.title, "Утренний")
-    }
-
-    func testNotificationContent_bodyText() {
-        let alarm = Alarm(penaltyAmount: 50)
-        let content = scheduler.makeContent(for: alarm, snoozeCount: 0)
-
-        XCTAssertEqual(content.body, "Время вставать!")
-    }
 
     // MARK: - Sound file resolution
 
@@ -173,18 +53,61 @@ final class AlarmSchedulerTests: XCTestCase {
         // If file doesn't exist, nil is acceptable
     }
 
-    // MARK: - Permission / scheduling smoke
+    // MARK: - Permission
     //
-    // Uses the `init(notificationCenter:)` seam with a stub center. The old
-    // version called the REAL UNUserNotificationCenter through
-    // `AlarmScheduler.shared` — on CI simulators the permission daemon never
-    // answers, the completion never fires and the test died on its 5s timeout.
+    // Uses the injectable-backend seam. The old version called the REAL
+    // UNUserNotificationCenter through `AlarmScheduler.shared` — on CI
+    // simulators the permission daemon never answers, the completion never
+    // fires and the test died on its 5s timeout.
 
-    func testRequestPermission_invokesCompletionWithoutCrash() {
+    /// The reported grant is the ALARM grant. Before #472 this completion
+    /// carried the NOTIFICATION grant, so a user who allowed notifications and
+    /// refused alarms was told "granted" and got a permissions screen with a
+    /// green card over an app that could not ring (#472).
+    func testRequestPermission_reportsTheAlarmGrantNotTheNotificationOne() {
+        let denied = AlarmScheduler(
+            notificationCenter: PermissionStubCenter(grant: true),
+            alarmKit: TestAlarmKitBackend(authorization: .denied)
+        )
+        let deniedExp = expectation(description: "denied completes")
+        denied.requestPermission { granted in
+            XCTAssertFalse(granted, "A granted notification must NOT read as a working alarm")
+            deniedExp.fulfill()
+        }
+        wait(for: [deniedExp], timeout: 2.0)
+
+        let authorized = AlarmScheduler(
+            notificationCenter: PermissionStubCenter(grant: false),
+            alarmKit: TestAlarmKitBackend()
+        )
+        let grantedExp = expectation(description: "granted completes")
+        authorized.requestPermission { granted in
+            XCTAssertTrue(granted, "An authorized AlarmKit backend is the whole answer")
+            grantedExp.fulfill()
+        }
+        wait(for: [grantedExp], timeout: 2.0)
+    }
+
+    /// The notification permission is no longer requested at all: asking for a
+    /// grant that can't ring anything trains the user to dismiss the one prompt
+    /// that matters.
+    func testRequestPermission_doesNotAskForNotifications() {
+        let center = PermissionStubCenter(grant: true)
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: TestAlarmKitBackend())
+
+        let exp = expectation(description: "requestPermission completes")
+        scheduler.requestPermission { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(center.authorizationRequests, 0,
+                       "No notification authorization request may be made (#472)")
+    }
+
+    func testRequestPermission_noBackend_completesWithoutCrash() {
         let scheduler = AlarmScheduler(notificationCenter: PermissionStubCenter(grant: false))
         let expectation = expectation(description: "requestPermission completes")
         scheduler.requestPermission { granted in
-            XCTAssertFalse(granted, "Stub denies — completion must carry the denial through")
+            XCTAssertFalse(granted, "No backend — completion must carry the denial through")
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 2.0)
@@ -290,12 +213,17 @@ final class AlarmSchedulerTests: XCTestCase {
 /// deterministic on simulators where the real daemon never answers (CI).
 private final class PermissionStubCenter: NotificationScheduling {
     private let grant: Bool
+    /// How many times the app asked the OS for notification authorization.
+    /// Must stay 0 since #472.
+    private(set) var authorizationRequests = 0
+
     init(grant: Bool) { self.grant = grant }
 
     func requestAuthorization(
         options: UNAuthorizationOptions,
         completionHandler: @escaping (Bool, Error?) -> Void
     ) {
+        authorizationRequests += 1
         completionHandler(grant, nil)
     }
 

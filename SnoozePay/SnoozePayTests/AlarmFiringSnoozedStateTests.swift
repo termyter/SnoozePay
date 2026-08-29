@@ -257,7 +257,10 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             balanceService: billing,
-            scheduler: AlarmScheduler(notificationCenter: SilentNotificationCenter())
+            scheduler: AlarmScheduler(
+                notificationCenter: SilentNotificationCenter(),
+                alarmKit: TestAlarmKitBackend()
+            )
         )
         XCTAssertNil(vm.snoozeAnchor, "No anchor before the first snooze")
 
@@ -283,7 +286,10 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             balanceService: billing,
-            scheduler: AlarmScheduler(notificationCenter: SilentNotificationCenter())
+            scheduler: AlarmScheduler(
+                notificationCenter: SilentNotificationCenter(),
+                alarmKit: TestAlarmKitBackend()
+            )
         )
         XCTAssertTrue(vm.snooze())
         let firstAnchor = vm.snoozeAnchor
@@ -313,7 +319,10 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(penalty: 50, snoozeMinutes: 5),
             balanceService: billing,
-            scheduler: AlarmScheduler(notificationCenter: SilentNotificationCenter())
+            scheduler: AlarmScheduler(
+                notificationCenter: SilentNotificationCenter(),
+                alarmKit: TestAlarmKitBackend()
+            )
         )
         XCTAssertTrue(vm.canSnooze, "Pre-snooze the wallet covers the penalty")
 

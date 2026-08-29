@@ -39,10 +39,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // Register notification categories on every cold launch so the alarm
-        // notification's actions stay wired up regardless of permission state.
+        // Register notification categories on every cold launch so the actions
+        // of a notification left pending by a pre-#472 build stay wired up.
         AlarmScheduler.shared.registerCategories()
-        // Defer the notification permission prompt until the dedicated
+        // Defer the permission prompt until the dedicated
         // PermissionsViewController has had a chance to drive it (#149) —
         // otherwise the OS dialog would race the splash → onboarding →
         // permissions UI and the user sees the system prompt before the
@@ -52,7 +52,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if PermissionsViewController.hasBeenShown {
             AlarmScheduler.shared.requestPermission { [weak self] granted in
                 if !granted {
-                    AppLogger.appDelegate.notice("notification permission denied — alarms may not fire")
+                    AppLogger.appDelegate.notice("alarm permission denied — alarms will not fire")
                     self?.presentNotificationsDisabledAlert()
                 }
             }
@@ -80,11 +80,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Re-arm saved alarms whenever the wall-clock interpretation of their
         // triggers may have shifted (timezone / DST change, reboot) or the
-        // backend that should own them may have changed (AlarmKit / notification
-        // authorization toggled in Settings). Without this, alarms keep whatever
-        // triggers they had at save time and silently fire at the wrong time —
-        // or never re-arm onto the notification fallback after AlarmKit is
-        // revoked (#427). The first foreground after launch covers reboot.
+        // AlarmKit grant that arms them may have been toggled in Settings.
+        // Without this, alarms keep whatever schedule they had at save time and
+        // silently fire at the wrong time (#427). The first foreground after
+        // launch covers reboot.
         registerAlarmRescheduleObservers()
 
         // Surface a silent resume-time audio failure as a lock-screen banner
@@ -395,12 +394,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // up — record the wake day for the statistics heatmap (#235),
             // mirroring AlarmFiringViewModel.dismiss() on the in-app path.
             WakeEventStore.shared.recordWake()
-            // Cancel this firing's pending lock-screen fallback bursts (#19) so
-            // the alarm doesn't re-ring at +30/60/90s after the user got up.
-            // Burst-only — a repeating alarm keeps its future weekday triggers.
-            if let payload {
-                AlarmScheduler.shared.cancelFallbackBursts(payload.alarmID)
-            }
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped notification banner — present alarm screen
@@ -461,11 +454,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // User swiped away notification — stop sound. Gate on ownership
             // for the same reason as DISMISS_ACTION above.
             stopAlarmSoundIfOwner(of: payload, action: "swipe-dismiss")
-            // Swiping the alarm away also means "I'm up" — clear pending bursts
-            // (#19) so they don't re-ring. Burst-only (keeps repeats armed).
-            if let payload {
-                AlarmScheduler.shared.cancelFallbackBursts(payload.alarmID)
-            }
 
         default:
             AppLogger.appDelegate.notice(
