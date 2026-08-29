@@ -90,4 +90,49 @@ enum AppNavigationBarStyle {
         apply(to: navigationController.navigationBar)
         return navigationController
     }
+
+    // MARK: - Bar-less roots (#517)
+
+    /// Hide the bar for a tab root that draws its own in-screen header
+    /// (`AlarmsListViewController` and `WalletViewController` #280,
+    /// `StatisticsViewController` #319). Call from `viewWillAppear`.
+    ///
+    /// Pairs with `pushRestoringBar(_:from:)`, and the pairing is the whole
+    /// point: three tabs hide the bar, and #517 was one of them forgetting to
+    /// put it back before a push — the referral screen opened with no bar, no
+    /// back button, content under the status bar, and none of the #508 chrome,
+    /// because a hidden bar renders none of it.
+    ///
+    /// The second half here is the case that is easy to miss. An interactive
+    /// swipe-back that the user **cancels** halfway still runs this root's
+    /// `viewWillAppear`, so the bar goes away — but the child stays on screen
+    /// and is now in exactly the reported state. `notifyWhenInteractionChanges`
+    /// is the callback that separates a cancelled pop from a completed one.
+    static func hideBar(on viewController: UIViewController, animated: Bool) {
+        guard let stack = viewController.navigationController else { return }
+        stack.setNavigationBarHidden(true, animated: animated)
+        viewController.transitionCoordinator?.notifyWhenInteractionChanges { [weak stack] context in
+            restoreBarIfInteractionCancelled(on: stack, cancelled: context.isCancelled)
+        }
+    }
+
+    /// The branch inside the coordinator callback, lifted out so it is
+    /// reachable from a test — a real `transitionCoordinator` only exists
+    /// during a live transition and cannot be injected.
+    static func restoreBarIfInteractionCancelled(
+        on stack: UINavigationController?,
+        cancelled: Bool
+    ) {
+        guard cancelled else { return }
+        stack?.setNavigationBarHidden(false, animated: true)
+    }
+
+    /// Push a child from a bar-less root. The bar has to come back *before*
+    /// the push so the child keeps its standard back arrow and title; the
+    /// root's `viewWillAppear` re-hides it when the user pops back.
+    static func pushRestoringBar(_ child: UIViewController, from viewController: UIViewController) {
+        guard let stack = viewController.navigationController else { return }
+        stack.setNavigationBarHidden(false, animated: true)
+        stack.pushViewController(child, animated: true)
+    }
 }

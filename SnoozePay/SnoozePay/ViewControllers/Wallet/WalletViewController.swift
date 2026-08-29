@@ -111,8 +111,9 @@ final class WalletViewController: UIViewController {
         // Hide the system nav bar on this tab — the custom page header owns the
         // title and there's no bar item to show (#280). Restored before a child
         // push (`openHistory`) so the child keeps its back arrow; popping back
-        // here re-hides it.
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+        // here re-hides it. Shared helper keeps the pair symmetric with the
+        // other two bar-less tabs (#517).
+        AppNavigationBarStyle.hideBar(on: self, animated: animated)
         refresh()
         // Pull corruption latched BEFORE this VC observed it (cold start: the
         // BalanceService init-time probe posts with no listener attached, and
@@ -277,12 +278,13 @@ final class WalletViewController: UIViewController {
     }
 
     @objc private func openHistory() {
-        // The nav bar is hidden on this root (#280) — restore it before the
-        // push so the history screen keeps its standard back arrow + title.
-        // `viewWillAppear` re-hides it when the user pops back.
-        navigationController?.setNavigationBarHidden(false, animated: true)
-        let history = WalletTransactionHistoryViewController()
-        navigationController?.pushViewController(history, animated: true)
+        // The nav bar is hidden on this root (#280) — the helper restores it
+        // before the push so the history screen keeps its standard back arrow
+        // + title. `viewWillAppear` re-hides it when the user pops back.
+        AppNavigationBarStyle.pushRestoringBar(
+            WalletTransactionHistoryViewController(),
+            from: self
+        )
     }
 }
 

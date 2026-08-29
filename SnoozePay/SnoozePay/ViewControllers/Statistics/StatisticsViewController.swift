@@ -185,7 +185,9 @@ final class StatisticsViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // Hidden on this tab — the in-screen header owns the title (#319).
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+        // Restored by `pushRestoringBar` before any child push; this callback
+        // is what re-hides it on the way back (#517).
+        AppNavigationBarStyle.hideBar(on: self, animated: animated)
         viewModel.loadData()
     }
 
@@ -405,8 +407,11 @@ final class StatisticsViewController: UIViewController {
     }
 
     @objc func debugReferralTapped() {
-        let vc = ReferralViewController()
-        navigationController?.pushViewController(vc, animated: true)
+        // This tab hides the bar (#319), so a plain push handed the referral
+        // screen no back button, no title and no #508 chrome, with its content
+        // running under the status bar (#517). The two sibling tabs already
+        // restored the bar before their pushes; this one had not.
+        AppNavigationBarStyle.pushRestoringBar(ReferralViewController(), from: self)
     }
 
     @objc func debugAlarmOffTapped() {

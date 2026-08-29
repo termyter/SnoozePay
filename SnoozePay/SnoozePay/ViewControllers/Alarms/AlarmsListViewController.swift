@@ -97,7 +97,9 @@ class AlarmsListViewController: UIViewController {
         // nav bar is hidden on this tab (#280). It's restored just before a
         // child screen (Settings/Legal) is pushed so the child keeps its
         // standard back arrow; returning here re-hides it via this callback.
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+        // Goes through the shared helper so the hide/restore pair stays
+        // symmetric across all three bar-less tabs (#517).
+        AppNavigationBarStyle.hideBar(on: self, animated: animated)
         viewModel.loadData()
         tableView.reloadData()
         refreshStreakBanner()
@@ -182,12 +184,10 @@ class AlarmsListViewController: UIViewController {
     @objc private func openSettings() {
         // Child screen with a back arrow (#237) — pushed onto the tab's
         // existing navigation stack instead of a standalone modal. The nav
-        // bar is hidden on this root (#280), so restore it before the push
-        // so the Settings screen keeps its standard back arrow + title; this
-        // VC re-hides it in `viewWillAppear` when the user pops back.
-        navigationController?.setNavigationBarHidden(false, animated: true)
-        let settingsVC = SettingsViewController()
-        navigationController?.pushViewController(settingsVC, animated: true)
+        // bar is hidden on this root (#280), so the helper restores it before
+        // the push and the Settings screen keeps its standard back arrow +
+        // title; this VC re-hides it in `viewWillAppear` on the way back.
+        AppNavigationBarStyle.pushRestoringBar(SettingsViewController(), from: self)
     }
 
     #if DEBUG
