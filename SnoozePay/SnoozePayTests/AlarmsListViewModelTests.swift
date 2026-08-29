@@ -292,7 +292,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         )
     }
 
-    /// Issue #429: a successful toggle changes `averagePenalty`, which the
+    /// Issue #429: a successful toggle changes `currentSnoozePrice`, which the
     /// sticky header's `balanceHint` ("Хватит на ~N откладываний") is derived
     /// from. The cell repaints itself, but the header must also refresh — so the
     /// success path fires `onBalanceUpdated` (lighter than `onAlarmsUpdated`: no

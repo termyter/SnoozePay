@@ -67,18 +67,26 @@ final class PermissionCardView: UIView {
     // MARK: - Subviews
 
     private let card = SPCard(tone: .surface, padding: 16, cornerRadius: AppRadius.md)
-    private let iconHost = UIView()
-    /// Money gradient fill for the granted/enabled state (#289). Hidden for the
-    /// other states, where `iconHost` uses a flat overlay background.
-    private let iconHostGradient: CAGradientLayer = {
-        let gradient = CAGradientLayer()
-        gradient.colors = SPSupport.moneyGradientColors
-        gradient.locations = SPSupport.moneyGradientLocations
-        gradient.startPoint = SPSupport.gradientStart
-        gradient.endPoint = SPSupport.gradientEnd
-        gradient.isHidden = true
-        return gradient
-    }()
+    /// 40×40 tile behind the leading glyph — money gradient for
+    /// granted/enabled (#289), flat `whiteOverlay08` otherwise.
+    ///
+    /// An `SPGradientView`, i.e. the gradient *is* the view's layer, rather
+    /// than a `CAGradientLayer` inserted under a plain `UIView` (#553). A
+    /// sublayer does not auto-size, and the only place that framed it was this
+    /// view's `layoutSubviews` — which runs one level too high: when it fires,
+    /// Auto Layout has sized `card` but not yet `card`'s own subviews, so
+    /// `iconHost.bounds` was still `.zero` and the layer stayed 0×0 forever.
+    /// Measured on a laid-out card: host 40×40, layer 0×0, unhidden, valid
+    /// stops, nothing painted — `fgOnMoney` landing on `bg1` at 1.09:1. A
+    /// layer that is the view cannot be forgotten.
+    ///
+    /// Stops start empty on purpose: reading `SPSupport.moneyGradientColors`
+    /// in a stored-property initializer bakes whichever theme
+    /// `UITraitCollection.current` happened to be into a `CGColor` that never
+    /// re-resolves. The same diagnostic measured the *light* ramp
+    /// (`#0B7B56 → #096647 → #053D2B`) in both themes. `refreshTileFill()`
+    /// owns the stops instead.
+    private let iconHost = SPGradientView(colors: [], locations: SPSupport.moneyGradientLocations)
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let bodyLabel = UILabel()
@@ -95,20 +103,25 @@ final class PermissionCardView: UIView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         configure(kind: kind)
+        refreshTileFill()
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: PermissionCardView, _) in
+                view.refreshTileFill()
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: - Layout
+    // MARK: - Theme
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        iconHostGradient.frame = iconHost.bounds
-        CATransaction.commit()
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if #available(iOS 17.0, *) { return }
+        refreshTileFill()
     }
 
     // MARK: - Configuration
@@ -138,8 +151,6 @@ final class PermissionCardView: UIView {
         iconHost.translatesAutoresizingMaskIntoConstraints = false
         iconHost.layer.cornerRadius = AppRadius.sm    // 12pt — matches JSX
         iconHost.layer.masksToBounds = true
-        iconHost.layer.insertSublayer(iconHostGradient, at: 0)
-        iconHost.backgroundColor = AppColors.whiteOverlay08
 
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.image = UIImage(systemName: kind.iconName)?
@@ -203,12 +214,11 @@ final class PermissionCardView: UIView {
     /// screen's lifetime).
     func apply(status: PermissionStatus) {
         currentStatus = status
+        refreshTileFill()
         trailingHost.subviews.forEach { $0.removeFromSuperview() }
 
         switch status {
         case .granted, .enabled:
-            iconHost.backgroundColor = .clear
-            iconHostGradient.isHidden = false
             iconView.tintColor = AppColors.fgOnMoney
             let configuration = UIImage.SymbolConfiguration(pointSize: 18, weight: .bold)
             let imageView = UIImageView(
@@ -220,8 +230,6 @@ final class PermissionCardView: UIView {
             mount(imageView)
             tapGesture.isEnabled = false
         case .actionable:
-            iconHostGradient.isHidden = true
-            iconHost.backgroundColor = AppColors.whiteOverlay08
             iconView.tintColor = AppColors.fg3
             // The 2026-06 mockup renders an *empty* span where this caps
             // label sits — treated as a mockup bug (#238 p.6): the
@@ -229,11 +237,33 @@ final class PermissionCardView: UIView {
             mount(capsLabel(text: "Дать", color: AppColors.warn400))
             tapGesture.isEnabled = true
         case .unavailable:
-            iconHostGradient.isHidden = true
-            iconHost.backgroundColor = AppColors.whiteOverlay08
             iconView.tintColor = AppColors.fg3
             mount(capsLabel(text: "Недоступно", color: AppColors.fg3))
             tapGesture.isEnabled = false
+        }
+    }
+
+    /// Re-resolve the tile fill for the current status *and* the current
+    /// traits.
+    ///
+    /// Takes the trait-explicit `moneyGradientColors(for:)` rather than the
+    /// `UITraitCollection.current`-reading computed property: these stops land
+    /// in `CAGradientLayer.colors` as plain `CGColor`, which never re-resolves
+    /// on a theme flip. Same contract as
+    /// `StreakModalViewController.refreshLayerColors()`. The ungranted states
+    /// clear the stops entirely so the flat `whiteOverlay08` background — a
+    /// dynamic `UIColor`, which UIKit does re-resolve — is what shows through.
+    private func refreshTileFill() {
+        switch currentStatus {
+        case .granted, .enabled:
+            iconHost.backgroundColor = .clear
+            iconHost.refresh(
+                colors: SPSupport.moneyGradientColors(for: traitCollection),
+                locations: SPSupport.moneyGradientLocations
+            )
+        case .actionable, .unavailable:
+            iconHost.backgroundColor = AppColors.whiteOverlay08
+            iconHost.refresh(colors: [], locations: SPSupport.moneyGradientLocations)
         }
     }
 

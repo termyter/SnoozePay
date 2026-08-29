@@ -28,7 +28,7 @@ final class TimePickerCell: UITableViewCell {
         label.text = NSLocalizedString("create_alarm.wake_up", value: "Подъём", comment: "Time picker header")
             .uppercased()
         label.font = AppTypography.caps
-        label.textColor = AppColors.textTertiary
+        label.textColor = AppColors.fg3
         label.textAlignment = .center
         label.attributedText = NSAttributedString(
             string: label.text ?? "",
@@ -92,7 +92,11 @@ final class TimePickerCell: UITableViewCell {
 
     private func setupUI() {
         selectionStyle = .none
-        backgroundColor = AppColors.surface
+        // `bg1`, the same card token every other row of the form sets. The
+        // cell's own fill is overwritten with `.clear` by `styleAsCardRow` in
+        // `willDisplay`, so what actually renders is `CardRowBackgroundView`'s
+        // `bg1` — this line only has to agree with it before the row is shown.
+        backgroundColor = AppColors.bg1
 
         let stack = UIStackView(arrangedSubviews: [headerLabel, readoutLabel, picker])
         stack.axis = .vertical

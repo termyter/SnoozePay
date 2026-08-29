@@ -126,10 +126,22 @@ final class StatisticsViewController: UIViewController {
     // MARK: - Trend card
 
     /// "Становится лучше / Стабильно / Чаще, чем неделю назад".
+    ///
+    /// Wraps instead of squeezing its neighbour (#519). The longest of the three
+    /// headlines measures 245pt at h3, and with the arrow (18) + row gap (12) it
+    /// overruns the ~330pt card interior, so the "Эта неделя" caption opposite it
+    /// used to lose its tail («Эта не…»). The canon prototype puts both in a flex
+    /// row where the headline is the side that reflows (`SPMore4.jsx:282-301`,
+    /// `min-width: 0` on the text column) — so two lines here is the designed
+    /// behaviour, not a compromise. The lowered compression resistance is what
+    /// picks this label, rather than the caption, as the one that gives way.
     let trendHeadlineLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.h3
         label.textColor = AppColors.fg1
+        label.numberOfLines = 2
+        label.lineBreakMode = .byWordWrapping
+        label.setContentCompressionResistancePriority(UILayoutPriority(749), for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -185,7 +197,9 @@ final class StatisticsViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // Hidden on this tab — the in-screen header owns the title (#319).
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+        // Restored by `pushRestoringBar` before any child push; this callback
+        // is what re-hides it on the way back (#517).
+        AppNavigationBarStyle.hideBar(on: self, animated: animated)
         viewModel.loadData()
     }
 
@@ -405,8 +419,11 @@ final class StatisticsViewController: UIViewController {
     }
 
     @objc func debugReferralTapped() {
-        let vc = ReferralViewController()
-        navigationController?.pushViewController(vc, animated: true)
+        // This tab hides the bar (#319), so a plain push handed the referral
+        // screen no back button, no title and no #508 chrome, with its content
+        // running under the status bar (#517). The two sibling tabs already
+        // restored the bar before their pushes; this one had not.
+        AppNavigationBarStyle.pushRestoringBar(ReferralViewController(), from: self)
     }
 
     @objc func debugAlarmOffTapped() {

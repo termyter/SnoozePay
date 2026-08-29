@@ -66,6 +66,10 @@ final class VolumePickerViewController: UIViewController {
         slider.minimumValue = 0
         slider.maximumValue = 1
         slider.minimumTrackTintColor = AppColors.money500
+        // Same unfilled-track token as the snooze slider on the form that
+        // pushes this screen: UIKit's default maximum track is a fixed system
+        // grey (#E5E5EA) that all but disappears on the light `bg0` page.
+        slider.maximumTrackTintColor = AppColors.whiteOverlay12
         slider.tintColor = AppColors.money500
         return slider
     }()
@@ -123,6 +127,12 @@ final class VolumePickerViewController: UIViewController {
         setupUI()
         applyVolumeToUI()
         applyFadeToUI()
+        // A rendered thumb can't re-resolve its own dynamic colours, so the
+        // bitmap has to be rebuilt when the user flips the theme with this
+        // screen already on-stack.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (host: VolumePickerViewController, _) in
+            SPSliderThumb.install(on: host.slider, trait: host.traitCollection)
+        }
     }
 
     // MARK: - Setup
@@ -163,12 +173,11 @@ final class VolumePickerViewController: UIViewController {
     }
 
     /// Larger thumb so the control reads as a "fat dial" matching the SP
-    /// design language. UIKit only exposes the thumb image — render a
-    /// money-tinted disc into a programmatic image instead of shipping an
-    /// asset.
+    /// design language. UIKit only exposes the thumb image — `SPSliderThumb`
+    /// renders a money-tinted disc for the current traits instead of shipping
+    /// an asset.
     private func makeSliderContainer() -> UIView {
-        slider.setThumbImage(Self.makeThumb(diameter: 28), for: .normal)
-        slider.setThumbImage(Self.makeThumb(diameter: 30), for: .highlighted)
+        SPSliderThumb.install(on: slider, trait: traitCollection)
         slider.addTarget(self, action: #selector(sliderChanged), for: .valueChanged)
         let container = UIView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -236,30 +245,8 @@ final class VolumePickerViewController: UIViewController {
         fadeIn = fadeSwitch.isOn
         onChange?(volume, fadeIn)
     }
-
-    // MARK: - Thumb image
-
-    /// Render a money-tinted circle into a UIImage for use as the slider
-    /// thumb. Sizing the thumb via `setThumbImage` is the only supported
-    /// path on `UISlider` — there's no `thumbDiameter` knob.
-    private static func makeThumb(diameter: CGFloat) -> UIImage {
-        let size = CGSize(width: diameter, height: diameter)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { context in
-            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
-            // Soft ring shadow so the thumb lifts off the track in light mode.
-            context.cgContext.setShadow(
-                offset: CGSize(width: 0, height: 1),
-                blur: 2,
-                color: UIColor.black.withAlphaComponent(0.25).cgColor
-            )
-            AppColors.money500.setFill()
-            UIBezierPath(ovalIn: rect).fill()
-            // White inner dot so the thumb reads on dark + light alike.
-            context.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
-            UIColor.white.withAlphaComponent(0.35).setFill()
-            let inner = rect.insetBy(dx: rect.width * 0.32, dy: rect.height * 0.32)
-            UIBezierPath(ovalIn: inner).fill()
-        }
-    }
 }
+
+// The thumb bitmap used to be rendered by a private `makeThumb` here, byte for
+// byte identical to the one in `SnoozeSliderCell`. Both now call the shared,
+// trait-aware `SPSliderThumb` (#492).

@@ -170,8 +170,12 @@ final class WalletTransactionHistoryViewController: UIViewController {
         )
         configuration.imagePlacement = .trailing
         configuration.imagePadding = AppSpacing.sp2
+        // Was a magic `10` top/bottom, which put the chip at 40pt — under the
+        // 44pt HIG minimum for a tap target. `sp3` is the token on the 4px
+        // grid nearest that value and lands the chip on exactly 44pt.
         configuration.contentInsets = NSDirectionalEdgeInsets(
-            top: 10, leading: AppSpacing.sp4, bottom: 10, trailing: AppSpacing.sp3
+            top: AppSpacing.sp3, leading: AppSpacing.sp4,
+            bottom: AppSpacing.sp3, trailing: AppSpacing.sp3
         )
         configuration.baseForegroundColor = AppColors.fg1
 
@@ -228,14 +232,16 @@ final class WalletTransactionHistoryViewController: UIViewController {
         let spent = makeSummaryColumn(
             title: "Списано",
             value: MoneyFormatter.attributed(
-                summary.spent, digitsFont: AppTypography.moneyMd, prefix: "−", color: AppColors.pain400
+                summary.spent, digitsFont: AppTypography.moneyMd, prefix: "−",
+                color: WalletAmountTint.ink(for: .outgoing)
             ),
             alignment: .left
         )
         let topups = makeSummaryColumn(
             title: "Пополнения",
             value: MoneyFormatter.attributed(
-                summary.topups, digitsFont: AppTypography.moneyMd, prefix: "+", color: AppColors.money400
+                summary.topups, digitsFont: AppTypography.moneyMd, prefix: "+",
+                color: WalletAmountTint.ink(for: .incoming)
             ),
             alignment: .left
         )
@@ -397,89 +403,76 @@ final class WalletTransactionHistoryViewController: UIViewController {
         ) ?? time
     }
 
+    /// SF Symbol for a row's leading tile. Glyph carries the meaning that the
+    /// tint only reinforces — the row stays readable with colour removed.
+    static func glyphName(for type: TransactionType) -> String {
+        switch type {
+        case .topup: return "plus"
+        // Unified with the wallet preview — gift glyph, not a checkmark
+        // (issue #282, single promotion-row rendering).
+        case .promotion: return "gift"
+        // Money back, but not income — the undo glyph keeps it visually
+        // distinct from a real top-up (issue #358).
+        case .refund: return "arrow.uturn.backward"
+        case .charge: return "flame"
+        case .unknown: return "questionmark"
+        }
+    }
+
     private static func makeIcon(for transaction: Transaction) -> UIView {
         let container = UIView()
         container.translatesAutoresizingMaskIntoConstraints = false
-        let tint: UIColor
-        let fill: UIColor
-        let glyph: String
-        switch transaction.type {
-        case .topup:
-            tint = AppColors.money400
-            fill = AppColors.money400.withAlphaComponent(0.14)
-            glyph = "plus"
-        case .promotion:
-            // Unified with the wallet preview — gift glyph, not a checkmark
-            // (issue #282, single promotion-row rendering).
-            tint = AppColors.money400
-            fill = AppColors.money400.withAlphaComponent(0.14)
-            glyph = "gift"
-        case .refund:
-            // Money back, but not income — the undo glyph keeps it visually
-            // distinct from a real top-up (issue #358).
-            tint = AppColors.money400
-            fill = AppColors.money400.withAlphaComponent(0.14)
-            glyph = "arrow.uturn.backward"
-        case .charge:
-            tint = AppColors.pain400
-            fill = AppColors.pain400.withAlphaComponent(0.14)
-            glyph = "flame"
-        case .unknown:
-            tint = AppColors.fg3
-            fill = AppColors.fg3.withAlphaComponent(0.14)
-            glyph = "questionmark"
-        }
+        // Tint + wash come from the shared `WalletAmountTint` so this screen
+        // and the wallet preview card can never drift apart in either theme.
+        let direction = WalletLedgerDirection(transaction.type)
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = fill
+        view.backgroundColor = WalletAmountTint.iconWash(for: direction)
         view.layer.cornerRadius = AppRadius.sm
         view.layer.masksToBounds = true
-        let imageView = UIImageView(image: UIImage(systemName: glyph))
+        let imageView = UIImageView(image: UIImage(systemName: glyphName(for: transaction.type)))
         imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.tintColor = tint
+        imageView.tintColor = WalletAmountTint.ink(for: direction)
         imageView.contentMode = .scaleAspectFit
         view.addSubview(imageView)
         container.addSubview(view)
         NSLayoutConstraint.activate([
-            container.widthAnchor.constraint(equalToConstant: 36),
-            container.heightAnchor.constraint(equalToConstant: 36),
+            container.widthAnchor.constraint(equalToConstant: tileSide),
+            container.heightAnchor.constraint(equalToConstant: tileSide),
             view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             view.topAnchor.constraint(equalTo: container.topAnchor),
             view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             imageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             imageView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 18),
-            imageView.heightAnchor.constraint(equalToConstant: 18)
+            imageView.widthAnchor.constraint(equalToConstant: glyphSide),
+            imageView.heightAnchor.constraint(equalToConstant: glyphSide)
         ])
         return container
     }
 
-    private static func makeAmountLabel(for transaction: Transaction) -> UILabel {
+    /// 36×36 leading tile with an 18pt glyph — `SPMore3.jsx:83`.
+    private static let tileSide: CGFloat = 36
+    private static let glyphSide: CGFloat = 18
+
+    static func makeAmountLabel(for transaction: Transaction) -> UILabel {
         let label = UILabel()
         // Row sums use money-md (700 20px mono) per design, not 14pt moneySm
         // (#321; full history SPMore3.jsx:178, role "Row sums" SPDesignSystem.jsx:254).
         label.font = AppTypography.moneyMd
         label.translatesAutoresizingMaskIntoConstraints = false
-        let absAmount = Int(abs(transaction.amount))
-        switch transaction.type {
-        case .topup, .promotion, .refund:
-            label.attributedText = MoneyFormatter.attributed(
-                Decimal(absAmount), digitsFont: AppTypography.moneyMd, prefix: "+"
-            )
-            label.textColor = AppColors.money400
-        case .charge:
-            label.attributedText = MoneyFormatter.attributed(
-                Decimal(absAmount), digitsFont: AppTypography.moneyMd, prefix: "−"
-            )
-            label.textColor = AppColors.pain400
-        case .unknown:
-            // Direction unknown — no sign, muted colour.
-            label.attributedText = MoneyFormatter.attributed(
-                Decimal(absAmount), digitsFont: AppTypography.moneyMd
-            )
-            label.textColor = AppColors.fg3
-        }
+        let direction = WalletLedgerDirection(transaction.type)
+        // The sign — not the colour — is what makes a credit distinguishable
+        // from a debit: in light the two tints measure 5.27:1 and 5.22:1 on
+        // the card, i.e. the same luminance, so a red-green colour-blind
+        // reader has only "+" / "−" to go on. `.unclassified` carries no sign
+        // because this build genuinely doesn't know the direction.
+        label.attributedText = MoneyFormatter.attributed(
+            Decimal(Int(abs(transaction.amount))),
+            digitsFont: AppTypography.moneyMd,
+            prefix: direction.signPrefix ?? ""
+        )
+        label.textColor = WalletAmountTint.ink(for: direction)
         return label
     }
 
@@ -535,8 +528,13 @@ extension WalletTransactionHistoryViewController {
             row.addArrangedSubview(makeFilterChip(for: filter))
         }
         // Trailing spacer so chips left-align (the row otherwise stretches).
+        // Its hugging must sit BELOW the chips' (which is `.required` in
+        // `makeFilterChip`), not merely at `.defaultLow` — that tied with the
+        // buttons' own default 250 and the stack resolved the tie by index,
+        // stretching the first chip instead of the spacer (#519).
         let spacer = UIView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(UILayoutPriority(1), for: .horizontal)
         row.addArrangedSubview(spacer)
         return row
     }
@@ -551,10 +549,30 @@ extension WalletTransactionHistoryViewController {
                 .foregroundColor: selected ? AppColors.bg0 : AppColors.fg2
             ])
         )
+        // Canon is `padding: "8px 14px"` (`SPMore3.jsx:59`); the code had
+        // drifted to a magic 7/12. `sp2` is 8 exactly; 14 has no token of its
+        // own, so it is written as the grid step it actually is.
         configuration.contentInsets = NSDirectionalEdgeInsets(
-            top: 7, leading: AppSpacing.sp3, bottom: 7, trailing: AppSpacing.sp3
+            top: AppSpacing.sp2, leading: AppSpacing.sp3 + 2,
+            bottom: AppSpacing.sp2, trailing: AppSpacing.sp3 + 2
         )
+        // A pill must never break its own shape: the default line-break mode of
+        // a configuration button word-wraps, and a single long word ("Поступления")
+        // then splits mid-word into «Поступлени» / «я» inside the capsule (#519).
+        // Truncating keeps the capsule intact — and the priorities below mean it
+        // stays a fallback that shouldn't trigger at the shipped font size.
+        configuration.titleLineBreakMode = .byTruncatingTail
         let chip = UIButton(configuration: configuration)
+        // The chip owns its width: it hugs its title and refuses to be squeezed,
+        // so the row's slack lands in the trailing spacer.
+        chip.setContentHuggingPriority(.required, for: .horizontal)
+        // 999, not `.required` — if three chips genuinely can't fit (a very
+        // narrow screen), yield gracefully instead of breaking a constraint.
+        chip.setContentCompressionResistancePriority(UILayoutPriority(999), for: .horizontal)
+        // Pin the label to the 14pt design size. Configuration buttons opt into
+        // Dynamic Type by default, and a scaled title is what pushes this row
+        // past the screen width; same opt-out `SPButton` already makes.
+        chip.titleLabel?.adjustsFontForContentSizeCategory = false
         chip.backgroundColor = selected ? AppColors.fg1 : AppColors.whiteOverlay06
         chip.layer.cornerRadius = AppRadius.lg
         chip.layer.masksToBounds = true

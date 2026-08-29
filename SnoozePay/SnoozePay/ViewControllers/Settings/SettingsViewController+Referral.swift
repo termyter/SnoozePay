@@ -107,9 +107,9 @@ extension SettingsViewController {
         }
     }
 
-    /// Presents a brief auto-dismissing toast pinned to the bottom safe-area.
-    /// Lives on the keyWindow so it survives a pushed VC transition and can't
-    /// be cropped by the navigation bar.
+    /// Presents a brief auto-dismissing toast above the tab bar. Lives on the
+    /// keyWindow so it survives a pushed VC transition and can't be cropped by
+    /// the navigation bar; `SettingsToastLayout` owns where exactly it lands.
     func showToast(message: String) {
         let candidateWindow = view.window ?? UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.keyWindow }
@@ -119,17 +119,7 @@ extension SettingsViewController {
         let toast = SettingsToastLabel()
         toast.text = message
         toast.alpha = 0
-        toast.translatesAutoresizingMaskIntoConstraints = false
-        window.addSubview(toast)
-
-        NSLayoutConstraint.activate([
-            toast.centerXAnchor.constraint(equalTo: window.centerXAnchor),
-            toast.bottomAnchor.constraint(
-                equalTo: window.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp6
-            ),
-            toast.heightAnchor.constraint(greaterThanOrEqualToConstant: SettingsToastLabel.minimumHeight)
-        ])
+        SettingsToastLayout.install(toast, in: window)
 
         UIView.animate(
             withDuration: 0.2,
@@ -221,6 +211,70 @@ enum ReferralCodeInput {
     }
 }
 
+// MARK: - SettingsToastLayout
+
+/// Where the toast lands. Split out of `showToast` so the geometry can be
+/// asserted without waiting out the 1.5-second animation.
+enum SettingsToastLayout {
+
+    /// Gap between the toast and whatever edge it sits above.
+    static let gap = AppSpacing.sp3
+
+    /// The tab bar the toast has to clear, if one is actually on screen.
+    ///
+    /// Resolved from the *window* rather than from a view controller's
+    /// `tabBarController`: the toast is a window subview, so the window is what
+    /// it has to negotiate with, and that answer stays right for a pushed VC, a
+    /// presented one and the DEBUG tour mounts alike. Returns `nil` when the
+    /// bar is hidden or parked off-screen — `hidesBottomBarWhenPushed` slides
+    /// the bar out of the window instead of hiding it, and anchoring to a bar
+    /// parked below the screen would drag the toast off with it.
+    static func obstructingTabBar(in window: UIWindow) -> UITabBar? {
+        var controller = window.rootViewController
+        var candidate: UITabBar?
+        while let current = controller {
+            if let tabs = current as? UITabBarController {
+                candidate = tabs.tabBar
+            }
+            controller = current.presentedViewController
+        }
+        guard let bar = candidate, bar.window === window, !bar.isHidden, bar.alpha > 0 else {
+            return nil
+        }
+        return window.bounds.intersects(bar.convert(bar.bounds, to: window)) ? bar : nil
+    }
+
+    /// Adds `toast` to `window` and pins it above the tab bar when there is
+    /// one, else above the bottom safe area.
+    ///
+    /// Anchoring to the bar's own `topAnchor` rather than to a constant is the
+    /// point: the bar's height is UIKit's to decide (it differs with the
+    /// home-indicator inset, and again in a compact layout), so a hand-measured
+    /// offset is right on one device and wrong on the next. The window is a
+    /// common ancestor of both views, and `UITabBar` translates its frame into
+    /// the layout engine, so the cross-branch constraint resolves cleanly.
+    static func install(_ toast: UIView, in window: UIWindow) {
+        toast.translatesAutoresizingMaskIntoConstraints = false
+        window.addSubview(toast)
+
+        let bottom: NSLayoutConstraint
+        if let bar = obstructingTabBar(in: window) {
+            bottom = toast.bottomAnchor.constraint(equalTo: bar.topAnchor, constant: -gap)
+        } else {
+            bottom = toast.bottomAnchor.constraint(
+                equalTo: window.safeAreaLayoutGuide.bottomAnchor,
+                constant: -AppSpacing.sp6
+            )
+        }
+
+        NSLayoutConstraint.activate([
+            toast.centerXAnchor.constraint(equalTo: window.centerXAnchor),
+            bottom,
+            toast.heightAnchor.constraint(greaterThanOrEqualToConstant: SettingsToastLabel.minimumHeight)
+        ])
+    }
+}
+
 // MARK: - SettingsToastLabel
 
 /// Small UILabel subclass that bakes its padding into the intrinsic size so
@@ -232,14 +286,18 @@ final class SettingsToastLabel: UILabel {
     /// Pill fill. Exposed so `SettingsLightThemeTests` measures the values
     /// actually rendered rather than a copy.
     ///
-    /// The previous recipe was `.white` text on `UIColor.label` at 90% — which
-    /// inverts with the theme. In dark, `label` *is* white, so the toast drew
-    /// white text on a white pill: 1.24:1 once composited, i.e. text-shaped
-    /// noise (#496). `bg3` is the design system's raised-chip surface and
-    /// stays a surface in both themes, so `fg1` reads on it either way.
-    static let fillColor = AppColors.bg3
-    /// Pill ink — primary foreground, dark on light and near-white on dark.
-    static let inkColor = AppColors.fg1
+    /// Third recipe, and the first one that isn't a surface. `.white` on
+    /// `UIColor.label`@90% inverted with the theme and drew white on white in
+    /// dark (1.24:1, #496); `bg3` fixed the ink but left the pill itself at
+    /// 1.19:1 against the light page, so only the border and the glyphs were
+    /// holding it (#518). No step of the surface ramp clears 3:1 against the
+    /// page in either theme, so the pill is now the INVERSE surface — see the
+    /// measurements next to `AppColors.toastSurface`.
+    static let fillColor = AppColors.toastSurface
+    /// Pill ink — the inverse-surface foreground, which flips together with
+    /// `fillColor`. Not `fg1`: that is ink for a normal surface and would land
+    /// same-on-same here.
+    static let inkColor = AppColors.fgOnToast
     /// Floor height so a one-line toast keeps a pill silhouette.
     static let minimumHeight: CGFloat = AppSpacing.sp8 - AppSpacing.sp1
 
@@ -254,8 +312,6 @@ final class SettingsToastLabel: UILabel {
         super.init(frame: frame)
         font = AppTypography.body
         textAlignment = .center
-        textColor = Self.inkColor
-        backgroundColor = Self.fillColor
         layer.cornerRadius = AppRadius.sm
         // A shadow can't render through `masksToBounds`; the horizontal inset
         // keeps the glyphs well clear of the rounded corners without clipping.
@@ -288,13 +344,16 @@ final class SettingsToastLabel: UILabel {
         )
     }
 
-    /// Border + shadow both cache a `cgColor`, so re-resolve on theme flip.
-    /// The pill floats over arbitrary content, and in light `bg3` (`#DFE3F0`)
-    /// against a near-white screen needs the outline as much as the lift.
+    /// Fill, border and shadow all cache a resolved value (`cgColor` for two of
+    /// them), so all three re-resolve on a theme flip. The pill floats over
+    /// arbitrary content, so it keeps the card recipe — fill + hairline + lift
+    /// — even though the inverse fill now carries the separation on its own.
     private func applyThemedDecoration() {
+        backgroundColor = Self.fillColor
+        textColor = Self.inkColor
         AppShadow.shadow2(for: traitCollection).apply(to: layer)
         let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
         layer.borderWidth = 1.0 / scale
-        layer.borderColor = AppColors.stroke2.resolvedColor(with: traitCollection).cgColor
+        layer.borderColor = AppColors.toastEdge.resolvedColor(with: traitCollection).cgColor
     }
 }

@@ -118,14 +118,39 @@ final class TopUpDisplayAmountTests: XCTestCase {
         XCTAssertNil(StoreKitService.catalogAmount(for: "io.mobilife.snoozepay.balance.unknown"))
     }
 
-    /// With no products loaded (test environment), `displayAmount(for:)` falls
-    /// back to the catalogue amount — never nil for a known SKU, never invented.
-    func testDisplayAmount_fallsBackToCatalogueWhenProductNotLoaded() {
+    /// #557 — replaces `testDisplayAmount_fallsBackToCatalogueWhenProductNotLoaded`,
+    /// which asserted the fallback branch of `StoreKitService.displayAmount(for:)`
+    /// while doing nothing to make `products` empty: it only passed because the
+    /// old bundle ID matched no app in App Store Connect, so StoreKit resolved
+    /// nothing. With a real bundle ID all five SKUs resolve and the helper
+    /// returned the truncated storefront price instead (0 / 1 / 2 / 5 / 9 —
+    /// CI run 33175946701). The helper is gone; this pins the property that
+    /// made removing it safe.
+    ///
+    /// The credited amount for a known SKU is a function of the SKU alone —
+    /// `creditAmount(for:fallbackPrice:)` ignores the resolved StoreKit price.
+    /// So a catalogue-derived displayed amount equals the credited amount in
+    /// every storefront, and no display path may consult `Product.price`.
+    ///
+    /// Deterministic by construction: touches only static tables, never
+    /// `StoreKitService.shared`, so the outcome cannot depend on whether the
+    /// runner reached the App Store.
+    func testCreditedAmount_ignoresStorefrontPrice_soCatalogueDisplayAlwaysMatches() {
+        // Storefront prices a real device could report: none resolved, a USD
+        // price that truncates to a different integer, and an absurd one.
+        let storefrontPrices: [Decimal?] = [nil, 0.49, 9.99, 100_000]
         for (productID, amount) in StoreKitService.productAmounts {
+            for price in storefrontPrices {
+                XCTAssertEqual(
+                    StoreKitService.creditAmount(for: productID, fallbackPrice: price),
+                    amount,
+                    "credit for \(productID) must stay \(amount) for storefront price \(String(describing: price))"
+                )
+            }
             XCTAssertEqual(
-                StoreKitService.shared.displayAmount(for: productID),
+                StoreKitService.catalogAmount(for: productID),
                 Int(amount),
-                "displayAmount must fall back to the catalogue amount for \(productID)"
+                "displayed (catalogue) amount for \(productID) must equal the credited amount"
             )
         }
     }

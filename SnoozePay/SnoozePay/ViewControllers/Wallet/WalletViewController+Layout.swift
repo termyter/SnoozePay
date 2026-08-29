@@ -174,12 +174,15 @@ extension WalletViewController {
     }
 
     /// 36×36 rounded icon tile — red flame tint for charges, green tint
-    /// for credits. Matches `WalletTransactionHistoryViewController` rows.
+    /// for credits. Shares `WalletAmountTint` with
+    /// `WalletTransactionHistoryViewController` so the two screens can't
+    /// drift on the credit/debit tint in either theme.
     private func makeTxIcon(systemName: String, isDebit: Bool) -> UIView {
-        let tint = isDebit ? AppColors.pain400 : AppColors.money400
+        let direction: WalletLedgerDirection = isDebit ? .outgoing : .incoming
+        let tint = WalletAmountTint.ink(for: direction)
         let tile = UIView()
         tile.translatesAutoresizingMaskIntoConstraints = false
-        tile.backgroundColor = tint.withAlphaComponent(0.14)
+        tile.backgroundColor = WalletAmountTint.iconWash(for: direction)
         tile.layer.cornerRadius = AppRadius.sm
         tile.layer.masksToBounds = true
 
@@ -206,7 +209,7 @@ extension WalletViewController {
         // Row sums use money-md (700 20px mono) per design — 14pt moneySm read
         // as a secondary caption (#321; SPScreensV2.jsx:543, SPMore3.jsx:178).
         label.font = AppTypography.moneyMd
-        label.textColor = isDebit ? AppColors.pain400 : AppColors.money400
+        label.textColor = WalletAmountTint.ink(for: isDebit ? .outgoing : .incoming)
         label.text = text
         return label
     }
@@ -217,7 +220,7 @@ extension WalletViewController {
     func makeFooterCaption() -> UILabel {
         let label = UILabel()
         label.font = AppTypography.meta
-        label.textColor = AppColors.fg4
+        label.textColor = WalletQuietInk.caption
         label.numberOfLines = 0
         label.textAlignment = .center
         label.text = "Покупка не возвращается · списывается только при откладывании"

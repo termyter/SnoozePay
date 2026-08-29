@@ -194,17 +194,23 @@ final class ProgressiveScaleCell: UITableViewCell {
 // MARK: - Pain-tintable card surface
 
 /// Card background for `ProgressiveScaleCell`. Default state mirrors the
-/// generic `styleAsCardRow` recipe (surface fill + brand shadow); the armed
-/// state overlays the V2 pain gradient (`135deg rgba(244,82,63,.10) →
-/// rgba(244,82,63,.02)`) and a pain hairline per `SPMore2.jsx`.
-private final class ProgressiveCardSurface: UIView {
+/// generic `styleAsCardRow` recipe (`bg1` fill + brand shadow + `stroke1`
+/// hairline); the armed state overlays the V2 pain gradient
+/// (`135deg rgba(244,82,63,.10) → rgba(244,82,63,.02)`) and swaps the hairline
+/// for the pain tint per `SPMore2.jsx`.
+///
+/// `internal` rather than file-private so the light-theme regression tests can
+/// host it in a window — the decoration only resolves correctly inside a real
+/// hierarchy (see `CreateAlarmLightThemeTests`).
+final class ProgressiveCardSurface: UIView {
+
+    /// Whether the card is currently showing its armed (pain-tinted) state.
+    /// Kept so a theme flip can repaint the right hairline without the cell
+    /// having to re-`configure`.
+    private var isPainTinted = false
 
     private let gradient: CAGradientLayer = {
         let layer = CAGradientLayer()
-        layer.colors = [
-            AppColors.pain500.withAlphaComponent(0.10).cgColor,
-            AppColors.pain500.withAlphaComponent(0.02).cgColor
-        ]
         layer.startPoint = CGPoint(x: 0, y: 0)
         layer.endPoint = CGPoint(x: 1, y: 1)
         layer.cornerRadius = AppRadius.sm
@@ -214,13 +220,18 @@ private final class ProgressiveCardSurface: UIView {
 
     init() {
         super.init(frame: .zero)
-        backgroundColor = AppColors.surface
+        // `bg1`, not the system `secondarySystemBackground`: identical
+        // `#FFFFFF` in light, but the brand `#0E1320` in dark instead of the
+        // system's warm `#1C1C1E`. Every sibling section on this form is
+        // painted by `CardRowBackgroundView`, which moved onto `bg1` in #496 —
+        // this card was the last one still reading a different dark grey.
+        backgroundColor = AppColors.bg1
         layer.cornerRadius = AppRadius.sm
         layer.masksToBounds = false
-        AppShadow.shadow1(for: traitCollection).apply(to: layer)
         layer.addSublayer(gradient)
+        applyThemedDecoration()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: ProgressiveCardSurface, _) in
-            AppShadow.shadow1(for: view.traitCollection).apply(to: view.layer)
+            view.applyThemedDecoration()
         }
     }
 
@@ -232,11 +243,44 @@ private final class ProgressiveCardSurface: UIView {
         super.layoutSubviews()
         gradient.frame = bounds
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: AppRadius.sm).cgPath
+        // Light mode's `shadow1` is a two-stop recipe; the narrow ambient stop
+        // lives on a sibling sublayer that has to track the host's bounds.
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: AppRadius.sm,
+            trait: traitCollection
+        )
     }
 
     func setPainTinted(_ isOn: Bool) {
+        isPainTinted = isOn
         gradient.isHidden = !isOn
-        layer.borderWidth = isOn ? 1 : 0
-        layer.borderColor = AppColors.pain500.withAlphaComponent(0.25).cgColor
+        applyThemedDecoration()
+    }
+
+    /// Re-resolve everything that caches a `cgColor` or branches on theme.
+    ///
+    /// The hairline is no longer armed-only: on the light page a white card on
+    /// `#F4F6FB` is 1.06:1 of separation, so the border is what draws the card
+    /// edge — the shadow alone leaves a floating slab. Disarmed the stroke is
+    /// the neutral `stroke1` every other card uses; armed it becomes the pain
+    /// tint from `SPMore2.jsx`.
+    private func applyThemedDecoration() {
+        AppShadow.shadow1(for: traitCollection).apply(to: layer)
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: AppRadius.sm,
+            trait: traitCollection
+        )
+        gradient.colors = [
+            AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.10).cgColor,
+            AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.02).cgColor
+        ]
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+        layer.borderWidth = isPainTinted ? 1 : 1.0 / scale
+        let stroke = isPainTinted
+            ? AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.25)
+            : AppColors.stroke1.resolvedColor(with: traitCollection)
+        layer.borderColor = stroke.cgColor
     }
 }

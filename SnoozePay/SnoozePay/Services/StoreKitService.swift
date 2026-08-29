@@ -548,26 +548,29 @@ final class StoreKitService {
     // App Store charges AND the amount credited to the ledger. Historically the
     // firing-screen tiles hard-coded rounded literals (200 / 500 / 1000 ₽) that
     // mapped to the 149 / 499 / 999 SKUs — so the user saw 200 ₽ but was charged
-    // and credited 149. These helpers make the displayed number derive from the
-    // catalogue (and, once loaded, the resolved StoreKit product price) so
-    // display == charge == credit for the current catalogue.
+    // and credited 149. `catalogAmount(for:)` makes the displayed number derive
+    // from the same table the ledger credits from, so display == credit for the
+    // current catalogue.
+    //
+    // #557: there used to be a second helper here, `displayAmount(for:)`, which
+    // preferred `NSDecimalNumber(decimal: product.price).intValue` once
+    // `products` had resolved. It was removed because it broke the very
+    // invariant this section exists to hold. `Product.price` is a storefront
+    // price in the storefront's currency, so on a US storefront the five SKUs
+    // resolve to 0.49 / 1.49 / 2.99 / 5.99 / 9.99 and truncate to 0 / 1 / 2 /
+    // 5 / 9 — while `creditAmount(for:fallbackPrice:)` above deliberately
+    // IGNORES the resolved price for a known SKU and credits 49 / 149 / 299 /
+    // 499 / 999. Display would have diverged from credit exactly when the
+    // catalogue loaded (observed on CI run 33175946701). If a real charged
+    // price ever needs rendering, use `Product.displayPrice` — a localised,
+    // currency-correct string — not an Int in assumed-RUB.
 
     /// The catalogue RUB amount for a SKU (49 / 149 / 299 / 499 / 999), or nil
-    /// for an unknown product ID. This is the same value credited on purchase,
-    /// so it is the honest number to render when the product list hasn't loaded.
+    /// for an unknown product ID. This is the same value credited on purchase
+    /// (see `creditAmount(for:fallbackPrice:)`), so it is the honest number to
+    /// render — whether or not `products` has resolved.
     static func catalogAmount(for productID: String) -> Int? {
         productAmounts[productID].map { Int($0) }
-    }
-
-    /// The integer RUB amount to DISPLAY for a SKU. Prefers the resolved
-    /// StoreKit product's numeric price (the real charged amount) when the
-    /// catalogue has loaded; otherwise falls back to the catalogue amount.
-    /// Never returns an invented rounded literal.
-    func displayAmount(for productID: String) -> Int? {
-        if let product = products.first(where: { $0.id == productID }) {
-            return NSDecimalNumber(decimal: product.price).intValue
-        }
-        return Self.catalogAmount(for: productID)
     }
 
     enum StoreError: Error {

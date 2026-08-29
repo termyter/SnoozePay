@@ -149,6 +149,12 @@ extension AlarmFiringViewController {
             // restores it via `refreshNoBalanceVisibility()` (see `exitSnoozedState`).
             noBalanceContainer?.isHidden = true
             noBalanceCenterBlock?.isHidden = true
+            // #547: hiding the block is not enough — its constraints are what
+            // squeeze the hero. Hand the column back so the countdown takes the
+            // clock's slot at full size, exactly as it did before that state
+            // existed. `exitSnoozedState` → `refreshNoBalanceVisibility()`
+            // re-activates it if the wallet is still empty.
+            setNoBalanceColumnActive(false)
         }
         // On `false` (teardown) we do NOT unhide here: `exitSnoozedState` calls
         // `refreshNoBalanceVisibility()` so the stack returns only when actually

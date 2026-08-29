@@ -18,7 +18,12 @@ final class SPCard: UIView {
     /// - `.surface`: default — `bg1` fill, hairline stroke, soft shadow. In
     ///   light mode the stroke + shadow are required for visibility per
     ///   `feedback_design_system_consistency.md`.
-    /// - `.raised`: stronger surface (`bg2`) for sheets / hero panels.
+    /// - `.raised`: one step higher than `.surface`, for sheets / hero
+    ///   panels / the enabled state of a tonal pair. Elevation is carried by
+    ///   whatever reads as "higher" in the current theme — the `bg2` ramp
+    ///   step in dark, the heavier `shadow-2` on the same white `bg1` fill in
+    ///   light, where `bg2` is a *recessed* tone (#543). See
+    ///   `AppColors.bgRaised`.
     /// - `.outline`: transparent fill, 1px `stroke2` border, no shadow.
     /// - `.money` / `.pain` / `.warn`: brand-gradient fills with matching
     ///   coloured shadow recipes.
@@ -44,7 +49,10 @@ final class SPCard: UIView {
     /// Optional gradient layer for `.money`/`.pain`/`.warn` tones — added as a
     /// sublayer at zero index so subviews stack above it. Nil for non-gradient
     /// tones to keep the layer tree shallow.
-    private var gradientLayer: CAGradientLayer?
+    ///
+    /// Readable (not settable) from outside so `SPCardGradientThemeTests`
+    /// measures the stops the card actually renders rather than a copy of them.
+    private(set) var gradientLayer: CAGradientLayer?
 
     // MARK: - Init
 
@@ -156,37 +164,63 @@ final class SPCard: UIView {
             applyHairlineStrokeIfLight()
             applyShadow1()
         case .raised:
-            backgroundColor = AppColors.bg2
-            // `.sp-card--raised` only swaps the fill to bg2 — it inherits the
-            // base `.sp-card` `--sp-shadow-1`, not the heavier shadow-2 (which
-            // the canon reserves for sheets/overlays). Light mode keeps the
-            // hairline so bg2 (#ECEEF6) doesn't merge into bg0 (#F4F6FB).
-            applyRaisedHairlineIfLight()
-            applyShadow1()
+            // `.sp-card--raised { background: var(--sp-bg-2) }` is a dark-mode
+            // reading of the canon: there the ramp climbs away from the page,
+            // so a fill swap alone is a lift. In light the same swap is a
+            // *drop* — `bg2` (#ECEEF6) is darker than `bg0` (#F4F6FB). Light
+            // therefore keeps the white `bg1` fill and spends `--sp-shadow-2`
+            // on the height instead of `--sp-shadow-1` (#543).
+            backgroundColor = AppColors.bgRaised
+            // Same hairline rule as `.surface`, and for the same reason:
+            // light needs it because a near-white card on a near-white page
+            // is 1.03:1 of separation and a shadow alone does not carry that
+            // edge; dark has the ramp step and takes no border.
+            applyHairlineStrokeIfLight()
+            applyElevationShadow()
         case .outline:
             backgroundColor = .clear
             applyOutlineStroke()
         case .money:
             backgroundColor = .clear
-            installGradient(
-                colors: SPSupport.moneyGradientColors,
-                locations: SPSupport.moneyGradientLocations
-            )
+            installGradient()
             applyColoredShadow(.money)
         case .pain:
             backgroundColor = .clear
-            installGradient(
-                colors: SPSupport.painGradientColors,
-                locations: SPSupport.painGradientLocations
-            )
+            installGradient()
             applyColoredShadow(.pain)
         case .warn:
             backgroundColor = .clear
-            installGradient(
-                colors: SPSupport.warnGradientColors,
-                locations: SPSupport.warnGradientLocations
-            )
+            installGradient()
             applyColoredShadow(.warn)
+        }
+    }
+
+    /// Stops + locations of the tonal fill, resolved against THIS view's
+    /// traits. Nil for the non-gradient tones.
+    ///
+    /// The trait-explicit `SPSupport` overloads are mandatory here: the plain
+    /// `moneyGradientColors` computed properties snapshot
+    /// `UITraitCollection.current`, which inside a view method is not
+    /// necessarily this view's trait collection.
+    private var tonalGradient: (colors: [CGColor], locations: [NSNumber])? {
+        switch tone {
+        case .money:
+            return (
+                SPSupport.moneyGradientColors(for: traitCollection),
+                SPSupport.moneyGradientLocations
+            )
+        case .pain:
+            return (
+                SPSupport.painGradientColors(for: traitCollection),
+                SPSupport.painGradientLocations
+            )
+        case .warn:
+            return (
+                SPSupport.warnGradientColors(for: traitCollection),
+                SPSupport.warnGradientLocations
+            )
+        case .surface, .raised, .outline:
+            return nil
         }
     }
 
@@ -221,14 +255,24 @@ final class SPCard: UIView {
         )
     }
 
-    private func applyRaisedHairlineIfLight() {
+    /// Shadow half of the `.raised` recipe.
+    ///
+    /// Dark inherits the base `.sp-card` `--sp-shadow-1`: the fill already
+    /// stepped up the ramp, so a heavier shadow would double-count the lift.
+    /// Light gets `--sp-shadow-2` (`0 6px 20px rgba(8,14,30,.10)` against
+    /// `.surface`'s `0 4px 14px rgba(8,14,30,.06)`) because it shares
+    /// `.surface`'s fill and has nothing else left to be higher with.
+    private func applyElevationShadow() {
         guard traitCollection.userInterfaceStyle != .dark else {
-            layer.borderWidth = 0
+            applyShadow1()
             return
         }
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = 1.0 / scale
-        layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
+        AppShadow.shadow2(for: traitCollection).apply(to: layer)
+        // shadow-2 is a single stop, so make sure no ambient sublayer from a
+        // prior `applyShadow1` survives on this layer.
+        layer.sublayers?
+            .first { $0.name == AppShadow.ambientShadow1LayerName }?
+            .removeFromSuperlayer()
     }
 
     private func applyColoredShadow(_ kind: ColoredShadow) {
@@ -242,7 +286,10 @@ final class SPCard: UIView {
         case .pain:  color = AppColors.pain500
         case .warn:  color = AppColors.warn500
         }
-        layer.shadowColor = color.cgColor
+        // Explicit resolve, not `.cgColor`: the latter snapshots
+        // `UITraitCollection.current`, which is not guaranteed to be this
+        // view's traits inside a method.
+        layer.shadowColor = color.resolvedColor(with: traitCollection).cgColor
         layer.shadowOpacity = traitCollection.userInterfaceStyle == .light ? 0.30 : 0.40
         layer.shadowOffset = CGSize(width: 0, height: 8)
         layer.shadowRadius = 16
@@ -250,15 +297,35 @@ final class SPCard: UIView {
 
     private enum ColoredShadow { case money, pain, warn }
 
-    private func installGradient(colors: [CGColor], locations: [NSNumber]) {
+    private func installGradient() {
+        guard let recipe = tonalGradient else { return }
         let gradient = CAGradientLayer()
-        gradient.colors = colors
-        gradient.locations = locations
+        gradient.colors = recipe.colors
+        gradient.locations = recipe.locations
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         gradient.cornerRadius = cardCornerRadius
         layer.insertSublayer(gradient, at: 0)
         gradientLayer = gradient
+    }
+
+    /// Re-tint the tonal fill in place.
+    ///
+    /// `CAGradientLayer.colors` is an array of plain `CGColor` — resolved once
+    /// at install and frozen there, with no link back to the dynamic
+    /// `UIColor` it came from. Without this a card built in dark and then
+    /// shown in light keeps the dark ramp while the ink on top re-resolves to
+    /// the light one: white `fgOnMoney` on the frozen dark `money400`
+    /// (`#2EDB9F`) measures 1.79:1. Same defect class as `SPAmountPreset`
+    /// (#498), `SPAlarmsListHeader` (#491) and `WalletWeeklyChartView` (#494).
+    ///
+    /// Re-tinting rather than re-installing keeps the layer's frame, which
+    /// `layoutSubviews` owns — a freshly inserted sublayer would sit at
+    /// `.zero` until the next layout pass.
+    private func refreshGradientColors() {
+        guard let recipe = tonalGradient else { return }
+        gradientLayer?.colors = recipe.colors
+        gradientLayer?.locations = recipe.locations
     }
 
     private func refreshDynamicColors() {
@@ -268,15 +335,20 @@ final class SPCard: UIView {
             applyHairlineStrokeIfLight()
             applyShadow1()
         case .raised:
-            applyRaisedHairlineIfLight()
-            applyShadow1()
+            // The fill is a dynamic UIColor and re-resolves itself; the
+            // border/shadow are CALayer cgColor state and do not.
+            applyHairlineStrokeIfLight()
+            applyElevationShadow()
         case .outline:
             applyOutlineStroke()
         case .money:
+            refreshGradientColors()
             applyColoredShadow(.money)
         case .pain:
+            refreshGradientColors()
             applyColoredShadow(.pain)
         case .warn:
+            refreshGradientColors()
             applyColoredShadow(.warn)
         }
     }

@@ -84,35 +84,52 @@ extension StatisticsViewController {
 
     /// 56×56 rounded square with the warn gradient + flame icon. Matches
     /// the JSX recipe (radius 18, warn gradient, warn-tinted shadow).
-    private func makeFlameBadge() -> UIView {
-        let container = UIView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.layer.cornerRadius = Self.flameBadgeRadius
-        container.layer.masksToBounds = false
-        container.layer.shadowOpacity = 0.30
-        container.layer.shadowOffset = CGSize(width: 0, height: AppSpacing.sp2)
-        container.layer.shadowRadius = AppSpacing.sp4
-
-        let gradient = CAGradientLayer()
-        gradient.locations = SPSupport.warnGradientLocations
-        gradient.startPoint = SPSupport.gradientStart
-        gradient.endPoint = SPSupport.gradientEnd
-        gradient.cornerRadius = Self.flameBadgeRadius
-        container.layer.insertSublayer(gradient, at: 0)
+    ///
+    /// An `SPGradientView` — the gradient IS the view's layer, so Auto Layout
+    /// sizes it — not a `CAGradientLayer` inserted as a sublayer. The sublayer
+    /// version (#529) assigned its frame exactly once, from a
+    /// `DispatchQueue.main.async` hop after a `layoutIfNeeded()`. That renders
+    /// on the first pass only because the badge is pinned to a fixed 56×56;
+    /// every later resize (Dynamic Type, rotation, a rebuilt card) left the
+    /// fill at its old size and the flame on bare card. The same shape already
+    /// cost the streak modal an invisible badge in #516 — measured 1.01:1 dark
+    /// / 1.16:1 light on the sheet fill. A `layerClass` gradient cannot be
+    /// forgotten.
+    ///
+    /// Internal rather than private so `StatisticsFlameBadgeTests` can resize
+    /// the badge and measure the fill; no token-level assertion catches a
+    /// gradient that is merely the wrong size.
+    func makeFlameBadge() -> SPGradientView {
+        // Stops start empty on purpose: `SPSupport.warnGradientColors` reads
+        // `UITraitCollection.current`, which inside a builder method is not
+        // necessarily the badge's own trait collection. `applyWarnPalette`
+        // installs them from the trait-explicit overload instead.
+        let badge = SPGradientView(colors: [], locations: SPSupport.warnGradientLocations)
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        badge.layer.cornerRadius = Self.flameBadgeRadius
+        badge.layer.cornerCurve = .continuous
+        // No `masksToBounds`: the gradient is the view's own layer, so
+        // `cornerRadius` already rounds the fill, and clipping would eat the
+        // warn-tinted shadow.
+        badge.layer.masksToBounds = false
+        badge.layer.shadowOpacity = 0.30
+        badge.layer.shadowOffset = CGSize(width: 0, height: AppSpacing.sp2)
+        badge.layer.shadowRadius = AppSpacing.sp4
 
         // Both the gradient stops and the tinted shadow are CGColors: they
         // freeze at whatever theme was current when the card was built, and
         // this card is built once in `viewDidLoad`. Re-resolve on every flip.
-        let applyWarnPalette = { [weak container] in
-            guard let container else { return }
-            container.traitCollection.performAsCurrent {
-                gradient.colors = SPSupport.warnGradientColors
-            }
-            container.layer.shadowColor = AppColors.warn500
-                .resolvedColor(with: container.traitCollection).cgColor
+        let applyWarnPalette = { [weak badge] in
+            guard let badge else { return }
+            badge.refresh(
+                colors: SPSupport.warnGradientColors(for: badge.traitCollection),
+                locations: SPSupport.warnGradientLocations
+            )
+            badge.layer.shadowColor = AppColors.warn500
+                .resolvedColor(with: badge.traitCollection).cgColor
         }
         applyWarnPalette()
-        container.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (_: UIView, _) in
+        badge.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (_: UIView, _) in
             applyWarnPalette()
         }
 
@@ -130,21 +147,14 @@ extension StatisticsViewController {
         flame.tintColor = AppColors.fgOnWarn
         flame.contentMode = .scaleAspectFit
         flame.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(flame)
+        badge.addSubview(flame)
         NSLayoutConstraint.activate([
-            container.widthAnchor.constraint(equalToConstant: Self.flameBadgeSide),
-            container.heightAnchor.constraint(equalToConstant: Self.flameBadgeSide),
-            flame.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            flame.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+            badge.widthAnchor.constraint(equalToConstant: Self.flameBadgeSide),
+            badge.heightAnchor.constraint(equalToConstant: Self.flameBadgeSide),
+            flame.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
+            flame.centerYAnchor.constraint(equalTo: badge.centerYAnchor)
         ])
-
-        // Resize the gradient sublayer on layout so it tracks bounds even when
-        // the badge gets repositioned by stacks.
-        container.layoutIfNeeded()
-        DispatchQueue.main.async {
-            gradient.frame = container.bounds
-        }
-        return container
+        return badge
     }
 
     // MARK: - "По дням недели" card
