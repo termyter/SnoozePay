@@ -22,7 +22,9 @@ extension AlarmFiringViewController {
         // view rather than via `SPPill(icon:)` because we need the dot to
         // host its own pulse animation while the pill keeps its background
         // / text styling untouched.
-        let pill = SPPill(text: "Прогрессив · 1-й поспать ещё", tone: .pain)
+        // Seeded through the same helper `updateUI()` uses, so the initial
+        // wording cannot drift from the wording of every later refresh.
+        let pill = SPPill(text: Self.progressivePillText(snoozeCount: 0), tone: .pain)
         pill.translatesAutoresizingMaskIntoConstraints = false
         progressivePill = pill
 
@@ -74,7 +76,7 @@ extension AlarmFiringViewController {
     /// n = snoozeCount + 1 (`SPDawnV3.jsx:219-221`). Pure function so the copy
     /// is unit-testable without loading the view hierarchy.
     static func progressivePillText(snoozeCount: Int) -> String {
-        "Прогрессив · \(snoozeCount + 1)-й поспать ещё"
+        Localized.format("firing.progressive.pill", snoozeCount + 1)
     }
 
     /// `true` when the indicator pill should be visible — only after the first

@@ -137,7 +137,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         let label = UILabel()
         label.font = AppTypography.h2
         label.textColor = .white
-        label.text = "Пополнить баланс"
+        label.text = Localized.text("firing.top_up.title")
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -198,8 +198,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// SPButton title/suffix is immutable post-init.
     private lazy var applePayButton: SPButton = makeApplePayButton(amount: selectedAmount)
 
-    /// Footer meta line — "Зачислится мгновенно. Откладывание будет доступно
-    /// сразу." Replaces the V1 cancel button (the close X in the header
+    /// Footer meta line — «Зачислится мгновенно. Откладывание будет доступно
+    /// сразу.» Replaces the V1 cancel button (the close X in the header
     /// covers the same affordance).
     private let footerMetaLabel: UILabel = {
         let label = UILabel()
@@ -207,7 +207,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         label.textColor = AppColors.fg3
         label.textAlignment = .center
         label.numberOfLines = 0
-        label.text = "Зачислится мгновенно. Откладывание будет доступно сразу."
+        label.text = Localized.text("firing.top_up.footer")
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -247,7 +247,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         label.font = AppTypography.body
         label.textColor = AppColors.fg2
         label.textAlignment = .center
-        label.text = "Возвращаем к будильнику через 2 секунды"
+        label.text = Localized.text("firing.top_up.success")
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -370,7 +370,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         // top-right of the row.
 
         // Subtitle derived from the live snooze price (#548). It used to read
-        // "Минимум — 149 ₽ на следующее откладывание", naming the cheapest SKU
+        // «Минимум — 149 ₽ на следующее откладывание», naming the cheapest SKU
         // while claiming it was the amount a snooze needs — two different
         // numbers at every price except exactly 149 ₽.
         subtitleLabel.text = FiringTopUpCopy.subtitle(
@@ -630,7 +630,7 @@ extension FiringTopUpBottomSheetViewController {
             AppLogger.storeKit.error(
                 "FiringTopUpSheet: product \(pid, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
             )
-            handlePurchaseFailure(message: "Не удалось загрузить пакеты пополнения. Попробуйте позже.")
+            handlePurchaseFailure(message: Localized.text("firing.top_up.load_failed"))
             #endif
         }
     }
@@ -678,11 +678,11 @@ extension FiringTopUpBottomSheetViewController {
         applePayButton.isEnabled = true
 
         let alert = UIAlertController(
-            title: "Покупка не выполнена",
-            message: message ?? "Попробуйте ещё раз.",
+            title: Localized.text("firing.alert.purchase_failed.title"),
+            message: message ?? Localized.text("firing.alert.purchase_failed.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 
@@ -737,7 +737,9 @@ extension FiringTopUpBottomSheetViewController {
         let countdown = String(format: "%02d:%02d", minutes, seconds)
         // Caps «Будильник на паузе · MM:SS» per `SPTopUp.jsx:137`.
         let attributed = NSAttributedString(
-            string: "Будильник на паузе · \(countdown)".uppercased(),
+            // `.uppercased()` stays at the call site: the catalogue holds
+            // the sentence, the caps face is presentation.
+            string: Localized.format("firing.top_up.pause", countdown).uppercased(),
             attributes: [
                 .font: AppTypography.caps.monospacedDigit(),
                 .kern: AppTypography.capsKerning,
