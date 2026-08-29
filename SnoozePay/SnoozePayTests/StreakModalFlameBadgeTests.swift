@@ -20,12 +20,29 @@ import XCTest
 /// these tests measure geometry first (does the disc cover the glyph?) and only
 /// then read the contrast off *whatever surface is actually behind the glyph*.
 ///
-/// **The window is load-bearing.** A detached view never receives the
-/// trait-change callback, so both themes measure identical and a theme test
-/// passes against frozen colours. The modal is hosted as a window's
-/// `rootViewController`; because the window is never made visible the override
-/// goes on the CONTROLLER, and every direction is skip-guarded so a harness
-/// that silently fails to flip cannot assert the same theme twice.
+/// **The mounting shape is measured, not assumed.** The harness this file
+/// shipped with hosted the modal in a window that was never unhidden and put
+/// the override on the CONTROLLER, on the theory that a controller override
+/// reaches its own view subtree whether or not the window renders. It does
+/// not: compared side by side in run 33253446187, that arrangement lays out
+/// nothing (`.zero` frames) and leaves the subtree on `.light`. So every
+/// assertion below skipped itself, and this file reported three of its four
+/// cases `skipped` on every run — #516 was pinned by nothing at all (run
+/// 33254160373). An unhidden window with the override on the WINDOW both lays
+/// out and propagates; that is what `StreakModalMoneyHeroThemeTests` already
+/// uses against this same controller, and its flip cases have been executing
+/// all along.
+///
+/// **No `XCTSkip` anywhere in this file, on purpose.** A guard that skips is a
+/// guard that hides: a skip which fires on every run is indistinguishable from
+/// a test that was never written. The harness guards are `XCTFail`, so a
+/// harness that stops laying out or stops propagating the theme fails loudly.
+///
+/// **One layout pass is load-bearing.** #516 is a timing bug — the disc was
+/// sized from `viewDidLayoutSubviews`, which fires before `sheet → stack →
+/// badge` has a size. A second pass would hand that sublayer the size it never
+/// receives in the app and turn this file green against the defect, so
+/// `makeHostedModal` lays out exactly once.
 final class StreakModalFlameBadgeTests: XCTestCase {
 
     /// WCAG 2.1 floor for normal-size text. The flame is a bold 48pt glyph and
@@ -40,7 +57,10 @@ final class StreakModalFlameBadgeTests: XCTestCase {
     private var hostWindows: [UIWindow] = []
 
     override func tearDown() {
-        hostWindows.forEach { $0.rootViewController = nil }
+        hostWindows.forEach {
+            $0.isHidden = true
+            $0.rootViewController = nil
+        }
         hostWindows = []
         super.tearDown()
     }
@@ -151,14 +171,26 @@ final class StreakModalFlameBadgeTests: XCTestCase {
     func testFlameBadgeRamp_reresolvesOnAThemeFlip() throws {
         let (modal, window) = try makeHostedModal(style: .dark)
         let badge = modal.flameBadge
-        let inDark = stops(of: badge)
-        try XCTSkipUnless(!inDark.isEmpty, "the badge installed no gradient stops at all")
 
-        modal.overrideUserInterfaceStyle = .light
+        // The #516 pin, asserted before the flip and after exactly one layout
+        // pass. Without it this case is green on the defect: #516 never
+        // touched the stops, it left the layer carrying them at `.zero`, so a
+        // ramp read alone would call a disc nobody can see correct.
+        let disc = try discRect(ofBadge: badge)
+        XCTAssertEqual(
+            disc, badge.bounds,
+            "the disc measures \(disc.size) inside a \(badge.bounds.size) badge — the "
+            + "stops below would be read off a layer that renders nothing (#516)"
+        )
+
+        let inDark = stops(of: badge)
+        XCTAssertFalse(inDark.isEmpty, "the badge installed no gradient stops at all")
+
+        window.overrideUserInterfaceStyle = .light
         layOut(modal, in: window)
-        try XCTSkipUnless(
-            badge.traitCollection.userInterfaceStyle == .light,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            badge.traitCollection.userInterfaceStyle, .light,
+            "the harness stopped propagating the flip to light — fix the harness, do not skip"
         )
 
         let inLight = stops(of: badge)
@@ -174,11 +206,11 @@ final class StreakModalFlameBadgeTests: XCTestCase {
             "the badge re-tinted to something other than the light money ramp"
         )
 
-        modal.overrideUserInterfaceStyle = .dark
+        window.overrideUserInterfaceStyle = .dark
         layOut(modal, in: window)
-        try XCTSkipUnless(
-            badge.traitCollection.userInterfaceStyle == .dark,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            badge.traitCollection.userInterfaceStyle, .dark,
+            "the harness stopped propagating the flip back to dark — fix the harness, do not skip"
         )
         XCTAssertEqual(stops(of: badge), inDark, "the badge did not return to the dark ramp")
     }
@@ -187,36 +219,51 @@ final class StreakModalFlameBadgeTests: XCTestCase {
 
     private typealias Hosted = (modal: StreakModalViewController, window: UIWindow)
 
+    /// A real modal in a window that actually lays out, themed before it is
+    /// built.
+    ///
+    /// The override goes on the WINDOW and the window is unhidden — the two
+    /// halves the measurement in #565 found necessary. It is set *before*
+    /// `rootViewController`, because `refreshLayerColors()` runs from
+    /// `viewDidLoad`: that way the sheet is built in the theme it is shown in,
+    /// instead of leaning on a later repaint that would hide a missing one.
+    ///
+    /// The guards are `XCTFail`, not `XCTSkip`. A harness that cannot
+    /// reproduce the condition has to say so in red; skipping is how this file
+    /// spent months reporting three cases that never ran.
     private func makeHostedModal(style: UIUserInterfaceStyle) throws -> Hosted {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.overrideUserInterfaceStyle = style
+        window.isHidden = false
         let modal = StreakModalViewController(streakDays: 7, savedAmount: 350)
-        // On the CONTROLLER, not the window: this window is never made
-        // visible, and a controller override propagates into its own view
-        // subtree whether or not the window ever renders.
-        modal.overrideUserInterfaceStyle = style
         window.rootViewController = modal
         hostWindows.append(window)
+
         layOut(modal, in: window)
-        try XCTSkipUnless(
-            modal.flameBadge.traitCollection.userInterfaceStyle == style,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            modal.flameBadge.traitCollection.userInterfaceStyle, style,
+            "the harness stopped propagating the theme — fix the harness, do not skip"
+        )
+        XCTAssertFalse(
+            modal.view.frame.isEmpty,
+            "the harness stopped laying the sheet out — fix the harness, do not skip"
         )
         return (modal, window)
     }
 
-    /// Force a full layout pass down to the badge.
+    /// One full top-down layout pass, and only one.
     ///
-    /// The frame is set explicitly because a window that is never made visible
-    /// is not guaranteed to have sized its root view yet, and a root view at
-    /// `.zero` would leave the badge at `.zero` for reasons that have nothing
-    /// to do with #516.
+    /// The frame is set explicitly because a window that was never made key is
+    /// not guaranteed to have sized its root view, and a root view at `.zero`
+    /// would leave the badge at `.zero` for reasons that have nothing to do
+    /// with #516. Nothing is laid out a second time on purpose: the callback
+    /// #516 lived in runs again on every pass, and by the second one the badge
+    /// has the size it lacked on the first.
     private func layOut(_ modal: StreakModalViewController, in window: UIWindow) {
         modal.loadViewIfNeeded()
         modal.view.frame = window.bounds
         window.setNeedsLayout()
         window.layoutIfNeeded()
-        modal.view.setNeedsLayout()
-        modal.view.layoutIfNeeded()
     }
 
     // MARK: - Reading the rendered badge
@@ -232,6 +279,15 @@ final class StreakModalFlameBadgeTests: XCTestCase {
     private func discRect(of gradient: CAGradientLayer, in badge: UIView) -> CGRect {
         guard gradient !== badge.layer else { return badge.bounds }
         return badge.layer.convert(gradient.bounds, from: gradient)
+    }
+
+    /// The disc as rendered, or a failure — never a skip.
+    private func discRect(ofBadge badge: UIView) throws -> CGRect {
+        let gradient = try XCTUnwrap(
+            gradientLayer(of: badge),
+            "the badge owns no gradient layer at all"
+        )
+        return discRect(of: gradient, in: badge)
     }
 
     private func glyphView(in badge: UIView) -> UIImageView? {
