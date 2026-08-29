@@ -284,7 +284,7 @@ final class SPCard: UIView {
         switch kind {
         case .money: color = AppColors.money500
         case .pain:  color = AppColors.pain500
-        case .warn:  color = AppColors.warn500
+        case .warn:  color = AppColors.warnFill500
         }
         // Explicit resolve, not `.cgColor`: the latter snapshots
         // `UITraitCollection.current`, which is not guaranteed to be this

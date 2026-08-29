@@ -61,17 +61,53 @@ enum AppColors {
     static let pain500 = dynamicColor(dark: 0xF4523F, light: 0x9F3529)
     static let pain600 = dynamicColor(dark: 0xD43A28, light: 0x7E2B21)
 
-    // MARK: - Brand · Warn (snooze affordance / amber CTA)
+    // MARK: - Brand · Warn INK (tones that must out-contrast the PAGE)
     //
-    // Note the light scale is bronze, not amber. `warn500` on a light card is
-    // 1.85:1 — amber simply cannot carry text on a near-white surface at any
-    // step of the existing ramp. Where the design wants amber *as* amber it
-    // stays a FILL with white text (`fgOnWarn`), never text on the background.
+    // The light scale is bronze, not amber: amber on a light card is 1.85:1 and
+    // cannot carry text at any step of the ramp. Since #520 this half of the
+    // warn role is named explicitly — these are the tones whose job is to be
+    // read *against* the surface behind them, i.e. text and borders. Anything
+    // that is itself a surface takes `warnFill*` below.
     static let warn300 = dynamicColor(dark: 0xFFD479, light: 0xBE7B09)
     static let warn400 = dynamicColor(dark: 0xFFB84D, light: 0x966107)
-    /// Default snooze-button amber.
+    /// Warn body-text tone. 6.03:1 on the light raised card, 7.89:1 on the dark one.
     static let warn500 = dynamicColor(dark: 0xF59E0B, light: 0x7C5006)
     static let warn600 = dynamicColor(dark: 0xC97A06, light: 0x634004)
+
+    // MARK: - Brand · Warn FILL (amber SURFACES — the other half of the role)
+    //
+    // `tokens.css` declares the warn ramp once in the base `:root`
+    // (`--sp-warn-500: #F59E0B`) and never overrides it inside
+    // `[data-theme="light"]` (:79-112 redefines bg / fg / stroke / shadow only).
+    // By canon a warn *fill* is therefore amber in BOTH themes, and these
+    // constants are flat rather than `dynamicColor` for that reason.
+    //
+    // Why the split had to happen (#520): the snooze-duration track took the
+    // ink tone, so in light it rendered `#7C5006` against a `money500` `#096647`
+    // thumb — **1.00:1, exactly isoluminant.** Filled and unfilled halves
+    // differed only in hue, and the control read as one smudge. On the canon
+    // amber the same pair measures 3.26:1.
+    //
+    // Which half a call site wants is decided by what the colour has to
+    // out-contrast, not by what it looks like:
+    //
+    //     surface under ink  → warnFill*   track, chip, tile, wash, shadow, gradient
+    //     read against page  → warn*       label text, and BORDERS
+    //
+    // Borders are the counter-intuitive one and stay on the ink scale: the
+    // `SPAlarmBackendBanner` edge #538 bought measures 3.71:1 as bronze over the
+    // light page and would collapse to 1.69:1 as amber. A stroke is ink shaped
+    // like a rectangle.
+    //
+    // Being flat also removes these from the `CGColor`-baking class (#531/#538/
+    // #552/#553): a colour that does not vary by trait has nothing to re-resolve
+    // when the theme flips under a `CAGradientLayer` or a `layer.shadowColor`.
+    /// Lightest stop of `--sp-grad-warn`.
+    static let warnFill300 = UIColor(hex: 0xFFD479)
+    /// Primary warn surface — `--sp-warn-500`. Ink on it is `fgOnWarn` (8.79:1).
+    static let warnFill500 = UIColor(hex: 0xF59E0B)
+    /// Darkest stop of `--sp-grad-warn`.
+    static let warnFill600 = UIColor(hex: 0xC97A06)
 
     // MARK: - Brand · Info
     /// Informational links only — `--sp-info-500` in `tokens.css`.
@@ -142,9 +178,16 @@ enum AppColors {
     static let fgOnMoney = dynamicColor(dark: 0x052016, light: 0xFFFFFF)
     /// Text rendered ON top of `pain500` fills — white in both themes.
     static let fgOnPain = UIColor.white
-    /// Text rendered ON top of `warn500` fills. Same inversion as `fgOnMoney`:
-    /// the light `warn500` is bronze, so it takes white rather than dark ink.
-    static let fgOnWarn = dynamicColor(dark: 0x1A0F00, light: 0xFFFFFF)
+    /// Text rendered ON top of `warnFill*` surfaces — `--sp-fg-on-warn`, which
+    /// `tokens.css` declares once and does not override in light either.
+    ///
+    /// Deliberately NOT an inversion pair like `fgOnMoney`. It used to be, and
+    /// the comment here used to explain that the light `warn500` was bronze and
+    /// so took white ink. That reasoning died with #520: the fill under this ink
+    /// is amber in both themes now, and white on amber is **2.15:1** — the same
+    /// failure the split exists to remove, just moved onto the label. The value
+    /// below measures **8.79:1** on `warnFill500`.
+    static let fgOnWarn = UIColor(hex: 0x1A0F00)
 
     // MARK: - Deep promo fill (referral hero)
     //
@@ -308,8 +351,9 @@ enum AppColors {
     static let destructiveRed = pain500
 
     // MARK: - Button states (legacy)
-    /// Snooze button amber → `warn500`.
-    static let snoozeButton = warn500
+    /// Snooze button amber → `warnFill500`. A button is a surface, so this
+    /// alias follows the fill half of the warn role, not the ink half (#520).
+    static let snoozeButton = warnFill500
     /// Dismiss button green → `money500`.
     static let dismissButton = money500
 

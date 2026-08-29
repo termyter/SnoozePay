@@ -36,21 +36,20 @@ final class SPAlarmBackendBanner: UIView {
     // dense end of the fill, so it remains unusable here and
     // `testWarn300_isBelowTheFloorOnLightFill` keeps measuring it.
     //
-    // The light emphasis used to be `fgOnWarn`, which worked only while that
-    // token was near-black ink. Once the accent scales became theme-aware
-    // (#489) `fgOnWarn` inverted to white — correct for its actual job, text
-    // on a SOLID warn fill, but wrong here: the banner's fill is `warn400` at
-    // 5–14% alpha, i.e. barely tinted background. White on it measures
-    // 1.15:1. The token was being used for the wrong surface, and the light
-    // emphasis now takes a dark warn TONE instead of on-fill ink.
+    // The light emphasis used to be `fgOnWarn`, and that is still wrong here
+    // whichever value the token carries: the banner's fill is `warn400` at
+    // 5–14% alpha, i.e. barely tinted background, and on-fill ink is solved
+    // for a SOLID fill. The light emphasis takes a dark warn TONE instead.
     //
     // Measured contrasts of the values below (sRGB, WCAG 2.1):
     //   dark  — warn300 on fill rgb(41,34,26)     = 11.17:1 / 13.31:1
     //   light — warn600 on fill rgb(231,225,217)  =  7.14:1 /  8.06:1
-    //   light — fgOnWarn on the solid warn500 icon tile = 6.98:1
-    // `warn500` also clears the floor (5.38:1) but `warn600` keeps the
-    // headroom the dark side has — this is the one banner whose entire job is
-    // to be unmissable.
+    //   light — fgOnWarn on the solid `warnFill500` icon tile = 8.79:1
+    // The last number moved with #520: the tile used to be the bronze ink tone
+    // under white ink (6.98:1) and is now the canon amber under `#1A0F00`.
+    // `warn500` also clears the floor as emphasis (5.38:1) but `warn600` keeps
+    // the headroom the dark side has — this is the one banner whose entire job
+    // is to be unmissable.
 
     /// Caps title + CTA colour. Internal (not private) so
     /// `SPAlarmBackendBannerContrastTests` can MEASURE the ratio instead of
@@ -64,7 +63,7 @@ final class SPAlarmBackendBanner: UIView {
     static let iconTileColor = UIColor { trait in
         trait.userInterfaceStyle == .dark
             ? AppColors.warn400.withAlphaComponent(0.18)
-            : AppColors.warn500
+            : AppColors.warnFill500
     }
 
     /// Icon glyph — reads against whichever tile it sits on.
@@ -102,7 +101,10 @@ final class SPAlarmBackendBanner: UIView {
     // in #531 (0.50 / 0.75), so the family keeps one recipe. The TONES are
     // unchanged: dark stays `warn400`, light stays `warn500`, because the
     // light bronze is the saturated end of the scale and gives the louder
-    // banner its headroom.
+    // banner its headroom. #520 split warn into ink and fill and this border
+    // stayed on the INK half on purpose — as `warnFill500` the same 75% stroke
+    // measures 1.69:1 against the page instead of 3.71:1, i.e. it would give
+    // back exactly the edge #538 was opened to buy.
     //
     //     border      warn400@50% / warn500@75%
     //                                          dark 3.50:1   light 3.72:1

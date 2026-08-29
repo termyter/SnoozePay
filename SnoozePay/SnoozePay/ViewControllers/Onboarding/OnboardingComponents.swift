@@ -57,7 +57,10 @@ final class OnboardingPenaltyPill: UIView {
         gradient.endPoint = SPSupport.gradientEnd
         layer.insertSublayer(gradient, at: 0)
         // Warm shadow per JSX `boxShadow: 0 8px 24px rgba(245,158,11,.30)`.
-        layer.shadowColor = AppColors.warn500.cgColor
+        // `warnFill500` is theme-flat, so this bare `.cgColor` has nothing to
+        // re-resolve on a theme flip — the glow was the amber literal in the
+        // JSX in both themes anyway (#520).
+        layer.shadowColor = AppColors.warnFill500.cgColor
         layer.shadowOpacity = 0.30
         layer.shadowOffset = CGSize(width: 0, height: 8)
         layer.shadowRadius = 24

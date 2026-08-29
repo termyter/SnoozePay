@@ -12,8 +12,11 @@ import XCTest
 ///     copy can be white in both — swap a stop for a light surface and the
 ///     white copy disappears.
 ///  2. The friend avatar is a WASH, not a solid fill, so its ink is
-///     `fgOnWarnWash`, not `fgOnWarn`. White on the wash measures ~1.2:1 —
-///     the defect that was fixed in `SPAlarmBackendBanner`.
+///     `fgOnWarnWash`, not `fgOnWarn`. That held when `fgOnWarn` was white
+///     (~1.2:1 on the wash — the defect fixed in `SPAlarmBackendBanner`) and
+///     it still holds now that #520 made it `#1A0F00`: a near-black on a pale
+///     wash is readable but is not a warn treatment, so the light half of the
+///     rule is pinned by identity rather than by contrast.
 final class ReferralScreenContrastTests: XCTestCase {
 
     /// Absorbs sRGB rounding only.
@@ -93,21 +96,35 @@ final class ReferralScreenContrastTests: XCTestCase {
         }
     }
 
-    /// The misuse this pairing exists to prevent: `fgOnWarn` is ink for a
-    /// SOLID `warn500` fill. On the wash it is white-on-tint and unreadable, so it
-    /// must never be the better choice — if it ever is, the wash stopped being
-    /// a wash.
-    func testFgOnWarn_wouldBeWorseThanFgOnWarnWashOnTheWash() {
-        for style in [UIUserInterfaceStyle.light, .dark] {
-            let fill = composite(AppColors.warnWash.resolved(style), over: AppColors.bg1.resolved(style))
-            let wash = contrast(AppColors.fgOnWarnWash.resolved(style), fill)
-            let solid = contrast(AppColors.fgOnWarn.resolved(style), fill)
-            XCTAssertGreaterThan(
-                wash, solid,
-                "fgOnWarn beats fgOnWarnWash on the wash in \(style == .light ? "light" : "dark") — "
-                + "the wash recipe no longer matches its ink"
-            )
-        }
+    /// The misuse this pairing exists to prevent: `fgOnWarn` is ink for a SOLID
+    /// warn fill and does not belong on a wash.
+    ///
+    /// Measured only in DARK, and the reason is worth writing down. This test
+    /// used to run both themes and assert `fgOnWarnWash` beats `fgOnWarn`,
+    /// which held while `fgOnWarn` was white: white on the pale light wash is
+    /// 1.35:1. Since #520 `fgOnWarn` is `#1A0F00` in both themes, and near-black
+    /// on a pale wash measures 13.97:1 — it *beats* the wash ink (6.86:1)
+    /// without being correct, because on a light wash it is no longer warn ink
+    /// at all, just `fg1` under another name. Contrast stopped being able to
+    /// tell the two apart in light, so the light half is pinned by identity
+    /// below instead of by a ratio. The dark arithmetic is unchanged.
+    func testFgOnWarn_wouldBeWorseThanFgOnWarnWashOnTheDarkWash() {
+        let fill = composite(AppColors.warnWash.resolved(.dark), over: AppColors.bg1.resolved(.dark))
+        let wash = contrast(AppColors.fgOnWarnWash.resolved(.dark), fill)
+        let solid = contrast(AppColors.fgOnWarn.resolved(.dark), fill)
+        XCTAssertGreaterThan(
+            wash, solid,
+            "fgOnWarn beats fgOnWarnWash on the dark wash — the wash recipe no longer matches its ink"
+        )
+    }
+
+    /// The light half of the pairing above: the wash ink must stay a warn TONE
+    /// rather than collapse onto the on-fill ink. This is what stops a future
+    /// "both are dark now, use one token" cleanup from putting `#1A0F00` on a
+    /// wash and calling it a warn treatment.
+    func testFgOnWarnWash_staysAWarnToneAndNotTheOnFillInk() {
+        XCTAssertEqual(hex(AppColors.fgOnWarnWash.resolved(.light)), hex(AppColors.warn600.resolved(.light)))
+        XCTAssertNotEqual(hex(AppColors.fgOnWarnWash.resolved(.light)), hex(AppColors.fgOnWarn.resolved(.light)))
     }
 
     /// The dark theme keeps the recipe the prototype shipped: `warn600` at

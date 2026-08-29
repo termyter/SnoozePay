@@ -157,7 +157,7 @@ final class SPPill: UIView {
             bg = AppColors.pain500.withAlphaComponent(0.16)
             fg = AppColors.pain300
         case .warn:
-            bg = AppColors.warn500.withAlphaComponent(0.18)
+            bg = AppColors.warnFill500.withAlphaComponent(0.18)
             fg = AppColors.warn300
         }
         backgroundColor = bg

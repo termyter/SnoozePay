@@ -31,7 +31,9 @@ import XCTest
 /// measure identical — the theme test would then pass against frozen colours.
 /// The badge is a plain view, so the override goes on the WINDOW, and both
 /// directions are skip-guarded so a harness that silently fails to flip cannot
-/// assert the same theme twice.
+/// assert the same theme twice. Since #520 the warn ramp itself no longer
+/// differs per theme, so "both themes measure identical" stopped being a signal
+/// *here* — see the theme test's own doc comment.
 final class StatisticsFlameBadgeTests: XCTestCase {
 
     /// A deliberately different size to lay the badge out at — stands in for
@@ -101,10 +103,19 @@ final class StatisticsFlameBadgeTests: XCTestCase {
     // MARK: - Surviving a theme flip
 
     /// `CAGradientLayer.colors` holds plain `CGColor`, which never re-resolves
-    /// itself. The badge has to re-apply the ramp from its trait-change
-    /// registration — and land on the ramp the design system defines for the
-    /// new theme, not merely on something different.
-    func testFlameBadgeRamp_reresolvesOnAThemeFlip() throws {
+    /// itself. The badge has to land on the ramp the design system defines,
+    /// through a flip in both directions.
+    ///
+    /// **This test got weaker in #520 and it is worth knowing why.** It used to
+    /// assert `inDark != inLight`, which was the whole point: a frozen ramp is
+    /// observable exactly when the correct ramps differ. Splitting warn into ink
+    /// and fill made the fill ramp the canon amber in BOTH themes, so this
+    /// badge's stops are now legitimately identical and there is nothing left
+    /// here to freeze. The flip assertions below are kept — they still catch a
+    /// badge that re-tints to the *wrong* thing — but the CGColor-baking class
+    /// itself is now measured by the money/pain cases in
+    /// `SPCardGradientThemeTests`, not here.
+    func testFlameBadgeRamp_staysOnTheDesignSystemRampAcrossAFlip() throws {
         let (badge, window) = makeHostedBadge(style: .dark)
         try XCTSkipUnless(
             badge.traitCollection.userInterfaceStyle == .dark,
@@ -121,12 +132,14 @@ final class StatisticsFlameBadgeTests: XCTestCase {
             "window override did not propagate — a harness fact, not a component one"
         )
 
-        let inLight = stops(of: badge)
-        XCTAssertNotEqual(
-            inDark, inLight,
-            "the badge kept its dark stops after the flip — a CGColor in "
-            + "CAGradientLayer.colors never re-resolves itself"
+        XCTAssertEqual(
+            inDark,
+            SPSupport.warnGradientColors(for: UITraitCollection(userInterfaceStyle: .dark))
+                .map { hex($0) },
+            "the badge built itself off something other than the dark warn ramp"
         )
+
+        let inLight = stops(of: badge)
         XCTAssertEqual(
             inLight,
             SPSupport.warnGradientColors(for: UITraitCollection(userInterfaceStyle: .light))
