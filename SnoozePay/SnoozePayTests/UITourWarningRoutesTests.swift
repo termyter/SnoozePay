@@ -93,7 +93,7 @@ final class UITourWarningRoutesTests: XCTestCase {
     /// The presentation shape itself, asserted without waiting: a `.large`
     /// pageSheet, same as `StatisticsViewController` builds.
     func testAlarmOffWarningSheet_matchesTheProductionPresentation() {
-        let sheet = UITourLauncher.makeAlarmOffWarningSheet()
+        let sheet = UITourRoutes.makeAlarmOffWarningSheet()
 
         XCTAssertEqual(sheet.modalPresentationStyle, .pageSheet)
         // `Detent` instances compare by identity, so match on the identifier.
