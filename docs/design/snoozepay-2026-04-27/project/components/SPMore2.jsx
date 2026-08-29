@@ -143,7 +143,7 @@ function AlarmEdit() {
           <input
             value={name}
             onChange={(e)=>setName(e.target.value)}
-            placeholder="Название"
+            placeholder="Название · напр. Будни"
             style={{
               width: "100%", border: 0, outline: "none", background: "transparent",
               color: "var(--sp-fg-1)", caretColor: "var(--sp-warn-400)",
@@ -176,6 +176,18 @@ function AlarmEdit() {
               );
             })}
           </div>
+
+          {/* ПОВТОР — сегмент «Никогда / Еженедельно» + подсказка (#229). */}
+          <div style={{ marginTop: 16, textAlign: "left" }}>
+            <div className="sp-caps" style={{ color: "var(--sp-fg-3)", marginBottom: 8 }}>Повтор</div>
+            <SPSegmented
+              options={[{value:"never",label:"Никогда"},{value:"weekly",label:"Еженедельно"}]}
+              value="weekly" onChange={()=>{}}
+            />
+            <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 8, textAlign: "center" }}>
+              Будет повторяться каждую неделю по выбранным дням.
+            </div>
+          </div>
         </div>
 
         <div style={{ padding: "24px 20px 0", flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -206,14 +218,69 @@ function AlarmEdit() {
             </div>
           </SPCard>
 
+          {/* Ровно три строки: Звук · Тема · Вибрация. «Цена откладывания» и
+              «Прогрессив» из этой карточки вынесены в собственные карточки
+              ниже — как на Create (#231). */}
           <SPCard padding={4} radius={20}>
-            <SPRow leading={<IconCoin size={20} style={{color:"var(--sp-warn-400)"}}/>} title="Цена откладывания" trailing={<><span style={{font:"var(--sp-t-money-md)", color:"var(--sp-warn-400)"}}>50 ₽</span><IconChevR size={16}/></>}/>
-            <SPRow leading={<IconFlame size={20} style={{color:"var(--sp-pain-400)"}}/>} title="Прогрессив" subtitle="50 → 100 → 200 → 400" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
             <SPRow leading={<IconSound size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Звук" trailing={<><span className="sp-meta">Soft Dawn</span><IconChevR size={16}/></>}/>
-            <SPRow divider={false} leading={<IconBell size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Тема" trailing={<><span className="sp-meta">Dawn</span><IconChevR size={16}/></>}/>
+            <SPRow
+              leading={<div style={{ width: 28, height: 28, borderRadius: 8, overflow: "hidden",
+                background: "linear-gradient(135deg, #2B1A0E 0%, #6B3517 50%, #C46A1A 100%)" }}/>}
+              title="Тема" trailing={<><span className="sp-meta">Рассвет</span><IconChevR size={16}/></>}/>
+            <SPRow divider={false} leading={<IconBell size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Вибрация" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
           </SPCard>
+
+          {/* Цена откладывания — свободный ввод + пресеты, как на Create. */}
+          <SPCard padding={20} radius={20}>
+            <div className="sp-caps" style={{ color: "var(--sp-fg-3)" }}>Цена откладывания</div>
+            <div className="sp-meta" style={{ color: "var(--sp-fg-3)", marginTop: 2 }}>Сколько спишется при «отложить»</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, margin: "12px 0" }}>
+              <span style={{ font: "700 32px/36px var(--sp-font-mono)", color: "var(--sp-warn-400)", fontVariantNumeric: "tabular-nums" }}>50</span>
+              <span style={{ font: "700 32px/36px var(--sp-font-mono)", color: "var(--sp-warn-400)" }}>₽</span>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {[20, 50, 100, 200, 500].map(v => (
+                <button key={v} style={{
+                  flex: 1, height: 40, borderRadius: 12, border: 0, cursor: "pointer",
+                  background: v === 50 ? "var(--sp-grad-warn)" : "var(--sp-white-06)",
+                  color: v === 50 ? "var(--sp-fg-on-warn)" : "var(--sp-fg-2)",
+                  font: "var(--sp-t-button-sm)", fontFamily: "var(--sp-font-mono)",
+                }}>{v}</button>
+              ))}
+            </div>
+          </SPCard>
+
+          {/* Прогрессив — отдельная карточка с pain-подсветкой при включении. */}
+          <SPCard padding={20} radius={20}
+            style={{ background: "linear-gradient(135deg, rgba(244,82,63,.10), rgba(244,82,63,.02))", border: "1px solid rgba(244,82,63,.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <IconFlame size={18} style={{ color: "var(--sp-pain-400)" }}/>
+                  <div className="sp-h4">Прогрессивный режим</div>
+                </div>
+                <div className="sp-meta" style={{ marginTop: 6, color: "var(--sp-fg-3)" }}>
+                  Каждое откладывание — в 2 раза дороже.
+                </div>
+                <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", fontFamily: "var(--sp-font-mono)" }}>
+                  <span style={{ color: "var(--sp-warn-400)", fontSize: 14 }}>50</span>
+                  <span style={{ color: "var(--sp-fg-4)" }}>→</span>
+                  <span style={{ color: "var(--sp-warn-400)", fontSize: 14 }}>100</span>
+                  <span style={{ color: "var(--sp-fg-4)" }}>→</span>
+                  <span style={{ color: "var(--sp-pain-400)", fontSize: 14 }}>200</span>
+                  <span style={{ color: "var(--sp-fg-4)" }}>→</span>
+                  <span style={{ color: "var(--sp-pain-400)", fontSize: 16, fontWeight: 700 }}>400 ₽</span>
+                </div>
+              </div>
+              <SPSwitch checked={true} onChange={()=>{}}/>
+            </div>
+          </SPCard>
+        </div>
+
+        {/* Удаление — красная кнопка в ФИКСИРОВАННОМ футере (0/16/24), не в
+            скролле: форма прокручивается под ней (#231). */}
+        <div style={{ padding: "0 16px 24px", flexShrink: 0 }}>
           <SPButton variant="pain" size="lg" full>Удалить будильник</SPButton>
-          <div style={{ height: 16 }}/>
         </div>
       </div>
     </div>
