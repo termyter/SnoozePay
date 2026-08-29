@@ -1,6 +1,6 @@
 import UIKit
 
-/// "ЭТА НЕДЕЛЯ" money chart (#348, `SPMore4.jsx` `Stats()`, artboard
+/// «ЭТА НЕДЕЛЯ» money chart (#348, `SPMore4.jsx` `Stats()`, artboard
 /// `27-stats`). Seven Monday-first columns; each stacks the day's lost
 /// roubles on top (pain gradient) and the saved roubles below (money
 /// gradient), with the weekday caption underneath.

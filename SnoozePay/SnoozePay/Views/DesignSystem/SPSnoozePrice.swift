@@ -3,7 +3,7 @@ import UIKit
 /// Big snooze CTA — `.sp-snooze` in `components.css`.
 ///
 /// Visual hierarchy: the price is the dominant element (32pt mono bold),
-/// with a small caps top label (a 14pt clock glyph + "Спать ещё 5 мин")
+/// with a small caps top label (a 14pt clock glyph + «Спать ещё 5 мин»)
 /// and an optional hint meta line. Tone selects between the warn (default
 /// snooze price) and pain (progressive / expensive snooze) gradients.
 ///
@@ -74,7 +74,7 @@ final class SPSnoozePrice: UIControl {
     ///   - minutes: Snooze duration, displayed in the caps line. Defaults
     ///     to 5 (the standard SnoozePay window).
     ///   - tone: `.warn` or `.pain`.
-    ///   - hint: Optional secondary line ("Уже 3-я задержка" etc).
+    ///   - hint: Optional secondary line («Уже 3-я задержка» etc).
     ///   - onTap: Tap callback.
     init(
         price: Decimal,
@@ -148,7 +148,7 @@ final class SPSnoozePrice: UIControl {
         } else {
             hintLabel.isHidden = true
         }
-        accessibilityLabel = "Отложить на \(self.minutes) минут"
+        accessibilityLabel = Localized.format("firing.snooze.accessibility", self.minutes)
         accessibilityValue = MoneyFormatter.string(price)
     }
 
@@ -183,7 +183,7 @@ final class SPSnoozePrice: UIControl {
             result.append(NSAttributedString(string: "  "))
         }
         result.append(NSAttributedString(
-            string: "Спать ещё \(minutes) мин".uppercased(),
+            string: Localized.format("firing.snooze.caps", minutes).uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: 12 * 0.14,

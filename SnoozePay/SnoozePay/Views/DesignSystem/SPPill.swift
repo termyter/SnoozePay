@@ -6,7 +6,7 @@ import UIKit
 /// optional leading icon and the label. Tones set both the background fill and
 /// the foreground text — a low-alpha brand tint for `.neutral` / `.money` /
 /// `.pain`, and since #580 a SOLID amber for `.warn` (see `palette(for:)`).
-/// Use for status flags ("Активный", "Популярно", "Списано"), not for tap
+/// Use for status flags («Активный», «Популярно», «Списано»), not for tap
 /// targets — tap targets belong on `SPButton(size: .sm)` so they hit the 44pt
 /// minimum.
 final class SPPill: UIView {
@@ -93,7 +93,7 @@ final class SPPill: UIView {
 
     /// Update the pill's caps label in place. Used by callers that re-title
     /// a long-lived pill instance (e.g. the progressive-snooze indicator on
-    /// the firing screen counts up "1-е откладывание" → "2-е откладывание" → ...).
+    /// the firing screen counts up «1-е откладывание» → «2-е откладывание» → ...).
     func setText(_ text: String) {
         // `.sp-pill` uses the bold 12pt caps font with the default caps
         // tracking (`.12em` per `tokens.css` `--sp-t-caps` / `.sp-caps`) and
