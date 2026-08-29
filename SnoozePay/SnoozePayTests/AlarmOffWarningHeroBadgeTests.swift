@@ -37,8 +37,30 @@ import XCTest
 /// - The window is load-bearing. A detached controller never receives the
 ///   trait-change callback, keeps its `viewDidLoad`-time resolution, and both
 ///   themes measure identical — the theme test would then pass against frozen
-///   colours. Every flip is skip-guarded so a harness that silently fails to
-///   flip cannot assert the same theme twice.
+///   colours.
+///
+/// **The mounting shape is measured, not assumed (#568).** This file shipped
+/// with a window that was never unhidden and the override on the CONTROLLER,
+/// on the theory that a controller override reaches its own subtree whether or
+/// not the window renders. It does not — the same arrangement was compared side
+/// by side in #565 and it neither lays out nor propagates. So the harness guard
+/// fired on every run and **all four cases here reported `skipped`**: from the
+/// day it was written (#540) this file pinned #536 with nothing at all. An
+/// unhidden window with the override on the WINDOW, set *before*
+/// `rootViewController` so `refreshHeroTheme()` runs from `viewDidLoad` in the
+/// theme under test, both lays out and propagates.
+///
+/// **No `XCTSkip` anywhere in this file, on purpose.** A skip that fires on
+/// every run is indistinguishable from a test nobody wrote, with the added cost
+/// that it looks written. Harness guards are `XCTFail`, so a harness that stops
+/// laying out or stops propagating fails loudly instead of hiding.
+///
+/// **One layout pass per theme state.** The defect's frame assignment came from
+/// a `DispatchQueue.main.async` hop, so extra synchronous passes cannot revive
+/// it here — but a pass driven from the badge downwards is exactly the shape
+/// that hands a stale sublayer a size it never gets in the app (the trap #565
+/// walked into), so every pass is driven top-down from the window and only
+/// once.
 final class AlarmOffWarningHeroBadgeTests: XCTestCase {
 
     /// iPhone 15 Pro portrait — the reference frame the other layout suites in
@@ -55,7 +77,10 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
     private var hostWindows: [UIWindow] = []
 
     override func tearDown() {
-        hostWindows.forEach { $0.rootViewController = nil }
+        hostWindows.forEach {
+            $0.isHidden = true
+            $0.rootViewController = nil
+        }
         hostWindows = []
         super.tearDown()
     }
@@ -72,7 +97,7 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
     /// Written against "a gradient layer, wherever it lives" so it keeps
     /// measuring the defect rather than the shape of the fix.
     func testHeroBadgeFill_tracksTheBadgeAfterAResize() throws {
-        let (sut, window) = try makeHostedSheet(style: .dark)
+        let (sut, window) = makeHostedSheet(style: .dark)
         let badge: UIView = sut.heroBadge
 
         // The initial pass — the one case the old async hop covered on device.
@@ -87,7 +112,7 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
             "the fill does not cover the badge even on the first layout pass"
         )
 
-        resize(badge, of: sut, in: window, to: resizedSide)
+        resize(badge, in: window, to: resizedSide)
 
         XCTAssertEqual(
             badge.bounds.size,
@@ -128,7 +153,7 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
     /// measure `.zero` here.
     func testHeroBadgeFill_isSizedAndCoversTheGlyph_inBothThemes() throws {
         for style in [UIUserInterfaceStyle.dark, .light] {
-            let (sut, _) = try makeHostedSheet(style: style)
+            let (sut, _) = makeHostedSheet(style: style)
             let badge: UIView = sut.heroBadge
 
             let gradient = try XCTUnwrap(
@@ -160,13 +185,25 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
     /// registration — and land on the ramp the design system defines for the
     /// new theme, not merely on something different.
     func testHeroBadgeRamp_reresolvesOnAThemeFlip() throws {
-        let (sut, window) = try makeHostedSheet(style: .dark)
+        let (sut, window) = makeHostedSheet(style: .dark)
         let badge: UIView = sut.heroBadge
 
-        let inDark = stops(of: badge)
-        try XCTSkipUnless(!inDark.isEmpty, "the badge installed no gradient stops at all")
+        // The #536 pin, asserted before any stop is read. Without it this case
+        // is green on the defect: #536 never touched the stops, it left the
+        // layer carrying them at a size nobody can see, so a ramp read alone
+        // would call an invisible badge correctly themed. This is the exact
+        // hole found in the sibling file in #565.
+        let disc = try discRect(ofBadge: badge)
+        XCTAssertEqual(
+            disc, badge.bounds,
+            "the fill measures \(disc.size) inside a \(badge.bounds.size) badge — the stops "
+            + "below would be read off a layer that paints nothing (#536)"
+        )
 
-        try flip(sut, in: window, to: .light)
+        let inDark = stops(of: badge)
+        XCTAssertFalse(inDark.isEmpty, "the badge installed no gradient stops at all")
+
+        flip(sut, in: window, to: .light)
         let inLight = stops(of: badge)
         XCTAssertNotEqual(
             inDark, inLight,
@@ -180,7 +217,7 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
             "the badge re-tinted to something other than the light pain ramp"
         )
 
-        try flip(sut, in: window, to: .dark)
+        flip(sut, in: window, to: .dark)
         XCTAssertEqual(stops(of: badge), inDark, "the badge did not return to the dark ramp")
     }
 
@@ -188,11 +225,11 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
     /// it is re-resolved by the same callback. Pinned separately so a fix that
     /// re-applies only the gradient does not read as complete.
     func testHeroBadgeShadow_reresolvesOnAThemeFlip() throws {
-        let (sut, window) = try makeHostedSheet(style: .dark)
+        let (sut, window) = makeHostedSheet(style: .dark)
         let badge: UIView = sut.heroBadge
 
         let inDark = try XCTUnwrap(badge.layer.shadowColor, "the badge carries no shadow colour")
-        try flip(sut, in: window, to: .light)
+        flip(sut, in: window, to: .light)
 
         let inLight = try XCTUnwrap(badge.layer.shadowColor, "the badge lost its shadow colour")
         XCTAssertEqual(
@@ -211,48 +248,64 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
 
     private typealias Hosted = (sut: AlarmOffWarningViewController, window: UIWindow)
 
-    /// The sheet mounted in a sized window, laid out down to the badge.
-    private func makeHostedSheet(style: UIUserInterfaceStyle) throws -> Hosted {
+    /// The sheet mounted in a window that actually lays out, themed before it
+    /// is built.
+    ///
+    /// The override goes on the WINDOW and the window is unhidden — the two
+    /// halves #565 measured to be necessary. It is set *before*
+    /// `rootViewController` because `refreshHeroTheme()` runs from
+    /// `viewDidLoad`: the badge is then painted in the theme it is asserted in
+    /// rather than leaning on a later repaint, which is what the flip cases
+    /// below exist to check separately.
+    ///
+    /// The guards are `XCTFail`, not `XCTSkip`: a harness that cannot reproduce
+    /// the condition has to say so in red.
+    private func makeHostedSheet(style: UIUserInterfaceStyle) -> Hosted {
         let window = UIWindow(frame: CGRect(origin: .zero, size: referenceSize))
+        window.overrideUserInterfaceStyle = style
+        window.isHidden = false
         let sut = AlarmOffWarningViewController()
-        // On the CONTROLLER, not the window: this window is never made visible,
-        // and a controller override propagates into its own view subtree
-        // whether or not the window ever renders.
-        sut.overrideUserInterfaceStyle = style
         window.rootViewController = sut
         hostWindows.append(window)
+
         layOut(sut, in: window)
-        try XCTSkipUnless(
-            sut.heroBadge.traitCollection.userInterfaceStyle == style,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            sut.heroBadge.traitCollection.userInterfaceStyle, style,
+            "the harness stopped propagating the theme to the badge — fix the harness, "
+            + "do not skip"
+        )
+        XCTAssertFalse(
+            sut.view.frame.isEmpty,
+            "the harness stopped laying the sheet out — fix the harness, do not skip"
         )
         return (sut, window)
     }
 
-    /// Force a full layout pass down to the badge.
+    /// One full top-down layout pass, and only one.
     ///
-    /// The frame is set explicitly because a window that is never made visible
-    /// is not guaranteed to have sized its root view yet, and a root view at
+    /// The frame is set explicitly because a window that was never made key is
+    /// not guaranteed to have sized its root view yet, and a root view at
     /// `.zero` would leave the badge at `.zero` for reasons unrelated to #536.
+    /// Nothing is laid out a second time from the badge's own end: that is the
+    /// pass which hands a stale sublayer a size it never receives in the app.
     private func layOut(_ sut: UIViewController, in window: UIWindow) {
         sut.loadViewIfNeeded()
         sut.view.frame = window.bounds
         window.setNeedsLayout()
         window.layoutIfNeeded()
-        sut.view.setNeedsLayout()
-        sut.view.layoutIfNeeded()
     }
 
     private func flip(
         _ sut: AlarmOffWarningViewController,
         in window: UIWindow,
         to style: UIUserInterfaceStyle
-    ) throws {
-        sut.overrideUserInterfaceStyle = style
+    ) {
+        window.overrideUserInterfaceStyle = style
         layOut(sut, in: window)
-        try XCTSkipUnless(
-            sut.heroBadge.traitCollection.userInterfaceStyle == style,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            sut.heroBadge.traitCollection.userInterfaceStyle, style,
+            "the harness stopped propagating the flip to \(style.name) — fix the harness, "
+            + "do not skip"
         )
     }
 
@@ -261,12 +314,7 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
     /// The 80×80 constraints the badge owns are dropped rather than overridden:
     /// they are required, and a second required constraint of a different
     /// constant resolves arbitrarily.
-    private func resize(
-        _ badge: UIView,
-        of sut: UIViewController,
-        in window: UIWindow,
-        to side: CGFloat
-    ) {
+    private func resize(_ badge: UIView, in window: UIWindow, to side: CGFloat) {
         let fixedSize = badge.constraints.filter {
             ($0.firstAttribute == .width || $0.firstAttribute == .height) && $0.secondItem == nil
         }
@@ -275,12 +323,12 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
             badge.widthAnchor.constraint(equalToConstant: side),
             badge.heightAnchor.constraint(equalToConstant: side)
         ])
+        // Top-down from the window, once. Laying the badge out from its own end
+        // afterwards is the pass that could hand a stale sublayer the size it
+        // never receives in the app, which is how a file goes green on the
+        // defect it was written for.
         window.setNeedsLayout()
         window.layoutIfNeeded()
-        sut.view.setNeedsLayout()
-        sut.view.layoutIfNeeded()
-        badge.setNeedsLayout()
-        badge.layoutIfNeeded()
     }
 
     // MARK: - Reading the rendered badge
@@ -301,6 +349,16 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
     private func fillRect(of gradient: CAGradientLayer, in badge: UIView) -> CGRect {
         guard gradient !== badge.layer else { return badge.bounds }
         return badge.layer.convert(gradient.bounds, from: gradient)
+    }
+
+    /// The painted rect of whatever gradient the badge owns, or a failure —
+    /// never a skip.
+    private func discRect(ofBadge badge: UIView) throws -> CGRect {
+        let gradient = try XCTUnwrap(
+            gradientLayer(of: badge),
+            "the badge owns no gradient layer at all"
+        )
+        return fillRect(of: gradient, in: badge)
     }
 
     private func glyphView(in badge: UIView) -> UIImageView? {
