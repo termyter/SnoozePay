@@ -14,13 +14,13 @@ import UIKit
 ///  ── 1pt whiteOverlay06 hairline ──
 /// ```
 ///
-/// Replaces the legacy big-balance-card + amber "БАЛАНС ПОЧТИ ПУСТ" banner —
+/// Replaces the legacy big-balance-card + amber «БАЛАНС ПОЧТИ ПУСТ» banner —
 /// the urgency is now folded directly into the pill: when balance drops below
 /// `SPAlarmsListHeader.lowBalanceThreshold` the pill switches its background
 /// to a soft warn tint + warn-stroke and the hint copy reflects the warning.
 /// At exactly 0 ₽ the pill escalates further into the pain (zero-balance)
 /// variant — red stroke, reddish gradient wash, crossed-out coin tile and an
-/// amount in the pain-wash ink (#232); the "Пополнить" CTA stays money-green
+/// amount in the pain-wash ink (#232); the «Пополнить» CTA stays money-green
 /// throughout.
 ///
 /// Both tinted tones ink their text with the `fgOn*Wash` pair rather than the
@@ -34,7 +34,7 @@ final class SPAlarmsListHeader: UIView {
 
     // MARK: - Public API
 
-    /// Triggered when the user taps the "Пополнить" pill on the balance
+    /// Triggered when the user taps the «Пополнить» pill on the balance
     /// card. Kept named the same as the legacy header so the controller
     /// wiring doesn't need to change.
     var onBalanceTopUpTap: (() -> Void)?
@@ -52,7 +52,7 @@ final class SPAlarmsListHeader: UIView {
 
     /// Kept for binary-compatibility with the legacy header — the V2
     /// pill folds the warning state into itself, so this callback now
-    /// routes through the same "Пополнить" tap path.
+    /// routes through the same «Пополнить» tap path.
     var onWarnTopUpTap: (() -> Void)?
 
     /// Update the balance pill in place. The pill auto-switches between
@@ -127,7 +127,7 @@ final class SPAlarmsListHeader: UIView {
         label.font = AppTypography.h1
         label.textColor = AppColors.fg1
         label.attributedText = NSAttributedString(
-            string: "Будильники",
+            string: Localized.text("alarms.title"),
             attributes: [
                 .font: AppTypography.h1,
                 // Full `letterSpacing: -.02em` per SPScreensV2.jsx L315 — the
@@ -265,7 +265,7 @@ final class SPAlarmsListHeader: UIView {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.attributedText = NSAttributedString(
-            string: "БАЛАНС",
+            string: Localized.text("common.caps.balance"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -307,7 +307,7 @@ final class SPAlarmsListHeader: UIView {
     }()
 
     private let topUpButton = SPButton(
-        title: "Пополнить",
+        title: Localized.text("common.button.top_up"),
         variant: .money,
         size: .sm
     )
@@ -489,7 +489,7 @@ final class SPAlarmsListHeader: UIView {
             topUpButton.trailingAnchor.constraint(equalTo: pillButton.trailingAnchor, constant: -AppSpacing.sp3),
             topUpButton.centerYAnchor.constraint(equalTo: pillButton.centerYAnchor),
 
-            // Balance value row — baseline-aligned caps "БАЛАНС" + amount.
+            // Balance value row — baseline-aligned caps «БАЛАНС» + amount.
             balanceCapsLabel.leadingAnchor.constraint(
                 equalTo: walletIconHost.trailingAnchor,
                 constant: AppSpacing.sp3
@@ -536,7 +536,7 @@ final class SPAlarmsListHeader: UIView {
     /// stroke), warn (warn500@12% + warn500@45% stroke) and zero-balance
     /// pain (pain gradient wash + pain500@30% stroke + IconCoinOff tile,
     /// #232) variants. The hint colour also shifts so the state stays
-    /// legible at a glance without an extra banner row. The "Пополнить"
+    /// legible at a glance without an extra banner row. The «Пополнить»
     /// CTA keeps its money variant in every tone — topping up is a
     /// positive action even when the wallet is empty.
     private func applyTone(_ tone: PillTone) {
@@ -651,7 +651,7 @@ final class SPAlarmsListHeader: UIView {
 
     @objc private func pillTapped() {
         // Tapping the body of the pill (anywhere except the explicit
-        // "Пополнить" CTA) is a shortcut to the same destination — keeps
+        // «Пополнить» CTA) is a shortcut to the same destination — keeps
         // the surface "all top-up" instead of forcing the user to hit a
         // small button.
         onBalanceTopUpTap?()

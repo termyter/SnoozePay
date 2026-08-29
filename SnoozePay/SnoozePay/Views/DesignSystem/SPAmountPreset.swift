@@ -6,7 +6,7 @@ import UIKit
 /// (700 18pt mono per `.sp-preset__value`) and an optional secondary label
 /// (`meta` 13pt). When `selected` is true the border switches to `money400`,
 /// the fill takes a 10% money tint, and a 4pt outer glow ring renders. A
-/// "Популярно" badge floats above the top edge when `popular` is true.
+/// «Популярно» badge floats above the top edge when `popular` is true.
 ///
 /// Light theme: `bg1` is pure white and the page under the tile is `bg0`
 /// (`#F4F6FB`) — about 4% of luminance apart. The hairline alone reads as a
@@ -100,9 +100,9 @@ final class SPAmountPreset: UIControl {
 
     /// - Parameters:
     ///   - value: Top-up amount (rendered with `formattedRubles()`).
-    ///   - label: Optional second line ("Бонус 5%", "Минимум", ...).
+    ///   - label: Optional second line («Бонус 5%», «Минимум», ...).
     ///   - selected: Initial selection state.
-    ///   - popular: Show the "Популярно" badge above the top edge.
+    ///   - popular: Show the «Популярно» badge above the top edge.
     ///   - onTap: Tap callback.
     init(
         value: Decimal,
@@ -203,8 +203,8 @@ final class SPAmountPreset: UIControl {
         labelView.font = AppTypography.meta
         labelView.textColor = AppColors.fg3
         labelView.textAlignment = .center
-        // The "≈ N откладываний" hint is too wide for a 3-column tile (it
-        // truncated to "≈ 1 откладыва…"). Keep it on a single line and shrink
+        // The «≈ N откладываний» hint is too wide for a 3-column tile (it
+        // truncated to «≈ 1 откладыва…»). Keep it on a single line and shrink
         // the font as a backstop so the full word is always visible regardless
         // of count/plural form. `adjustsFontSizeToFitWidth` is honoured only for
         // single-line labels — pairing it with numberOfLines=2 silently disabled
@@ -249,7 +249,7 @@ final class SPAmountPreset: UIControl {
     private func configurePopularBadge() {
         popularBadge.translatesAutoresizingMaskIntoConstraints = false
         popularBadge.attributedText = NSAttributedString(
-            string: "Популярно",
+            string: Localized.text("deposit.preset.popular"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,

@@ -55,7 +55,7 @@ final class SPStatsEmptyState: UIView {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Пока нечего считать"
+        label.text = Localized.text("statistics.empty.title")
         label.font = AppTypography.h2
         label.textColor = AppColors.fg1
         label.textAlignment = .center
@@ -66,7 +66,7 @@ final class SPStatsEmptyState: UIView {
     private let subtitleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Статистика появится после первой недели использования."
+        label.text = Localized.text("statistics.empty.body")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg2
         label.textAlignment = .center
@@ -74,7 +74,7 @@ final class SPStatsEmptyState: UIView {
         return label
     }()
 
-    /// Money-tinted pill: flame icon + "Серия · N дня".
+    /// Money-tinted pill: flame icon + «Серия · N дня».
     private let streakChip = UIView()
     private let streakChipLabel: UILabel = {
         let label = UILabel()
@@ -103,7 +103,7 @@ final class SPStatsEmptyState: UIView {
         let word = StreakModalViewController.dayWord(for: days)
         // Canonical term is «Серия», not the «Стрик» anglicism (#318) — the
         // hero card of this same screen already reads «Серия».
-        streakChipLabel.text = "Серия · \(days) \(word)"
+        streakChipLabel.text = Localized.format("statistics.empty.streak_chip", days, word)
         // Hide the chip entirely when there is no streak to celebrate.
         streakChip.isHidden = days <= 0
     }
@@ -112,7 +112,7 @@ final class SPStatsEmptyState: UIView {
     /// readable. This keeps an incomplete history distinct from a genuinely
     /// new account and prevents a false clean streak.
     func setUnavailable(_ message: String) {
-        titleLabel.text = "Статистика недоступна"
+        titleLabel.text = Localized.text("statistics.empty.unavailable_title")
         subtitleLabel.text = message
         iconView.image = UIImage(
             systemName: "exclamationmark.triangle",
@@ -123,8 +123,8 @@ final class SPStatsEmptyState: UIView {
     }
 
     private func restoreEmptyAppearance() {
-        titleLabel.text = "Пока нечего считать"
-        subtitleLabel.text = "Статистика появится после первой недели использования."
+        titleLabel.text = Localized.text("statistics.empty.title")
+        subtitleLabel.text = Localized.text("statistics.empty.body")
         iconView.image = UIImage(
             systemName: "chart.bar.xaxis",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 36, weight: .semibold)
