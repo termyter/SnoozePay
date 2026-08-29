@@ -238,6 +238,19 @@ final class SPButton: UIControl {
     // MARK: - Configuration internals
 
     private func configureLayout() {
+        // Reset the flag on SELF, not just on the subviews below. This view
+        // activates a *required* `heightAnchor` on itself (see the
+        // `NSLayoutConstraint.activate` block), so leaving the autoresizing
+        // translation on hands Auto Layout a second required height — the 0×0
+        // `frame: .zero` this button is born with. The engine then resolves the
+        // conflict by breaking whatever else is breakable, which in #467 was
+        // the intrinsic height of the button's SIBLINGS: labels that kept
+        // their x/y/width and collapsed to height 0 while the button itself
+        // stayed `.zero`. Nothing warns the caller — the screen just goes
+        // blank. Owning the flag here makes forgetting it impossible
+        // (callers that still set it are harmlessly redundant).
+        translatesAutoresizingMaskIntoConstraints = false
+
         layer.cornerRadius = size.cornerRadius
         layer.masksToBounds = false
 
