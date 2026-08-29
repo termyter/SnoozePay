@@ -103,8 +103,13 @@ enum UITourLauncher {
         },
         "confirm-delete": { window in
             let nav = createNav(alarm: sampleAlarm())
-            mountPresented(nav, onTab: 0, in: window)
-            presentLater(ConfirmDeleteAlarmViewController(), over: nav)
+            // Sequence, don't race (#467): both presentations used to share
+            // one 0.8 s deadline, so the sheet asked a navigation controller
+            // still mid-transition to present — a silent no-op. Chaining off
+            // the form's completion guarantees the presenter is in the window.
+            mountPresented(nav, onTab: 0, in: window) {
+                nav.present(ConfirmDeleteAlarmViewController(), animated: false)
+            }
         },
         "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
         "firing-progressive": {
@@ -165,10 +170,18 @@ enum UITourLauncher {
         nav?.pushViewController(vc, animated: false)
     }
 
-    private static func mountPresented(_ vc: UIViewController, onTab index: Int, in window: UIWindow) {
+    /// Mounts a tab-bar root and presents `vc` over it. `then` runs only after
+    /// that presentation has actually finished, which is the only safe moment
+    /// to chain a second presentation or a push onto `vc` (#467).
+    private static func mountPresented(
+        _ vc: UIViewController,
+        onTab index: Int,
+        in window: UIWindow,
+        then next: (() -> Void)? = nil
+    ) {
         let root = tabBar(selected: index)
         window.rootViewController = root
-        presentLater(vc, over: root)
+        presentLater(vc, over: root, then: next)
     }
 
     private static func createNav(alarm: Alarm?) -> UINavigationController {
@@ -184,17 +197,22 @@ enum UITourLauncher {
         makePicker: @escaping (AlarmTheme) -> UIViewController
     ) {
         let nav = createNav(alarm: sampleAlarm())
-        mountPresented(nav, onTab: 0, in: window)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        // Same chaining as `confirm-delete`: one timer, then a completion (#467).
+        mountPresented(nav, onTab: 0, in: window) {
             nav.pushViewController(makePicker(.dawn), animated: false)
         }
     }
 
     /// Presents a sheet/modal after the root has had a beat to lay out —
     /// presenting from a VC that isn't in the hierarchy yet is a no-op.
-    private static func presentLater(_ vc: UIViewController, over presenter: UIViewController) {
+    private static func presentLater(
+        _ vc: UIViewController,
+        over presenter: UIViewController,
+        then next: (() -> Void)? = nil
+    ) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            (presenter.presentedViewController ?? presenter).present(vc, animated: false)
+            (presenter.presentedViewController ?? presenter)
+                .present(vc, animated: false, completion: next)
         }
     }
 

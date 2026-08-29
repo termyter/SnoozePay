@@ -200,6 +200,27 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        // Stable selectors for the audit harness and the `-uitour
+        // confirm-delete` regression tests (#467) — the sheet's copy is
+        // localized, so tests must not key off it.
+        titleLabel.accessibilityIdentifier = "confirmDelete.title"
+        bodyLabel.accessibilityIdentifier = "confirmDelete.body"
+        deleteButton.accessibilityIdentifier = "confirmDelete.deleteButton"
+        cancelButton.accessibilityIdentifier = "confirmDelete.cancelButton"
+
+        // Both actions come from `SPButton.init`, which calls
+        // `super.init(frame: .zero)` and only clears this flag on its OWN
+        // subviews — the button itself stays autoresizing. Left as-is, UIKit
+        // pins each button to a required 0×0 frame at the origin, which fights
+        // both `SPButton`'s required `heightAnchor` and the card's vertical
+        // chain below. Auto Layout resolves that by breaking whatever is
+        // breakable — the badge's 64pt height and both labels' intrinsic
+        // heights — so the card collapses to its own margins and the sheet
+        // renders as a scrim with an empty strip (#467). Same two lines as
+        // `StreakModalViewController.setupUI()`.
+        deleteButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+
         view.addSubview(blurView)
         view.addSubview(scrimView)
         view.addSubview(card)
