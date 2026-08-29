@@ -263,6 +263,14 @@ extension AlarmFiringViewController {
 
         let productID = Self.noBalanceProductID
         if let product = StoreKitService.shared.products.first(where: { $0.id == productID }) {
+            // Foreign storefront: refuse before `purchase(_:)`, while refusing
+            // is still free (#563).
+            if let blocked = ForeignCurrencyNotice.blockingMessage(for: product) {
+                noBalancePurchaseInFlight = false
+                applePayNoBalanceButton?.isEnabled = true
+                present(ForeignCurrencyNotice.alert(message: blocked), animated: true)
+                return
+            }
             Task { @MainActor in
                 await StoreKitService.shared.purchase(product)
             }
