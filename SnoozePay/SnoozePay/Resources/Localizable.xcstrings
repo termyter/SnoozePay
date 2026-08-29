@@ -1,0 +1,198 @@
+{
+  "sourceLanguage" : "ru",
+  "strings" : {
+    "create_alarm.wake_up" : {
+      "comment" : "Header above the time wheel on the create-alarm sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подъём"
+          }
+        }
+      }
+    },
+    "example.days_count" : {
+      "comment" : "Worked example, not shipped copy. This is the shape a migrated call site should use once it owns the whole phrase: the number lives IN the string, so the catalogue picks the form for every language on its own. xcstringstool rejects a plural variation whose value does not reference the number, which is why the plural.* nouns below are separate top-level keys instead. Consume or delete this entry in #598-#601.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld дня"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld дней"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld день"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld дня"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "plural.days.few" : {
+      "comment" : "Streak length, form for 2-4, 22-24 (nominative): «3 дня».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "дня"
+          }
+        }
+      }
+    },
+    "plural.days.many" : {
+      "comment" : "Streak length, form for 0, 5-20, 11-14: «7 дней».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "дней"
+          }
+        }
+      }
+    },
+    "plural.days.one" : {
+      "comment" : "Streak length, form for 1, 21, 31: «1 день».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "день"
+          }
+        }
+      }
+    },
+    "plural.mornings.few" : {
+      "comment" : "Mornings of collected wake-time history, form for 2-4: «3 утра».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "утра"
+          }
+        }
+      }
+    },
+    "plural.mornings.many" : {
+      "comment" : "Mornings of collected wake-time history, form for 0, 5-20: «5 утр».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "утр"
+          }
+        }
+      }
+    },
+    "plural.mornings.one" : {
+      "comment" : "Mornings of collected wake-time history, form for 1, 21: «1 утро».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "утро"
+          }
+        }
+      }
+    },
+    "plural.snoozes.few" : {
+      "comment" : "Snoozes with the numeral as subject, form for 2-4: «≈ 3 откладывания». Nominative.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "откладывания"
+          }
+        }
+      }
+    },
+    "plural.snoozes.many" : {
+      "comment" : "Snoozes with the numeral as subject, form for 0, 5-20: «≈ 5 откладываний». Nominative.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "откладываний"
+          }
+        }
+      }
+    },
+    "plural.snoozes.one" : {
+      "comment" : "Snoozes with the numeral as subject, form for 1, 21: «≈ 1 откладывание». Nominative.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "откладывание"
+          }
+        }
+      }
+    },
+    "plural.snoozes_after.few" : {
+      "comment" : "Genitive of plural.snoozes under «после», form for 2-4: «после 2 откладываний». The preposition forces the genitive throughout, so this DELIBERATELY carries the many form and differs from plural.snoozes.few. Not a stale copy — do not fold the two namespaces together (#604).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "откладываний"
+          }
+        }
+      }
+    },
+    "plural.snoozes_after.many" : {
+      "comment" : "Genitive of plural.snoozes under «после», form for 0, 5-20: «после 5 откладываний».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "откладываний"
+          }
+        }
+      }
+    },
+    "plural.snoozes_after.one" : {
+      "comment" : "Genitive of plural.snoozes under «после», form for 1, 21: «после 1 откладывания».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "откладывания"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
