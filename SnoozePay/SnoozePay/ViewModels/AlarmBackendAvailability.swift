@@ -146,6 +146,28 @@ struct SystemAlarmBackendProbe: AlarmBackendProbing {
     }
 }
 
+#if DEBUG
+/// DEBUG-only probe that answers with a fixed availability. Backs the
+/// `-uitour alarms-nobackend` route (#545) so the warning banner can be
+/// rendered — and screenshotted — without an OS state the simulator refuses
+/// to enter.
+///
+/// `requestAuthorization` intentionally does NOT touch the OS: the tour must
+/// stay on the state it was asked to show, and popping a real system dialog
+/// mid-screenshot would be worse than useless.
+struct FixedAlarmBackendProbe: AlarmBackendProbing {
+    let result: AlarmBackendAvailability
+
+    func probe(completion: @escaping (AlarmBackendAvailability) -> Void) {
+        completion(result)
+    }
+
+    func requestAuthorization(completion: @escaping () -> Void) {
+        completion()
+    }
+}
+#endif
+
 // MARK: - Monitor
 
 /// Owns the current `AlarmBackendAvailability` and keeps it fresh.
@@ -174,11 +196,40 @@ final class AlarmBackendMonitor {
     /// Fired on the main queue whenever `availability` actually changes.
     var onChange: ((AlarmBackendAvailability) -> Void)?
 
+    #if DEBUG
+    /// UI-tour override for the probe a *default-constructed* monitor uses
+    /// (#545). `nil` everywhere except a DEBUG build launched with
+    /// `-uitour alarms-nobackend`, which is the only writer.
+    ///
+    /// The warning states can't be reached any other way on a simulator —
+    /// `simctl privacy revoke notifications` is refused by the current
+    /// runtime and the probe answers "available" — which is exactly why the
+    /// banner shipped two defects nobody could look at (#514, #538).
+    ///
+    /// Deliberately consulted only when the caller brings NO probe of its
+    /// own: an explicitly injected probe (every unit test, and any future
+    /// production call site) always wins, so a stale override can't hijack
+    /// an isolated test.
+    static var uiTourForcedAvailability: AlarmBackendAvailability?
+    #endif
+
+    /// The probe a caller gets when it doesn't hand one in. Production always
+    /// resolves to `SystemAlarmBackendProbe`; the release binary doesn't even
+    /// contain the tour branch.
+    private static func defaultProbe() -> AlarmBackendProbing {
+        #if DEBUG
+        if let forced = uiTourForcedAvailability {
+            return FixedAlarmBackendProbe(result: forced)
+        }
+        #endif
+        return SystemAlarmBackendProbe()
+    }
+
     init(
-        probe: AlarmBackendProbing = SystemAlarmBackendProbe(),
+        probe: AlarmBackendProbing? = nil,
         notificationCenter: NotificationCenter = .default
     ) {
-        self.probe = probe
+        self.probe = probe ?? Self.defaultProbe()
         self.notificationCenter = notificationCenter
         foregroundObserver = notificationCenter.addObserver(
             forName: Self.foregroundNotificationName,

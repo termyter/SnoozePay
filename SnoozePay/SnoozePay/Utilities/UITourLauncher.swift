@@ -12,12 +12,20 @@ import UIKit
 ///   `-uitour-reset`          wipe persisted alarms before mounting (clean state)
 ///   `-uitour-seed`           seed demo alarms / transactions / wake history
 ///   `-uitour-balance <n>`    force balance to exactly n ₽ (via service APIs)
-///   `-uitour-theme <id>`     firing-screen theme: dawn|ocean|mountains|forest|neon|abstract
+///   `-uitour-theme <id>`     firing-screen `AlarmTheme`, NOT the light/dark
+///                            appearance: dawn|ocean|mountains|forest|neon|abstract
+///   `-uitour-appearance <id>` window appearance: light|dark. Beats the
+///                            `preferred_theme` left in the simulator sandbox
+///                            by an earlier run — which is what made every
+///                            "checked in both themes" run check one twice
+///   `-uitour-backend-warning <case>`
+///                            non-ringing state `alarms-nobackend` forces:
+///                            unavailable|notrequested|indeterminate
 ///
-/// Supported screens: onboarding, permissions, alarms, wallet, stats,
-/// settings, create, edit, theme-picker, sound-picker, volume-picker,
-/// confirm-delete, firing, firing-snoozed, firing-progressive,
-/// firing-nobalance, firing-topup,
+/// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
+/// wallet, stats, settings, create, edit, theme-picker, sound-picker,
+/// volume-picker, confirm-delete, firing, firing-snoozed, firing-progressive,
+/// firing-nobalance, firing-topup, alarm-off-warning,
 /// txhistory, periodpicker, deposit, streak.
 enum UITourLauncher {
 
@@ -26,6 +34,9 @@ enum UITourLauncher {
     // MARK: - Mounting
 
     static func mount(_ screen: String, in window: UIWindow) {
+        // Before the mounters: a screen that pins its own appearance (firing,
+        // splash) must be able to overrule the tour, not the other way round.
+        applyAppearance(value(after: "-uitour-appearance"), to: window)
         resetIfRequested()
         seedIfRequested()
         // Unknown screen id — land on the alarms tab so the audit
@@ -55,6 +66,20 @@ enum UITourLauncher {
         },
         "permissions": { $0.rootViewController = PermissionsViewController() },
         "alarms": { $0.rootViewController = tabBar(selected: 0) },
+        // The alarms list with the "будильники не зазвонят" banner up (#428).
+        // Forced through the monitor's DEBUG seam *before* the tab bar is
+        // built, since that's what constructs `AlarmsListViewModel` and its
+        // monitor. Which of the three warning states you get — they differ in
+        // copy, in `actionTitle` and in whether they gate alarm creation — is
+        // picked by `-uitour-backend-warning`.
+        "alarms-nobackend": { window in
+            AlarmBackendMonitor.uiTourForcedAvailability = requestedBackendAvailability()
+            window.rootViewController = tabBar(selected: 0)
+        },
+        // Root-mounted rather than presented as the pageSheet the statistics
+        // DEBUG button uses: a full-bleed root renders synchronously, so an
+        // audit screenshot can't catch it mid-presentation (#545).
+        "alarm-off-warning": { $0.rootViewController = AlarmOffWarningViewController() },
         "wallet": { $0.rootViewController = tabBar(selected: 1) },
         "stats": { $0.rootViewController = tabBar(selected: 2) },
         "settings": { mountPushed(SettingsViewController(), onTab: 0, in: $0) },
@@ -220,6 +245,41 @@ enum UITourLauncher {
             progressiveScale: true,
             theme: requestedTheme()
         )
+    }
+
+    /// `-uitour-backend-warning <case>` — which non-ringing state
+    /// `alarms-nobackend` shows. Defaults to `.unavailable`: the state a user
+    /// actually lands in after denying the prompt, and the one that gates
+    /// alarm creation. `.available` / `.unresolved` are deliberately not
+    /// reachable here — they render no banner, which is what plain
+    /// `-uitour alarms` already shows.
+    ///
+    /// Split from the `ProcessInfo` read so tests can walk every variant
+    /// without launching one process per argument.
+    static func backendAvailability(forArgument raw: String?) -> AlarmBackendAvailability {
+        switch raw {
+        case "notrequested": return .notRequested
+        case "indeterminate": return .indeterminate
+        default: return .unavailable
+        }
+    }
+
+    private static func requestedBackendAvailability() -> AlarmBackendAvailability {
+        backendAvailability(forArgument: value(after: "-uitour-backend-warning"))
+    }
+
+    /// `-uitour-appearance light|dark` — pin the window's interface style.
+    ///
+    /// Writes ONLY the window, never `ThemeService`/`preferred_theme`: the next
+    /// flag-less launch must read exactly what the user left. An absent or
+    /// unrecognised value leaves the window on whatever `SceneDelegate`
+    /// already applied. Internal so a test can pass a literal argument.
+    static func applyAppearance(_ raw: String?, to window: UIWindow) {
+        switch raw {
+        case "light": window.overrideUserInterfaceStyle = .light
+        case "dark": window.overrideUserInterfaceStyle = .dark
+        default: return
+        }
     }
 
     private static func requestedTheme() -> AlarmTheme {
