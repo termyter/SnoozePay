@@ -266,9 +266,9 @@ extension SettingsViewController: UITableViewDelegate {
             // below (~90pt total). A fixed 56pt clipped the title and squashed
             // the segment; self-size instead (#314).
             return UITableView.automaticDimension
-        case .rules:
-            // «Прогрессивная цена» carries a wrapping subtitle — self-size so it
-            // isn't truncated ("...") on narrow screens (#313).
+        case .rules, .finance:
+            // A wrapping subtitle («Прогрессивная цена») and a wrapping title
+            // («Цена откладывания по умолчанию») — self-size, no "…" (#313, #519).
             return UITableView.automaticDimension
         case .referral:
             return referralRowHeight(row: indexPath.row)

@@ -528,8 +528,13 @@ extension WalletTransactionHistoryViewController {
             row.addArrangedSubview(makeFilterChip(for: filter))
         }
         // Trailing spacer so chips left-align (the row otherwise stretches).
+        // Its hugging must sit BELOW the chips' (which is `.required` in
+        // `makeFilterChip`), not merely at `.defaultLow` — that tied with the
+        // buttons' own default 250 and the stack resolved the tie by index,
+        // stretching the first chip instead of the spacer (#519).
         let spacer = UIView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(UILayoutPriority(1), for: .horizontal)
         row.addArrangedSubview(spacer)
         return row
     }
@@ -551,7 +556,23 @@ extension WalletTransactionHistoryViewController {
             top: AppSpacing.sp2, leading: AppSpacing.sp3 + 2,
             bottom: AppSpacing.sp2, trailing: AppSpacing.sp3 + 2
         )
+        // A pill must never break its own shape: the default line-break mode of
+        // a configuration button word-wraps, and a single long word ("Поступления")
+        // then splits mid-word into «Поступлени» / «я» inside the capsule (#519).
+        // Truncating keeps the capsule intact — and the priorities below mean it
+        // stays a fallback that shouldn't trigger at the shipped font size.
+        configuration.titleLineBreakMode = .byTruncatingTail
         let chip = UIButton(configuration: configuration)
+        // The chip owns its width: it hugs its title and refuses to be squeezed,
+        // so the row's slack lands in the trailing spacer.
+        chip.setContentHuggingPriority(.required, for: .horizontal)
+        // 999, not `.required` — if three chips genuinely can't fit (a very
+        // narrow screen), yield gracefully instead of breaking a constraint.
+        chip.setContentCompressionResistancePriority(UILayoutPriority(999), for: .horizontal)
+        // Pin the label to the 14pt design size. Configuration buttons opt into
+        // Dynamic Type by default, and a scaled title is what pushes this row
+        // past the screen width; same opt-out `SPButton` already makes.
+        chip.titleLabel?.adjustsFontForContentSizeCategory = false
         chip.backgroundColor = selected ? AppColors.fg1 : AppColors.whiteOverlay06
         chip.layer.cornerRadius = AppRadius.lg
         chip.layer.masksToBounds = true
