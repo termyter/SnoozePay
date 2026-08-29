@@ -97,9 +97,46 @@ final class AlarmScheduler: AlarmScheduling {
 
     private let notificationCenter: NotificationScheduling
 
-    /// The AlarmKit backend. Non-nil in production; injectable (and omittable)
-    /// in tests so the "no backend at all" refusal can be exercised.
-    private let alarmKitScheduler: AlarmKitScheduling?
+    /// The AlarmKit backend as wired by `init`. Non-nil in production;
+    /// injectable (and omittable) in tests so the "no backend at all" refusal
+    /// can be exercised. Read through `alarmKitScheduler`, never directly, so
+    /// the DEBUG tour override below is honoured everywhere.
+    private let wiredAlarmKitScheduler: AlarmKitScheduling?
+
+    #if DEBUG
+    /// UI-tour override for the AlarmKit backend (#606). `nil` everywhere
+    /// except a DEBUG build launched with `-uitour-alarmkit granted|denied`,
+    /// which is the only writer (`UITourLauncher`).
+    ///
+    /// A simulator can neither grant nor deny AlarmKit: nothing ever prompts
+    /// on the tour routes, so `AlarmManager` answers `.notDetermined` and every
+    /// save is refused. That is why the E2E create test used to pass by
+    /// accident — before #472 the refusal fell through to a notification that
+    /// registered without permission — and why it went red the moment the
+    /// fallback was removed. Same reasoning, and same shape, as
+    /// `AlarmBackendMonitor.uiTourForcedAvailability` (#545): the state under
+    /// test is unreachable on the machine the test runs on, so the tour pins
+    /// it explicitly instead of hoping for it.
+    ///
+    /// Consulted live rather than at `init`, because `AlarmScheduler.shared` is
+    /// already built by `AppDelegate` before `UITourLauncher.mount` runs — and
+    /// only by `shared`, so a leaked override cannot hijack a unit test that
+    /// wired its own backend.
+    static var uiTourForcedBackend: AlarmKitScheduling?
+    #endif
+
+    /// Whether this instance consults the tour override. True only for the
+    /// production `shared` singleton — the tour reaches the app through it.
+    private let honoursTourOverride: Bool
+
+    /// The backend every call site uses: the tour override when one is pinned,
+    /// otherwise whatever `init` wired.
+    private var alarmKitScheduler: AlarmKitScheduling? {
+        #if DEBUG
+        if honoursTourOverride, let forced = Self.uiTourForcedBackend { return forced }
+        #endif
+        return wiredAlarmKitScheduler
+    }
 
     /// Whether AlarmKit can arm an alarm right now — a backend is wired AND the
     /// user has authorized it. `internal` (#383) so the firing screen can mirror
@@ -130,7 +167,8 @@ final class AlarmScheduler: AlarmScheduling {
 
     private init() {
         self.notificationCenter = UNUserNotificationCenter.current()
-        self.alarmKitScheduler = AlarmKitScheduler()
+        self.wiredAlarmKitScheduler = AlarmKitScheduler()
+        self.honoursTourOverride = true
     }
 
     /// Test-only initializer that swaps the notification-center seam and,
@@ -143,7 +181,11 @@ final class AlarmScheduler: AlarmScheduling {
         alarmKit: AlarmKitScheduling? = nil
     ) {
         self.notificationCenter = notificationCenter
-        self.alarmKitScheduler = alarmKit
+        self.wiredAlarmKitScheduler = alarmKit
+        // A test that wired its own backend must get that backend, even if a
+        // tour override leaked from another test — same rule as
+        // `AlarmBackendMonitor`, where an injected probe always wins (#545).
+        self.honoursTourOverride = false
     }
 
     // MARK: - Permission

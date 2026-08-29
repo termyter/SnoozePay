@@ -6,8 +6,8 @@ import UIKit
 // helpers here own:
 //   - per-page content builders (`makePage1` / `makePage2` / `makePage3`),
 //   - the bespoke pill-dot row used in place of `UIPageControl`,
-//   - the action handlers wired from the primary / "Позже" / "Пропустить" CTAs,
-//   - the CTA-rebuild that swaps "Дальше" → "Пополнить" on step 3.
+//   - the action handlers wired from the primary / «Позже» / «Пропустить» CTAs,
+//   - the CTA-rebuild that swaps «Дальше» → «Пополнить» on step 3.
 //
 // Single-purpose helper view classes (glow host, penalty pill, numbered step
 // row, page dot, deposit option card) live in `OnboardingComponents.swift`.
@@ -151,7 +151,7 @@ extension OnboardingViewController {
     private func makePage1Title() -> UILabel {
         let label = UILabel()
         label.attributedText = NSAttributedString(
-            string: "Будильник\nсо ставкой",
+            string: Localized.text("onboarding.page1.title"),
             attributes: [
                 .font: pageTitleFont,
                 .kern: -0.32,
@@ -165,7 +165,7 @@ extension OnboardingViewController {
 
     private func makePage1Body() -> UILabel {
         let label = UILabel()
-        label.text = "Каждое откладывание стоит денег. Деньги не вернутся. Зато вы встанете."
+        label.text = Localized.text("onboarding.page1.body")
         label.font = pageBodyFont
         label.textColor = AppColors.fg2
         label.textAlignment = .center
@@ -180,7 +180,7 @@ extension OnboardingViewController {
 
         let caps = UILabel()
         caps.attributedText = NSAttributedString(
-            string: "КАК ЭТО РАБОТАЕТ",
+            string: Localized.text("onboarding.page2.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -190,7 +190,7 @@ extension OnboardingViewController {
 
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
-            string: "Положи баланс.\nОткладывай — теряй.",
+            string: Localized.text("onboarding.page2.title"),
             attributes: [
                 .font: pageTitleFont,
                 .kern: -0.32,
@@ -200,9 +200,12 @@ extension OnboardingViewController {
         titleLabel.numberOfLines = 0
 
         let rows = [
-            ("1", "Положили \(MoneyFormatter.string(500))", "Это запас, из которого спишутся откладывания."),
-            ("2", "Поспать ещё в 07:00 → −\(MoneyFormatter.string(50))", "Каждый раз когда вы тянете, деньги уходят."),
-            ("3", "Встали с первого раза → ничего", "Баланс продолжает лежать. Готов к завтрашнему утру.")
+            ("1", Localized.format("onboarding.page2.step1_title", MoneyFormatter.string(500)),
+             Localized.text("onboarding.page2.step1_body")),
+            ("2", Localized.format("onboarding.page2.step2_title", MoneyFormatter.string(50)),
+             Localized.text("onboarding.page2.step2_body")),
+            ("3", Localized.text("onboarding.page2.step3_title"),
+             Localized.text("onboarding.page2.step3_body"))
         ].map { OnboardingStepRow(number: $0.0, title: $0.1, body: $0.2) }
 
         let rowsStack = UIStackView(arrangedSubviews: rows)
@@ -234,7 +237,7 @@ extension OnboardingViewController {
 
         let caps = UILabel()
         caps.attributedText = NSAttributedString(
-            string: "БАЛАНС · СКОЛЬКО ПОЛОЖИТЬ",
+            string: Localized.text("onboarding.page3.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -244,7 +247,7 @@ extension OnboardingViewController {
 
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
-            string: "Сколько ставите\nна свою дисциплину?",
+            string: Localized.text("onboarding.page3.title"),
             attributes: [
                 .font: pageTitleFont,
                 .kern: -0.32,
@@ -267,7 +270,7 @@ extension OnboardingViewController {
             optionsStack.addArrangedSubview(optionView)
         }
 
-        // V3: no "Можно поменять в любой момент" footer — the deposit column
+        // V3: no «Можно поменять в любой момент» footer — the deposit column
         // ends with the option cards; the content block centres vertically
         // like pages 1/2 (JSX `flex: 1; justify-content: center`).
         let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, optionsStack])
@@ -301,13 +304,13 @@ extension OnboardingViewController {
         }
     }
 
-    /// Pager state — toggles glow, the "Позже" secondary, and the primary
+    /// Pager state — toggles glow, the «Позже» secondary, and the primary
     /// button (which transforms into the deposit CTA on step 3).
     ///
-    /// The "Позже" slot is alpha-faded rather than `isHidden`-collapsed so
+    /// The «Позже» slot is alpha-faded rather than `isHidden`-collapsed so
     /// the green primary button bottoms out at the same Y on every page —
     /// the V3 CTA-anchor rule (`SPMore.jsx` keeps a 20pt spacer under the
-    /// "Дальше" button for the same effect).
+    /// «Дальше» button for the same effect).
     func updatePagerState(forPage page: Int) {
         rebuildDotsRow(activePage: page)
         let isDepositPage = page == pageCount - 1
@@ -329,22 +332,27 @@ extension OnboardingViewController {
 
     // MARK: - CTA rebuilds
 
-    /// Replace the primary button with the "Дальше" advance variant. Cheap
+    /// Replace the primary button with the «Дальше» advance variant. Cheap
     /// (≤ 2 swaps over the user's onboarding lifetime).
     func rebuildAdvanceCTA() {
         guard primaryButton.allTargets.isEmpty == false || primaryButton.superview != nil else { return }
-        let newButton = SPButton(title: "Дальше", variant: .money, size: .lg, fullWidth: true)
+        let newButton = SPButton(
+            title: Localized.text("onboarding.button.next"),
+            variant: .money,
+            size: .lg,
+            fullWidth: true
+        )
         swapPrimary(with: newButton)
     }
 
-    /// Replace the primary button with the deposit CTA — title "Пополнить",
+    /// Replace the primary button with the deposit CTA — title «Пополнить»,
     /// suffix `{value} ₽`, leading wallet icon (V3 reads as "put money in",
     /// matching the Wallet deposit sheet). Re-run on every option-tap so the
     /// suffix tracks the selection.
     func rebuildDepositCTA() {
         let amount = depositOptions[selectedDepositIndex].amount
         let newButton = SPButton(
-            title: "Пополнить",
+            title: Localized.text("onboarding.button.deposit"),
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "wallet.pass"),
@@ -357,7 +365,7 @@ extension OnboardingViewController {
     private func swapPrimary(with newButton: SPButton) {
         let oldButton = primaryButton
         // Keep the test id stable across the per-page instance swaps (the
-        // "Дальше" advance variant ↔ the page-3 "Пополнить" deposit CTA).
+        // «Дальше» advance variant ↔ the page-3 «Пополнить» deposit CTA).
         newButton.accessibilityIdentifier = "onboarding.primaryButton"
         newButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
         if let index = ctaStack.arrangedSubviews.firstIndex(of: oldButton) {
@@ -399,8 +407,8 @@ extension OnboardingViewController {
         onFinished?()
     }
 
-    /// Top-right "Пропустить" pill — available on every page; semantically
-    /// identical to "Позже" (finish onboarding without a first top-up).
+    /// Top-right «Пропустить» pill — available on every page; semantically
+    /// identical to «Позже» (finish onboarding without a first top-up).
     @objc
     func skipTapped() {
         laterTapped()
