@@ -3,17 +3,19 @@ import UIKit
 /// Compact badge / chip primitive — `.sp-pill` in `components.css`.
 ///
 /// Visual: 26pt tall capsule with 12pt horizontal padding, 6pt gap between
-/// optional leading icon and the label. Tones tint both the background fill
-/// (low-alpha brand colour) and the foreground text. Use for status flags
-/// ("Активный", "Популярно", "Списано"), not for tap targets — tap targets
-/// belong on `SPButton(size: .sm)` so they hit the 44pt minimum.
+/// optional leading icon and the label. Tones set both the background fill and
+/// the foreground text — a low-alpha brand tint for `.neutral` / `.money` /
+/// `.pain`, and since #580 a SOLID amber for `.warn` (see `palette(for:)`).
+/// Use for status flags ("Активный", "Популярно", "Списано"), not for tap
+/// targets — tap targets belong on `SPButton(size: .sm)` so they hit the 44pt
+/// minimum.
 final class SPPill: UIView {
 
     enum Tone {
         case neutral   // White overlay + fg2 text
         case money     // Money-tint overlay + money300 text
         case pain      // Pain-tint overlay + pain300 text
-        case warn      // Warn-tint overlay + warn300 text
+        case warn      // SOLID warn fill + fgOnWarn ink (#580)
     }
 
     // MARK: - Subviews
@@ -142,26 +144,56 @@ final class SPPill: UIView {
         }
     }
 
-    private func applyTone() {
-        let bg: UIColor
-        let fg: UIColor
+    /// Fill + ink per tone. Internal (not private) so
+    /// `SPPillWarnChipContrastTests` measures the SAME pair the view paints
+    /// instead of a copy of it.
+    ///
+    /// `.warn` is the one tone that is NOT a tint (#580). The canon recipe
+    /// (`.sp-pill--warn` in `tokens.css`: `rgba(245,158,11,.18)` + `warn-300`)
+    /// was implemented byte-for-byte and still failed in both themes, because
+    /// an 18% amber composites into whatever is behind it:
+    ///
+    ///     dark  — fill #3E3328 over the `bgRaised` card. Ink reads 8.71:1,
+    ///             but the CHIP reads 1.38:1 against its card (1.63:1 against
+    ///             the page): a brown smear, not a chip. That brown is why the
+    ///             list still looked like the pre-#520 bronze.
+    ///     light — fill #FDEED3 over the white card, inked `warn300` `#BE7B09`
+    ///             at 3.04:1 — under the 4.5:1 floor for its 12pt caps.
+    ///
+    /// Raising the alpha cannot fix it: the chip stays brown until ~45% and by
+    /// the time the fill is really amber the light ink on it is gone (1.53:1 at
+    /// 100%). So `.warn` takes the fill half of the warn role at full strength
+    /// and the ink solved for it — the same pair #520 built for light:
+    ///
+    ///     both themes — `fgOnWarn` on solid `warnFill500` = 8.79:1
+    ///     dark  — chip vs card 7.89:1, vs page 9.26:1
+    ///     light — chip vs card 2.15:1 (amber's ceiling on white; it was
+    ///             1.15:1 as a wash — the dark ink is what marks the chip out)
+    ///
+    /// `warnFill500` and `fgOnWarn` are both theme-flat, so the two themes now
+    /// render this chip identically — which is the point. A deliberate
+    /// departure from `tokens.css` for this tone only, like #489 was.
+    ///
+    /// The other three tones stay tints: `.money` / `.pain` carry no such
+    /// defect and their ramps were not part of the #580 decision.
+    static func palette(for tone: Tone) -> (fill: UIColor, ink: UIColor) {
         switch tone {
         case .neutral:
-            bg = AppColors.whiteOverlay08
-            fg = AppColors.fg2
+            return (AppColors.whiteOverlay08, AppColors.fg2)
         case .money:
             // `rgba(46,219,159,.16)` — money400 at 16% over surface.
-            bg = AppColors.money400.withAlphaComponent(0.16)
-            fg = AppColors.money300
+            return (AppColors.money400.withAlphaComponent(0.16), AppColors.money300)
         case .pain:
-            bg = AppColors.pain500.withAlphaComponent(0.16)
-            fg = AppColors.pain300
+            return (AppColors.pain500.withAlphaComponent(0.16), AppColors.pain300)
         case .warn:
-            bg = AppColors.warnFill500.withAlphaComponent(0.18)
-            fg = AppColors.warn300
+            return (AppColors.warnFill500, AppColors.fgOnWarn)
         }
-        backgroundColor = bg
-        label.textColor = fg
-        iconView.tintColor = fg
+    }
+
+    private func applyTone() {
+        let palette = Self.palette(for: tone)
+        backgroundColor = palette.fill
+        label.textColor = palette.ink
+        iconView.tintColor = palette.ink
     }
 }

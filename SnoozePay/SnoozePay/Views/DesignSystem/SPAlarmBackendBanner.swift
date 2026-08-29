@@ -44,9 +44,10 @@ final class SPAlarmBackendBanner: UIView {
     // Measured contrasts of the values below (sRGB, WCAG 2.1):
     //   dark  — warn300 on fill rgb(41,34,26)     = 11.17:1 / 13.31:1
     //   light — warn600 on fill rgb(231,225,217)  =  7.14:1 /  8.06:1
-    //   light — fgOnWarn on the solid `warnFill500` icon tile = 8.79:1
-    // The last number moved with #520: the tile used to be the bronze ink tone
-    // under white ink (6.98:1) and is now the canon amber under `#1A0F00`.
+    //   both  — fgOnWarn on the solid `warnFill500` icon tile = 8.79:1
+    // The last line moved twice. #520 replaced the bronze ink tone under white
+    // ink (6.98:1) with the canon amber under `#1A0F00` in LIGHT; #580 gave
+    // dark the same tile, so it is no longer a per-theme number.
     // `warn500` also clears the floor as emphasis (5.38:1) but `warn600` keeps
     // the headroom the dark side has — this is the one banner whose entire job
     // is to be unmissable.
@@ -58,18 +59,33 @@ final class SPAlarmBackendBanner: UIView {
         trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.warn600
     }
 
-    /// Icon tile fill — a faint warn wash on dark, a solid warn chip on light
-    /// (a 18%-alpha wash over a pale background carries no signal at all).
-    static let iconTileColor = UIColor { trait in
-        trait.userInterfaceStyle == .dark
-            ? AppColors.warn400.withAlphaComponent(0.18)
-            : AppColors.warnFill500
-    }
+    /// Icon tile fill — a SOLID warn chip in both themes (#580).
+    ///
+    /// This used to be the one deliberate asymmetry in the file: light took the
+    /// solid `warnFill500` because an 18%-alpha wash over a pale page carries
+    /// no signal at all, dark kept `warn400@18%`. The dark half was the same
+    /// composite defect #580 measured on the price chip — the tile landed on
+    /// `#4F3D23`, a brown 1.52:1 away from the banner's own wash, so the one
+    /// element meant to shout was a slightly warmer rectangle.
+    ///
+    /// Recomputed for the pair below (glyph on tile / tile against the dense
+    /// stop of the banner fill it sits on):
+    ///
+    ///     dark  was  warn300 on #4F3D23  7.40:1  ·  tile vs fill 1.52:1
+    ///     dark  now  fgOnWarn on #F59E0B 8.79:1  ·  tile vs fill 7.34:1
+    ///     light was/now  fgOnWarn on #F59E0B 8.79:1 · tile vs fill 1.65:1
+    ///
+    /// Light's 1.65:1 is amber's ceiling against a near-white page and did not
+    /// move; what marks the tile out there is the near-black glyph on it, which
+    /// is exactly why `fgOnWarn` exists. Both numbers are pinned by
+    /// `SPAlarmBackendBannerContrastTests`.
+    ///
+    /// The tile is theme-flat now, so it is also out of the `CGColor`-baking
+    /// class — there is nothing left for a theme flip to re-resolve here.
+    static let iconTileColor = AppColors.warnFill500
 
-    /// Icon glyph — reads against whichever tile it sits on.
-    static let iconColor = UIColor { trait in
-        trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.fgOnWarn
-    }
+    /// Icon glyph — ink for the solid tile above, in both themes.
+    static let iconColor = AppColors.fgOnWarn
 
     // MARK: - The edge (#538)
     //
