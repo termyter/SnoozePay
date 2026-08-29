@@ -2,20 +2,20 @@ import StoreKit
 import UIKit
 import os
 
-/// No-balance ("Баланса не осталось") state for the firing screen — V2 spec.
+/// No-balance («Баланса не осталось») state for the firing screen — V2 spec.
 ///
 /// V2 (`SPScreensV2.jsx` lines 228–276, `FiringNoBalanceV2`):
 /// - Background tone flips to "drained" (handled by the host VC's
 ///   `updateAtmosphereTone`).
 /// - Top-right balance pill switches to pain (also host-handled).
-/// - Center adds a pain-tinted shield pill "БАЛАНСА НЕ ОСТАЛОСЬ" plus the
-///   body "Откладывать больше не получится. Только встать." (lines 239–251).
+/// - Center adds a pain-tinted shield pill «БАЛАНСА НЕ ОСТАЛОСЬ» plus the
+///   body «Откладывать больше не получится. Только встать.» (lines 239–251).
 /// - Bottom CTAs:
-///   1. Disabled `SPSnoozePrice` (hint "Недостаточно средств") — visual
+///   1. Disabled `SPSnoozePrice` (hint «Недостаточно средств») — visual
 ///      continuity so the user sees what they wanted to tap.
 ///   2. `SPButton(.money, .lg, fullWidth)` "Apple Pay · N ₽" (N = catalogue
 ///      amount of the resolved SKU) — single-tap purchase via StoreKitService.
-///   3. `SPButton(.ghost, .lg, fullWidth)` "Я встал — выключить".
+///   3. `SPButton(.ghost, .lg, fullWidth)` «Я встал — выключить».
 ///
 /// Auto-recovery: `BalanceService.balanceChangedNotification` triggers a
 /// `refreshNoBalanceVisibility()` flip back to the normal Dawn snooze CTA
@@ -36,7 +36,7 @@ extension AlarmFiringViewController {
 
     // MARK: - Setup
 
-    /// Build the no-balance stack and the center "Баланса не осталось" block.
+    /// Build the no-balance stack and the center «Баланса не осталось» block.
     /// All views start hidden; `refreshNoBalanceVisibility()` toggles them
     /// based on `viewModel.canSnooze`.
     func installNoBalanceStack(inset: CGFloat, gap: CGFloat) {
@@ -80,7 +80,7 @@ extension AlarmFiringViewController {
             )
         ])
 
-        // Keep the center "Баланса не осталось" block off the disabled price
+        // Keep the center «Баланса не осталось» block off the disabled price
         // card at the top of this stack (#345). Required — and since #547 it is
         // no longer the only required constraint on the block: there is a floor
         // under it too, so the pair can't be satisfied by printing over the
@@ -99,7 +99,7 @@ extension AlarmFiringViewController {
             price: Decimal(viewModel.currentPenalty),
             minutes: viewModel.alarm.snoozeMinutes,
             tone: .warn,
-            hint: "Недостаточно средств"
+            hint: Localized.text("firing.no_balance.hint")
         )
         card.translatesAutoresizingMaskIntoConstraints = false
         card.isEnabled = false
@@ -120,7 +120,7 @@ extension AlarmFiringViewController {
         // amount of the resolved SKU (#275: display == charge == credit) rather
         // than a hardcoded 500 ₽, so the rendered number matches what's charged.
         let button = SPButton(
-            title: "Пополнить",
+            title: Localized.text("common.button.top_up"),
             variant: .money,
             size: .lg,
             icon: SPIcons.wallet(size: 20),
@@ -139,7 +139,7 @@ extension AlarmFiringViewController {
 
     private func makeNoBalanceGhostDismissButton() -> SPButton {
         let button = SPButton(
-            title: "Я встал — выключить",
+            title: Localized.text("firing.button.dismiss"),
             variant: .ghost,
             size: .lg,
             fullWidth: true
@@ -158,7 +158,7 @@ extension AlarmFiringViewController {
 
     private func makeNoBalanceChooseAmountLink() -> SPButton {
         let button = SPButton(
-            title: "Выбрать другую сумму",
+            title: Localized.text("firing.no_balance.choose_amount"),
             variant: .quiet,
             size: .sm,
             fullWidth: true
@@ -192,7 +192,7 @@ extension AlarmFiringViewController {
             card.update(
                 price: Decimal(viewModel.currentPenalty),
                 minutes: viewModel.alarm.snoozeMinutes,
-                hint: "Недостаточно средств"
+                hint: Localized.text("firing.no_balance.hint")
             )
         }
         noBalanceContainer?.isHidden = !showNoBalanceStack
@@ -301,7 +301,7 @@ extension AlarmFiringViewController {
         )
     }
 
-    /// "Выбрать другую сумму" tap. Routes to the presets bottom sheet.
+    /// «Выбрать другую сумму» tap. Routes to the presets bottom sheet.
     @objc func noBalanceChooseAmountTapped() {
         presentTopUpSheet()
     }
@@ -310,11 +310,11 @@ extension AlarmFiringViewController {
 
     private func presentNoBalancePurchaseFailureAlert(message: String?) {
         let alert = UIAlertController(
-            title: "Покупка не выполнена",
-            message: message ?? "Попробуйте ещё раз.",
+            title: Localized.text("firing.alert.purchase_failed.title"),
+            message: message ?? Localized.text("firing.alert.purchase_failed.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 }
@@ -322,14 +322,14 @@ extension AlarmFiringViewController {
 // MARK: - Center block storage
 //
 // Extending the host VC with a stored property is illegal in Swift, so we
-// route the "Баланса не осталось" center block through an associated-object
+// route the «Баланса не осталось» center block through an associated-object
 // keyed accessor. Single storage slot keyed by a unique pointer; reads /
 // writes happen on the main thread only (firing screen is main-only).
 
 private var noBalanceCenterBlockKey: UInt8 = 0
 
 extension AlarmFiringViewController {
-    /// Reference to the center "Баланса не осталось" pill + body stack. We
+    /// Reference to the center «Баланса не осталось» pill + body stack. We
     /// store it via associated objects rather than a stored property because
     /// the main VC body is already on the SwiftLint type_body_length limit;
     /// adding another property would push it over and the file split has

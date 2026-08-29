@@ -3,13 +3,13 @@ import UIKit
 // MARK: - Snoozed firing state (#226)
 //
 // After a foreground «Поспать ещё» tap the firing screen does NOT dismiss —
-// it transitions in place into the "отложено" state described by
+// it transitions in place into the «отложено» state described by
 // `docs/design/v2-handoff/components/SPFiringThemeSnoozed.jsx`:
 //   • the big live clock is replaced by a live mm:ss countdown to the next ring,
 //   • the bell tile dims (.7) and gains a `zZ` badge,
-//   • the hero name reads "… · отложено до 07:05",
+//   • the hero name reads «… · отложено до 07:05»,
 //   • a fly-up «−N ₽» rises over the (already-decremented) balance pill,
-//   • progressive alarms also surface a "Прогрессив · N-й поспать ещё" pill +
+//   • progressive alarms also surface a «Прогрессив · N-й поспать ещё» pill +
 //     the 4-rung charge ladder.
 // At countdown zero the chrome tears down and the active firing UI returns.
 //
@@ -51,13 +51,13 @@ extension AlarmFiringViewController {
         countdownTimer = nil
         showSnoozedChrome(false)
         // Restore the active hero name — `refreshSnoozedChrome` overwrote it with
-        // the "… · отложено до 07:05" suffix on entry, and `showSnoozedChrome`
+        // the «… · отложено до 07:05» suffix on entry, and `showSnoozedChrome`
         // only toggles the clock/eyebrow/badge, not the name. Without this the
-        // active firing UI returns with a stale "отложено до …" label (#226 QA).
+        // active firing UI returns with a stale «отложено до …» label (#226 QA).
         nameLabel.text = viewModel.heroTitle
         // #398: `showSnoozedChrome(true)` force-hid the no-balance stack so it
         // wouldn't overlap the countdown. Re-evaluate affordability now — if the
-        // snooze left the wallet empty, the "Баланса не осталось" stack returns
+        // snooze left the wallet empty, the «Баланса не осталось» stack returns
         // for the restored active state; if still solvent it stays hidden.
         refreshNoBalanceVisibility()
     }
@@ -144,7 +144,7 @@ extension AlarmFiringViewController {
         if snoozed {
             // #398: a snooze that drains the balance below the next penalty has
             // already run `refreshNoBalanceVisibility()` (via `updateUI`), which
-            // unhid the "Баланса не осталось" stack. Force it hidden so the
+            // unhid the «Баланса не осталось» stack. Force it hidden so the
             // countdown owns the screen — the two must never overlap. Exit
             // restores it via `refreshNoBalanceVisibility()` (see `exitSnoozedState`).
             noBalanceContainer?.isHidden = true
@@ -168,7 +168,7 @@ extension AlarmFiringViewController {
     func refreshSnoozedChrome() {
         guard isSnoozedStateActive else { return }
         // Hero suffix reads the FIXED snooze target (anchor + snoozeMinutes), not
-        // a per-tick clock, so "отложено до 07:06" stays put across ticks (#396).
+        // a per-tick clock, so «отложено до 07:06» stays put across ticks (#396).
         nameLabel.text = viewModel.snoozedHeroTitle()
         updateCountdownLabel(now: Date())
 

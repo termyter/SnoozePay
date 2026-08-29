@@ -8,14 +8,14 @@ import Foundation
 /// user reads is decided here.
 ///
 /// Spec — `docs/design/v2-handoff/components/SPWokeMorning.jsx`:
-///   • `snoozes == 0` → "clean": "Встал с первого раза" /
-///     "Баланс в полной сохранности. Так держать."
-///   • `snoozes  > 0` → "recovered": "Удержались после N откладываний" /
-///     "Сегодня списано N ₽. Завтра попробуем не списать ничего."
-///   • some attempt was reversed → "partiallyReversed": billed count + sum,
+///   • `snoozes == 0` → `clean`: «Встал с первого раза» /
+///     «Баланс в полной сохранности. Так держать.»
+///   • `snoozes  > 0` → `recovered`: «Удержались после N откладываний» /
+///     «Сегодня списано N ₽. Завтра попробуем не списать ничего.»
+///   • some attempt was reversed → `partiallyReversed`: billed count + sum,
 ///     plus a line explaining the refunded attempts, so the two numbers add up
 ///     under the doubling rule the user can see on the firing screen (#400).
-///   • ledger unreadable → "chargesUnavailable": no count, no sum (#400).
+///   • ledger unreadable → `chargesUnavailable`: no count, no sum (#400).
 struct WokeMorningContent {
 
     /// Visual / copy scenarios. The first three are driven by what the ledger
@@ -38,11 +38,15 @@ struct WokeMorningContent {
         case chargesUnavailable
     }
 
-    /// Always "Доброе утро" — the eyebrow doesn't vary by scenario.
-    static let eyebrow = "Доброе утро"
+    /// Always «Доброе утро» — the eyebrow doesn't vary by scenario.
+    ///
+    /// Computed rather than stored: a `static let` would resolve the catalogue
+    /// at first access and hold that value for the process, hiding a missing
+    /// key behind whichever test happened to run first.
+    static var eyebrow: String { Localized.text("woke_morning.eyebrow") }
 
     /// Snoozes the ledger actually billed. `nil` when the ledger is unreadable
-    /// — deliberately optional so a consumer can't mistake "we don't know" for
+    /// — deliberately optional so a consumer can't mistake «we don't know» for
     /// a confident zero.
     let snoozes: Int?
     /// Roubles billed this wake, whole ₽. `nil` when the ledger is unreadable.
@@ -80,9 +84,9 @@ struct WokeMorningContent {
     /// fall back to `.clean` when the in-memory attempt count is `0`: that
     /// counter is reset on the AlarmKit path (the firing screen tears down
     /// after each snooze and the next ring builds a fresh view model with
-    /// `snoozeCount: 0`), so "no attempts this session" is NOT evidence that
-    /// nothing was charged this morning. Claiming "баланс в полной
-    /// сохранности" off an unreadable ledger would be the same nil-collapse
+    /// `snoozeCount: 0`), so «no attempts this session» is NOT evidence that
+    /// nothing was charged this morning. Claiming «баланс в полной
+    /// сохранности» off an unreadable ledger would be the same nil-collapse
     /// this variant exists to prevent.
     static let chargesUnavailable = WokeMorningContent()
 
@@ -96,34 +100,38 @@ struct WokeMorningContent {
     var headline: String {
         switch variant {
         case .clean:
-            return "Встал с первого раза"
+            return Localized.text("woke_morning.headline.clean")
         case .recovered, .partiallyReversed:
             let billed = snoozes ?? 0
-            guard billed > 0 else { return "Баланс не изменился" }
-            return "Удержались после \(billed) \(Self.snoozeWord(for: billed))"
+            guard billed > 0 else { return Localized.text("woke_morning.headline.unchanged") }
+            // Count + declined noun in one entry, so the catalogue owns the
+            // order: Russian needs the numeral first, English does not.
+            return Localized.format(
+                "woke_morning.headline.recovered", billed, Self.snoozeWord(for: billed)
+            )
         case .chargesUnavailable:
-            return "Вы встали"
+            return Localized.text("woke_morning.headline.unavailable")
         }
     }
 
     var subtitle: String {
         switch variant {
         case .clean:
-            return "Баланс в полной сохранности. Так держать."
+            return Localized.text("woke_morning.subtitle.clean")
         case .recovered:
-            return "Сегодня списано \(charged ?? 0) ₽. Завтра попробуем не списать ничего."
+            return Localized.format("woke_morning.subtitle.recovered", charged ?? 0)
         case .partiallyReversed:
-            // Numeral-after-colon so the sentence needs no extra declension
-            // rule for «откладывание» in the nominative.
+            // Both branches are whole two-sentence entries rather than a
+            // lead-in plus the shared «не состоявшихся откладываний» tail: the
+            // reversal is what the second sentence explains, and a language
+            // that wants it first can only say so if it owns both.
             let reversed = reversedSnoozes ?? 0
-            let tail = "Не состоявшихся откладываний: \(reversed) — деньги за них вернули."
             guard let charged, charged > 0 else {
-                return "Списаний не осталось. \(tail)"
+                return Localized.format("woke_morning.subtitle.reversed_none", reversed)
             }
-            return "Сегодня списано \(charged) ₽. \(tail)"
+            return Localized.format("woke_morning.subtitle.reversed_charged", charged, reversed)
         case .chargesUnavailable:
-            return "Историю списаний прочитать не удалось, поэтому сумму за это утро "
-                 + "мы не показываем. Текущий баланс — на главном экране."
+            return Localized.text("woke_morning.subtitle.unavailable")
         }
     }
 
@@ -131,7 +139,7 @@ struct WokeMorningContent {
     ///
     /// Unlike the nominative forms in `PluralForms.snoozes`, the preposition
     /// «после» forces the genitive throughout, so 2–4 collapses onto the many
-    /// form ("после 1 откладывания", "после 2 откладываний"). That is what
+    /// form («после 1 откладывания», «после 2 откладываний»). That is what
     /// `PluralForms.snoozesAfter` encodes — the rule is shared, the words are
     /// not.
     static func snoozeWord(for count: Int) -> String {

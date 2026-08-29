@@ -146,14 +146,14 @@ extension AlarmFiringViewController {
         column.bellIdle = idle
     }
 
-    /// Build the center "БАЛАНСА НЕ ОСТАЛОСЬ" pill + body text — the bottom
+    /// Build the center «БАЛАНСА НЕ ОСТАЛОСЬ» pill + body text — the bottom
     /// half of the centre column, under the hero's eyebrow caps. Mirrors
     /// `SPScreensV2.jsx` lines 239–251.
     func installNoBalanceCenterPill(inset: CGFloat) {
         // Pain-tinted "coin off" pill — V3 swaps the shield glyph for the
         // crossed-out-coin icon used across the zero-balance surfaces (#227).
         let shieldPill = SPPill(
-            text: "Баланса не осталось",
+            text: Localized.text("firing.no_balance.pill"),
             tone: .pain,
             icon: SPIcons.coinOff(size: 14)
         )
@@ -165,7 +165,7 @@ extension AlarmFiringViewController {
         body.textColor = UIColor.white.withAlphaComponent(0.7)
         body.textAlignment = .center
         body.numberOfLines = 0
-        body.text = "Откладывать больше не получится. Только встать."
+        body.text = Localized.text("firing.no_balance.body")
 
         let block = UIStackView(arrangedSubviews: [shieldPill, body])
         block.translatesAutoresizingMaskIntoConstraints = false

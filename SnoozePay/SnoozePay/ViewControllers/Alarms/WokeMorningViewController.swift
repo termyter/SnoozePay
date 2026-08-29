@@ -33,7 +33,7 @@ final class WokeMorningViewController: UIViewController {
     private let subtitleLabel = UILabel()
 
     private let closeButton = SPButton(
-        title: "Закрыть",
+        title: Localized.text("common.button.close"),
         variant: .ghost,
         size: .lg,
         fullWidth: true
