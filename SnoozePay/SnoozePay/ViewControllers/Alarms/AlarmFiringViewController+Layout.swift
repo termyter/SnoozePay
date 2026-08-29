@@ -6,7 +6,7 @@ import UIKit
 // under SwiftLint's `file_length` and `type_body_length` caps. V2 spec lives
 // in `docs/design/v2-handoff/components/SPScreensV2.jsx` lines 37–103
 // (FiringDawn) and `SPDawnV3.jsx` (FiringDawnV3) — top-bar with date + balance
-// pill, centered hero (clock + caps "Подъём"), bottom CTAs.
+// pill, centered hero (clock + caps «Подъём»), bottom CTAs.
 
 extension AlarmFiringViewController {
 
@@ -111,7 +111,10 @@ extension AlarmFiringViewController {
         let initialTone: SPPill.Tone = balance == 0 ? .pain : .money
         let pill = SPPill(text: "", tone: initialTone, icon: SPIcons.coin(size: 12))
         // Two-tier typography — muted «Баланс» label + bold value (#288).
-        pill.setBalance(label: "Баланс", value: MoneyFormatter.string(balance))
+        pill.setBalance(
+            label: Localized.text("firing.pill.balance"),
+            value: MoneyFormatter.string(balance)
+        )
         pill.translatesAutoresizingMaskIntoConstraints = false
         balancePill = pill
 
@@ -130,7 +133,7 @@ extension AlarmFiringViewController {
     }
 
     /// Install the centered hero — V3 vertical order per `SPThemedFiring.jsx`
-    /// (#225): bell tile, "Будни · 07:00" h3 name, 96pt clock, eyebrow caps.
+    /// (#225): bell tile, «Будни · 07:00» h3 name, 96pt clock, eyebrow caps.
     /// The bell tile is tinted (or hidden, for `.custom`) by the +Theme
     /// accent pass that ran in `installThemedBackground()`.
     private func installHeroCenter() {
@@ -215,7 +218,7 @@ extension AlarmFiringViewController {
     // MARK: - Date formatter
     //
     // Captured once so we don't rebuild a `DateFormatter` on every firing.
-    // Locale fixed to `ru_RU` so "Пт · 27 апр" reads as in the spec; format
+    // Locale fixed to `ru_RU` so «Пт · 27 апр» reads as in the spec; format
     // "EEE · d MMM" matches `SPScreensV2.jsx` line 64.
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()

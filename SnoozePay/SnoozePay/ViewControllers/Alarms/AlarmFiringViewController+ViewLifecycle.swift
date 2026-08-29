@@ -53,7 +53,7 @@ extension AlarmFiringViewController {
     // MARK: Glow breathing
 
     /// 8s ease-in-out autoreverse opacity pulse on the Dawn background's sun
-    /// layer (`SPDawnV3.jsx:3` — "медленно дышит (8s)"). Driven via
+    /// layer (`SPDawnV3.jsx:3` — «медленно дышит (8s)»). Driven via
     /// CABasicAnimation because the sun is a CAGradientLayer (not a view). V2
     /// spec retains the "breathing" character from V1 — the warm radial just
     /// lives inside `SPDawnBackgroundView.sunLayer` now.
@@ -74,7 +74,7 @@ extension AlarmFiringViewController {
         // On the AlarmKit (Strategy A) path the snooze re-fires as a REAL system
         // alarm (the scheduler stops the current one and reschedules via
         // AlarmKit), so this screen must close — its job is done and the system
-        // owns the next ring (#383). The in-place "отложено" countdown is a
+        // owns the next ring (#383). The in-place «отложено» countdown is a
         // Strategy-B affordance for the notification path, where the in-app
         // screen is the sound source and stays up. We capture the flag up front
         // because `viewModel.snooze` is the same call on both paths.
@@ -93,7 +93,7 @@ extension AlarmFiringViewController {
                 // snoozed chrome (a live countdown to a phantom ring + the
                 // decremented pill) would lie. Tear it back down to the active
                 // firing UI BEFORE surfacing the alert so the screen matches the
-                // alert's "будильник не зазвенит повторно / деньги возвращены".
+                // alert's «будильник не зазвенит повторно / деньги возвращены».
                 self.exitSnoozedState()
                 self.presentSnoozeScheduleFailureAlert(error: error)
             case .scheduleFailedAndRefundFailed(let error):
@@ -115,7 +115,7 @@ extension AlarmFiringViewController {
         }
 
         // Foreground snooze (#226), notification path: instead of dismissing,
-        // transition the live firing screen into the "отложено" state in place —
+        // transition the live firing screen into the «отложено» state in place —
         // countdown to the next ring, zZ badge, progressive ladder. At countdown
         // zero the active firing UI restores. `viewModel.snooze` already bumped
         // `snoozeCount` and fired `onStateChanged → updateUI`, so the balance
@@ -163,12 +163,14 @@ extension AlarmFiringViewController {
     ) {
         let detail = error.errorDescription ?? error.localizedDescription
         let alert = UIAlertController(
-            title: "Откладывание не запланировано",
-            message: "\(detail) Будильник не зазвенит повторно — установите запасной. "
-                + "Списанные деньги возвращены на баланс.",
+            title: Localized.text("firing.alert.snooze_not_scheduled.title"),
+            // The scheduler's own wording is a substitution, not a prefix: a
+            // language that wants «your alarm won't ring again — <reason>»
+            // gets to say so without touching this file.
+            message: Localized.format("firing.alert.snooze_not_scheduled.message", detail),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 
@@ -181,12 +183,11 @@ extension AlarmFiringViewController {
     ) {
         let detail = error.errorDescription ?? error.localizedDescription
         let alert = UIAlertController(
-            title: "Не удалось вернуть списание",
-            message: "\(detail) Будильник не зазвенит повторно, а вернуть деньги автоматически не вышло. "
-                + "Напишите в поддержку — спишем вручную.",
+            title: Localized.text("firing.alert.refund_failed.title"),
+            message: Localized.format("firing.alert.refund_failed.message", detail),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 }

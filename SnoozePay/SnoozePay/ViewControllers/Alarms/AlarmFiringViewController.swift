@@ -7,7 +7,7 @@ import os
 /// `FiringDawn`) elevates the original Dawn treatment with a three-layer
 /// atmospheric background (base gradient + radial overlay + breathing sun)
 /// plus a top header that surfaces the date and balance pill, and a centered
-/// hero block with a 96pt mono clock and a "Подъём" caps label. The bottom
+/// hero block with a 96pt mono clock and a «Подъём» caps label. The bottom
 /// CTAs preserve the warn-tone snooze + ghost dismiss pair from #138 with a
 /// tighter 10pt gap and 32pt bottom inset.
 ///
@@ -64,7 +64,7 @@ class AlarmFiringViewController: UIViewController {
 
     // MARK: - Top header (V2)
 
-    /// Top-bar caps label "Пт · 27 апр" rendered left of the balance pill.
+    /// Top-bar caps label «Пт · 27 апр» rendered left of the balance pill.
     /// Date is computed once on `viewDidLoad` (per spec — the firing screen
     /// is a snapshot of "when the alarm rang", not a live tick).
     let dateLabel: UILabel = {
@@ -76,7 +76,7 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    /// "Баланс N ₽" pill on the right side of the top bar. Tone flips between
+    /// «Баланс N ₽» pill on the right side of the top bar. Tone flips between
     /// `.money` (positive) and `.pain` (balance == 0). Re-rendered on every
     /// `updateUI()` because the balance is decremented mid-firing when the
     /// user snoozes (the firing flow dismisses on success, but for the
@@ -123,7 +123,7 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    /// Caps eyebrow below the clock — "Пора вставать" / "Только встать".
+    /// Caps eyebrow below the clock — «Пора вставать» / «Только встать».
     /// V3 tints it with the theme accent at 85% (`SPThemedFiring.jsx` line
     /// 167); the colour is applied in `updateAtmosphereTone()` because it
     /// flips to pain when the wallet drains.
@@ -135,7 +135,7 @@ class AlarmFiringViewController: UIViewController {
         return label
     }()
 
-    /// "Будни · 07:00" h3 title between the bell tile and the clock — V3
+    /// «Будни · 07:00» h3 title between the bell tile and the clock — V3
     /// places the alarm identity ABOVE the live time (`SPThemedFiring.jsx`
     /// line 147). `internal` so the `+Layout` extension can pin it.
     let nameLabel: UILabel = {
@@ -158,12 +158,12 @@ class AlarmFiringViewController: UIViewController {
 
     /// `internal` so the +NoBalance extension can hide / show this when
     /// swapping between the normal (balance OK) and no-balance layouts.
-    /// V2 spec calls for the full "Я встал — выключить" copy, ghost variant,
+    /// V2 spec calls for the full «Я встал — выключить» copy, ghost variant,
     /// lg size, full-width, with a leading 18pt checkmark and a heavier 1.5pt
     /// white .22 stroke — matches `SPThemedFiring.jsx:188-203`. The stroke
     /// override is applied in `buildFiringLayout`.
     let dismissButton = SPButton(
-        title: "Я встал — выключить",
+        title: Localized.text("firing.button.dismiss"),
         variant: .ghost,
         size: .lg,
         icon: UIImage(systemName: "checkmark"),
@@ -174,7 +174,7 @@ class AlarmFiringViewController: UIViewController {
     //
     // The no-balance state replaces the snooze CTA + dismiss group with a
     // disabled snooze card on top, an Apple Pay 500 ₽ primary CTA, and a big
-    // ghost "Я встал — выключить" secondary. All three are mounted
+    // ghost «Я встал — выключить» secondary. All three are mounted
     // unconditionally so swapping is just a visibility flip — saves us from
     // rebuilding constraints when the user tops up mid-firing and crosses
     // the affordability threshold.
@@ -190,13 +190,13 @@ class AlarmFiringViewController: UIViewController {
     /// yet (test / debug paths) so the wallet still credits end-to-end.
     var applePayNoBalanceButton: SPButton?
 
-    /// Big ghost "Я встал — выключить" secondary. Calls `viewModel.dismiss()`
+    /// Big ghost «Я встал — выключить» secondary. Calls `viewModel.dismiss()`
     /// the same way the normal-state dismissButton does — PM directive was
     /// that this MUST be a full-width lg button, not a small text link, so
     /// the half-asleep user can find it.
     var noBalanceDismissButton: SPButton?
 
-    /// Small quiet/sm link "Выбрать другую сумму" rendered below the ghost
+    /// Small quiet/sm link «Выбрать другую сумму» rendered below the ghost
     /// dismiss. Routes to the existing `presentTopUpSheet()` for users who
     /// want a different amount than the 500 ₽ default.
     var chooseAmountLink: SPButton?
@@ -228,7 +228,7 @@ class AlarmFiringViewController: UIViewController {
     /// entirely — they never enter the layout pass.
     var progressiveStack: UIStackView?
 
-    /// "Прогрессив · {n}-й поспать ещё" pill in the centre hero. Re-titled
+    /// «Прогрессив · {n}-й поспать ещё» pill in the centre hero. Re-titled
     /// on every `updateUI()` so the label tracks `snoozeCount + 1`. V2 spec
     /// uses pain tone with an inline pulsing dot.
     var progressivePill: SPPill?
@@ -443,10 +443,12 @@ class AlarmFiringViewController: UIViewController {
     }
 
     /// Build the eyebrow caps copy below the clock. Mirrors `SPDawnV3.jsx`
-    /// line 212 / `SPThemedFiring.jsx` line 172 — "пора вставать" normally,
-    /// dropping to "только встать" when the wallet can't cover a snooze.
+    /// line 212 / `SPThemedFiring.jsx` line 172 — «пора вставать» normally,
+    /// dropping to «только встать» when the wallet can't cover a snooze.
     func wakeUpCapsText() -> String {
-        viewModel.canSnooze ? "Пора вставать" : "Только встать"
+        Localized.text(viewModel.canSnooze
+            ? "firing.eyebrow.wake_up"
+            : "firing.eyebrow.get_up_only")
     }
 
     /// Snooze CTA hint — «следующее откладывание: N ₽» (lowercase per
@@ -463,12 +465,12 @@ class AlarmFiringViewController: UIViewController {
         // so caps / custom schedules pick up the right "next" value.
         let nextCount = viewModel.snoozeCount + 2
         if viewModel.alarm.isPenaltyAtCeiling(forSnoozeCount: nextCount) {
-            return "максимум — дальше только встать"
+            return Localized.text("firing.hint.max_price")
         }
         let next = viewModel.alarm.penalty(forSnoozeCount: nextCount)
         let nextInt = Int(next.rounded())
         // Lowercase «следующее откладывание: …» per `SPDawnV3.jsx:240`.
-        return "следующее откладывание: \(MoneyFormatter.string(nextInt))"
+        return Localized.format("firing.hint.next_price", MoneyFormatter.string(nextInt))
     }
 
     /// Refresh the top-right balance pill so the displayed amount + tone
@@ -479,7 +481,7 @@ class AlarmFiringViewController: UIViewController {
         let tone: SPPill.Tone = balance == 0 ? .pain : .money
         guard let pill = balancePill else { return }
         let value = MoneyFormatter.string(balance)
-        pill.setBalance(label: "Баланс", value: value)
+        pill.setBalance(label: Localized.text("firing.pill.balance"), value: value)
         // SPPill's `tone` is `let` (constructor-only), so we re-build when
         // the tone needs to flip between money and pain. Cheap — pill is a
         // 26pt-tall capsule with two labels.
@@ -497,7 +499,7 @@ class AlarmFiringViewController: UIViewController {
         // icon (⊘) per the no-balance spec (#227); the money tone keeps the coin.
         let icon = tone == .pain ? SPIcons.coinOff(size: 12) : SPIcons.coin(size: 12)
         let new = SPPill(text: "", tone: tone, icon: icon)
-        new.setBalance(label: "Баланс", value: value)
+        new.setBalance(label: Localized.text("firing.pill.balance"), value: value)
         new.translatesAutoresizingMaskIntoConstraints = false
         if let index = topHeaderRow.arrangedSubviews.firstIndex(of: old) {
             topHeaderRow.removeArrangedSubview(old)
@@ -542,7 +544,7 @@ class AlarmFiringViewController: UIViewController {
     // MARK: - Actions
 
     /// `internal` so the +NoBalance extension can wire its big ghost
-    /// "Я встал — выключить" button to the same dismiss path.
+    /// «Я встал — выключить» button to the same dismiss path.
     ///
     /// Instead of an instant dismiss we present the WokeMorning summary (#228)
     /// over this VC. Because WokeMorning sits ON TOP, our `viewDidDisappear`
