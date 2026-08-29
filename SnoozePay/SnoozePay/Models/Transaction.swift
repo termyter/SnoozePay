@@ -139,8 +139,10 @@ struct Transaction: Identifiable, Codable {
 
     /// Typed view of the transaction amount. `nil` if the legacy `Double`
     /// is negative or non-finite — old data may have leaked such values
-    /// since the primitive API never validated.
+    /// since the primitive API never validated. Denominated via the legacy
+    /// bridge: persisted transactions carry no currency of their own (#561),
+    /// per-transaction currency lands with the typed ledger (#562).
     var money: Money? {
-        Money(amount)
+        Money.legacy(amount)
     }
 }

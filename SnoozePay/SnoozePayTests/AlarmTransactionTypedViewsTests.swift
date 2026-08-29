@@ -59,12 +59,12 @@ final class AlarmTransactionTypedViewsTests: XCTestCase {
 
     func testAlarmPenaltyMoney_positiveAmountWraps() {
         let alarm = Alarm(penaltyAmount: 50)
-        XCTAssertEqual(alarm.penaltyMoney, Money(50))
+        XCTAssertEqual(alarm.penaltyMoney, Money.legacy(50))
     }
 
     func testAlarmPenaltyMoney_zeroIsValidMoneyZero() {
         let alarm = Alarm(penaltyAmount: 0)
-        XCTAssertEqual(alarm.penaltyMoney, .zero)
+        XCTAssertEqual(alarm.penaltyMoney, Money.zero(.legacyDefault))
     }
 
     func testAlarmPenaltyMoney_negativeLegacyValueSanitizedOnDecode() throws {
@@ -73,7 +73,7 @@ final class AlarmTransactionTypedViewsTests: XCTestCase {
         // a negative amount — the typed view then wraps a valid `.zero`.
         let alarm = try decodeAlarm(penaltyAmountJSON: "-50.0")
         XCTAssertEqual(alarm.penaltyAmount, 0)
-        XCTAssertEqual(alarm.penaltyMoney, .zero)
+        XCTAssertEqual(alarm.penaltyMoney, Money.zero(.legacyDefault))
     }
 
     // MARK: - Legacy-JSON decode helper (#207)
@@ -106,12 +106,12 @@ final class AlarmTransactionTypedViewsTests: XCTestCase {
 
     func testTransactionMoney_positiveAmountWraps() {
         let transaction = Transaction(type: .topup, amount: 100)
-        XCTAssertEqual(transaction.money, Money(100))
+        XCTAssertEqual(transaction.money, Money.legacy(100))
     }
 
     func testTransactionMoney_zeroIsValid() {
         let transaction = Transaction(type: .charge, amount: 0)
-        XCTAssertEqual(transaction.money, .zero)
+        XCTAssertEqual(transaction.money, Money.zero(.legacyDefault))
     }
 
     func testTransactionMoney_negativeLegacyValueReturnsNil() {
