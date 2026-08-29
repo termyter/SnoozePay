@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Outcome of an attempt to establish the wallet's currency.
 ///
