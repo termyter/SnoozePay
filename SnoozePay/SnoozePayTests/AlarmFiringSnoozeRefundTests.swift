@@ -28,21 +28,21 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
         Alarm(penaltyAmount: penalty)
     }
 
-    /// A scheduler whose underlying notification center rejects `add(_:)`, so
+    /// A scheduler whose AlarmKit backend rejects the snooze, so
     /// `scheduleSnooze` resolves to `.failure(.system)`.
     private func makeFailingScheduler() -> AlarmScheduler {
-        let center = FiringMockNotificationCenter()
-        center.addError = NSError(
-            domain: "UNErrorDomain",
-            code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed"]
+        AlarmScheduler(
+            notificationCenter: FiringMockNotificationCenter(),
+            alarmKit: TestAlarmKitBackend(failSnooze: true)
         )
-        return AlarmScheduler(notificationCenter: center)
     }
 
-    /// A scheduler that registers the trigger successfully.
+    /// A scheduler that arms the snooze successfully.
     private func makeSucceedingScheduler() -> AlarmScheduler {
-        AlarmScheduler(notificationCenter: FiringMockNotificationCenter())
+        AlarmScheduler(
+            notificationCenter: FiringMockNotificationCenter(),
+            alarmKit: TestAlarmKitBackend()
+        )
     }
 
     // MARK: - Clean refund (real ledger)

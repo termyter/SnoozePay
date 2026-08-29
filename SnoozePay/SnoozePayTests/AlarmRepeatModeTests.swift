@@ -1,13 +1,14 @@
 import XCTest
-import UserNotifications
 @testable import SnoozePay
 
 /// Unit tests for the weekly / one-shot repeat mode added in #229:
 /// - `Alarm.repeatMode` defaults, `with(...)` mutator, and the
 ///   backwards-compatible / sanitizing Codable decode (legacy alarms without
 ///   the key, unknown raw values).
-/// - `AlarmScheduler.makeTriggers` planning: `.never` produces non-repeating
-///   per-day triggers, `.weekly` keeps the historical repeating ones.
+/// - Trigger planning for the two modes now lives on the AlarmKit side and is
+///   pinned by `AlarmKitSchedulerTests` (`makeSchedule` maps `.weekly` to a
+///   weekly recurrence and `.never` to `.never`); the notification-trigger
+///   equivalents that used to be asserted here went away with #472.
 /// - `AlarmFiringViewModel.dismiss` auto-disables one-shot alarms and keeps
 ///   weekly alarms enabled.
 /// - `CreateAlarmViewModel` seeding + persistence of the new field.
@@ -106,67 +107,6 @@ final class AlarmRepeatModeTests: XCTestCase {
         let decoded = try JSONDecoder().decode(Alarm.self, from: corruptData)
 
         XCTAssertEqual(decoded.repeatMode, .weekly)
-    }
-
-    // MARK: - Trigger planning (UNNotificationRequest для never-режима)
-
-    private let scheduler = AlarmScheduler.shared
-
-    private func calendarTrigger(
-        _ trigger: AlarmScheduler.TriggerWithLabel
-    ) -> UNCalendarNotificationTrigger? {
-        trigger.trigger as? UNCalendarNotificationTrigger
-    }
-
-    /// The primary (non-burst) triggers. The lock-screen fallback burst (#19)
-    /// appends `_burstN` follow-ups whose presence depends on the global
-    /// `criticalAlertsAvailable` flag (mutated by other tests). These repeat-mode
-    /// assertions only care about the primary triggers, so filter the bursts out
-    /// to stay deterministic regardless of suite ordering. Burst behaviour is
-    /// pinned by `AlarmSchedulerFallbackBurstTests` /
-    /// `AlarmSchedulerBurstCancellationTests`.
-    private func primaries(for alarm: Alarm) -> [AlarmScheduler.TriggerWithLabel] {
-        scheduler.makeTriggers(for: alarm).filter { !$0.label.contains("_burst") }
-    }
-
-    func testMakeTriggers_neverMode_producesNonRepeatingPerDayTriggers() {
-        let alarm = Alarm(repeatDays: [0, 2], repeatMode: .never)
-
-        let triggers = primaries(for: alarm)
-
-        XCTAssertEqual(triggers.count, 2)
-        XCTAssertEqual(triggers.map(\.label).sorted(), ["day0", "day2"],
-                       "Per-day labels must survive so cancel(_:) removes them")
-        for trigger in triggers {
-            let calendar = self.calendarTrigger(trigger)
-            XCTAssertNotNil(calendar)
-            XCTAssertEqual(calendar?.repeats, false,
-                           "One-shot alarm must not re-arm itself a week later")
-            XCTAssertNotNil(calendar?.dateComponents.weekday,
-                            "Each one-shot trigger still pins its weekday")
-        }
-    }
-
-    func testMakeTriggers_weeklyMode_keepsRepeatingTriggers() {
-        let alarm = Alarm(repeatDays: [0, 2], repeatMode: .weekly)
-
-        let triggers = primaries(for: alarm)
-
-        XCTAssertEqual(triggers.count, 2)
-        for trigger in triggers {
-            XCTAssertEqual(calendarTrigger(trigger)?.repeats, true,
-                           "Weekly alarms keep the historical repeating triggers")
-        }
-    }
-
-    func testMakeTriggers_neverModeWithoutDays_fallsBackToOnceTrigger() {
-        let alarm = Alarm(repeatDays: [], repeatMode: .never)
-
-        let triggers = primaries(for: alarm)
-
-        XCTAssertEqual(triggers.count, 1)
-        XCTAssertEqual(triggers.first?.label, "once")
-        XCTAssertEqual(triggers.first.flatMap(calendarTrigger)?.repeats, false)
     }
 
     // MARK: - Dismiss semantics (one-shot auto-disable)

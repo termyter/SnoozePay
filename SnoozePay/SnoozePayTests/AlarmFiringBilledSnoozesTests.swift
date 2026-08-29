@@ -35,20 +35,20 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
         Alarm(penaltyAmount: penalty, progressiveScale: progressive)
     }
 
-    /// Scheduler whose notification center rejects `add(_:)` — `scheduleSnooze`
+    /// Scheduler whose AlarmKit backend rejects the snooze — `scheduleSnooze`
     /// resolves to `.failure`, which triggers the refund path.
     private func makeFailingScheduler() -> AlarmScheduler {
-        let center = BilledMockNotificationCenter()
-        center.addError = NSError(
-            domain: "UNErrorDomain",
-            code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed"]
+        AlarmScheduler(
+            notificationCenter: BilledMockNotificationCenter(),
+            alarmKit: TestAlarmKitBackend(failSnooze: true)
         )
-        return AlarmScheduler(notificationCenter: center)
     }
 
     private func makeSucceedingScheduler() -> AlarmScheduler {
-        AlarmScheduler(notificationCenter: BilledMockNotificationCenter())
+        AlarmScheduler(
+            notificationCenter: BilledMockNotificationCenter(),
+            alarmKit: TestAlarmKitBackend()
+        )
     }
 
     /// Writes `transactions` straight into the ledger's UserDefaults key so a

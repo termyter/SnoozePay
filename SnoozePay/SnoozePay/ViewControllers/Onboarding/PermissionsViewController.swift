@@ -1,5 +1,4 @@
 import UIKit
-import UserNotifications
 
 /// Permissions screen — V3 (`docs/design/v2-handoff/components/SPMore2.jsx`
 /// `Permissions`, artboard 05). Shown once after Onboarding finishes, before
@@ -20,8 +19,8 @@ import UserNotifications
 ///
 /// Flow preserves the V1 wiring:
 /// 1. Notifications card → tapping the card calls
-///    `AlarmScheduler.requestPermission` with the same option ladder used at
-///    AppDelegate launch.
+///    `AlarmScheduler.requestPermission` — since #472 that is the AlarmKit
+///    grant, the only thing that makes an alarm ring.
 /// 2. Background — `UIBackgroundModes` is declared in Info.plist for the
 ///    audio playback / processing categories, so this card is informational
 ///    and renders as granted.
@@ -54,7 +53,11 @@ final class PermissionsViewController: UIViewController {
 
     // MARK: - State
 
-    private var notificationStatus: UNAuthorizationStatus = .notDetermined
+    /// The alarm-backend grant the first card reflects. Read from AlarmKit,
+    /// not from `UNNotificationSettings`: since #472 a notification cannot ring
+    /// an alarm, so a green card driven by the notification grant would promise
+    /// a working alarm the app can no longer deliver.
+    private var alarmAuthorization: AlarmKitAuthorization = .notDetermined
 
     // MARK: - Subviews
 
@@ -246,17 +249,12 @@ final class PermissionsViewController: UIViewController {
 
     // MARK: - State refresh
 
-    /// Fetch the current `UNNotificationSettings` and re-render every card.
-    /// Always dispatches back to main — UN settings callbacks fire on a
-    /// background queue.
+    /// Re-read the alarm grant and re-render every card. AlarmKit answers
+    /// synchronously, so unlike the old `getNotificationSettings` round-trip
+    /// there is no background hop to marshal.
     private func refreshNotificationSettings() {
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.notificationStatus = settings.authorizationStatus
-                self.applyStatusToCards()
-            }
-        }
+        alarmAuthorization = AlarmScheduler.shared.alarmKitAuthorization
+        applyStatusToCards()
     }
 
     private func applyStatusToCards() {
@@ -265,22 +263,19 @@ final class PermissionsViewController: UIViewController {
     }
 
     private func notificationsStatus() -> PermissionStatus {
-        Self.notificationPermissionStatus(for: notificationStatus)
+        Self.alarmPermissionStatus(for: alarmAuthorization)
     }
 
-    /// Uses the same alarm-safety interpretation as
-    /// `SystemAlarmBackendProbe`: only a fully authorized notification can
-    /// wake someone. Provisional and ephemeral delivery must stay actionable,
-    /// not receive the green "granted" treatment.
-    static func notificationPermissionStatus(
-        for notificationStatus: UNAuthorizationStatus
+    /// Uses the same interpretation as `SystemAlarmBackendProbe`: only an
+    /// authorized alarm backend can wake someone, so every other state stays
+    /// actionable rather than receiving the green "granted" treatment.
+    static func alarmPermissionStatus(
+        for authorization: AlarmKitAuthorization
     ) -> PermissionStatus {
-        switch notificationStatus {
+        switch authorization {
         case .authorized:
             return .granted
-        case .denied, .notDetermined, .provisional, .ephemeral:
-            return .actionable
-        @unknown default:
+        case .denied, .notDetermined, .unrecognized:
             return .actionable
         }
     }
@@ -304,15 +299,17 @@ final class PermissionsViewController: UIViewController {
     }
 
     private func handleNotificationsTap() {
-        if notificationStatus == .denied {
+        // A decided refusal can only be undone in Settings — the OS silently
+        // no-ops a second request, so prompting again would look like a dead tap.
+        if alarmAuthorization == .denied {
             openAppSettings()
             return
         }
         // Route through `AlarmScheduler.requestPermission` so the same
-        // request ladder runs as on AppDelegate launch.
+        // request runs as on AppDelegate launch.
         AlarmScheduler.shared.requestPermission { [weak self] _ in
-            // Refresh from settings rather than trusting the `granted` flag
-            // alone — the authorization status is the value the cards render.
+            // Re-read the grant rather than trusting the `granted` flag alone —
+            // the authorization state is the value the cards render.
             self?.refreshNotificationSettings()
         }
     }

@@ -11,7 +11,7 @@ import AlarmKit
 private typealias AppAlarm = SnoozePay.Alarm
 
 /// Unit tests for the AlarmKit (Strategy A) integration in `AlarmScheduler`
-/// (#377). Covers the iOS-26-vs-notification-fallback branching through the
+/// (#377). Covers the authorized-vs-refused branching through the
 /// injectable `AlarmKitScheduling` seam, plus the `Alarm` → AlarmKit config
 /// mapping. The branching tests run on any host because they exercise the
 /// `AlarmScheduling` API; the config-mapping tests are gated to iOS 26.
@@ -39,12 +39,14 @@ final class AlarmKitSchedulerTests: XCTestCase {
         XCTAssertEqual(alarmKit.scheduledIDs.count, 1,
                        "Authorized AlarmKit must receive the schedule call")
         XCTAssertTrue(center.addedRequests.isEmpty,
-                      "Strategy A must not also register a notification (Strategy B)")
+                      "An AlarmKit alarm must not also register a notification")
     }
 
-    /// When AlarmKit is present but NOT authorized, `schedule` must fall back to
-    /// the notification path so the user is never left without an alarm.
-    func testSchedule_unauthorizedAlarmKit_fallsBackToNotifications() throws {
+    /// When AlarmKit is present but NOT authorized, `schedule` must REFUSE.
+    /// It used to degrade to a `.timeSensitive` notification, which pings once
+    /// and cannot wake a sleeping user — the alarm read as created and never
+    /// rang (#472).
+    func testSchedule_unauthorizedAlarmKit_refusesInsteadOfDegrading() throws {
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("AlarmKit branch only runs on iOS 26+")
         }
@@ -53,27 +55,34 @@ final class AlarmKitSchedulerTests: XCTestCase {
         let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
 
         let exp = expectation(description: "schedule completes")
-        scheduler.schedule(AppAlarm(penaltyAmount: 50)) { _ in exp.fulfill() }
+        var reported: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler.schedule(AppAlarm(penaltyAmount: 50)) { reported = $0; exp.fulfill() }
         wait(for: [exp], timeout: 2.0)
 
         XCTAssertTrue(alarmKit.scheduledIDs.isEmpty,
                       "Unauthorized AlarmKit must not be used")
-        XCTAssertFalse(center.addedRequests.isEmpty,
-                       "Fallback must register at least one notification (Strategy B)")
+        XCTAssertTrue(center.addedRequests.isEmpty,
+                      "No notification may be registered — the fallback is gone (#472)")
+        guard case .failure(.backendUnavailable) = reported else {
+            return XCTFail("Expected .backendUnavailable, got \(String(describing: reported))")
+        }
     }
 
-    /// With no AlarmKit backend wired (the pre-#377 / iOS < 26 shape), behaviour
-    /// is unchanged: the alarm is scheduled via notifications.
-    func testSchedule_noAlarmKitBackend_usesNotificationFallback() {
+    /// With no AlarmKit backend wired at all, the refusal is the same: there is
+    /// nothing else that could ring.
+    func testSchedule_noAlarmKitBackend_refuses() {
         let center = RecordingCenter()
         let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: nil)
 
         let exp = expectation(description: "schedule completes")
-        scheduler.schedule(AppAlarm(penaltyAmount: 50)) { _ in exp.fulfill() }
+        var reported: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler.schedule(AppAlarm(penaltyAmount: 50)) { reported = $0; exp.fulfill() }
         wait(for: [exp], timeout: 2.0)
 
-        XCTAssertFalse(center.addedRequests.isEmpty,
-                       "Without AlarmKit the notification fallback must still schedule")
+        XCTAssertTrue(center.addedRequests.isEmpty)
+        guard case .failure(.backendUnavailable) = reported else {
+            return XCTFail("Expected .backendUnavailable, got \(String(describing: reported))")
+        }
     }
 
     /// A disabled alarm short-circuits on every backend — no AlarmKit schedule,
@@ -94,12 +103,12 @@ final class AlarmKitSchedulerTests: XCTestCase {
         XCTAssertTrue(center.addedRequests.isEmpty)
     }
 
-    /// #417: when the AlarmKit PRIMARY schedule fails to land asynchronously
-    /// (alarm limit, revoked auth, backend reject), `AlarmScheduler.schedule`
-    /// MUST NOT report a phantom success — it must arm the notification fallback
-    /// so the user (who was told "Будильник создан") still has an alarm. The old
-    /// fire-and-log path swallowed this and left nothing armed.
-    func testSchedule_alarmKitAsyncFailure_armsNotificationFallback() throws {
+    /// #417: when the AlarmKit schedule fails to land asynchronously (alarm
+    /// limit, revoked auth, backend reject), `AlarmScheduler.schedule` MUST NOT
+    /// report a phantom success. Before #472 it armed a notification instead and
+    /// reported success; now the only honest answer is a typed failure, which
+    /// the create / toggle path shows the user.
+    func testSchedule_alarmKitAsyncFailure_reportsFailure() throws {
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("AlarmKit branch only runs on iOS 26+")
         }
@@ -110,7 +119,7 @@ final class AlarmKitSchedulerTests: XCTestCase {
 
         let exp = expectation(description: "schedule completes")
         // The completion must fire exactly once (over-fulfillment = a double
-        // report from both the AlarmKit branch and the fallback).
+        // report from the AlarmKit branch).
         exp.expectedFulfillmentCount = 1
         exp.assertForOverFulfill = true
         var reportedResult: Result<Void, AlarmScheduler.SchedulingError>?
@@ -121,45 +130,12 @@ final class AlarmKitSchedulerTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
 
         XCTAssertEqual(alarmKit.scheduledIDs, [alarm.id],
-                       "AlarmKit schedule must have been attempted before failing over")
-        XCTAssertFalse(center.addedRequests.isEmpty,
-                       "On async AlarmKit failure the notification fallback MUST be armed")
-        // Result is reported ONLY after the async failure resolves into the
-        // fallback. With the notification fallback landed, success is correct:
-        // an alarm exists. The regression we guard against is success with NO
-        // notification armed (covered by the addedRequests assertion).
-        if case .failure = reportedResult {
-            XCTFail("With the notification fallback armed the schedule should report success")
-        }
-    }
-
-    /// Worst case for #417: AlarmKit async-rejects AND the notification fallback's
-    /// `add` also errors. The user was told nothing yet, so the result MUST be a
-    /// typed `.failure` — never a phantom success that leaves no alarm armed.
-    func testSchedule_bothBackendsFail_reportsFailureNotPhantomSuccess() throws {
-        guard #available(iOS 26.0, *) else {
-            throw XCTSkip("AlarmKit branch only runs on iOS 26+")
-        }
-        let alarmKit = MockAlarmKitScheduler(authorized: true, failSchedule: true)
-        let center = RecordingCenter()
-        center.failAdds = true
-        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
-        let alarm = AppAlarm(penaltyAmount: 50)
-
-        let exp = expectation(description: "schedule completes")
-        exp.expectedFulfillmentCount = 1
-        exp.assertForOverFulfill = true
-        var reportedResult: Result<Void, AlarmScheduler.SchedulingError>?
-        scheduler.schedule(alarm) { result in
-            reportedResult = result
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
-
-        guard case .failure = reportedResult else {
-            XCTFail("When BOTH AlarmKit and the notification fallback fail, the "
-                + "schedule must report a typed .failure, not phantom success")
-            return
+                       "AlarmKit schedule must have been attempted")
+        XCTAssertTrue(center.addedRequests.isEmpty,
+                      "A rejected AlarmKit schedule must not silently become a notification")
+        guard case .failure(.system) = reportedResult else {
+            return XCTFail("A rejected schedule must report .system, got "
+                + "\(String(describing: reportedResult))")
         }
     }
 
@@ -191,7 +167,7 @@ final class AlarmKitSchedulerTests: XCTestCase {
         XCTAssertEqual(alarmKit.callLog, ["stop", "scheduleSnooze"],
                        "Stop must run BEFORE the reschedule so the alarm stops ringing")
         XCTAssertTrue(center.addedRequests.isEmpty,
-                      "Strategy A snooze must not also register a notification (Strategy B)")
+                      "An AlarmKit snooze must not also register a notification")
     }
 
     /// The AlarmKit snooze re-fire date is now + the alarm's snoozeMinutes.
@@ -214,9 +190,11 @@ final class AlarmKitSchedulerTests: XCTestCase {
         XCTAssertLessThanOrEqual(fireDate.timeIntervalSince(after), 9 * 60 + 1)
     }
 
-    /// On the notification fallback (AlarmKit unauthorized) the snooze stays a
-    /// notification (Strategy B) — the existing behaviour must not regress.
-    func testScheduleSnooze_unauthorizedAlarmKit_fallsBackToNotification() throws {
+    /// Without a grant the snooze must FAIL, not become a notification: the
+    /// penalty has already been charged, and the coordinator refunds it off this
+    /// typed failure. A "successful" notification snooze would keep the money
+    /// and never re-ring (#472).
+    func testScheduleSnooze_unauthorizedAlarmKit_refusesSoThePenaltyIsRefunded() throws {
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("AlarmKit branch only runs on iOS 26+")
         }
@@ -225,33 +203,44 @@ final class AlarmKitSchedulerTests: XCTestCase {
         let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: alarmKit)
 
         let exp = expectation(description: "snooze completes")
-        scheduler.scheduleSnooze(for: AppAlarm(penaltyAmount: 50), snoozeCount: 1) { _ in exp.fulfill() }
+        var reported: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler.scheduleSnooze(for: AppAlarm(penaltyAmount: 50), snoozeCount: 1) {
+            reported = $0
+            exp.fulfill()
+        }
         wait(for: [exp], timeout: 2.0)
 
         XCTAssertTrue(alarmKit.snoozedIDs.isEmpty, "Unauthorized AlarmKit must not reschedule a system snooze")
-        XCTAssertFalse(center.addedRequests.isEmpty, "Fallback must register the notification snooze")
+        XCTAssertTrue(center.addedRequests.isEmpty, "No notification snooze may be registered (#472)")
+        guard case .failure(.backendUnavailable) = reported else {
+            return XCTFail("Expected .backendUnavailable, got \(String(describing: reported))")
+        }
     }
 
-    /// With no AlarmKit backend (iOS < 26 shape) the snooze is a notification —
-    /// the pre-#383 behaviour, unchanged.
-    func testScheduleSnooze_noAlarmKitBackend_usesNotificationFallback() {
+    func testScheduleSnooze_noAlarmKitBackend_refuses() {
         let center = RecordingCenter()
         let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: nil)
 
         let exp = expectation(description: "snooze completes")
-        scheduler.scheduleSnooze(for: AppAlarm(penaltyAmount: 50), snoozeCount: 1) { _ in exp.fulfill() }
+        var reported: Result<Void, AlarmScheduler.SchedulingError>?
+        scheduler.scheduleSnooze(for: AppAlarm(penaltyAmount: 50), snoozeCount: 1) {
+            reported = $0
+            exp.fulfill()
+        }
         wait(for: [exp], timeout: 2.0)
 
-        XCTAssertFalse(center.addedRequests.isEmpty,
-                       "Without AlarmKit the notification snooze fallback must still register")
+        XCTAssertTrue(center.addedRequests.isEmpty)
+        guard case .failure(.backendUnavailable) = reported else {
+            return XCTFail("Expected .backendUnavailable, got \(String(describing: reported))")
+        }
     }
 
     /// #394 Finding 1: when the AlarmKit system snooze fails to schedule
-    /// asynchronously (alarm limit, revoked auth, backend reject), the caller
-    /// MUST arm the notification-burst fallback so a re-ring still exists — the
-    /// penalty was already charged and the original already stopped, so a
-    /// swallowed failure would leave the user with nothing ringing.
-    func testScheduleSnooze_alarmKitAsyncFailure_armsNotificationFallback() throws {
+    /// asynchronously (alarm limit, revoked auth, backend reject), the failure
+    /// MUST reach the caller — the penalty was already charged and the original
+    /// already stopped, so a swallowed failure would leave the user with nothing
+    /// ringing AND out of pocket.
+    func testScheduleSnooze_alarmKitAsyncFailure_reportsFailure() throws {
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("AlarmKit branch only runs on iOS 26+")
         }
@@ -269,15 +258,12 @@ final class AlarmKitSchedulerTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
 
         XCTAssertEqual(alarmKit.snoozedIDs, [alarm.id],
-                       "AlarmKit snooze must have been attempted before failing over")
-        XCTAssertFalse(center.addedRequests.isEmpty,
-                       "On async AlarmKit failure the notification re-ring fallback MUST be armed")
-        if case .success = reportedResult {
-            // Fallback notification landed → reporting success is correct: a
-            // re-ring exists. The regression we guard against is success with
-            // NO notification armed (covered by the addedRequests assertion).
-        } else {
-            XCTFail("With the notification fallback armed the snooze should report success")
+                       "AlarmKit snooze must have been attempted")
+        XCTAssertTrue(center.addedRequests.isEmpty,
+                      "A rejected snooze must not silently become a notification")
+        guard case .failure(.system) = reportedResult else {
+            return XCTFail("A rejected snooze must report .system, got "
+                + "\(String(describing: reportedResult))")
         }
     }
 
@@ -351,7 +337,7 @@ final class AlarmKitSchedulerTests: XCTestCase {
     }
 
     func testStopSystemAlarm_noBackend_isNoOp() {
-        // No crash when no AlarmKit backend exists (iOS < 26 / fallback shape).
+        // No crash when no AlarmKit backend exists.
         let scheduler = AlarmScheduler(notificationCenter: RecordingCenter(), alarmKit: nil)
         scheduler.stopSystemAlarm(UUID())
     }
@@ -515,14 +501,17 @@ final class AlarmKitSchedulerTests: XCTestCase {
 
     // MARK: - Deallocated-during-async-reject (#424, #417 follow-up)
 
-    /// Issue #424: `schedule`'s AlarmKit branch captures `[weak self]`; if the
-    /// scheduler is torn down between dispatching the async AlarmKit schedule and
-    /// its rejection callback, the `guard let self else` arm must report a typed
-    /// `.failure(.cancelled)` — never a phantom success and never a hang. The
-    /// synchronous `MockAlarmKitScheduler` can't cover this (it answers while the
-    /// scheduler is still alive); this deferring double releases the callback on
-    /// demand so the test can drop the scheduler first.
-    func testSchedule_deallocatedAfterAsyncReject_reportsCancelled() throws {
+    /// Issue #424: if the scheduler is torn down between dispatching the async
+    /// AlarmKit schedule and its rejection callback, the caller must still get a
+    /// typed failure — never a phantom success and never a hang.
+    ///
+    /// The `.cancelled` case this used to assert existed only because the
+    /// deallocated scheduler could no longer arm the notification fallback.
+    /// With no fallback to arm, the honest report is the backend's own
+    /// rejection. The synchronous `MockAlarmKitScheduler` can't cover this (it
+    /// answers while the scheduler is still alive); this deferring double
+    /// releases the callback on demand so the test can drop the scheduler first.
+    func testSchedule_deallocatedAfterAsyncReject_reportsFailure() throws {
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("AlarmKit branch only runs on iOS 26+")
         }
@@ -540,32 +529,31 @@ final class AlarmKitSchedulerTests: XCTestCase {
             exp.fulfill()
         }
 
-        // AlarmKit captured the completion but hasn't answered. The scheduler's
-        // only strong reference is ours (the mock holds the [weak self] closure,
-        // which does not retain it) — drop it so the guard sees nil.
+        // AlarmKit captured the completion but hasn't answered. Drop our only
+        // strong reference to the scheduler before it resolves.
         XCTAssertNotNil(alarmKit.pendingCompletion,
                         "AlarmKit schedule must be awaiting its async result")
         XCTAssertNil(reported, "No result before the async reject resolves")
         scheduler = nil
 
-        // Now fire the async rejection. With self deallocated the guard must
-        // report .cancelled (not arm a fallback, not hang, not phantom-succeed).
+        // Now fire the async rejection. It must surface as a typed failure —
+        // not a hang, not a phantom success.
         alarmKit.fireRejection()
         wait(for: [exp], timeout: 2.0)
 
-        guard case .failure(.cancelled) = reported else {
-            return XCTFail("Deallocated-after-async-reject must report .cancelled, "
+        guard case .failure(.system) = reported else {
+            return XCTFail("Deallocated-after-async-reject must report .system, "
                 + "got \(String(describing: reported))")
         }
         XCTAssertTrue(center.addedRequests.isEmpty,
-                      "A deallocated scheduler must not arm a notification fallback")
+                      "Nothing may fall back to a notification")
     }
 }
 
 // MARK: - Test doubles
 
 /// Records the calls `AlarmScheduler` makes against its AlarmKit seam so the
-/// Strategy-A-vs-fallback branching can be asserted on any host OS. Mirrors the
+/// authorized-vs-refused branching can be asserted on any host OS. Mirrors the
 /// `PermissionStubCenter` pattern from `AlarmSchedulerTests`.
 private final class MockAlarmKitScheduler: AlarmKitScheduling {
     struct SnoozeScheduleError: Error {}
@@ -573,13 +561,12 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
 
     private let authorized: Bool
     /// When `true`, `scheduleSnooze` reports `.failure` via its completion (after
-    /// still recording the call) — models an async AlarmKit reject so the caller
-    /// must arm the notification fallback instead (#394 Finding 1).
+    /// still recording the call) — models an async AlarmKit reject the caller
+    /// must surface (#394 Finding 1).
     private let failSnooze: Bool
     /// When `true`, `schedule` reports `.failure` via its completion (after still
-    /// recording the call) — models an async AlarmKit reject on the PRIMARY
-    /// schedule path so the caller must arm the notification fallback instead of
-    /// reporting a phantom success (#417).
+    /// recording the call) — models an async AlarmKit reject the caller must
+    /// surface instead of reporting a phantom success (#417).
     private let failSchedule: Bool
     private(set) var scheduledIDs: [UUID] = []
     private(set) var snoozedIDs: [UUID] = []
@@ -638,7 +625,7 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
 /// `AlarmKitScheduling` double that DEFERS its `schedule` completion: it stores
 /// the callback and only invokes it (as a `.failure`) when `fireRejection()` is
 /// called. Lets a test drop the `AlarmScheduler` reference before the async
-/// reject lands, exercising the deallocated-scheduler `.cancelled` guard (#424).
+/// reject lands (#424).
 private final class DeferringAlarmKitScheduler: AlarmKitScheduling {
     struct ScheduleRejected: Error {}
 
@@ -680,21 +667,17 @@ private final class DeferringAlarmKitScheduler: AlarmKitScheduling {
     func stop(_ alarmID: UUID) {}
 }
 
-/// `NotificationScheduling` double that records every `add` so the fallback
-/// path can be observed. Completes async members with empty results so the
-/// pre-flight 64-pending check resolves deterministically.
+/// `NotificationScheduling` double that records every `add`, so a test can
+/// assert that NOTHING is scheduled as a notification any more (#472).
 private final class RecordingCenter: NotificationScheduling {
     private(set) var addedRequests: [UNNotificationRequest] = []
-    /// When true, every `add` reports an error so the notification fallback
-    /// itself fails — used to exercise the both-backends-fail path (#417).
-    var failAdds = false
 
     func add(
         _ request: UNNotificationRequest,
         withCompletionHandler completion: ((Error?) -> Void)?
     ) {
         addedRequests.append(request)
-        completion?(failAdds ? NSError(domain: "RecordingCenterTest", code: 1) : nil)
+        completion?(nil)
     }
     func getPendingNotificationRequests(
         completionHandler: @escaping ([UNNotificationRequest]) -> Void

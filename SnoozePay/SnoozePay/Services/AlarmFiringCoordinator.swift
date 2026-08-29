@@ -145,13 +145,6 @@ final class AlarmFiringCoordinator {
             return
         }
 
-        // Cancel THIS firing's lock-screen fallback bursts before rescheduling
-        // (#19 QA): the primary alarm's `_burstN` follow-ups are still pending at
-        // +30/60/90s and would re-ring on top of the snooze the user just chose.
-        // Burst-only — the alarm's primary repeating triggers stay armed so a
-        // weekly alarm still fires on its next day.
-        scheduler.cancelFallbackBursts(payload.alarmID)
-
         scheduler.scheduleSnooze(for: alarm, snoozeCount: newCount) { [weak self] result in
             self?.handleScheduleResult(
                 result,

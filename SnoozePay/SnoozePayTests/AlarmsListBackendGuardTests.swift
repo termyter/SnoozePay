@@ -1,14 +1,14 @@
 import XCTest
 import UIKit
-import UserNotifications
 @testable import SnoozePay
 
 /// Tests for the proactive "no backend can ring an alarm" guard (#428).
 ///
-/// Covers the single source of truth end to end: how the two OS backends fold
-/// into one `AlarmBackendAvailability`, what the alarms-list VM derives from
-/// it, and the foreground re-probe that keeps the banner honest when the user
-/// flips a permission in iOS Settings mid-session.
+/// Covers the single source of truth end to end: how the AlarmKit grant folds
+/// into one `AlarmBackendAvailability` (#472 removed the second backend), what
+/// the alarms-list VM derives from it, and the foreground re-probe that keeps
+/// the banner honest when the user flips a permission in iOS Settings
+/// mid-session.
 final class AlarmsListBackendGuardTests: XCTestCase {
 
     /// Synchronous probe stub — resolves on the calling (main) thread so the
@@ -104,44 +104,39 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         XCTAssertTrue(viewModel.canCreateAlarms)
     }
 
-    func testAlarmKitAuthorized_isEnoughEvenWithNotificationsDenied() {
-        let probe = SystemAlarmBackendProbe(
-            alarmKitAuthorized: { true },
-            notificationStatus: { completion in completion(.denied) }
-        )
+    func testAlarmKitAuthorized_resolvesAvailable() {
+        let probe = SystemAlarmBackendProbe(alarmKitAuthorization: { .authorized })
         var resolved: AlarmBackendAvailability?
         probe.probe { resolved = $0 }
 
         XCTAssertEqual(resolved, .available)
     }
 
-    func testNotificationsAuthorized_isEnoughWithoutAlarmKit() {
-        let probe = SystemAlarmBackendProbe(
-            alarmKitAuthorized: { false },
-            notificationStatus: { completion in completion(.authorized) }
-        )
-        var resolved: AlarmBackendAvailability?
-        probe.probe { resolved = $0 }
-
-        XCTAssertEqual(resolved, .available)
-    }
-
-    func testBothBackendsDenied_resolvesUnavailable() {
-        let probe = SystemAlarmBackendProbe(
-            alarmKitAuthorized: { false },
-            notificationStatus: { completion in completion(.denied) }
-        )
+    /// The notification grant is no longer consulted at all (#472): a
+    /// `.timeSensitive` ping cannot wake a sleeping user, so counting it as a
+    /// backend was the silent failure this guard exists to prevent.
+    func testAlarmKitDenied_resolvesUnavailable_regardlessOfNotifications() {
+        let probe = SystemAlarmBackendProbe(alarmKitAuthorization: { .denied })
         var resolved: AlarmBackendAvailability?
         probe.probe { resolved = $0 }
 
         XCTAssertEqual(resolved, .unavailable)
     }
 
-    /// Undecided notifications are their OWN state: still no alarm, but the
-    /// remedy is the in-app prompt, not a trip to Settings.
+    func testUnrecognizedAuthorization_resolvesIndeterminate_notAvailable() {
+        let probe = SystemAlarmBackendProbe(alarmKitAuthorization: { .unrecognized })
+        var resolved: AlarmBackendAvailability?
+        probe.probe { resolved = $0 }
+
+        XCTAssertEqual(resolved, .indeterminate,
+                       "A state we can't read must never be reported as a working alarm")
+    }
+
+    /// An undecided grant is its OWN state: still no alarm, but the remedy is
+    /// the in-app prompt, not a trip to Settings.
     func testNotDetermined_resolvesNotRequested() {
         XCTAssertEqual(
-            SystemAlarmBackendProbe.availability(forNotificationStatus: .notDetermined),
+            SystemAlarmBackendProbe.availability(forAlarmKitAuthorization: .notDetermined),
             .notRequested
         )
     }
@@ -203,18 +198,16 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         )
     }
 
-    /// Provisional notifications are delivered quietly — they cannot wake a
-    /// sleeping user, so they must not count as an alarm backend.
-    func testProvisional_resolvesUnavailable() {
+    func testDenied_resolvesUnavailable() {
         XCTAssertEqual(
-            SystemAlarmBackendProbe.availability(forNotificationStatus: .provisional),
+            SystemAlarmBackendProbe.availability(forAlarmKitAuthorization: .denied),
             .unavailable
         )
     }
 
     func testAuthorized_resolvesAvailable() {
         XCTAssertEqual(
-            SystemAlarmBackendProbe.availability(forNotificationStatus: .authorized),
+            SystemAlarmBackendProbe.availability(forAlarmKitAuthorization: .authorized),
             .available
         )
     }

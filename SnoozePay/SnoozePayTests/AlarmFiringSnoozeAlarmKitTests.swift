@@ -2,13 +2,12 @@ import XCTest
 import UserNotifications
 @testable import SnoozePay
 
-/// #383 — the in-app snooze on the AlarmKit (Strategy A, iOS 26+) path must:
+/// #383 — the in-app snooze on the AlarmKit path must:
 ///   • charge the penalty exactly once,
 ///   • reschedule the snooze through AlarmKit (a real system alarm) and NOT as
-///     a notification (Strategy B),
-///   • surface `usesAlarmKit == true` so the firing screen dismisses (rather
-///     than running the in-place notification-snooze countdown) and skips its
-///     own `AudioService` (the system owns the sound).
+///     a notification,
+///   • surface `usesAlarmKit == true` so the firing screen dismisses and skips
+///     its own `AudioService` (the system owns the sound).
 ///
 /// The screen-level stop/dismiss/audio behaviour lives in the VC; here we pin
 /// the model + scheduler seam that drives it, since those are the testable
@@ -44,7 +43,7 @@ final class AlarmFiringSnoozeAlarmKitTests: XCTestCase {
             balanceService: SnoozeStubBalance(balanceValue: 500),
             scheduler: scheduler
         )
-        XCTAssertFalse(vm.usesAlarmKit, "Without an AlarmKit backend the path stays Strategy B")
+        XCTAssertFalse(vm.usesAlarmKit, "Without a backend nothing can ring — and the screen must know")
     }
 
     // MARK: - Snooze on the AlarmKit path

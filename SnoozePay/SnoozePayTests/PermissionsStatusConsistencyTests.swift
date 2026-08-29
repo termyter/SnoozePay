@@ -1,29 +1,34 @@
 import XCTest
-import UserNotifications
 @testable import SnoozePay
 
+/// The permissions card and the alarms-list backend guard must never disagree
+/// about "can this app ring an alarm".
+///
+/// They used to be checked against `UNAuthorizationStatus` — that axis is gone
+/// with #472, because a notification is no longer a backend. Both now read the
+/// same AlarmKit grant, and this test is what keeps the two mappings from
+/// drifting: a green card over a gated list is the exact contradiction that made
+/// #428 hard to diagnose.
 final class PermissionsStatusConsistencyTests: XCTestCase {
 
     func testNotificationCardMatchesAlarmBackendInterpretation() {
-        let statuses: [UNAuthorizationStatus] = [
-            .authorized, .denied, .notDetermined, .provisional, .ephemeral
-        ]
+        let states: [AlarmKitAuthorization] = [.authorized, .denied, .notDetermined, .unrecognized]
 
-        for status in statuses {
-            let cardStatus = PermissionsViewController.notificationPermissionStatus(for: status)
-            let backendStatus = SystemAlarmBackendProbe.availability(forNotificationStatus: status)
+        for state in states {
+            let cardStatus = PermissionsViewController.alarmPermissionStatus(for: state)
+            let backendStatus = SystemAlarmBackendProbe.availability(forAlarmKitAuthorization: state)
 
             switch backendStatus {
             case .available:
                 guard case .granted = cardStatus else {
-                    return XCTFail("\(status) must look granted when it can ring an alarm")
+                    return XCTFail("\(state) must look granted when it can ring an alarm")
                 }
-            case .unavailable, .notRequested:
+            case .unavailable, .notRequested, .indeterminate:
                 guard case .actionable = cardStatus else {
-                    return XCTFail("\(status) must not look granted when it cannot ring an alarm")
+                    return XCTFail("\(state) must not look granted when it cannot ring an alarm")
                 }
-            case .unresolved, .indeterminate:
-                XCTFail("A concrete notification status must resolve the backend")
+            case .unresolved:
+                XCTFail("A concrete authorization state must resolve the backend")
             }
         }
     }

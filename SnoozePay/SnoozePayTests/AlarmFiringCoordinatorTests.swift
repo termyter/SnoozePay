@@ -13,6 +13,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
     private var balanceService: BalanceService!
     private var coordinator: AlarmFiringCoordinator!
     private var mockCenter: MockNotificationCenter!
+    private var alarmKit: TestAlarmKitBackend!
     private var scheduler: AlarmScheduler!
 
     override func setUp() {
@@ -21,12 +22,14 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         testDefaults = UserDefaults(suiteName: suiteName)!
         alarmRepo = AlarmRepository(defaults: testDefaults)
         balanceService = BalanceService(defaults: testDefaults)
-        // Inject a stub UNUserNotificationCenter so the success path doesn't
-        // pollute the real notification daemon and the failure path is
-        // reproducible (revoked permission / 64-pending limit). Production
-        // code keeps using `AlarmScheduler.shared`.
+        // Inject a stub AlarmKit backend so the success path doesn't touch a
+        // real system alarm and the failure path is reproducible (rejected
+        // schedule, revoked grant). The notification center stays stubbed too,
+        // so an accidental notification would be visible. Production code keeps
+        // using `AlarmScheduler.shared`.
         mockCenter = MockNotificationCenter()
-        scheduler = AlarmScheduler(notificationCenter: mockCenter)
+        alarmKit = TestAlarmKitBackend()
+        scheduler = AlarmScheduler(notificationCenter: mockCenter, alarmKit: alarmKit)
         coordinator = AlarmFiringCoordinator(
             alarmRepository: alarmRepo,
             balanceService: balanceService,
@@ -175,24 +178,20 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
 
     // MARK: - Issue #130: scheduler failure must surface and refund the user
 
-    /// Stub the notification center to reject `add(_:)` so the scheduler's
+    /// Stub the AlarmKit backend to reject the reschedule so the scheduler's
     /// `scheduleSnooze` resolves to `.failure(.system)`. The coordinator must:
     ///   1. Surface `.scheduleFailed(error:)` as the outcome
     ///   2. Refund the penalty (balance back to pre-charge amount)
     ///   3. Keep ledger consistent — both charge and refund recorded.
     /// Without this fix the user pays for a snooze that never re-fires
     /// (silent-failure-hunter critical finding on PR #127).
-    func testHandleSnooze_schedulerRejectsAdd_refundsBalanceAndReportsScheduleFailed() {
+    func testHandleSnooze_schedulerRejectsSnooze_refundsBalanceAndReportsScheduleFailed() {
         let alarm = makeAlarm(penalty: 50)
         balanceService.topUp(amount: 200)
         let preCharge = balanceService.balance
         XCTAssertEqual(preCharge, 200)
 
-        mockCenter.addError = NSError(
-            domain: "UNErrorDomain",
-            code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed for this application"]
-        )
+        alarmKit.failSnooze = true
 
         let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
@@ -202,8 +201,8 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         guard case .system(let message) = error else {
             return XCTFail("Expected .system error, got \(error)")
         }
-        XCTAssertEqual(message, "Notifications are not allowed for this application",
-                       "Underlying UN error message must reach the outcome verbatim")
+        XCTAssertEqual(message, TestAlarmKitBackend.ScheduleRejected().localizedDescription,
+                       "The backend's error message must reach the outcome verbatim")
         XCTAssertEqual(balanceService.balance, preCharge,
                        "Penalty must be refunded so the user isn't billed for a snooze that won't fire")
 
@@ -229,13 +228,15 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
         balanceService.topUp(amount: 200)
         let pre = balanceService.balance
 
-        // Swap in a center that:
-        //   1. Reports an add() error (so the schedule resolves as .failure)
+        // Swap in an AlarmKit backend that:
+        //   1. Rejects the snooze (so the schedule resolves as .failure)
         //   2. Corrupts the transaction store BEFORE invoking the completion
         //      handler — by the time the coordinator tries to refund, record()
         //      refuses (TransactionRepository locked).
-        let corruptingCenter = CorruptingThenFailingCenter(defaults: testDefaults)
-        let corruptingScheduler = AlarmScheduler(notificationCenter: corruptingCenter)
+        let corruptingScheduler = AlarmScheduler(
+            notificationCenter: MockNotificationCenter(),
+            alarmKit: CorruptingThenFailingAlarmKit(defaults: testDefaults)
+        )
         let coord = AlarmFiringCoordinator(
             alarmRepository: alarmRepo,
             balanceService: balanceService,
@@ -269,33 +270,34 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
             "Wallet is in degraded state — charge took money, refund did NOT land. Banner UX must surface this.")
     }
 
-    /// 64-pending-limit pre-flight failure path. Same contract as the
-    /// `.system` test above but with a different `SchedulingError` variant —
-    /// the refund must happen regardless of which scheduling error class
-    /// surfaces.
-    func testHandleSnooze_schedulerHitsPendingLimit_refundsBalance() {
+    /// No alarm grant at all. Same contract as the `.system` test above but
+    /// with the other `SchedulingError` variant — the refund must happen
+    /// regardless of which scheduling error class surfaces.
+    ///
+    /// This case replaces the 64-pending-limit pre-flight test: that limit was a
+    /// property of notification scheduling, which the app no longer does (#472).
+    /// The failure it stood in for — "the snooze was charged but nothing will
+    /// re-ring" — is now reached through a missing grant instead.
+    func testHandleSnooze_noAlarmGrant_refundsBalance() {
         let alarm = makeAlarm(penalty: 50)
         balanceService.topUp(amount: 200)
 
-        // Saturate the pending-request queue so the pre-flight rejects.
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 60, repeats: false)
-        let content = UNMutableNotificationContent()
-        mockCenter.pendingRequests = (0..<AlarmScheduler.pendingNotificationLimit).map { idx in
-            UNNotificationRequest(identifier: "stub_\(idx)", content: content, trigger: trigger)
-        }
+        alarmKit.authorization = .denied
 
         let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
         guard case .scheduleFailed(let error) = outcome else {
             return XCTFail("Expected .scheduleFailed, got \(String(describing: outcome))")
         }
-        guard case .pendingLimitReached = error else {
-            return XCTFail("Expected .pendingLimitReached, got \(error)")
+        guard case .backendUnavailable = error else {
+            return XCTFail("Expected .backendUnavailable, got \(error)")
         }
         XCTAssertEqual(balanceService.balance, 200,
-                       "Penalty must be refunded when the pending-limit pre-flight rejects")
+                       "Penalty must be refunded when nothing can be armed")
+        XCTAssertTrue(alarmKit.snoozedIDs.isEmpty,
+                      "An unauthorized backend must not be asked to reschedule")
         XCTAssertTrue(mockCenter.addedRequests.isEmpty,
-                      "Pre-flight must short-circuit before any add() call, so no notification was registered")
+                      "And the refusal must not degrade into a notification (#472)")
     }
 }
 
@@ -340,45 +342,38 @@ private final class MockNotificationCenter: NotificationScheduling {
     }
 }
 
-/// Reports an `add()` failure to drive `.scheduleFailed`, but ALSO corrupts
-/// the transaction store the moment before invoking the completion handler.
-/// By the time the coordinator's refund path calls `refund`, the repository
-/// is locked (decode failed on the corrupt blob) and `record()` refuses —
-/// reproducing the `.scheduleFailedAndRefundFailed` outcome (issue #200).
-private final class CorruptingThenFailingCenter: NotificationScheduling {
+/// Rejects the snooze to drive `.scheduleFailed`, but ALSO corrupts the
+/// transaction store the moment before invoking the completion handler. By the
+/// time the coordinator's refund path calls `refund`, the repository is locked
+/// (decode failed on the corrupt blob) and `record()` refuses — reproducing the
+/// `.scheduleFailedAndRefundFailed` outcome (issue #200).
+private final class CorruptingThenFailingAlarmKit: AlarmKitScheduling {
+    struct Rejected: LocalizedError {
+        var errorDescription: String? { "AlarmKit rejected the schedule" }
+    }
+
     private let defaults: UserDefaults
     init(defaults: UserDefaults) { self.defaults = defaults }
 
-    func add(
-        _ request: UNNotificationRequest,
-        withCompletionHandler completion: ((Error?) -> Void)?
+    var isAuthorized: Bool { true }
+    var authorization: AlarmKitAuthorization { .authorized }
+
+    func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(true) }
+
+    func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) {
+        completion(.failure(Rejected()))
+    }
+
+    func scheduleSnooze(
+        _ alarm: Alarm,
+        fireDate: Date,
+        completion: @escaping (Result<Void, Error>) -> Void
     ) {
         // Corrupt the transaction store so the next `record()` call refuses.
         defaults.set(Data("not json".utf8), forKey: "stored_transactions")
-        completion?(NSError(
-            domain: "UNErrorDomain", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed"]
-        ))
+        completion(.failure(Rejected()))
     }
 
-    func getPendingNotificationRequests(
-        completionHandler: @escaping ([UNNotificationRequest]) -> Void
-    ) {
-        completionHandler([])
-    }
-    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
-    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
-    func getDeliveredNotifications(
-        completionHandler: @escaping ([UNNotification]) -> Void
-    ) {
-        completionHandler([])
-    }
-    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {}
-    func removeAllPendingNotificationRequests() {}
-    func requestAuthorization(
-        options: UNAuthorizationOptions,
-        completionHandler: @escaping (Bool, Error?) -> Void
-    ) {
-        completionHandler(false, nil)
-    }
+    func cancel(_ alarmID: UUID) {}
+    func stop(_ alarmID: UUID) {}
 }
