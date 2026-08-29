@@ -18,7 +18,12 @@ final class SPCard: UIView {
     /// - `.surface`: default — `bg1` fill, hairline stroke, soft shadow. In
     ///   light mode the stroke + shadow are required for visibility per
     ///   `feedback_design_system_consistency.md`.
-    /// - `.raised`: stronger surface (`bg2`) for sheets / hero panels.
+    /// - `.raised`: one step higher than `.surface`, for sheets / hero
+    ///   panels / the enabled state of a tonal pair. Elevation is carried by
+    ///   whatever reads as "higher" in the current theme — the `bg2` ramp
+    ///   step in dark, the heavier `shadow-2` on the same white `bg1` fill in
+    ///   light, where `bg2` is a *recessed* tone (#543). See
+    ///   `AppColors.bgRaised`.
     /// - `.outline`: transparent fill, 1px `stroke2` border, no shadow.
     /// - `.money` / `.pain` / `.warn`: brand-gradient fills with matching
     ///   coloured shadow recipes.
@@ -159,13 +164,19 @@ final class SPCard: UIView {
             applyHairlineStrokeIfLight()
             applyShadow1()
         case .raised:
-            backgroundColor = AppColors.bg2
-            // `.sp-card--raised` only swaps the fill to bg2 — it inherits the
-            // base `.sp-card` `--sp-shadow-1`, not the heavier shadow-2 (which
-            // the canon reserves for sheets/overlays). Light mode keeps the
-            // hairline so bg2 (#ECEEF6) doesn't merge into bg0 (#F4F6FB).
-            applyRaisedHairlineIfLight()
-            applyShadow1()
+            // `.sp-card--raised { background: var(--sp-bg-2) }` is a dark-mode
+            // reading of the canon: there the ramp climbs away from the page,
+            // so a fill swap alone is a lift. In light the same swap is a
+            // *drop* — `bg2` (#ECEEF6) is darker than `bg0` (#F4F6FB). Light
+            // therefore keeps the white `bg1` fill and spends `--sp-shadow-2`
+            // on the height instead of `--sp-shadow-1` (#543).
+            backgroundColor = AppColors.bgRaised
+            // Same hairline rule as `.surface`, and for the same reason:
+            // light needs it because a near-white card on a near-white page
+            // is 1.03:1 of separation and a shadow alone does not carry that
+            // edge; dark has the ramp step and takes no border.
+            applyHairlineStrokeIfLight()
+            applyElevationShadow()
         case .outline:
             backgroundColor = .clear
             applyOutlineStroke()
@@ -244,14 +255,24 @@ final class SPCard: UIView {
         )
     }
 
-    private func applyRaisedHairlineIfLight() {
+    /// Shadow half of the `.raised` recipe.
+    ///
+    /// Dark inherits the base `.sp-card` `--sp-shadow-1`: the fill already
+    /// stepped up the ramp, so a heavier shadow would double-count the lift.
+    /// Light gets `--sp-shadow-2` (`0 6px 20px rgba(8,14,30,.10)` against
+    /// `.surface`'s `0 4px 14px rgba(8,14,30,.06)`) because it shares
+    /// `.surface`'s fill and has nothing else left to be higher with.
+    private func applyElevationShadow() {
         guard traitCollection.userInterfaceStyle != .dark else {
-            layer.borderWidth = 0
+            applyShadow1()
             return
         }
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = 1.0 / scale
-        layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
+        AppShadow.shadow2(for: traitCollection).apply(to: layer)
+        // shadow-2 is a single stop, so make sure no ambient sublayer from a
+        // prior `applyShadow1` survives on this layer.
+        layer.sublayers?
+            .first { $0.name == AppShadow.ambientShadow1LayerName }?
+            .removeFromSuperlayer()
     }
 
     private func applyColoredShadow(_ kind: ColoredShadow) {
@@ -314,8 +335,10 @@ final class SPCard: UIView {
             applyHairlineStrokeIfLight()
             applyShadow1()
         case .raised:
-            applyRaisedHairlineIfLight()
-            applyShadow1()
+            // The fill is a dynamic UIColor and re-resolves itself; the
+            // border/shadow are CALayer cgColor state and do not.
+            applyHairlineStrokeIfLight()
+            applyElevationShadow()
         case .outline:
             applyOutlineStroke()
         case .money:

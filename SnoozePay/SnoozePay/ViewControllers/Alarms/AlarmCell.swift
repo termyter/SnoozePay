@@ -21,7 +21,8 @@ import UIKit
 /// reads as the same primitive as every other surface — `shadow-1`/`shadow-2`
 /// plus the documented light-mode hairline a11y deviation, instead of the old
 /// flat 1pt border with no shadow (#280):
-/// - **enabled**:  `SPCard(tone: .raised)` — `bg2` surface, `fg1` clock + `fg3` caps.
+/// - **enabled**:  `SPCard(tone: .raised)` — `bgRaised` surface, `fg1` clock
+///   + `fg3` caps.
 /// - **disabled**: `SPCard(tone: .surface)` — `bg1` surface, `fg3` clock + `fg4` caps.
 /// - **selected**: handled by `setHighlighted(_:)` press feedback.
 ///
@@ -34,9 +35,9 @@ final class AlarmCell: UITableViewCell {
     // MARK: - UI Elements
 
     /// Card surface. Applies the `SPCard` `.raised`/`.surface` recipe inline
-    /// (shadow-2 / shadow-1 + light-mode hairline) rather than embedding an
-    /// `SPCard` — that primitive's tone is immutable at init and the cell flips
-    /// tone per enabled state. `masksToBounds` stays `false` so the shadow can
+    /// (`bgRaised`/`bg1` fill + shadow-2 / shadow-1 + light-mode hairline)
+    /// rather than embedding an `SPCard` — that primitive's tone is immutable
+    /// at init and the cell flips tone per enabled state. `masksToBounds` stays `false` so the shadow can
     /// render; the rounded corners only clip the background/border on the
     /// layer, and the cell's subviews never extend past the card edge.
     private let cardView: UIView = {
@@ -242,7 +243,8 @@ final class AlarmCell: UITableViewCell {
     ///   / etc.). `nil` hides the pill.
     /// - `soundName`: optional neutral pill — display name of the picked
     ///   sound. `nil` hides the pill.
-    /// - `enabled`: drives the tonal switch between bg2 / bg1 surfaces.
+    /// - `enabled`: drives the tonal switch between the raised and the base
+    ///   surface.
     func configure(
         time: String,
         daysCaps: String,
@@ -389,13 +391,20 @@ final class AlarmCell: UITableViewCell {
     }
 
     /// Install the `SPCard` chrome for the given tone: an enabled card uses the
-    /// `.raised` recipe (`bg2` + `shadow-2`), a disabled card the `.surface`
-    /// recipe (`bg1` + `shadow-1`). In light mode both add a 1pt hairline —
-    /// the documented a11y deviation from `SPCard` (near-white surfaces need a
-    /// stroke to read as a card). Dark mode relies on the shadow alone, no
-    /// border, per the design (SPScreensV2.jsx L404/L421).
+    /// `.raised` recipe (`bgRaised` + `shadow-2`), a disabled card the
+    /// `.surface` recipe (`bg1` + `shadow-1`). In light mode both add a 1pt
+    /// hairline — the documented a11y deviation from `SPCard` (near-white
+    /// surfaces need a stroke to read as a card). Dark mode relies on the
+    /// shadow alone, no border, per the design (SPScreensV2.jsx L404/L421).
+    ///
+    /// The fill is `AppColors.bgRaised`, not the raw `bg2` this used to
+    /// hardcode: `bg2` is a step *up* the ramp in dark but a step *down* in
+    /// light, so the literal pair made the switched-OFF alarm the brightest
+    /// card on a light list while the enabled ones went grey (#543). In light
+    /// both states now share the white `bg1` fill, and the shadow pair this
+    /// method already applied — shadow-2 vs shadow-1 — is what separates them.
     private func applyCardChrome(enabled: Bool) {
-        cardView.backgroundColor = enabled ? AppColors.bg2 : AppColors.bg1
+        cardView.backgroundColor = enabled ? AppColors.bgRaised : AppColors.bg1
 
         let trait = traitCollection
         let isLight = trait.userInterfaceStyle != .dark
