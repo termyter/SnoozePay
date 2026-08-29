@@ -25,12 +25,11 @@ final class AlarmRepository {
         var errorDescription: String? {
             switch self {
             case .decodeFailure:
-                return "Не удалось загрузить будильники. Свяжитесь с поддержкой."
+                return Localized.text("alarms.error.load_failed")
             case .encodeFailure:
-                return "Не удалось сохранить будильник. Попробуйте ещё раз."
+                return Localized.text("alarms.error.save_failed")
             case .persistBlocked:
-                return "Сохранение заблокировано: данные повреждены. "
-                     + "Восстановите состояние через настройки или свяжитесь с поддержкой."
+                return Localized.text("alarms.error.save_blocked")
             }
         }
     }

@@ -84,11 +84,11 @@ final class AlarmScheduler: AlarmScheduling {
         var errorDescription: String? {
             switch self {
             case .system(let message):
-                return "Не удалось запланировать будильник: \(message). "
-                     + "Попробуйте ещё раз или удалите старые будильники."
+                // `message` comes from AlarmKit already localized by the OS, so
+                // it is substituted rather than translated.
+                return Localized.format("alarms.error.schedule_failed", message)
             case .backendUnavailable:
-                return "Приложению не разрешено ставить будильники, "
-                     + "поэтому будильник не зазвонит. Разрешите будильники в Настройках."
+                return Localized.text("alarms.error.backend_unavailable")
             }
         }
         // Equatable synthesis is automatic — `String` associated values
@@ -191,13 +191,13 @@ final class AlarmScheduler: AlarmScheduling {
     func registerCategories() {
         let dismissAction = UNNotificationAction(
             identifier: dismissActionID,
-            title: "Выключить",
+            title: Localized.text("firing.action.dismiss"),
             options: [.foreground]
         )
         // Snooze action title is updated dynamically in the notification content
         let snoozeAction = UNNotificationAction(
             identifier: snoozeActionID,
-            title: "Поспать ещё",
+            title: Localized.text("firing.action.snooze"),
             options: [.foreground]
         )
 
