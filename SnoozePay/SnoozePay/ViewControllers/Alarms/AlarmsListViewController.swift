@@ -7,7 +7,7 @@ import os
 /// ```
 /// safeArea.top
 ///   ├─ SPAlarmsListHeader (sticky)
-///   │     ├─ title row "Будильники" + 40×40 "+" button
+///   │     ├─ title row «Будильники» + 40×40 "+" button
 ///   │     └─ compact balance pill (auto-warn-tint when balance < 100)
 ///   ├─ SPAlarmBackendBanner (when no backend can ring an alarm, #428)
 ///   └─ UITableView (scrolls)
@@ -17,7 +17,7 @@ import os
 /// safeArea.bottom
 /// ```
 ///
-/// The big balance card + amber "БАЛАНС ПОЧТИ ПУСТ" banner from the V1 header
+/// The big balance card + amber «БАЛАНС ПОЧТИ ПУСТ» banner from the V1 header
 /// are gone — the compact pill folds urgency into a single line. The nav-bar
 /// "+" button is suppressed because the header carries its own 40×40 plus;
 /// the gear and DEBUG entries are preserved as required by the design brief.
@@ -199,8 +199,8 @@ class AlarmsListViewController: UIViewController {
         UserDefaults.standard.removeObject(forKey: OnboardingViewController.completedKey)
         UserDefaults.standard.removeObject(forKey: PermissionsViewController.hasBeenShownKey)
         let alert = UIAlertController(
-            title: "Онбординг сброшен",
-            message: "Закройте приложение и запустите заново — увидите экран приветствия.",
+            title: Localized.text("alarms.debug.reset_onboarding.title"),
+            message: Localized.text("alarms.debug.reset_onboarding.message"),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -306,7 +306,7 @@ class AlarmsListViewController: UIViewController {
         let balance = Decimal(viewModel.balance)
         header.setBalance(
             balance,
-            // `balanceHint` swaps in "Откладывать не получится" at 0 ₽
+            // `balanceHint` swaps in «Откладывать не получится» at 0 ₽
             // (#232) and falls back to the affordability line otherwise.
             hint: viewModel.balanceHint,
             delta: viewModel.weeklyDelta
@@ -341,7 +341,7 @@ class AlarmsListViewController: UIViewController {
             tableView.tableHeaderView = nil
             return
         }
-        // The banner's whole copy is "Сэкономили X ₽" — without a defensible X
+        // The banner's whole copy is «Сэкономили X ₽» — without a defensible X
         // (no alarms, unreadable prices, 0 ₽ alarms) it has nothing honest to
         // say, so it stays unmounted rather than printing a made-up figure
         // (#347 review).
@@ -383,8 +383,8 @@ class AlarmsListViewController: UIViewController {
     private func presentRepositoryError(_ error: LocalizedError) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
-            title: "Ошибка данных",
-            message: error.errorDescription ?? "Не удалось загрузить будильники.",
+            title: Localized.text("alarms.error.data_title"),
+            message: error.errorDescription ?? Localized.text("alarms.error.load_failed_fallback"),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -397,15 +397,22 @@ class AlarmsListViewController: UIViewController {
     private func presentBalanceCorruptedAlert(rawValue: Double) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
-            title: "Баланс повреждён",
-            message: "В хранилище обнаружено некорректное значение баланса (\(rawValue)). "
-                + "Пополнения и списания приостановлены. Сбросить баланс до 0 ₽?",
+            title: Localized.text("alarms.balance_corrupted.title"),
+            // The raw value goes in as a string so it prints exactly as it did
+            // before — a `%f` would round the very number support needs to see.
+            message: Localized.format("alarms.balance_corrupted.message", "\(rawValue)"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(
+            title: Localized.text("alarms.balance_corrupted.reset"),
+            style: .destructive
+        ) { [weak self] _ in
             self?.viewModel.acknowledgeBalanceCorruption()
         })
-        alert.addAction(UIAlertAction(title: "Позже", style: .cancel))
+        alert.addAction(UIAlertAction(
+            title: Localized.text("alarms.balance_corrupted.later"),
+            style: .cancel
+        ))
         present(alert, animated: true)
     }
 
@@ -487,7 +494,9 @@ class AlarmsListViewController: UIViewController {
         }
         // If the alert can't be shown (another modal is already up) we simply
         // do nothing — presenting the editor on top of it would fail anyway.
-        presentBackendUnavailableAlert(proceedTitle: "Всё равно создать") { [weak self] in
+        presentBackendUnavailableAlert(
+            proceedTitle: Localized.text("alarms.backend_guard.create_anyway")
+        ) { [weak self] in
             self?.presentCreateAlarm()
         }
     }
@@ -550,7 +559,7 @@ extension AlarmsListViewController: UITableViewDataSource {
                 return
             }
             let warned = self.presentBackendUnavailableAlert(
-                proceedTitle: "Всё равно включить",
+                proceedTitle: Localized.text("alarms.backend_guard.enable_anyway"),
                 onCancel: { [weak self] in
                     // Cell already flipped its own switch optimistically —
                     // re-bind from the (unchanged) model to snap it back.
@@ -593,7 +602,10 @@ extension AlarmsListViewController: UITableViewDelegate {
         _ tableView: UITableView,
         trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
     ) -> UISwipeActionsConfiguration? {
-        let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, completion in
+        let delete = UIContextualAction(
+            style: .destructive,
+            title: Localized.text("alarms.button.delete")
+        ) { [weak self] _, _, completion in
             guard let self else {
                 completion(false)
                 return

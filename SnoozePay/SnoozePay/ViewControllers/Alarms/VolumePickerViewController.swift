@@ -13,8 +13,8 @@ import UIKit
 ///   - `SPCard(.surface)` preview at the top showing the live "{N}%"
 ///     reading in the `moneyXl` (56pt mono) numeric role.
 ///   - Money-tinted UISlider with 5%-step quantisation and a 28pt thumb.
-///   - `SPRow` with an `SPSwitch` for the "Постепенно нарастает" / "За 30
-///     секунд" fade-in option.
+///   - `SPRow` with an `SPSwitch` for the «Постепенно нарастает» / «За 30
+///     секунд» fade-in option.
 final class VolumePickerViewController: UIViewController {
 
     // MARK: - Callbacks
@@ -40,7 +40,7 @@ final class VolumePickerViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.attributedText = NSAttributedString(
-            string: "ГРОМКОСТЬ",
+            string: Localized.text("create_alarm.volume.title").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -112,17 +112,17 @@ final class VolumePickerViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
-        // V2 caps title — matches `SPMore2.jsx` "Громкость" recipe.
+        // V2 caps title — matches `SPMore2.jsx` «Громкость» recipe.
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
-            string: "Громкость".uppercased(),
+            string: Localized.text("create_alarm.volume.title").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
                 .foregroundColor: AppColors.fg3
             ]
         )
-        titleLabel.accessibilityLabel = "Громкость"
+        titleLabel.accessibilityLabel = Localized.text("create_alarm.volume.title")
         navigationItem.titleView = titleLabel
         setupUI()
         applyVolumeToUI()
@@ -195,8 +195,8 @@ final class VolumePickerViewController: UIViewController {
     private func configureFadeRow() {
         fadeRowContainer.translatesAutoresizingMaskIntoConstraints = false
         let fadeRow = SPRow(
-            title: "Постепенно нарастает",
-            subtitle: "За 30 секунд",
+            title: Localized.text("create_alarm.volume_picker.fade_title"),
+            subtitle: Localized.text("create_alarm.volume_picker.fade_subtitle"),
             trailing: fadeSwitch,
             divider: false
         )
@@ -209,9 +209,9 @@ final class VolumePickerViewController: UIViewController {
             fadeRow.bottomAnchor.constraint(equalTo: fadeRowContainer.layoutMarginsGuide.bottomAnchor)
         ])
         // VoiceOver otherwise announces the brand `SPSwitch` as the generic
-        // "Переключатель". Give it the fade row's title so the control is
+        // «Переключатель». Give it the fade row's title so the control is
         // self-describing (#425), mirroring the volume slider's label above.
-        fadeSwitch.accessibilityLabel = "Постепенно нарастает"
+        fadeSwitch.accessibilityLabel = Localized.text("create_alarm.volume_picker.fade_title")
         fadeSwitch.addTarget(self, action: #selector(fadeToggled), for: .valueChanged)
     }
 

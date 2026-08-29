@@ -9,7 +9,9 @@ final class DayPickerCell: UITableViewCell {
 
     static let reuseID = "DayPickerCell"
 
-    private static let dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    // Weekday names are calendar data, not copy: they come from the locale
+    // via `WeekdayNames` rather than from `Localizable.xcstrings` (#569).
+    private static let dayNames = WeekdayNames.short
     private static let buttonDiameter: CGFloat = 36
 
     // MARK: - UI
@@ -96,7 +98,9 @@ final class DayPickerCell: UITableViewCell {
             button.setTitleColor(AppColors.fg3, for: .normal)
         }
         button.layer.borderWidth = 0
-        button.accessibilityValue = isSelected ? "выбрано" : "не выбрано"
+        button.accessibilityValue = Localized.text(
+            isSelected ? "create_alarm.accessibility.selected" : "create_alarm.accessibility.not_selected"
+        )
     }
 
     // MARK: - Actions

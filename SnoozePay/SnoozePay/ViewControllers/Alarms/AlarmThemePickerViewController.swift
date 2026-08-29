@@ -27,7 +27,7 @@ final class AlarmThemePickerViewController: UIViewController {
 
     private enum Item {
         case theme(AlarmTheme)
-        /// Trailing "+ Своё фото" tile. Distinct case so the cell can render
+        /// Trailing «+ Своё фото» tile. Distinct case so the cell can render
         /// the placeholder iconography even when no custom image is picked.
         case customSlot
     }
@@ -81,7 +81,7 @@ final class AlarmThemePickerViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.attributedText = NSAttributedString(
-            string: "ПРЕВЬЮ FIRING-SCREEN",
+            string: Localized.text("create_alarm.theme_picker.preview_caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -121,18 +121,20 @@ final class AlarmThemePickerViewController: UIViewController {
         // V2 caps title — matches `SPMore2.jsx` lines 269 recipe.
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
-            string: "Тема будильника".uppercased(),
+            string: Localized.text("create_alarm.theme_picker.title").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
                 .foregroundColor: AppColors.fg3
             ]
         )
-        titleLabel.accessibilityLabel = "Тема будильника"
+        titleLabel.accessibilityLabel = Localized.text("create_alarm.theme_picker.title")
         navigationItem.titleView = titleLabel
 
         // «Готово» quiet-sm — V3 exit affordance (matches SPMore2.jsx:411).
-        let doneButton = SPButton(title: "Готово", variant: .quiet, size: .sm)
+        let doneButton = SPButton(
+            title: Localized.text("common.button.done"), variant: .quiet, size: .sm
+        )
         doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneButton)
 
@@ -365,7 +367,7 @@ extension AlarmThemePickerViewController: UICollectionViewDataSource, UICollecti
         ) as? ThemeSectionHeaderView else {
             return UICollectionReusableView()
         }
-        header.setTitle("Готовые темы")
+        header.setTitle(Localized.text("create_alarm.theme_picker.section_presets"))
         return header
     }
 }
@@ -437,8 +439,8 @@ extension AlarmThemePickerViewController: PHPickerViewControllerDelegate {
 
     private func presentSaveFailureAlert() {
         let alert = UIAlertController(
-            title: "Не удалось сохранить фото",
-            message: "Попробуйте выбрать другое изображение.",
+            title: Localized.text("create_alarm.theme_picker.error.title"),
+            message: Localized.text("create_alarm.theme_picker.error.message"),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))

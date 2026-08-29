@@ -38,7 +38,7 @@ extension CreateAlarmViewController {
             let didDelete = self.viewModel.delete()
             guard didDelete else {
                 self.presentSaveError(
-                    title: "Не удалось сохранить",
+                    title: Localized.text("create_alarm.error.persist_failed"),
                     error: AlarmRepository.RepositoryError.persistBlocked
                 )
                 return

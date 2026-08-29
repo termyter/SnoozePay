@@ -25,7 +25,7 @@ final class PenaltyCell: UITableViewCell {
     private let captionLabel: UILabel = {
         let label = UILabel()
         label.attributedText = NSAttributedString(
-            string: "Цена откладывания".uppercased(),
+            string: Localized.text("create_alarm.penalty.caps").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -38,7 +38,7 @@ final class PenaltyCell: UITableViewCell {
 
     private let hintLabel: UILabel = {
         let label = UILabel()
-        label.text = "Сколько спишется при «отложить»"
+        label.text = Localized.text("create_alarm.penalty.hint")
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
@@ -56,7 +56,7 @@ final class PenaltyCell: UITableViewCell {
         field.borderStyle = .none
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
-        field.accessibilityLabel = "Цена откладывания, рублей"
+        field.accessibilityLabel = Localized.text("create_alarm.penalty.accessibility")
         field.accessibilityIdentifier = "createAlarm.penaltyField"
         field.translatesAutoresizingMaskIntoConstraints = false
         return field
@@ -89,7 +89,7 @@ final class PenaltyCell: UITableViewCell {
     /// Red «Минимум 1 ₽» helper — hidden unless the field holds invalid input.
     private let helperLabel: UILabel = {
         let label = UILabel()
-        label.text = "Минимум 1 ₽"
+        label.text = Localized.text("create_alarm.penalty.minimum")
         label.font = AppTypography.meta
         label.textColor = AppColors.pain400
         label.isHidden = true

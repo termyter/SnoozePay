@@ -108,7 +108,9 @@ final class AlarmsStreakBannerView: UIView {
     /// render no copy (the host should hide the view instead).
     func configure(streakDays: Int, savedAmount: Decimal) {
         lastCopy = (streakDays, savedAmount)
-        let title = "\(streakDays) \(Self.daysWord(for: streakDays)) БЕЗ ОТКЛАДЫВАНИЙ"
+        let title = Localized.format(
+            "alarms.streak.caps", streakDays, Self.daysWord(for: streakDays)
+        )
         capsLabel.attributedText = NSAttributedString(
             string: title.uppercased(),
             attributes: [
@@ -121,7 +123,7 @@ final class AlarmsStreakBannerView: UIView {
             ]
         )
         let formatted = NSDecimalNumber(decimal: savedAmount).decimalValue.formattedRubles()
-        metaLabel.text = "Сэкономили \(formatted)"
+        metaLabel.text = Localized.format("alarms.streak.saved", formatted)
     }
 
     // MARK: - Subviews
@@ -313,7 +315,7 @@ final class AlarmsStreakBannerView: UIView {
 
     // MARK: - Pluralisation
 
-    /// Plural for "день" — `1 день / 2-4 дня / 5+ дней`.
+    /// Plural for «день» — `1 день / 2-4 дня / 5+ дней`.
     private static func daysWord(for count: Int) -> String {
         Plural.word(count, .days)
     }
