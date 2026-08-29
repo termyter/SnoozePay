@@ -103,7 +103,10 @@ final class StreakModalViewController: UIViewController {
     /// CGColors at init: as a plain stored property it froze whichever theme
     /// `UITraitCollection.current` happened to be when the modal was
     /// allocated, and the dark mint `#2EDB9F` is 2.19:1 on the light sheet.
-    private lazy var amountLabel: SPGradientTextLabel = {
+    ///
+    /// Internal rather than private so `StreakModalMoneyHeroThemeTests` can read
+    /// the stops the label actually paints with.
+    lazy var amountLabel: SPGradientTextLabel = {
         var label: SPGradientTextLabel!
         traitCollection.performAsCurrent {
             label = SPGradientTextLabel(
