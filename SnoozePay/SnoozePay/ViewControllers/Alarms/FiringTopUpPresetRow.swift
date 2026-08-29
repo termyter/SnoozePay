@@ -77,7 +77,7 @@ final class FiringTopUpPresetRow: UIControl {
         checkChip.image = UIImage(systemName: "checkmark", withConfiguration: configuration)?
             .withRenderingMode(.alwaysTemplate)
         checkChip.tintColor = AppColors.fgOnWarn
-        checkChip.backgroundColor = AppColors.warn500
+        checkChip.backgroundColor = AppColors.warnFill500
         checkChip.contentMode = .center
         checkChip.layer.cornerRadius = 11
         checkChip.layer.masksToBounds = true
@@ -114,7 +114,7 @@ final class FiringTopUpPresetRow: UIControl {
 
     private func refreshSelection() {
         if isSelected {
-            backgroundColor = AppColors.warn500.withAlphaComponent(0.08)
+            backgroundColor = AppColors.warnFill500.withAlphaComponent(0.08)
             layer.borderColor = AppColors.warn400.cgColor
             amountLabel.textColor = AppColors.warn400
             checkChip.isHidden = false

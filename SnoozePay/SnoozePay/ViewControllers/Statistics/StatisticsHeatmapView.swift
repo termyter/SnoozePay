@@ -274,7 +274,7 @@ final class StatisticsHeatmapView: UIView {
     ) -> (colors: [CGColor], locations: [NSNumber])? {
         switch status {
         case .woke: return (SPSupport.moneyGradientColors, SPSupport.moneyGradientLocations)
-        case .light: return (SPSupport.warnGradientColors, SPSupport.warnGradientLocations)
+        case .light: return (SPSupport.warnInkGradientColors, SPSupport.warnGradientLocations)
         case .heavy: return (SPSupport.painGradientColors, SPSupport.painGradientLocations)
         case .empty: return nil
         }
@@ -332,7 +332,12 @@ private final class HeatmapDayCell: UIView {
                 gradient.locations = SPSupport.moneyGradientLocations
             case .light:
                 gradient.isHidden = false
-                gradient.colors = SPSupport.warnGradientColors
+                // The INK ramp, not the canon amber one (#520). A day cell is a
+                // fill, but nothing sits on it — its whole job is to be told
+                // apart from the `bg2` card, and amber measures 1.85:1 there.
+                // This keeps the cell in step with `toneColor` / `ringColor`,
+                // which resolve through `StatisticsAccentTones.warn`.
+                gradient.colors = SPSupport.warnInkGradientColors
                 gradient.locations = SPSupport.warnGradientLocations
             case .heavy:
                 gradient.isHidden = false

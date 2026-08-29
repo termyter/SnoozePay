@@ -563,12 +563,15 @@ final class SPAlarmsListHeader: UIView {
             walletIconImageView.image = SPIcons.coinOff(size: 18)
             walletIconImageView.tintColor = AppColors.fgOnPain
         case .low:
-            pillButton.backgroundColor = AppColors.warn500.withAlphaComponent(0.12)
+            // Fill takes the canon amber (#520); the border deliberately does
+            // NOT. A stroke has to be seen against the page, and at 45% the
+            // ink tone measures 2.07:1 there where amber measures 1.38:1.
+            pillButton.backgroundColor = AppColors.warnFill500.withAlphaComponent(0.12)
             pillButton.layer.borderColor = AppColors.warn500
                 .resolvedColor(with: trait)
                 .withAlphaComponent(0.45).cgColor
-            // Same trap as above: `warn300` is 2.70:1 on the light bronze
-            // wash. `fgOnWarnWash` is the ink half of the wash pair.
+            // Same trap as above: `warn300` is 2.83:1 on the light wash.
+            // `fgOnWarnWash` is the ink half of the wash pair (7.85:1).
             balanceHintLabel.textColor = AppColors.fgOnWarnWash
             restoreWalletTile()
         case .normal:

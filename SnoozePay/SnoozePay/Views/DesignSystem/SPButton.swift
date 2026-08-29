@@ -349,7 +349,7 @@ final class SPButton: UIControl {
                 colors: SPSupport.warnGradientColors(for: traitCollection),
                 locations: SPSupport.warnGradientLocations
             )
-            applyColoredShadow(color: AppColors.warn500)
+            applyColoredShadow(color: AppColors.warnFill500)
             setForeground(AppColors.fgOnWarn)
         case .ghost:
             backgroundColor = .clear

@@ -7,9 +7,9 @@ import XCTest
 /// Three regressions are pinned here, all of them variants of "the dark theme
 /// was the only one anybody looked at":
 ///
-/// 1. **Ink on a wash.** The balance pill tints itself `warn500`/`pain500` at
-///    10–12% and used to ink that with `warn300`/`pain300`. On the dark wash
-///    those glow; on the light one they measure 2.70:1 and 2.77:1. The
+/// 1. **Ink on a wash.** The balance pill tints itself `warnFill500`/`pain500`
+///    at 10–12% and used to ink that with `warn300`/`pain300`. On the dark wash
+///    those glow; on the light one they measure 2.83:1 and 2.77:1. The
 ///    `fgOn*Wash` pair exists precisely so the light branch can be the dark
 ///    end of the scale instead.
 /// 2. **`cgColor` snapshots.** Gradient stops and layer colours are resolved
@@ -288,10 +288,11 @@ final class AlarmsListLightThemeTests: XCTestCase {
 
     // MARK: - Colour maths
 
-    /// The low-balance pill fill: `warn500` at 12% over the page.
+    /// The low-balance pill fill: `warnFill500` at 12% over the page (#520 —
+    /// the fill half of the warn role; the pill's BORDER stays on the ink half).
     private func warnWash(_ style: UIUserInterfaceStyle) -> UIColor {
         composite(
-            AppColors.warn500.resolved(style).withAlphaComponent(0.12),
+            AppColors.warnFill500.resolved(style).withAlphaComponent(0.12),
             over: AppColors.bg0.resolved(style)
         )
     }

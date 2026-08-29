@@ -58,22 +58,52 @@ enum SPSupport {
     }
 
     /// `--sp-grad-warn: linear-gradient(135deg, #FFD479 0%, #F59E0B 60%, #C97A06 100%)`.
+    ///
+    /// A gradient is a surface, so the stops are the `warnFill*` half of the
+    /// warn role (#520) — literally the three hex values in the CSS above,
+    /// which `tokens.css` does not override for light.
     static var warnGradientColors: [CGColor] {
+        [
+            AppColors.warnFill300.cgColor,
+            AppColors.warnFill500.cgColor,
+            AppColors.warnFill600.cgColor
+        ]
+    }
+    static let warnGradientLocations: [NSNumber] = [0.0, 0.6, 1.0]
+
+    /// Trait-resolved variant of the warn ramp — same signature as
+    /// `moneyGradientColors(for:)` / `painGradientColors(for:)` above.
+    ///
+    /// Unlike those two this one now resolves to the same ramp in both themes,
+    /// because the fill stops are theme-flat. The overload is kept rather than
+    /// collapsed: callers pass their own traits and would otherwise have to be
+    /// rewritten, and the money/pain siblings still need the distinction.
+    static func warnGradientColors(for trait: UITraitCollection) -> [CGColor] {
+        [AppColors.warnFill300, AppColors.warnFill500, AppColors.warnFill600]
+            .map { $0.resolvedColor(with: trait).cgColor }
+    }
+
+    /// The warn ramp on the INK scale — bronze in light, amber in dark.
+    ///
+    /// Not a duplicate of `warnGradientColors`, and the difference is the whole
+    /// point of #520. That ramp is a surface that carries `fgOnWarn` on top, so
+    /// it is solved against its own ink. This one is for a surface that carries
+    /// nothing and instead has to be told apart from the CARD BEHIND IT — a
+    /// data fill. The canon amber measures 1.85:1 on the light `bg2`, so a data
+    /// cell painted with it is very nearly invisible.
+    ///
+    /// The one consumer today is the statistics heatmap's `light` day, whose
+    /// sibling tokens (`toneColor`, `ringColor`) already resolve through
+    /// `StatisticsAccentTones.warn`, i.e. the ink scale. Splitting the cell fill
+    /// away from them was the regression `StatisticsHeatmapPaletteTests` caught.
+    /// Theme-aware, matching `moneyGradientColors` / `painGradientColors` — the
+    /// heatmap's other two statuses were never on a theme-flat ramp.
+    static var warnInkGradientColors: [CGColor] {
         [
             AppColors.warn300.cgColor,
             AppColors.warn500.cgColor,
             AppColors.warn600.cgColor
         ]
-    }
-    static let warnGradientLocations: [NSNumber] = [0.0, 0.6, 1.0]
-
-    /// Trait-resolved variant of the warn ramp — same contract as
-    /// `moneyGradientColors(for:)` / `painGradientColors(for:)` above. The
-    /// light warn scale is bronze rather than amber, so a frozen dark ramp is
-    /// the most visible of the three when the theme flips under a live view.
-    static func warnGradientColors(for trait: UITraitCollection) -> [CGColor] {
-        [AppColors.warn300, AppColors.warn500, AppColors.warn600]
-            .map { $0.resolvedColor(with: trait).cgColor }
     }
 
     /// Deep-green promo fill used by the referral hero. `tokens.css` has no
@@ -101,9 +131,9 @@ enum SPSupport {
     static func progressiveGradientColors(intensity: Double) -> [CGColor] {
         let clamped = max(0.0, min(1.0, intensity))
         return [
-            lerpColor(AppColors.warn300, AppColors.pain300, progress: clamped).cgColor,
-            lerpColor(AppColors.warn500, AppColors.pain500, progress: clamped).cgColor,
-            lerpColor(AppColors.warn600, AppColors.pain600, progress: clamped).cgColor
+            lerpColor(AppColors.warnFill300, AppColors.pain300, progress: clamped).cgColor,
+            lerpColor(AppColors.warnFill500, AppColors.pain500, progress: clamped).cgColor,
+            lerpColor(AppColors.warnFill600, AppColors.pain600, progress: clamped).cgColor
         ]
     }
 

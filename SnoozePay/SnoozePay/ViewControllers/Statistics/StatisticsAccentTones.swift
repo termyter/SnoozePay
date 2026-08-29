@@ -26,7 +26,8 @@ enum StatisticsAccentTones {
 
     /// Warn accent for TEXT — `warn300` on dark, `warn500` on light. Light
     /// warn is bronze, not amber: no step of the amber ramp carries text on a
-    /// near-white surface (`warn500` dark is 1.85:1 there).
+    /// near-white surface (`warn500` dark is 1.85:1 there). This is the INK
+    /// half of the warn role (#520) and must never be swapped for `warnFill*`.
     static let warn = tone(dark: AppColors.warn300, light: AppColors.warn500)
 
     /// Pain accent for TEXT — `pain300` on dark, `pain500` on light.

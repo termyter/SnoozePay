@@ -266,7 +266,7 @@ final class PenaltyCell: UITableViewCell {
         for (index, button) in presetButtons.enumerated() {
             let preset = Self.presets[index]
             let isOn = abs(preset - currentAmount) < .ulpOfOne
-            button.backgroundColor = isOn ? AppColors.warn500 : AppColors.whiteOverlay06
+            button.backgroundColor = isOn ? AppColors.warnFill500 : AppColors.whiteOverlay06
             button.setTitleColor(isOn ? AppColors.fgOnWarn : AppColors.fg2, for: .normal)
             button.layer.borderWidth = 0
         }

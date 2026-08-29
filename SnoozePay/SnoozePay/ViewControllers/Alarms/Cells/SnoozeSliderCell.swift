@@ -48,10 +48,15 @@ final class SnoozeSliderCell: UITableViewCell {
         let view = UISlider()
         view.minimumValue = Float(SnoozeSliderCell.minMinutes)
         view.maximumValue = Float(SnoozeSliderCell.maxMinutes)
-        // V2: tint the track `warn500` so the snooze-duration slider reads
-        // as "amber affordance" matching the JSX recipe in `SPScreensV2.jsx`
+        // V2: tint the track amber so the snooze-duration slider reads as
+        // "amber affordance" matching the JSX recipe in `SPScreensV2.jsx`
         // line 563.
-        view.minimumTrackTintColor = AppColors.warn500
+        //
+        // `warnFill500`, not `warn500` (#520). The ink tone measured 1.00:1
+        // against the `money500` thumb in light — isoluminant, so the filled
+        // and unfilled halves were told apart by hue alone and the control read
+        // as one brown smudge. The fill tone measures 3.26:1 there.
+        view.minimumTrackTintColor = AppColors.warnFill500
         // The unfilled remainder is `rgba(255,255,255,.10)` in the same JSX
         // gradient. UIKit's default maximum track is a fixed system grey that
         // neither theme asked for — on the light card it is a near-invisible

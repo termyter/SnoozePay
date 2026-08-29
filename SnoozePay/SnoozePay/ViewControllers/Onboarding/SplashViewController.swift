@@ -66,8 +66,9 @@ final class SplashViewController: UIViewController {
         view.layer.cornerRadius = AppRadius.xl
         view.layer.masksToBounds = false
         // Warm-tinted shadow so the tile pops off the dark surface — matches
-        // `boxShadow: 0 16px 48px rgba(245,158,11,.40)` from JSX.
-        view.layer.shadowColor = AppColors.warn500.cgColor
+        // `boxShadow: 0 16px 48px rgba(245,158,11,.40)` from JSX. Theme-flat
+        // token, so the `.cgColor` snapshot in this initializer is safe (#520).
+        view.layer.shadowColor = AppColors.warnFill500.cgColor
         view.layer.shadowOpacity = 0.40
         view.layer.shadowOffset = CGSize(width: 0, height: 16)
         view.layer.shadowRadius = 24

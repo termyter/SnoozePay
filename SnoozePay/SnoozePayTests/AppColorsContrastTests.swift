@@ -102,13 +102,15 @@ final class AppColorsContrastTests: XCTestCase {
 
     // MARK: - Text on fills
 
-    /// `fgOnMoney` / `fgOnWarn` invert between themes: the light fills are dark
-    /// green and bronze, which cannot carry the dark ink the bright dark-theme
-    /// fills take. Body-text threshold, since these labels are ordinary sized.
+    /// `fgOnMoney` inverts between themes: the light money fill is dark green
+    /// and cannot carry the dark ink the bright dark-theme fill takes.
+    /// `fgOnWarn` no longer inverts — since #520 its fill is `warnFill500`,
+    /// amber in both themes, so the ink is near-black in both.
+    /// Body-text threshold, since these labels are ordinary sized.
     func testInkOnFills_isReadableInBothThemes() {
         let pairs: [(String, UIColor, UIColor)] = [
             ("fgOnMoney", AppColors.fgOnMoney, AppColors.money500),
-            ("fgOnWarn", AppColors.fgOnWarn, AppColors.warn500)
+            ("fgOnWarn", AppColors.fgOnWarn, AppColors.warnFill500)
         ]
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (name, ink, fill) in pairs {
@@ -131,6 +133,85 @@ final class AppColorsContrastTests: XCTestCase {
             let ratio = contrast(AppColors.fgOnPain.resolved(style), AppColors.pain500.resolved(style))
             XCTAssertGreaterThanOrEqual(ratio, 3.0 - tolerance, "fgOnPain in \(style == .light ? "light" : "dark")")
         }
+    }
+
+    // MARK: - The warn role split (#520)
+    //
+    // `warn*` and `warnFill*` are two answers to two different questions, and
+    // the whole point of splitting them is that neither answer can be quietly
+    // given to the other question. These four tests are what makes the split
+    // survive: without them a future "the warn scale should be consistent"
+    // cleanup collapses the pair back and nothing goes red.
+
+    /// The fill half is the canon `--sp-grad-warn` ramp, and `tokens.css` does
+    /// NOT redefine the warn scale inside `[data-theme="light"]` — so the fill
+    /// stays amber in light. A silent revert to the bronze ink tone is exactly
+    /// the regression this pins.
+    func testWarnFill_isTheCanonAmberInBothThemes() {
+        let canon: [(String, UIColor, UInt32)] = [
+            ("warnFill300", AppColors.warnFill300, 0xFFD479),
+            ("warnFill500", AppColors.warnFill500, 0xF59E0B),
+            ("warnFill600", AppColors.warnFill600, 0xC97A06)
+        ]
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for (name, color, expected) in canon {
+                XCTAssertEqual(
+                    hex(color.resolved(style)), expected,
+                    "\(name) is " + String(format: "#%06X", hex(color.resolved(style)))
+                    + " in \(style == .light ? "light" : "dark"), canon is "
+                    + String(format: "#%06X", expected)
+                )
+            }
+        }
+    }
+
+    /// The ink half has to clear body text on every surface it can land on —
+    /// this is the #489 property, and switching an ink call site to the fill
+    /// tone would drop it to 1.85:1 on the light card.
+    func testWarnInk_clearsBodyTextOnEverySurface() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for (name, surface) in [("bg0", AppColors.bg0), ("bg1", AppColors.bg1), ("bg2", AppColors.bg2)] {
+                let ratio = contrast(AppColors.warn500.resolved(style), surface.resolved(style))
+                XCTAssertGreaterThanOrEqual(
+                    ratio, 4.5 - tolerance,
+                    "warn500 (ink) is \(String(format: "%.2f", ratio)):1 on \(name) in "
+                    + "\(style == .light ? "light" : "dark")"
+                )
+            }
+        }
+    }
+
+    /// The symmetric half: ink on the fill. `fgOnWarn` is near-black in both
+    /// themes now, and white here would measure 2.15:1 — one contrast failure
+    /// traded for another, which is the way this change could go wrong.
+    func testInkOnWarnFill_clearsBodyTextInBothThemes() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let ratio = contrast(AppColors.fgOnWarn.resolved(style), AppColors.warnFill500.resolved(style))
+            XCTAssertGreaterThanOrEqual(
+                ratio, 4.5 - tolerance,
+                "fgOnWarn is \(String(format: "%.2f", ratio)):1 on warnFill500 in "
+                + "\(style == .light ? "light" : "dark")"
+            )
+        }
+    }
+
+    /// The measurement the issue turned on: the warn fill has to be told apart
+    /// from the `money500` element sitting on it — the snooze slider's thumb on
+    /// its track. The ink tone measured **1.00:1** against it in light, i.e.
+    /// exactly isoluminant, and no amount of hue-tuning fixes a pair whose
+    /// luminances match. The fill tone measures 3.26:1, clearing the 3:1
+    /// non-text bar.
+    ///
+    /// Light only. The dark pair measures 1.18:1 and is NOT asserted here: it
+    /// is the pairing the issue reports as reading correctly, so pinning it
+    /// would be inventing a requirement the shipped design does not have.
+    func testWarnFill_isDistinguishableFromTheMoneyThumbInLight() {
+        let ratio = contrast(AppColors.warnFill500.resolved(.light), AppColors.money500.resolved(.light))
+        XCTAssertGreaterThanOrEqual(
+            ratio, 3.0 - tolerance,
+            "warnFill500 vs money500 is \(String(format: "%.2f", ratio)):1 in light — "
+            + "the filled and unfilled halves of the slider merge"
+        )
     }
 
     // MARK: - Helpers

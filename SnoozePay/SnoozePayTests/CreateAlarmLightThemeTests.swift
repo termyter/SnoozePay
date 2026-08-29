@@ -79,7 +79,10 @@ final class CreateAlarmLightThemeTests: XCTestCase {
         guard let slider = firstSlider(in: cell.contentView) else {
             return XCTFail("SnoozeSliderCell must own a UISlider")
         }
-        XCTAssertEqual(hex(slider.minimumTrackTintColor ?? .clear), hex(AppColors.warn500))
+        // The filled half is the warn FILL, not the warn ink (#520): on the ink
+        // tone this track was `#7C5006` against a `#096647` thumb in light.
+        XCTAssertEqual(hex(slider.minimumTrackTintColor ?? .clear), hex(AppColors.warnFill500))
+        XCTAssertEqual(hex(slider.minimumTrackTintColor?.resolved(.light) ?? .clear), "F59E0B@1.00")
         XCTAssertEqual(hex(slider.maximumTrackTintColor ?? .clear), hex(AppColors.whiteOverlay12))
         XCTAssertNotNil(slider.thumbImage(for: .normal))
         XCTAssertNotNil(slider.thumbImage(for: .highlighted))

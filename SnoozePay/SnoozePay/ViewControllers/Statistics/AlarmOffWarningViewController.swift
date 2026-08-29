@@ -250,7 +250,7 @@ final class AlarmOffWarningViewController: UIViewController {
             makeSuggestionRow(
                 icon: "creditcard.fill",
                 iconTint: AppColors.warn400,
-                iconBackground: AppColors.warn500.withAlphaComponent(0.14),
+                iconBackground: AppColors.warnFill500.withAlphaComponent(0.14),
                 title: "Снизить цену откладывания",
                 subtitle: "Сейчас \(MoneyFormatter.string(50)) → попробовать \(MoneyFormatter.string(20))"
             ),

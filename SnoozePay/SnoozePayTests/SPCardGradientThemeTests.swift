@@ -41,15 +41,21 @@ final class SPCardGradientThemeTests: XCTestCase {
 
     // MARK: - The flip
 
-    /// All three tonal variants re-tint under an already-rendered card, and
-    /// land on exactly the ramp the design system defines for the new theme —
-    /// "the stops changed" alone would also be satisfied by changing them to
-    /// something wrong.
+    /// All three tonal variants land on exactly the ramp the design system
+    /// defines for the current theme, before and after a flip — "the stops
+    /// changed" alone would also be satisfied by changing them to something
+    /// wrong, and is checked separately for the ramps that do change.
+    ///
+    /// `.warn` carries `variesPerTheme: false` since #520: the warn FILL ramp
+    /// is the canon amber in both themes, so this card genuinely has nothing to
+    /// re-resolve. That is a narrower guarantee than the money/pain cards get,
+    /// and the honest place to say so is here rather than in an assertion that
+    /// would have to be weakened to stay green.
     func testTonalCards_reresolveTheirRampOnAThemeFlip() throws {
-        let cases: [(tone: SPCard.Tone, ramp: (UITraitCollection) -> [CGColor])] = [
-            (.money, { SPSupport.moneyGradientColors(for: $0) }),
-            (.pain, { SPSupport.painGradientColors(for: $0) }),
-            (.warn, { SPSupport.warnGradientColors(for: $0) })
+        let cases: [(tone: SPCard.Tone, ramp: (UITraitCollection) -> [CGColor], variesPerTheme: Bool)] = [
+            (.money, { SPSupport.moneyGradientColors(for: $0) }, true),
+            (.pain, { SPSupport.painGradientColors(for: $0) }, true),
+            (.warn, { SPSupport.warnGradientColors(for: $0) }, false)
         ]
 
         for entry in cases {
@@ -66,6 +72,10 @@ final class SPCardGradientThemeTests: XCTestCase {
                 inDark.isEmpty,
                 "the \(entry.tone) card installed no gradient layer at all"
             )
+            XCTAssertEqual(
+                inDark, entry.ramp(UITraitCollection(userInterfaceStyle: .dark)).map { hex($0) },
+                "the \(entry.tone) card built itself off something other than the dark ramp"
+            )
 
             window.overrideUserInterfaceStyle = .light
             window.layoutIfNeeded()
@@ -75,11 +85,13 @@ final class SPCardGradientThemeTests: XCTestCase {
             )
             let inLight = stops(of: card)
 
-            XCTAssertNotEqual(
-                inDark, inLight,
-                "the \(entry.tone) card kept its dark stops after the flip — "
-                + "a CGColor in CAGradientLayer.colors never re-resolves itself"
-            )
+            if entry.variesPerTheme {
+                XCTAssertNotEqual(
+                    inDark, inLight,
+                    "the \(entry.tone) card kept its dark stops after the flip — "
+                    + "a CGColor in CAGradientLayer.colors never re-resolves itself"
+                )
+            }
             XCTAssertEqual(
                 inLight, entry.ramp(UITraitCollection(userInterfaceStyle: .light)).map { hex($0) },
                 "the \(entry.tone) card re-tinted to something other than the light ramp"
@@ -146,19 +158,58 @@ final class SPCardGradientThemeTests: XCTestCase {
 
     // MARK: - The seam
 
-    /// `warnGradientColors(for:)` is new in #507 — the money/pain overloads
-    /// already existed. If it ever returns the same stops for both themes the
-    /// view-level test above measures nothing.
-    func testWarnGradientStops_differPerTheme() {
-        let light = SPSupport.warnGradientColors(for: UITraitCollection(userInterfaceStyle: .light))
-        let dark = SPSupport.warnGradientColors(for: UITraitCollection(userInterfaceStyle: .dark))
-        XCTAssertEqual(light.count, dark.count)
-        for (index, pair) in zip(light, dark).enumerated() {
-            XCTAssertNotEqual(
-                hex(pair.0), hex(pair.1),
-                "warn gradient stop \(index) is identical in both themes"
+    /// The inverse of what this test asserted before #520.
+    ///
+    /// It used to require that the warn stops differ per theme, which was true
+    /// while the ramp ran on the bronze ink scale. `tokens.css` never overrides
+    /// the warn scale inside `[data-theme="light"]`, so the canon ramp is the
+    /// same amber in both themes and the light stops are now *supposed* to
+    /// equal the dark ones. Pinned to the literal CSS values rather than to
+    /// "they match", because a pair that is wrong in both themes would also
+    /// match.
+    func testWarnGradientStops_areTheCanonAmberInBothThemes() {
+        let canon: [UInt32] = [0xFFD479, 0xF59E0B, 0xC97A06]
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let ramp = SPSupport.warnGradientColors(for: UITraitCollection(userInterfaceStyle: style))
+                .map { hex($0) }
+            XCTAssertEqual(
+                ramp, canon,
+                "the warn ramp drifted off --sp-grad-warn in "
+                + "\(style == .light ? "light" : "dark")"
             )
         }
+    }
+
+    /// The two warn ramps must NOT collapse into each other.
+    ///
+    /// They look like duplicates — same three steps, same locations — and the
+    /// obvious cleanup is to delete one. That cleanup is the #520 regression
+    /// replayed: `warnGradientColors` is a CTA surface solved against the
+    /// `fgOnWarn` sitting on it, `warnInkGradientColors` is a data fill solved
+    /// against the card behind it. In light they are bronze and amber and only
+    /// one of them can be right for a given call site.
+    func testWarnRamps_stayDistinctInLight() {
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let fill = SPSupport.warnGradientColors(for: light).map { hex($0) }
+        var ink: [UInt32] = []
+        light.performAsCurrent { ink = SPSupport.warnInkGradientColors.map { hex($0) } }
+        XCTAssertNotEqual(
+            fill, ink,
+            "the warn fill and ink ramps resolved identically in light — one of "
+            + "them lost its role, and the heatmap or the CTA is now wrong"
+        )
+        XCTAssertEqual(ink, [0xBE7B09, 0x7C5006, 0x634004], "the ink ramp drifted off the warn ink scale")
+    }
+
+    /// In DARK the two ramps are *supposed* to be identical: the ink and fill
+    /// halves of the warn role only diverge on a light surface. Pinned so the
+    /// test above is not read as "these must always differ".
+    func testWarnRamps_areIdenticalInDark() {
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+        let fill = SPSupport.warnGradientColors(for: dark).map { hex($0) }
+        var ink: [UInt32] = []
+        dark.performAsCurrent { ink = SPSupport.warnInkGradientColors.map { hex($0) } }
+        XCTAssertEqual(fill, ink, "the warn ramps diverged in dark, where both are the brand amber")
     }
 
     /// The new overload must describe the SAME ramp as the canon
@@ -170,7 +221,7 @@ final class SPCardGradientThemeTests: XCTestCase {
             let trait = UITraitCollection(userInterfaceStyle: style)
             XCTAssertEqual(
                 SPSupport.warnGradientColors(for: trait).map { hex($0) },
-                [AppColors.warn300, AppColors.warn500, AppColors.warn600]
+                [AppColors.warnFill300, AppColors.warnFill500, AppColors.warnFill600]
                     .map { hex($0.resolvedColor(with: trait)) },
                 "warnGradientColors(for:) drifted off --sp-grad-warn"
             )

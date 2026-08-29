@@ -29,7 +29,7 @@ enum SPFiringTicker {
         /// Chip background fill — the same hue at ~18% so the pill reads as a
         /// soft wash, matching `rgba(244,82,63,.18)` / `rgba(245,158,11,.18)`.
         var fillColor: UIColor {
-            (isHeavy ? AppColors.pain500 : AppColors.warn500).withAlphaComponent(0.18)
+            (isHeavy ? AppColors.pain500 : AppColors.warnFill500).withAlphaComponent(0.18)
         }
     }
 

@@ -282,7 +282,7 @@ final class SPSnoozePrice: UIControl {
         let token: UIColor
         switch tone {
         case .pain: token = AppColors.pain500
-        case .warn, .progressive: token = AppColors.warn500
+        case .warn, .progressive: token = AppColors.warnFill500
         }
         layer.shadowColor = token.resolvedColor(with: traitCollection).cgColor
     }

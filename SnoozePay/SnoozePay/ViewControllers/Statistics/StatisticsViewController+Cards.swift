@@ -125,7 +125,7 @@ extension StatisticsViewController {
                 colors: SPSupport.warnGradientColors(for: badge.traitCollection),
                 locations: SPSupport.warnGradientLocations
             )
-            badge.layer.shadowColor = AppColors.warn500
+            badge.layer.shadowColor = AppColors.warnFill500
                 .resolvedColor(with: badge.traitCollection).cgColor
         }
         applyWarnPalette()
