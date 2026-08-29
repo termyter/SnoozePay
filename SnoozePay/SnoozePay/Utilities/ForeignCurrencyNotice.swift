@@ -16,7 +16,10 @@ import UIKit
 /// spendable, alarms keep firing and penalties keep being charged.
 enum ForeignCurrencyNotice {
 
-    static let alertTitle = "Другая валюта"
+    /// Computed rather than `static let` for the reason `PluralForms` gives: a
+    /// stored property freezes the copy at first access, which is harmless in
+    /// the app but hides a catalogue miss behind whichever test ran first.
+    static var alertTitle: String { Localized.text("deposit.foreign_currency.title") }
 
     /// The currency this product is priced in, or `nil` when StoreKit did not
     /// give us a usable one (`priceFormatStyle` falls back to an empty code
@@ -48,18 +51,22 @@ enum ForeignCurrencyNotice {
     /// User-facing copy. Says what the wallet holds, what the store is selling,
     /// why the app will not bridge the two, and — the part that keeps this from
     /// reading as "your money is gone" — that the balance is still spendable.
+    ///
+    /// One catalogue entry with two positional arguments, not the six
+    /// concatenated fragments this replaced (#598): a `+` between clauses is
+    /// Russian sentence order written into Swift, and a translator cannot undo
+    /// it. `locale` still governs the two *currency names*, which the OS
+    /// localizes independently of the surrounding copy.
     static func message(
         wallet: Currency,
         storefront: Currency,
         locale: Locale = .autoupdatingCurrent
     ) -> String {
-        "Валюта кошелька — \(name(of: wallet, locale: locale)). "
-            + "App Store сейчас продаёт пакеты пополнения за другую валюту: "
-            + "\(name(of: storefront, locale: locale)). "
-            + "Пересчитать одно в другое приложение не может: курса у него нет, "
-            + "а выдумывать курс для ваших денег оно не станет. "
-            + "Пополнение в другой валюте недоступно. Остаток на балансе никуда не делся — "
-            + "его можно тратить как обычно."
+        Localized.format(
+            "deposit.foreign_currency.message",
+            name(of: wallet, locale: locale),
+            name(of: storefront, locale: locale)
+        )
     }
 
     /// Ready-made alert for the top-up screens, so all three entry points show
@@ -71,7 +78,9 @@ enum ForeignCurrencyNotice {
             message: message,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Понятно", style: .default))
+        alert.addAction(
+            UIAlertAction(title: Localized.text("deposit.foreign_currency.dismiss"), style: .default)
+        )
         return alert
     }
 

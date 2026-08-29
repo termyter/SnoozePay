@@ -40,13 +40,13 @@ final class ReferralService {
         var errorDescription: String? {
             switch self {
             case .invalidFormat:
-                return "Код должен содержать 6 символов (буквы и цифры)."
+                return Localized.text("referral.error.invalid_format")
             case .alreadyApplied:
-                return "Бонус по реферальному коду уже получен."
+                return Localized.text("referral.error.already_applied")
             case .cannotApplyOwnCode:
-                return "Нельзя применить собственный код."
+                return Localized.text("referral.error.own_code")
             case .balanceLocked:
-                return "Не удалось зачислить бонус. Попробуйте позже."
+                return Localized.text("referral.error.balance_locked")
             }
         }
     }

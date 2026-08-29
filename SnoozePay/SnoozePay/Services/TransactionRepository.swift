@@ -20,12 +20,11 @@ final class TransactionRepository {
         var errorDescription: String? {
             switch self {
             case .decodeFailure:
-                return "Не удалось загрузить статистику. Свяжитесь с поддержкой."
+                return Localized.text("wallet.error.load_failed")
             case .encodeFailure:
-                return "Не удалось записать транзакцию. Попробуйте ещё раз."
+                return Localized.text("wallet.error.write_failed")
             case .persistBlocked:
-                return "Запись заблокирована: данные повреждены. "
-                     + "Восстановите состояние через настройки или свяжитесь с поддержкой."
+                return Localized.text("wallet.error.write_blocked")
             }
         }
     }

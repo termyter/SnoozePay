@@ -64,13 +64,21 @@ enum SnoozeAffordability {
     /// screens by construction — the wallet no longer appends "при текущей
     /// цене", a claim it could not back while the price was hardcoded and one
     /// that adds nothing now that the number is derived from real alarms.
+    ///
+    /// The whole phrase is one catalogue entry with a plural *variation*, not a
+    /// template plus a separately-pluralised noun (#598). That is the shape
+    /// `example.days_count` documents: because the number lives inside the
+    /// string, the catalogue picks the form under each language's own CLDR rule
+    /// and `Plural` drops out of the loop entirely. Assembling the sentence here
+    /// would freeze Russian word order — "N snoozes' worth" puts the count
+    /// somewhere else — into every future translation.
     static func hint(
         balance: Double,
         alarms: [Alarm],
         defaults: AlarmDefaults = .shared
     ) -> String {
         let count = affordableCount(balance: balance, alarms: alarms, defaults: defaults)
-        return "Хватит на ~\(count) \(snoozeWord(for: count))"
+        return Localized.format("common.snooze_affordability", count)
     }
 
     /// Pluralisation for "откладывание" in the nominative — `откладывание`
