@@ -47,7 +47,7 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
             Transaction(type: .refund, amount: 50)
         ]
 
-        XCTAssertEqual(BalanceLedger.net(of: entries), 500, accuracy: 0.0001)
+        XCTAssertEqual(BalanceLedger.net(of: entries, in: .legacyDefault), 500, accuracy: 0.0001)
     }
 
     /// The repository hands rows back newest-first, a CloudKit query would hand
@@ -60,15 +60,15 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
             Transaction(type: .promotion, amount: 25, createdAt: now)
         ]
 
-        XCTAssertEqual(BalanceLedger.net(of: entries), 275, accuracy: 0.0001)
-        XCTAssertEqual(BalanceLedger.net(of: Array(entries.reversed())), 275, accuracy: 0.0001,
+        XCTAssertEqual(BalanceLedger.net(of: entries, in: .legacyDefault), 275, accuracy: 0.0001)
+        XCTAssertEqual(BalanceLedger.net(of: Array(entries.reversed()), in: .legacyDefault), 275, accuracy: 0.0001,
                        "Reversing the ledger must not change the balance")
     }
 
     func testNet_duplicateTransactionID_countedOnce() {
         let replayed = Transaction(id: UUID(), type: .topup, amount: 499)
 
-        XCTAssertEqual(BalanceLedger.net(of: [replayed, replayed, replayed]), 499, accuracy: 0.0001,
+        XCTAssertEqual(BalanceLedger.net(of: [replayed, replayed, replayed], in: .legacyDefault), 499, accuracy: 0.0001,
                        "A row replayed by a resync/Restore must credit exactly once")
     }
 
@@ -80,7 +80,7 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
             Transaction(type: .charge, amount: -25)
         ]
 
-        XCTAssertEqual(BalanceLedger.net(of: entries), 100, accuracy: 0.0001,
+        XCTAssertEqual(BalanceLedger.net(of: entries, in: .legacyDefault), 100, accuracy: 0.0001,
                        "A row whose direction the build can't state must not move money")
     }
 
@@ -213,6 +213,47 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
         XCTAssertEqual(testDefaults.object(forKey: LocalBalanceLedgerStore.openingBalanceKey) as? Double,
                        80, "The opening balance is a one-time anchor, not a running total")
         XCTAssertEqual(service.balance, 50, accuracy: 0.0001)
+    }
+
+    // MARK: - Mixed currencies (#562)
+    //
+    // A ledger row states its own currency, and the app has no rate source
+    // (#559). So `Σ` over mixed currencies is not a quantity: the cache is
+    // defined as the sum of the rows denominated in the wallet's own currency,
+    // and a foreign row is visible in history but invisible to the balance.
+    // Today no writer produces one — these tests pin the rule before #563 makes
+    // it reachable.
+
+    func testNet_rowInAnotherCurrency_isSkippedLikeAnUnclassifiableOne() {
+        let entries = [
+            Transaction(type: .topup, amount: 500),
+            Transaction(type: .topup, amount: 300, currency: Currency(code: "USD")!),
+            Transaction(type: .charge, amount: 50)
+        ]
+
+        XCTAssertEqual(BalanceLedger.net(of: entries, in: .legacyDefault), 450, accuracy: 0.0001,
+                       "300 dollars is not 300 roubles, and there is nothing to convert it with")
+        XCTAssertEqual(BalanceLedger.net(of: entries, in: Currency(code: "USD")!), 300, accuracy: 0.0001,
+                       "Asked about dollars, the same ledger answers with the dollar rows")
+    }
+
+    /// End-to-end: a foreign row planted straight into the ledger (the shape a
+    /// future storefront or a resync would produce) must leave the wallet
+    /// exactly where it was — not credited, not deducted, not converted.
+    func testBalance_foreignRowInTheLedger_leavesTheWalletUntouched() {
+        let service = makeService(balance: 100)
+        let ledger = makeLedger()
+
+        XCTAssertTrue(ledger.record(Transaction(type: .topup, amount: 1000,
+                                                currency: Currency(code: "USD")!)))
+        XCTAssertEqual(service.balance, 100, accuracy: 0.0001,
+                       "A row in a currency the wallet does not hold must not move the balance")
+        XCTAssertEqual(cachedBalance(), 100, accuracy: 0.0001,
+                       "…and must not be written into the cache either")
+
+        XCTAssertTrue(ledger.record(Transaction(type: .topup, amount: 200)))
+        XCTAssertEqual(service.balance, 300, accuracy: 0.0001,
+                       "A row in the wallet's own currency still moves it")
     }
 
     // MARK: - Provider flag
