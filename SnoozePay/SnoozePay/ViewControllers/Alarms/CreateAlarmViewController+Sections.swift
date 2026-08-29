@@ -91,7 +91,8 @@ extension CreateAlarmViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: SoundCell.reuseID, for: indexPath)
         if let cell = cell as? SoundCell {
             let soundName = viewModel.availableSounds
-                .first(where: { $0.id == viewModel.soundID })?.name ?? "По умолчанию"
+                .first(where: { $0.id == viewModel.soundID })?.name
+                ?? Localized.text("create_alarm.sound.fallback")
             cell.configure(soundName: soundName)
             cell.onPreviewTapped = { [weak self] in
                 guard let self else { return }

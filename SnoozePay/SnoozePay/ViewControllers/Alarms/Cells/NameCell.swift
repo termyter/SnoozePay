@@ -2,7 +2,7 @@ import UIKit
 
 /// Single-line text input cell for the alarm's display name.
 ///
-/// Refresh per #143/#231: iOS Reminders–style large placeholder "Название"
+/// Refresh per #143/#231: iOS Reminders–style large placeholder «Название»
 /// with no inline header, and exposes `beginEditing()` so the host
 /// controller can auto-focus on appear in create-mode.
 final class NameCell: UITableViewCell {
@@ -21,7 +21,7 @@ final class NameCell: UITableViewCell {
         // The «· напр. Будни» example hint matches the prototype (screen 08,
         // #344) — it nudges the user toward a short, recognisable name.
         field.attributedPlaceholder = NSAttributedString(
-            string: "Название · напр. Будни",
+            string: Localized.text("create_alarm.name.placeholder"),
             attributes: [
                 .font: AppTypography.h3,
                 .foregroundColor: AppColors.fg4

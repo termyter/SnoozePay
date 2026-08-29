@@ -1,6 +1,138 @@
 {
   "sourceLanguage" : "ru",
   "strings" : {
+    "alarms.backend_guard.create_anyway" : {
+      "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user taps «+».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё равно создать"
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.enable_anyway" : {
+      "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user switches an alarm on.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё равно включить"
+          }
+        }
+      }
+    },
+    "alarms.balance_corrupted.later" : {
+      "comment" : "Alarms list: dismisses the corrupt-balance alert without resetting the balance.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Позже"
+          }
+        }
+      }
+    },
+    "alarms.balance_corrupted.message" : {
+      "comment" : "Alarms list: body of the corrupt-balance alert. %@ is the unreadable raw value, printed verbatim so a support request can quote it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В хранилище обнаружено некорректное значение баланса (%@). Пополнения и списания приостановлены. Сбросить баланс до 0 ₽?"
+          }
+        }
+      }
+    },
+    "alarms.balance_corrupted.reset" : {
+      "comment" : "Alarms list: destructive action of the corrupt-balance alert — zeroes the stored balance.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сбросить"
+          }
+        }
+      }
+    },
+    "alarms.balance_corrupted.title" : {
+      "comment" : "Alarms list: title of the alert shown when the stored balance cannot be read.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс повреждён"
+          }
+        }
+      }
+    },
+    "alarms.button.delete" : {
+      "comment" : "Destructive action for one alarm — the row's swipe action and the confirmation sheet's button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить"
+          }
+        }
+      }
+    },
+    "alarms.cell.accessibility" : {
+      "comment" : "Alarm card, VoiceOver: opening of the composed summary. %@ is the alarm time («07:00»); the days, price and sound are appended as comma-separated fragments.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник %@"
+          }
+        }
+      }
+    },
+    "alarms.cell.toggle_accessibility" : {
+      "comment" : "Alarm card, VoiceOver label of the on/off switch. Unrelated to the stored default alarm name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник"
+          }
+        }
+      }
+    },
+    "alarms.cell.toggle_off" : {
+      "comment" : "Alarm card, VoiceOver value of the on/off switch when the alarm will not ring.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "выключен"
+          }
+        }
+      }
+    },
+    "alarms.cell.toggle_on" : {
+      "comment" : "Alarm card, VoiceOver value of the on/off switch when the alarm will ring.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "включён"
+          }
+        }
+      }
+    },
     "alarms.days.every_day" : {
       "comment" : "Alarm-card caps row: the alarm repeats on all seven weekdays.",
       "extractionState" : "manual",
@@ -61,6 +193,42 @@
         }
       }
     },
+    "alarms.debug.reset_onboarding.message" : {
+      "comment" : "DEBUG builds only: body of the alert confirming that onboarding state was cleared. Never ships to the App Store — no translation needed.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Закройте приложение и запустите заново — увидите экран приветствия."
+          }
+        }
+      }
+    },
+    "alarms.debug.reset_onboarding.title" : {
+      "comment" : "DEBUG builds only: title of the alert confirming that onboarding state was cleared. Never ships to the App Store — no translation needed.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Онбординг сброшен"
+          }
+        }
+      }
+    },
+    "alarms.delete.title" : {
+      "comment" : "Delete-confirmation sheet: headline above the reassurance that the balance stays put.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить будильник?"
+          }
+        }
+      }
+    },
     "alarms.empty.body" : {
       "comment" : "Body of the alarms-list empty state (SPAlarmsListEmptyState).",
       "extractionState" : "manual",
@@ -109,6 +277,18 @@
         }
       }
     },
+    "alarms.error.data_title" : {
+      "comment" : "Alarms list: title of the alert shown when the alarm store cannot be read.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ошибка данных"
+          }
+        }
+      }
+    },
     "alarms.error.load_failed" : {
       "comment" : "Alert body when the stored alarms JSON cannot be decoded (AlarmRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
@@ -117,6 +297,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Не удалось загрузить будильники. Свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "alarms.error.load_failed_fallback" : {
+      "comment" : "Alarms list: body of the load-failure alert when the error carries no description of its own. The longer «alarms.error.load_failed» is the repository's own wording and adds the support-contact line.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить будильники."
           }
         }
       }
@@ -193,6 +385,30 @@
         }
       }
     },
+    "alarms.streak.caps" : {
+      "comment" : "Streak banner above the alarms list. %1$lld is the streak length, %2$@ the declined noun («день» / «дня» / «дней»). The call site upper-cases the whole line, which is why the noun arrives in lower case.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld %2$@ БЕЗ ОТКЛАДЫВАНИЙ"
+          }
+        }
+      }
+    },
+    "alarms.streak.saved" : {
+      "comment" : "Streak banner, second line: %@ is the money not spent on snoozes, already formatted with its currency.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сэкономили %@"
+          }
+        }
+      }
+    },
     "alarms.title" : {
       "comment" : "h1 of the alarms list, rendered by SPAlarmsListHeader.",
       "extractionState" : "manual",
@@ -205,6 +421,18 @@
         }
       }
     },
+    "common.button.cancel" : {
+      "comment" : "Dismisses a screen or sheet without applying the change.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отмена"
+          }
+        }
+      }
+    },
     "common.button.close" : {
       "comment" : "Dismisses a modal that has nothing else to decide — the WokeMorning summary, the streak modal, the alarm-off warning.",
       "extractionState" : "manual",
@@ -213,6 +441,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Закрыть"
+          }
+        }
+      }
+    },
+    "common.button.done" : {
+      "comment" : "Confirms and leaves a screen whose changes are already applied.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Готово"
           }
         }
       }
@@ -297,6 +537,510 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Переключатель"
+          }
+        }
+      }
+    },
+    "create_alarm.accessibility.not_selected" : {
+      "comment" : "Alarm editor, VoiceOver value of an unselected weekday chip or repeat-mode segment.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "не выбрано"
+          }
+        }
+      }
+    },
+    "create_alarm.accessibility.selected" : {
+      "comment" : "Alarm editor, VoiceOver value of a selected weekday chip or repeat-mode segment.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "выбрано"
+          }
+        }
+      }
+    },
+    "create_alarm.button.delete_alarm" : {
+      "comment" : "Alarm editor, edit mode: destructive footer button that opens the delete-confirmation sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить будильник"
+          }
+        }
+      }
+    },
+    "create_alarm.button.save" : {
+      "comment" : "Alarm editor, edit mode: commits the changes to an existing alarm.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранить"
+          }
+        }
+      }
+    },
+    "create_alarm.close.accessibility" : {
+      "comment" : "Alarm editor, create mode: VoiceOver label of the ✕ chip that dismisses the form.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Закрыть"
+          }
+        }
+      }
+    },
+    "create_alarm.error.persist_failed" : {
+      "comment" : "Alarm editor: alert title when the alarm could not be written to the store.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось сохранить"
+          }
+        }
+      }
+    },
+    "create_alarm.error.retry" : {
+      "comment" : "Alarm editor: fallback alert body when the underlying error carries no description.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "create_alarm.error.schedule_failed" : {
+      "comment" : "Alarm editor: alert title when the alarm was saved but no notification could be scheduled.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось запланировать будильник"
+          }
+        }
+      }
+    },
+    "create_alarm.name.placeholder" : {
+      "comment" : "Alarm editor: placeholder of the alarm-name field, with an example of a short recognisable name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Название · напр. Будни"
+          }
+        }
+      }
+    },
+    "create_alarm.penalty.accessibility" : {
+      "comment" : "Alarm editor, VoiceOver label of the snooze-price field. Names the unit because the ₽ sign sits in a separate label the field does not expose.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цена откладывания, рублей"
+          }
+        }
+      }
+    },
+    "create_alarm.penalty.caps" : {
+      "comment" : "Alarm editor: caps caption of the snooze-price card. The call site upper-cases it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цена откладывания"
+          }
+        }
+      }
+    },
+    "create_alarm.penalty.hint" : {
+      "comment" : "Alarm editor: meta line under the snooze-price caption.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сколько спишется при «отложить»"
+          }
+        }
+      }
+    },
+    "create_alarm.penalty.minimum" : {
+      "comment" : "Alarm editor: red helper shown while the typed snooze price is empty, zero or not a whole number.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Минимум 1 ₽"
+          }
+        }
+      }
+    },
+    "create_alarm.progressive.subtitle" : {
+      "comment" : "Alarm editor: meta line of the progressive-mode card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждое откладывание — в 2 раза дороже."
+          }
+        }
+      }
+    },
+    "create_alarm.progressive.title" : {
+      "comment" : "Alarm editor: title of the progressive-mode card; doubles as the VoiceOver label of its switch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прогрессивный режим"
+          }
+        }
+      }
+    },
+    "create_alarm.repeat.caps" : {
+      "comment" : "Alarm editor: caps caption above the repeat-mode segments.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПОВТОР"
+          }
+        }
+      }
+    },
+    "create_alarm.repeat.never" : {
+      "comment" : "Alarm editor: repeat-mode segment for an alarm that rings once.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Никогда"
+          }
+        }
+      }
+    },
+    "create_alarm.repeat.weekly" : {
+      "comment" : "Alarm editor: repeat-mode segment for an alarm that repeats on the chosen weekdays.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Еженедельно"
+          }
+        }
+      }
+    },
+    "create_alarm.snooze.caps" : {
+      "comment" : "Alarm editor: caps caption of the snooze-duration card. The call site upper-cases it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Длительность откладывания"
+          }
+        }
+      }
+    },
+    "create_alarm.snooze.hint" : {
+      "comment" : "Alarm editor: meta line under the snooze-duration caption.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На сколько минут отодвигается звонок"
+          }
+        }
+      }
+    },
+    "create_alarm.snooze.minutes" : {
+      "comment" : "Alarm editor: the snooze-duration reading and the slider's range bounds. The call site dims everything but the number, so keep the number and its unit in one string.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld мин"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.fallback" : {
+      "comment" : "Alarm editor: trailing value of the sound row when the stored sound id is not in the catalogue. The sound names themselves come from SoundCatalogue, not from here.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "По умолчанию"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.title" : {
+      "comment" : "Alarm editor: title of the sound row, and the caps title of the sound picker it pushes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звук"
+          }
+        }
+      }
+    },
+    "create_alarm.sound_picker.accessibility" : {
+      "comment" : "Sound picker, VoiceOver label of the caps screen title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбор звука"
+          }
+        }
+      }
+    },
+    "create_alarm.sound_picker.custom_slot" : {
+      "comment" : "Sound picker: the disabled custom-melody row. %@ is the slot's name from SoundCatalogue («Своя мелодия»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · скоро"
+          }
+        }
+      }
+    },
+    "create_alarm.sound_picker.custom_slot_subtitle" : {
+      "comment" : "Sound picker: subtitle of the disabled custom-melody row.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Импорт своей мелодии появится позже"
+          }
+        }
+      }
+    },
+    "create_alarm.sound_picker.preview_accessibility" : {
+      "comment" : "Sound picker, VoiceOver label of the play button in the preview card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прослушать превью"
+          }
+        }
+      }
+    },
+    "create_alarm.sound_picker.preview_caps" : {
+      "comment" : "Sound picker: caps caption of the preview card. The call site upper-cases it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Превью"
+          }
+        }
+      }
+    },
+    "create_alarm.sound_picker.volume_row" : {
+      "comment" : "Sound picker: the row that pushes the volume screen; doubles as its VoiceOver label.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Громкость и нарастание"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.title" : {
+      "comment" : "Alarm editor: title of the theme row.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тема"
+          }
+        }
+      }
+    },
+    "create_alarm.theme_picker.error.message" : {
+      "comment" : "Theme picker: body of the alert shown when a picked photo could not be stored.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Попробуйте выбрать другое изображение."
+          }
+        }
+      }
+    },
+    "create_alarm.theme_picker.error.title" : {
+      "comment" : "Theme picker: title of the alert shown when a picked photo could not be stored.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось сохранить фото"
+          }
+        }
+      }
+    },
+    "create_alarm.theme_picker.preview_caps" : {
+      "comment" : "Theme picker: caps caption above the live preview of the firing screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПРЕВЬЮ FIRING-SCREEN"
+          }
+        }
+      }
+    },
+    "create_alarm.theme_picker.section_presets" : {
+      "comment" : "Theme picker: caps header above the grid of built-in themes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Готовые темы"
+          }
+        }
+      }
+    },
+    "create_alarm.theme_picker.title" : {
+      "comment" : "Theme picker: caps screen title; doubles as its VoiceOver label. The call site upper-cases the visible one.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тема будильника"
+          }
+        }
+      }
+    },
+    "create_alarm.title.edit" : {
+      "comment" : "Alarm editor, edit mode: screen title. Unrelated to the stored default alarm name, which stays a literal because it is compared against saved records.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник"
+          }
+        }
+      }
+    },
+    "create_alarm.title.new" : {
+      "comment" : "Alarm editor, create mode: screen title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новый будильник"
+          }
+        }
+      }
+    },
+    "create_alarm.vibration.title" : {
+      "comment" : "Alarm editor: title of the vibration row; doubles as the VoiceOver label of its switch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрация"
+          }
+        }
+      }
+    },
+    "create_alarm.volume.title" : {
+      "comment" : "Alarm editor: title of the volume row, and the caps title of the volume screen it pushes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Громкость"
+          }
+        }
+      }
+    },
+    "create_alarm.volume.value_fade" : {
+      "comment" : "Trailing value of a volume row when fade-in is armed. %lld is the percentage; without fade-in the row shows the bare percentage and needs no copy.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%% · плавно"
+          }
+        }
+      }
+    },
+    "create_alarm.volume_picker.fade_subtitle" : {
+      "comment" : "Volume screen: subtitle of the fade-in row, stating how long the ramp takes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За 30 секунд"
+          }
+        }
+      }
+    },
+    "create_alarm.volume_picker.fade_title" : {
+      "comment" : "Volume screen: title of the fade-in row; doubles as the VoiceOver label of its switch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Постепенно нарастает"
           }
         }
       }

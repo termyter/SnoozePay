@@ -1,6 +1,6 @@
 import UIKit
 
-/// V2 "Звук" row: leading sound icon + title + trailing sound name (meta) +
+/// V2 «Звук» row: leading sound icon + title + trailing sound name (meta) +
 /// chevron. The inline preview play button is dropped — the dedicated
 /// `SoundPickerViewController` exposes per-row previews so the form-level
 /// row stays clean. Matches `SPScreensV2.jsx` lines 574-578.
@@ -22,7 +22,7 @@ final class SoundCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Звук"
+        label.text = Localized.text("create_alarm.sound.title")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false

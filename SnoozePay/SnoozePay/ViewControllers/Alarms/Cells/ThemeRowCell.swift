@@ -1,6 +1,6 @@
 import UIKit
 
-/// V2 "Тема" disclosure row: leading 28×28 gradient thumbnail + title +
+/// V2 «Тема» disclosure row: leading 28×28 gradient thumbnail + title +
 /// trailing theme-name meta + chevron. Matches `SPScreensV2.jsx` lines
 /// 579-584. The thumbnail tracks the currently-selected theme so the user
 /// sees a live preview of what they've picked without having to enter the
@@ -36,7 +36,7 @@ final class ThemeRowCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Тема"
+        label.text = Localized.text("create_alarm.theme.title")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false

@@ -22,7 +22,7 @@ final class TimePickerCell: UITableViewCell {
 
     // MARK: - UI
 
-    /// "Подъём" — caps header above the readout (`sp-caps`, `fg3`).
+    /// «Подъём» — caps header above the readout (`sp-caps`, `fg3`).
     private let headerLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.wake_up").uppercased()

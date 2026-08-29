@@ -1,6 +1,6 @@
 import UIKit
 
-/// Bottom-sheet confirmation for destructive "Удалить будильник" (#163 /
+/// Bottom-sheet confirmation for destructive «Удалить будильник» (#163 /
 /// #231 / V2).
 ///
 /// Presented `.overFullScreen` so the alarm-edit form stays visible — and
@@ -11,15 +11,15 @@ import UIKit
 ///
 /// Sheet layout mirrors `SPMore2.jsx` (`ConfirmDelete()`):
 ///   - 64×64 pain-tinted square with X icon
-///   - h2 "Удалить будильник?" title
+///   - h2 «Удалить будильник?» title
 ///   - body copy line
-///   - `SPButton(.pain, .lg)` "Удалить"
-///   - `SPButton(.quiet, .md)` "Отмена"
+///   - `SPButton(.pain, .lg)` «Удалить»
+///   - `SPButton(.quiet, .md)` «Отмена»
 final class ConfirmDeleteAlarmViewController: UIViewController {
 
     // MARK: - Callbacks
 
-    /// Invoked after the user taps "Удалить". The host VC handles the actual
+    /// Invoked after the user taps «Удалить». The host VC handles the actual
     /// delete + repository wiring; this sheet only owns the confirmation UI.
     var onConfirm: (() -> Void)?
 
@@ -112,7 +112,7 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
         label.textColor = AppColors.fg1
         label.textAlignment = .center
         label.numberOfLines = 0
-        label.text = "Удалить будильник?"
+        label.text = Localized.text("alarms.delete.title")
         return label
     }()
 
@@ -127,14 +127,14 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     }()
 
     private let deleteButton = SPButton(
-        title: "Удалить",
+        title: Localized.text("alarms.button.delete"),
         variant: .pain,
         size: .lg,
         fullWidth: true
     )
 
     private let cancelButton = SPButton(
-        title: "Отмена",
+        title: Localized.text("common.button.cancel"),
         variant: .quiet,
         size: .md,
         fullWidth: true
@@ -145,7 +145,7 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     /// - Parameters:
     ///   - body: Subtitle copy. Defaults to the balance-stays-put reassurance
     ///     with the live balance (#277). Pass a tailored composition (e.g.
-    ///     "Будни · Пн–Пт · 07:00. Баланс …") when the alarm context is rich.
+    ///     «Будни · Пн–Пт · 07:00. Баланс …») when the alarm context is rich.
     ///   - onConfirm: Closure invoked on the destructive tap. The sheet
     ///     dismisses itself before firing the callback.
     init(
