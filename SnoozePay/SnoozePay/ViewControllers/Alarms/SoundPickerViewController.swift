@@ -83,7 +83,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.attributedText = NSAttributedString(
-            string: "Превью".uppercased(),
+            string: Localized.text("create_alarm.sound_picker.preview_caps").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -251,19 +251,21 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     private func setupHeader() {
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
-            string: "Звук".uppercased(),
+            string: Localized.text("create_alarm.sound.title").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
                 .foregroundColor: AppColors.fg3
             ]
         )
-        titleLabel.accessibilityLabel = "Выбор звука"
+        titleLabel.accessibilityLabel = Localized.text("create_alarm.sound_picker.accessibility")
         navigationItem.titleView = titleLabel
 
         // «Готово» quiet-sm — the only way out beyond the back chevron now that
         // selection doesn't auto-pop.
-        let doneButton = SPButton(title: "Готово", variant: .quiet, size: .sm)
+        let doneButton = SPButton(
+            title: Localized.text("common.button.done"), variant: .quiet, size: .sm
+        )
         doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneButton)
     }
@@ -335,7 +337,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         refreshPreviewGradient()
         previewPlayButton.layer.insertSublayer(previewPlayGradient, at: 0)
         previewPlayButton.addTarget(self, action: #selector(previewTapped), for: .touchUpInside)
-        previewPlayButton.accessibilityLabel = "Прослушать превью"
+        previewPlayButton.accessibilityLabel = Localized.text(
+            "create_alarm.sound_picker.preview_accessibility"
+        )
 
         progressTrack.addSubview(progressFill)
 
@@ -414,8 +418,8 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
             // Disabled «Своя мелодия · скоро» slot.
             let slot = SoundCatalogue.customSlot
             cell.configure(
-                name: "\(slot.name) · скоро",
-                subtitle: "Импорт своей мелодии появится позже",
+                name: Localized.format("create_alarm.sound_picker.custom_slot", slot.name),
+                subtitle: Localized.text("create_alarm.sound_picker.custom_slot_subtitle"),
                 isSelected: false,
                 isLast: isLast,
                 isEnabled: false
@@ -563,7 +567,7 @@ extension SoundPickerViewController {
         let capsLabel = UILabel()
         capsLabel.translatesAutoresizingMaskIntoConstraints = false
         capsLabel.attributedText = NSAttributedString(
-            string: "Громкость".uppercased(),
+            string: Localized.text("create_alarm.volume.title").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -582,13 +586,13 @@ extension SoundPickerViewController {
         trailingStack.spacing = AppSpacing.sp2
 
         let row = SPRow(
-            title: "Громкость и нарастание",
+            title: Localized.text("create_alarm.sound_picker.volume_row"),
             trailing: trailingStack,
             divider: false
         ) { [weak self] in
             self?.showVolumePicker()
         }
-        row.accessibilityLabel = "Громкость и нарастание"
+        row.accessibilityLabel = Localized.text("create_alarm.sound_picker.volume_row")
         row.translatesAutoresizingMaskIntoConstraints = false
 
         let card = SPCard(tone: .surface, padding: 0, cornerRadius: AppRadius.lg)
@@ -612,8 +616,10 @@ extension SoundPickerViewController {
 
     /// Refreshes the «Громкость» row value label, e.g. «80% · плавно».
     func refreshVolumeLabel() {
-        let percent = "\(Int((volume * 100).rounded()))%"
-        volumeValueLabel.text = fadeIn ? "\(percent) · плавно" : percent
+        let percent = Int((volume * 100).rounded())
+        volumeValueLabel.text = fadeIn
+            ? Localized.format("create_alarm.volume.value_fade", percent)
+            : "\(percent)%"
     }
 
     /// Pushes the existing `VolumePickerViewController` (#150) and forwards its

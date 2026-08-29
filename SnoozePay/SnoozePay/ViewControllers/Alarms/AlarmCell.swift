@@ -206,7 +206,7 @@ final class AlarmCell: UITableViewCell {
         accessibilityElements = [cardView, toggleSwitch]
         cardView.isAccessibilityElement = true
         cardView.accessibilityTraits = .summaryElement
-        toggleSwitch.accessibilityLabel = "Будильник"
+        toggleSwitch.accessibilityLabel = Localized.text("alarms.cell.toggle_accessibility")
     }
 
     override func prepareForReuse() {
@@ -236,8 +236,8 @@ final class AlarmCell: UITableViewCell {
     /// Configure the row's content. Inputs:
     /// - `time`: pre-formatted clock string, e.g. "7:30" (the list uses the
     ///   unpadded `H:mm` form — see `AlarmsListViewModel.timeFormatter`).
-    /// - `daysCaps`: caps string for the top-left ("БУДНИ · ПН–ПТ" /
-    ///   "ВЫХОДНЫЕ" / "ПН, ВТ, СР").
+    /// - `daysCaps`: caps string for the top-left («БУДНИ · ПН–ПТ» /
+    ///   «ВЫХОДНЫЕ» / «ПН, ВТ, СР»).
     /// - `priceText`: e.g. "50 ₽".
     /// - `multiplier`: optional progressive-pain pill label ("×2" / "×4"
     ///   / etc.). `nil` hides the pill.
@@ -284,11 +284,13 @@ final class AlarmCell: UITableViewCell {
             multiplier: multiplier,
             soundName: soundName
         )
-        toggleSwitch.accessibilityValue = enabled ? "включён" : "выключен"
+        toggleSwitch.accessibilityValue = Localized.text(
+            enabled ? "alarms.cell.toggle_on" : "alarms.cell.toggle_off"
+        )
     }
 
     /// Build the composed VoiceOver label for a card from its display fields,
-    /// e.g. "Будильник 07:00, будни Пн–Пт, 50 ₽, ×2, Soft Dawn". Pure so it
+    /// e.g. «Будильник 07:00, будни Пн–Пт, 50 ₽, ×2, Soft Dawn». Pure so it
     /// can be unit-tested without instantiating a cell. `daysCaps` arrives
     /// upper-cased for the visual caps row; VoiceOver reads sentence-case more
     /// naturally, so it's lowered with a capital first letter.
@@ -299,7 +301,7 @@ final class AlarmCell: UITableViewCell {
         multiplier: String?,
         soundName: String?
     ) -> String {
-        var parts: [String] = ["Будильник \(time)"]
+        var parts: [String] = [Localized.format("alarms.cell.accessibility", time)]
 
         let days = sentenceCased(daysCaps)
         if !days.isEmpty { parts.append(days) }
@@ -317,7 +319,7 @@ final class AlarmCell: UITableViewCell {
     }
 
     /// Lower-case a caps string and re-capitalise its first letter so VoiceOver
-    /// reads "Будни · Пн–Пт" instead of spelling out the all-caps form.
+    /// reads «Будни · Пн–Пт» instead of spelling out the all-caps form.
     private static func sentenceCased(_ caps: String) -> String {
         let trimmed = caps.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = trimmed.first else { return "" }
@@ -457,7 +459,9 @@ final class AlarmCell: UITableViewCell {
     @objc private func toggleSwitchChanged() {
         let isOn = toggleSwitch.isOn
         applyEnabledTone(isOn)
-        toggleSwitch.accessibilityValue = isOn ? "включён" : "выключен"
+        toggleSwitch.accessibilityValue = Localized.text(
+            isOn ? "alarms.cell.toggle_on" : "alarms.cell.toggle_off"
+        )
         // Recolour the caps + pill set to track the new tone.
         if let attributed = capsLabel.attributedText?.string {
             capsLabel.attributedText = NSAttributedString(

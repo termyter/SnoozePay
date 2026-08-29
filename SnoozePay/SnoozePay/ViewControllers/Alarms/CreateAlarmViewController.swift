@@ -84,9 +84,16 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Lifecycle
 
+    /// Screen title for the current mode. Read twice — by the navigation
+    /// bar's own `title` (what VoiceOver announces) and by the caps title
+    /// view — so the two cannot drift apart.
+    private var screenTitle: String {
+        Localized.text(viewModel.isEditing ? "create_alarm.title.edit" : "create_alarm.title.new")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = viewModel.isEditing ? "Будильник" : "Новый будильник"
+        title = screenTitle
         view.backgroundColor = AppColors.bg0
         setupNavigationBar()
         setupTableView()
@@ -118,7 +125,7 @@ final class CreateAlarmViewController: UIViewController {
         // views so the brand styling sticks.
         if viewModel.isEditing {
             let cancelButton = SPButton(
-                title: "Отмена",
+                title: Localized.text("common.button.cancel"),
                 variant: .quiet,
                 size: .sm
             )
@@ -141,12 +148,14 @@ final class CreateAlarmViewController: UIViewController {
             closeButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
             closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
             closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-            closeButton.accessibilityLabel = "Закрыть"
+            closeButton.accessibilityLabel = Localized.text("create_alarm.close.accessibility")
             navigationItem.leftBarButtonItem = UIBarButtonItem(customView: closeButton)
         }
 
         let saveButton = SPButton(
-            title: viewModel.isEditing ? "Сохранить" : "Готово",
+            title: Localized.text(
+                viewModel.isEditing ? "create_alarm.button.save" : "common.button.done"
+            ),
             variant: .money,
             size: .sm
         )
@@ -159,7 +168,7 @@ final class CreateAlarmViewController: UIViewController {
         // custom title view label.
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
-            string: (viewModel.isEditing ? "Будильник" : "Новый будильник").uppercased(),
+            string: screenTitle.uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -180,7 +189,7 @@ final class CreateAlarmViewController: UIViewController {
         tableView.keyboardDismissMode = .interactive
         registerSectionCells(in: tableView)
 
-        // Pin to safe area on top so the first section's "ПОВТОР" header is
+        // Pin to safe area on top so the first section's «ПОВТОР» header is
         // not clipped under the navigation bar.
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -193,7 +202,7 @@ final class CreateAlarmViewController: UIViewController {
             return
         }
 
-        // Edit mode: destructive "Удалить будильник" CTA lives in a fixed
+        // Edit mode: destructive «Удалить будильник» CTA lives in a fixed
         // footer below the scrolling form — `padding: 0 16px 24px` per the
         // V2 AlarmEdit artboard (`SPMore2.jsx`, #231). The table's bottom is
         // pinned to the footer's top so content never hides behind the CTA.
@@ -203,7 +212,7 @@ final class CreateAlarmViewController: UIViewController {
         view.addSubview(footer)
 
         let deleteButton = SPButton(
-            title: "Удалить будильник",
+            title: Localized.text("create_alarm.button.delete_alarm"),
             variant: .pain,
             size: .lg,
             fullWidth: true
@@ -258,10 +267,10 @@ final class CreateAlarmViewController: UIViewController {
                 self.dismiss(animated: true)
             case .persistFailed:
                 // Persist failed (corrupt store / encode error). Surface the
-                // failure inline so the user doesn't tap "Сохранить", see the
+                // failure inline so the user doesn't tap «Сохранить», see the
                 // sheet dismiss, and assume their alarm landed (issue #72).
                 self.presentSaveError(
-                    title: "Не удалось сохранить",
+                    title: Localized.text("create_alarm.error.persist_failed"),
                     error: AlarmRepository.RepositoryError.persistBlocked
                 )
             case .schedulingFailed(let error):
@@ -269,7 +278,7 @@ final class CreateAlarmViewController: UIViewController {
                 // about to go to bed thinking the alarm will ring. Tell
                 // them so they can fix the cause (issue #118).
                 self.presentSaveError(
-                    title: "Не удалось запланировать будильник",
+                    title: Localized.text("create_alarm.error.schedule_failed"),
                     error: error
                 )
             }
@@ -283,7 +292,7 @@ final class CreateAlarmViewController: UIViewController {
     func presentSaveError(title: String, error: LocalizedError) {
         let alert = UIAlertController(
             title: title,
-            message: error.errorDescription ?? "Попробуйте ещё раз.",
+            message: error.errorDescription ?? Localized.text("create_alarm.error.retry"),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))

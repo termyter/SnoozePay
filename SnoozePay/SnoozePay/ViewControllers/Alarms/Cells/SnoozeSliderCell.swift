@@ -1,6 +1,6 @@
 import UIKit
 
-/// "Время откладывания" row: slider 1...15 minutes + live "{N} мин" label.
+/// «Время откладывания» row: slider 1...15 minutes + live «{N} мин» label.
 ///
 /// Replaces the previous `UIStepper`-based `SnoozeCell` (#143). The slider
 /// snaps to integer minutes via `roundf` so the user never lands on noisy
@@ -22,7 +22,7 @@ final class SnoozeSliderCell: UITableViewCell {
     private let captionLabel: UILabel = {
         let label = UILabel()
         label.attributedText = NSAttributedString(
-            string: "Длительность откладывания".uppercased(),
+            string: Localized.text("create_alarm.snooze.caps").uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -36,7 +36,7 @@ final class SnoozeSliderCell: UITableViewCell {
     /// Meta hint «На сколько минут отодвигается звонок» (SPMore2.jsx:269).
     private let hintLabel: UILabel = {
         let label = UILabel()
-        label.text = "На сколько минут отодвигается звонок"
+        label.text = Localized.text("create_alarm.snooze.hint")
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
@@ -71,7 +71,7 @@ final class SnoozeSliderCell: UITableViewCell {
 
     private let valueLabel: UILabel = {
         let label = UILabel()
-        // V2: mono `moneyMd` so the "{N} мин" reading column-aligns with the
+        // V2: mono `moneyMd` so the «{N} мин» reading column-aligns with the
         // penalty preset row's amount on the same screen.
         label.font = AppTypography.moneyMd
         label.textColor = AppColors.fg1
@@ -92,8 +92,12 @@ final class SnoozeSliderCell: UITableViewCell {
         return label
     }
 
-    private lazy var minBoundLabel = Self.makeBoundLabel("\(Self.minMinutes) мин", alignment: .left)
-    private lazy var maxBoundLabel = Self.makeBoundLabel("\(Self.maxMinutes) мин", alignment: .right)
+    private lazy var minBoundLabel = Self.makeBoundLabel(
+        Localized.format("create_alarm.snooze.minutes", Self.minMinutes), alignment: .left
+    )
+    private lazy var maxBoundLabel = Self.makeBoundLabel(
+        Localized.format("create_alarm.snooze.minutes", Self.maxMinutes), alignment: .right
+    )
 
     // MARK: - Callbacks
 
@@ -142,7 +146,7 @@ final class SnoozeSliderCell: UITableViewCell {
 
             valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
             valueLabel.firstBaselineAnchor.constraint(equalTo: captionLabel.firstBaselineAnchor),
-            // Reserve a fixed minimum so "1 мин" / "15 мин" don't reflow.
+            // Reserve a fixed minimum so «1 мин» / «15 мин» don't reflow.
             valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
 
             slider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
@@ -186,23 +190,30 @@ final class SnoozeSliderCell: UITableViewCell {
         onValueChanged?(clamped)
     }
 
-    /// "{N} мин" with the «мин» suffix dimmed to `fg3` per the V2 slider
-    /// recipe (SPScreensV2.jsx:733-751) so the number reads as the headline.
+    /// «{N} мин» with the unit dimmed to `fg3` per the V2 slider recipe
+    /// (SPScreensV2.jsx:733-751) so the number reads as the headline.
+    ///
+    /// The whole phrase is one catalogue string and the number is located in
+    /// the rendered result, rather than the two being concatenated here: a
+    /// language that puts its unit first would otherwise be unable to say so.
     private static func valueText(_ minutes: Int) -> NSAttributedString {
+        let phrase = Localized.format("create_alarm.snooze.minutes", minutes)
         let text = NSMutableAttributedString(
-            string: "\(minutes)",
-            attributes: [
-                .font: AppTypography.moneyMd,
-                .foregroundColor: AppColors.fg1
-            ]
-        )
-        text.append(NSAttributedString(
-            string: " мин",
+            string: phrase,
             attributes: [
                 .font: AppTypography.h4,
                 .foregroundColor: AppColors.fg3
             ]
-        ))
+        )
+        if let digits = phrase.range(of: "\(minutes)") {
+            text.addAttributes(
+                [
+                    .font: AppTypography.moneyMd,
+                    .foregroundColor: AppColors.fg1
+                ],
+                range: NSRange(digits, in: phrase)
+            )
+        }
         return text
     }
 }

@@ -1,6 +1,6 @@
 import UIKit
 
-/// V2 "Прогрессивный режим" card (#231, `SPMore2.jsx` AlarmEdit).
+/// V2 «Прогрессивный режим» card (#231, `SPMore2.jsx` AlarmEdit).
 ///
 /// A single self-contained card: leading flame icon + h4 title, rationale
 /// subtitle, the doubling chain `50 → 100 → 200 → 400 ₽` (visible while the
@@ -31,7 +31,7 @@ final class ProgressiveScaleCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Прогрессивный режим"
+        label.text = Localized.text("create_alarm.progressive.title")
         label.font = AppTypography.h4
         label.textColor = AppColors.fg1
         return label
@@ -39,7 +39,7 @@ final class ProgressiveScaleCell: UITableViewCell {
 
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Каждое откладывание — в 2 раза дороже."
+        label.text = Localized.text("create_alarm.progressive.subtitle")
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
@@ -100,7 +100,7 @@ final class ProgressiveScaleCell: UITableViewCell {
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
         // VoiceOver otherwise reads the brand `SPSwitch` as the generic
-        // "Переключатель". Give it the row's title so the control is
+        // «Переключатель». Give it the row's title so the control is
         // self-describing, mirroring AlarmCell's pattern (#425).
         toggle.accessibilityLabel = titleLabel.text
 
@@ -136,7 +136,7 @@ final class ProgressiveScaleCell: UITableViewCell {
     /// - Parameters:
     ///   - isOn: Whether progressive mode is armed.
     ///   - chain: The four doubling steps (base, ×2, ×4, ×8) in roubles.
-    ///   - accessibilityChain: Spoken form of the chain ("1-е: 50 ₽ → …").
+    ///   - accessibilityChain: Spoken form of the chain («1-е: 50 ₽ → …»).
     func configure(isOn: Bool, chain: [Int], accessibilityChain: String) {
         toggle.isOn = isOn
         chainLabel.attributedText = Self.chainText(for: chain)

@@ -16,10 +16,16 @@ final class RepeatModeCell: UITableViewCell {
     private static let trackPadding: CGFloat = 4
 
     /// Ordered segments. Index == button tag.
-    private static let modes: [(mode: AlarmRepeatMode, label: String)] = [
-        (.never, "Никогда"),
-        (.weekly, "Еженедельно")
-    ]
+    ///
+    /// Computed rather than stored: a `static let` would freeze the labels at
+    /// first access, and a missing catalogue key would then hide behind
+    /// whichever test happened to touch the cell first (see `Plural`).
+    private static var modes: [(mode: AlarmRepeatMode, label: String)] {
+        [
+            (.never, Localized.text("create_alarm.repeat.never")),
+            (.weekly, Localized.text("create_alarm.repeat.weekly"))
+        ]
+    }
 
     // MARK: - Callbacks
 
@@ -33,7 +39,7 @@ final class RepeatModeCell: UITableViewCell {
     private let captionLabel: UILabel = {
         let label = UILabel()
         label.attributedText = NSAttributedString(
-            string: "ПОВТОР",
+            string: Localized.text("create_alarm.repeat.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -162,7 +168,9 @@ final class RepeatModeCell: UITableViewCell {
         title.font = AppTypography.buttonSm
         title.foregroundColor = isSelected ? AppColors.fgOnMoney : AppColors.fg2
         button.configuration?.attributedTitle = title
-        button.accessibilityValue = isSelected ? "выбрано" : "не выбрано"
+        button.accessibilityValue = Localized.text(
+            isSelected ? "create_alarm.accessibility.selected" : "create_alarm.accessibility.not_selected"
+        )
     }
 
     // MARK: - Actions

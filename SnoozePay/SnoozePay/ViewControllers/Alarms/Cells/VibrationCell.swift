@@ -1,6 +1,6 @@
 import UIKit
 
-/// V2 "Вибрация" toggle row. Uses the brand `SPSwitch` so the on-state reads
+/// V2 «Вибрация» toggle row. Uses the brand `SPSwitch` so the on-state reads
 /// money-tinted instead of the platform green, matching the V2 settings group
 /// in `SPScreensV2.jsx` lines 585-590.
 final class VibrationCell: UITableViewCell {
@@ -21,7 +21,7 @@ final class VibrationCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Вибрация"
+        label.text = Localized.text("create_alarm.vibration.title")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -51,7 +51,7 @@ final class VibrationCell: UITableViewCell {
         selectionStyle = .none
         toggle.translatesAutoresizingMaskIntoConstraints = false
         // Without this VoiceOver announces the brand `SPSwitch` as the generic
-        // "Переключатель"; the adjacent title reads separately but the switch
+        // «Переключатель»; the adjacent title reads separately but the switch
         // itself carries no context. Mirror AlarmCell's contextual-label pattern
         // (#425) so the control is self-describing.
         toggle.accessibilityLabel = titleLabel.text

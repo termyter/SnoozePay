@@ -1,6 +1,6 @@
 import UIKit
 
-/// V2 "Громкость" row: leading volume icon + title + trailing "{N}%" meta +
+/// V2 «Громкость» row: leading volume icon + title + trailing «{N}%» meta +
 /// chevron. Matches the settings-group row pattern from `SPScreensV2.jsx`.
 /// Tapping pushes `VolumePickerViewController` (wired by the parent).
 final class VolumeCell: UITableViewCell {
@@ -21,7 +21,7 @@ final class VolumeCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Громкость"
+        label.text = Localized.text("create_alarm.volume.title")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -92,13 +92,13 @@ final class VolumeCell: UITableViewCell {
 
     // MARK: - Configure
 
-    /// Render the trailing summary as "{N}%" plus a "· плавно" suffix when
+    /// Render the trailing summary as «{N}%» plus a «· плавно» suffix when
     /// the per-alarm fade-in toggle is on so the user can spot the option
     /// at a glance without having to drill into the picker.
     func configure(volume: Float, fadeIn: Bool) {
         let pct = Int(round(min(max(volume, 0), 1) * 100))
         if fadeIn {
-            valueLabel.text = "\(pct)% · плавно"
+            valueLabel.text = Localized.format("create_alarm.volume.value_fade", pct)
         } else {
             valueLabel.text = "\(pct)%"
         }
