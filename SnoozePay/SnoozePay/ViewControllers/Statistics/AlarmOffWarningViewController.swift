@@ -19,11 +19,19 @@ import UIKit
 /// the statistics screen so PM can preview the visual.
 final class AlarmOffWarningViewController: UIViewController {
 
-    // The hero badge caches two `cgColor` payloads — a pain-tinted drop shadow
-    // and the pain gradient fill — and neither re-resolves itself, so it keeps
-    // the dark `#F4523F` after a flip to light where `pain500` is `#9F3529`.
-    private weak var heroBadge: UIView?
-    private weak var heroGradient: CAGradientLayer?
+    /// 80×80 pain-gradient rounded square the flame glyph sits on.
+    ///
+    /// An `SPGradientView` — the gradient IS the view's layer, so Auto Layout
+    /// sizes it — not a `CAGradientLayer` sublayer. The sublayer version (#536)
+    /// got its frame once, from a `DispatchQueue.main.async` hop at build time,
+    /// so every resize after the first left the fill at its old size with the
+    /// flame on the bare sheet. Same defect as #516 (invisible streak badge,
+    /// 1.01:1 dark / 1.16:1 light) and #529.
+    ///
+    /// Stops start empty on purpose: reading `SPSupport.painGradientColors`
+    /// here bakes `UITraitCollection.current` into a `CGColor` that never
+    /// re-resolves — `refreshHeroTheme()` installs them trait-explicitly.
+    let heroBadge = SPGradientView(colors: [], locations: SPSupport.painGradientLocations)
 
     // MARK: - Lifecycle
 
@@ -37,10 +45,14 @@ final class AlarmOffWarningViewController: UIViewController {
         }
     }
 
-    /// Re-resolve the hero badge's shadow + gradient for the current theme.
+    /// Re-resolve the badge's shadow + gradient: both are plain `CGColor`,
+    /// frozen at build time, and the sheet is built once in `viewDidLoad`.
     private func refreshHeroTheme() {
-        heroBadge?.layer.shadowColor = AppColors.pain500.resolvedColor(with: traitCollection).cgColor
-        heroGradient?.colors = SPSupport.painGradientColors(for: traitCollection)
+        heroBadge.layer.shadowColor = AppColors.pain500.resolvedColor(with: traitCollection).cgColor
+        heroBadge.refresh(
+            colors: SPSupport.painGradientColors(for: traitCollection),
+            locations: SPSupport.painGradientLocations
+        )
     }
 
     // MARK: - Layout
@@ -137,29 +149,17 @@ final class AlarmOffWarningViewController: UIViewController {
     // MARK: - Hero
 
     private func makeHero() -> UIView {
-        // 80×80 pain-gradient rounded square + flame icon.
-        let badge = UIView()
+        let badge = heroBadge
         badge.translatesAutoresizingMaskIntoConstraints = false
         badge.layer.cornerRadius = AppRadius.lg
         badge.layer.cornerCurve = .continuous
+        // No clipping: the gradient is the view's own layer, so `cornerRadius`
+        // already rounds the fill and `masksToBounds` would eat the shadow.
         badge.layer.masksToBounds = false
-        // `shadowColor` / `gradient.colors` are painted by `refreshHeroTheme()`
-        // so they survive a light/dark flip.
+        // `shadowColor` and the gradient stops come from `refreshHeroTheme()`.
         badge.layer.shadowOpacity = 0.40
         badge.layer.shadowOffset = CGSize(width: 0, height: 16)
         badge.layer.shadowRadius = 24
-        heroBadge = badge
-
-        let gradient = CAGradientLayer()
-        heroGradient = gradient
-        gradient.locations = SPSupport.painGradientLocations
-        gradient.startPoint = SPSupport.gradientStart
-        gradient.endPoint = SPSupport.gradientEnd
-        gradient.cornerRadius = AppRadius.lg
-        badge.layer.insertSublayer(gradient, at: 0)
-        DispatchQueue.main.async {
-            gradient.frame = badge.bounds
-        }
 
         let flame = UIImageView(
             image: UIImage(
