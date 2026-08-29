@@ -1,6 +1,66 @@
 {
   "sourceLanguage" : "ru",
   "strings" : {
+    "alarms.days.every_day" : {
+      "comment" : "Alarm-card caps row: the alarm repeats on all seven weekdays.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый день"
+          }
+        }
+      }
+    },
+    "alarms.days.once" : {
+      "comment" : "Alarm-card caps row: a one-shot alarm with no weekday set.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Единожды"
+          }
+        }
+      }
+    },
+    "alarms.days.once_on" : {
+      "comment" : "Alarm-card caps row: a one-shot alarm limited to the listed weekdays (%@ is «Вт, Чт»). Kept as one string rather than assembled from parts so the separator and the word order stay translatable.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Единожды · %@"
+          }
+        }
+      }
+    },
+    "alarms.days.weekdays" : {
+      "comment" : "Alarm-card caps row: Mon-Fri. The weekday abbreviations are part of the copy here — another language may want a different range notation entirely.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будни · Пн–Пт"
+          }
+        }
+      }
+    },
+    "alarms.days.weekend" : {
+      "comment" : "Alarm-card caps row: Sat+Sun.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выходные"
+          }
+        }
+      }
+    },
     "alarms.empty.body" : {
       "comment" : "Body of the alarms-list empty state (SPAlarmsListEmptyState).",
       "extractionState" : "manual",
@@ -33,6 +93,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ни одного будильника"
+          }
+        }
+      }
+    },
+    "alarms.error.backend_unavailable" : {
+      "comment" : "Alert body when AlarmKit authorization is missing, so nothing can be armed at all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложению не разрешено ставить будильники, поэтому будильник не зазвонит. Разрешите будильники в Настройках."
+          }
+        }
+      }
+    },
+    "alarms.error.load_failed" : {
+      "comment" : "Alert body when the stored alarms JSON cannot be decoded (AlarmRepository.RepositoryError.decodeFailure).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить будильники. Свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "alarms.error.rollback_persist_failed" : {
+      "comment" : "Alert body when enabling an alarm failed AND undoing that failure also failed (#205); only a relaunch reconciles memory with disk.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось включить будильник и откатить изменение — данные могут быть в рассинхроне. Перезапустите приложение и проверьте список будильников."
+          }
+        }
+      }
+    },
+    "alarms.error.save_blocked" : {
+      "comment" : "Alert body when saving is refused because the stored alarms are corrupt (AlarmRepository.RepositoryError.persistBlocked).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранение заблокировано: данные повреждены. Восстановите состояние через настройки или свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "alarms.error.save_failed" : {
+      "comment" : "Alert body when encoding an alarm for storage fails (AlarmRepository.RepositoryError.encodeFailure).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось сохранить будильник. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "alarms.error.schedule_failed" : {
+      "comment" : "Alert body when AlarmKit rejects a schedule. %@ is the system's own message, which arrives already localized by the OS.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось запланировать будильник: %@. Попробуйте ещё раз или удалите старые будильники."
+          }
+        }
+      }
+    },
+    "alarms.hint.zero_balance" : {
+      "comment" : "Caption under a 0 ₽ balance on the alarms list. Deliberately NOT «будильники не зазвонят» — the alarm still rings, the user just cannot pay to snooze it (#232).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывать не получится"
+          }
+        }
+      }
+    },
+    "alarms.penalty" : {
+      "comment" : "Alarm-card penalty line; %@ is the formatted price («50 ₽»). The minus is U+2212, per the design copy.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "▲ ПОСПАТЬ ЕЩЁ: −%@"
           }
         }
       }
@@ -73,6 +229,42 @@
         }
       }
     },
+    "common.snooze_affordability" : {
+      "comment" : "Balance hint under the wallet balance and in the alarms-list sticky header: how many snoozes the remaining balance still buys. A plural VARIATION rather than the flat plural.* nouns, because this call site owns the whole phrase - see example.days_count in this file. common.* because it appears on two screens.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Хватит на ~%lld откладывания"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Хватит на ~%lld откладываний"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Хватит на ~%lld откладывание"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Хватит на ~%lld откладывания"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "common.switch.accessibility" : {
       "comment" : "Neutral VoiceOver label seeded by SPSwitch; call sites override it with a contextual one.",
       "extractionState" : "manual",
@@ -93,6 +285,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Подъём"
+          }
+        }
+      }
+    },
+    "deposit.foreign_currency.dismiss" : {
+      "comment" : "The single, acknowledging button on the foreign-currency alert. Nothing is offered to cancel, because nothing was started.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Понятно"
+          }
+        }
+      }
+    },
+    "deposit.foreign_currency.message" : {
+      "comment" : "Body of the foreign-currency refusal. %1$@ is the wallet's currency name, %2$@ the storefront's. One key rather than the six concatenated fragments it replaced: clause order is a property of the language, not of the layout.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Валюта кошелька — %1$@. App Store сейчас продаёт пакеты пополнения за другую валюту: %2$@. Пересчитать одно в другое приложение не может: курса у него нет, а выдумывать курс для ваших денег оно не станет. Пополнение в другой валюте недоступно. Остаток на балансе никуда не делся — его можно тратить как обычно."
+          }
+        }
+      }
+    },
+    "deposit.foreign_currency.title" : {
+      "comment" : "Title of the alert that refuses a top-up priced in a currency the wallet cannot hold.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другая валюта"
           }
         }
       }
@@ -141,6 +369,30 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "firing.action.dismiss" : {
+      "comment" : "Button on the alarm notification that stops the alarm.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выключить"
+          }
+        }
+      }
+    },
+    "firing.action.snooze" : {
+      "comment" : "Button on the alarm notification that buys another snooze. Deliberately not shared with the wallet's identically-worded transaction label: this one is an imperative button, that one names a past event, and the two need not stay identical in another language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поспать ещё"
           }
         }
       }
@@ -565,6 +817,54 @@
         }
       }
     },
+    "referral.error.already_applied" : {
+      "comment" : "Error shown when the one-shot referral bonus has already been redeemed on this device.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бонус по реферальному коду уже получен."
+          }
+        }
+      }
+    },
+    "referral.error.balance_locked" : {
+      "comment" : "Error shown when the balance store is locked by corruption and the bonus cannot be credited safely.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось зачислить бонус. Попробуйте позже."
+          }
+        }
+      }
+    },
+    "referral.error.invalid_format" : {
+      "comment" : "Validation error under the friend-code field in Settings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код должен содержать 6 символов (буквы и цифры)."
+          }
+        }
+      }
+    },
+    "referral.error.own_code" : {
+      "comment" : "Error shown when the user enters their own referral code.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нельзя применить собственный код."
+          }
+        }
+      }
+    },
     "referral.field.friend_code_placeholder" : {
       "comment" : "Placeholder of the friend-code field. WAKEUP-7K2 is the sample code shape and stays Latin in every language.",
       "extractionState" : "manual",
@@ -865,6 +1165,114 @@
         }
       }
     },
+    "statistics.last_slip" : {
+      "comment" : "Hero meta line; %@ is a day-and-month date («8 января»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Последний срыв: %@"
+          }
+        }
+      }
+    },
+    "statistics.last_slip.none" : {
+      "comment" : "Hero meta line for a ledger with no charges at all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Срывов ещё не было"
+          }
+        }
+      }
+    },
+    "statistics.tooltip.no_alarm" : {
+      "comment" : "Heatmap tooltip: no alarm was scheduled that day.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не было будильника"
+          }
+        }
+      }
+    },
+    "statistics.tooltip.woke" : {
+      "comment" : "Heatmap tooltip: alarm dismissed with zero snoozes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Встал сразу"
+          }
+        }
+      }
+    },
+    "statistics.trend.better" : {
+      "comment" : "8-week trend headline: fewer snoozes than last week.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Становится лучше"
+          }
+        }
+      }
+    },
+    "statistics.trend.delta" : {
+      "comment" : "8-week trend subtitle; %@ is the signed difference («−2», «+3») with a U+2212 minus.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ к прошлой неделе"
+          }
+        }
+      }
+    },
+    "statistics.trend.no_change" : {
+      "comment" : "8-week trend subtitle when the difference is exactly zero.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Столько же, сколько на прошлой неделе"
+          }
+        }
+      }
+    },
+    "statistics.trend.same" : {
+      "comment" : "8-week trend headline: same as last week.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стабильно"
+          }
+        }
+      }
+    },
+    "statistics.trend.worse" : {
+      "comment" : "8-week trend headline: more snoozes than last week.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чаще, чем неделю назад"
+          }
+        }
+      }
+    },
     "statistics.wake_time.average" : {
       "comment" : "Left column caption of the wake-time card (SPWakeTimeCard).",
       "extractionState" : "manual",
@@ -993,6 +1401,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ %2$@ за неделю"
+          }
+        }
+      }
+    },
+    "wallet.error.load_failed" : {
+      "comment" : "Alert body when the stored transaction ledger cannot be decoded (TransactionRepository.RepositoryError.decodeFailure).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить статистику. Свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "wallet.error.write_blocked" : {
+      "comment" : "Alert body when writing is refused because the stored ledger is corrupt (TransactionRepository.RepositoryError.persistBlocked).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись заблокирована: данные повреждены. Восстановите состояние через настройки или свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "wallet.error.write_failed" : {
+      "comment" : "Alert body when encoding a transaction for storage fails (TransactionRepository.RepositoryError.encodeFailure).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось записать транзакцию. Попробуйте ещё раз."
           }
         }
       }

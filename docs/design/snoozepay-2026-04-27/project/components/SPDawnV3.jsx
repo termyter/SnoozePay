@@ -476,15 +476,22 @@ function WalletDawn() {
               <div className="sp-caps">Потери — последние 7 дней</div>
               <div className="sp-meta" style={{ fontFamily: "var(--sp-font-mono)", color: "var(--sp-pain-400)" }}>−160 ₽</div>
             </div>
-            <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 56 }}>
+            <div style={{ display: "flex", gap: 4, alignItems: "flex-end" }}>
               {[40, 0, 80, 50, 0, 0, 30].map((v, i) => (
                 <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <div style={{
-                    width: "100%", height: v ? `${v}%` : 4,
-                    borderRadius: 4, minHeight: 4,
-                    background: v ? "var(--sp-grad-pain)" : "var(--sp-white-08)",
-                    opacity: v ? 1 : .5,
-                  }} />
+                  {/* The track carries the plot height. A percentage height only
+                      resolves against a parent whose own height is definite, so
+                      the 56px has to live here and not on the row — on the row
+                      it left this column `height:auto`, every bar collapsed to
+                      its 4px minimum and the chart read as a flat rule (#466). */}
+                  <div style={{ width: "100%", height: 56, display: "flex", alignItems: "flex-end" }}>
+                    <div style={{
+                      width: "100%", height: v ? `${v}%` : 4,
+                      borderRadius: 4, minHeight: 4,
+                      background: v ? "var(--sp-grad-pain)" : "var(--sp-white-08)",
+                      opacity: v ? 1 : .5,
+                    }} />
+                  </div>
                   <div style={{ font: "10px/14px var(--sp-font-body)", color: "var(--sp-fg-4)", fontWeight: 500 }}>
                     {["П","В","С","Ч","П","С","В"][i]}
                   </div>

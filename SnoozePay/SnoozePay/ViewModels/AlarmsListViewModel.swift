@@ -60,9 +60,7 @@ final class AlarmsListViewModel {
         var errorDescription: String? {
             switch self {
             case .rollbackPersistFailed:
-                return "Не удалось включить будильник и откатить изменение — "
-                    + "данные могут быть в рассинхроне. Перезапустите приложение "
-                    + "и проверьте список будильников."
+                return Localized.text("alarms.error.rollback_persist_failed")
             }
         }
     }
@@ -469,7 +467,7 @@ final class AlarmsListViewModel {
     /// получится", NOT "будильники не зазвонят" — the alarm still fires
     /// at zero balance; the user just can't pay to snooze it (PM call,
     /// issue #232). Alarms stay visually active for the same reason.
-    static let zeroBalanceHint = "Откладывать не получится"
+    static var zeroBalanceHint: String { Localized.text("alarms.hint.zero_balance") }
 
     /// The single hint string the alarms-list header should render under
     /// the balance figure: zero-balance copy when the wallet is empty,
@@ -558,7 +556,10 @@ final class AlarmsListViewModel {
     /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return "▲ ПОСПАТЬ ЕЩЁ: −\(MoneyFormatter.string(alarms[index].penaltyAmount))"
+        return Localized.format(
+            "alarms.penalty",
+            MoneyFormatter.string(alarms[index].penaltyAmount)
+        )
     }
 
     // MARK: - V2 cell helpers
@@ -594,6 +595,13 @@ final class AlarmsListViewModel {
         // Default name "Будильник" is suppressed in the caps row — it's the
         // boilerplate label every freshly-created alarm carries and would
         // crowd the caps line.
+        //
+        // The literal stays a literal on purpose (#569): this compares against
+        // a value PERSISTED in `Alarm.name`, not against copy on screen. Every
+        // alarm already on disk carries the Russian word, so localising the
+        // comparison would stop suppressing the default name the moment the UI
+        // language changed — a data-migration question that belongs with
+        // whoever owns `Alarm`'s default (#598), not with the caps row.
         let nameIsDefault = trimmed.isEmpty || trimmed.lowercased() == "будильник"
         if nameIsDefault {
             return daysPhrase
@@ -615,19 +623,21 @@ final class AlarmsListViewModel {
         for days: [Int],
         repeatMode: AlarmRepeatMode = .weekly
     ) -> String {
-        guard !days.isEmpty else { return "Единожды" }
-        let names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        guard !days.isEmpty else { return Localized.text("alarms.days.once") }
+        let names = WeekdayNames.short
         let sorted = days.sorted()
         let dayList = sorted.compactMap { index -> String? in
             guard index >= 0, index < names.count else { return nil }
             return names[index]
         }.joined(separator: ", ")
         if repeatMode == .never {
-            return dayList.isEmpty ? "Единожды" : "Единожды · \(dayList)"
+            return dayList.isEmpty
+                ? Localized.text("alarms.days.once")
+                : Localized.format("alarms.days.once_on", dayList)
         }
-        if sorted == Array(0...6) { return "Каждый день" }
-        if sorted == [0, 1, 2, 3, 4] { return "Будни · Пн–Пт" }
-        if sorted == [5, 6] { return "Выходные" }
+        if sorted == Array(0...6) { return Localized.text("alarms.days.every_day") }
+        if sorted == [0, 1, 2, 3, 4] { return Localized.text("alarms.days.weekdays") }
+        if sorted == [5, 6] { return Localized.text("alarms.days.weekend") }
         return dayList
     }
 
@@ -661,6 +671,12 @@ final class AlarmsListViewModel {
     /// `CreateAlarmViewModel.availableSounds` list so cells render the same
     /// label the user picked in the editor without coupling the alarms-list
     /// VM to the editor VM.
+    ///
+    /// Left un-migrated by #599 on purpose: these ten names are a verbatim
+    /// copy of `SoundCatalogue.entries` (Models, #598's lane). Giving them
+    /// catalogue keys here would create a second, competing set of keys for
+    /// the same ten words — the duplication has to collapse onto
+    /// `SoundCatalogue` first, and that is a refactor, not a string move.
     private static let soundDisplayNames: [String: String] = [
         "dawn": "Рассвет",
         "radar": "Радар",
