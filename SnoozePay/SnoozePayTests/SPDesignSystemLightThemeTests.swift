@@ -152,8 +152,23 @@ final class SPDesignSystemLightThemeTests: XCTestCase {
         hostWindows.append(window)
 
         let tile = SPAmountPreset(value: 149, label: "Бонус 5%", popular: true)
-        tile.frame = window.bounds
+        // Pinned rather than `frame`-assigned: since #584 the tile resets
+        // `translatesAutoresizingMaskIntoConstraints` on itself, so a frame
+        // handed to it from outside is discarded by the engine. This harness
+        // was the ONLY frame-laid-out call site of the five primitives in the
+        // tree — every product call site already goes through a stack view or
+        // explicit constraints. The bottom pin is `.defaultHigh` so the tile
+        // still fills the 110×88 host it was written against without fighting
+        // its own required `heightAnchor >= 88` when content asks for more.
         window.addSubview(tile)
+        let fillBottom = tile.bottomAnchor.constraint(equalTo: window.bottomAnchor)
+        fillBottom.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            tile.topAnchor.constraint(equalTo: window.topAnchor),
+            tile.leadingAnchor.constraint(equalTo: window.leadingAnchor),
+            tile.trailingAnchor.constraint(equalTo: window.trailingAnchor),
+            fillBottom
+        ])
         window.setNeedsLayout()
         window.layoutIfNeeded()
 
