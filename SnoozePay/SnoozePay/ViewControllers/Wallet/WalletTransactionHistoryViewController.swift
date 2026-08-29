@@ -9,7 +9,7 @@ import UIKit
 /// selection) → summary card with Списано / Пополнения / Откладываний
 /// computed over the visible list (bonuses excluded from Пополнения) →
 /// day-grouped transaction list filtered to the selected period. Headers
-/// read "Сегодня" / "Вчера" / "12 января". The whole page scrolls as one
+/// read «Сегодня» / «Вчера» / «12 января». The whole page scrolls as one
 /// surface — no nested scrolling.
 ///
 /// `Wallet`-prefixed because a legacy `TransactionHistoryViewController`
@@ -35,7 +35,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
-        title = "История"
+        title = Localized.text("wallet.history.title")
         navigationItem.largeTitleDisplayMode = .never
         setupLayout()
         reload()
@@ -97,7 +97,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         }
 
         // Checked read so a corrupt ledger renders a distinct error banner
-        // instead of the friendly "нет операций" empty-state, which would let
+        // instead of the friendly «нет операций» empty-state, which would let
         // the user assume their history was wiped (#419) — matches the honest
         // load-failure treatment in `StatisticsViewModel`.
         let load = WalletLedgerLoad.load(from: TransactionRepository.shared)
@@ -183,7 +183,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         chip.backgroundColor = AppColors.whiteOverlay06
         chip.layer.cornerRadius = AppRadius.lg
         chip.layer.masksToBounds = true
-        chip.accessibilityLabel = "Период: \(period.chipCaption)"
+        chip.accessibilityLabel = Localized.format("wallet.history.period.accessibility", period.chipCaption)
         chip.addTarget(self, action: #selector(periodChipTapped), for: .touchUpInside)
         chip.translatesAutoresizingMaskIntoConstraints = false
 
@@ -221,7 +221,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
         let caption = UILabel()
         caption.attributedText = NSAttributedString(
-            string: "За \(period.summaryCaption)".uppercased(with: AppLocale.display),
+            string: summaryCapsCaption(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -230,7 +230,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         )
 
         let spent = makeSummaryColumn(
-            title: "Списано",
+            title: Localized.text("wallet.history.summary.spent"),
             value: MoneyFormatter.attributed(
                 summary.spent, digitsFont: AppTypography.moneyMd, prefix: "−",
                 color: WalletAmountTint.ink(for: .outgoing)
@@ -238,7 +238,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
             alignment: .left
         )
         let topups = makeSummaryColumn(
-            title: "Пополнения",
+            title: Localized.text("wallet.history.summary.topups"),
             value: MoneyFormatter.attributed(
                 summary.topups, digitsFont: AppTypography.moneyMd, prefix: "+",
                 color: WalletAmountTint.ink(for: .incoming)
@@ -246,7 +246,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
             alignment: .left
         )
         let snoozes = makeSummaryColumn(
-            title: "Откладываний",
+            title: Localized.text("wallet.history.summary.snoozes"),
             value: NSAttributedString(
                 string: "\(summary.snoozeCount)",
                 attributes: [.font: AppTypography.moneyMd, .foregroundColor: AppColors.fg1]
@@ -331,7 +331,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
     private func makeRow(for transaction: Transaction, divider: Bool) -> SPRow {
         let title = Self.title(for: transaction)
         // Charge rows carry the owning alarm's context as the subtitle —
-        // "Будни · 07:00" — falling back to the bare time when the alarm was
+        // «Будни · 07:00» — falling back to the bare time when the alarm was
         // deleted/edited away (issue #282, SPScreensV2.jsx L467).
         let subtitle = Self.subtitle(for: transaction)
         let leading = Self.makeIcon(for: transaction)
@@ -350,22 +350,22 @@ final class WalletTransactionHistoryViewController: UIViewController {
     static func title(for transaction: Transaction) -> String {
         switch transaction.type {
         case .topup:
-            return "Пополнение баланса"
+            return Localized.text("wallet.tx.topup")
         case .charge:
-            return "Поспать ещё"
+            return Localized.text("wallet.tx.charge")
         case .promotion:
             // `.promotion` is currently minted only by the referral bonus
             // (`ReferralService`) — there is no 7-day hold today, so the
             // copy must not claim one (issue #282 — honest, unified copy
             // shared with the wallet preview).
-            return "Бонус за друга"
+            return Localized.text("wallet.tx.promotion")
         case .refund:
             // Penalty returned because the snooze never armed (issue #358) —
             // same copy as the wallet preview row.
-            return "Возврат за откладывание"
+            return Localized.text("wallet.tx.refund")
         case .unknown:
             // Written by a newer build (see `TransactionType.unknown`).
-            return "Операция"
+            return Localized.text("wallet.tx.unknown")
         }
     }
 
@@ -392,7 +392,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         lookup: (UUID) -> Alarm?
     ) -> String {
         guard transaction.type == .charge else { return time }
-        // Prefer the owning alarm's context ("Будни · 07:00") — it tells the
+        // Prefer the owning alarm's context («Будни · 07:00») — it tells the
         // user *which* alarm this snooze charge came from, which the bare
         // charge time can't. Rows are already grouped under a day header, so
         // the per-row time is redundant once context is available. When the
@@ -505,9 +505,9 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
     private static func header(for date: Date) -> String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) { return "Сегодня" }
-        if calendar.isDateInYesterday(date) { return "Вчера" }
-        // "12 января" — full genitive month, sentence case (artboard 21b).
+        if calendar.isDateInToday(date) { return Localized.text("wallet.history.day.today") }
+        if calendar.isDateInYesterday(date) { return Localized.text("wallet.history.day.yesterday") }
+        // «12 января» — full genitive month, sentence case (artboard 21b).
         let formatter = DateFormatter()
         formatter.locale = AppLocale.display
         formatter.dateFormat = "d MMMM"
@@ -518,6 +518,14 @@ final class WalletTransactionHistoryViewController: UIViewController {
 // MARK: - Type filter chips (issue #282, SPMore3.jsx L142-152)
 
 extension WalletTransactionHistoryViewController {
+
+    /// «ЗА ЯНВАРЬ 2026» — caps caption of the summary card. The uppercasing
+    /// stays here rather than in the catalogue so the stored copy keeps its
+    /// sentence case (and its «Ё») for languages that do not shout.
+    func summaryCapsCaption() -> String {
+        Localized.format("wallet.history.summary.caps", period.summaryCaption)
+            .uppercased(with: AppLocale.display)
+    }
 
     func makeTypeFilterRow() -> UIView {
         let row = UIStackView()
@@ -557,7 +565,7 @@ extension WalletTransactionHistoryViewController {
             bottom: AppSpacing.sp2, trailing: AppSpacing.sp3 + 2
         )
         // A pill must never break its own shape: the default line-break mode of
-        // a configuration button word-wraps, and a single long word ("Поступления")
+        // a configuration button word-wraps, and a single long word («Поступления»)
         // then splits mid-word into «Поступлени» / «я» inside the capsule (#519).
         // Truncating keeps the capsule intact — and the priorities below mean it
         // stays a fallback that shouldn't trigger at the shipped font size.
@@ -601,12 +609,12 @@ extension WalletTransactionHistoryViewController {
         let label = UILabel()
         let message: String
         if !hasAnyTransactions {
-            message = "Здесь появятся пополнения, списания и бонусы."
+            message = Localized.text("wallet.history.empty")
         } else if periodHasTransactions && typeFilter != .all {
             // Period has rows but the active type chip filtered them all out.
-            message = "За выбранный период таких операций нет."
+            message = Localized.text("wallet.history.empty_period_type")
         } else {
-            message = "За выбранный период операций нет."
+            message = Localized.text("wallet.history.empty_period")
         }
         label.text = message
         label.font = AppTypography.body
@@ -645,7 +653,7 @@ extension WalletTransactionHistoryViewController {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
         card.translatesAutoresizingMaskIntoConstraints = false
         let label = UILabel()
-        label.text = "Часть операций не распознана — итоги ниже могут быть неполными"
+        label.text = Localized.text("wallet.history.unrecognized_notice")
         label.font = AppTypography.meta
         label.textColor = AppColors.warn400
         label.numberOfLines = 0
@@ -662,7 +670,7 @@ extension WalletTransactionHistoryViewController {
     }
 
     /// Distinct card for a decode failure (#419) — the corrupt-ledger case
-    /// must read as "не удалось загрузить", not the friendly empty-state, so
+    /// must read as «не удалось загрузить», not the friendly empty-state, so
     /// the user doesn't recreate data over a recoverable blob. Tinted with the
     /// pain colour to set it apart from `makeEmptyCard`; mirrors how
     /// `StatisticsViewModel` surfaces its checked-load error.
@@ -670,7 +678,7 @@ extension WalletTransactionHistoryViewController {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp6, cornerRadius: AppRadius.lg)
         card.translatesAutoresizingMaskIntoConstraints = false
         let label = UILabel()
-        label.text = "Не удалось загрузить историю"
+        label.text = Localized.text("wallet.history.load_failed")
         label.font = AppTypography.body
         label.textColor = AppColors.pain400
         label.numberOfLines = 0

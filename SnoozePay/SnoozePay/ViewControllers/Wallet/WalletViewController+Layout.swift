@@ -5,7 +5,7 @@ import UIKit
 /// views; the VC wires them into its scroll-view content stack.
 extension WalletViewController {
 
-    /// Page-title header: h1 «Кошелёк» + small money "Пополнить" pill +
+    /// Page-title header: h1 «Кошелёк» + small money «Пополнить» pill +
     /// 1pt bottom hairline. Mirrors the `SPAlarmsListHeader` title-row
     /// recipe so both tabs read identically.
     func makePageHeader(target: Any, action: Selector) -> UIView {
@@ -15,7 +15,7 @@ extension WalletViewController {
         let title = UILabel()
         title.translatesAutoresizingMaskIntoConstraints = false
         title.attributedText = NSAttributedString(
-            string: "Кошелёк",
+            string: Localized.text("wallet.title"),
             attributes: [
                 .font: AppTypography.h1,
                 .kern: -32 * 0.01,  // matches `letterSpacing: -.02em`
@@ -24,7 +24,7 @@ extension WalletViewController {
         )
 
         let topUpButton = SPButton(
-            title: "Пополнить",
+            title: Localized.text("common.button.top_up"),
             variant: .money,
             size: .sm,
             icon: UIImage(systemName: "plus")
@@ -65,7 +65,7 @@ extension WalletViewController {
     func makeWeeklyChartHeader() -> UILabel {
         let label = UILabel()
         label.attributedText = NSAttributedString(
-            string: "ПОСЛЕДНИЕ 7 ДНЕЙ",
+            string: Localized.text("wallet.chart.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -75,12 +75,12 @@ extension WalletViewController {
         return label
     }
 
-    /// Caps "ИСТОРИЯ ОПЕРАЦИЙ" + trailing "Все операции →" link above the
+    /// Caps «ИСТОРИЯ ОПЕРАЦИЙ» + trailing «Все операции →» link above the
     /// transaction-preview card.
     func makeTxPreviewHeader(target: Any, action: Selector) -> UIView {
         let title = UILabel()
         title.attributedText = NSAttributedString(
-            string: "ИСТОРИЯ ОПЕРАЦИЙ",
+            string: Localized.text("wallet.history.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -89,7 +89,7 @@ extension WalletViewController {
         )
 
         let link = UIButton(type: .system)
-        link.setTitle("Все операции →", for: .normal)
+        link.setTitle(Localized.text("wallet.history.link_all"), for: .normal)
         link.titleLabel?.font = AppTypography.buttonSm
         link.setTitleColor(AppColors.money400, for: .normal)
         link.addTarget(target, action: action, for: .touchUpInside)
@@ -138,7 +138,7 @@ extension WalletViewController {
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.textAlignment = .center
-        label.text = "Здесь появятся пополнения, списания и бонусы."
+        label.text = Localized.text("wallet.history.empty")
         card.addSubview(label)
         NSLayoutConstraint.activate([
             label.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
@@ -150,8 +150,8 @@ extension WalletViewController {
     }
 
     /// Distinct error card shown when the ledger fails to decode (#419) — a
-    /// corrupt blob must read as "не удалось загрузить", NOT the friendly
-    /// "нет операций" empty-state, so the user doesn't assume their history
+    /// corrupt blob must read as «не удалось загрузить», NOT the friendly
+    /// «нет операций» empty-state, so the user doesn't assume their history
     /// was wiped. Tinted with the pain colour to set it apart from the empty
     /// card, mirroring how `StatisticsViewModel` surfaces its load error.
     func makeTxPreviewErrorCard() -> UIView {
@@ -162,7 +162,7 @@ extension WalletViewController {
         label.textColor = AppColors.pain400
         label.numberOfLines = 0
         label.textAlignment = .center
-        label.text = "Не удалось загрузить историю"
+        label.text = Localized.text("wallet.history.load_failed")
         card.addSubview(label)
         NSLayoutConstraint.activate([
             label.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
@@ -214,8 +214,8 @@ extension WalletViewController {
         return label
     }
 
-    /// Footer caption "Покупка не возвращается · списывается только при
-    /// откладывании" — one-way stake framing per screen 19 canon (#322).
+    /// Footer caption «Покупка не возвращается · списывается только при
+    /// откладывании» — one-way stake framing per screen 19 canon (#322).
     /// The word «штрафы» is dropped here too for a unified soft tone (#278).
     func makeFooterCaption() -> UILabel {
         let label = UILabel()
@@ -223,7 +223,7 @@ extension WalletViewController {
         label.textColor = WalletQuietInk.caption
         label.numberOfLines = 0
         label.textAlignment = .center
-        label.text = "Покупка не возвращается · списывается только при откладывании"
+        label.text = Localized.text("wallet.footer.disclaimer")
         return label
     }
 }

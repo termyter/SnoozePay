@@ -15,15 +15,15 @@ struct DepositPreset: Equatable {
 
 /// Preset catalogue + label math for `DepositBottomSheetViewController`.
 /// Extracted from the controller so the SKU mapping and the localized
-/// "≈ N откладываний" pluralisation stay unit-testable.
+/// «≈ N откладываний» pluralisation stay unit-testable.
 enum DepositPresets {
 
-    /// Average snooze price used for the "≈ N откладываний" hint. Matches
+    /// Average snooze price used for the «≈ N откладываний» hint. Matches
     /// the default penalty the rest of the app assumes (50 ₽).
     static let averageSnoozePrice = 50
 
     /// The five live StoreKit SKUs, cheapest first. 149 ₽ carries the
-    /// "Популярно" badge and is the initial selection.
+    /// «Популярно» badge and is the initial selection.
     static let presets: [DepositPreset] = [49, 149, 299, 499, 999].map { amount in
         DepositPreset(
             amount: amount,
@@ -42,16 +42,18 @@ enum DepositPresets {
         presets.first { $0.amount == amount }
     }
 
-    /// "≈ N откладываний" secondary label. N is the rounded number of
+    /// «≈ N откладываний» secondary label. N is the rounded number of
     /// snoozes the amount buys at `averagePrice`, floored at 1 so the
-    /// cheapest tile never reads "≈ 0".
+    /// cheapest tile never reads «≈ 0».
     static func snoozeCountLabel(forAmount amount: Int, averagePrice: Int = averageSnoozePrice) -> String {
         guard averagePrice > 0 else { return "" }
         let count = max(1, Int((Double(amount) / Double(averagePrice)).rounded()))
-        return "≈ \(count) \(snoozeNoun(for: count))"
+        // One key, two positional arguments: a phrase assembled from a
+        // count key and a noun key would freeze Russian word order.
+        return Localized.format("deposit.preset.snooze_count", count, snoozeNoun(for: count))
     }
 
-    /// Pluralisation for "откладывание".
+    /// Pluralisation for «откладывание».
     static func snoozeNoun(for count: Int) -> String {
         Plural.word(count, .snoozes)
     }

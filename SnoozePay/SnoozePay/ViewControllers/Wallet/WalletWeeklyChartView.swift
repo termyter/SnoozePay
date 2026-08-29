@@ -1,6 +1,6 @@
 import UIKit
 
-/// 7-day mini chart — `WalletV2` "Последние 7 дней" section in
+/// 7-day mini chart — `WalletV2` «Последние 7 дней» section in
 /// `docs/design/v2-handoff/components/SPScreensV2.jsx` (L450-467).
 ///
 /// Each column is a day. Non-zero days render the pain gradient bar; the
@@ -114,7 +114,18 @@ final class WalletWeeklyChartView: UIView {
     /// Build the seven Cyrillic day initials (П/В/С/Ч/П/С/В) anchored on
     /// today. Index 0 is six days ago; index 6 is today.
     private static func makeDayLabels() -> [String] {
-        let initials = ["В", "П", "В", "С", "Ч", "П", "С"] // SUN..SAT
+        // Derived from the locale's own standalone symbols rather than typed
+        // out: `WeekdayNames.short` is Monday-first («Пн … Вс») and its first
+        // letters are exactly the initials this chart used to carry as a
+        // literal — the same equality #599 established for the full names.
+        // Nothing on screen moves, and English arrives without a catalogue
+        // entry, because a weekday initial is calendar data, not copy.
+        let mondayFirst = WeekdayNames.short.map {
+            $0.prefix(1).uppercased(with: AppLocale.display)
+        }
+        guard mondayFirst.count == Layout.barCount else { return [] }
+        // `Calendar` numbers weekdays Sunday-first, so Sunday moves to front.
+        let initials = [mondayFirst[6]] + mondayFirst.dropLast()
         let calendar = Calendar.current
         var labels: [String] = []
         for offset in (0..<Layout.barCount).reversed() {

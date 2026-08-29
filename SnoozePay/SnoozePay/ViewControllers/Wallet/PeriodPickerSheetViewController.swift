@@ -5,9 +5,9 @@ import UIKit
 /// issue #234).
 ///
 /// Presented over the (dimmed) transaction-history screen as a page sheet.
-/// Layout, top-down: drag handle → "Период" header + "Сбросить" text button
+/// Layout, top-down: drag handle → «Период» header + «Сбросить» text button
 /// → selected-range summary row → years, each with a 4×3 month grid →
-/// money CTA "Применить".
+/// money CTA «Применить».
 ///
 /// Selection follows calendar range-selection conventions: tap one month for
 /// a single-month period, tap a second month to extend into a range (the
@@ -21,7 +21,7 @@ final class PeriodPickerSheetViewController: UIViewController {
     private var selection: TxHistoryPeriodSelection
     private let years: [Int]
     private let currentMonth: YearMonth
-    /// Called on "Применить". `nil` means the selection was reset — the
+    /// Called on «Применить». `nil` means the selection was reset — the
     /// caller falls back to its default period (current month).
     private let onApply: (TxHistoryPeriod?) -> Void
 
@@ -85,7 +85,12 @@ final class PeriodPickerSheetViewController: UIViewController {
     }()
 
     private lazy var applyButton: SPButton = {
-        let button = SPButton(title: "Применить", variant: .money, size: .lg, fullWidth: true)
+        let button = SPButton(
+            title: Localized.text("wallet.period.button.apply"),
+            variant: .money,
+            size: .lg,
+            fullWidth: true
+        )
         button.addTarget(self, action: #selector(applyTapped), for: .touchUpInside)
         return button
     }()
@@ -97,7 +102,7 @@ final class PeriodPickerSheetViewController: UIViewController {
     ///   - years: Years to render grids for (ascending, e.g. `[2024, 2025,
     ///     2026]`) — derived from the oldest recorded transaction.
     ///   - now: Injectable clock; months after `now`'s month are disabled.
-    ///   - onApply: Receives the chosen period (`nil` after "Сбросить").
+    ///   - onApply: Receives the chosen period (`nil` after «Сбросить»).
     init(
         selected: TxHistoryPeriod?,
         years: [Int],
@@ -190,7 +195,7 @@ final class PeriodPickerSheetViewController: UIViewController {
     private func makeHeaderRow() -> UIView {
         let title = UILabel()
         title.attributedText = NSAttributedString(
-            string: "Период",
+            string: Localized.text("wallet.period.title"),
             attributes: [
                 .font: AppTypography.h3,
                 .kern: -20 * 0.01,
@@ -199,7 +204,7 @@ final class PeriodPickerSheetViewController: UIViewController {
         )
 
         let reset = UIButton(type: .system)
-        reset.setTitle("Сбросить", for: .normal)
+        reset.setTitle(Localized.text("wallet.period.button.reset"), for: .normal)
         reset.titleLabel?.font = AppFonts.sans(.medium, 14)
         reset.setTitleColor(AppColors.fg3, for: .normal)
         reset.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
@@ -302,7 +307,7 @@ final class PeriodPickerSheetViewController: UIViewController {
             summaryLabel.text = period.pickerCaption
             summaryCountLabel.text = period.monthCountText
         } else {
-            summaryLabel.text = "Выберите месяц"
+            summaryLabel.text = Localized.text("wallet.period.empty")
             summaryCountLabel.text = nil
         }
         for (month, cell) in cells {
