@@ -14,6 +14,13 @@ import XCTest
 /// `#052016` glyph lands on the card fill `bg1 #0E1320`, and the audit measured
 /// **1.09:1** — the granted row reads emptier than the unavailable one.
 ///
+/// Both halves were measured before anything was changed (runs 33253066702 and
+/// 33253446187): on a card laid out in a window, `iconHost.bounds` is 40×40
+/// while the gradient's frame is 0×0 in every status and both themes — and its
+/// stops read `#0B7B56 → #096647 → #053D2B`, the *light* ramp, in the dark
+/// theme too, because a stored-property initializer snapshotted
+/// `UITraitCollection.current` once.
+///
 /// **Why the obvious test would not have caught it.** Asserting that the
 /// granted state unhides the layer, or that `fgOnMoney` clears 4.5:1 on
 /// `money400`, passes against the broken code — the tokens and the `isHidden`
@@ -22,9 +29,13 @@ import XCTest
 /// then read contrast off *whatever surface is actually behind the glyph*,
 /// compositing translucent fills up the ancestor chain the way the screen does.
 ///
-/// **One layout pass is load-bearing.** Laying out twice would hand the
-/// sublayer a size it never receives in the app and turn this file green
-/// against the defect.
+/// **One layout pass is load-bearing.** Laying out twice would hand a sublayer
+/// a size it never receives in the app and turn this file green against the
+/// defect.
+///
+/// **No `XCTSkip` anywhere in this file, on purpose.** A harness guard that
+/// skips is a harness guard that hides: see `makeHostedCard` for what that
+/// cost the first two runs, and what it still costs #516.
 final class PermissionCardIconTileTests: XCTestCase {
 
     /// WCAG 2.1 non-text floor. The tile glyph is a 20pt symbol, not text —
@@ -54,7 +65,7 @@ final class PermissionCardIconTileTests: XCTestCase {
     func testGrantedIconTile_isSizedAndCoversTheGlyph_inBothThemes() throws {
         for style in [UIUserInterfaceStyle.dark, .light] {
             for status in [PermissionStatus.granted, .enabled] {
-                let (card, _) = try makeHostedCard(status: status, style: style)
+                let (card, _, _) = try makeHostedCard(status: status, style: style)
                 let host = try XCTUnwrap(iconHostView(of: card), "the card lost its icon host")
                 let label = "\(style.name)/\(Self.name(of: status))"
 
@@ -107,12 +118,16 @@ final class PermissionCardIconTileTests: XCTestCase {
     func testIconGlyph_clearsTheNonTextBar_onWhateverIsActuallyBehindIt() throws {
         for style in [UIUserInterfaceStyle.dark, .light] {
             for status in Self.allStatuses {
-                let (card, _) = try makeHostedCard(status: status.value, style: style)
+                let (card, _, _) = try makeHostedCard(status: status.value, style: style)
                 let host = try XCTUnwrap(iconHostView(of: card), "the card lost its icon host")
                 let glyph = try XCTUnwrap(glyphView(in: host), "the tile lost its glyph")
-                let ink = glyph.tintColor.resolvedColor(with: host.traitCollection)
-
                 let backdrop = backdropUnderGlyph(glyph: glyph, style: style)
+                // A translucent tint renders as its composite over whatever is
+                // behind it — `fg3` is 58% ink, and the audit's `#9699A3`
+                // sample is exactly that blend, not the raw token.
+                let raw = glyph.tintColor.resolvedColor(with: host.traitCollection)
+                let ink = composite(over: backdrop.color, raw) ?? raw
+
                 let ratio = contrast(ink, backdrop.color)
                 XCTAssertGreaterThanOrEqual(
                     ratio, nonTextFloor - tolerance,
@@ -153,18 +168,17 @@ final class PermissionCardIconTileTests: XCTestCase {
     /// happened to be, so the tile has to re-apply the ramp on a trait change
     /// — and land on the ramp the design system defines for the new theme.
     func testIconTileRamp_reresolvesOnAThemeFlip() throws {
-        let (card, window) = try makeHostedCard(status: .granted, style: .dark)
-        let controller = try XCTUnwrap(window.rootViewController)
+        let (card, container, window) = try makeHostedCard(status: .granted, style: .dark)
         let host = try XCTUnwrap(iconHostView(of: card), "the card lost its icon host")
 
         let inDark = stops(of: host)
-        try XCTSkipUnless(!inDark.isEmpty, "the tile installed no gradient stops at all")
+        XCTAssertFalse(inDark.isEmpty, "the tile installed no gradient stops at all")
 
-        controller.overrideUserInterfaceStyle = .light
-        layOut(controller, in: window)
-        try XCTSkipUnless(
-            host.traitCollection.userInterfaceStyle == .light,
-            "controller override did not propagate — a harness fact, not a component one"
+        container.overrideUserInterfaceStyle = .light
+        layOut(window)
+        XCTAssertEqual(
+            host.traitCollection.userInterfaceStyle, .light,
+            "the harness stopped propagating the theme — fix the harness, do not skip"
         )
 
         let inLight = stops(of: host)
@@ -180,11 +194,11 @@ final class PermissionCardIconTileTests: XCTestCase {
             "the tile re-tinted to something other than the light money ramp"
         )
 
-        controller.overrideUserInterfaceStyle = .dark
-        layOut(controller, in: window)
-        try XCTSkipUnless(
-            host.traitCollection.userInterfaceStyle == .dark,
-            "controller override did not propagate — a harness fact, not a component one"
+        container.overrideUserInterfaceStyle = .dark
+        layOut(window)
+        XCTAssertEqual(
+            host.traitCollection.userInterfaceStyle, .dark,
+            "the harness stopped propagating the theme — fix the harness, do not skip"
         )
         XCTAssertEqual(stops(of: host), inDark, "the tile did not return to the dark ramp")
     }
@@ -207,9 +221,22 @@ final class PermissionCardIconTileTests: XCTestCase {
         allStatuses.first { $0.value == status }?.name ?? "?"
     }
 
-    private typealias Hosted = (card: PermissionCardView, window: UIWindow)
+    private typealias Hosted = (card: PermissionCardView, container: UIView, window: UIWindow)
 
     /// A real card, in a real window, laid out exactly once.
+    ///
+    /// **The mounting shape is measured, not assumed.** The obvious harness —
+    /// a `UIViewController` as the window's `rootViewController`, theme
+    /// overridden on the controller — lays out *nothing* on a window that was
+    /// never made visible: card frame `.zero`, traits stuck on `.light`. Every
+    /// assertion below would then skip itself and the suite would report green
+    /// against the defect. That is not hypothetical: it is what
+    /// `StreakModalFlameBadgeTests` (#516) has been doing on every CI run, and
+    /// what this file did in run 33253066702 before the strategies were
+    /// compared side by side in run 33253446187. A container added directly as
+    /// a window subview, with the override on the container, both lays out and
+    /// propagates the theme — so that is what is used, and the guards below
+    /// are `XCTFail`, not `XCTSkip`.
     ///
     /// `apply(status:)` runs *before* the layout pass because that is the order
     /// `PermissionsViewController` uses (cards are built and stamped from
@@ -221,37 +248,38 @@ final class PermissionCardIconTileTests: XCTestCase {
         style: UIUserInterfaceStyle
     ) throws -> Hosted {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
-        let controller = UIViewController()
-        // On the CONTROLLER, not the window: this window is never made visible,
-        // and a controller override propagates into its own view subtree
-        // whether or not the window ever renders.
-        controller.overrideUserInterfaceStyle = style
-        window.rootViewController = controller
         hostWindows.append(window)
+        let container = UIView(frame: window.bounds)
+        container.backgroundColor = AppColors.bg0
+        // On the container, mirroring the screen: PermissionsViewController
+        // pins itself to dark and the card inherits.
+        container.overrideUserInterfaceStyle = style
+        window.addSubview(container)
 
-        controller.loadViewIfNeeded()
-        controller.view.backgroundColor = AppColors.bg0
         let card = PermissionCardView(kind: kind)
-        controller.view.addSubview(card)
+        container.addSubview(card)
         NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: controller.view.leadingAnchor, constant: 16),
-            card.trailingAnchor.constraint(equalTo: controller.view.trailingAnchor, constant: -16),
-            card.topAnchor.constraint(equalTo: controller.view.topAnchor, constant: 100)
+            card.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            card.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            card.topAnchor.constraint(equalTo: container.topAnchor, constant: 100)
         ])
         card.apply(status: status)
 
-        layOut(controller, in: window)
-        try XCTSkipUnless(
-            card.traitCollection.userInterfaceStyle == style,
-            "controller override did not propagate — a harness fact, not a component one"
+        layOut(window)
+        XCTAssertEqual(
+            card.traitCollection.userInterfaceStyle, style,
+            "the harness stopped propagating the theme — fix the harness, do not skip"
         )
-        return (card, window)
+        XCTAssertFalse(
+            card.frame.isEmpty,
+            "the harness stopped laying the card out — fix the harness, do not skip"
+        )
+        return (card, container, window)
     }
 
-    /// One full top-down layout pass, and only one. A second pass would hand
-    /// the sublayer a size it never receives in the app.
-    private func layOut(_ controller: UIViewController, in window: UIWindow) {
-        controller.view.frame = window.bounds
+    /// One full top-down layout pass, and only one. A second pass would hand a
+    /// sublayer a size it never receives in the app.
+    private func layOut(_ window: UIWindow) {
         window.setNeedsLayout()
         window.layoutIfNeeded()
     }
