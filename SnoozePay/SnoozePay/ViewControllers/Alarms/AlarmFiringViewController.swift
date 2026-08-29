@@ -354,6 +354,16 @@ class AlarmFiringViewController: UIViewController {
         playClockMountAnimation()
     }
 
+    /// Size the hero to the room the no-balance state actually leaves it (#547).
+    /// Runs here because the header row and the bottom stack — the two zones the
+    /// centre column shares the screen with — only have their frames now. A no-op
+    /// on the normal screen: `updateNoBalanceColumnFit` returns immediately
+    /// unless the no-balance column is the active one.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateNoBalanceColumnFit()
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         clockTimer?.invalidate()

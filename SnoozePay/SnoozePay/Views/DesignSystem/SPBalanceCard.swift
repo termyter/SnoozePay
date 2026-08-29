@@ -70,6 +70,15 @@ final class SPBalanceCard: UIView {
         layer.cornerRadius = AppRadius.xl
         radialOverlay.layer.cornerRadius = AppRadius.xl
         radialOverlay.frame = bounds
+        // The card no longer clips itself (see `configure`), so the shadow has
+        // to be rasterised against the rounded path here, and the light-mode
+        // ambient stop kept in sync with the bounds.
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: AppRadius.xl).cgPath
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: AppRadius.xl,
+            trait: traitCollection
+        )
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
@@ -83,6 +92,35 @@ final class SPBalanceCard: UIView {
 
     private func refreshDynamicColors() {
         radialOverlay.setNeedsDisplay()
+        // `CAGradientLayer.colors` and every `cgColor` on a `CALayer` are
+        // snapshots — they do not follow a theme flip on their own.
+        valueLabel.setGradientColors(SPSupport.moneyGradientColors(for: traitCollection))
+        applyCardChrome()
+    }
+
+    /// Card surface chrome: `shadow-1` in both themes, plus a hairline border
+    /// in light only.
+    ///
+    /// The light page is `bg0` `#F4F6FB` and this card is `bg2` `#ECEEF6` —
+    /// **1.07:1** of separation. A shadow alone cannot carry that edge, which
+    /// is why light also gets `stroke1`. Dark keeps the borderless card
+    /// (`bg2` on `bg0` is a visible step there) — the same deviation
+    /// `AlarmCell` documents.
+    private func applyCardChrome() {
+        let trait = traitCollection
+        AppShadow.shadow1(for: trait).apply(to: layer)
+        AppShadow.installAmbientShadow1Layer(
+            on: layer,
+            cornerRadius: AppRadius.xl,
+            trait: trait
+        )
+        if trait.userInterfaceStyle == .dark {
+            layer.borderWidth = 0
+        } else {
+            let scale = trait.displayScale > 0 ? trait.displayScale : 1
+            layer.borderWidth = 1.0 / scale
+            layer.borderColor = AppColors.stroke1.resolvedColor(with: trait).cgColor
+        }
     }
 
     // MARK: - Public API
@@ -121,9 +159,14 @@ final class SPBalanceCard: UIView {
     private func configure() {
         backgroundColor = AppColors.bg2
         layer.cornerRadius = AppRadius.xl
-        layer.masksToBounds = true   // radial overlay clips inside corners
+        // The card must NOT clip itself — a `masksToBounds` host cannot render
+        // a drop shadow, and light mode needs one. The corner clipping the
+        // radial highlight relied on moves onto the overlay itself.
+        layer.masksToBounds = false
+        applyCardChrome()
 
         radialOverlay.translatesAutoresizingMaskIntoConstraints = false
+        radialOverlay.layer.masksToBounds = true
         addSubview(radialOverlay)
 
         capsLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -131,7 +174,7 @@ final class SPBalanceCard: UIView {
             string: "БАЛАНС",
             attributes: [
                 .font: AppTypography.caps,
-                .kern: 12 * 0.12,
+                .kern: AppTypography.capsKerning,
                 .foregroundColor: AppColors.fg3
             ]
         )
@@ -145,6 +188,13 @@ final class SPBalanceCard: UIView {
         // The gradient label keeps this fallback until its own layout pass has
         // resolved the glyph bounds, then replaces it with a masked layer.
         valueLabel.textColor = AppColors.fg1
+        // The ramp is KEPT in light — measured on the light `bg2` card it runs
+        // 4.55 → 6.04 → 10.61:1 (money400 → money500 → money700), so every
+        // stop clears normal-text AA, let alone the 56pt large-text bar. What
+        // it needed was trait resolution: the stops baked at `init` are plain
+        // `CGColor`s and would otherwise keep the dark mint ramp on a white
+        // card.
+        valueLabel.setGradientColors(SPSupport.moneyGradientColors(for: traitCollection))
         valueLabel.adjustsFontForContentSizeCategory = false
         valueLabel.numberOfLines = 1
         valueLabel.adjustsFontSizeToFitWidth = true
@@ -162,20 +212,30 @@ final class SPBalanceCard: UIView {
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
-        stack.spacing = 4
-        stack.setCustomSpacing(8, after: capsLabel)
-        stack.setCustomSpacing(14, after: deltaLabel)
+        stack.spacing = AppSpacing.sp1
+        stack.setCustomSpacing(AppSpacing.sp2, after: capsLabel)
+        stack.setCustomSpacing(Self.deltaToHintGap, after: deltaLabel)
         addSubview(stack)
 
         NSLayoutConstraint.activate([
-            // `.sp-balance` padding 28px 20px (design v3 tightened 24 → 20).
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 28),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -28),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20)
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: Self.verticalPadding),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.verticalPadding),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: AppSpacing.sp5),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -AppSpacing.sp5)
         ])
 
     }
+
+    // MARK: - Metrics
+
+    /// `.sp-balance` vertical padding — 28px, which is off the 4px t-shirt
+    /// scale, so it is composed from grid steps rather than typed as a literal
+    /// (horizontal padding is `sp5` = 20px, design v3 tightened 24 → 20).
+    private static let verticalPadding = AppSpacing.sp6 + AppSpacing.sp1
+
+    /// Gap between the weekly-delta row and the hint line — 14px in
+    /// `components.css`, likewise between two grid steps.
+    private static let deltaToHintGap = AppSpacing.sp3 + AppSpacing.sp1 / 2
 
     // MARK: - Auto-shrink mask alignment
 
@@ -252,10 +312,15 @@ private final class RadialOverlayView: UIView {
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let colors = [
-            AppColors.money400.withAlphaComponent(0.18).cgColor,
-            UIColor.clear.cgColor
-        ]
+        // Resolve against this view's own traits rather than letting `.cgColor`
+        // snapshot `UITraitCollection.current`: the highlight has to be the
+        // dark-theme mint on `bg2` and the light-theme deep green on the
+        // near-white card, and `draw(_:)` is not a safe place to assume which
+        // trait collection is current.
+        let tint = AppColors.money400
+            .resolvedColor(with: traitCollection)
+            .withAlphaComponent(0.18)
+        let colors = [tint.cgColor, UIColor.clear.cgColor]
         guard let gradient = CGGradient(
             colorsSpace: colorSpace,
             colors: colors as CFArray,

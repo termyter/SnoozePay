@@ -243,7 +243,16 @@ enum SPIcons {
 
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
         let image = renderer.image { _ in
-            UIColor.white.setStroke()
+            // `.alwaysTemplate` below keeps only the alpha channel of these
+            // pixels, so the stroke colour never reaches the screen —
+            // `tintColor` does. It is still drawn with a theme token rather
+            // than a bare literal, because a literal here is indistinguishable
+            // from the ones that really did produce invisible glyphs, and
+            // nothing in the file told the next reader this one was harmless.
+            // `fg1` is fully opaque ink in both themes, which is the coverage
+            // a template mask wants, and it stays correct if these icons are
+            // ever rendered `.alwaysOriginal`.
+            AppColors.fg1.setStroke()
             path.stroke()
         }
         // Template mode — tintColor plays the SVG's `currentColor`.

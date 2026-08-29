@@ -40,9 +40,11 @@ extension AlarmFiringViewController {
     /// All views start hidden; `refreshNoBalanceVisibility()` toggles them
     /// based on `viewModel.canSnooze`.
     func installNoBalanceStack(inset: CGFloat, gap: CGFloat) {
-        // Center pain pill + body — anchored to the hero name label so it
-        // tucks under the clock when the no-balance state is on.
+        // Center pain pill + body — slots into the centre column under the
+        // hero when the no-balance state is on.
         installNoBalanceCenterPill(inset: inset)
+        // Room for the column to come from: the hero's slide-up slack (#547).
+        installNoBalanceColumnSlack()
 
         let disabledCard = makeNoBalanceDisabledCard()
         let payButton = makeNoBalanceApplePayButton()
@@ -78,66 +80,18 @@ extension AlarmFiringViewController {
             )
         ])
 
-        // Keep the center "Баланса не осталось" block from colliding with the
-        // disabled price card at the top of this stack (#345). Required, so it
-        // wins over the block's breakable hero pin when the column is tight.
+        // Keep the center "Баланса не осталось" block off the disabled price
+        // card at the top of this stack (#345). Required — and since #547 it is
+        // no longer the only required constraint on the block: there is a floor
+        // under it too, so the pair can't be satisfied by printing over the
+        // hero. Activated with the state (`setNoBalanceColumnActive`), because
+        // while the wallet is solvent the block is hidden and its idle pin is
+        // all it needs.
         if let centerBlock = noBalanceCenterBlock {
-            centerBlock.bottomAnchor.constraint(
+            noBalanceColumn.blockBottom = centerBlock.bottomAnchor.constraint(
                 lessThanOrEqualTo: stack.topAnchor, constant: -AppSpacing.sp4
-            ).isActive = true
+            )
         }
-    }
-
-    /// Build the center "БАЛАНСА НЕ ОСТАЛОСЬ" pill + body text. Pinned below
-    /// the hero name label so it slots into the centered column when the
-    /// no-balance state activates. Mirrors `SPScreensV2.jsx` lines 239–251.
-    private func installNoBalanceCenterPill(inset: CGFloat) {
-        // Pain-tinted "coin off" pill — V3 swaps the shield glyph for the
-        // crossed-out-coin icon used across the zero-balance surfaces (#227).
-        let shieldPill = SPPill(
-            text: "Баланса не осталось",
-            tone: .pain,
-            icon: SPIcons.coinOff(size: 14)
-        )
-        shieldPill.translatesAutoresizingMaskIntoConstraints = false
-
-        let body = UILabel()
-        body.translatesAutoresizingMaskIntoConstraints = false
-        body.font = AppTypography.bodyLg
-        body.textColor = UIColor.white.withAlphaComponent(0.7)
-        body.textAlignment = .center
-        body.numberOfLines = 0
-        body.text = "Откладывать больше не получится. Только встать."
-
-        let block = UIStackView(arrangedSubviews: [shieldPill, body])
-        block.translatesAutoresizingMaskIntoConstraints = false
-        block.axis = .vertical
-        block.alignment = .center
-        block.spacing = AppSpacing.sp4
-        block.isHidden = true
-        view.addSubview(block)
-        noBalanceCenterBlock = block
-
-        // Tuck under the eyebrow caps — V3 moved the name label above the
-        // clock (#225), so the eyebrow is now the hero's bottom edge. This pin
-        // is breakable (.defaultHigh) so the required "stay above the bottom
-        // stack" constraint in `installNoBalanceStack` can win on a tight
-        // column: the no-balance bottom stack is taller than the normal one
-        // (disabled card + Apple Pay + dismiss + choose-amount, vs snooze +
-        // dismiss), and without that safety net the body text overlaps the
-        // disabled price card (#345). On the regular screen height there's
-        // ample room, so this pin holds and the block stays tucked.
-        let heroPin = block.topAnchor.constraint(
-            equalTo: wakeUpCapsLabel.bottomAnchor, constant: AppSpacing.sp6
-        )
-        heroPin.priority = .defaultHigh
-
-        NSLayoutConstraint.activate([
-            block.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            heroPin,
-            block.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: inset),
-            block.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -inset)
-        ])
     }
 
     private func makeNoBalanceDisabledCard() -> SPSnoozePrice {
@@ -243,6 +197,10 @@ extension AlarmFiringViewController {
         }
         noBalanceContainer?.isHidden = !showNoBalanceStack
         noBalanceCenterBlock?.isHidden = !showNoBalanceStack
+        // The centre column's geometry follows the block it holds: three zones
+        // sharing the height while the warning is up, the shipped hero pin the
+        // rest of the time (#547).
+        setNoBalanceColumnActive(showNoBalanceStack)
         // Drained background + red glow + neutral clock + accent wake-border.
         applyDrainedAtmosphere(needsNoBalance)
         // Hide the normal-state group when the no-balance stack takes over.

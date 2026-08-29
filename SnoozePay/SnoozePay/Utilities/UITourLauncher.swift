@@ -12,13 +12,20 @@ import UIKit
 ///   `-uitour-reset`          wipe persisted alarms before mounting (clean state)
 ///   `-uitour-seed`           seed demo alarms / transactions / wake history
 ///   `-uitour-balance <n>`    force balance to exactly n ₽ (via service APIs)
-///   `-uitour-theme <id>`     firing-screen theme: dawn|ocean|mountains|forest|neon|abstract
+///   `-uitour-theme <id>`     firing-screen `AlarmTheme`, NOT the light/dark
+///                            appearance: dawn|ocean|mountains|forest|neon|abstract
+///   `-uitour-appearance <id>` window appearance: light|dark. Beats the
+///                            `preferred_theme` stuck in the sandbox — what
+///                            made "both themes" runs check one theme twice
+///   `-uitour-backend-warning <case>`
+///                            non-ringing state `alarms-nobackend` forces:
+///                            unavailable|notrequested|indeterminate
 ///
-/// Supported screens: onboarding, permissions, alarms, wallet, stats,
-/// settings, create, edit, theme-picker, sound-picker, volume-picker,
-/// confirm-delete, firing, firing-snoozed, firing-progressive,
-/// firing-nobalance, firing-topup,
-/// txhistory, periodpicker, deposit, streak.
+/// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
+/// wallet, stats, settings, create, edit, theme-picker, sound-picker,
+/// volume-picker, confirm-delete, firing, firing-snoozed, firing-progressive,
+/// firing-nobalance, firing-topup, alarm-off-warning, txhistory, periodpicker,
+/// deposit, streak.
 enum UITourLauncher {
 
     static var requestedScreen: String? { value(after: "-uitour") }
@@ -26,6 +33,9 @@ enum UITourLauncher {
     // MARK: - Mounting
 
     static func mount(_ screen: String, in window: UIWindow) {
+        // Before the mounters: a screen that pins its own appearance (firing,
+        // splash) must be able to overrule the tour, not the other way round.
+        applyAppearance(value(after: "-uitour-appearance"), to: window)
         resetIfRequested()
         seedIfRequested()
         // Unknown screen id — land on the alarms tab so the audit
@@ -55,6 +65,17 @@ enum UITourLauncher {
         },
         "permissions": { $0.rootViewController = PermissionsViewController() },
         "alarms": { $0.rootViewController = tabBar(selected: 0) },
+        // The alarms list with the "будильники не зазвонят" banner up (#428).
+        // Forced through the monitor's DEBUG seam *before* the tab bar builds
+        // the VM. Which state you get: `-uitour-backend-warning`.
+        "alarms-nobackend": { window in
+            AlarmBackendMonitor.uiTourForcedAvailability = requestedBackendAvailability()
+            window.rootViewController = tabBar(selected: 0)
+        },
+        // A pageSheet over the stats tab — NOT root-mounted. #514 was a crash
+        // on OPENING this screen and #467 is a sheet that doesn't lay out:
+        // presentation is itself the failure mode, so the route must run it.
+        "alarm-off-warning": { mountPresented(makeAlarmOffWarningSheet(), onTab: 2, in: $0) },
         "wallet": { $0.rootViewController = tabBar(selected: 1) },
         "stats": { $0.rootViewController = tabBar(selected: 2) },
         "settings": { mountPushed(SettingsViewController(), onTab: 0, in: $0) },
@@ -167,7 +188,9 @@ enum UITourLauncher {
     }
 
     private static func createNav(alarm: Alarm?) -> UINavigationController {
-        let nav = UINavigationController(rootViewController: CreateAlarmViewController(alarm: alarm))
+        let nav = AppNavigationBarStyle.makeNavigationController(
+            rootViewController: CreateAlarmViewController(alarm: alarm)
+        )
         nav.modalPresentationStyle = .fullScreen
         return nav
     }
@@ -242,6 +265,48 @@ enum UITourLauncher {
         )
     }
 
+    /// The warning sheet shaped exactly as `StatisticsViewController` presents
+    /// it — the tour must open the screen the way the app does, or it stops
+    /// being evidence about the app. Internal so a test can assert the shape.
+    static func makeAlarmOffWarningSheet() -> AlarmOffWarningViewController {
+        let warning = AlarmOffWarningViewController()
+        warning.modalPresentationStyle = .pageSheet
+        if let sheet = warning.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.preferredCornerRadius = AppRadius.xl
+        }
+        return warning
+    }
+
+    /// `-uitour-backend-warning <case>` — which non-ringing state
+    /// `alarms-nobackend` shows. Defaults to `.unavailable`: where a user
+    /// lands after denying the prompt. `.available` / `.unresolved` are not
+    /// reachable here — no banner is what plain `-uitour alarms` shows.
+    /// Split from the `ProcessInfo` read so tests can walk every variant.
+    static func backendAvailability(forArgument raw: String?) -> AlarmBackendAvailability {
+        switch raw {
+        case "notrequested": return .notRequested
+        case "indeterminate": return .indeterminate
+        default: return .unavailable
+        }
+    }
+
+    private static func requestedBackendAvailability() -> AlarmBackendAvailability {
+        backendAvailability(forArgument: value(after: "-uitour-backend-warning"))
+    }
+
+    /// `-uitour-appearance light|dark` — pin the window's interface style.
+    /// Writes ONLY the window, never `ThemeService`/`preferred_theme`: the next
+    /// flag-less launch must read what the user left. An absent or unknown
+    /// value leaves whatever `SceneDelegate` applied. Internal for tests.
+    static func applyAppearance(_ raw: String?, to window: UIWindow) {
+        switch raw {
+        case "light": window.overrideUserInterfaceStyle = .light
+        case "dark": window.overrideUserInterfaceStyle = .dark
+        default: return
+        }
+    }
+
     private static func requestedTheme() -> AlarmTheme {
         switch value(after: "-uitour-theme") {
         case "ocean": return .ocean
@@ -262,7 +327,10 @@ enum UITourLauncher {
     private static func resetIfRequested() {
         guard ProcessInfo.processInfo.arguments.contains("-uitour-reset") else { return }
         let repo = AlarmRepository.shared
-        for alarm in repo.fetchAll() {
+        // Checked read collapsed with `try?` (#271): a wipe driven by an
+        // unreadable store would silently do nothing, and the tour must not
+        // depend on the lossy fetcher.
+        for alarm in (try? repo.fetchAllChecked()) ?? [] {
             _ = repo.delete(id: alarm.id)
         }
     }
@@ -280,7 +348,7 @@ enum UITourLauncher {
 
     private static func seedAlarms() {
         let repo = AlarmRepository.shared
-        guard repo.fetchAll().isEmpty else { return }
+        guard ((try? repo.fetchAllChecked()) ?? []).isEmpty else { return }
         let calendar = Calendar.current
         func at(_ hour: Int, _ minute: Int) -> Date {
             calendar.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
@@ -300,7 +368,7 @@ enum UITourLauncher {
 
     private static func seedTransactions() {
         let repo = TransactionRepository.shared
-        guard repo.fetchAll().isEmpty else { return }
+        guard ((try? repo.fetchAllChecked()) ?? []).isEmpty else { return }
         let day: TimeInterval = 86_400
         let now = Date()
         let seeds: [(TransactionType, Double, Double)] = [

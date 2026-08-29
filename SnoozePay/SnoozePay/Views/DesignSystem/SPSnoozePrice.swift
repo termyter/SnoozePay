@@ -98,6 +98,14 @@ final class SPSnoozePrice: UIControl {
         // in `update(price:…)` so it tracks the live minutes value.
         isAccessibilityElement = true
         accessibilityTraits = .button
+        // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
+        // closure-based observer when available; the legacy override below
+        // stays as a fallback for older runtimes.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPSnoozePrice, _) in
+                view.refreshGradientColors()
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -113,6 +121,15 @@ final class SPSnoozePrice: UIControl {
             roundedRect: bounds,
             cornerRadius: AppRadius.xl
         ).cgPath
+    }
+
+    @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        // iOS 17+ runtimes get the same callback through the registered
+        // observer (see init); skip here so we don't refresh twice.
+        if #available(iOS 17.0, *) { return }
+        refreshGradientColors()
     }
 
     // MARK: - Public API
@@ -232,27 +249,56 @@ final class SPSnoozePrice: UIControl {
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         gradient.cornerRadius = AppRadius.xl
-        switch tone {
-        case .warn:
-            gradient.colors = SPSupport.warnGradientColors
-            gradient.locations = SPSupport.warnGradientLocations
-            layer.shadowColor = AppColors.warn500.cgColor
-        case .pain:
-            gradient.colors = SPSupport.painGradientColors
-            gradient.locations = SPSupport.painGradientLocations
-            layer.shadowColor = AppColors.pain500.cgColor
-        case .progressive:
-            // Gold CTA on every progressive step — render the warn surface
-            // regardless of intensity (`SPDawnV3.jsx:153-155`).
-            gradient.colors = SPSupport.warnGradientColors
-            gradient.locations = SPSupport.warnGradientLocations
-            layer.shadowColor = AppColors.warn500.cgColor
-        }
+        gradient.locations = toneGradientLocations
+        gradient.colors = toneGradientColors
         layer.insertSublayer(gradient, at: 0)
         gradientLayer = gradient
+        applyToneShadowColor()
         layer.shadowOpacity = 0.40
         layer.shadowOffset = CGSize(width: 0, height: 8)
         layer.shadowRadius = 22
+    }
+
+    /// Ramp for the current tone, resolved against THIS control's traits.
+    ///
+    /// `.progressive` renders the warn surface on every step — the CTA stays
+    /// gold and escalation is signalled by the background, per
+    /// `SPDawnV3.jsx:153-155`.
+    private var toneGradientColors: [CGColor] {
+        switch tone {
+        case .pain: return SPSupport.painGradientColors(for: traitCollection)
+        case .warn, .progressive: return SPSupport.warnGradientColors(for: traitCollection)
+        }
+    }
+
+    private var toneGradientLocations: [NSNumber] {
+        switch tone {
+        case .pain: return SPSupport.painGradientLocations
+        case .warn, .progressive: return SPSupport.warnGradientLocations
+        }
+    }
+
+    private func applyToneShadowColor() {
+        let token: UIColor
+        switch tone {
+        case .pain: token = AppColors.pain500
+        case .warn, .progressive: token = AppColors.warn500
+        }
+        layer.shadowColor = token.resolvedColor(with: traitCollection).cgColor
+    }
+
+    /// Re-tint the fill in place on a theme flip.
+    ///
+    /// `CAGradientLayer.colors` holds plain `CGColor`s that never re-resolve.
+    /// `AlarmFiringViewController` pins its whole scene dark, but this control
+    /// is *built* before it joins that hierarchy, so without a refresh a
+    /// light-theme app painted the bronze light warn ramp onto the dark firing
+    /// scene and kept it there. Re-tinting rather than re-installing keeps the
+    /// layer frame that `layoutSubviews` owns.
+    private func refreshGradientColors() {
+        gradientLayer?.colors = toneGradientColors
+        gradientLayer?.locations = toneGradientLocations
+        applyToneShadowColor()
     }
 
     private func refreshDisabledAppearance() {

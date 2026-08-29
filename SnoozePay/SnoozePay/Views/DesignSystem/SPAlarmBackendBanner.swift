@@ -24,25 +24,39 @@ final class SPAlarmBackendBanner: UIView {
 
     // MARK: - Theme-aware palette
     //
-    // `warn300` is a STATIC token (`#FFD479`), and `bg0` in light mode is
-    // `#F4F6FB` — the composited banner fill lands on ~`rgb(246,237,227)`,
-    // where `warn300` measures **1.21:1** (WCAG wants ≥3:1 for large text).
-    // The alarms list doesn't force `.dark`, so on a light system theme the
-    // title and the CTA of the one banner whose entire job is to be
-    // unmissable were effectively invisible.
+    // The original bug (#428 review): the banner painted its title with
+    // `warn300` in both themes. `bg0` in light mode is `#F4F6FB`, so the
+    // composited fill lands on a near-white wash and the amber measured
+    // **1.21:1** on it. The alarms list doesn't force `.dark`, so on a light
+    // system theme the title and the CTA of the one banner whose entire job
+    // is to be unmissable were effectively invisible.
+    //
+    // `warn300` is theme-aware since #489, but that did not retire the
+    // problem: its light value (`#BE7B09`) still only reaches 2.68:1 on the
+    // dense end of the fill, so it remains unusable here and
+    // `testWarn300_isBelowTheFloorOnLightFill` keeps measuring it.
+    //
+    // The light emphasis used to be `fgOnWarn`, which worked only while that
+    // token was near-black ink. Once the accent scales became theme-aware
+    // (#489) `fgOnWarn` inverted to white — correct for its actual job, text
+    // on a SOLID warn fill, but wrong here: the banner's fill is `warn400` at
+    // 5–14% alpha, i.e. barely tinted background. White on it measures
+    // 1.15:1. The token was being used for the wrong surface, and the light
+    // emphasis now takes a dark warn TONE instead of on-fill ink.
     //
     // Measured contrasts of the values below (sRGB, WCAG 2.1):
-    //   dark  — warn300 on fill rgb(41,34,26)   = 11.22:1
-    //   light — fgOnWarn on fill rgb(246,237,227) = 16.33:1
-    //   light — fgOnWarn on the solid warn500 icon tile = 8.79:1
-    // `warn600` was the other candidate but measures 2.90:1 on the fill's
-    // dense end — under the floor, so it's not used.
+    //   dark  — warn300 on fill rgb(41,34,26)     = 11.17:1 / 13.31:1
+    //   light — warn600 on fill rgb(231,225,217)  =  7.14:1 /  8.06:1
+    //   light — fgOnWarn on the solid warn500 icon tile = 6.98:1
+    // `warn500` also clears the floor (5.38:1) but `warn600` keeps the
+    // headroom the dark side has — this is the one banner whose entire job is
+    // to be unmissable.
 
     /// Caps title + CTA colour. Internal (not private) so
     /// `SPAlarmBackendBannerContrastTests` can MEASURE the ratio instead of
     /// trusting a comment.
     static let emphasisColor = UIColor { trait in
-        trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.fgOnWarn
+        trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.warn600
     }
 
     /// Icon tile fill — a faint warn wash on dark, a solid warn chip on light
@@ -58,13 +72,58 @@ final class SPAlarmBackendBanner: UIView {
         trait.userInterfaceStyle == .dark ? AppColors.warn300 : AppColors.fgOnWarn
     }
 
-    /// Border — decorative, but the light variant needs real saturation to
-    /// separate the card from `bg0`.
+    // MARK: - The edge (#538)
+    //
+    // Measured against the page the banner sits on (`bg0`, set by
+    // `AlarmsListViewController`), sRGB / WCAG 2.1, BEFORE this change:
+    //
+    //     dense fill  warn400@14%              dark 1.26:1   light 1.20:1
+    //     sparse fill warn400@5%               dark 1.06:1   light 1.07:1
+    //     border      warn400@22% / warn500@45%
+    //                                          dark 1.55:1   light 2.06:1
+    //
+    // So the banner had no edge in either theme — the same half of the defect
+    // `AlarmsStreakBannerView` carried until #531. It matters more here: this
+    // is the one banner that exists only in a broken state, to say the alarms
+    // will not ring. A warning that melts into the page is not doing its job,
+    // and the two banners are supposed to read as one family.
+    //
+    // **The fill stays a decorative wash.** Not taste, arithmetic: pushing
+    // `warn400` to the alpha that would reach 3:1 against the page costs the
+    // ink sitting on it. 45% on dark drops the title from 11.22:1 to 4.68:1;
+    // 74% on light drops `warn600` to 2.83:1 — under the 4.5:1 floor this
+    // whole file exists to defend. A denser surface buys a container and
+    // sells the text. Stepping the surface "one darker" is not on the table
+    // either: the entire `bg0`…`bg4` ramp measures 1.07–1.61:1 against the
+    // page in both themes (#518).
+    //
+    // **So the border carries the edge alone, and has to earn it.** Alphas
+    // raised to the pair below — the same pair `AlarmsStreakBannerView` took
+    // in #531 (0.50 / 0.75), so the family keeps one recipe. The TONES are
+    // unchanged: dark stays `warn400`, light stays `warn500`, because the
+    // light bronze is the saturated end of the scale and gives the louder
+    // banner its headroom.
+    //
+    //     border      warn400@50% / warn500@75%
+    //                                          dark 3.50:1   light 3.72:1
+    //
+    // That is border-over-page, the conservative reading. The 1pt stroke
+    // actually composites over the wash, measuring 4.25:1 dark / 3.98:1 light
+    // against the page and 3.37:1 / 3.31:1 against the wash on its inner
+    // side, so both sides of the line clear 3:1.
+    // `SPAlarmBackendBannerContrastTests` pins all of the numbers above.
+
+    /// Border alpha per theme. Internal so the contrast test measures the SAME
+    /// alphas the view renders instead of a copy of them.
+    static let borderAlphas: (dark: CGFloat, light: CGFloat) = (0.50, 0.75)
+
+    /// Border — decorative in origin, load-bearing in fact: it is the only
+    /// thing separating this banner from the page, in either theme.
     static var borderColor: UIColor {
         UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? AppColors.warn400.withAlphaComponent(0.22)
-                : AppColors.warn500.withAlphaComponent(0.45)
+            let tone = trait.userInterfaceStyle == .dark ? AppColors.warn400 : AppColors.warn500
+            let alpha = trait.userInterfaceStyle == .dark ? Self.borderAlphas.dark : Self.borderAlphas.light
+            return tone.resolvedColor(with: trait).withAlphaComponent(alpha)
         }
     }
 
@@ -103,18 +162,28 @@ final class SPAlarmBackendBanner: UIView {
     /// Fill alphas of the two-stop tint, densest stop first. Internal so the
     /// contrast test composites the SAME values the view renders.
     static let fillAlphas: [CGFloat] = [0.14, 0.05]
+    static let fillLocations: [NSNumber] = [0.0, 1.0]
 
+    /// Fill stops resolved against `trait`. Trait-explicit on purpose: the
+    /// plain `.cgColor` path snapshots `UITraitCollection.current`, which is
+    /// not necessarily this view's traits — and a `CGColor` has no link back
+    /// to the token it came from, so it never re-resolves afterwards. That is
+    /// the freeze `AlarmsStreakBannerView` had in #531; this file had the same
+    /// one, hidden because `refreshDynamicColors()` repainted the border and
+    /// the caps title but never the ramp.
+    static func fillColors(for trait: UITraitCollection) -> [CGColor] {
+        let warn = AppColors.warn400.resolvedColor(with: trait)
+        return fillAlphas.map { warn.withAlphaComponent($0).cgColor }
+    }
+
+    /// Warn-tinted glass. Stops start empty on purpose — see `fillColors`;
+    /// `refreshDynamicColors()` owns them, and `init` runs it once.
     private let backgroundView: SPGradientView = {
-        let colors: [CGColor] = [
-            AppColors.warn400.withAlphaComponent(SPAlarmBackendBanner.fillAlphas[0]).cgColor,
-            AppColors.warn400.withAlphaComponent(SPAlarmBackendBanner.fillAlphas[1]).cgColor
-        ]
-        let view = SPGradientView(colors: colors, locations: [0.0, 1.0])
+        let view = SPGradientView(colors: [], locations: SPAlarmBackendBanner.fillLocations)
         view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerRadius = AppRadius.md
         view.layer.masksToBounds = true
         view.layer.borderWidth = 1
-        view.layer.borderColor = SPAlarmBackendBanner.borderColor.cgColor
         view.isUserInteractionEnabled = false
         return view
     }()
@@ -189,6 +258,7 @@ final class SPAlarmBackendBanner: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         configureLayout()
+        refreshDynamicColors()
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPAlarmBackendBanner, _) in
                 view.refreshDynamicColors()
@@ -208,8 +278,15 @@ final class SPAlarmBackendBanner: UIView {
     }
 
     /// `CGColor` and `NSAttributedString` both snapshot the resolved colour, so
-    /// a light/dark flip has to re-resolve them by hand.
+    /// a light/dark flip has to re-resolve them by hand. The FILL is named
+    /// first deliberately: it was missing here until #538, so the ramp kept
+    /// whatever theme was current when the banner was built while the ink
+    /// above it re-resolved.
     private func refreshDynamicColors() {
+        backgroundView.refresh(
+            colors: Self.fillColors(for: traitCollection),
+            locations: Self.fillLocations
+        )
         backgroundView.layer.borderColor = Self.borderColor.resolvedColor(with: traitCollection).cgColor
         if let warning {
             configure(with: warning)

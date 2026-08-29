@@ -23,6 +23,14 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     /// delete + repository wiring; this sheet only owns the confirmation UI.
     var onConfirm: (() -> Void)?
 
+    // MARK: - Configuration
+
+    /// Traits used for everything painted as part of the *scrim* rather than
+    /// the sheet. A modal scrim darkens whatever is behind it, so it stays
+    /// dark in both themes — same call as `StreakModalViewController`. The
+    /// sheet itself keeps following the app theme.
+    private static let scrimTrait = UITraitCollection(userInterfaceStyle: .dark)
+
     // MARK: - Body copy
 
     /// Subtitle line shown below the headline. Defaults to the design's
@@ -35,19 +43,25 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     // MARK: - UI
 
     /// Subtle backdrop blur under the scrim — the artboard's
-    /// `backdrop-filter: blur(2px)`.
+    /// `backdrop-filter: blur(2px)`. Deliberately the *dark* material in both
+    /// themes: it sits under the scrim, and a light material there would haze
+    /// the page toward white instead of dimming it.
     private let blurView: UIVisualEffectView = {
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
 
-    /// Translucent black scrim so the edit screen below reads as "present
-    /// but inert" — `rgba(0,0,0,.55)` per the artboard.
+    /// Translucent scrim so the edit screen below reads as "present but
+    /// inert" — `rgba(0,0,0,.55)` per the artboard. Resolved off `bg0` at the
+    /// scrim traits instead of a black literal, so a `tokens.css` bump carries
+    /// here and the value stays a token in both themes.
     private let scrimView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        view.backgroundColor = AppColors.bg0
+            .resolvedColor(with: ConfirmDeleteAlarmViewController.scrimTrait)
+            .withAlphaComponent(0.55)
         return view
     }()
 
@@ -56,8 +70,12 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
         card.translatesAutoresizingMaskIntoConstraints = false
         // Upward sheet shadow `0 -24px 64px rgba(0,0,0,.5)` — overrides the
         // tone's default downward shadow2 so the sheet reads as a layer
-        // lifting off the dimmed screen below.
-        card.layer.shadowColor = UIColor.black.cgColor
+        // lifting off the dimmed screen below. The shadow falls on the SCRIM,
+        // not on the page, so it keeps the scrim's dark value in both themes
+        // — the light `shadow2` ink at 10% would be invisible there.
+        card.layer.shadowColor = AppColors.bg0
+            .resolvedColor(with: ConfirmDeleteAlarmViewController.scrimTrait)
+            .cgColor
         card.layer.shadowOpacity = 0.5
         card.layer.shadowOffset = CGSize(width: 0, height: -24)
         card.layer.shadowRadius = 32
@@ -71,7 +89,8 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
         view.layer.masksToBounds = true
         view.backgroundColor = AppColors.pain500.withAlphaComponent(0.14)
         view.layer.borderWidth = 1
-        view.layer.borderColor = AppColors.pain500.withAlphaComponent(0.30).cgColor
+        // `borderColor` is a `cgColor` and cannot re-resolve itself — it is
+        // painted in `refreshBadgeStroke()` against the view's own traits.
         return view
     }()
 
@@ -160,6 +179,22 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
         scrimView.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(cancelTapped))
         )
+        refreshBadgeStroke()
+        // The badge sits on the sheet, which follows the app theme, so its
+        // stroke has to be re-resolved when the theme flips under an open
+        // sheet — a `cgColor` keeps whatever it was born with.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (host: ConfirmDeleteAlarmViewController, _) in
+            host.refreshBadgeStroke()
+        }
+    }
+
+    /// Paint the pain-tinted hairline around the 64×64 icon badge with the
+    /// current theme's `pain500`.
+    private func refreshBadgeStroke() {
+        iconBadge.layer.borderColor = AppColors.pain500
+            .resolvedColor(with: traitCollection)
+            .withAlphaComponent(0.30)
+            .cgColor
     }
 
     // MARK: - Setup

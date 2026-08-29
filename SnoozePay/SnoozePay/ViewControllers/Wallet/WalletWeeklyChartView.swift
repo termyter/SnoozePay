@@ -147,6 +147,14 @@ private final class DayColumn: UIView {
         self.layoutSpec = layout
         super.init(frame: .zero)
         configure()
+        // `CAGradientLayer.colors` holds plain `CGColor`s — they are resolved
+        // once and never follow a theme flip. Without this the bars keep the
+        // theme the view was BUILT in: launch in dark, switch to light, and
+        // the dark `pain300` top stop (`#FFB4A8`) stays put at 1.9:1 on the
+        // white card. Same defect class as `SPAmountPreset` (#489).
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: DayColumn, _) in
+            view.refreshGradientColors()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -169,7 +177,7 @@ private final class DayColumn: UIView {
 
         labelView.translatesAutoresizingMaskIntoConstraints = false
         labelView.font = AppTypography.meta
-        labelView.textColor = AppColors.fg4
+        labelView.textColor = WalletQuietInk.caption
         labelView.textAlignment = .center
         addSubview(labelView)
 
@@ -187,10 +195,16 @@ private final class DayColumn: UIView {
             labelView.heightAnchor.constraint(equalToConstant: layoutSpec.labelHeight)
         ])
 
-        gradient.colors = SPSupport.painGradientColors
         gradient.locations = SPSupport.painGradientLocations
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
+        refreshGradientColors()
+    }
+
+    /// Re-resolve the bar gradient against THIS view's traits. Called from
+    /// `configure()` and from the trait-change registration above.
+    func refreshGradientColors() {
+        gradient.colors = SPSupport.painGradientColors(for: traitCollection)
     }
 
     func setLabel(_ text: String) {

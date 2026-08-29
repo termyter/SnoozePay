@@ -38,10 +38,16 @@ final class StatisticsHeatmapView: UIView {
     // MARK: - Constants
 
     private static let columnCount = 7
-    private static let cellSpacing: CGFloat = 4
-    private static let cellCornerRadius: CGFloat = 5
-    private static let headerHeight: CGFloat = 16
-    private static let ringInset: CGFloat = 4
+    private static let cellSpacing = AppSpacing.sp1
+    /// Cell radius sits between `AppRadius`'s steps on purpose — a 40pt square
+    /// takes the 8pt `xs` badly. Named rather than inlined so the grid and the
+    /// selection ring can't drift apart.
+    static let cellCornerRadius: CGFloat = 5
+    private static let headerHeight = AppSpacing.sp4
+    private static let ringInset = AppSpacing.sp1
+    /// Gap between the tapped cell and the tooltip's arrow tip. Off the 4pt
+    /// grid by design — the arrow eats 6pt of it, so `sp3` would read as a
+    /// detached bubble. Named, not inlined, so it stays a decision.
     private static let tooltipGap: CGFloat = 10
 
     // MARK: - Subviews
@@ -90,6 +96,18 @@ final class StatisticsHeatmapView: UIView {
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         addGestureRecognizer(tap)
+
+        // The ring is a CALayer border, so its CGColor has to be re-resolved
+        // by hand when the theme flips under an open selection.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: StatisticsHeatmapView, _) in
+            view.refreshRingColor()
+        }
+    }
+
+    private func refreshRingColor() {
+        guard let index = selectedIndex, index < days.count else { return }
+        ringView.layer.borderColor = Self.ringColor(for: days[index].status)
+            .resolvedColor(with: traitCollection).cgColor
     }
 
     // MARK: - Cells
@@ -172,7 +190,7 @@ final class StatisticsHeatmapView: UIView {
             tooltipView.isHidden = false
         }
         ringView.isHidden = false
-        ringView.layer.borderColor = Self.ringColor(for: days[index].status).cgColor
+        refreshRingColor()
         layoutSelectionOverlay()
         onSelectionChanged?(true)
     }
@@ -203,22 +221,49 @@ final class StatisticsHeatmapView: UIView {
 
     // MARK: - Status palette
 
+    /// Selection ring. The dark alphas are the canon; light floors them at
+    /// 0.70 because the woke ring at 0.60 is 2.70:1 on `bg2` — under the 3:1
+    /// WCAG 1.4.11 bar for a UI affordance. At 0.70 it is 3.28:1.
     static func ringColor(for status: StatisticsViewModel.DayStatus) -> UIColor {
+        let base: UIColor
+        let darkAlpha: CGFloat
         switch status {
-        case .woke: return AppColors.money300.withAlphaComponent(0.6)
-        case .light: return AppColors.warn300.withAlphaComponent(0.7)
-        case .heavy: return AppColors.pain300.withAlphaComponent(0.7)
-        case .empty: return AppColors.fg1.withAlphaComponent(0.4)
+        case .woke: base = StatisticsAccentTones.money; darkAlpha = 0.6
+        case .light: base = StatisticsAccentTones.warn; darkAlpha = 0.7
+        case .heavy: base = StatisticsAccentTones.pain; darkAlpha = 0.7
+        case .empty: base = AppColors.fg1; darkAlpha = 0.4
+        }
+        return UIColor { trait in
+            let alpha = trait.userInterfaceStyle == .light ? max(darkAlpha, 0.7) : darkAlpha
+            return base.resolvedColor(with: trait).withAlphaComponent(alpha)
         }
     }
 
+    /// Flat tone for the tooltip's status line — 12pt semibold, so it needs
+    /// the light theme's body-text step (`StatisticsAccentTones`), not the
+    /// decorative 300 the dark canon uses.
     static func toneColor(for status: StatisticsViewModel.DayStatus) -> UIColor {
         switch status {
-        case .woke: return AppColors.money300
-        case .light: return AppColors.warn300
-        case .heavy: return AppColors.pain300
+        case .woke: return StatisticsAccentTones.money
+        case .light: return StatisticsAccentTones.warn
+        case .heavy: return StatisticsAccentTones.pain
         case .empty: return AppColors.fg3
         }
+    }
+
+    /// Fill for a day with no alarm (padding / future / untracked).
+    ///
+    /// The dark canon is `whiteOverlay04` — a 2.9 ΔE00 whisper against `bg2`,
+    /// just enough to draw the calendar's skeleton. The same 4% ink on the
+    /// light card is only 1.9 ΔE00, i.e. below the just-noticeable difference:
+    /// the empty days vanish and the month loses its shape. 6% ink restores
+    /// exactly the dark theme's perceptual weight (2.9 ΔE00) without
+    /// promoting an empty day to something that looks like data.
+    static let emptyFillColor = UIColor { trait in
+        let token = trait.userInterfaceStyle == .light
+            ? AppColors.whiteOverlay06
+            : AppColors.whiteOverlay04
+        return token.resolvedColor(with: trait)
     }
 
     /// Gradient stops matching the heatmap cell fill for each status — used by
@@ -243,15 +288,22 @@ final class StatisticsHeatmapView: UIView {
 private final class HeatmapDayCell: UIView {
 
     private let gradient = CAGradientLayer()
+    private var status: StatisticsViewModel.DayStatus = .empty
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        layer.cornerRadius = 5
+        layer.cornerRadius = StatisticsHeatmapView.cellCornerRadius
         layer.cornerCurve = .continuous
         layer.masksToBounds = true
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         layer.insertSublayer(gradient, at: 0)
+        // A CAGradientLayer holds resolved CGColors, which never re-resolve on
+        // their own. Without this the whole month keeps the palette of
+        // whichever theme was active when the grid was built.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: HeatmapDayCell, _) in
+            cell.applyPalette()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -264,145 +316,35 @@ private final class HeatmapDayCell: UIView {
     }
 
     func apply(status: StatisticsViewModel.DayStatus) {
-        switch status {
-        case .woke:
-            gradient.isHidden = false
-            gradient.colors = SPSupport.moneyGradientColors
-            gradient.locations = SPSupport.moneyGradientLocations
-        case .light:
-            gradient.isHidden = false
-            gradient.colors = SPSupport.warnGradientColors
-            gradient.locations = SPSupport.warnGradientLocations
-        case .heavy:
-            gradient.isHidden = false
-            gradient.colors = SPSupport.painGradientColors
-            gradient.locations = SPSupport.painGradientLocations
-        case .empty:
-            gradient.isHidden = true
-            backgroundColor = AppColors.whiteOverlay04
+        self.status = status
+        applyPalette()
+    }
+
+    private func applyPalette() {
+        // `performAsCurrent` so the dynamic tokens inside `SPSupport` resolve
+        // against *this view's* traits rather than whatever
+        // `UITraitCollection.current` happens to be when the grid is rebuilt.
+        traitCollection.performAsCurrent {
+            switch status {
+            case .woke:
+                gradient.isHidden = false
+                gradient.colors = SPSupport.moneyGradientColors
+                gradient.locations = SPSupport.moneyGradientLocations
+            case .light:
+                gradient.isHidden = false
+                gradient.colors = SPSupport.warnGradientColors
+                gradient.locations = SPSupport.warnGradientLocations
+            case .heavy:
+                gradient.isHidden = false
+                gradient.colors = SPSupport.painGradientColors
+                gradient.locations = SPSupport.painGradientLocations
+            case .empty:
+                gradient.isHidden = true
+                backgroundColor = StatisticsHeatmapView.emptyFillColor
+            }
         }
         if status != .empty {
             backgroundColor = .clear
         }
-    }
-}
-
-// MARK: - Tooltip bubble
-
-/// Tooltip from artboard 27a — bg3 bubble with a hairline border, drop
-/// shadow, an upward arrow, the date headline and a swatch + status line.
-private final class HeatmapTooltipView: UIView {
-
-    private let arrowView = UIView()
-    private let dateLabel = UILabel()
-    private let swatchView = UIView()
-    /// Gradient fill for the swatch so it matches the tapped cell's gradient
-    /// (#289). Hidden for `.empty`, where the flat tone is used instead.
-    private let swatchGradient = CAGradientLayer()
-    private let statusLabel = UILabel()
-    private let spentLabel = UILabel()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        configure()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    private func configure() {
-        backgroundColor = AppColors.bg3
-        layer.cornerRadius = AppRadius.sm
-        layer.cornerCurve = .continuous
-        layer.borderWidth = 1
-        layer.borderColor = AppColors.whiteOverlay08.cgColor
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.5
-        layer.shadowOffset = CGSize(width: 0, height: 12)
-        layer.shadowRadius = 16
-        isUserInteractionEnabled = false
-
-        arrowView.backgroundColor = AppColors.bg3
-        arrowView.layer.borderWidth = 1
-        arrowView.layer.borderColor = AppColors.whiteOverlay08.cgColor
-        arrowView.transform = CGAffineTransform(rotationAngle: .pi / 4)
-        addSubview(arrowView)
-
-        dateLabel.font = AppFonts.sans(.bold, 14)
-        dateLabel.textColor = AppColors.fg1
-        dateLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        swatchView.layer.cornerRadius = 2
-        swatchView.layer.masksToBounds = true
-        swatchView.translatesAutoresizingMaskIntoConstraints = false
-        swatchGradient.startPoint = SPSupport.gradientStart
-        swatchGradient.endPoint = SPSupport.gradientEnd
-        swatchView.layer.insertSublayer(swatchGradient, at: 0)
-
-        statusLabel.font = AppFonts.sans(.semibold, 12)
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        spentLabel.font = AppFonts.sans(.medium, 12)
-        spentLabel.textColor = AppColors.fg3
-        spentLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let statusRow = UIStackView(arrangedSubviews: [swatchView, statusLabel, spentLabel])
-        statusRow.axis = .horizontal
-        statusRow.alignment = .center
-        statusRow.spacing = 6
-        statusRow.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = UIStackView(arrangedSubviews: [dateLabel, statusRow])
-        stack.axis = .vertical
-        stack.alignment = .leading
-        stack.spacing = AppSpacing.sp1
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            swatchView.widthAnchor.constraint(equalToConstant: 8),
-            swatchView.heightAnchor.constraint(equalToConstant: 8),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14)
-        ])
-    }
-
-    func apply(_ tooltip: StatisticsViewModel.HeatmapTooltip) {
-        dateLabel.text = tooltip.dateText
-        statusLabel.text = tooltip.statusText
-        statusLabel.textColor = StatisticsHeatmapView.toneColor(for: tooltip.status)
-        if let stops = StatisticsHeatmapView.gradientStops(for: tooltip.status) {
-            swatchGradient.isHidden = false
-            swatchGradient.colors = stops.colors
-            swatchGradient.locations = stops.locations
-            swatchView.backgroundColor = .clear
-        } else {
-            swatchGradient.isHidden = true
-            swatchView.backgroundColor = StatisticsHeatmapView.toneColor(for: tooltip.status)
-        }
-        spentLabel.text = tooltip.spentText
-        spentLabel.isHidden = tooltip.spentText == nil
-    }
-
-    /// Positions the upward arrow so it points at the tapped cell even when
-    /// the bubble itself is clamped to the grid edges.
-    func setArrowCenterX(_ centerX: CGFloat) {
-        let side: CGFloat = 12
-        let clamped = max(side, min(centerX, bounds.width - side))
-        arrowView.frame = CGRect(x: clamped - side / 2, y: -side / 2, width: side, height: side)
-        arrowView.transform = CGAffineTransform(rotationAngle: .pi / 4)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        // Keep the shadow path in sync so the arrow doesn't cast a hole.
-        layer.shadowPath = UIBezierPath(
-            roundedRect: bounds,
-            cornerRadius: layer.cornerRadius
-        ).cgPath
-        swatchGradient.frame = swatchView.bounds
     }
 }

@@ -92,9 +92,10 @@ final class TransactionRepository {
     // MARK: - Read
 
     /// Lossy read: a decode failure is indistinguishable from "no
-    /// transactions" (#210). Prefer `fetchAllChecked()` in production paths
-    /// that render state to the user — callers of this variant should
-    /// consult `lastLoadFailed` before trusting an empty result.
+    /// transactions" (#210). Every production call site now uses
+    /// `fetchAllChecked()` (#271); kept for the tests that pin the lossy
+    /// contract, which is why it is deprecated rather than deleted.
+    @available(*, deprecated, message: "Lossy: a decode failure reads as []. Use fetchAllChecked() (#271).")
     func fetchAll() -> [Transaction] {
         queue.sync { (try? readAll()) ?? [] }
     }

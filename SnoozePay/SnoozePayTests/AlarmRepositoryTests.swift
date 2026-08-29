@@ -40,8 +40,8 @@ final class AlarmRepositoryTests: XCTestCase {
         let alarm = makeAlarm()
         repo.save(alarm)
 
-        XCTAssertEqual(repo.fetchAll().count, 1)
-        XCTAssertEqual(repo.fetch(id: alarm.id)?.id, alarm.id)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1)
+        XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.id, alarm.id)
     }
 
     func testSave_updatesExistingAlarm() {
@@ -50,8 +50,8 @@ final class AlarmRepositoryTests: XCTestCase {
 
         repo.save(alarm.with(name: "Updated"))
 
-        XCTAssertEqual(repo.fetchAll().count, 1)
-        XCTAssertEqual(repo.fetch(id: alarm.id)?.name, "Updated")
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1)
+        XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.name, "Updated")
     }
 
     func testDelete_removesAlarm() {
@@ -59,8 +59,8 @@ final class AlarmRepositoryTests: XCTestCase {
         repo.save(alarm)
         repo.delete(id: alarm.id)
 
-        XCTAssertNil(repo.fetch(id: alarm.id))
-        XCTAssertEqual(repo.fetchAll().count, 0)
+        XCTAssertNil(repo.fetchOrFail(id: alarm.id))
+        XCTAssertEqual(repo.fetchAllOrFail().count, 0)
     }
 
     func testSetEnabled_togglesFlag() {
@@ -68,16 +68,16 @@ final class AlarmRepositoryTests: XCTestCase {
         repo.save(alarm)
 
         repo.setEnabled(false, id: alarm.id)
-        XCTAssertEqual(repo.fetch(id: alarm.id)?.enabled, false)
+        XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.enabled, false)
 
         repo.setEnabled(true, id: alarm.id)
-        XCTAssertEqual(repo.fetch(id: alarm.id)?.enabled, true)
+        XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.enabled, true)
     }
 
     func testSetEnabled_unknownIDIsNoOp() {
         let didUpdate = repo.setEnabled(false, id: UUID())
         XCTAssertFalse(didUpdate, "setEnabled must report failure when no alarm matches the id")
-        XCTAssertEqual(repo.fetchAll().count, 0)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 0)
     }
 
     func testSetEnabled_existingIDReturnsTrueAndPersists() {
@@ -87,7 +87,7 @@ final class AlarmRepositoryTests: XCTestCase {
         let didUpdate = repo.setEnabled(false, id: alarm.id)
 
         XCTAssertTrue(didUpdate, "setEnabled must report success when the alarm exists")
-        XCTAssertEqual(repo.fetch(id: alarm.id)?.enabled, false, "Persistence must reflect the new flag")
+        XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.enabled, false, "Persistence must reflect the new flag")
     }
 
     // MARK: - Concurrency
@@ -100,7 +100,7 @@ final class AlarmRepositoryTests: XCTestCase {
             self.repo.save(alarms[idx])
         }
 
-        let stored = repo.fetchAll()
+        let stored = repo.fetchAllOrFail()
         XCTAssertEqual(stored.count, iterations,
                        "All concurrently-saved alarms must be persisted")
 
@@ -125,7 +125,7 @@ final class AlarmRepositoryTests: XCTestCase {
             }
         }
 
-        let stored = repo.fetchAll()
+        let stored = repo.fetchAllOrFail()
         let storedIDs = Set(stored.map { $0.id })
 
         XCTAssertTrue(storedIDs.isDisjoint(with: deleteIDs),
@@ -140,6 +140,10 @@ final class AlarmRepositoryTests: XCTestCase {
     /// When the stored JSON can't be decoded, the read must return `[]`
     /// without silently overwriting the corrupted blob — the raw bytes stay
     /// on disk so we can diagnose what got broken.
+    // Deliberately exercises the deprecated lossy fetcher — this test IS the
+    // contract for it (#271). The annotation is what keeps the call
+    // warning-free; Swift does not warn inside a deprecated declaration.
+    @available(*, deprecated, message: "Pins the deprecated lossy read on purpose")
     func testFetchAll_corruptedJSON_returnsEmptyAndPreservesRawData() {
         let corruptBytes = Data("{ this is not valid json".utf8)
         testDefaults.set(corruptBytes, forKey: "stored_alarms")
@@ -153,6 +157,10 @@ final class AlarmRepositoryTests: XCTestCase {
 
     /// fetchAll() called twice on corrupted data must NOT have overwritten
     /// the stored blob between calls — the second fetch sees the same raw bytes.
+    // Deliberately exercises the deprecated lossy fetcher — this test IS the
+    // contract for it (#271). The annotation is what keeps the call
+    // warning-free; Swift does not warn inside a deprecated declaration.
+    @available(*, deprecated, message: "Pins the deprecated lossy read on purpose")
     func testFetchAll_corruptedJSON_repeatedReadDoesNotMutateStorage() {
         let corruptBytes = Data("not json".utf8)
         testDefaults.set(corruptBytes, forKey: "stored_alarms")
@@ -168,7 +176,7 @@ final class AlarmRepositoryTests: XCTestCase {
     func testFetchAll_keyAbsent_returnsEmptyAndDoesNotCreateKey() {
         testDefaults.removeObject(forKey: "stored_alarms")
 
-        XCTAssertEqual(repo.fetchAll(), [])
+        XCTAssertEqual(repo.fetchAllOrFail(), [])
         XCTAssertNil(testDefaults.data(forKey: "stored_alarms"),
                      "Read on missing key must not materialize an empty value")
     }
@@ -197,7 +205,7 @@ final class AlarmRepositoryTests: XCTestCase {
         let alarm = makeAlarm(name: "Recovery")
         XCTAssertTrue(repo.save(alarm), "Save must succeed once the lock is cleared")
 
-        let stored = repo.fetchAll()
+        let stored = repo.fetchAllOrFail()
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored.first?.name, "Recovery")
     }
@@ -308,7 +316,7 @@ final class AlarmRepositoryTests: XCTestCase {
         repo.save(alarm) // same id, second time
         repo.save(alarm.with(name: "v2")) // changed copy, same id
 
-        let stored = repo.fetchAll()
+        let stored = repo.fetchAllOrFail()
         XCTAssertEqual(stored.count, 1, "Repeated saves of the same id must NOT duplicate the alarm")
         XCTAssertEqual(stored.first?.name, "v2")
     }
@@ -326,7 +334,7 @@ final class AlarmRepositoryTests: XCTestCase {
         repo.save(early)
         repo.save(mid)
 
-        let names = repo.fetchAll().map(\.name)
+        let names = repo.fetchAllOrFail().map(\.name)
         XCTAssertEqual(names, ["Early", "Mid", "Late"],
                        "fetchAll must order alarms by time ascending")
     }
@@ -335,6 +343,10 @@ final class AlarmRepositoryTests: XCTestCase {
     /// the caller-visible contract: a single `fetchAll()` against syntactically
     /// invalid JSON returns `[]` silently — no crash, no rethrow, no partial list.
     /// Listed explicitly in #32 as an acceptance-criteria bullet.
+    // Deliberately exercises the deprecated lossy fetcher — this test IS the
+    // contract for it (#271). The annotation is what keeps the call
+    // warning-free; Swift does not warn inside a deprecated declaration.
+    @available(*, deprecated, message: "Pins the deprecated lossy read on purpose")
     func testCorruptJSONInDefaults_returnsEmptyArray() {
         testDefaults.set(Data("totally not json {".utf8), forKey: "stored_alarms")
         XCTAssertEqual(repo.fetchAll(), [])
@@ -357,8 +369,8 @@ final class AlarmRepositoryTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(repo.fetchAll().count, 1, "Concurrent ops must not duplicate or drop the alarm")
-        let final = repo.fetch(id: alarm.id)
+        XCTAssertEqual(repo.fetchAllOrFail().count, 1, "Concurrent ops must not duplicate or drop the alarm")
+        let final = repo.fetchOrFail(id: alarm.id)
         XCTAssertNotNil(final)
         // Final state must match one of the writers, not torn (penaltyAmount preserved).
         XCTAssertEqual(final?.penaltyAmount, alarm.penaltyAmount)

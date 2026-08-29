@@ -207,7 +207,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         vm.loadData()
 
         vm.toggleAlarm(id: vm.alarms[0].id, enabled: false)
-        let stored = repo.fetchAll()
+        let stored = repo.fetchAllOrFail()
         XCTAssertEqual(stored.count, 1)
         XCTAssertFalse(stored[0].enabled, "Toggle must persist through the repository")
     }
@@ -261,7 +261,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         XCTAssertFalse(cached.enabled, "Only `enabled` should change")
 
         // Repository must mirror the in-memory state.
-        let stored = repo.fetch(id: original.id)!
+        let stored = repo.fetchOrFail(id: original.id)!
         XCTAssertEqual(stored, cached, "In-memory cache must equal persisted state after toggle")
     }
 
@@ -292,7 +292,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         )
     }
 
-    /// Issue #429: a successful toggle changes `averagePenalty`, which the
+    /// Issue #429: a successful toggle changes `currentSnoozePrice`, which the
     /// sticky header's `balanceHint` ("Хватит на ~N откладываний") is derived
     /// from. The cell repaints itself, but the header must also refresh — so the
     /// success path fires `onBalanceUpdated` (lighter than `onAlarmsUpdated`: no
@@ -813,6 +813,18 @@ final class AlarmsListWeeklyDeltaTests: XCTestCase {
         XCTAssertTrue(repo.record(Transaction(type: .charge, amount: 40, createdAt: daysAgo(10))))
         XCTAssertNil(makeVM(txnRepo: repo).weeklyDelta,
                      "Charges older than 7 days must not appear in the weekly delta")
+    }
+
+    /// `weeklyDelta` moved from the lossy `fetchAll()` to a `try?`-collapsed
+    /// checked read (#271). It must still HIDE the row on a corrupt ledger —
+    /// rendering a confident "0 ₽ за неделю" over unreadable financial history
+    /// is exactly the deception the checked fetchers exist to prevent. The
+    /// banner explaining the missing row comes from `loadData()`.
+    func testWeeklyDelta_corruptLedger_hidesRowRatherThanShowingZero() {
+        testDefaults.set(Data("{ not valid json".utf8), forKey: "stored_transactions")
+
+        XCTAssertNil(makeVM(txnRepo: TransactionRepository(defaults: testDefaults)).weeklyDelta,
+                     "An unreadable ledger must hide the delta row, not report a net change")
     }
 
     // MARK: - Ledger corruption surfacing

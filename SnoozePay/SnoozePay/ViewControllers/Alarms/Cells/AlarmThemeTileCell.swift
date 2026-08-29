@@ -20,12 +20,10 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         return card
     }()
 
-    private let gradientView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.layer.masksToBounds = true
-        return view
-    }()
+    /// Theme miniature — 135° base gradient plus the bottom accent glow.
+    /// Shared with the picker's preview block so tile and preview are one
+    /// recipe and cannot drift apart (#463).
+    private let previewView = SPThemePreviewView()
 
     private let imageView: UIImageView = {
         let view = UIImageView()
@@ -95,8 +93,6 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         return view
     }()
 
-    private var gradientLayer: CAGradientLayer?
-
     // MARK: - Init
 
     override init(frame: CGRect) {
@@ -111,7 +107,7 @@ final class AlarmThemeTileCell: UICollectionViewCell {
 
     private func setup() {
         contentView.addSubview(card)
-        card.addSubview(gradientView)
+        card.addSubview(previewView)
         card.addSubview(imageView)
         card.addSubview(plusIcon)
 
@@ -135,10 +131,10 @@ final class AlarmThemeTileCell: UICollectionViewCell {
             card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 
-            gradientView.topAnchor.constraint(equalTo: card.topAnchor),
-            gradientView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            gradientView.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            gradientView.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            previewView.topAnchor.constraint(equalTo: card.topAnchor),
+            previewView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            previewView.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            previewView.bottomAnchor.constraint(equalTo: card.bottomAnchor),
 
             imageView.topAnchor.constraint(equalTo: card.topAnchor),
             imageView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
@@ -172,7 +168,6 @@ final class AlarmThemeTileCell: UICollectionViewCell {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        gradientLayer?.frame = gradientView.bounds
         checkmarkGradient.frame = checkmarkBadge.bounds
     }
 
@@ -186,8 +181,6 @@ final class AlarmThemeTileCell: UICollectionViewCell {
     ///   - isSelected: money outline + offset + checkmark badge.
     ///   - customImage: thumbnail for the `.custom` slot when a photo exists.
     func configure(theme: AlarmTheme, isCustomSlot: Bool, isSelected: Bool, customImage: UIImage?) {
-        gradientLayer?.removeFromSuperlayer()
-        gradientLayer = nil
         imageView.image = nil
         imageView.isHidden = true
         plusIcon.isHidden = true
@@ -198,10 +191,10 @@ final class AlarmThemeTileCell: UICollectionViewCell {
             if let image = customImage {
                 imageView.image = image
                 imageView.isHidden = false
-                gradientView.alpha = 0
+                previewView.isHidden = true
             } else {
-                installGradient(for: .dawn)
-                gradientView.alpha = 0.4 // dim placeholder so "+" pops
+                previewView.apply(theme: .dawn)
+                previewView.alpha = 0.4 // dim placeholder so "+" pops
                 plusIcon.isHidden = false
             }
         } else if case .custom(let url) = theme {
@@ -209,15 +202,15 @@ final class AlarmThemeTileCell: UICollectionViewCell {
             if let image = AlarmThemeImageStore.loadImage(at: url) {
                 imageView.image = image
                 imageView.isHidden = false
-                gradientView.alpha = 0
+                previewView.isHidden = true
             } else {
-                installGradient(for: .dawn)
-                gradientView.alpha = 1.0
+                previewView.apply(theme: .dawn)
+                previewView.alpha = 1.0
             }
         } else {
             displayTheme = theme
-            installGradient(for: theme)
-            gradientView.alpha = 1.0
+            previewView.apply(theme: theme)
+            previewView.alpha = 1.0
         }
 
         nameLabel.text = displayTheme.displayName
@@ -233,19 +226,5 @@ final class AlarmThemeTileCell: UICollectionViewCell {
             card.layer.borderColor = AppColors.stroke1.cgColor
             card.layer.borderWidth = 1.0 / scale
         }
-    }
-
-    private func installGradient(for theme: AlarmTheme) {
-        guard let colors = AlarmThemeRendering.gradientColors(for: theme) else { return }
-        let layer = CAGradientLayer()
-        layer.colors = colors
-        layer.locations = AlarmThemeRendering.gradientLocations(for: theme)
-        // 135° diagonal (top-left → bottom-right) — matches ThemeRowCell and the
-        // design's `linear-gradient(135deg, …)`.
-        layer.startPoint = SPSupport.gradientStart
-        layer.endPoint = SPSupport.gradientEnd
-        layer.frame = gradientView.bounds
-        gradientView.layer.insertSublayer(layer, at: 0)
-        gradientLayer = layer
     }
 }

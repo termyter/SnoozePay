@@ -134,6 +134,10 @@ class SettingsViewController: UIViewController {
 
     private func setupUI() {
         view.addSubview(tableView)
+        // The table covers the whole view: without these it painted
+        // `systemGroupedBackground` over `bg0`, and a heavier divider (#496).
+        tableView.backgroundColor = AppColors.bg0
+        tableView.separatorColor = AppColors.stroke1
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(SettingsIconRowCell.self, forCellReuseIdentifier: SettingsIconRowCell.reuseID)
@@ -177,6 +181,8 @@ class SettingsViewController: UIViewController {
         // Theme flips overrideUserInterfaceStyle live, but already-displayed rows
         // baked their mode-specific shadow + (light-only) ambient layer in
         // willDisplay. Reload so willDisplay re-runs styleAsCardRow for visible rows.
+        // Still needed after #496: CardRowBackgroundView self-heals on a trait
+        // change, cell *content* layers (SPSegmented, SPInput) don't.
         tableView.reloadData()
     }
 }
@@ -260,9 +266,9 @@ extension SettingsViewController: UITableViewDelegate {
             // below (~90pt total). A fixed 56pt clipped the title and squashed
             // the segment; self-size instead (#314).
             return UITableView.automaticDimension
-        case .rules:
-            // «Прогрессивная цена» carries a wrapping subtitle — self-size so it
-            // isn't truncated ("...") on narrow screens (#313).
+        case .rules, .finance:
+            // A wrapping subtitle («Прогрессивная цена») and a wrapping title
+            // («Цена откладывания по умолчанию») — self-size, no "…" (#313, #519).
             return UITableView.automaticDimension
         case .referral:
             return referralRowHeight(row: indexPath.row)

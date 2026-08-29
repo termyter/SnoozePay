@@ -2,45 +2,80 @@ import UIKit
 
 /// App-wide color tokens. The "money / pain / warn" scales are the SnoozePay
 /// brand palette (see `docs/design/snoozepay-2026-04-27/project/tokens.css`);
-/// the legacy `accentBlue` / `accentOrange` / `snoozeButton` aliases at the
+/// the legacy `accentGreen` / `accentOrange` / `snoozeButton` aliases at the
 /// bottom map onto the new scales so existing screens keep compiling until
 /// each one is migrated in its own UI issue.
+///
+/// Nothing here resolves to a *system* colour, and `AppColorsSurfaceRampTests`
+/// keeps it that way: the system palette has its own values (`#F2F2F7`,
+/// `#1C1C1E`, …) that appear nowhere in `tokens.css`, so a token backed by one
+/// is a token that silently disagrees with the design canon.
 enum AppColors {
-    // MARK: - Backgrounds
-    static let background = UIColor.systemBackground
-    static let surface = UIColor.secondarySystemBackground
-    static let surface2 = UIColor.tertiarySystemBackground
+    // Surfaces are `bg0`...`bg4` and foregrounds are `fg1`...`fg4`, both
+    // further down. The pre-token aliases that used to sit here
+    // (`background`, `surface`, `surface2`, `textPrimary`, `textSecondary`,
+    // `textTertiary`) were the palette's last references to the *system*
+    // colours, and system colours cannot be canon: `secondarySystemBackground`
+    // is `#F2F2F7` / `#1C1C1E`, neither of which is a value in `tokens.css`.
+    // They are gone (#527) — reach for the token that names the role.
 
-    // MARK: - Text
-    static let textPrimary = UIColor.label
-    static let textSecondary = UIColor.secondaryLabel
-    static let textTertiary = UIColor.tertiaryLabel
+    // MARK: - Brand accent scales (theme-aware)
+    //
+    // The dark values are the brand palette from `tokens.css`. The light ones
+    // are *derived* from them — same hue, reduced value — because the dark
+    // scale cannot simply carry over: it was picked to glow on `#060912`, and
+    // on a light surface it stops being readable. Measured contrast of the
+    // dark values on the light raised card (`bg2` = `#ECEEF6`):
+    //
+    //     money500 2.19    money600 2.99    money700 4.61
+    //     pain500  2.96    pain600  4.09
+    //     warn500  1.85    warn600  2.89
+    //     info500  2.80
+    //
+    // So "shift one or two steps darker" does not work — of the whole existing
+    // palette exactly one value (`money700`) clears 4.5:1 on a light card. Each
+    // light step below is instead solved for its ROLE: 300 ≈ 3:1 (decorative /
+    // borders), 400 ≈ 4.5:1 (large text), 500 ≈ 6:1 (body text), 600 ≈ 8:1,
+    // 700 ≈ 10.5:1.
+    //
+    // Contrast is solved against `bg2`, not `bg0`: accents sit on cards far
+    // more often than on the app background, and `bg2` is the worse surface in
+    // BOTH themes (lighter than `bg0` on dark, darker than `bg0` on light). A
+    // value that clears there clears everywhere. `AppColorsContrastTests` pins
+    // this — it fails if any step drops below its role's threshold.
+    //
+    // Canvas with the full comparison and the reasoning: see #474.
 
     // MARK: - Brand · Money (positive / earnings / "deposit recovered")
-    static let money300 = UIColor(hex: 0x5EEAB8)
-    static let money400 = UIColor(hex: 0x2EDB9F)
+    static let money300 = dynamicColor(dark: 0x5EEAB8, light: 0x0E9C6D)
+    static let money400 = dynamicColor(dark: 0x2EDB9F, light: 0x0B7B56)
     /// Primary money tone — used for the deposit / balance hero.
-    static let money500 = UIColor(hex: 0x10B981)
-    static let money600 = UIColor(hex: 0x0E9D6E)
-    static let money700 = UIColor(hex: 0x0B7A56)
+    static let money500 = dynamicColor(dark: 0x10B981, light: 0x096647)
+    static let money600 = dynamicColor(dark: 0x0E9D6E, light: 0x075139)
+    static let money700 = dynamicColor(dark: 0x0B7A56, light: 0x053D2B)
 
     // MARK: - Brand · Pain (progressive snooze / penalty / loss)
-    static let pain300 = UIColor(hex: 0xFFB4A8)
-    static let pain400 = UIColor(hex: 0xFF7A6B)
+    static let pain300 = dynamicColor(dark: 0xFFB4A8, light: 0xF2513F)
+    static let pain400 = dynamicColor(dark: 0xFF7A6B, light: 0xC04032)
     /// Default "progressive snooze charged" red.
-    static let pain500 = UIColor(hex: 0xF4523F)
-    static let pain600 = UIColor(hex: 0xD43A28)
+    static let pain500 = dynamicColor(dark: 0xF4523F, light: 0x9F3529)
+    static let pain600 = dynamicColor(dark: 0xD43A28, light: 0x7E2B21)
 
     // MARK: - Brand · Warn (snooze affordance / amber CTA)
-    static let warn300 = UIColor(hex: 0xFFD479)
-    static let warn400 = UIColor(hex: 0xFFB84D)
+    //
+    // Note the light scale is bronze, not amber. `warn500` on a light card is
+    // 1.85:1 — amber simply cannot carry text on a near-white surface at any
+    // step of the existing ramp. Where the design wants amber *as* amber it
+    // stays a FILL with white text (`fgOnWarn`), never text on the background.
+    static let warn300 = dynamicColor(dark: 0xFFD479, light: 0xBE7B09)
+    static let warn400 = dynamicColor(dark: 0xFFB84D, light: 0x966107)
     /// Default snooze-button amber.
-    static let warn500 = UIColor(hex: 0xF59E0B)
-    static let warn600 = UIColor(hex: 0xC97A06)
+    static let warn500 = dynamicColor(dark: 0xF59E0B, light: 0x7C5006)
+    static let warn600 = dynamicColor(dark: 0xC97A06, light: 0x634004)
 
     // MARK: - Brand · Info
     /// Informational links only — `--sp-info-500` in `tokens.css`.
-    static let info500 = UIColor(hex: 0x4F8BFF)
+    static let info500 = dynamicColor(dark: 0x4F8BFF, light: 0x3257A1)
 
     // MARK: - Theme-aware surfaces (`bg0`...`bg4`)
     //
@@ -55,6 +90,32 @@ enum AppColors {
     static let bg1 = dynamicColor(dark: 0x0E1320, light: 0xFFFFFF)
     /// Raised card. Dark `#161C2E`, Light `#ECEEF6`.
     static let bg2 = dynamicColor(dark: 0x161C2E, light: 0xECEEF6)
+    /// Fill of a **raised** surface — the semantic token `SPCard(tone:
+    /// .raised)` and the enabled alarm row ask for, as opposed to the raw
+    /// `bg2` ramp step they used to hardcode.
+    ///
+    /// The `bg` ramp does not mean the same thing in both themes. In dark it
+    /// is a height ladder: every step is lighter than the page, so `bg2`
+    /// (`#161C2E`) reads as *above* `bg1` (`#0E1320`) on `bg0` (`#060912`).
+    /// In light the page is already near-white — `bg1` (`#FFFFFF`) *is* the
+    /// card, and `bg2` (`#ECEEF6`) sits **below** `bg0` (`#F4F6FB`): it is a
+    /// recessed tone, not a raised one. Mapping `.raised` onto `bg2`
+    /// unconditionally therefore inverts elevation in exactly one theme of
+    /// two, and wherever a pair of tones encodes state — enabled vs disabled
+    /// alarm rows — the meaning flips with it: the switched-OFF alarm was the
+    /// brightest card on the light list (#543).
+    ///
+    /// So light keeps the white card and lets `--sp-shadow-2` carry the
+    /// height (shadow is what elevation is made of on a white page); dark
+    /// keeps the ramp step it always had, and does not move.
+    ///
+    /// Ordering is pinned by `SPCardElevationOrderTests`, which measures the
+    /// *pair* rather than either fill on its own.
+    static let bgRaised = UIColor { trait in
+        trait.userInterfaceStyle == .light
+            ? AppColors.bg1.resolvedColor(with: trait)
+            : AppColors.bg2.resolvedColor(with: trait)
+    }
     /// Active chip / sheet header. Dark `#1F2740`, Light `#DFE3F0`.
     static let bg3 = dynamicColor(dark: 0x1F2740, light: 0xDFE3F0)
     /// Hover / focus surface. Dark `#2A3354`, Light `#C9D0E3`.
@@ -75,12 +136,132 @@ enum AppColors {
     /// Disabled / placeholder. Dark 32%, Light 32%.
     static let fg4 = foreground(darkAlpha: 0.32, lightAlpha: 0.32)
 
-    /// Text rendered ON top of `money500` fills. Dark mint hue.
-    static let fgOnMoney = UIColor(hex: 0x052016)
-    /// Text rendered ON top of `pain500` fills.
+    /// Text rendered ON top of `money500` fills. Dark mint ink on the bright
+    /// dark-theme fill; white on the light theme's dark-green fill, which is
+    /// far too dark to carry the mint ink (`#052016` on `#096647` is 1.5:1).
+    static let fgOnMoney = dynamicColor(dark: 0x052016, light: 0xFFFFFF)
+    /// Text rendered ON top of `pain500` fills — white in both themes.
     static let fgOnPain = UIColor.white
-    /// Text rendered ON top of `warn500` fills.
-    static let fgOnWarn = UIColor(hex: 0x1A0F00)
+    /// Text rendered ON top of `warn500` fills. Same inversion as `fgOnMoney`:
+    /// the light `warn500` is bronze, so it takes white rather than dark ink.
+    static let fgOnWarn = dynamicColor(dark: 0x1A0F00, light: 0xFFFFFF)
+
+    // MARK: - Deep promo fill (referral hero)
+    //
+    // The referral hero is a *filled* promo panel, not a surface: it stays
+    // DARK in both themes, the same way `--sp-grad-night` / `--sp-grad-dawn`
+    // keep their night values inside the light block of `tokens.css`. The dark
+    // stops are the canon literals inlined in `SPMore4.jsx`
+    // (`#1A2810 → #2C4A1F → #4F8A3A`) and do not move. The light stops are the
+    // light money ramp read deep-to-bright (`money700 → money600 → money400`),
+    // so the panel keeps the same "deep green, brightening toward the
+    // bottom-right" shape while sitting on a near-white page instead of
+    // becoming a white card that its white copy would disappear into.
+    /// Deepest stop — gradient origin (top-left), where the copy sits.
+    static let heroDeep700 = dynamicColor(dark: 0x1A2810, light: 0x053D2B)
+    /// Middle stop.
+    static let heroDeep500 = dynamicColor(dark: 0x2C4A1F, light: 0x075139)
+    /// Brightest stop — gradient end (bottom-right), decorative only.
+    static let heroDeep300 = dynamicColor(dark: 0x4F8A3A, light: 0x0B7A56)
+    /// Ink on `heroDeep*` — white in BOTH themes, because unlike `money500`
+    /// this fill is dark on light too. Not interchangeable with `fgOnMoney`:
+    /// that token's dark-theme mint ink would vanish into the deep-green panel.
+    static let fgOnHeroDeep = UIColor.white
+
+    // MARK: - Payment instrument card (Apple Pay tile)
+    //
+    // Same class as `heroDeep*`: a *filled* panel, not a surface, so it does
+    // NOT flip with the theme. The canon calls it «чёрная карточка а-ля iOS
+    // Wallet» (`SPMore3.jsx` L549) and iOS Wallet keeps a dark instrument dark
+    // on a white page — flipping this fill to `bg1` in light would turn a
+    // payment card into an app card and lose the metaphor the screen is built
+    // on. Measured against the page: 1.09:1 on dark `bg0` (the canon leans on
+    // the rim, not the fill) and 16.83:1 on light `bg0`.
+    /// Apple Pay card fill — `#15151A` in BOTH themes.
+    static let paymentCard = UIColor(hex: 0x15151A)
+    /// Glassy rim of `paymentCard`. Deliberately NOT `stroke1`: that token is
+    /// near-black ink in light and would disappear into the dark card. Static
+    /// white, so `.cgColor` on it needs no trait re-resolution.
+    static let paymentCardEdge = UIColor(white: 1.0, alpha: 0.10)
+    /// Primary ink on `paymentCard` — the Apple glyph and the "Pay" wordmark.
+    /// 18.2:1 in both themes. Not interchangeable with `fg1`, which is
+    /// near-black ink in light and would vanish here.
+    static let fgOnPaymentCard = UIColor.white
+    /// Secondary ink on `paymentCard` — caps state labels and meta copy.
+    /// 5.28:1. The canon carried two steps here (50% and 40% white); the 40%
+    /// one measured 3.83:1 and failed AA for 12pt caps in BOTH themes, so the
+    /// pair collapses onto the step that passes.
+    static let fgOnPaymentCardMeta = UIColor(white: 1.0, alpha: 0.5)
+
+    // MARK: - Warn wash (tinted chip — NOT a solid fill)
+    //
+    // `fgOnWarn` is ink for a SOLID `warn500` fill. A *wash* — the brand colour
+    // laid at partial alpha over a card — is a different surface and needs
+    // different ink: white on a wash measures ~1.2:1, the defect fixed in
+    // `SPAlarmBackendBanner`. The wash inverts between themes: a deep 60%
+    // bronze over the dark card, a faint 18% tint (the `SPPill` strength) over
+    // the light one, so the ink can be dark bronze instead of white.
+    /// Warn-tinted chip fill — the avatar of a friend mid-streak.
+    static let warnWash = UIColor { trait in
+        let base = AppColors.warn600.resolvedColor(with: trait)
+        return base.withAlphaComponent(trait.userInterfaceStyle == .light ? 0.18 : 0.60)
+    }
+    /// Ink on `warnWash`. `warn300` glows on the deep dark wash; the pale light
+    /// wash takes `warn600`, the darkest bronze in the scale.
+    static let fgOnWarnWash = UIColor { trait in
+        trait.userInterfaceStyle == .light
+            ? AppColors.warn600.resolvedColor(with: trait)
+            : AppColors.warn300.resolvedColor(with: trait)
+    }
+
+    /// Ink on a *pain*-tinted wash — same shape as `fgOnWarnWash`, and needed
+    /// for the same reason. The zero-balance pill on the alarms list lays a
+    /// `pain500` gradient at 10%→2% over the page; `pain300` glows on that in
+    /// dark (10.82:1) but measures **2.77:1** in light, because the light
+    /// `pain300` is a bright coral on a near-white wash. The light branch takes
+    /// `pain600`, the darkest tone in the scale (7.41:1). Not interchangeable
+    /// with `fgOnPain`, which is ink for a SOLID `pain500` fill.
+    static let fgOnPainWash = UIColor { trait in
+        trait.userInterfaceStyle == .light
+            ? AppColors.pain600.resolvedColor(with: trait)
+            : AppColors.pain300.resolvedColor(with: trait)
+    }
+
+    // MARK: - Transient overlay (toast / snackbar)
+    //
+    // A toast is not a card. It floats over arbitrary content for 1.5s, so it
+    // has no fixed page relationship to lean on, and it cannot be solved by
+    // reaching for a higher step of the surface ramp: measured against the app
+    // background (`bg0`), the whole ramp is flat.
+    //
+    //     light   bg1 1.08   bg2 1.07   bg3 1.19   bg4 1.43
+    //     dark    bg1 1.07   bg2 1.17   bg3 1.35   bg4 1.61
+    //
+    // Not one step reaches the 3:1 that WCAG 1.4.11 asks of a UI surface —
+    // which is why the pill shipped at 1.19:1 in light (#518), and why the
+    // recipe before it failed the same way in dark (#496). Two attempts inside
+    // the ramp, two failures; the ramp is the wrong tool.
+    //
+    // So the toast takes the INVERSE surface — a dark pill on the light page,
+    // a light pill on the dark one, the standard snackbar shape — which
+    // measures ~17:1 in both themes. The border and the lift stay (see
+    // `SettingsToastLabel`), but they are now decoration rather than the only
+    // thing holding the pill together.
+    /// Toast pill fill. Inverse of the page: the brand near-black ink in
+    /// light, the near-white foreground base in dark.
+    static let toastSurface = dynamicColor(dark: 0xEBEDF5, light: 0x0A0F1F)
+    /// Ink on `toastSurface`. Flips *with* the fill, so it must not be swapped
+    /// for `fg1`: `fg1` is ink for a normal surface, and on the inverse pill it
+    /// lands same-on-same — exactly the 1.24:1 defect of #496.
+    static let fgOnToast = dynamicColor(dark: 0x0A0F1F, light: 0xEBEDF5)
+    /// Rim of the toast pill — `stroke2` mirrored, for the same reason the fill
+    /// is: on the light theme's dark pill the hairline has to be white, and on
+    /// the dark theme's light pill near-black. Using `stroke2` directly would
+    /// paint near-black ink onto a near-black pill.
+    static let toastEdge = UIColor { trait in
+        let mirrored: UIUserInterfaceStyle = trait.userInterfaceStyle == .light ? .dark : .light
+        return AppColors.stroke2.resolvedColor(with: UITraitCollection(userInterfaceStyle: mirrored))
+    }
 
     // MARK: - Theme-aware overlays (alpha on white / near-black ink)
     //
@@ -113,18 +294,12 @@ enum AppColors {
         return UIColor(red: 244.0 / 255.0, green: 82.0 / 255.0, blue: 63.0 / 255.0, alpha: alpha)
     }
 
-    // MARK: - Separator
-    static let separator = UIColor.separator
-
     // MARK: - Legacy aliases
     //
     // Existing screens reach for these names. Each one is now a thin alias on
     // top of the brand scales, so a future PR can grep-and-replace call sites
     // without changing the rendered colour.
 
-    /// Legacy "accent" — kept as systemBlue for now (pre-brand info actions).
-    /// Migrate sites individually before retiring.
-    static let accentBlue = UIColor.systemBlue
     /// Legacy green accent → maps onto the new `money500`.
     static let accentGreen = money500
     /// Legacy orange accent → maps onto the new `warn500`.
@@ -137,7 +312,6 @@ enum AppColors {
     static let snoozeButton = warn500
     /// Dismiss button green → `money500`.
     static let dismissButton = money500
-    static let disabledButton = UIColor.systemGray
 
     /// Warm gold used for the active "Поспать ещё" pill on the alarm-firing
     /// screen (#E8A838). Kept as its own literal because the firing UI uses a

@@ -19,6 +19,12 @@ final class SettingsIconRowCell: UITableViewCell {
 
     static let reuseID = "SettingsIconRowCell"
 
+    /// The Settings row rhythm every fixed-height section uses. Self-sizing
+    /// sections need it as a floor too: a one-line row measures ~40pt from its
+    /// contents alone, which would make a `automaticDimension` section read
+    /// visibly tighter than its fixed-height neighbours.
+    static let minimumRowHeight: CGFloat = 52
+
     // MARK: - UI
 
     /// Bare tinted glyph (~20pt) — no chip container. `tintColor` is set per
@@ -31,11 +37,19 @@ final class SettingsIconRowCell: UITableViewCell {
         return imageView
     }()
 
+    /// Two lines, because the longest Финансы titles don't fit on one and the
+    /// copy is canon: «Цена откладывания по умолчанию» measures 285pt at
+    /// `bodyLg` against ~232pt of free row width, so it used to render as
+    /// «Цена откладывания по ум…» (#519). The design row wraps in the same
+    /// situation — `.sp-row__main { flex: 1; min-width: 0 }` with no
+    /// `text-overflow` (`components.css:96`). A row whose title fits on one
+    /// line is unaffected; the sections that host such titles must return
+    /// `automaticDimension` from `heightForRowAt` so the second line has room.
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg1
-        label.numberOfLines = 1
+        label.numberOfLines = 2
         return label
     }()
 
@@ -86,7 +100,10 @@ final class SettingsIconRowCell: UITableViewCell {
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = .secondarySystemBackground
+        // The brand card surface, not the system grey — see ThemeSegmentCell
+        // for why this matters even though `styleAsCardRow` overwrites it on
+        // the Settings table (#515).
+        backgroundColor = AppColors.bg1
 
         let textStack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
         textStack.axis = .vertical
@@ -103,7 +120,16 @@ final class SettingsIconRowCell: UITableViewCell {
 
         trailingSwitch.addTarget(self, action: #selector(switchChanged), for: .valueChanged)
 
+        // Below required so it can't fight `UIView-Encapsulated-Layout-Height`
+        // on a fixed-height row mid-pass.
+        let minimumHeight = contentView.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: Self.minimumRowHeight
+        )
+        minimumHeight.priority = UILayoutPriority(999)
+
         NSLayoutConstraint.activate([
+            minimumHeight,
+
             // Fixed 24pt box so titles align across rows regardless of the
             // symbol's intrinsic width (the glyph renders ~20pt centred).
             iconImageView.widthAnchor.constraint(equalToConstant: 24),

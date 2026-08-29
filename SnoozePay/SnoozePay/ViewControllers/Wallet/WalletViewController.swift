@@ -50,11 +50,17 @@ final class WalletViewController: UIViewController {
     // MARK: - Init
 
     init() {
-        let initialBalance = Decimal(BalanceService.shared.balance)
+        let initialBalance = BalanceService.shared.balance
         balanceCard = SPBalanceCard(
-            balance: initialBalance,
+            balance: Decimal(initialBalance),
             delta: nil,
-            hint: WalletHints.defaultBalanceHint()
+            // Real hint from the first frame (#546). The placeholder this
+            // replaced was a hardcoded "~17 откладываний" that the first
+            // `refresh()` then contradicted.
+            hint: WalletHints.affordHint(
+                forBalance: initialBalance,
+                alarms: AlarmRepository.shared.fetchAll()
+            )
         )
         super.init(nibName: nil, bundle: nil)
     }
@@ -111,8 +117,9 @@ final class WalletViewController: UIViewController {
         // Hide the system nav bar on this tab — the custom page header owns the
         // title and there's no bar item to show (#280). Restored before a child
         // push (`openHistory`) so the child keeps its back arrow; popping back
-        // here re-hides it.
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+        // here re-hides it. Shared helper keeps the pair symmetric with the
+        // other two bar-less tabs (#517).
+        AppNavigationBarStyle.hideBar(on: self, animated: animated)
         refresh()
         // Pull corruption latched BEFORE this VC observed it (cold start: the
         // BalanceService init-time probe posts with no listener attached, and
@@ -203,7 +210,15 @@ final class WalletViewController: UIViewController {
         let load = WalletLedgerLoad.load(from: TransactionRepository.shared)
         let transactions = load.transactions
         let delta = load.didFail ? nil : WalletStats.weeklyDelta(from: transactions)
-        let hint = WalletHints.affordHint(forBalance: balance, averagePrice: 50)
+        // Alarms feed the "Хватит на ~N" price (#546) — the number used to be
+        // divided by a hardcoded 50 ₽ here, which is why this card and the
+        // alarms list disagreed. The lossy `fetchAll` is deliberate: an
+        // unreadable alarm store degrades the hint to the user's configured
+        // default price, it does not put an error banner on the wallet.
+        let hint = WalletHints.affordHint(
+            forBalance: balance,
+            alarms: AlarmRepository.shared.fetchAll()
+        )
         balanceCard.update(balance: decimal, delta: delta, hint: hint)
         weeklyChart.update(values: WalletStats.weeklyPenaltyTotals(from: transactions))
         rebuildTxPreview(load: load)
@@ -220,7 +235,10 @@ final class WalletViewController: UIViewController {
         }
         let items = WalletTransactionPreview.items(
             from: load.transactions,
-            alarmLookup: { AlarmRepository.shared.fetch(id: $0) }
+            // Checked read collapsed with `try?` (#271) — see the sibling site
+            // in `WalletTransactionHistoryViewController`: an unreadable alarm
+            // store degrades the row's caption, it does not fake an empty list.
+            alarmLookup: { try? AlarmRepository.shared.fetchChecked(id: $0) }
         )
         txPreviewHost.addArrangedSubview(makeTxPreviewCard(items: items))
     }
@@ -274,12 +292,13 @@ final class WalletViewController: UIViewController {
     }
 
     @objc private func openHistory() {
-        // The nav bar is hidden on this root (#280) — restore it before the
-        // push so the history screen keeps its standard back arrow + title.
-        // `viewWillAppear` re-hides it when the user pops back.
-        navigationController?.setNavigationBarHidden(false, animated: true)
-        let history = WalletTransactionHistoryViewController()
-        navigationController?.pushViewController(history, animated: true)
+        // The nav bar is hidden on this root (#280) — the helper restores it
+        // before the push so the history screen keeps its standard back arrow
+        // + title. `viewWillAppear` re-hides it when the user pops back.
+        AppNavigationBarStyle.pushRestoringBar(
+            WalletTransactionHistoryViewController(),
+            from: self
+        )
     }
 }
 

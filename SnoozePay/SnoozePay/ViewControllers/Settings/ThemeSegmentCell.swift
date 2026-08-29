@@ -71,7 +71,11 @@ final class ThemeSegmentCell: UITableViewCell {
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = .secondarySystemBackground
+        // The brand card surface, not the system grey. `styleAsCardRow` clears
+        // this and takes over the fill on every table that hosts the cell, but
+        // the system token was the wrong colour in dark (`#1C1C1E` against the
+        // card's `#0E1320`) for any host that doesn't (#515).
+        backgroundColor = AppColors.bg1
         selectionStyle = .none
 
         contentView.addSubview(iconImageView)

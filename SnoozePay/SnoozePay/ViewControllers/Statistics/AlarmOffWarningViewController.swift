@@ -19,12 +19,40 @@ import UIKit
 /// the statistics screen so PM can preview the visual.
 final class AlarmOffWarningViewController: UIViewController {
 
+    /// 80×80 pain-gradient rounded square the flame glyph sits on.
+    ///
+    /// An `SPGradientView` — the gradient IS the view's layer, so Auto Layout
+    /// sizes it — not a `CAGradientLayer` sublayer. The sublayer version (#536)
+    /// got its frame once, from a `DispatchQueue.main.async` hop at build time,
+    /// so every resize after the first left the fill at its old size with the
+    /// flame on the bare sheet. Same defect as #516 (invisible streak badge,
+    /// 1.01:1 dark / 1.16:1 light) and #529.
+    ///
+    /// Stops start empty on purpose: reading `SPSupport.painGradientColors`
+    /// here bakes `UITraitCollection.current` into a `CGColor` that never
+    /// re-resolves — `refreshHeroTheme()` installs them trait-explicitly.
+    let heroBadge = SPGradientView(colors: [], locations: SPSupport.painGradientLocations)
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
         configureLayout()
+        refreshHeroTheme()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (host: AlarmOffWarningViewController, _) in
+            host.refreshHeroTheme()
+        }
+    }
+
+    /// Re-resolve the badge's shadow + gradient: both are plain `CGColor`,
+    /// frozen at build time, and the sheet is built once in `viewDidLoad`.
+    private func refreshHeroTheme() {
+        heroBadge.layer.shadowColor = AppColors.pain500.resolvedColor(with: traitCollection).cgColor
+        heroBadge.refresh(
+            colors: SPSupport.painGradientColors(for: traitCollection),
+            locations: SPSupport.painGradientLocations
+        )
     }
 
     // MARK: - Layout
@@ -89,11 +117,10 @@ final class AlarmOffWarningViewController: UIViewController {
         caps.textAlignment = .center
         caps.translatesAutoresizingMaskIntoConstraints = false
 
-        // Right-side spacer mirrors the close button's width so the caps land
-        // visually centred.
+        // Right-side spacer mirrors the close button's width (constrained
+        // below) so the caps land visually centred.
         let spacer = UIView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
-        spacer.widthAnchor.constraint(equalTo: closeButton.widthAnchor).isActive = true
 
         let row = UIStackView(arrangedSubviews: [closeButton, caps, spacer])
         row.axis = .horizontal
@@ -110,7 +137,11 @@ final class AlarmOffWarningViewController: UIViewController {
             row.topAnchor.constraint(equalTo: wrap.topAnchor),
             row.bottomAnchor.constraint(equalTo: wrap.bottomAnchor),
             row.leadingAnchor.constraint(equalTo: wrap.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: wrap.trailingAnchor)
+            row.trailingAnchor.constraint(equalTo: wrap.trailingAnchor),
+            // Activated HERE, not beside `spacer`: autolayout resolves the common
+            // ancestor at ACTIVATION time, and these two only share one once `row`
+            // owns both (#514 — activating earlier raised "no common ancestor").
+            spacer.widthAnchor.constraint(equalTo: closeButton.widthAnchor)
         ])
         return wrap
     }
@@ -118,27 +149,17 @@ final class AlarmOffWarningViewController: UIViewController {
     // MARK: - Hero
 
     private func makeHero() -> UIView {
-        // 80×80 pain-gradient rounded square + flame icon.
-        let badge = UIView()
+        let badge = heroBadge
         badge.translatesAutoresizingMaskIntoConstraints = false
         badge.layer.cornerRadius = AppRadius.lg
         badge.layer.cornerCurve = .continuous
+        // No clipping: the gradient is the view's own layer, so `cornerRadius`
+        // already rounds the fill and `masksToBounds` would eat the shadow.
         badge.layer.masksToBounds = false
-        badge.layer.shadowColor = AppColors.pain500.cgColor
+        // `shadowColor` and the gradient stops come from `refreshHeroTheme()`.
         badge.layer.shadowOpacity = 0.40
         badge.layer.shadowOffset = CGSize(width: 0, height: 16)
         badge.layer.shadowRadius = 24
-
-        let gradient = CAGradientLayer()
-        gradient.colors = SPSupport.painGradientColors
-        gradient.locations = SPSupport.painGradientLocations
-        gradient.startPoint = SPSupport.gradientStart
-        gradient.endPoint = SPSupport.gradientEnd
-        gradient.cornerRadius = AppRadius.lg
-        badge.layer.insertSublayer(gradient, at: 0)
-        DispatchQueue.main.async {
-            gradient.frame = badge.bounds
-        }
 
         let flame = UIImageView(
             image: UIImage(
