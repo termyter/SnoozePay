@@ -14,7 +14,7 @@ import UIKit
 ///
 /// - 14×16 padding, 16pt radius.
 /// - Background: `linear-gradient(135deg, money400@12% 0%, money400@4% 100%)`.
-/// - Border: 1pt `money400@18%`.
+/// - Border: 1pt `money400`, alpha per theme (see `borderColor(for:)`).
 /// - 36×36 rounded-rect money gradient with flame icon (`fgOnMoney`).
 /// - Caps title `money300`, meta `fg2`, chevron `fg3`.
 ///
@@ -23,21 +23,101 @@ import UIKit
 /// then alarm cards via UITableView").
 final class AlarmsStreakBannerView: UIView {
 
+    // MARK: - Theme-aware surface
+    //
+    // Two things were wrong here (#531).
+    //
+    // **The fill froze.** Every stop was taken as `.cgColor` off a dynamic
+    // token inside a property initializer and handed to `CAGradientLayer`.
+    // A `CGColor` has no link back to the `UIColor` it was resolved from, so
+    // the ramp stayed on whichever theme was current at `init` while the ink
+    // above it re-resolved. `registerForTraitChanges` was present but
+    // repainted only `borderColor` — half the state, which is exactly why the
+    // file read as correct. Sixth instance of this class: #491, #494, #498,
+    // #507, #516.
+    //
+    // **The surface was not a surface.** Measured against the page the banner
+    // sits on (`bg0`, `AlarmsListViewController`), sRGB / WCAG 2.1:
+    //
+    //     dense fill  money400@12%   dark 1.20:1   light 1.17:1
+    //     sparse fill money400@4%    dark 1.05:1   light 1.05:1
+    //     border      money400@18%   dark 1.38:1   light 1.28:1
+    //
+    // So neither the fill NOR the border separated the banner from the page —
+    // at 1.28:1 a 1pt line is not an edge, it is a rumour. Taking the surface
+    // "one step darker" is not available either: the whole `bg0…bg4` ramp
+    // measures 1.07–1.61:1 against the page in both themes (#518).
+    //
+    // **The decision.** The tint stays a decorative wash — that is the canon
+    // recipe and the banner is identified by its caps title, icon tile and
+    // chevron, not by its container, so WCAG 1.4.11 is not in play. The edge
+    // is carried by the border ALONE, and therefore the border has to earn
+    // it: raised to the alphas below, which clear the 3:1 non-text floor
+    // against the page in both themes. Border over the page is the
+    // conservative reading — the layer stroke actually composites over the
+    // wash, which measures 3.20–4.02:1.
+
+    /// Fill alphas of the money-tinted glass, densest stop first. Internal so
+    /// `AlarmsStreakBannerThemeTests` composites the SAME values the view
+    /// renders instead of a copy of them.
+    static let fillAlphas: [CGFloat] = [0.12, 0.04]
+    static let fillLocations: [NSNumber] = [0.0, 1.0]
+
+    /// Border alpha per theme. Dark 3.40:1 and light 3.15:1 against `bg0` —
+    /// see the block above for why these are not the canon 18%.
+    static let borderAlphas: (dark: CGFloat, light: CGFloat) = (0.50, 0.75)
+
+    /// Fill stops resolved against `trait`. Trait-explicit on purpose: the
+    /// plain `.cgColor` path snapshots `UITraitCollection.current`, which
+    /// inside a view method is not necessarily this view's traits.
+    static func fillColors(for trait: UITraitCollection) -> [CGColor] {
+        let money = AppColors.money400.resolvedColor(with: trait)
+        return fillAlphas.map { money.withAlphaComponent($0).cgColor }
+    }
+
+    /// The banner's only edge — see the decision recorded above.
+    static func borderColor(for trait: UITraitCollection) -> UIColor {
+        let alpha = trait.userInterfaceStyle == .dark ? borderAlphas.dark : borderAlphas.light
+        return AppColors.money400.resolvedColor(with: trait).withAlphaComponent(alpha)
+    }
+
+    // MARK: - Rendered state (for tests)
+    //
+    // Read-only windows onto what the layers actually carry, so a test can
+    // assert the rendered stops rather than re-deriving them.
+
+    var renderedFillStops: [CGColor] { stops(of: backgroundView) }
+    var renderedIconStops: [CGColor] { stops(of: iconHost) }
+    var renderedBorderColor: CGColor? { backgroundView.layer.borderColor }
+
+    private func stops(of view: SPGradientView) -> [CGColor] {
+        guard let layer = view.layer as? CAGradientLayer else { return [] }
+        return (layer.colors as? [CGColor]) ?? []
+    }
+
     // MARK: - Public API
 
     /// Triggered on tap — host wires this to open `StreakModalViewController`.
     var onTap: (() -> Void)?
 
+    /// Last rendered copy — kept so a theme flip can re-resolve the caps
+    /// title's snapshotted colour without the host re-configuring.
+    private var lastCopy: (streakDays: Int, savedAmount: Decimal)?
+
     /// Configure with current streak + savings. Pass `streakDays = 0` to
     /// render no copy (the host should hide the view instead).
     func configure(streakDays: Int, savedAmount: Decimal) {
+        lastCopy = (streakDays, savedAmount)
         let title = "\(streakDays) \(Self.daysWord(for: streakDays)) БЕЗ ОТКЛАДЫВАНИЙ"
         capsLabel.attributedText = NSAttributedString(
             string: title.uppercased(),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.money300
+                // `attributedText` snapshots the resolved colour the same way
+                // `CGColor` does, so it has to be resolved against the live
+                // traits and re-run on a flip (mirrors SPAlarmBackendBanner).
+                .foregroundColor: AppColors.money300.resolvedColor(with: traitCollection)
             ]
         )
         let formatted = NSDecimalNumber(decimal: savedAmount).decimalValue.formattedRubles()
@@ -46,28 +126,23 @@ final class AlarmsStreakBannerView: UIView {
 
     // MARK: - Subviews
 
+    /// Money-tinted glass. Stops start empty on purpose — resolving a dynamic
+    /// token inside a property initializer reads `UITraitCollection.current`,
+    /// not this view's traits. `refreshDynamicColors()` owns them.
     private let backgroundView: SPGradientView = {
-        // Money-tinted glass — two-stop 135° from money400@12% → money400@4%.
-        let colors: [CGColor] = [
-            AppColors.money400.withAlphaComponent(0.12).cgColor,
-            AppColors.money400.withAlphaComponent(0.04).cgColor
-        ]
-        let view = SPGradientView(colors: colors, locations: [0.0, 1.0])
+        let view = SPGradientView(colors: [], locations: AlarmsStreakBannerView.fillLocations)
         view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerRadius = AppRadius.md
         view.layer.masksToBounds = true
         view.layer.borderWidth = 1
-        view.layer.borderColor = AppColors.money400.withAlphaComponent(0.18).cgColor
         view.isUserInteractionEnabled = false
         return view
     }()
 
-    /// 36×36 money-gradient rounded square with flame icon.
+    /// 36×36 money-gradient rounded square with flame icon. Same empty-stops
+    /// contract as `backgroundView`.
     private let iconHost: SPGradientView = {
-        let view = SPGradientView(
-            colors: SPSupport.moneyGradientColors,
-            locations: SPSupport.moneyGradientLocations
-        )
+        let view = SPGradientView(colors: [], locations: SPSupport.moneyGradientLocations)
         view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerRadius = 10
         view.layer.masksToBounds = true
@@ -124,9 +199,10 @@ final class AlarmsStreakBannerView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure()
+        refreshDynamicColors()
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: AlarmsStreakBannerView, _) in
-                view.backgroundView.layer.borderColor = AppColors.money400.withAlphaComponent(0.18).cgColor
+                view.refreshDynamicColors()
             }
         }
     }
@@ -139,7 +215,24 @@ final class AlarmsStreakBannerView: UIView {
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         if #available(iOS 17.0, *) { return }
-        backgroundView.layer.borderColor = AppColors.money400.withAlphaComponent(0.18).cgColor
+        refreshDynamicColors()
+    }
+
+    /// `CGColor` and `NSAttributedString` both snapshot the resolved colour,
+    /// so a light/dark flip has to re-resolve every one of them by hand.
+    private func refreshDynamicColors() {
+        backgroundView.refresh(
+            colors: Self.fillColors(for: traitCollection),
+            locations: Self.fillLocations
+        )
+        backgroundView.layer.borderColor = Self.borderColor(for: traitCollection).cgColor
+        iconHost.refresh(
+            colors: SPSupport.moneyGradientColors(for: traitCollection),
+            locations: SPSupport.moneyGradientLocations
+        )
+        if let lastCopy {
+            configure(streakDays: lastCopy.streakDays, savedAmount: lastCopy.savedAmount)
+        }
     }
 
     // MARK: - Layout
