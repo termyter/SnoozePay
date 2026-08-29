@@ -315,4 +315,39 @@ final class StoreKitServiceTests: XCTestCase {
             "an unmapped SKU with a resolved StoreKit price still credits that price"
         )
     }
+
+    // MARK: - #575: forced-empty catalogue flag
+
+    /// The flag must be opt-in. This is the half that matters for safety: if
+    /// absence of `-uitour-storekit-empty` ever started forcing an empty
+    /// catalogue, every top-up in a DEBUG build would silently take the local
+    /// `BalanceService.topUp` fallback and stop reaching StoreKit at all.
+    func testCatalogForcedEmpty_isFalseWithoutTheFlag() {
+        XCTAssertFalse(
+            StoreKitService.isCatalogForcedEmpty(arguments: []),
+            "no arguments must leave the normal product load path intact"
+        )
+        XCTAssertFalse(
+            StoreKitService.isCatalogForcedEmpty(
+                arguments: ["-uitour", "firing-nobalance", "-uitour-reset", "-uitour-balance", "0"]
+            ),
+            "the other -uitour flags must not imply an empty catalogue"
+        )
+    }
+
+    /// The half the E2E depends on: the flag is recognised exactly as spelled
+    /// in `NoBalanceTopUpUITests.launchArguments`. A typo on either side would
+    /// otherwise put the test straight back on luck (#575).
+    func testCatalogForcedEmpty_isTrueWithTheFlag() {
+        XCTAssertTrue(
+            StoreKitService.isCatalogForcedEmpty(
+                arguments: ["-uitour", "firing-nobalance", StoreKitService.emptyCatalogArgument]
+            )
+        )
+        XCTAssertEqual(
+            StoreKitService.emptyCatalogArgument,
+            "-uitour-storekit-empty",
+            "spelling is contract with the UI test's launchArguments — change both or neither"
+        )
+    }
 }

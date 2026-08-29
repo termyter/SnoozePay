@@ -181,7 +181,46 @@ final class StoreKitService {
 
     // MARK: - Load products
 
+    #if DEBUG
+    /// `-uitour-storekit-empty` — DEBUG-only launch argument that pins the
+    /// catalogue empty for the whole session: `loadProducts()` returns without
+    /// ever calling `Product.products(for:)`.
+    ///
+    /// Exists because an E2E test must not be a function of whether the App
+    /// Store answered the runner (#575, and #557 before it). Every top-up call
+    /// site — no-balance CTA, firing top-up sheet, deposit sheet — branches on
+    /// `products.first(where:)` and falls back to a local `BalanceService.topUp`
+    /// under `#if DEBUG` when the SKU is missing. Before the app moved to its
+    /// real ASC bundle ID that fallback was reached by accident (no matching
+    /// app → nothing resolved); afterwards the catalogue resolved on CI, the
+    /// real `purchase(_:)` ran, and the simulator put up a "Sign in to Apple
+    /// Account" dialog that no test can satisfy. This flag makes the fallback
+    /// branch a stated precondition instead of a lucky one.
+    ///
+    /// Boolean `-uitour-…` flag in the style of `-uitour-reset` / `-uitour-seed`
+    /// (see `UITourLauncher`). DEBUG-only on purpose: a release build has no way
+    /// to express it, so the no-transaction credit path stays unreachable there.
+    static let emptyCatalogArgument = "-uitour-storekit-empty"
+
+    /// Pure form of the flag check, so a unit test can pin BOTH directions —
+    /// that the flag forces the empty catalogue, and that its absence leaves
+    /// the normal load path untouched.
+    static func isCatalogForcedEmpty(arguments: [String]) -> Bool {
+        arguments.contains(emptyCatalogArgument)
+    }
+    #endif
+
     func loadProducts() async {
+        #if DEBUG
+        if Self.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments) {
+            AppLogger.storeKit.notice(
+                "catalogue load skipped — \(Self.emptyCatalogArgument, privacy: .public) present (UI test)"
+            )
+            products = []
+            postProductsLoaded(products)
+            return
+        }
+        #endif
         do {
             let loaded = try await Product.products(for: Set(StoreKitService.productIDs))
             products = loaded.sorted { $0.price < $1.price }
