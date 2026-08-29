@@ -1,4 +1,5 @@
 #if DEBUG
+import os
 import UIKit
 
 /// The `-uitour <screen>` route table: screen id → how that screen is built and
@@ -204,17 +205,62 @@ enum UITourRoutes {
         }
     }
 
-    /// Presents a sheet/modal after the root has had a beat to lay out —
-    /// presenting from a VC that isn't in the hierarchy yet is a no-op.
+    /// Presents a sheet/modal once the presenter is actually on screen.
+    ///
+    /// The first attempt still lands on the original 0.8 s beat, so every
+    /// working route keeps the timing it has today. What changed (#618) is
+    /// what happens when that beat arrives too early: presenting from a view
+    /// controller whose view is not in a window is a silent no-op, and the old
+    /// one-shot version had no way to notice or recover. A congested main
+    /// queue delivered the block ~9 s late, onto a presenter that was already
+    /// gone, and the tour simply had no sheet:
+    ///
+    ///   [Presentation] Attempt to present <UINavigationController> on
+    ///   <UITabBarController> whose view is not in the window hierarchy.
+    ///
+    /// So check the condition the presentation actually needs, retry while it
+    /// is not met, and give up in the log rather than fire into nothing — a
+    /// screenshot of the bare tab bar is exactly the kind of "evidence" the
+    /// audit harness must never produce.
     private static func presentLater(
         _ vc: UIViewController,
         over presenter: UIViewController,
         then next: (() -> Void)? = nil
     ) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            (presenter.presentedViewController ?? presenter)
-                .present(vc, animated: false, completion: next)
+        Self.present(vc, over: presenter, after: 0.8, attemptsLeft: 50, then: next)
+    }
+
+    private static func present(
+        _ vc: UIViewController,
+        over presenter: UIViewController,
+        after delay: TimeInterval,
+        attemptsLeft: Int,
+        then next: (() -> Void)?
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            let host = presenter.presentedViewController ?? presenter
+            guard Self.canPresent(from: host) else {
+                guard attemptsLeft > 0 else {
+                    let name = String(describing: type(of: vc))
+                    AppLogger.ui.error(
+                        "uitour: \(name, privacy: .public) not presented — presenter stayed off screen"
+                    )
+                    return
+                }
+                Self.present(vc, over: presenter, after: 0.1, attemptsLeft: attemptsLeft - 1, then: next)
+                return
+            }
+            host.present(vc, animated: false, completion: next)
         }
+    }
+
+    /// The preconditions UIKit silently requires of a presenter: its view is in
+    /// a window and it is not itself mid-transition.
+    private static func canPresent(from host: UIViewController) -> Bool {
+        host.viewIfLoaded?.window != nil
+            && !host.isBeingPresented
+            && !host.isBeingDismissed
+            && host.presentedViewController == nil
     }
 
     /// The warning sheet shaped exactly as `StatisticsViewController` presents

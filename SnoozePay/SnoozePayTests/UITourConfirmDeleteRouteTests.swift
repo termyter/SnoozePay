@@ -36,6 +36,20 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // #618. These are the first tests in the unit suite that spin the main
+        // run loop for any length of time, so without this they inherit every
+        // piece of deferred UIKit work the ~1000 preceding synchronous tests
+        // left queued. The failing run proves it: inside this class's own wait
+        // the log flooded with "Unbalanced calls to begin/end appearance
+        // transitions" for OnboardingViewController / StreakModalViewController
+        // / UITabBarController — objects belonging to *other* suites — and the
+        // route's own presentation was delivered ~9 s behind its 0.8 s beat.
+        //
+        // Draining here takes that backlog OUT of what the wait measures. The
+        // alternative — a wider timeout — would have to be wide enough to hold
+        // the whole backlog, and a window that wide no longer notices a real
+        // routing regression, which is the only thing this class is for.
+        drainMainQueue()
         previousKeyWindow = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
@@ -61,7 +75,10 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         UITourLauncher.mount("confirm-delete", in: window)
 
         guard let sheet = waitForPresentedSheet() else {
-            return XCTFail("`-uitour confirm-delete` never presented the confirmation sheet")
+            return XCTFail("""
+                `-uitour confirm-delete` never presented the confirmation sheet. \
+                \(presentationDiagnostics())
+                """)
         }
 
         // The presenter must be the alarm-edit form, already on screen — this
@@ -75,6 +92,34 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         XCTAssertNotNil(nav?.viewIfLoaded?.window, "The presenter must be in the window hierarchy")
     }
 
+    /// The route must not fire its presentation blind.
+    ///
+    /// It used to present on a flat 0.8 s timer and never check, so whenever
+    /// the main queue was busy enough to deliver that block late the tour
+    /// presented onto a view controller that had already left the window —
+    /// which UIKit silently drops, with no retry and no sheet (#618). Taking
+    /// the presenter out of the hierarchy before the beat is the cheap way to
+    /// assert the check exists: without it, `root` ends up owning a
+    /// presentation that nobody can ever see.
+    func testConfirmDeleteRouteDoesNotPresentIntoADetachedPresenter() {
+        UITourLauncher.mount("confirm-delete", in: window)
+        guard let root = window.rootViewController else {
+            return XCTFail("the route must mount a root before it presents anything")
+        }
+
+        window.rootViewController = nil
+        // Comfortably past the route's own 0.8 s beat, so "nothing presented"
+        // means "declined to present", not "hasn't tried yet".
+        let beatPassed = XCTestExpectation(description: "route had its chance to fire")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { beatPassed.fulfill() }
+        _ = XCTWaiter.wait(for: [beatPassed], timeout: 10)
+
+        XCTAssertNil(
+            root.presentedViewController,
+            "The route presented onto a detached presenter — UIKit drops that on the floor and never retries"
+        )
+    }
+
     // MARK: - Content
 
     func testConfirmDeleteSheetShowsTitleBodyAndBothActions() {
@@ -83,7 +128,10 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         UITourLauncher.mount("confirm-delete", in: window)
 
         guard let sheet = waitForSizedSheet() else {
-            return XCTFail("`-uitour confirm-delete` never presented a sized confirmation sheet")
+            return XCTFail("""
+                `-uitour confirm-delete` never presented a sized confirmation sheet. \
+                \(presentationDiagnostics())
+                """)
         }
         let diagnostics = layoutDiagnostics()
 
@@ -112,7 +160,10 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         UITourLauncher.mount("confirm-delete", in: window)
 
         guard let sheet = waitForSizedSheet() else {
-            return XCTFail("`-uitour confirm-delete` never presented a sized confirmation sheet")
+            return XCTFail("""
+                `-uitour confirm-delete` never presented a sized confirmation sheet. \
+                \(presentationDiagnostics())
+                """)
         }
         let diagnostics = layoutDiagnostics()
 
@@ -148,6 +199,27 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     }
 
     // MARK: - Waiting
+
+    /// Runs the main queue until a freshly enqueued block comes back promptly,
+    /// i.e. until nothing of anyone else's is still queued ahead of it. The
+    /// queue is FIFO, so one prompt round trip is proof the backlog is gone;
+    /// the loop only exists because draining it can enqueue more work in turn.
+    ///
+    /// Capped rather than unbounded: a main queue that never goes quiet is a
+    /// finding, and it should surface as this class timing out — not as the
+    /// whole suite hanging with no output.
+    private func drainMainQueue(cap: TimeInterval = 60) {
+        let deadline = Date().addingTimeInterval(cap)
+        while deadline.timeIntervalSinceNow > 0 {
+            let turn = XCTestExpectation(description: "main queue turn")
+            let enqueuedAt = Date()
+            DispatchQueue.main.async { turn.fulfill() }
+            guard XCTWaiter.wait(
+                for: [turn], timeout: deadline.timeIntervalSinceNow
+            ) == .completed else { return }
+            if Date().timeIntervalSince(enqueuedAt) < 0.1 { return }
+        }
+    }
 
     /// Waits until the sheet is merely in the window hierarchy.
     private func waitForPresentedSheet(timeout: TimeInterval = 10) -> ConfirmDeleteAlarmViewController? {
@@ -231,6 +303,22 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             node = current.superview
         }
         return !candidate.bounds.isEmpty
+    }
+
+    /// Printed on a wait timeout so the next failure names the missing link
+    /// instead of only saying that one is missing. "chain: UITabBarController"
+    /// means the route never fired at all; a chain that reaches the sheet with
+    /// `window: nil` means it fired at a presenter that had left the hierarchy
+    /// and UIKit dropped it — two different bugs behind one old message (#618).
+    private func presentationDiagnostics() -> String {
+        var chain: [String] = []
+        var current = window?.rootViewController
+        while let node = current {
+            let attached = node.viewIfLoaded?.window == nil ? "window: nil" : "window: set"
+            chain.append("\(type(of: node))(\(attached))")
+            current = node.presentedViewController
+        }
+        return "presentation chain: " + (chain.isEmpty ? "no root view controller" : chain.joined(separator: " → "))
     }
 
     /// Printed on timeout so a future failure says WHAT was zero-sized instead
