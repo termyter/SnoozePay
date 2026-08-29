@@ -244,6 +244,7 @@ final class BalanceService {
     private func credit(
         type: TransactionType,
         amount: Double,
+        createdAt: Date = Date(),
         refundsTransactionID: UUID? = nil
     ) -> Bool {
         // Reject non-finite / non-positive amounts (#441): a negative credit
@@ -261,6 +262,7 @@ final class BalanceService {
                 type: type,
                 amount: amount,
                 currency: walletCurrency,
+                createdAt: createdAt,
                 refundsTransactionID: refundsTransactionID
             )
             // Ledger first: if the store is locked (corrupt blob awaiting user
@@ -385,7 +387,12 @@ final class BalanceService {
     /// True only for a wallet that has never held or moved money: zero balance,
     /// no ledger rows, no latched corruption. Such a wallet has nothing to
     /// restate, so it may adopt any currency.
-    private var walletIsPristine: Bool {
+    ///
+    /// `internal` because `TopUpRestoreService` gates on exactly this state
+    /// (#364): a clean install is the one wallet whose paid history may be
+    /// rebuilt from `StoreKit.Transaction.all`, and it is the one wallet that
+    /// may adopt the currency those transactions were paid in.
+    var walletIsPristine: Bool {
         queue.sync {
             let current = readRawBalance()
             guard !_balanceCorrupted, current == 0 else { return false }
@@ -414,9 +421,19 @@ final class BalanceService {
     /// StoreKit does not report one, the amount is credited into the wallet's
     /// existing currency and **nothing is frozen**. Guessing there is exactly
     /// how a wallet would quietly acquire a currency nobody chose.
-    func topUpFromPurchase(amount: Double, currency: Currency?) -> PurchaseCredit {
+    ///
+    /// `purchasedAt` stamps the ledger row. It defaults to now for a live
+    /// purchase and carries the original date when a past purchase is restored
+    /// on a clean install (#364) — a top-up bought in March is March's revenue
+    /// in Statistics, not today's. It does not affect the balance: the ledger
+    /// sum is order-independent.
+    func topUpFromPurchase(
+        amount: Double,
+        currency: Currency?,
+        purchasedAt: Date = Date()
+    ) -> PurchaseCredit {
         guard let currency else {
-            return topUp(amount: amount) ? .credited : .notRecorded
+            return creditPaid(amount: amount, at: purchasedAt)
         }
         guard acceptsPurchase(in: currency) else {
             return .refusedCurrency(wallet: walletCurrency, purchase: currency)
@@ -432,7 +449,11 @@ final class BalanceService {
             // above and here. Refuse rather than credit into the wrong wallet.
             return .refusedCurrency(wallet: existing, purchase: attempted)
         }
-        return topUp(amount: amount) ? .credited : .notRecorded
+        return creditPaid(amount: amount, at: purchasedAt)
+    }
+
+    private func creditPaid(amount: Double, at date: Date) -> PurchaseCredit {
+        credit(type: .topup, amount: amount, createdAt: date) ? .credited : .notRecorded
     }
 
     /// Money-typed charge. Returns `false` when funds are insufficient,

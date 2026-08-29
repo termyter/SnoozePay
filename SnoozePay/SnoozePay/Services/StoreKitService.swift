@@ -575,7 +575,12 @@ final class StoreKitService {
     /// AFTER the dedup mark was set — without this rollback the transaction
     /// would look "already processed" on StoreKit's retry replay and finish
     /// silently without crediting (the very money-loss bug #115 is fixing).
-    private func unmarkProcessed(transactionID: UInt64) {
+    ///
+    /// `internal` because `TopUpRestoreService` (#364) shares this exact dedup
+    /// table — it must be able to roll a mark back for the same reason this
+    /// path does, and a restore that owned its own table would not deduplicate
+    /// against purchases at all.
+    func unmarkProcessed(transactionID: UInt64) {
         let key = Self.processedTxKey
         let idString = String(transactionID)
         guard var processed = defaults.array(forKey: key) as? [String] else {

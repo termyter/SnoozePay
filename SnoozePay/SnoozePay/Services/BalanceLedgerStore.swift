@@ -6,16 +6,18 @@ import os
 /// `duplicate` is a *success* from the caller's point of view — the row is
 /// already in the ledger, so the money it represents has already been counted.
 /// It is a separate case from `recorded` only so callers can tell "I moved the
-/// balance" from "someone else already did" (StoreKit restore, future CloudKit
-/// resync — issue #364).
+/// balance" from "someone else already did" (StoreKit restore, the clean-install
+/// top-up restore — issue #364).
 enum LedgerWriteResult: Equatable {
     case recorded
     case duplicate
     case rejected
 }
 
-/// Which backend holds the ledger. Phase 1 of #364 adds the CloudKit provider
-/// behind this same seam; until it ships, `.cloudKit` resolves to local.
+/// Which backend holds the ledger. `.cloudKit` was to be #364's second phase;
+/// that plan was dropped in favour of restoring paid top-ups from
+/// `StoreKit.Transaction.all` (see `TopUpRestoreService`), so nothing builds
+/// this provider and it resolves to local.
 enum BalanceLedgerProvider: String {
     case local
     case cloudKit
@@ -154,10 +156,9 @@ final class LocalBalanceLedgerStore: BalanceLedgerStore {
     }
 }
 
-/// Resolves the configured provider into a store. The flag exists so the
-/// CloudKit provider can be switched on separately once phase 1 of #364 lands
-/// (it needs an iCloud entitlement and a container — both PM-gated), without
-/// another change to `BalanceService`.
+/// Resolves the configured provider into a store. The flag survives the
+/// rejection of CloudKit in #364 as the seam an off-device ledger would plug
+/// into; today every value resolves to the local store.
 enum BalanceLedgerStoreFactory {
 
     /// Set to a `BalanceLedgerProvider` raw value to pick the backend.
@@ -184,7 +185,7 @@ enum BalanceLedgerStoreFactory {
         // Deliberately not a fatalError: a stale flag on a device must degrade
         // to the working local wallet, not brick it.
         os_log(
-            "CloudKit ledger provider requested but not built yet (#364 phase 1) — using local store",
+            "CloudKit ledger provider requested but never built (#364 rejected it) — using local store",
             log: log, type: .info
         )
         return local

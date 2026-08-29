@@ -63,6 +63,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // pile up unprocessed until the user opens TopUp.
         _ = StoreKitService.shared
 
+        // Rebuild the paid part of the wallet when this install has none — a
+        // reinstall or a new device (#364). No-op on every launch after the
+        // first: `restoreIfNeeded()` returns immediately unless the wallet is
+        // pristine, and each transaction is credited at most once via the
+        // StoreKit dedup table.
+        Task { await TopUpRestoreService.shared.restoreIfNeeded() }
+
         // Handle notification responses
         UNUserNotificationCenter.current().delegate = self
 
