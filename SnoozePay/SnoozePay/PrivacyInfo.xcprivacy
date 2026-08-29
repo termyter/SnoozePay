@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Приложение не отслеживает пользователя в смысле ATT: нет ни рекламных
+	     SDK, ни идентификаторов, ни передачи данных третьим лицам. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<!-- Пусто намеренно. У приложения нет сети: ни URLSession, ни сторонних
+	     сетевых зависимостей, ни бэкенда. Всё состояние — локальный
+	     UserDefaults; покупки целиком обрабатывает StoreKit на стороне Apple,
+	     и данные о них до нас в идентифицируемом виде не доходят.
+	     Появится аналитика, аккаунты или CloudKit-леджер (#364) — эту секцию
+	     придётся заполнить до следующей загрузки. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!-- UserDefaults — required-reason API с весны 2024. Держит всё
+			     состояние приложения: saved_alarms, user_balance,
+			     transactions, preferred_theme, onboarding_completed. -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<!-- CA92.1 — доступ только к данным самого приложения,
+				     без чтения чужих и без App Group. -->
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

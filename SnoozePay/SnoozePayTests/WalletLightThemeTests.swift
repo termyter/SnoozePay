@@ -20,6 +20,20 @@ import XCTest
 ///    13pt copy at 2.10:1.
 final class WalletLightThemeTests: XCTestCase {
 
+    /// Hosted windows are unhidden (see `host(_:style:)`), so they are hidden
+    /// again and released here — a visible window left behind outlives the test
+    /// and takes its trait environment into the next one.
+    private var hostWindows: [UIWindow] = []
+
+    override func tearDown() {
+        hostWindows.forEach {
+            $0.isHidden = true
+            $0.rootViewController = nil
+        }
+        hostWindows = []
+        super.tearDown()
+    }
+
     /// WCAG 2.1 floor for normal-size text.
     private let normalTextFloor: CGFloat = 4.5
     /// WCAG 2.1 floor for large text and for non-text graphics (icon glyphs).
@@ -179,28 +193,27 @@ final class WalletLightThemeTests: XCTestCase {
     // MARK: - Footer disclaimer
 
     /// Hosted in a real `UIWindow` — a detached view never gets the
-    /// trait-change callback, so both themes measure identical. The override
-    /// goes on the CONTROLLER: an invisible, scene-less window does not push a
-    /// style change down through its `rootViewController`. Both directions are
-    /// skip-guarded, or a harness that fails to flip asserts light twice.
+    /// trait-change callback, so both themes measure identical.
+    ///
+    /// The window is UNHIDDEN and the override goes on the WINDOW (#568). The
+    /// previous shape — hidden window, override on the controller — propagated
+    /// nothing, so the guard fired and this case reported `skipped` on every
+    /// run since it was written. The old comment claimed a hidden window was
+    /// deliberate because `viewWillAppear` can present the corruption alert;
+    /// that alert only surfaces when `BalanceService.balanceCorrupted` is
+    /// latched, and if it ever does surface it changes nothing this case
+    /// measures — a label's `textColor` is read straight off the token.
     func testFooterDisclaimer_liftsInLightAndKeepsTheCanonQuietInkInDark() throws {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
-        let controller = WalletViewController()
-        window.rootViewController = controller
-        // Deliberately NOT made visible: making it visible runs the appearance
-        // cycle, and `viewWillAppear` can present the corruption alert.
-        controller.loadViewIfNeeded()
+        let (controller, window) = host(WalletViewController(), style: .light)
 
         let footer = try XCTUnwrap(
             findLabel(in: controller.view, startingWith: "Покупка не возвращается"),
             "footer disclaimer is no longer on the Wallet tab"
         )
 
-        controller.overrideUserInterfaceStyle = .light
-        window.layoutIfNeeded()
-        try XCTSkipUnless(
-            footer.traitCollection.userInterfaceStyle == .light,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            footer.traitCollection.userInterfaceStyle, .light,
+            "the harness stopped propagating light — fix the harness, do not skip"
         )
         // The `fgN` tokens are ALPHA over an ink, so both the measurement and
         // the identity check have to composite over the page first — `fg3`
@@ -223,11 +236,12 @@ final class WalletLightThemeTests: XCTestCase {
         )
 
         // Dark is the canon and deliberately quiet: the fix is light-only.
-        controller.overrideUserInterfaceStyle = .dark
+        window.overrideUserInterfaceStyle = .dark
         window.layoutIfNeeded()
-        try XCTSkipUnless(
-            footer.traitCollection.userInterfaceStyle == .dark,
-            "controller override did not propagate — a harness fact, not a component one"
+        XCTAssertEqual(
+            footer.traitCollection.userInterfaceStyle, .dark,
+            "the harness stopped propagating the flip back to dark — fix the harness, "
+            + "do not skip"
         )
         let darkPage = AppColors.bg0.resolved(.dark)
         XCTAssertEqual(
@@ -246,22 +260,19 @@ final class WalletLightThemeTests: XCTestCase {
     /// window because a detached view never gets the trait-change callback —
     /// without the window this test passes against the broken code.
     func testWeeklyChartBars_reresolveOnAThemeFlip() throws {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
-        let host = UIViewController()
         let chart = WalletWeeklyChartView()
         chart.frame = CGRect(x: 0, y: 0, width: 320, height: 80)
-        host.view.addSubview(chart)
-        window.rootViewController = host
+        let (owner, window) = host(UIViewController(), style: .dark)
+        owner.view.addSubview(chart)
         chart.update(values: [0, 0, 0, 0, 0, 0, Decimal(200)])
-
-        window.overrideUserInterfaceStyle = .dark
         window.layoutIfNeeded()
-        try XCTSkipUnless(
-            chart.traitCollection.userInterfaceStyle == .dark,
-            "window override did not propagate — a harness fact, not a component one"
+
+        XCTAssertEqual(
+            chart.traitCollection.userInterfaceStyle, .dark,
+            "the harness stopped propagating dark — fix the harness, do not skip"
         )
         let inDark = gradientStops(in: chart)
-        try XCTSkipUnless(!inDark.isEmpty, "no gradient bar was installed for a non-zero day")
+        XCTAssertFalse(inDark.isEmpty, "no gradient bar was installed for a non-zero day")
 
         window.overrideUserInterfaceStyle = .light
         window.layoutIfNeeded()
@@ -289,6 +300,25 @@ final class WalletLightThemeTests: XCTestCase {
     }
 
     // MARK: - Fixtures
+
+    /// A controller in a window that actually propagates its theme.
+    ///
+    /// Both halves are load-bearing and both were missing (#568): the window
+    /// has to be unhidden, and the override has to be on the WINDOW and set
+    /// before `rootViewController`, so anything baked in `viewDidLoad` is baked
+    /// in the theme the case asserts. Guards are `XCTFail`, never `XCTSkip`.
+    private func host<T: UIViewController>(_ controller: T, style: UIUserInterfaceStyle) -> (T, UIWindow) {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.overrideUserInterfaceStyle = style
+        window.isHidden = false
+        window.rootViewController = controller
+        hostWindows.append(window)
+        controller.loadViewIfNeeded()
+        controller.view.frame = window.bounds
+        window.setNeedsLayout()
+        window.layoutIfNeeded()
+        return (controller, window)
+    }
 
     /// Every gradient stop under `root`, flattened to hex so two snapshots
     /// can be compared across a theme flip.

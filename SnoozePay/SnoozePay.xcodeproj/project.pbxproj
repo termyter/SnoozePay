@@ -36,14 +36,14 @@
 /* Begin PBXFileReference section */
 		3E2103042F525C3C00998846 /* SnoozePay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SnoozePay.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4AED0CBCB2279D458B93ABDC /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		AA0001012F5B000000000002 /* SnoozePayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		D9F3B13686755D92D101DDAA /* SnoozePayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FiringFlowUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F001 /* NoBalanceTopUpUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NoBalanceTopUpUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F002 /* CreateAlarmUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CreateAlarmUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F003 /* ProgressiveSnoozeUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProgressiveSnoozeUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F004 /* OnboardingFlowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnboardingFlowUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F005 /* ConfirmDeleteRouteUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConfirmDeleteRouteUITests.swift; sourceTree = "<group>"; };
+		AA0001012F5B000000000002 /* SnoozePayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D9F3B13686755D92D101DDAA /* SnoozePayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FiringFlowUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -67,8 +67,6 @@
 		};
 		AA0001022F5B000000000003 /* SnoozePayTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = SnoozePayTests;
 			sourceTree = "<group>";
 		};
@@ -147,7 +145,6 @@
 				A3400000000000000000F004 /* OnboardingFlowUITests.swift */,
 				A3400000000000000000F005 /* ConfirmDeleteRouteUITests.swift */,
 			);
-			name = SnoozePayUITests;
 			path = SnoozePayUITests;
 			sourceTree = SOURCE_ROOT;
 		};
@@ -331,7 +328,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				DEVELOPMENT_TEAM = A95YHPWR34;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
@@ -351,7 +348,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				DEVELOPMENT_TEAM = A95YHPWR34;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
@@ -374,7 +371,7 @@
 				CODE_SIGN_ENTITLEMENTS = SnoozePay/SnoozePay.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				DEVELOPMENT_TEAM = A95YHPWR34;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SnoozePay/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -386,7 +383,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Ivan-Emelyanov.SnoozePay";
+				PRODUCT_BUNDLE_IDENTIFIER = io.mobilife.SnoozePay;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -406,7 +403,7 @@
 				CODE_SIGN_ENTITLEMENTS = SnoozePay/SnoozePay.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				DEVELOPMENT_TEAM = A95YHPWR34;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SnoozePay/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -418,7 +415,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Ivan-Emelyanov.SnoozePay";
+				PRODUCT_BUNDLE_IDENTIFIER = io.mobilife.SnoozePay;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -557,7 +554,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				DEVELOPMENT_TEAM = A95YHPWR34;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Ivan-Emelyanov.SnoozePayTests";
@@ -578,7 +575,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8ZKDC782V4;
+				DEVELOPMENT_TEAM = A95YHPWR34;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Ivan-Emelyanov.SnoozePayTests";
