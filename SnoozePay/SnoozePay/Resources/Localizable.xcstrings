@@ -205,6 +205,174 @@
         }
       }
     },
+    "onboarding.button.deposit" : {
+      "comment" : "Primary call to action on onboarding page 3; the selected amount is appended by the button as a suffix. Also matched by SnoozePayUITests.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пополнить"
+          }
+        }
+      }
+    },
+    "onboarding.button.next" : {
+      "comment" : "Primary call to action on onboarding pages 1-2. SnoozePayUITests matches this copy on screen, so a change here changes the E2E expectation too.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дальше"
+          }
+        }
+      }
+    },
+    "onboarding.page1.body" : {
+      "comment" : "Step 1 body copy under the headline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждое откладывание стоит денег. Деньги не вернутся. Зато вы встанете."
+          }
+        }
+      }
+    },
+    "onboarding.page1.title" : {
+      "comment" : "Step 1 headline. The line break is the design (two centred lines under the 07:00 hero clock).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник\nсо ставкой"
+          }
+        }
+      }
+    },
+    "onboarding.page2.caps" : {
+      "comment" : "Caps caption above the step-2 headline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "КАК ЭТО РАБОТАЕТ"
+          }
+        }
+      }
+    },
+    "onboarding.page2.step1_body" : {
+      "comment" : "Body of numbered step 1 of the mechanics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это запас, из которого спишутся откладывания."
+          }
+        }
+      }
+    },
+    "onboarding.page2.step1_title" : {
+      "comment" : "Title of numbered step 1 of the mechanics. %@ is an already-formatted amount («500 ₽»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Положили %@"
+          }
+        }
+      }
+    },
+    "onboarding.page2.step2_body" : {
+      "comment" : "Body of numbered step 2 of the mechanics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый раз когда вы тянете, деньги уходят."
+          }
+        }
+      }
+    },
+    "onboarding.page2.step2_title" : {
+      "comment" : "Title of numbered step 2. 07:00 is the sample alarm time; %@ is an already-formatted amount and carries no sign, so the minus stays in the copy.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поспать ещё в 07:00 → −%@"
+          }
+        }
+      }
+    },
+    "onboarding.page2.step3_body" : {
+      "comment" : "Body of numbered step 3 of the mechanics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс продолжает лежать. Готов к завтрашнему утру."
+          }
+        }
+      }
+    },
+    "onboarding.page2.step3_title" : {
+      "comment" : "Title of numbered step 3 of the mechanics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Встали с первого раза → ничего"
+          }
+        }
+      }
+    },
+    "onboarding.page2.title" : {
+      "comment" : "Step 2 headline; the line break is the design.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Положи баланс.\nОткладывай — теряй."
+          }
+        }
+      }
+    },
+    "onboarding.page3.caps" : {
+      "comment" : "Caps caption above the step-3 deposit headline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "БАЛАНС · СКОЛЬКО ПОЛОЖИТЬ"
+          }
+        }
+      }
+    },
+    "onboarding.page3.title" : {
+      "comment" : "Step 3 headline; the line break is the design.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сколько ставите\nна свою дисциплину?"
+          }
+        }
+      }
+    },
     "plural.days.few" : {
       "comment" : "Streak length, form for 2-4, 22-24 (nominative): «3 дня».",
       "extractionState" : "manual",
@@ -349,6 +517,78 @@
         }
       }
     },
+    "referral.applied.confirm" : {
+      "comment" : "Dismiss button of the referral confirmation alert. Latin «OK» in Russian too, but a translator may need it spelled out, so it goes through the catalogue. Kept in the referral domain rather than common.* because this is the only alert that uses it today (#600).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
+    "referral.applied.message" : {
+      "comment" : "Body of the confirmation alert after a friend's code is submitted.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бонус начислится, когда вы продержитесь 7 дней без откладываний."
+          }
+        }
+      }
+    },
+    "referral.applied.title" : {
+      "comment" : "Title of the confirmation alert after a friend's code is submitted.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код применён"
+          }
+        }
+      }
+    },
+    "referral.button.apply" : {
+      "comment" : "Button that submits a friend's referral code.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Применить"
+          }
+        }
+      }
+    },
+    "referral.button.copy" : {
+      "comment" : "Button that copies the user's referral code onto the pasteboard.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Копировать"
+          }
+        }
+      }
+    },
+    "referral.button.share" : {
+      "comment" : "Bottom call to action opening the system share sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поделиться кодом"
+          }
+        }
+      }
+    },
     "referral.error.already_applied" : {
       "comment" : "Error shown when the one-shot referral bonus has already been redeemed on this device.",
       "extractionState" : "manual",
@@ -393,6 +633,258 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Нельзя применить собственный код."
+          }
+        }
+      }
+    },
+    "referral.field.friend_code_placeholder" : {
+      "comment" : "Placeholder of the friend-code field. WAKEUP-7K2 is the sample code shape and stays Latin in every language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Например, WAKEUP-7K2"
+          }
+        }
+      }
+    },
+    "referral.friend_1.initial" : {
+      "comment" : "Avatar initial of the first sample friend. Must stay the first letter of referral.friend_1.name in every language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "М"
+          }
+        }
+      }
+    },
+    "referral.friend_1.name" : {
+      "comment" : "Name of the first sample friend — placeholder data until a referral backend exists.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маша К."
+          }
+        }
+      }
+    },
+    "referral.friend_1.status" : {
+      "comment" : "Status of the first sample friend: streak completed. Feminine to agree with «Маша».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Продержалась 7 дней"
+          }
+        }
+      }
+    },
+    "referral.friend_2.initial" : {
+      "comment" : "Avatar initial of the second sample friend. Must stay the first letter of referral.friend_2.name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Д"
+          }
+        }
+      }
+    },
+    "referral.friend_2.name" : {
+      "comment" : "Name of the second sample friend — placeholder data.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дима Р."
+          }
+        }
+      }
+    },
+    "referral.friend_2.status" : {
+      "comment" : "Status of the second sample friend: mid-streak. The numbers are part of the hard-coded sample data, not substitutions.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "День 4 из 7"
+          }
+        }
+      }
+    },
+    "referral.friend_2.trailing" : {
+      "comment" : "Trailing meta of the second sample friend — the bonus is close.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "скоро"
+          }
+        }
+      }
+    },
+    "referral.friend_3.initial" : {
+      "comment" : "Avatar initial of the third sample friend. Must stay the first letter of referral.friend_3.name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "А"
+          }
+        }
+      }
+    },
+    "referral.friend_3.name" : {
+      "comment" : "Name of the third sample friend — placeholder data.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Аня С."
+          }
+        }
+      }
+    },
+    "referral.friend_3.status" : {
+      "comment" : "Status of the third sample friend: streak just started.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "День 1 из 7"
+          }
+        }
+      }
+    },
+    "referral.friend_3.trailing" : {
+      "comment" : "Trailing meta of the third sample friend — streak under way.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "в процессе"
+          }
+        }
+      }
+    },
+    "referral.friend_code.hint" : {
+      "comment" : "Fine print under the friend-code field.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Можно ввести один раз. Бонус начисляется обоим, когда вы продержитесь 7 дней."
+          }
+        }
+      }
+    },
+    "referral.hero.body" : {
+      "comment" : "Explainer under the promo headline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда друг продержится 7 дней — оба получаете бонус в баланс."
+          }
+        }
+      }
+    },
+    "referral.hero.caps" : {
+      "comment" : "Caps caption on the deep-green promo panel. Rendered with letter spacing; uppercase is the design, not a formatting artefact, so it is spelled out here.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "РЕФЕРАЛЬНАЯ ПРОГРАММА"
+          }
+        }
+      }
+    },
+    "referral.hero.headline" : {
+      "comment" : "Promo headline. %1$@ is the same money amount twice (already formatted, e.g. «200 ₽»), hence the positional specifier. The line break is the design.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%1$@ вам\n+%1$@ другу"
+          }
+        }
+      }
+    },
+    "referral.section.friend_code" : {
+      "comment" : "Caps section caption above the field where a friend's code is entered.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "КОД ДРУГА"
+          }
+        }
+      }
+    },
+    "referral.section.friends" : {
+      "comment" : "Caps section caption above the invited-friends list.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ДРУЗЬЯ"
+          }
+        }
+      }
+    },
+    "referral.section.personal_code" : {
+      "comment" : "Caps section caption above the user's own referral code.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ВАШ КОД"
+          }
+        }
+      }
+    },
+    "referral.share.message" : {
+      "comment" : "Text handed to the system share sheet. %1$@ is the referral code, %2$@ the already-formatted bonus amount.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывай меньше — копи больше. Используй мой код в SnoozePay: %1$@ — оба получим +%2$@ на баланс."
+          }
+        }
+      }
+    },
+    "referral.title" : {
+      "comment" : "Navigation title of the referral screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пригласить"
           }
         }
       }
