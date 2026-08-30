@@ -54,6 +54,14 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// Legal weekday indices for `repeatDays` (0 = Monday, 6 = Sunday).
     static let weekdayIndexRange: ClosedRange<Int> = 0...6
 
+    /// The name a new alarm carries until the user types one of their own.
+    ///
+    /// Computed rather than `static let` because `Localized` opens its bundle
+    /// lazily: a stored property here would be initialized by whichever call
+    /// site touched `Alarm` first, and pinning the copy to that moment is a
+    /// bug waiting for the day the display language can change at runtime.
+    static var defaultName: String { Localized.text("alarms.default_name") }
+
     // MARK: - Validating failable init (#207)
 
     /// Validating construction boundary. Returns `nil` when:
@@ -67,7 +75,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         validating id: UUID,
         time: Date = Date(),
         repeatDays: [Int] = [],
-        name: String = "Будильник",
+        name: String = Alarm.defaultName,
         soundID: String = "radar",
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
@@ -108,7 +116,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         id: UUID = UUID(),
         time: Date = Date(),
         repeatDays: [Int] = [],
-        name: String = "Будильник",
+        name: String = Alarm.defaultName,
         soundID: String = "radar",
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
@@ -257,21 +265,29 @@ struct Alarm: Identifiable, Equatable, Codable {
         min(max(raw.isFinite ? raw : 1.0, 0), 1)
     }
 
-    /// Human-readable repeat days string (e.g. "Пн, Вт, Пт")
+    /// Human-readable repeat days string (e.g. "Пн, Вт, Пт").
+    ///
+    /// The weekday table that used to live here is gone: the names now come
+    /// from `Weekday.localizedShortName`, the same catalogue entries the day
+    /// picker and the delete sheet read. Out-of-range indices are dropped
+    /// exactly as the file-local `[safe:]` subscript dropped them — that is
+    /// what `Weekday(legacyMondayFirstIndex:)` being failable buys, and it is
+    /// why the subscript itself could go with it.
     var repeatDaysDescription: String {
-        guard !repeatDays.isEmpty else { return "Единожды" }
+        guard !repeatDays.isEmpty else { return Localized.text("alarms.days.once") }
 
-        let dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         let allWeekdays = [0, 1, 2, 3, 4]
         let allWeekend = [5, 6]
 
         let sorted = repeatDays.sorted()
 
-        if sorted == Array(0...6) { return "Каждый день" }
-        if sorted == allWeekdays { return "Будни" }
-        if sorted == allWeekend { return "Выходные" }
+        if sorted == Array(0...6) { return Localized.text("alarms.days.every_day") }
+        if sorted == allWeekdays { return Localized.text("alarms.days.weekdays_plain") }
+        if sorted == allWeekend { return Localized.text("alarms.days.weekend") }
 
-        return sorted.compactMap { dayNames[safe: $0] }.joined(separator: ", ")
+        return sorted
+            .compactMap { Weekday(legacyMondayFirstIndex: $0)?.localizedShortName }
+            .joined(separator: ", ")
     }
 
     /// Next trigger date for display purposes
@@ -333,12 +349,5 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// about currencies, hence the legacy bridge (#561).
     var penaltyMoney: Money? {
         Money.legacy(penaltyAmount)
-    }
-}
-
-// MARK: - Safe array subscript
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
     }
 }

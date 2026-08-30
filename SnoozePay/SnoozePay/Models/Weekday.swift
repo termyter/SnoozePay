@@ -53,17 +53,22 @@ enum Weekday: Int, CaseIterable, Codable, Hashable {
 
     // MARK: - Display
 
-    /// Russian short label, matching the existing UI strings on
-    /// `Alarm.repeatDaysDescription` ("Пн, Вт, …").
+    /// Short label from the string catalogue, matching the existing UI strings
+    /// on `Alarm.repeatDaysDescription` ("Пн, Вт, …").
+    ///
+    /// The keys are spelled out per case rather than interpolated from a
+    /// suffix so that `git grep common.weekday.short` finds every one of them
+    /// — a catalogue key is an ordinary `String`, and an interpolated one is
+    /// invisible to every tool the project has.
     var localizedShortName: String {
         switch self {
-        case .monday: return "Пн"
-        case .tuesday: return "Вт"
-        case .wednesday: return "Ср"
-        case .thursday: return "Чт"
-        case .friday: return "Пт"
-        case .saturday: return "Сб"
-        case .sunday: return "Вс"
+        case .monday: return Localized.text("common.weekday.short.mon")
+        case .tuesday: return Localized.text("common.weekday.short.tue")
+        case .wednesday: return Localized.text("common.weekday.short.wed")
+        case .thursday: return Localized.text("common.weekday.short.thu")
+        case .friday: return Localized.text("common.weekday.short.fri")
+        case .saturday: return Localized.text("common.weekday.short.sat")
+        case .sunday: return Localized.text("common.weekday.short.sun")
         }
     }
 }
