@@ -12,6 +12,12 @@ import UIKit
 ///      утр». A median over one or two mornings is noise, not a habit.
 ///   3. Median available, baseline still short → the comparison columns drop
 ///      out rather than inventing a «раньше было».
+///
+/// A fourth case exists only defensively: a median the aggregation refused as
+/// not-a-time-of-day (#657). `wakeTimeStats` already returns `nil` for it, so
+/// the host takes case 1; if such a value is handed to `apply` directly, the
+/// columns go and no copy replaces them — «нужно ещё 0 утр» would be worse
+/// than silence.
 final class SPWakeTimeCard: UIView {
 
     // MARK: - Subviews
@@ -66,14 +72,23 @@ final class SPWakeTimeCard: UIView {
 
     func apply(_ stats: StatisticsViewModel.WakeTimeStats) {
         guard let median = stats.medianMinutes else {
-            // State 2 — some mornings recorded, not enough to call anything
-            // typical yet.
+            // Two states share this branch. State 2 — some mornings recorded,
+            // not enough to call anything typical yet — offers to keep
+            // counting. State 4 — a full window whose median was refused, or
+            // no history at all — says nothing, and the host hides the card
+            // outright (#657).
             columnsRow.isHidden = true
             pendingLabel.isHidden = true
-            accumulatingLabel.isHidden = false
-            accumulatingLabel.text = StatisticsViewModel.wakeSamplesPendingText(
-                stats.samplesUntilReady
-            )
+            accumulatingLabel.isHidden = !stats.isAccumulating
+            // Cleared, not merely left unwritten. A `UILabel` keeps its text
+            // after being hidden, and this card is reused across `apply` calls:
+            // a short window writes «нужно ещё 4 утра», the data then goes bad,
+            // and skipping the assignment would leave that sentence loaded
+            // behind a hidden label — one visibility refactor away from the
+            // screen, which is the thing being guarded against.
+            accumulatingLabel.text = stats.isAccumulating
+                ? StatisticsViewModel.wakeSamplesPendingText(stats.samplesUntilReady)
+                : nil
             return
         }
         columnsRow.isHidden = false
