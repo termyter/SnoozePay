@@ -92,50 +92,63 @@ final class FiringFlowUITests: XCTestCase {
 ///
 /// When an alert covers the element a test is about to touch, XCUITest calls
 /// it an *interrupting element* and runs the default interruption handler.
-/// That handler taps a button, then waits a **fixed 1.0 s** for the alert to
-/// go away. The window is not configurable, and missing it is not retried:
-/// the handler falls through to a last-ditch predicate that matches only
-/// English button labels (`label CONTAINS[d] "Don’t" OR label CONTAINS
-/// "Cancel"`), finds nothing in a Russian alert, logs `unable to find any
-/// qualified button` and gives up **for the rest of the test**. From that
-/// point every tap resolves to `Computed hit point {-1, -1}` and every
-/// `waitForExistence` after it times out against a covered screen.
+/// That handler taps a button **once**, waits for the app to go idle, then
+/// gives itself a fixed 1.0 s for the alert to disappear. If the alert is
+/// still there it does not tap again: it falls through to a last-ditch
+/// predicate matching only English labels (`label CONTAINS[d] "Don’t" OR
+/// label CONTAINS "Cancel"`), finds nothing in a Russian alert, logs
+/// `unable to find any qualified button` and gives up **for the rest of the
+/// test**. From that point every tap resolves to `Computed hit point
+/// {-1, -1}` and every `waitForExistence` after it times out against a
+/// covered screen.
 ///
-/// On a loaded runner the round trip after the tap costs more than 1.0 s, so
-/// which test dies is decided by which one drew the slow second — the exact
-/// signature reported in #626 (two red runs in a row, a different test each
-/// time, always on a `waitForExistence` right after a tap). Run 33295307930
-/// missed the window by 1.01 s; the green run 33294965122 on the same code
-/// made it with room to spare and confirmed handling.
+/// The single tap is the whole problem. In both #626 failures the app was
+/// *idle* when the check ran and the alert was still up — 2.3 s after the tap
+/// in run 33295307930, 10 s after it in run 33295938983. That is not the app
+/// being slow, that is the synthesized touch being dropped, the same failure
+/// this suite already documents in `OnboardingFlowUITests` (#523). Which test
+/// dies is decided by which one drew the dropped touch, which is exactly the
+/// reported signature: different test each run, always on a
+/// `waitForExistence` right after a tap.
 ///
-/// Doing it here removes the coin flip: our own wait has a budget we choose,
-/// and the assertion fails loudly if the alert will not go away, instead of
-/// silently poisoning the remaining steps.
+/// So the cure is the one #523 landed on: re-tap while the state the app
+/// controls has not changed, and fail loudly if it never does — instead of
+/// one blind tap and a silent surrender that poisons every later step.
 ///
 /// It lives in this file rather than its own because `SnoozePayUITests` is a
 /// plain group in `project.pbxproj` — adding a file there is a PM-zone edit.
 extension XCTestCase {
 
-    /// Wait for an app-owned alert and dismiss it through its first button.
-    /// Returns `false` when no alert showed up inside `timeout` — callers
-    /// decide whether that is a failure or the normal case.
+    /// Wait for an app-owned alert and dismiss it, re-tapping while it is
+    /// still up. Returns `false` when no alert showed up inside `timeout` —
+    /// callers decide whether that is a failure or the normal case.
     ///
     /// Always button 0. Every alert a tour launch can raise is either
     /// single-action («Ок») or cancel-first («Отмена» then «Настройки»), and
     /// the second button of the latter leaves the app for Settings — so index
-    /// 0 is the only safe choice. It is verified rather than trusted: the
-    /// alert must be gone afterwards.
+    /// 0 is the only safe choice.
+    ///
+    /// Re-tapping cannot double-fire into the screen underneath: the loop
+    /// re-checks that the alert is still on top before every tap, so a tap
+    /// that landed ends it. Stacked alerts are dismissed the same way, one per
+    /// pass — the tour can raise two (a launch-time one plus a flow one) and
+    /// leaving the second up is indistinguishable from a dropped touch.
     @discardableResult
     func dismissAppAlert(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
         let alert = app.alerts.firstMatch
         guard alert.waitForExistence(timeout: timeout) else { return false }
 
-        let button = alert.buttons.element(boundBy: 0)
-        XCTAssertTrue(button.waitForExistence(timeout: 5),
-                      "Alert «\(alert.label)» should offer a dismissing button")
-        button.tap()
-        XCTAssertTrue(alert.waitForNonExistence(timeout: 10),
-                      "Alert «\(alert.label)» should close after tapping «\(button.label)»")
+        var taps = 0
+        while taps < 4, alert.exists {
+            let button = alert.buttons.element(boundBy: 0)
+            guard button.exists else { break }
+            button.tap()
+            taps += 1
+            _ = alert.waitForNonExistence(timeout: 5)
+        }
+
+        XCTAssertFalse(alert.exists,
+                       "Alert «\(alert.label)» should be gone after \(taps) tap(s) on its first button")
         return true
     }
 }
