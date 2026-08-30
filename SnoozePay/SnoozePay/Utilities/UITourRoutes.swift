@@ -15,9 +15,9 @@ import UIKit
 ///
 /// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
 /// wallet, stats, settings, create, edit, theme-picker, sound-picker,
-/// volume-picker, confirm-delete, firing, firing-snoozed, firing-progressive,
-/// firing-nobalance, firing-topup, firing-topup-expensive, alarm-off-warning,
-/// txhistory, periodpicker, deposit, streak.
+/// volume-picker, confirm-delete, firing, firing-presented, firing-snoozed,
+/// firing-progressive, firing-nobalance, firing-topup, firing-topup-expensive,
+/// alarm-off-warning, txhistory, periodpicker, deposit, streak.
 enum UITourRoutes {
 
     /// The mounter for `screen`, or the fallback. An unknown screen id lands on
@@ -95,6 +95,20 @@ enum UITourRoutes {
             }
         },
         "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
+        // The same screen, mounted the way the app actually mounts it:
+        // `AlarmFiringPresenter` presents it FULL-SCREEN over the topmost view
+        // controller — it is never the window's root. Every other `firing*`
+        // route swaps the root instead, which is fine for a screenshot but
+        // makes `dismiss` a no-op: a view controller with no presenter cannot
+        // close, so on those routes the AlarmKit snooze hand-off (#383 — screen
+        // closes, the system owns the next ring) is invisible and untestable.
+        // `AlarmKitSnoozeHandoffUITests` (#642) asserts exactly that closing,
+        // so it needs a presenter underneath.
+        "firing-presented": { window in
+            let firing = AlarmFiringViewController(alarm: firingSampleAlarm())
+            firing.modalPresentationStyle = .fullScreen
+            mountPresented(firing, onTab: 0, in: window)
+        },
         "firing-progressive": {
             $0.rootViewController = AlarmFiringViewController(alarm: progressiveFiringAlarm())
         },

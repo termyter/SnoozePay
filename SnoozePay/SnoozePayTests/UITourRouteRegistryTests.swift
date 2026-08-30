@@ -37,6 +37,7 @@ final class UITourRouteRegistryTests: XCTestCase {
         "volume-picker",
         "confirm-delete",
         "firing",
+        "firing-presented",
         "firing-snoozed",
         "firing-progressive",
         "firing-nobalance",
@@ -95,6 +96,7 @@ final class UITourRouteRegistryTests: XCTestCase {
             "create": "CreateAlarmUITests",
             "confirm-delete": "ConfirmDeleteRouteUITests",
             "firing": "FiringFlowUITests",
+            "firing-presented": "AlarmKitSnoozeHandoffUITests (in FiringFlowUITests.swift)",
             "firing-progressive": "ProgressiveSnoozeUITests",
             "firing-nobalance": "NoBalanceTopUpUITests"
         ]
