@@ -114,45 +114,64 @@ final class FiringFlowUITests: XCTestCase {
 ///
 /// When an alert covers the element a test is about to touch, XCUITest calls
 /// it an *interrupting element* and runs the default interruption handler.
-/// That handler taps a button, then waits a **fixed 1.0 s** for the alert to
-/// go away. The window is not configurable, and missing it is not retried:
-/// the handler falls through to a last-ditch predicate that matches only
-/// English button labels (`label CONTAINS[d] "Don’t" OR label CONTAINS
-/// "Cancel"`), finds nothing in a Russian alert, logs `unable to find any
-/// qualified button` and gives up **for the rest of the test**. From that
-/// point every tap resolves to `Computed hit point {-1, -1}` and every
-/// `waitForExistence` after it times out against a covered screen.
+/// That handler taps a button **once**, waits for the app to go idle, then
+/// gives itself a fixed 1.0 s for the alert to disappear. If the alert is
+/// still there it does not tap again: it falls through to a last-ditch
+/// predicate matching only English labels (`label CONTAINS[d] "Don’t" OR
+/// label CONTAINS "Cancel"`), finds nothing in a Russian alert, logs
+/// `unable to find any qualified button` and gives up **for the rest of the
+/// test**. From that point every tap resolves to `Computed hit point
+/// {-1, -1}` and every `waitForExistence` after it times out against a
+/// covered screen.
 ///
-/// On a loaded runner the round trip after the tap costs more than 1.0 s, so
-/// which test dies is decided by which one drew the slow second — the exact
-/// signature reported in #626 (two red runs in a row, a different test each
-/// time, always on a `waitForExistence` right after a tap). Run 33295307930
-/// missed the window by 1.01 s; the green run 33294965122 on the same code
-/// made it with room to spare and confirmed handling.
+/// The single tap is the whole problem. In both #626 failures the app was
+/// *idle* when the check ran and the alert was still up — 2.3 s after the tap
+/// in run 33295307930, 10 s after it in run 33295938983. That is not the app
+/// being slow, that is the synthesized touch being dropped, the same failure
+/// this suite already documents in `OnboardingFlowUITests` (#523). Which test
+/// dies is decided by which one drew the dropped touch, which is exactly the
+/// reported signature: different test each run, always on a
+/// `waitForExistence` right after a tap.
 ///
-/// Doing it here removes the coin flip: our own wait has a budget we choose,
-/// and the assertion fails loudly if the alert will not go away, instead of
-/// silently poisoning the remaining steps.
+/// So the cure is the one #523 landed on: re-tap while the state the app
+/// controls has not changed, and fail loudly if it never does — instead of
+/// one blind tap and a silent surrender that poisons every later step.
 ///
 /// It lives in this file rather than its own because `SnoozePayUITests` is a
 /// plain group in `project.pbxproj` — adding a file there is a PM-zone edit.
 extension XCTestCase {
 
-    /// Wait for the app-owned alert titled `expectedTitle` and dismiss it
-    /// through its first button. Returns `false` when that alert did not show
-    /// up inside `timeout` — callers decide whether that is a failure or the
-    /// normal case.
+    /// Wait for the app-owned alert titled `expectedTitle` and dismiss it,
+    /// re-tapping while it is still up. Returns `false` when that alert did
+    /// not show up inside `timeout` — callers decide whether that is a failure
+    /// or the normal case.
     ///
-    /// The title is REQUIRED, and that is the whole point of this helper
-    /// (#639 gauntlet). Matching «whatever alert is on screen» reads safe
-    /// because every alert a tour launch can raise has a single «Ок» — but
-    /// that is exactly what makes them indistinguishable. In particular
-    /// `firing.alert.refund_failed` — billed, no re-fire, refund ALSO failed,
-    /// the `AppLogger.ui.fault` wallet-desync case from #197 — is a
-    /// single-«Ок» alert too. A regression turning every refused snooze into a
-    /// wallet desync would have kept these tests green while the assertion
-    /// message still claimed the refusal «explains itself». Naming the title
-    /// is what makes the assertion mean what it says.
+    /// Two separate defects are guarded here; they arrived from two directions
+    /// and are easy to conflate.
+    ///
+    /// **1. The tap gets dropped, so tap again.** The synthesized touch is
+    /// lost outright — in both #626 failures the app was *idle* and the alert
+    /// was still up 2.3 s after the tap (run 33295307930) and 10 s after it
+    /// (run 33295938983). That is not a slow runner; a slow runner was tested
+    /// directly and did NOT reproduce it (proof branch A stalled the main
+    /// thread on unfixed code and all seven E2E passed, twice). Same failure
+    /// `OnboardingFlowUITests` already documents (#523), same cure: re-tap
+    /// while the state the app owns has not changed, and fail loudly if it
+    /// never does.
+    ///
+    /// Re-tapping cannot double-fire into the screen underneath: the loop
+    /// re-checks that the alert is still on top before every tap, so a tap
+    /// that landed ends it.
+    ///
+    /// **2. The title is REQUIRED, so we know WHAT we dismissed.** Matching
+    /// «whatever alert is on screen» reads safe because every alert a tour
+    /// launch can raise has a single «Ок» — but that is exactly what makes
+    /// them indistinguishable. In particular `firing.alert.refund_failed` —
+    /// billed, no re-fire, refund ALSO failed, the `AppLogger.ui.fault`
+    /// wallet-desync case from #197 — is a single-«Ок» alert too. A regression
+    /// turning every refused snooze into a wallet desync would have kept these
+    /// tests green while the assertion message still claimed the refusal
+    /// «explains itself».
     ///
     /// The title is spelled as a literal rather than read from `Localized`:
     /// XCUITest runs out of process and the app's string catalogue is not
@@ -162,13 +181,12 @@ extension XCTestCase {
     /// Always button 0. Every alert a tour launch can raise is either
     /// single-action («Ок») or cancel-first («Отмена» then «Настройки»), and
     /// the second button of the latter leaves the app for Settings — so index
-    /// 0 is the only safe choice. It is verified rather than trusted: the
-    /// alert must be gone afterwards.
+    /// 0 is the only safe choice.
     ///
     /// Deliberately NOT `@discardableResult`: a `false` here means «the alert
     /// never appeared», and a caller that drops it goes on to work against a
-    /// screen that may still be covered — the exact failure #626 was opened
-    /// to kill. Callers must decide, in writing.
+    /// screen that may still be covered — the exact failure #626 exists to
+    /// kill. Callers must decide, in writing.
     func dismissAppAlert(
         in app: XCUIApplication,
         titled expectedTitle: String,
@@ -189,12 +207,19 @@ extension XCTestCase {
             return false
         }
 
-        let button = alert.buttons.element(boundBy: 0)
-        XCTAssertTrue(button.waitForExistence(timeout: 5),
-                      "Alert «\(alert.label)» should offer a dismissing button")
-        button.tap()
-        XCTAssertTrue(alert.waitForNonExistence(timeout: 10),
-                      "Alert «\(alert.label)» should close after tapping «\(button.label)»")
+        var taps = 0
+        while taps < 4, alert.exists {
+            let button = alert.buttons.element(boundBy: 0)
+            guard button.exists else { break }
+            button.tap()
+            taps += 1
+            _ = alert.waitForNonExistence(timeout: 5)
+        }
+
+        XCTAssertFalse(
+            alert.exists,
+            "Alert «\(expectedTitle)» should be gone after \(taps) tap(s) on its first button"
+        )
         return true
     }
 }
