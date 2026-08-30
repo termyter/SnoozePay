@@ -235,6 +235,13 @@ final class CardRowBandingTests: XCTestCase {
     /// is workable is that both ends are measured in the same process rather
     /// than one being carried between machines.
     ///
+    /// The gap does NOT tell the two halves of #674 apart. The control reverts
+    /// `corners` and `openEdges` together, so the 5/255 is their sum, and the
+    /// `corners` half is worth about 1/255 on its own — a regression in it
+    /// alone would move shipped 6 → 7, leave a gap of 4, and pass here. That
+    /// half is held at the path level instead, by
+    /// `CardRowSeamShadowTests.testAmbientStop_isMaskedOutOfTheCornersACapRowDoesNotRound`.
+    ///
     /// If a future change makes this red, read both printed numbers before
     /// touching it: the interesting failure is the control collapsing towards
     /// the shipped number, which means the band stopped being there to remove.
@@ -244,7 +251,8 @@ final class CardRowBandingTests: XCTestCase {
     ///
     /// `unmasked: true` re-installs each row's ambient stop with
     /// `openEdges: []` AFTER layout has settled, so its mask clips nothing —
-    /// which is the pre-#674 rendering. It is re-applied immediately before
+    /// which is the pre-#674 AMBIENT mask — not the pre-#674 rendering, since
+    /// the key stop's `shadowPath` stays corrected on both sides. It is re-applied immediately before
     /// the frame is taken; if a layout pass were to slip in between and put
     /// the real mask back, the control would collapse onto the shipped number
     /// and the gap assertion goes red rather than quietly green.
