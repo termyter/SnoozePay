@@ -38,17 +38,18 @@ enum AlarmTheme: Equatable {
 
     // MARK: - Display
 
-    /// Russian display name surfaced in the picker tile and the create-form
-    /// trailing label.
+    /// Display name surfaced in the picker tile and the create-form trailing
+    /// label. The `id` above is the storage identifier and stays a literal;
+    /// only this reads from the catalogue.
     var displayName: String {
         switch self {
-        case .dawn: return "Рассвет"
-        case .mountains: return "Горы"
-        case .ocean: return "Океан"
-        case .forest: return "Лес"
-        case .neon: return "Неон"
-        case .abstract: return "Абстракт"
-        case .custom: return "Своё фото"
+        case .dawn: return Localized.text("create_alarm.theme.name.dawn")
+        case .mountains: return Localized.text("create_alarm.theme.name.mountains")
+        case .ocean: return Localized.text("create_alarm.theme.name.ocean")
+        case .forest: return Localized.text("create_alarm.theme.name.forest")
+        case .neon: return Localized.text("create_alarm.theme.name.neon")
+        case .abstract: return Localized.text("create_alarm.theme.name.abstract")
+        case .custom: return Localized.text("create_alarm.theme.name.custom")
         }
     }
 

@@ -54,6 +54,24 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// Legal weekday indices for `repeatDays` (0 = Monday, 6 = Sunday).
     static let weekdayIndexRange: ClosedRange<Int> = 0...6
 
+    /// The name a new alarm carries until the user types one of their own.
+    /// Read by both initializers here and by `CreateAlarmViewModel`.
+    ///
+    /// Computed rather than stored to match how the rest of the catalogue is
+    /// read (``Plural``, `Localized.text` call sites): a missing key should
+    /// surface wherever it is used, not hide behind whichever call site
+    /// happened to initialize a `static let` first. Today that is a
+    /// consistency argument and nothing more — `Localized.bundle` is itself a
+    /// `static let` resolved once per process, so a stored copy would hold the
+    /// same string.
+    ///
+    /// ⚠️ This value is **persisted** into `Alarm.name`, which makes it a
+    /// sentinel as well as copy: `AlarmsListViewModel.weekdayPhrase` suppresses
+    /// the default name in the caps row by comparing against it. That
+    /// comparison is against a literal on purpose and breaks once a second
+    /// language ships — see #623, which owns the model change that fixes it.
+    static var defaultName: String { Localized.text("alarms.default_name") }
+
     // MARK: - Validating failable init (#207)
 
     /// Validating construction boundary. Returns `nil` when:
@@ -67,7 +85,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         validating id: UUID,
         time: Date = Date(),
         repeatDays: [Int] = [],
-        name: String = "Будильник",
+        name: String = Alarm.defaultName,
         soundID: String = "radar",
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
@@ -108,7 +126,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         id: UUID = UUID(),
         time: Date = Date(),
         repeatDays: [Int] = [],
-        name: String = "Будильник",
+        name: String = Alarm.defaultName,
         soundID: String = "radar",
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
@@ -257,21 +275,31 @@ struct Alarm: Identifiable, Equatable, Codable {
         min(max(raw.isFinite ? raw : 1.0, 0), 1)
     }
 
-    /// Human-readable repeat days string (e.g. "Пн, Вт, Пт")
+    /// Human-readable repeat days string (e.g. "Пн, Вт, Пт").
+    ///
+    /// The weekday table that used to live here is gone: the names now come
+    /// from `Weekday.localizedShortName`, i.e. from CLDR via `WeekdayNames`,
+    /// which is the same source the caps row and the day picker read. Only the
+    /// bucket labels («Единожды», «Будни») are catalogue copy.
+    ///
+    /// Out-of-range indices are dropped exactly as the file-local `[safe:]`
+    /// subscript dropped them — that is what `Weekday(legacyMondayFirstIndex:)`
+    /// being failable buys, and it is why the subscript could go with the table.
     var repeatDaysDescription: String {
-        guard !repeatDays.isEmpty else { return "Единожды" }
+        guard !repeatDays.isEmpty else { return Localized.text("alarms.days.once") }
 
-        let dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         let allWeekdays = [0, 1, 2, 3, 4]
         let allWeekend = [5, 6]
 
         let sorted = repeatDays.sorted()
 
-        if sorted == Array(0...6) { return "Каждый день" }
-        if sorted == allWeekdays { return "Будни" }
-        if sorted == allWeekend { return "Выходные" }
+        if sorted == Array(0...6) { return Localized.text("alarms.days.every_day") }
+        if sorted == allWeekdays { return Localized.text("alarms.days.weekdays_plain") }
+        if sorted == allWeekend { return Localized.text("alarms.days.weekend") }
 
-        return sorted.compactMap { dayNames[safe: $0] }.joined(separator: ", ")
+        return sorted
+            .compactMap { Weekday(legacyMondayFirstIndex: $0)?.localizedShortName }
+            .joined(separator: ", ")
     }
 
     /// Next trigger date for display purposes
@@ -333,12 +361,5 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// about currencies, hence the legacy bridge (#561).
     var penaltyMoney: Money? {
         Money.legacy(penaltyAmount)
-    }
-}
-
-// MARK: - Safe array subscript
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
     }
 }

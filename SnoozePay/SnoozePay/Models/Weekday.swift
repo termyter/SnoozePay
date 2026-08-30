@@ -53,18 +53,24 @@ enum Weekday: Int, CaseIterable, Codable, Hashable {
 
     // MARK: - Display
 
-    /// Russian short label, matching the existing UI strings on
-    /// `Alarm.repeatDaysDescription` ("Пн, Вт, …").
+    /// Short label for ``AppLocale/display``, Monday-first: «Пн», «Вт», …
+    ///
+    /// Calendar data, not copy (#569): the names come from CLDR through
+    /// ``WeekdayNames/short`` rather than from `Localizable.xcstrings`. Asking
+    /// a translator for them would mean retyping a table every locale already
+    /// ships — and, the reason it matters here rather than being a matter of
+    /// taste, the alarm card renders `AlarmsListViewModel.weekdayPhrase` and
+    /// `Alarm.repeatDaysDescription` side by side. The first has always read
+    /// CLDR; a catalogue copy behind the second would let the two halves of a
+    /// single card disagree the moment a second language exists.
+    ///
+    /// Copy that *contains* a weekday («Будни · Пн–Пт») is the opposite case
+    /// and stays whole in the catalogue, per ``WeekdayNames``.
     var localizedShortName: String {
-        switch self {
-        case .monday: return "Пн"
-        case .tuesday: return "Вт"
-        case .wednesday: return "Ср"
-        case .thursday: return "Чт"
-        case .friday: return "Пт"
-        case .saturday: return "Сб"
-        case .sunday: return "Вс"
-        }
+        // `mondayFirst(_:)` yields [] when Foundation hands back anything but
+        // seven symbols, so this cannot index blindly.
+        let names = WeekdayNames.short
+        return names.indices.contains(legacyMondayFirstIndex) ? names[legacyMondayFirstIndex] : ""
     }
 }
 

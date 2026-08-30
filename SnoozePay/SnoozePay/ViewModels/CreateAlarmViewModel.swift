@@ -55,7 +55,7 @@ final class CreateAlarmViewModel {
         self.repeatDays = alarm?.repeatDays ?? []
         // New alarms start with an empty name so the form shows the
         // "Название" placeholder (#231); `makeAlarmFromCurrentState` falls
-        // back to "Будильник" when the user saves without typing one.
+        // back to `Alarm.defaultName` when the user saves without typing one.
         self.name = alarm?.name ?? ""
         self.soundID = alarm?.soundID ?? "radar"
         self.vibrationEnabled = alarm?.vibrationEnabled ?? defaults.vibrationEnabled
@@ -135,7 +135,7 @@ final class CreateAlarmViewModel {
             id: existingID ?? UUID(),
             time: time,
             repeatDays: safeRepeatDays,
-            name: name.isEmpty ? "Будильник" : name,
+            name: name.isEmpty ? Alarm.defaultName : name,
             soundID: soundID,
             vibrationEnabled: vibrationEnabled,
             snoozeMinutes: safeSnooze,

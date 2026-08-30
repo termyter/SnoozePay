@@ -181,6 +181,18 @@
         }
       }
     },
+    "alarms.days.weekdays_plain" : {
+      "comment" : "Mon-Fri, without the day range. The bare form used where the row is too narrow for alarms.days.weekdays («Будни · Пн–Пт»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будни"
+          }
+        }
+      }
+    },
     "alarms.days.weekend" : {
       "comment" : "Alarm-card caps row: Sat+Sun.",
       "extractionState" : "manual",
@@ -189,6 +201,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Выходные"
+          }
+        }
+      }
+    },
+    "alarms.days.weekend_range" : {
+      "comment" : "Sat+Sun with the day range spelled out. The range is part of the copy: another language may want a different notation entirely.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выходные · Сб–Вс"
           }
         }
       }
@@ -213,6 +237,114 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Онбординг сброшен"
+          }
+        }
+      }
+    },
+    "alarms.default_name" : {
+      "comment" : "The name a new alarm carries until the user types one of their own.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник"
+          }
+        }
+      }
+    },
+    "alarms.delete.body" : {
+      "comment" : "Delete sheet, the full subtitle: %1$@ is the alarm's context line («Будни · Пн–Пт · 07:00»), %2$@ the reassurance sentence. One key rather than a Swift concatenation so the sentence separator stays translatable.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. %2$@"
+          }
+        }
+      }
+    },
+    "alarms.delete.once_at" : {
+      "comment" : "Delete sheet, context line of a one-shot alarm with no weekday set. %@ is the time («07:00»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Единожды · %@"
+          }
+        }
+      }
+    },
+    "alarms.delete.once_on_at" : {
+      "comment" : "Delete sheet, context line of a one-shot alarm limited to weekdays. %1$@ is the day range («Пн–Пт»), %2$@ the time («07:00»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Единожды · %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "alarms.delete.range_all" : {
+      "comment" : "Delete sheet, day range covering the whole week. Used for one-shot alarms, where «Единожды» already occupies the leading slot.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пн–Вс"
+          }
+        }
+      }
+    },
+    "alarms.delete.range_weekdays" : {
+      "comment" : "Delete sheet, day range covering Mon-Fri. See alarms.delete.range_all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пн–Пт"
+          }
+        }
+      }
+    },
+    "alarms.delete.range_weekend" : {
+      "comment" : "Delete sheet, day range covering Sat+Sun. See alarms.delete.range_all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сб–Вс"
+          }
+        }
+      }
+    },
+    "alarms.delete.reassurance" : {
+      "comment" : "Delete sheet, the sentence that tells the user deleting an alarm does not touch their money. %@ is the formatted balance («840 ₽»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс %@ останется на месте — он привязан к аккаунту, а не к будильнику."
+          }
+        }
+      }
+    },
+    "alarms.delete.schedule_at" : {
+      "comment" : "Delete sheet, context line of a repeating alarm. %1$@ is the day phrase («Будни · Пн–Пт»), %2$@ the time («07:00»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
           }
         }
       }
@@ -945,6 +1077,174 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Громкость и нарастание"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.name.abstract" : {
+      "comment" : "Theme picker: name of the flat-colour theme.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Абстракт"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.name.custom" : {
+      "comment" : "Theme picker: name of the slot that opens the photo library.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Своё фото"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.name.dawn" : {
+      "comment" : "Theme picker: name of the amber sunrise gradient.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рассвет"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.name.forest" : {
+      "comment" : "Theme picker: name of the dark conifer gradient.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Лес"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.name.mountains" : {
+      "comment" : "Theme picker: name of the pale mountain gradient.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Горы"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.name.neon" : {
+      "comment" : "Theme picker: name of the city-night gradient.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Неон"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.name.ocean" : {
+      "comment" : "Theme picker: name of the cold mint gradient.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Океан"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.subtitle.abstract" : {
+      "comment" : "Theme picker: subtitle under «Абстракт».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чистый цвет"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.subtitle.custom" : {
+      "comment" : "Theme picker: subtitle under «Своё фото».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Из галереи"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.subtitle.dawn" : {
+      "comment" : "Theme picker: subtitle under «Рассвет».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тёплый янтарь"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.subtitle.forest" : {
+      "comment" : "Theme picker: subtitle under «Лес».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хвойный сумрак"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.subtitle.mountains" : {
+      "comment" : "Theme picker: subtitle under «Горы».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Молочный свет"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.subtitle.neon" : {
+      "comment" : "Theme picker: subtitle under «Неон».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Городская ночь"
+          }
+        }
+      }
+    },
+    "create_alarm.theme.subtitle.ocean" : {
+      "comment" : "Theme picker: subtitle under «Океан».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Холодный мятный"
           }
         }
       }
