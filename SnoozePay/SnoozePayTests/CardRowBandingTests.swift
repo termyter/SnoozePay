@@ -134,6 +134,66 @@ final class CardRowBandingTests: XCTestCase {
         XCTAssertNotEqual(systemGrey.red * 255, 240, accuracy: 0.6, "#F2F2F7 is a different colour")
     }
 
+    /// The measurement the issue actually describes: **two** stacked rows,
+    /// probed in the seam they share.
+    ///
+    /// Every other fixture in these two files hosts a single row, so the seam
+    /// existed only as a coordinate, never as a boundary between two real
+    /// surfaces. `path.contains` proves the mask's geometry; only a pixel
+    /// proves what a reader sees. Scanned column-by-column down the middle of
+    /// the seam and reported as the worst deviation from `bg1`, so the failure
+    /// message carries the number rather than just a verdict.
+    func testTheSeamBetweenTwoRows_rendersAsOneContinuousFill() throws {
+        let renderPath = try shadowCapableRenderPath()
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let window = laidOutSection(style: style)
+            let reference = channels(AppColors.bg1.resolved(style))
+            var worst: (deviation: CGFloat, at: CGPoint, colour: UIColor) = (0, .zero, .clear)
+
+            // Both axes, and the horizontal one is the half that matters for
+            // the corners. `shadowPath` changed only where a cap row is SQUARE
+            // — the two ends of the seam — so a probe down the middle cannot
+            // see that half of the fix at all, in either theme. Sampled across
+            // the full width as well as through the depth of the seam.
+            let seamXs = stride(from: 2.0, through: window.bounds.width - 2, by: 4.0)
+            let seamYs = stride(from: -6.0, through: 6.0, by: 0.5)
+            for point in seamYs.flatMap({ offset in
+                seamXs.map { CGPoint(x: $0, y: Self.rowHeight + offset) }
+            }) {
+                let sample = pixel(of: window, at: point, using: renderPath)
+                let got = channels(sample)
+                let deviation = max(
+                    abs(got.red - reference.red),
+                    abs(got.green - reference.green),
+                    abs(got.blue - reference.blue)
+                ) * 255
+                if deviation > worst.deviation { worst = (deviation, point, sample) }
+            }
+
+            XCTAssertLessThanOrEqual(
+                worst.deviation, Self.seamTolerance,
+                """
+                \(style.debugName): the seam is \(worst.deviation)/255 off `bg1` at \
+                \(worst.at) (\(hex(worst.colour)) vs \(hex(AppColors.bg1.resolved(style)))). \
+                A section reads as separately-rounded rows exactly when this band \
+                is visible — see #674
+                """
+            )
+        }
+    }
+
+    /// What counts as "one continuous fill" in the seam.
+    ///
+    /// Not the 3/255 of `assertSameColour`, which is renderer round-tripping
+    /// slack on a flat surface. This is a gradient boundary between two layers
+    /// that each cast their own light-mode key stop, and the number that
+    /// matters is the one the eye picks up: the banding #515 was filed for
+    /// measured 15/255 per channel. Held at 8 — comfortably below what was
+    /// reported as visible, comfortably above renderer noise.
+    private static let seamTolerance: CGFloat = 8
+
+    private static let rowHeight: CGFloat = 52
+
     // MARK: - Fixtures
 
     private func laidOutRow(
@@ -152,6 +212,31 @@ final class CardRowBandingTests: XCTestCase {
         window.setNeedsLayout()
         window.layoutIfNeeded()
         return row
+    }
+
+    /// A real two-row section: `.first` on top of `.last`, edge to edge, the
+    /// way `.insetGrouped` stacks them. Returns the WINDOW, because the thing
+    /// under test is the boundary between the two rows and not either of them.
+    private func laidOutSection(style: UIUserInterfaceStyle) -> UIWindow {
+        let window = UIWindow(
+            frame: CGRect(x: 0, y: 0, width: 343, height: Self.rowHeight * 2)
+        )
+        window.overrideUserInterfaceStyle = style
+        window.backgroundColor = AppColors.bg0
+        present(window)
+        hostWindows.append(window)
+
+        for (index, position) in [CardRowPosition.first, .last].enumerated() {
+            let row = CardRowBackgroundView(position: position, cornerRadius: AppRadius.sm)
+            row.frame = CGRect(
+                x: 0, y: CGFloat(index) * Self.rowHeight,
+                width: window.bounds.width, height: Self.rowHeight
+            )
+            window.addSubview(row)
+        }
+        window.setNeedsLayout()
+        window.layoutIfNeeded()
+        return window
     }
 
     private func ambientLayer(of row: UIView) -> CAShapeLayer? {

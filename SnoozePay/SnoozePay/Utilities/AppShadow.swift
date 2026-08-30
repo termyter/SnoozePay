@@ -8,13 +8,13 @@ import UIKit
 /// CALayer can render only one shadow natively, so the wider key stop is
 /// installed on the host layer via `apply(to:)` and the narrower ambient stop
 /// is rendered through a dedicated sibling sublayer inserted at index 0 by
-/// ``installAmbientShadow1Layer(on:cornerRadius:trait:)``. The sublayer is a
+/// ``installAmbientShadow1Layer(on:cornerRadius:trait:corners:openEdges:)``. The sublayer is a
 /// clear-filled `CAShapeLayer` masked to the region outside the card, so it
 /// contributes the halo without washing the card's own surface.
 ///
 /// Apply via `apply(to: layer)` from `traitCollectionDidChange` so the shadow
 /// re-resolves on theme switch, and call
-/// ``installAmbientShadow1Layer(on:cornerRadius:trait:)`` from both
+/// ``installAmbientShadow1Layer(on:cornerRadius:trait:corners:openEdges:)`` from both
 /// `traitCollectionDidChange` (to install/remove on theme flip) and
 /// `layoutSubviews` (so the ambient layer's frame stays in sync with the host).
 struct AppShadow {
@@ -37,7 +37,7 @@ struct AppShadow {
     /// `0 2px 8px rgba(0,0,0,.35)`. Light is the dominant stop of
     /// `0 1px 3px / 0 4px 14px rgba(8,14,30,.06)` — we use the wider 14pt
     /// radius for legibility on near-white surfaces. Pair with
-    /// ``installAmbientShadow1Layer(on:cornerRadius:trait:)`` to render the
+    /// ``installAmbientShadow1Layer(on:cornerRadius:trait:corners:openEdges:)`` to render the
     /// narrower ambient stop on light-mode surfaces.
     static func shadow1(for trait: UITraitCollection) -> AppShadow {
         if trait.userInterfaceStyle == .light {
@@ -97,7 +97,7 @@ struct AppShadow {
     /// The ambient layer is outset past the host by ``ambientShadow1Spread``
     /// and masked to the region *outside* the card, so only the halo composites
     /// onto the page. Without that mask the stop also washes the card's own
-    /// interior — see ``installHaloMask(on:cardRect:cornerRadius:)`` (#515).
+    /// interior — see ``installHaloMask(on:cardRect:cornerRadius:corners:)`` (#515).
     ///
     /// Dark mode collapses back to a single stop, so this method removes the
     /// ambient layer if `trait.userInterfaceStyle == .dark`.

@@ -116,9 +116,19 @@ final class CardRowSeamShadowTests: XCTestCase {
     /// the row's real, part-square outline.
     ///
     /// A square corner contains the point just inside it; a corner rounded by
-    /// `AppRadius.sm` does not. `assertCornerIsSquare` proves the second half
-    /// on a control path every time, so the probe cannot quietly go green if
-    /// the radius ever shrinks below the inset.
+    /// `AppRadius.sm` does not. `assertCorner` proves the second half on a
+    /// control path every time, so the probe cannot quietly go green if the
+    /// radius ever shrinks below the inset.
+    ///
+    /// This is a PATH-level claim and nothing more. An earlier version of this
+    /// comment said the theme loop below proved the change in dark too — it
+    /// does not, and neither does it prove anything in light: nothing between
+    /// `laidOutRow(style:)` and `shadowPath` reads the trait, so the two
+    /// iterations execute identical code. The loop is kept only so a future
+    /// theme-dependent silhouette cannot slip in unnoticed, and the rendered
+    /// question is asked where it belongs — in
+    /// `CardRowBandingTests.testTheSeamBetweenTwoRows_…`, which measured that
+    /// reverting this very line moves the seam by nothing in either theme.
     func testKeyShadowPath_isSquareOnEveryEdgeTheRowShares() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (position, squareSides) in Self.squareSidesByPosition {
