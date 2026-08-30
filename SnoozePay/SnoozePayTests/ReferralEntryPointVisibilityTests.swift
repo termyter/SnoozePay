@@ -136,6 +136,33 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         )
     }
 
+    /// Flipping the flag on a table that is ALREADY laid out rebuilds it.
+    ///
+    /// Every other test here sets `referralEnabled` before hosting, so none of
+    /// them executes the `didSet`. Delete that `didSet` and they all stay
+    /// green — this is the only test that goes red, which is why it exists:
+    /// a table left with a stale `numberOfSections` while `visibleSections`
+    /// returns the new list routes taps to the wrong section.
+    func testFlippingTheFlagOnALaidOutTableRebuildsIt() throws {
+        let sut = try laidOutSettings(referralEnabled: false)
+        XCTAssertEqual(
+            sut.tableView.numberOfSections,
+            SettingsViewController.Section.allCases.count - 1
+        )
+
+        sut.referralEnabled = true
+
+        XCTAssertEqual(
+            sut.tableView.numberOfSections,
+            SettingsViewController.Section.allCases.count,
+            "the table did not rebuild when the flag flipped under it"
+        )
+        let index = try XCTUnwrap(sut.visibleSections.firstIndex(of: .referral))
+        XCTAssertEqual(
+            sut.tableView(sut.tableView, titleForHeaderInSection: index), "ПРИГЛАСИТЬ ДРУГА"
+        )
+    }
+
     /// A hidden section must not leave its grouped footer behind — and the
     /// only way to know is to lay the table out and measure it.
     ///

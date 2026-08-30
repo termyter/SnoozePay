@@ -358,8 +358,9 @@ final class WalletTransactionHistoryViewController: UIViewController {
             // (`ReferralService`); since #676 hid that entry point nothing
             // mints it in a release build, so this branch renders history on
             // installs that already have such a row. In DEBUG it is still
-            // reached: `UITourLauncher.seedTransactions()` writes one under
-            // `-uitour-seed`, which is what puts this row in screen audits. There is no 7-day hold today, so
+            // reached: `UITourLauncher.seedTransactions()` writes one
+            // under `-uitour-seed`, which is what puts this row in
+            // screen audits. There is no 7-day hold today, so
             // the copy must not claim one (issue #282 — honest, unified copy
             // shared with the wallet preview).
             return Localized.text("wallet.tx.promotion")

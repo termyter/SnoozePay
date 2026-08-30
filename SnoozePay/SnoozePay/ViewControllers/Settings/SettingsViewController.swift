@@ -118,9 +118,10 @@ class SettingsViewController: UIViewController {
             guard isViewLoaded, oldValue != referralEnabled else { return }
             // Without this the table keeps the old `numberOfSections` while
             // `visibleSections` returns the new list, and taps route to the
-            // wrong section — the exact off-by-one
-            // `testTheIndexTheHiddenSectionVacatedNowBelongsToItsSuccessor`
-            // exists to catch.
+            // wrong section. Held by
+            // `testFlippingTheFlagOnALaidOutTableRebuildsIt` — the other
+            // referral tests set the flag BEFORE hosting and never reach
+            // here, so that one test is the whole guard.
             tableView.reloadData()
         }
     }
@@ -259,6 +260,17 @@ extension SettingsViewController: UITableViewDataSource {
         return makeSettingsSectionHeader(text: title)
     }
 
+    /// ⚠️ `.leastNonzeroMagnitude` works HERE and does not work for footers.
+    ///
+    /// UIKit ignores it from `heightForFooterInSection` when the section has
+    /// no footer view: measured, `contentSize.height` came back
+    /// 875.0000089009603 with that delegate method and 875.0000089009603
+    /// without it, to the last digit. **Do not add one** — a hidden section's
+    /// 17.33pt of grouped footer can only be removed by removing the section,
+    /// which is what `visibleSections` does. Nothing will go red if you do:
+    /// the method is inert, and the test that once passed alongside it was
+    /// re-reading the constant the method had just returned. The measurements
+    /// are in `ReferralEntryPointVisibilityTests` (#676, #684).
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard self.tableView(tableView, titleForHeaderInSection: section) != nil else {
             return .leastNonzeroMagnitude
