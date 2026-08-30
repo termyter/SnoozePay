@@ -171,7 +171,20 @@ extension AlarmFiringViewController {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        present(alert, animated: true)
+        // PROOF-ONLY (#626), never merged. One dismissal is not enough to
+        // clear the screen — which is exactly what a dropped touch looks like
+        // from XCUITest's side, and what both red logs show: tapped, app
+        // idle, alert still there. Deterministic, so A and B differ only by
+        // the fix instead of by which run drew the dropped touch.
+        let survivor = UIAlertController(
+            title: Localized.text("firing.alert.snooze_not_scheduled.title"),
+            message: Localized.format("firing.alert.snooze_not_scheduled.message", detail),
+            preferredStyle: .alert
+        )
+        survivor.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
+        present(survivor, animated: true) { [weak survivor] in
+            survivor?.present(alert, animated: true)
+        }
     }
 
     /// Stronger banner for the degraded case (#197): the snooze didn't schedule
