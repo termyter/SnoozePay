@@ -1753,6 +1753,18 @@
         }
       }
     },
+    "onboarding.button.later" : {
+      "comment" : "Onboarding step 3: declines the first deposit and finishes onboarding with a zero balance.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Позже — попробовать без баланса"
+          }
+        }
+      }
+    },
     "onboarding.button.next" : {
       "comment" : "Primary call to action on onboarding pages 1-2. SnoozePayUITests matches this copy on screen, so a change here changes the E2E expectation too.",
       "extractionState" : "manual",
@@ -1761,6 +1773,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Дальше"
+          }
+        }
+      }
+    },
+    "onboarding.button.skip" : {
+      "comment" : "Onboarding: the pill floating top-right on every page that leaves the flow at once.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропустить"
+          }
+        }
+      }
+    },
+    "onboarding.deposit_option.popular_caps" : {
+      "comment" : "Onboarding step 3: caps tag on the recommended deposit preset.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПОПУЛЯРНО"
           }
         }
       }
@@ -1897,6 +1933,78 @@
         }
       }
     },
+    "onboarding.page3.option1_body" : {
+      "comment" : "Onboarding step 3, smallest deposit preset: how far it goes. %@ is the per-snooze price.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 5 откладываний по %@"
+          }
+        }
+      }
+    },
+    "onboarding.page3.option1_title" : {
+      "comment" : "Onboarding step 3: name of the smallest deposit preset.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Попробовать"
+          }
+        }
+      }
+    },
+    "onboarding.page3.option2_body" : {
+      "comment" : "Onboarding step 3, middle deposit preset: how far it goes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 10 откладываний · хватит на 2 недели"
+          }
+        }
+      }
+    },
+    "onboarding.page3.option2_title" : {
+      "comment" : "Onboarding step 3: name of the middle (default) deposit preset.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Серьёзно"
+          }
+        }
+      }
+    },
+    "onboarding.page3.option3_body" : {
+      "comment" : "Onboarding step 3, largest deposit preset: how far it goes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 20 откладываний · спокойный месяц"
+          }
+        }
+      }
+    },
+    "onboarding.page3.option3_title" : {
+      "comment" : "Onboarding step 3: name of the largest deposit preset.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Решительно"
+          }
+        }
+      }
+    },
     "onboarding.page3.title" : {
       "comment" : "Step 3 headline; the line break is the design.",
       "extractionState" : "manual",
@@ -1905,6 +2013,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сколько ставите\nна свою дисциплину?"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.body" : {
+      "comment" : "Permissions screen: why the two permissions below are asked for.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти разрешения нужны, чтобы будильник прозвенел даже на беззвучном режиме."
+          }
+        }
+      }
+    },
+    "onboarding.permissions.caps" : {
+      "comment" : "Permissions screen: caps eyebrow above the title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПОСЛЕДНИЙ ШАГ"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.grant_caps" : {
+      "comment" : "Permissions screen: caps affordance on a card whose permission is not granted yet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дать"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.notifications_body" : {
+      "comment" : "Permissions screen: what the notification permission buys the user.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы показать будильник на экране"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.notifications_title" : {
+      "comment" : "Permissions screen: title of the notification permission card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.sound_body" : {
+      "comment" : "Permissions screen: what the background-audio capability buys the user.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы таймеры не убивались системой"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.sound_title" : {
+      "comment" : "Permissions screen: title of the background-audio card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фоновый режим"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.title" : {
+      "comment" : "Permissions screen: headline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы будильник работал"
+          }
+        }
+      }
+    },
+    "onboarding.permissions.unavailable_caps" : {
+      "comment" : "Permissions screen: caps state on a card the user cannot act on from inside the app.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недоступно"
+          }
+        }
+      }
+    },
+    "onboarding.splash.subtitle" : {
+      "comment" : "Splash screen: tagline under the SnoozePay wordmark.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник со ставкой"
           }
         }
       }

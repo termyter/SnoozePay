@@ -7,8 +7,8 @@ import UIKit
 /// Visual (V2, `docs/design/v2-handoff/components/SPMore2.jsx` lines 6-23):
 /// dark `bg0` background, soft radial warm glow at centre, 96×96 rounded-rect
 /// (radius 28) painted with the warn gradient and overlaid by a bell icon
-/// (`bell.fill` tinted `fgOnWarn`), "SnoozePay" h1 white below, "Будильник со
-/// ставкой" meta caption underneath.
+/// (`bell.fill` tinted `fgOnWarn`), «SnoozePay» h1 white below, «Будильник со
+/// ставкой» meta caption underneath.
 ///
 /// `displayDuration` + `onFinished` semantics are preserved from V1 so
 /// SceneDelegate keeps working unchanged.
@@ -102,7 +102,7 @@ final class SplashViewController: UIViewController {
     private let subtitleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Будильник со ставкой"
+        label.text = Localized.text("onboarding.splash.subtitle")
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
         label.textAlignment = .center

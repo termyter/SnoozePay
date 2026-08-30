@@ -6,7 +6,7 @@ import UIKit
 /// 39-59): a `.surface` SPCard with 14pt internal spacing — leading 40×40
 /// rounded-rect icon (money gradient when granted, `whiteOverlay08` otherwise),
 /// title `h4` + subtitle `meta` (`fg3`), trailing checkmark (`money400`) when
-/// granted or caps "Дать" (`warn400`) when actionable. Whole card is tappable
+/// granted or caps «Дать» (`warn400`) when actionable. Whole card is tappable
 /// when actionable, otherwise tap interaction is disabled.
 enum PermissionKind {
     case notifications
@@ -21,24 +21,24 @@ enum PermissionKind {
 
     var title: String {
         switch self {
-        case .notifications: return "Уведомления"
-        case .sound: return "Фоновый режим"
+        case .notifications: return Localized.text("onboarding.permissions.notifications_title")
+        case .sound: return Localized.text("onboarding.permissions.sound_title")
         }
     }
 
     var body: String {
         switch self {
         case .notifications:
-            return "Чтобы показать будильник на экране"
+            return Localized.text("onboarding.permissions.notifications_body")
         case .sound:
-            return "Чтобы таймеры не убивались системой"
+            return Localized.text("onboarding.permissions.sound_body")
         }
     }
 }
 
 /// Visual state of a permission card's trailing affordance.
 enum PermissionStatus {
-    /// Show "Дать" caps + ungranted icon. Tap triggers a real grant.
+    /// Show «Дать» caps + ungranted icon. Tap triggers a real grant.
     case actionable
     /// Show check glyph + money-tinted icon. User granted.
     case granted
@@ -231,12 +231,18 @@ final class PermissionCardView: UIView {
             iconView.tintColor = AppColors.fg3
             // The 2026-06 mockup renders an *empty* span where this caps
             // label sits — treated as a mockup bug (#238 p.6): the
-            // ungranted row keeps its explicit "Дать" affordance.
-            mount(capsLabel(text: "Дать", color: AppColors.warn400))
+            // ungranted row keeps its explicit «Дать» affordance.
+            mount(capsLabel(
+                text: Localized.text("onboarding.permissions.grant_caps"),
+                color: AppColors.warn400
+            ))
             tapGesture.isEnabled = true
         case .unavailable:
             iconView.tintColor = AppColors.fg3
-            mount(capsLabel(text: "Недоступно", color: AppColors.fg3))
+            mount(capsLabel(
+                text: Localized.text("onboarding.permissions.unavailable_caps"),
+                color: AppColors.fg3
+            ))
             tapGesture.isEnabled = false
         }
     }
