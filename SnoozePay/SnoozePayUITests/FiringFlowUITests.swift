@@ -138,7 +138,8 @@ final class FiringFlowUITests: XCTestCase {
 /// one blind tap and a silent surrender that poisons every later step.
 ///
 /// It lives in this file rather than its own because `SnoozePayUITests` is a
-/// plain group in `project.pbxproj` — adding a file there is a PM-zone edit.extension XCTestCase {
+/// plain group in `project.pbxproj` — adding a file there is a PM-zone edit.
+extension XCTestCase {
 
     /// Wait for the app-owned alert titled `expectedTitle` and dismiss it,
     /// re-tapping while it is still up. Returns `false` when that alert did
