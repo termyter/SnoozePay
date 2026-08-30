@@ -106,6 +106,19 @@ extension WalletViewController {
     func makeTxPreviewCard(items: [WalletTransactionPreviewItem]) -> UIView {
         guard !items.isEmpty else { return makeTxPreviewEmptyCard() }
 
+        // `SPCard`'s `padding` is uniform, but the V2 list-row rule is the
+        // asymmetric `padding: "4px 20px"` — 4pt of vertical breathing room,
+        // 20pt of horizontal inset. The card supplies the 4 via
+        // `layoutMarginsGuide`; the horizontal 20 is applied to the container
+        // explicitly, exactly as `SoundPickerViewController` does for its
+        // volume row.
+        //
+        // The inset has to live here rather than inside `SPRow`, because
+        // `SPRow` pins its content edge-to-edge on purpose — matching
+        // `.sp-row { padding: 14px 0 }` in `components.css`. That leaves the
+        // host card owning the horizontal inset, and a uniform `sp1` card was
+        // therefore giving this block 4pt to the icon where every other list
+        // in the app (`SoundCell`, `ThemeRowCell`) gives 20 (#677).
         let card = SPCard(tone: .surface, padding: AppSpacing.sp1, cornerRadius: AppRadius.md)
         let container = UIStackView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -114,8 +127,12 @@ extension WalletViewController {
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
             container.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
-            container.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor)
+            container.leadingAnchor.constraint(
+                equalTo: card.leadingAnchor, constant: AppSpacing.sp5
+            ),
+            container.trailingAnchor.constraint(
+                equalTo: card.trailingAnchor, constant: -AppSpacing.sp5
+            )
         ])
         for (index, item) in items.enumerated() {
             let row = SPRow(

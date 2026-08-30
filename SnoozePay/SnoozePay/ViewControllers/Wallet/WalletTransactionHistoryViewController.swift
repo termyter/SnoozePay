@@ -316,8 +316,16 @@ final class WalletTransactionHistoryViewController: UIViewController {
         container.spacing = 0
         card.addSubview(container)
         NSLayoutConstraint.activate([
-            container.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor),
+            // Same `padding: "4px 20px"` list-row recipe as the wallet preview
+            // card (`WalletViewController+Layout.makeTxPreviewCard`). The two
+            // screens render the same rows, so they have to agree on the inset
+            // or «Все операции» visibly shifts the list sideways (#677).
+            container.leadingAnchor.constraint(
+                equalTo: card.leadingAnchor, constant: AppSpacing.sp5
+            ),
+            container.trailingAnchor.constraint(
+                equalTo: card.trailingAnchor, constant: -AppSpacing.sp5
+            ),
             container.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
             container.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor)
         ])
