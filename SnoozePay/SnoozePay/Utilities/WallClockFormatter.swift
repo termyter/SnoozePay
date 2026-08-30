@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The one place that renders a **time of day** for a human to read.
 ///
