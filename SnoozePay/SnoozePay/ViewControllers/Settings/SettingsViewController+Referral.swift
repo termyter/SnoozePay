@@ -116,7 +116,11 @@ extension SettingsViewController {
             input.textField.resignFirstResponder()
             // Friend-input cell needs a re-layout to flip the apply button
             // to disabled — the simplest path is a section reload.
-            tableView.reloadSections(IndexSet(integer: Section.referral.rawValue), with: .automatic)
+            // A table index, not a raw value: `.referral` is index 3 only
+            // while it is visible, and this path is reachable only then.
+            if let index = visibleSections.firstIndex(of: .referral) {
+                tableView.reloadSections(IndexSet(integer: index), with: .automatic)
+            }
             showToast(message: "Бонус начислен")
         } catch let error as ReferralService.ApplyError {
             input.error = error.errorDescription

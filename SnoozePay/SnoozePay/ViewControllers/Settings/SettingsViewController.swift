@@ -193,12 +193,45 @@ class SettingsViewController: UIViewController {
 
 extension SettingsViewController: UITableViewDataSource {
 
+    /// The sections the table is currently showing, in order.
+    ///
+    /// A table section INDEX is a position in this array, not a `Section` raw
+    /// value. Hiding a section removes it rather than leaving it present with
+    /// zero rows, because an empty section is not free: measured on a laid-out
+    /// table at 402pt, a hidden `.referral` still reserved **17.33pt** of
+    /// grouped footer, which is exactly the double break between «ПРАВИЛА» and
+    /// «ПРОЧЕЕ» that #676 is about.
+    ///
+    /// ⚠️ `heightForFooterInSection` cannot take that back, and an earlier
+    /// version of this PR tried. UIKit ignores `.leastNonzeroMagnitude` there
+    /// for a section with no footer view: `contentSize.height` came back
+    /// **875.0000089009603** with the delegate method and 875.0000089009603
+    /// without it — the same number to the last digit. The test that passed
+    /// alongside it re-read the constant the method had just returned, which is
+    /// why nobody noticed. Do not reintroduce it.
+    ///
+    /// `.diagnostics` deliberately stays in the list even when it has no rows.
+    /// Its phantom footer merges into the padding above the version footer
+    /// rather than splitting two visible sections, so removing it would move
+    /// the version line up by that same 17.33pt — a change to a part of the
+    /// screen #676 has no business touching. Unifying the two rules is its own
+    /// piece of work.
+    var visibleSections: [Section] {
+        Section.allCases.filter { $0 != .referral || AppFeatureFlags.referralEnabled }
+    }
+
+    /// The section at a table index, or `nil` if the index is out of step with
+    /// `visibleSections`.
+    func visibleSection(at index: Int) -> Section? {
+        visibleSections.indices.contains(index) ? visibleSections[index] : nil
+    }
+
     func numberOfSections(in tableView: UITableView) -> Int {
-        Section.allCases.count
+        visibleSections.count
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        guard let sec = Section(rawValue: section) else { return 0 }
+        guard let sec = visibleSection(at: section) else { return 0 }
         switch sec {
         case .finance:            return FinanceRow.allCases.count
         case .soundNotifications: return SoundRow.allCases.count
@@ -210,7 +243,7 @@ extension SettingsViewController: UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard let sec = Section(rawValue: section) else { return nil }
+        guard let sec = visibleSection(at: section) else { return nil }
         switch sec {
         case .finance:            return "ФИНАНСЫ"
         case .soundNotifications: return "ЗВУК И УВЕДОМЛЕНИЯ"
@@ -243,7 +276,7 @@ extension SettingsViewController: UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let section = Section(rawValue: indexPath.section) else { return UITableViewCell() }
+        guard let section = visibleSection(at: indexPath.section) else { return UITableViewCell() }
 
         switch section {
         case .finance:            return makeFinanceCell(at: indexPath)
@@ -260,22 +293,6 @@ extension SettingsViewController: UITableViewDataSource {
 
 extension SettingsViewController: UITableViewDelegate {
 
-    /// A section with no rows and no header must not reserve the grouped
-    /// footer gap either, or hiding one leaves the space it used to occupy.
-    ///
-    /// This never mattered while `.diagnostics` was the only hideable section
-    /// — it sits last, where its gap merges into the padding above the version
-    /// footer. `.referral` sits in the middle (#676), so its leftover gap would
-    /// read as a double break between «ПРАВИЛА» and «ПРОЧЕЕ». Sections that do
-    /// render fall through to the system value, so the existing rhythm is
-    /// untouched.
-    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
-        let isEmpty = self.tableView(tableView, numberOfRowsInSection: section) == 0
-        guard isEmpty, self.tableView(tableView, titleForHeaderInSection: section) == nil else {
-            return UITableView.automaticDimension
-        }
-        return .leastNonzeroMagnitude
-    }
 
     /// Every section but `.referral` self-sizes.
     ///
@@ -298,7 +315,7 @@ extension SettingsViewController: UITableViewDelegate {
     /// measures the 52pt rhythm; only a row that needs MORE grows. A fixed
     /// height could never do anything but clip.
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard Section(rawValue: indexPath.section) == .referral else {
+        guard visibleSection(at: indexPath.section) == .referral else {
             return UITableView.automaticDimension
         }
         return referralRowHeight(row: indexPath.row)
@@ -322,7 +339,7 @@ extension SettingsViewController: UITableViewDelegate {
         // collapses on first layout pass. The two-storey theme row (~90pt) gets
         // its own estimate so it doesn't jump on first display; the rest match
         // the 52pt row rhythm.
-        if Section(rawValue: indexPath.section) == .other,
+        if visibleSection(at: indexPath.section) == .other,
            OtherRow(rawValue: indexPath.row) == .theme {
             return 90
         }
@@ -341,7 +358,7 @@ extension SettingsViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let section = Section(rawValue: indexPath.section) else { return }
+        guard let section = visibleSection(at: indexPath.section) else { return }
 
         switch section {
         case .finance:

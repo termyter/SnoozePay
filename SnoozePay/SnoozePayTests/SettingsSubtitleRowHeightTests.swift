@@ -142,11 +142,22 @@ final class SettingsSubtitleRowHeightTests: XCTestCase {
 
     /// Referral keeps its own heights — it is built from different cells with
     /// no shared floor, so it was deliberately left out of the rewrite.
-    func testReferralKeepsItsOwnRowHeights() {
+    ///
+    /// Skipped while the section is hidden (#676). It used to run anyway and
+    /// pass: with `.referral` absent, `heightForRowAt` fell through to the
+    /// `automaticDimension` branch for a section that does not exist, and
+    /// `XCTAssertNotEqual(-1, -1)` is the only reason it was noticed at all.
+    /// A test that keeps reporting green about an unreachable path is worse
+    /// than no test.
+    func testReferralKeepsItsOwnRowHeights() throws {
         let sut = makeSUT()
+        try XCTSkipUnless(
+            AppFeatureFlags.referralEnabled, "the referral section is hidden (#676)"
+        )
+        let section = try XCTUnwrap(sut.visibleSections.firstIndex(of: .referral))
         let indexPath = IndexPath(
             row: SettingsViewController.ReferralRow.myCode.rawValue,
-            section: SettingsViewController.Section.referral.rawValue
+            section: section
         )
 
         XCTAssertNotEqual(
