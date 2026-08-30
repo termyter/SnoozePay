@@ -50,8 +50,8 @@ final class PenaltyCell: UITableViewCell {
     private let amountField: UITextField = {
         let field = UITextField()
         field.font = AppFonts.mono(.bold, 32)
-        field.textColor = AppColors.warn400
-        field.tintColor = AppColors.warn400
+        field.textColor = AppColors.priceDisplay
+        field.tintColor = AppColors.priceDisplay
         field.keyboardType = .numberPad
         field.borderStyle = .none
         field.setContentHuggingPriority(.required, for: .horizontal)
@@ -181,8 +181,8 @@ final class PenaltyCell: UITableViewCell {
         contentView.addSubview(column)
 
         NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
+            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
             column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
             column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
         ])
@@ -253,8 +253,8 @@ final class PenaltyCell: UITableViewCell {
 
     private func setHelper(visible: Bool) {
         helperLabel.isHidden = !visible
-        amountField.textColor = visible ? AppColors.pain400 : AppColors.warn400
-        suffixLabel.textColor = visible ? AppColors.pain400 : AppColors.warn400
+        amountField.textColor = visible ? AppColors.pain400 : AppColors.priceDisplay
+        suffixLabel.textColor = visible ? AppColors.pain400 : AppColors.priceDisplay
     }
 
     // MARK: - Appearance

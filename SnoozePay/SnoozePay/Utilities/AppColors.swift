@@ -118,6 +118,32 @@ enum AppColors {
     /// Darkest stop of `--sp-grad-warn`.
     static let warnFill600 = UIColor(hex: 0xC97A06)
 
+    /// The snooze price as a large display numeral — `PenaltyCell`'s 32pt bold
+    /// mono amount and its `₽` suffix.
+    ///
+    /// This is deliberately a `warnFill*` value used as **ink**, which the rule
+    /// two blocks up otherwise forbids. The reason is that the rule and the
+    /// canon disagree here, and the canon won by PM decision (#673):
+    ///
+    /// - Canon (`SPMore2.jsx`, artboard `AlarmEdit`) paints the amount
+    ///   `var(--sp-warn-400)`. `tokens.css` never overrides the warn ramp in
+    ///   its `[data-theme="light"]` block, so in the prototype that is amber —
+    ///   the same amber as the preset chip and the slider track directly
+    ///   beneath it.
+    /// - Our light `warn400` is bronze `#966107`, because the warn ramp also
+    ///   carries body-size text and `AppColorsContrastTests` holds it to
+    ///   4.5:1. Three amber elements in one column with the largest of them
+    ///   rendered bronze is what the PM reported as "wrong colour".
+    ///
+    /// ⚠️ The honest number: `#F59E0B` on `bg1` measures **2.15:1**, which
+    /// clears neither 4.5:1 nor the 3:1 large-text threshold. What makes that
+    /// survivable rather than merely broken is that the amount is never the
+    /// only carrier of the value — the same number is stated by the selected
+    /// preset chip below it, in `fgOnWarn` at 8.79:1. `PenaltyDisplayColorTests`
+    /// pins both the ratio and the tie to the chip so neither can drift
+    /// unnoticed.
+    static let priceDisplay = warnFill500
+
     // MARK: - Brand · Info
     /// Informational links only — `--sp-info-500` in `tokens.css`.
     static let info500 = dynamicColor(dark: 0x4F8BFF, light: 0x3257A1)

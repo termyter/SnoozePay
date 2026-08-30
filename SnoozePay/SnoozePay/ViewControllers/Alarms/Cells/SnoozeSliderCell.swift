@@ -137,20 +137,20 @@ final class SnoozeSliderCell: UITableViewCell {
         contentView.addSubview(maxBoundLabel)
 
         NSLayoutConstraint.activate([
-            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
             captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
 
-            hintLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
+            hintLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
             hintLabel.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: 2),
             hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -AppSpacing.sm),
 
-            valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
             valueLabel.firstBaselineAnchor.constraint(equalTo: captionLabel.firstBaselineAnchor),
             // Reserve a fixed minimum so «1 мин» / «15 мин» don't reflow.
             valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
 
-            slider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            slider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            slider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
+            slider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
             slider.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
 
             // Range bounds under the track (space-between, marginTop 8 in JSX).
