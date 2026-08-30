@@ -170,8 +170,40 @@ extension AlarmFiringViewController {
             message: Localized.format("firing.alert.snooze_not_scheduled.message", detail),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default) { _ in
+            // Keep the app slow for 2 s PAST the button press, whichever side
+            // of the dismissal UIKit calls this handler on, then let it go.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                Self.proofStallStopped = true
+            }
+        })
         present(alert, animated: true)
+        Self.proofStartStall()
+    }
+
+    // MARK: - PROOF-ONLY (#626), never merged
+
+    private static var proofStallStopped = false
+
+    /// Makes the "loaded runner" condition deterministic instead of waiting for
+    /// one. From the moment this alert goes up the main thread is busy 90% of
+    /// the time, so every accessibility round trip and every UIKit animation
+    /// costs ~10x — including the alert's own dismissal. XCUITest's default
+    /// interruption handler gives itself a fixed 1.0 s to confirm that
+    /// dismissal, so under this it misses, gives up for the rest of the test,
+    /// and the next tap lands on hit point {-1, -1}. The stall lifts 2 s after
+    /// the alert's button is pressed, so nothing downstream is being measured
+    /// through it.
+    private static func proofStartStall() {
+        proofStallStopped = false
+        func step(_ iteration: Int) {
+            guard iteration < 40, !proofStallStopped else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                Thread.sleep(forTimeInterval: 0.45)
+                step(iteration + 1)
+            }
+        }
+        step(0)
     }
 
     /// Stronger banner for the degraded case (#197): the snooze didn't schedule
