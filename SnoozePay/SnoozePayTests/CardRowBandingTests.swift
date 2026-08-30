@@ -51,11 +51,40 @@ final class CardRowBandingTests: XCTestCase {
             "the ambient stop must not composite over the row's own fill"
         )
 
-        let belowTheCard = CGPoint(x: spread + row.bounds.midX, y: spread + row.bounds.maxY + 2)
+        // Sampled ABOVE a `.first` row, not below it. Below a section cap is
+        // the next row's own `bg1`, so the stop must NOT halo there — that is
+        // the seam, and #674 is exactly the decoration that used to land in
+        // it. The outward direction for a `.first` row is up.
+        let outsideTheCard = CGPoint(x: spread + row.bounds.midX, y: spread + row.bounds.minY - 2)
         XCTAssertTrue(
-            path.contains(belowTheCard, using: .evenOdd),
+            path.contains(outsideTheCard, using: .evenOdd),
             "…but the halo around the card is the whole point of the stop"
         )
+    }
+
+    /// The measured version of the same claim, through the render path that can
+    /// actually see a shadow: on a cap row, the corner in the seam and the
+    /// centre of the row are the same colour.
+    func testCapRowCorners_renderTheSameFillAsItsCentre() throws {
+        let renderPath = try shadowCapableRenderPath()
+        for position in [CardRowPosition.first, .last] {
+            let row = laidOutRow(position: position, style: .light)
+            let window = try XCTUnwrap(row.window)
+            let inset: CGFloat = 3
+            let seamY = position == .first
+                ? window.bounds.maxY - inset
+                : window.bounds.minY + inset
+
+            let centre = pixel(of: window, at: self.centre(of: window), using: renderPath)
+            for x in [window.bounds.minX + inset, window.bounds.maxX - inset] {
+                let corner = pixel(of: window, at: CGPoint(x: x, y: seamY), using: renderPath)
+                assertSameColour(
+                    corner,
+                    centre,
+                    "\(position) seam corner at x=\(x) vs the row's centre"
+                )
+            }
+        }
     }
 
     /// The asymmetry that turned a wash into visible stripes: caps carry the

@@ -153,6 +153,21 @@ enum CardRowPosition {
         case .middle: return []
         }
     }
+
+    /// Edges this row shares with a neighbour — i.e. edges that are not really
+    /// the card's edge at all, just the seam where the section continues.
+    ///
+    /// The decoration must not emit a halo or a shadow across these: the
+    /// surface on the far side is the next row's `bg1`, and anything painted
+    /// there reads as a boundary the section does not have (#674).
+    var openEdges: UIRectEdge {
+        switch self {
+        case .single: return []
+        case .first: return .bottom
+        case .last: return .top
+        case .middle: return [.top, .bottom]
+        }
+    }
 }
 
 extension UITableViewCell {
@@ -222,11 +237,28 @@ final class CardRowBackgroundView: UIView {
         outline.frame = bounds
         outline.path = outlinePath(lineWidth: outline.lineWidth)
         guard position != .middle else { return }
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: cardCornerRadius).cgPath
+        // Both stops have to be cast from the row's REAL silhouette, not from a
+        // fully rounded rect. A cap row is square on the side that continues
+        // into its neighbour, and a rounded path there casts a corner-shaped
+        // shadow into the seam — which is what made the section read as if
+        // every row were separately rounded (#674).
+        //
+        // The key stop keeps the row's own bounds: it is only the CORNERS that
+        // were wrong here. Pushing its path past the seam the way the ambient
+        // stop does would move the band deeper into the neighbour rather than
+        // remove it, because a shadow is always cast around whatever path it
+        // is given.
+        layer.shadowPath = UIBezierPath(
+            roundedRect: bounds,
+            byRoundingCorners: position.maskedCorners.rectCorners,
+            cornerRadii: CGSize(width: cardCornerRadius, height: cardCornerRadius)
+        ).cgPath
         AppShadow.installAmbientShadow1Layer(
             on: layer,
             cornerRadius: cardCornerRadius,
-            trait: traitCollection
+            trait: traitCollection,
+            corners: position.maskedCorners,
+            openEdges: position.openEdges
         )
     }
 
