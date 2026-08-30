@@ -348,7 +348,9 @@ final class AlarmFiringViewModel {
         return AlarmScheduler.scheduledFireDate(now: tap, snoozeMinutes: alarm.snoozeMinutes)
     }
 
-    /// `HH:mm` label of the next ring — "отложено до 07:05" / status-bar time.
+    /// Wall-clock label of the next ring — «отложено до 07:05» / status-bar
+    /// time. Padded hour, in whatever cycle the reader's locale uses (#628);
+    /// it was a hardcoded `HH:mm` until that issue.
     /// Empty before the first snooze (no anchor → no target).
     func nextRingTimeText(anchor: Date? = nil) -> String {
         guard let target = nextRingDate(anchor: anchor) else { return "" }

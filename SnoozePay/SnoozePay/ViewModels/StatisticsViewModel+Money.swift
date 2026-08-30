@@ -465,9 +465,13 @@ extension StatisticsViewModel {
     // MARK: - Presentation strings
 
     /// "7:04" — minutes-since-midnight rendered as a wall clock.
-    static func clockText(minutes: Int) -> String {
-        let normalised = max(0, minutes)
-        return String(format: "%d:%02d", normalised / 60, normalised % 60)
+    ///
+    /// The hour cycle belongs to the reader, not to this line: the same median
+    /// renders "7:04" for someone on 24-hour time and "7:04 AM" for someone on
+    /// 12-hour time (#628). `locale` is injectable so the tests can pin both
+    /// readings instead of inheriting whatever the CI runner is set to.
+    static func clockText(minutes: Int, locale: Locale = AppLocale.display) -> String {
+        WallClockFormatter.string(minutesSinceMidnight: minutes, style: .compact, locale: locale)
     }
 
     /// Caption above the third wake-time column.

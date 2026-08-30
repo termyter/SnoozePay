@@ -527,23 +527,18 @@ final class AlarmsListViewModel {
 
     // MARK: - Helpers for cell display
 
-    /// Cached formatter — avoids ~1ms per-call allocation that adds up in lists.
-    /// Locale fixed to `en_US_POSIX` so the 24-hour format is honoured regardless
-    /// of the user's region (some locales otherwise render `7:00 AM`).
-    ///
-    /// The list cells use `H:mm` — hour WITHOUT a leading zero ("7:30", "19:05")
+    /// The list cells show the hour WITHOUT a leading zero ("7:30", "19:05")
     /// to match the prototype (artboard 06); the create/edit time picker keeps
-    /// the padded `HH:mm` form (`TimePickerCell`). See #343.
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "H:mm"
-        return formatter
-    }()
-
+    /// the padded form (`TimePickerCell`). See #343.
+    ///
+    /// The `en_US_POSIX` pin this used to carry forced 24 hours on everyone —
+    /// which is right for a Russian region and wrong for an American one, and
+    /// the width was never the part that needed pinning (#628).
+    /// ``WallClockFormatter`` keeps the width and hands the cycle back to the
+    /// locale, caching the formatter as this did.
     func alarmTimeString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return Self.timeFormatter.string(from: alarms[index].time)
+        return WallClockFormatter.string(from: alarms[index].time, style: .compact)
     }
 
     /// Detail line for alarm card: "Name - Days" (e.g. "Работа - Будни")

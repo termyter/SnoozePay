@@ -114,17 +114,16 @@ enum WalletTransactionPreview {
     ///
     /// All three shapes are whole catalogue strings, separator included: the
     /// «·» is punctuation a language may well place differently, and there is
-    /// nothing to gain from freezing it in Swift. The clock stays `HH:mm`
-    /// though — a 24-hour reading is what the design shows and what every
-    /// other time label in the app renders (#569 moves *copy*, not the
-    /// question of am/pm).
+    /// nothing to gain from freezing it in Swift.
+    ///
+    /// The clock used to be a hardcoded `HH:mm` on the reasoning that 24 hours
+    /// is what the design shows — but the design was drawn for a Russian
+    /// region, and am/pm is a *regional* setting rather than a language one
+    /// (#628). It now goes through ``WallClockFormatter``, which resolves to
+    /// the same `HH:mm` under `ru_RU` and to "7:05 PM" for a reader on 12-hour
+    /// time.
     static func timestampText(for date: Date, now: Date, calendar: Calendar = .current) -> String {
-        let timeFormatter = DateFormatter()
-        timeFormatter.locale = AppLocale.display
-        timeFormatter.calendar = calendar
-        timeFormatter.timeZone = calendar.timeZone
-        timeFormatter.dateFormat = "HH:mm"
-        let time = timeFormatter.string(from: date)
+        let time = WallClockFormatter.string(from: date, style: .padded, calendar: calendar)
 
         if calendar.isDate(date, inSameDayAs: now) {
             return Localized.format("wallet.history.timestamp.today", time)
