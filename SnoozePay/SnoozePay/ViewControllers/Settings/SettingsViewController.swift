@@ -257,27 +257,31 @@ extension SettingsViewController: UITableViewDataSource {
 
 extension SettingsViewController: UITableViewDelegate {
 
+    /// Every section but `.referral` self-sizes.
+    ///
+    /// This used to be a list of sections that had EARNED self-sizing —
+    /// `.rules` and `.finance` for a wrapping title (#313, #519), `.other`'s
+    /// theme row for its two storeys (#314), `.diagnostics` for its hint
+    /// (#102) — with everything else falling through to a fixed 52. Each entry
+    /// was added after a row was found clipped, which made the list a running
+    /// tally of bugs rather than a rule, and the next row with a subtitle was
+    /// always going to be missed. It was: «Связаться с нами» carries
+    /// `support@snoozepay.app` underneath, sits in `.other` but is not the
+    /// theme row, and so got 52pt. `UIView-Encapsulated-Layout-Height` is
+    /// required priority and beats the cell's own bottom constraint, so the
+    /// descenders fell below the fold and the address rendered as
+    /// `support@snoozepav.app` — a domain that does not exist (#632).
+    ///
+    /// Self-sizing is safe for all of them: these sections are built from
+    /// `SettingsIconRowCell` (and the theme cell), which carries a
+    /// 999-priority `>= minimumRowHeight` floor. A short row therefore still
+    /// measures the 52pt rhythm; only a row that needs MORE grows. A fixed
+    /// height could never do anything but clip.
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard let section = Section(rawValue: indexPath.section) else { return 52 }
-        switch section {
-        case .other where OtherRow(rawValue: indexPath.row) == .theme:
-            // Two-storey cell — glyph + «Тема» title, then a 36pt SPSegmented
-            // below (~90pt total). A fixed 56pt clipped the title and squashed
-            // the segment; self-size instead (#314).
+        guard Section(rawValue: indexPath.section) == .referral else {
             return UITableView.automaticDimension
-        case .rules, .finance:
-            // A wrapping subtitle («Прогрессивная цена») and a wrapping title
-            // («Цена откладывания по умолчанию») — self-size, no "…" (#313, #519).
-            return UITableView.automaticDimension
-        case .referral:
-            return referralRowHeight(row: indexPath.row)
-        case .diagnostics:
-            // Title + subtitle ("Хранилище повреждено и заблокировано") — let it
-            // self-size so the hint isn't clipped on narrow screens (#102).
-            return UITableView.automaticDimension
-        default:
-            return 52
         }
+        return referralRowHeight(row: indexPath.row)
     }
 
     /// Row heights inside `.referral`, split off to keep `heightForRowAt` under
