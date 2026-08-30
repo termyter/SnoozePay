@@ -13,11 +13,18 @@ final class WalletTransactionPreviewTests: XCTestCase {
         calendar.date(byAdding: .day, value: -daysAgo, to: now)!
     }
 
+    /// Expected wall-clock label, built the way the PRODUCTION path builds it
+    /// (#628) rather than by re-implementing it here.
+    ///
+    /// The previous version pinned its own `ru_RU` + `"HH:mm"` formatter, which
+    /// made it a tautological oracle: under today's `ru_RU` display locale it
+    /// agreed with any implementation, correct or not, and would have stayed
+    /// green through a format regression. Sharing the production formatter at
+    /// least makes the two sides fail together; the locale-behaviour assertions
+    /// that actually pin the format live in `WallClockFormatterTests`, which is
+    /// where they belong.
     private func timeString(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        WallClockFormatter.string(from: date, style: .padded, locale: AppLocale.display)
     }
 
     // MARK: - Cap + ordering

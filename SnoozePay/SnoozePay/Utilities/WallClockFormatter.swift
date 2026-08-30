@@ -77,7 +77,15 @@ enum WallClockFormatter {
             year: 2001, month: 1, day: 1,
             hour: clamped / 60, minute: clamped % 60
         )
-        guard let date = utcCalendar.date(from: components) else { return "" }
+        guard let date = utcCalendar.date(from: components) else {
+            // Unreachable: `clamped` is pinned to 0…1439 above. Kept loud
+            // anyway — the arithmetic `clockText` this replaces could NOT
+            // return an empty string, and quietly gaining that ability is
+            // how a blank stat card ships.
+            AppLogger.ui.fault("WallClockFormatter: minute offset \(clamped, privacy: .public) built no date")
+            assertionFailure("minute offset \(clamped) built no date")
+            return ""
+        }
         return string(from: date, style: style, locale: locale, calendar: utcCalendar)
     }
 
@@ -89,7 +97,15 @@ enum WallClockFormatter {
     /// the same wall clock regardless of the device's zone or DST.
     private static let utcCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        // NOT `?? .current`: falling back to the device zone would silently
+        // change what a minutes-since-midnight offset MEANS — it would start
+        // depending on the reader's zone and could shift the rendered hour
+        // across a DST boundary. GMT is always constructible; if it ever is
+        // not, that is a broken Foundation, not a case to paper over.
+        guard let gmt = TimeZone(secondsFromGMT: 0) else {
+            preconditionFailure("GMT is not constructible — Foundation is broken")
+        }
+        calendar.timeZone = gmt
         return calendar
     }()
 
@@ -97,15 +113,83 @@ enum WallClockFormatter {
     /// — the firing screen re-renders once a second, the alarms list once per
     /// cell — so the default-locale pair is built once. Anything with an
     /// injected locale or calendar (tests, calendar-carrying view models) is
-    /// built on demand; `DateFormatter.string(from:)` is thread-safe for reads.
-    private static let displayPadded = makeFormatter(style: .padded, locale: AppLocale.display, calendar: nil)
-    private static let displayCompact = makeFormatter(style: .compact, locale: AppLocale.display, calendar: nil)
+    /// built on demand.
+    ///
+    /// ⚠️ **The cache must be invalidated, or it reopens #628 through the back
+    /// door.** `setLocalizedDateFormatFromTemplate` resolves the skeleton ONCE
+    /// and writes a literal pattern into `dateFormat`; from then on the
+    /// formatter never consults the locale again. And the guard below cannot
+    /// notice, because `Locale.autoupdatingCurrent == Locale.autoupdatingCurrent`
+    /// is `true` — verified, not assumed. So on the day #569/#603 points
+    /// `AppLocale.display` at `.autoupdatingCurrent`, a reader toggling
+    /// «24-Hour Time» in Settings would keep seeing the old cycle on five of
+    /// the seven call sites until the app was restarted: exactly the bug this
+    /// file exists to fix, with a delay.
+    ///
+    /// Hence the observer. It is cheap (one notification, fired on a setting
+    /// nobody flips in a loop) and it is the difference between a fix that
+    /// lands and one that only looks like it did.
+    private static let cache = FormatterCache()
 
     private static func cachedFormatter(style: HourStyle, locale: Locale, calendar: Calendar?) -> DateFormatter {
         guard calendar == nil, locale == AppLocale.display else {
             return makeFormatter(style: style, locale: locale, calendar: calendar)
         }
-        return style == .padded ? displayPadded : displayCompact
+        return cache.formatter(for: style)
+    }
+
+    /// Holds the two default-locale formatters and drops them when the
+    /// reader's regional settings change.
+    ///
+    /// A class rather than statics because it needs a lifetime: an observer to
+    /// register and state to clear. Locked because the alarms list builds cells
+    /// off the main queue in tests and `DateFormatter` is only safe for
+    /// concurrent *reads* — rebuilding one while another thread reads it is not.
+    private final class FormatterCache {
+
+        private var padded: DateFormatter?
+        private var compact: DateFormatter?
+        private let lock = NSLock()
+
+        init() {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(localeChanged),
+                name: NSLocale.currentLocaleDidChangeNotification,
+                object: nil
+            )
+        }
+
+        func formatter(for style: HourStyle) -> DateFormatter {
+            lock.lock()
+            defer { lock.unlock() }
+            switch style {
+            case .padded:
+                if let padded { return padded }
+                let made = makeFormatter(style: .padded, locale: AppLocale.display, calendar: nil)
+                padded = made
+                return made
+            case .compact:
+                if let compact { return compact }
+                let made = makeFormatter(style: .compact, locale: AppLocale.display, calendar: nil)
+                compact = made
+                return made
+            }
+        }
+
+        /// Exposed for the test that proves invalidation actually rebuilds —
+        /// without it the cached branch is untestable and a regression there
+        /// passes green.
+        func invalidate() {
+            lock.lock()
+            defer { lock.unlock() }
+            padded = nil
+            compact = nil
+        }
+
+        @objc private func localeChanged() {
+            invalidate()
+        }
     }
 
     private static func makeFormatter(style: HourStyle, locale: Locale, calendar: Calendar?) -> DateFormatter {
@@ -119,20 +203,70 @@ enum WallClockFormatter {
         // has to be set first — `setLocalizedDateFormatFromTemplate` resolves
         // against whatever is on the formatter at the moment of the call.
         formatter.setLocalizedDateFormatFromTemplate("jm")
-        if let pattern = formatter.dateFormat {
-            formatter.dateFormat = applying(style, to: pattern)
+        // A formatter whose `dateFormat` never resolved renders the EMPTY
+        // STRING, not a wrong time — verified against Foundation. Blank
+        // clocks on every screen with no log line is the worst way to find
+        // out, so say it out loud and trap in DEBUG. There is no sane
+        // fallback pattern to substitute: guessing one would re-freeze the
+        // hour cycle this whole file exists to unfreeze.
+        guard let pattern = formatter.dateFormat, !pattern.isEmpty else {
+            AppLogger.ui.fault(
+                """
+                WallClockFormatter: `jm` unresolved for \
+                \(locale.identifier, privacy: .public) — clocks would render empty
+                """
+            )
+            assertionFailure("`jm` did not resolve for locale \(locale.identifier)")
+            return formatter
         }
+        formatter.dateFormat = applying(style, to: pattern)
         return formatter
     }
 
     /// Re-applies the hour width to a locale-resolved pattern.
     ///
-    /// A pattern carrying a quoted literal is returned untouched: `'` fences
-    /// text that must not be read as fields, and no 24-hour short-time pattern
-    /// in CLDR has one, so bailing out is cheaper than parsing quotes.
+    /// Returns the pattern untouched in two cases, neither of them an error —
+    /// the width is a design preference, not a correctness requirement:
+    ///
+    /// - **A quoted literal.** `'` fences text that must not be read as
+    ///   fields, and rewriting inside it would corrupt the pattern. Not
+    ///   hypothetical, contrary to what this comment asserted before anyone
+    ///   checked: `oc` resolves `jm` to `HH'h'mm`, `nds` to `'Kl'. H.mm`,
+    ///   `dsb` to `'zeg'. H:mm`, `hsb` to `H:mm 'hodź'.`.
+    /// - **A 12-hour pattern** (`h`/`K`), left exactly as the locale wrote it,
+    ///   because "07:04 AM" is not English anyone writes.
+    ///
+    /// `k`/`kk` — the 1–24 cycle, which `ru_RU` produces under an explicit
+    /// `hourCycle=h24` override — is handled alongside `H`/`HH`: same field,
+    /// different numbering, and artboard 06 wants the same width from both.
+    ///
+    /// Verified by running all 951 `Locale.availableIdentifiers` plus forced
+    /// h11/h12/h23/h24 overrides through this function: no 12-hour pattern is
+    /// altered, no `a` moved or dropped, no quote broken.
     private static func applying(_ style: HourStyle, to pattern: String) -> String {
-        guard !pattern.contains("'"), pattern.contains("H") else { return pattern }
-        let compact = pattern.replacingOccurrences(of: "HH", with: "H")
-        return style == .padded ? compact.replacingOccurrences(of: "H", with: "HH") : compact
+        guard !pattern.contains("'") else { return pattern }
+        for hour in ["H", "k"] where pattern.contains(hour) {
+            let doubled = hour + hour
+            let compact = pattern.replacingOccurrences(of: doubled, with: hour)
+            return style == .padded
+                ? compact.replacingOccurrences(of: hour, with: doubled)
+                : compact
+        }
+        return pattern
     }
+
+    #if DEBUG
+    /// Identity of the cached formatter, so a test can prove a locale change
+    /// actually rebuilds it. Without this the cached branch — the only one
+    /// that runs in production on the hot paths — is unobservable, and a
+    /// regression there passes green.
+    static func cachedFormatterIdentityForTesting(style: HourStyle) -> ObjectIdentifier {
+        ObjectIdentifier(cache.formatter(for: style))
+    }
+
+    /// Drop the cached pair, as the locale-change notification does.
+    static func invalidateCacheForTesting() {
+        cache.invalidate()
+    }
+    #endif
 }

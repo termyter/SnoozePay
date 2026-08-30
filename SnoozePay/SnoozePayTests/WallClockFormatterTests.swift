@@ -170,6 +170,63 @@ final class WallClockFormatterTests: XCTestCase {
         render(hour: hour, minute: minute, style: .compact, locale: locale)
     }
 
+    // MARK: - The cached branch
+
+    /// Every other test in this file injects a locale AND a calendar, which
+    /// routes it past the cache into `makeFormatter`. That means the two
+    /// cached formatters — the ONLY ones production uses on the hot paths (the
+    /// alarms list once per cell, the firing screen once a second) — were
+    /// executed by no test at all, and a regression in them would pass green.
+    /// These three cases exist to close that hole, not to re-check formatting.
+
+    func testDefaultLocalePath_rendersThroughTheCache() {
+        // No locale, no calendar → the cached branch. Asserted on the shape
+        // rather than an exact string, because the value depends on the
+        // runner's zone; the point is that the cached formatter produces a
+        // real clock and not the empty string a failed resolve would give.
+        let rendered = WallClockFormatter.string(from: Date(), style: .padded)
+        XCTAssertFalse(rendered.isEmpty,
+                       "The cached formatter must not render an empty clock")
+        XCTAssertTrue(rendered.contains(":") || rendered.contains("."),
+                      "Expected a wall clock with a separator, got «\(rendered)»")
+    }
+
+    func testInvalidate_rebuildsTheCachedFormatter() {
+        let before = WallClockFormatter.cachedFormatterIdentityForTesting(style: .padded)
+        XCTAssertEqual(before,
+                       WallClockFormatter.cachedFormatterIdentityForTesting(style: .padded),
+                       "Without an invalidation the cache must return the same instance")
+
+        WallClockFormatter.invalidateCacheForTesting()
+
+        XCTAssertNotEqual(before,
+                          WallClockFormatter.cachedFormatterIdentityForTesting(style: .padded),
+                          "After invalidation the formatter must be rebuilt")
+    }
+
+    /// The one that guards the actual bug. `setLocalizedDateFormatFromTemplate`
+    /// resolves `jm` ONCE and writes a literal pattern; the formatter never
+    /// consults the locale again. And the cache guard cannot notice a change,
+    /// because `Locale.autoupdatingCurrent == Locale.autoupdatingCurrent` is
+    /// `true`. So without this notification hook, the day #569/#603 points
+    /// `AppLocale.display` at `.autoupdatingCurrent`, a reader toggling
+    /// «24-Hour Time» would keep seeing the old cycle until an app restart —
+    /// #628 reopened through the cache.
+    func testLocaleChangeNotification_rebuildsTheCachedFormatter() {
+        let before = WallClockFormatter.cachedFormatterIdentityForTesting(style: .compact)
+
+        NotificationCenter.default.post(
+            name: NSLocale.currentLocaleDidChangeNotification,
+            object: nil
+        )
+
+        // The observer runs synchronously on the posting thread, so no wait is
+        // needed — and adding one would hide a broken observer behind a sleep.
+        XCTAssertNotEqual(before,
+                          WallClockFormatter.cachedFormatterIdentityForTesting(style: .compact),
+                          "A locale change must drop the frozen pattern (#628 via the cache)")
+    }
+
     /// The instant is built in UTC and the formatter is handed the *same* UTC
     /// calendar, so the rendered hour is the one written at the call site no
     /// matter which zone the runner sits in.
