@@ -354,9 +354,11 @@ final class WalletTransactionHistoryViewController: UIViewController {
         case .charge:
             return Localized.text("wallet.tx.charge")
         case .promotion:
-            // `.promotion` is currently minted only by the referral bonus
-            // (`ReferralService`) — there is no 7-day hold today, so the
-            // copy must not claim one (issue #282 — honest, unified copy
+            // `.promotion` was minted only by the referral bonus
+            // (`ReferralService`); since #676 hid that entry point nothing
+            // mints it at all, so this branch renders history on installs
+            // that already have such a row. There is no 7-day hold today, so
+            // the copy must not claim one (issue #282 — honest, unified copy
             // shared with the wallet preview).
             return Localized.text("wallet.tx.promotion")
         case .refund:

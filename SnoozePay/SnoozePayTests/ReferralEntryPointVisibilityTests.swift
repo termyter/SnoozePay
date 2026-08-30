@@ -35,8 +35,11 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// A real, laid-out Settings screen at a real device width. The footer
     /// questions cannot be answered without one — `rectForFooter(inSection:)`
     /// on an unlaid table reports nothing.
-    private func laidOutSettings() throws -> SettingsViewController {
+    private func laidOutSettings(
+        referralEnabled: Bool = AppFeatureFlags.referralEnabled
+    ) throws -> SettingsViewController {
         let sut = makeSettings()
+        sut.referralEnabled = referralEnabled
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 900))
         if let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
@@ -60,31 +63,26 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         return sut
     }
 
-    // MARK: - Settings section, both flag positions
+    // MARK: - Section model, both flag positions
 
-    func testReferralSectionHasNoRowsWhenTheFlagIsOff() {
-        XCTAssertEqual(SettingsViewController.referralRowCount(referralEnabled: false), 0)
+    func testTheSectionModelDropsReferralWhenTheFlagIsOff() {
+        let sections = SettingsViewController.visibleSections(referralEnabled: false)
+        XCTAssertFalse(sections.contains(.referral))
+        XCTAssertEqual(sections.count, SettingsViewController.Section.allCases.count - 1)
     }
 
     /// Turning the flag back on must return the whole section, not a subset —
     /// this is what makes the hide reversible rather than a slow deletion.
-    func testReferralSectionReturnsEveryRowWhenTheFlagIsOn() {
-        XCTAssertEqual(
-            SettingsViewController.referralRowCount(referralEnabled: true),
-            SettingsViewController.ReferralRow.allCases.count
-        )
+    ///
+    /// This used to assert `referralRowCount(referralEnabled:)`, a helper that
+    /// was gated a second time behind a `switch` the section had already been
+    /// filtered out of. The off-branch was unreachable in production, so the
+    /// test was green against code that never ran. Both helpers are gone; the
+    /// model has one gate and it is asserted here and on a live table below.
+    func testTheSectionModelRestoresReferralWhenTheFlagIsOn() {
+        let sections = SettingsViewController.visibleSections(referralEnabled: true)
+        XCTAssertEqual(sections, SettingsViewController.Section.allCases)
         XCTAssertEqual(SettingsViewController.ReferralRow.allCases.count, 3)
-    }
-
-    /// A hidden section must not leave its caps header behind: the header is
-    /// what a user would read as "the feature is here", and an empty
-    /// «ПРИГЛАСИТЬ ДРУГА» would be worse than the section itself.
-    func testReferralHeaderDisappearsWithTheSection() {
-        XCTAssertNil(SettingsViewController.referralSectionTitle(referralEnabled: false))
-        XCTAssertEqual(
-            SettingsViewController.referralSectionTitle(referralEnabled: true),
-            "ПРИГЛАСИТЬ ДРУГА"
-        )
     }
 
     // MARK: - Live table follows the flag
@@ -112,9 +110,21 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
 
     /// While the flag is ON the section is present and carries its header;
     /// this is the half that keeps the hide reversible rather than a deletion.
+    ///
+    /// It used to `XCTSkipUnless(AppFeatureFlags.referralEnabled)` — i.e. it
+    /// never ran, because the shipped flag is `false`. A skipped test is not
+    /// coverage: invert the `filter` in `visibleSections(referralEnabled:)`
+    /// and nothing would have gone red until someone flipped the flag for
+    /// real. `referralEnabled` is settable per instance now, so both
+    /// positions lay out on a real table.
     func testTheSectionKeepsItsHeaderWhileTheFlagIsOn() throws {
-        let sut = makeSettings()
-        try XCTSkipUnless(AppFeatureFlags.referralEnabled, "the section is hidden")
+        let sut = try laidOutSettings(referralEnabled: true)
+
+        XCTAssertEqual(
+            sut.tableView.numberOfSections,
+            SettingsViewController.Section.allCases.count,
+            "the table did not build the referral section back"
+        )
 
         let index = try XCTUnwrap(sut.visibleSections.firstIndex(of: .referral))
         XCTAssertEqual(
@@ -141,8 +151,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// actually build, and does its content end where six sections' worth of
     /// footers would put it.
     func testTheHiddenSectionIsAbsentFromTheTable_notMerelyEmpty() throws {
-        let sut = try laidOutSettings()
-        try XCTSkipIf(AppFeatureFlags.referralEnabled, "nothing is hidden while the flag is on")
+        let sut = try laidOutSettings(referralEnabled: false)
 
         XCTAssertEqual(
             sut.tableView.numberOfSections, SettingsViewController.Section.allCases.count - 1,
@@ -186,8 +195,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// `.other` — so an index-based lookup that still spoke raw values would
     /// hand «Прочее» taps to the referral handler.
     func testTheIndexTheHiddenSectionVacatedNowBelongsToItsSuccessor() throws {
-        let sut = try laidOutSettings()
-        try XCTSkipIf(AppFeatureFlags.referralEnabled, "nothing is hidden while the flag is on")
+        let sut = try laidOutSettings(referralEnabled: false)
 
         let vacated = SettingsViewController.Section.referral.rawValue
         XCTAssertEqual(sut.visibleSection(at: vacated), .other)

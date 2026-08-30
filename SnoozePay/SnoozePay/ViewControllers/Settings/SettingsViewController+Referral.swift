@@ -10,23 +10,15 @@ import UIKit
 
 extension SettingsViewController {
 
-    /// Rows the `.referral` section renders. Zero while
-    /// `AppFeatureFlags.referralEnabled` is off (#676) — the section case
-    /// stays in place rather than being deleted so `ReferralRow`, the cells
-    /// and their heights keep compiling against a live table.
+    /// The `.referral` section's rows and header are plain constants in
+    /// `SettingsViewController`, not functions of the flag.
     ///
-    /// A pure function of the flag (like `shouldShowRecovery`) so both
-    /// positions are asserted in tests, not just the one we happen to ship.
-    static func referralRowCount(referralEnabled: Bool) -> Int {
-        referralEnabled ? ReferralRow.allCases.count : 0
-    }
-
-    /// The `.referral` header, or `nil` when the section is hidden — an
-    /// empty section must not leave a stray caps title behind (same rule the
-    /// `.diagnostics` section follows).
-    static func referralSectionTitle(referralEnabled: Bool) -> String? {
-        referralEnabled ? "ПРИГЛАСИТЬ ДРУГА" : nil
-    }
+    /// They used to be `referralRowCount(referralEnabled:)` /
+    /// `referralSectionTitle(referralEnabled:)`, gated a second time inside a
+    /// `switch` that `visibleSections(referralEnabled:)` had already filtered.
+    /// The off-branch was unreachable in production and the two tests pinning
+    /// it were green against code that never ran (#676). One gate, in
+    /// `visibleSections`, tested on a live table in both positions.
 
     /// Dispatches to one of three layouts (`myCode`, `friendInput`, `caption`).
     /// Centralising the switch keeps `cellForRowAt:` short and the row-index

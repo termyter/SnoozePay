@@ -107,6 +107,14 @@ class SettingsViewController: UIViewController {
 
     let referralService = ReferralService.shared
 
+    /// The referral flag this screen obeys. Defaults to the shipped constant;
+    /// tests set it to lay the real table out in the other position.
+    ///
+    /// Not a global read at every call site: `AppFeatureFlags.referralEnabled`
+    /// is a `let`, so with the flag read inline there is no way to exercise
+    /// the on-position on a live table at all.
+    var referralEnabled: Bool = AppFeatureFlags.referralEnabled
+
     /// Held weak so the cell may be recycled without a dangling reference.
     /// Used to surface inline validation messages from
     /// `handleApplyFriendCodeTapped` without a full `reloadData`.
@@ -218,8 +226,17 @@ extension SettingsViewController: UITableViewDataSource {
     /// the version line up by that same 17.33pt — a change to a part of the
     /// screen #676 has no business touching. Unifying the two rules is its own
     /// piece of work, filed as #684.
+    /// Pure function of the flag — the ONLY gate on the referral section —
+    /// so BOTH positions can be laid out on a real table. Reading
+    /// the global here directly is what made the on-position untestable: the
+    /// two tests that wanted it had to skip, and reversibility — the whole
+    /// promise of #676 — rested on helpers production never calls.
+    static func visibleSections(referralEnabled: Bool) -> [Section] {
+        Section.allCases.filter { $0 != .referral || referralEnabled }
+    }
+
     var visibleSections: [Section] {
-        Section.allCases.filter { $0 != .referral || AppFeatureFlags.referralEnabled }
+        Self.visibleSections(referralEnabled: referralEnabled)
     }
 
     /// The section at a table index, or `nil` if the index is out of step with
@@ -238,7 +255,9 @@ extension SettingsViewController: UITableViewDataSource {
         case .finance:            return FinanceRow.allCases.count
         case .soundNotifications: return SoundRow.allCases.count
         case .rules:              return 1 // Прогрессивная цена
-        case .referral:           return Self.referralRowCount(referralEnabled: AppFeatureFlags.referralEnabled)
+        // Unreachable while the flag is off: `visibleSections` has
+        // already filtered the section out, so no index maps here.
+        case .referral:           return ReferralRow.allCases.count
         case .other:              return OtherRow.allCases.count
         case .diagnostics:        return isRecoveryVisible ? 1 : 0
         }
@@ -250,7 +269,7 @@ extension SettingsViewController: UITableViewDataSource {
         case .finance:            return "ФИНАНСЫ"
         case .soundNotifications: return "ЗВУК И УВЕДОМЛЕНИЯ"
         case .rules:              return "ПРАВИЛА"
-        case .referral:           return Self.referralSectionTitle(referralEnabled: AppFeatureFlags.referralEnabled)
+        case .referral:           return "ПРИГЛАСИТЬ ДРУГА"
         case .other:              return "ПРОЧЕЕ"
         // No header when the recovery row is hidden, so the empty section
         // collapses entirely rather than leaving a stray caps title.
@@ -294,7 +313,6 @@ extension SettingsViewController: UITableViewDataSource {
 // MARK: - UITableViewDelegate
 
 extension SettingsViewController: UITableViewDelegate {
-
 
     /// Every section but `.referral` self-sizes.
     ///

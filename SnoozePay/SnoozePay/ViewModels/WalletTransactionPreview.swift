@@ -64,9 +64,10 @@ enum WalletTransactionPreview {
             icon = "plus"
             isDebit = false
         case .promotion:
-            // Unified with the history screen — honest copy (the only
-            // promotion source today is the referral bonus) + the same gift
-            // glyph (issue #282).
+            // Unified with the history screen — honest copy + the same gift
+            // glyph (issue #282). The only source was ever the referral
+            // bonus, and #676 hid that entry point, so nothing mints
+            // `.promotion` today; this renders pre-existing rows.
             title = Localized.text("wallet.tx.promotion")
             icon = "gift"
             isDebit = false

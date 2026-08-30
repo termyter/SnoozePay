@@ -169,9 +169,10 @@ final class SettingsSubtitleRowHeightTests: XCTestCase {
     /// than no test.
     func testReferralKeepsItsOwnRowHeights() throws {
         let sut = makeSUT()
-        try XCTSkipUnless(
-            AppFeatureFlags.referralEnabled, "the referral section is hidden (#676)"
-        )
+        // Not `XCTSkipUnless(AppFeatureFlags.referralEnabled)`: the shipped
+        // flag is `false`, so that form never ran at all — and a test that
+        // never runs is exactly the failure this doc describes, one level up.
+        sut.referralEnabled = true
         let section = try XCTUnwrap(sut.visibleSections.firstIndex(of: .referral))
         let indexPath = IndexPath(
             row: SettingsViewController.ReferralRow.myCode.rawValue,
