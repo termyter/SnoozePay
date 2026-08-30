@@ -152,7 +152,15 @@ final class SettingsSectionsTests: XCTestCase {
 /// shifts up. A probe written against the raw value silently reads the wrong
 /// section — which is how `testOtherSection_…` came to assert 0 rows.
 private extension SettingsViewController {
-    func index(of section: Section) -> Int {
-        visibleSections.firstIndex(of: section) ?? NSNotFound
+    func index(of section: Section, file: StaticString = #filePath, line: UInt = #line) -> Int {
+        guard let index = visibleSections.firstIndex(of: section) else {
+            // Loud on purpose. This helper exists because a raw-value probe
+            // read the WRONG section in silence; answering `NSNotFound` would
+            // fail one assertion later with «0 is not equal to 4» and hide the
+            // actual cause all over again.
+            XCTFail("section \(section) is not visible; nothing to probe", file: file, line: line)
+            return 0
+        }
+        return index
     }
 }

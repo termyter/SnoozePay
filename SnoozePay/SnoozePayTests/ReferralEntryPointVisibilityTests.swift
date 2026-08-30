@@ -163,6 +163,13 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     func testEverySectionThatRendersKeepsItsFooterGap() throws {
         let sut = try laidOutSettings()
         for index in 0..<sut.tableView.numberOfSections {
+            // Only sections that actually render. `.diagnostics` stays in the
+            // list while empty and keeps a phantom footer — deliberate, since
+            // it merges into the padding above the version line — but that is a
+            // wart being tolerated (#684), not a requirement. Asserting it here
+            // would fail the day someone collapses it, with a message claiming
+            // the sections had run together.
+            guard sut.tableView.numberOfRows(inSection: index) > 0 else { continue }
             let footer = sut.tableView.rectForFooter(inSection: index)
             XCTAssertGreaterThan(
                 footer.height, 1,

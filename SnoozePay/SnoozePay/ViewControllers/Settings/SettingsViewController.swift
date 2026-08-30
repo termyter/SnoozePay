@@ -203,8 +203,10 @@ extension SettingsViewController: UITableViewDataSource {
     /// «ПРОЧЕЕ» that #676 is about.
     ///
     /// ⚠️ `heightForFooterInSection` cannot take that back, and an earlier
-    /// version of this PR tried. UIKit ignores `.leastNonzeroMagnitude` there
-    /// for a section with no footer view: `contentSize.height` came back
+    /// version of this PR tried. UIKit ignores `.leastNonzeroMagnitude` from
+    /// the FOOTER callback for a section with no footer view — the header
+    /// callback below honours the same value, so do not read this as a rule
+    /// about both: `contentSize.height` came back
     /// **875.0000089009603** with the delegate method and 875.0000089009603
     /// without it — the same number to the last digit. The test that passed
     /// alongside it re-read the constant the method had just returned, which is
@@ -215,7 +217,7 @@ extension SettingsViewController: UITableViewDataSource {
     /// rather than splitting two visible sections, so removing it would move
     /// the version line up by that same 17.33pt — a change to a part of the
     /// screen #676 has no business touching. Unifying the two rules is its own
-    /// piece of work.
+    /// piece of work, filed as #684.
     var visibleSections: [Section] {
         Section.allCases.filter { $0 != .referral || AppFeatureFlags.referralEnabled }
     }
