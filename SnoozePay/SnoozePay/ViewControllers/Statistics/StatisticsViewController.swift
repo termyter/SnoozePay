@@ -136,10 +136,15 @@ final class StatisticsViewController: UIViewController {
     /// behaviour, not a compromise. The lowered compression resistance is what
     /// picks this label, rather than the caption, as the one that gives way.
     let trendHeadlineLabel: UILabel = {
-        let label = UILabel()
+        // `SPWrappingLabel`, not `UILabel` — see that type for why a plain
+        // multi-line label in a stack loses every line after the first (#631).
+        let label = SPWrappingLabel()
         label.font = AppTypography.h3
         label.textColor = AppColors.fg1
-        label.numberOfLines = 2
+        // Unbounded rather than 2: the longest headline takes two lines at
+        // iPhone width and could take three at a large content size. A taller
+        // card is recoverable; a headline cut in half is not.
+        label.numberOfLines = 0
         label.lineBreakMode = .byWordWrapping
         label.setContentCompressionResistancePriority(UILayoutPriority(749), for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -155,8 +160,11 @@ final class StatisticsViewController: UIViewController {
     }()
 
     /// "−2 к прошлой неделе".
+    ///
+    /// Same wrapping trap as the headline, and this label carries the card's
+    /// longest string — «Столько же, сколько на прошлой неделе».
     let trendSubtitleLabel: UILabel = {
-        let label = UILabel()
+        let label = SPWrappingLabel()
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
