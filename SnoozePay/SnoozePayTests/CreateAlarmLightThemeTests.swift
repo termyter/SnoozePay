@@ -168,6 +168,17 @@ final class CreateAlarmLightThemeTests: XCTestCase {
                 hostedSiblingCardRowOutlineWidth(style: style),
                 "the sibling card row draws no stroked outline to compare against"
             )
+            // Absolute anchor, deliberately redundant with the equality below.
+            // Both sides of that comparison are the same expression, so a
+            // degenerate `displayScale` — or a change that thickened every
+            // outline in the app to a point — would make them agree at 1.0 and
+            // pass. An earlier revision of this branch did exactly that. On
+            // every simulator CI can pick (@2x or @3x) a hairline is 0.5 or
+            // 0.333, so 1.0 is comfortably above anything legitimate.
+            XCTAssertLessThan(
+                sibling, 1.0,
+                "\(style.debugName) — a card hairline of \(sibling)pt is not a hairline"
+            )
             for armed in [false, true] {
                 let card = hostedProgressiveCard(painTinted: armed, style: style)
                 XCTAssertEqual(
