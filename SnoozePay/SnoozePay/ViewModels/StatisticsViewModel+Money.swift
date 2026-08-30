@@ -37,10 +37,12 @@ extension StatisticsViewModel {
         var message: String {
             switch self {
             case .ledgerUnreadable:
-                return "Не удалось прочитать историю списаний — данные за неделю скрыты"
+                return Localized.text("statistics.ledger_unavailable.unreadable")
             case .ledgerPartiallyRead:
-                return "История списаний прочитана не полностью — данные за неделю скрыты, "
-                     + "чтобы не показать заниженные суммы"
+                // One catalogue entry rather than the two concatenated halves
+                // this replaces: a sentence split across `+` freezes Russian
+                // word order into every future translation (`Localized`).
+                return Localized.text("statistics.ledger_unavailable.partial")
             }
         }
     }
@@ -73,9 +75,9 @@ extension StatisticsViewModel {
             case .known:
                 return nil
             case .noPricedAlarms:
-                return "Сэкономленное появится, когда у будильника будет цена снуза"
+                return Localized.text("statistics.savings.no_price")
             case .alarmStoreUnreadable:
-                return "Не удалось прочитать будильники — сэкономленное не посчитать"
+                return Localized.text("statistics.savings.alarms_unreadable")
             }
         }
     }
@@ -94,7 +96,7 @@ extension StatisticsViewModel {
         if case .known(let price) = snoozePriceState,
            price == 0,
            weekMoneyDays.contains(where: \.isCleanWake) {
-            return "Снуз на ваших будильниках бесплатный — экономить нечего"
+            return Localized.text("statistics.savings.free_alarms")
         }
         return nil
     }
@@ -470,19 +472,33 @@ extension StatisticsViewModel {
 
     /// Caption above the third wake-time column.
     static func wakeDeltaCaption(minutes: Int) -> String {
-        if minutes > 0 { return "Раньше на" }
-        if minutes < 0 { return "Позже на" }
-        return "Без изменений"
+        if minutes > 0 { return Localized.text("statistics.wake_time.delta_earlier") }
+        if minutes < 0 { return Localized.text("statistics.wake_time.delta_later") }
+        return Localized.text("statistics.wake_time.delta_unchanged")
     }
 
     /// "34 мин" — the delta magnitude; a flat comparison shows an em dash.
+    ///
+    /// The unit stays catalogue copy rather than becoming a
+    /// `MeasurementFormatter`, which was measured rather than assumed:
+    /// `.medium` reproduces «34 мин» byte for byte under `ru_RU`, but `.short`
+    /// renders the same value as "34m" in English while `.medium` renders
+    /// "34 min" — a choice between two spellings is a copy decision, and this
+    /// one also has to keep the U+0020 that `SPWakeTimeCard.deltaAttributed`
+    /// splits on to re-font the separator. Weekday names went the other way
+    /// (``WeekdayNames``) because a table of seven symbols per locale is data
+    /// no translator should retype; one abbreviation in a two-label phrase is
+    /// not that.
+    ///
+    /// The em dash is a placeholder glyph, not copy: it means "no comparison",
+    /// and it renders identically in every language.
     static func wakeDeltaValueText(minutes: Int) -> String {
-        minutes == 0 ? "—" : "\(abs(minutes)) мин"
+        minutes == 0 ? "—" : Localized.format("statistics.wake_time.delta_value", abs(minutes))
     }
 
     /// "Нужно ещё 3 утра" — copy for a window below `minimumSamples`.
     static func wakeSamplesPendingText(_ missing: Int) -> String {
-        "Копим историю: нужно ещё \(missing) \(morningWord(missing))"
+        Localized.format("statistics.wake_time.samples_pending", missing, morningWord(missing))
     }
 
     /// "1 утро / 2 утра / 5 утр".
