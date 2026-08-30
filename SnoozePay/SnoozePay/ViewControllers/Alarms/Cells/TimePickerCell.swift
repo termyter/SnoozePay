@@ -59,15 +59,6 @@ final class TimePickerCell: UITableViewCell {
         return view
     }()
 
-    /// Formats the readout `HH:mm` in 24-hour form independent of locale so the
-    /// branded display always shows the two-digit hour the artboard expects.
-    private let readoutFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
     // MARK: - Callbacks
 
     /// Forwards the picker's new date to the controller. Cleared in
@@ -131,10 +122,17 @@ final class TimePickerCell: UITableViewCell {
 
     // MARK: - Readout
 
-    /// Renders `HH:mm` with `fg1` digits and a dimmed (`fg4`) `:` separator,
-    /// mirroring the artboard's three-span layout in one attributed string.
+    /// Renders the picked time with `fg1` digits and a dimmed (`fg4`) `:`
+    /// separator, mirroring the artboard's three-span layout in one attributed
+    /// string.
+    ///
+    /// The readout follows the reader's hour cycle (#628) — it sits directly
+    /// above a `UIDatePicker`, which has always rendered its wheels in the
+    /// device's cycle, so the `en_US_POSIX` pin here used to put "19:00" over a
+    /// wheel reading "7:00 PM". The separator lookup still holds on a 12-hour
+    /// string ("7:00 PM" has exactly one colon).
     private func updateReadout(for date: Date) {
-        let text = readoutFormatter.string(from: date)
+        let text = WallClockFormatter.string(from: date, style: .padded)
         let attributed = NSMutableAttributedString(
             string: text,
             attributes: [

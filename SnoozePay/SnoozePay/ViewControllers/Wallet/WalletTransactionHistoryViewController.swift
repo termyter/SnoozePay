@@ -477,10 +477,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
     }
 
     private static func timeString(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = AppLocale.display
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        WallClockFormatter.string(from: date, style: .padded)
     }
 
     // MARK: - Grouping

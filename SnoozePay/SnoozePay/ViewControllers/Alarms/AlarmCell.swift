@@ -234,8 +234,10 @@ final class AlarmCell: UITableViewCell {
     // MARK: - Configure
 
     /// Configure the row's content. Inputs:
-    /// - `time`: pre-formatted clock string, e.g. "7:30" (the list uses the
-    ///   unpadded `H:mm` form — see `AlarmsListViewModel.timeFormatter`).
+    /// - `time`: pre-formatted clock string, e.g. "7:30" — the list asks for
+    ///   the unpadded hour, and the reader's own hour cycle decides the rest
+    ///   ("7:30 PM" on a 12-hour region). See
+    ///   `AlarmsListViewModel.alarmTimeString(at:)` and ``WallClockFormatter``.
     /// - `daysCaps`: caps string for the top-left («БУДНИ · ПН–ПТ» /
     ///   «ВЫХОДНЫЕ» / «ПН, ВТ, СР»).
     /// - `priceText`: e.g. "50 ₽".
