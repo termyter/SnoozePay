@@ -256,36 +256,69 @@ struct Alarm: Identifiable, Equatable, Codable {
     // dropping keeps every legacy alarm readable while guaranteeing decoded
     // values satisfy the same invariants `init(validating:...)` enforces.
 
-    private enum CodingKeys: String, CodingKey {
+    /// Every key the persisted record carries. `CaseIterable` is not
+    /// decoration: `allCases` is what `encode(to:)` iterates, which is what
+    /// makes a key impossible to declare and then forget to write.
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case id, time, repeatDays, name, nameIsDefault, soundID, vibrationEnabled
         case snoozeMinutes, penaltyAmount, progressiveScale, enabled
         case volume, volumeFadeIn, theme, repeatMode
     }
 
+    // swiftlint:disable cyclomatic_complexity
     /// Hand-rolled because the storage key `name` no longer maps one-to-one
     /// onto a stored property: `customName` is optional, and the pair written
     /// to disk is a resolved display string plus a `nameIsDefault` flag (#623).
     /// Writing the RESOLVED name under the historical key is what keeps the
     /// record readable by a build that predates the flag — it sees what it
     /// always saw instead of throwing `keyNotFound` and locking the store.
+    ///
+    /// Driven off `CodingKeys.allCases` so that a forgotten field is a COMPILE
+    /// error rather than a review miss (#629). A straight list of
+    /// `container.encode(...)` calls has no reader but the reviewer: a field
+    /// added to `init(from:)` and forgotten here builds, ships, and quietly
+    /// stops being persisted — and the round-trip test does not catch it,
+    /// because a fixture built through `Alarm(...)` leaves the new field at its
+    /// default on BOTH sides of the trip. The cost is not a defaulted flag
+    /// either: `init(from:)` drops the stored string outright when
+    /// `nameIsDefault` reads `true`, so a lost key is a lost user name.
+    ///
+    /// The `switch` has no `default`, so a new case — which anyone adding a
+    /// field must write, since `init(from:)` needs the key to read it — stops
+    /// this file from building until its value is encoded. The loop visits each
+    /// key exactly once, in declaration order, which is the order the
+    /// straight-line version wrote them in: same bytes, same shape on disk.
+    /// `AlarmCodingContractTests` pins the two things the compiler still
+    /// cannot see — a property that never got a key, and an arm that writes
+    /// nothing.
+    ///
+    /// Complexity is suppressed deliberately: fifteen arms performing one
+    /// `encode` each are a table, not branching logic, and the default
+    /// threshold would turn into a lint ERROR at ~18 keys — i.e. adding a field
+    /// would start failing the linter instead of the compiler.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(time, forKey: .time)
-        try container.encode(repeatDays, forKey: .repeatDays)
-        try container.encode(name, forKey: .name)
-        try container.encode(nameIsDefault, forKey: .nameIsDefault)
-        try container.encode(soundID, forKey: .soundID)
-        try container.encode(vibrationEnabled, forKey: .vibrationEnabled)
-        try container.encode(snoozeMinutes, forKey: .snoozeMinutes)
-        try container.encode(penaltyAmount, forKey: .penaltyAmount)
-        try container.encode(progressiveScale, forKey: .progressiveScale)
-        try container.encode(enabled, forKey: .enabled)
-        try container.encode(volume, forKey: .volume)
-        try container.encode(volumeFadeIn, forKey: .volumeFadeIn)
-        try container.encode(theme, forKey: .theme)
-        try container.encode(repeatMode, forKey: .repeatMode)
+        for key in CodingKeys.allCases {
+            switch key {
+            case .id: try container.encode(id, forKey: .id)
+            case .time: try container.encode(time, forKey: .time)
+            case .repeatDays: try container.encode(repeatDays, forKey: .repeatDays)
+            case .name: try container.encode(name, forKey: .name)
+            case .nameIsDefault: try container.encode(nameIsDefault, forKey: .nameIsDefault)
+            case .soundID: try container.encode(soundID, forKey: .soundID)
+            case .vibrationEnabled: try container.encode(vibrationEnabled, forKey: .vibrationEnabled)
+            case .snoozeMinutes: try container.encode(snoozeMinutes, forKey: .snoozeMinutes)
+            case .penaltyAmount: try container.encode(penaltyAmount, forKey: .penaltyAmount)
+            case .progressiveScale: try container.encode(progressiveScale, forKey: .progressiveScale)
+            case .enabled: try container.encode(enabled, forKey: .enabled)
+            case .volume: try container.encode(volume, forKey: .volume)
+            case .volumeFadeIn: try container.encode(volumeFadeIn, forKey: .volumeFadeIn)
+            case .theme: try container.encode(theme, forKey: .theme)
+            case .repeatMode: try container.encode(repeatMode, forKey: .repeatMode)
+            }
+        }
     }
+    // swiftlint:enable cyclomatic_complexity
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
