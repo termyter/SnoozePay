@@ -137,20 +137,35 @@ final class SnoozeSliderCell: UITableViewCell {
         contentView.addSubview(maxBoundLabel)
 
         NSLayoutConstraint.activate([
-            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
+            captionLabel.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor,
+                constant: AppSpacing.cardHorizontalPadding
+            ),
             captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
 
-            hintLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
+            hintLabel.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor,
+                constant: AppSpacing.cardHorizontalPadding
+            ),
             hintLabel.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: 2),
             hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -AppSpacing.sm),
 
-            valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
+            valueLabel.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor,
+                constant: -AppSpacing.cardHorizontalPadding
+            ),
             valueLabel.firstBaselineAnchor.constraint(equalTo: captionLabel.firstBaselineAnchor),
             // Reserve a fixed minimum so «1 мин» / «15 мин» don't reflow.
             valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
 
-            slider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
-            slider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
+            slider.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor,
+                constant: AppSpacing.cardHorizontalPadding
+            ),
+            slider.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor,
+                constant: -AppSpacing.cardHorizontalPadding
+            ),
             slider.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
 
             // Range bounds under the track (space-between, marginTop 8 in JSX).

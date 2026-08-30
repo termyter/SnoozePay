@@ -3,7 +3,7 @@ import XCTest
 
 /// The snooze price numeral's ink, and the price paid for it.
 ///
-/// `AppColors.priceDisplay` is a `warnFill*` value used as text, which the
+/// `AppColors.penaltyAmountDisplay32` is a `warnFill*` value used as text, which the
 /// token doctrine in `AppColors.swift` otherwise forbids. It is there because
 /// the canon and the doctrine disagree and the canon won by PM decision
 /// (#673): the amount, the preset chip under it and the slider track above it
@@ -30,7 +30,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
     func testPriceInkMatchesTheSelectedPresetChip() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             XCTAssertEqual(
-                hex(AppColors.priceDisplay, style),
+                hex(AppColors.penaltyAmountDisplay32, style),
                 hex(AppColors.warnFill500, style),
                 "price ink and the selected chip's fill diverged in \(name(style))"
             )
@@ -42,9 +42,9 @@ final class PenaltyDisplayColorTests: XCTestCase {
     /// its `[data-theme="light"]` block.
     func testPriceInkIsTheSameAmberInBothThemes() {
         XCTAssertEqual(
-            hex(AppColors.priceDisplay, .light),
-            hex(AppColors.priceDisplay, .dark),
-            "the canon warn ramp is theme-independent; priceDisplay must be too"
+            hex(AppColors.penaltyAmountDisplay32, .light),
+            hex(AppColors.penaltyAmountDisplay32, .dark),
+            "the canon warn ramp is theme-independent; penaltyAmountDisplay32 must be too"
         )
     }
 
@@ -61,7 +61,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
     /// stops being true.
     func testTheLightModeShortfallIsPinnedAndTheChipCarriesTheValue() {
         let onCard = contrastRatio(
-            AppColors.priceDisplay.resolved(.light),
+            AppColors.penaltyAmountDisplay32.resolved(.light),
             AppColors.bg1.resolved(.light)
         )
         XCTAssertEqual(
@@ -69,7 +69,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
             2.15,
             accuracy: 0.05,
             """
-            priceDisplay on bg1 measures \(String(format: "%.2f", onCard)):1. If \
+            penaltyAmountDisplay32 on bg1 measures \(String(format: "%.2f", onCard)):1. If \
             this moved UP past 3.0 the exception is no longer needed and the \
             comment in AppColors should be retired; if it moved DOWN the \
             regression is worse than the one #673 accepted
@@ -101,7 +101,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
     /// screen exactly once, at 2.15:1.
     ///
     /// This test does not assert that that is acceptable — it asserts that it
-    /// is TRUE, so the trade-off in `AppColors.priceDisplay` cannot be read as
+    /// is TRUE, so the trade-off in `AppColors.penaltyAmountDisplay32` cannot be read as
     /// broader than it is. If the redundancy is ever made unconditional (a
     /// chip that reflects any amount, a second readout), this test goes red and
     /// the caveat can come out of the comment.
@@ -116,7 +116,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
             0,
             """
             a chip lit for a non-preset amount would mean the mitigation is \
-            unconditional — good news, but the caveat in AppColors.priceDisplay \
+            unconditional — good news, but the caveat in AppColors.penaltyAmountDisplay32 \
             then needs rewriting rather than leaving as-is
             """
         )
@@ -135,7 +135,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
         )
 
         assertSameInk(field.textColor, suffix.textColor, "valid amount")
-        XCTAssertEqual(hex(try XCTUnwrap(field.textColor), .light), hex(AppColors.priceDisplay, .light))
+        XCTAssertEqual(hex(try XCTUnwrap(field.textColor), .light), hex(AppColors.penaltyAmountDisplay32, .light))
 
         field.text = ""
         field.sendActions(for: .editingChanged)
@@ -151,7 +151,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
         assertSameInk(field.textColor, suffix.textColor, "restored amount")
         XCTAssertEqual(
             hex(try XCTUnwrap(field.textColor), .light),
-            hex(AppColors.priceDisplay, .light),
+            hex(AppColors.penaltyAmountDisplay32, .light),
             "the restoring half of the branch kept an old ink"
         )
     }

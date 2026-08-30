@@ -118,28 +118,47 @@ enum AppColors {
     /// Darkest stop of `--sp-grad-warn`.
     static let warnFill600 = UIColor(hex: 0xC97A06)
 
-    /// The snooze price as a large display numeral — `PenaltyCell`'s 32pt bold
-    /// mono amount and its `₽` suffix.
+    /// `PenaltyCell`'s 32pt bold mono amount and its `₽` suffix — that one
+    /// numeral and nothing else.
     ///
-    /// This is deliberately a `warnFill*` value used as **ink**, which the rule
-    /// two blocks up otherwise forbids. The reason is that the rule and the
-    /// canon disagree here, and the canon won by PM decision (#673):
+    /// The name carries the size on purpose. This is a `warnFill*` value used
+    /// as **ink**, which the rule two blocks up otherwise forbids, and the
+    /// exemption is bought entirely by 32pt. Issue #683 is open to make the
+    /// Settings snooze-price row match this one; that row's value label is
+    /// 14pt, and reaching for this token there would ship body text at
+    /// 2.15:1. `AppColorsContrastTests` asserts on token VALUES and would not
+    /// notice, so the fence is the name.
     ///
-    /// - Canon (`SPMore2.jsx`, artboard `AlarmEdit`) paints the amount
-    ///   `var(--sp-warn-400)`. `tokens.css` never overrides the warn ramp in
-    ///   its `[data-theme="light"]` block, so in the prototype that is amber —
-    ///   the same amber as the preset chip and the slider track directly
-    ///   beneath it.
-    /// - Our light `warn400` is bronze `#966107`, because the warn ramp also
-    ///   carries body-size text and `AppColorsContrastTests` holds it to
-    ///   4.5:1. Three amber elements in one column with the largest of them
-    ///   rendered bronze is what the PM reported as "wrong colour".
+    /// ## Why it diverges from `warn400`
     ///
-    /// ⚠️ The honest number: `#F59E0B` on `bg1` measures **2.15:1**, which
-    /// clears neither 4.5:1 nor the 3:1 large-text threshold. What softens
-    /// that is that the amount is usually not the only carrier of the value —
-    /// the same number is stated by the selected preset chip below it, in
-    /// `fgOnWarn` at 8.79:1.
+    /// The canon and our contrast rule disagree here, and the PM decided for
+    /// the canon's INTENT rather than its literal value (#673). Three numbers,
+    /// all on `bg1` light (`#FFFFFF`):
+    ///
+    /// | | value | ratio |
+    /// |---|---|---|
+    /// | canon amount, `--sp-warn-400` (`SPMore2.jsx:241`) | `#FFB84D` | 1.72:1 |
+    /// | shipped here, `--sp-warn-500` (`tokens.css:30`) | `#F59E0B` | **2.15:1** |
+    /// | our light `warn400` | `#966107` | 5.24:1 |
+    ///
+    /// So this is a THIRD value, not "the canon won": canon-literal is one ramp
+    /// stop lighter and measures worse than what ships. Naming it as canon
+    /// would be false — it is the closest stop that keeps the column reading as
+    /// one colour without dropping to 1.72:1.
+    ///
+    /// And the column is one colour in OUR build, not in the prototype. Canon
+    /// deliberately uses three values — amount `--sp-warn-400` (`:241`),
+    /// slider fill `--sp-warn-500` (`:214`), selected chip `--sp-grad-warn`, a
+    /// gradient `#FFD479 → #F59E0B → #C97A06` (`:248`). Our chip and track are
+    /// both flat `warnFill500`, so here the amount rendered bronze was the one
+    /// element out of step — which is what the PM reported as "wrong colour".
+    ///
+    /// ## The honest number
+    ///
+    /// 2.15:1 clears neither 4.5:1 nor the 3:1 large-text threshold. What
+    /// softens it is that the amount is usually not the only carrier of the
+    /// value — the same number is stated by the selected preset chip below it,
+    /// in `fgOnWarn` at 8.79:1.
     ///
     /// "Usually", not "never": the field takes free input, and a chip lights
     /// only on an exact preset match, so at 137 ₽ the amount IS the sole
@@ -147,7 +166,7 @@ enum AppColors {
     /// the tie to the chip, and that boundary — including a test that goes red
     /// if the redundancy is ever made unconditional, so this caveat cannot
     /// outlive the condition it describes.
-    static let priceDisplay = warnFill500
+    static let penaltyAmountDisplay32 = warnFill500
 
     // MARK: - Brand · Info
     /// Informational links only — `--sp-info-500` in `tokens.css`.
@@ -508,12 +527,27 @@ enum AppSpacing {
     static let cardVerticalPadding: CGFloat = md
     /// Horizontal padding inside a card (leading / trailing of card contents).
     ///
-    /// `sp5`, because the canon builds every card of the alarm form out of one
-    /// `SPCard padding={20}` (`SPMore2.jsx`, artboard `AlarmEdit`). This used
-    /// to read `lg` (16) — the exact value #672 was filed against — while the
-    /// cells that had drifted hardcoded their own. A named token holding the
-    /// wrong number is worse than no token: the next reader reaches for it and
-    /// silently reproduces the bug.
+    /// `sp5`. This used to read `lg` (16) — the exact value #672 was filed
+    /// against — while the cells that had drifted hardcoded their own. A named
+    /// token holding the wrong number is worse than no token: the next reader
+    /// reaches for it and silently reproduces the bug.
+    ///
+    /// ⚠️ The alarm form's ten cells reach 20 through THREE different canon
+    /// rules that happen to agree on the number, and this token collapses them:
+    ///
+    /// | rule | cells |
+    /// |---|---|
+    /// | screen gutter `padding: "24px 20px 0"` (`SPMore2.jsx:196`) | `NameCell`, `DayPickerCell`, `RepeatModeCell` |
+    /// | `SPCard padding={20}` (`:106`, `:198`, `:237`) | `TimePickerCell`, `SnoozeSliderCell`, |
+    /// | | `PenaltyCell`, `ProgressiveScaleCell` |
+    /// | `SPCard padding={4}` + the row's own inset (`:227`) | `SoundCell`, `ThemeRowCell`, `VibrationCell` |
+    ///
+    /// So an edit here moves all three at once. That is a deliberate trade —
+    /// one token beats ten literals — but it is not "the canon says 20
+    /// everywhere": `SPMore2.jsx` also carries `padding={16}` at `:44` and
+    /// `padding: "0 16px 24px"` at `:285`. `AppSpacing.screenInset` meanwhile is
+    /// still `lg` (16) while the canon gutter is 20, which is the same
+    /// disagreement one level up and is not fixed here.
     static let cardHorizontalPadding: CGFloat = sp5
 }
 
