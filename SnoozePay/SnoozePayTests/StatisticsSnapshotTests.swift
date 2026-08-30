@@ -70,14 +70,14 @@ final class StatisticsSnapshotTests: XCTestCase {
         let mondayHeatmap = viewModel.heatmapDays
         let mondayWeekdayStats = viewModel.weekdayStats
         let mondayTrend = viewModel.weeklyTrend
-        XCTAssertEqual(viewModel.worstWeekdayName, "понедельник")
+        XCTAssertEqual(viewModel.worstWeekdayNames, ["понедельник"])
         XCTAssertEqual(viewModel.trendDiff, 1)
 
         viewModel.recomputeSnapshots(today: muchLaterMonday)
         XCTAssertNotEqual(viewModel.heatmapDays, mondayHeatmap)
         XCTAssertNotEqual(viewModel.weekdayStats, mondayWeekdayStats)
         XCTAssertNotEqual(viewModel.weeklyTrend, mondayTrend)
-        XCTAssertNil(viewModel.worstWeekdayName)
+        XCTAssertTrue(viewModel.worstWeekdayNames.isEmpty)
         XCTAssertEqual(viewModel.trendDiff, 0)
     }
 }

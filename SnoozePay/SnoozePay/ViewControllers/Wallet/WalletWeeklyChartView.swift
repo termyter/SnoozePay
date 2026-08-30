@@ -4,9 +4,11 @@ import UIKit
 /// `docs/design/v2-handoff/components/SPScreensV2.jsx` (L450-467).
 ///
 /// Each column is a day. Non-zero days render the pain gradient bar; the
-/// height encodes the relative penalty total (max in window → full height).
-/// Empty days render a 4pt `whiteOverlay08` stub so the row reads as a
-/// 7-step rhythm rather than a sparse line.
+/// height encodes the relative penalty total (max in window → full height),
+/// with a floor so a small penalty still reads as a bar. Empty days render a
+/// shorter half-opacity `whiteOverlay08` stub so the row reads as a 7-step
+/// rhythm rather than a sparse line — and so "no spending" is told apart from
+/// "a little spending" by HEIGHT, not by hue alone (#635).
 ///
 /// Data is supplied via `update(values:)` — an ordered `[Decimal]` of size 7
 /// (oldest → newest). The caller resolves the day labels (П/В/С/Ч/П/С/В)
@@ -23,7 +25,18 @@ final class WalletWeeklyChartView: UIView {
         static let barCount = 7
         static let barAreaHeight: CGFloat = 60
         static let barCornerRadius: CGFloat = 4
-        static let minBarHeight: CGFloat = 4
+        /// Height of the stub drawn for a day with no penalties. Matches the
+        /// canon's flat 4pt track (`SPScreensV2.jsx` L456).
+        static let emptyTrackHeight: CGFloat = 4
+        /// Floor for a day that DOES have penalties. Deliberately taller than
+        /// `emptyTrackHeight`: a −50 ₽ day against a −650 ₽ week resolves to
+        /// 3pt, and at the old shared 4pt floor it rendered pixel-identical to
+        /// a day with no spending at all — leaving hue as the only signal, and
+        /// red-on-grey is the pair colour vision loss collapses first (#635).
+        static let minDataBarHeight: CGFloat = 10
+        /// Canon draws the empty stub at half opacity (`opacity: .5`), so the
+        /// rhythm of seven steps stays visible without reading as data.
+        static let emptyTrackAlpha: CGFloat = 0.5
         static let labelHeight: CGFloat = 14
         static let columnGap: CGFloat = 4
         static let labelTopGap: CGFloat = 6
@@ -80,6 +93,27 @@ final class WalletWeeklyChartView: UIView {
             }
             columns[idx].setIntensity(ratio)
         }
+    }
+
+    // MARK: - Bar geometry
+
+    /// Tallest a data bar may grow. The column budget covers bar + gap +
+    /// label, so the bar gets whatever the label pair leaves behind.
+    static var maxBarHeight: CGFloat {
+        Layout.barAreaHeight - Layout.labelHeight - Layout.labelTopGap
+    }
+
+    /// Resolve a bar height from an intensity in `0...1` (relative to the
+    /// tallest bar in the window).
+    ///
+    /// Zero and non-zero take DIFFERENT floors on purpose — that separation
+    /// is the whole point of #635. The linear mapping itself is untouched:
+    /// only the clamp for small non-zero values moved, so every bar tall
+    /// enough to clear `minDataBarHeight` keeps the exact height it had.
+    static func barHeight(forIntensity intensity: CGFloat) -> CGFloat {
+        let clamped = max(0, min(1, intensity))
+        guard clamped > 0 else { return Layout.emptyTrackHeight }
+        return max(Layout.minDataBarHeight, maxBarHeight * clamped)
     }
 
     // MARK: - Configuration
@@ -182,6 +216,7 @@ private final class DayColumn: UIView {
         backgroundColor = .clear
         bar.translatesAutoresizingMaskIntoConstraints = false
         bar.backgroundColor = AppColors.whiteOverlay08
+        bar.alpha = layoutSpec.emptyTrackAlpha
         bar.layer.cornerRadius = layoutSpec.barCornerRadius
         bar.layer.masksToBounds = true
         addSubview(bar)
@@ -192,7 +227,7 @@ private final class DayColumn: UIView {
         labelView.textAlignment = .center
         addSubview(labelView)
 
-        let height = bar.heightAnchor.constraint(equalToConstant: layoutSpec.minBarHeight)
+        let height = bar.heightAnchor.constraint(equalToConstant: layoutSpec.emptyTrackHeight)
         barHeightConstraint = height
 
         NSLayoutConstraint.activate([
@@ -223,26 +258,21 @@ private final class DayColumn: UIView {
     }
 
     /// `intensity` is `0...1` relative to the tallest bar in the window. A
-    /// non-zero intensity unhides the gradient; the min height keeps the
-    /// stub legible even for very small values.
+    /// non-zero intensity unhides the gradient and takes the taller data
+    /// floor; zero falls back to the dimmed empty track.
     func setIntensity(_ intensity: CGFloat) {
         let clamped = max(0, min(1, intensity))
+        barHeightConstraint?.constant = WalletWeeklyChartView.barHeight(forIntensity: clamped)
         if clamped > 0 {
-            // Total column = bar + gap + label. The bar can take everything
-            // above the label/gap pair.
-            let maxBarHeight = layoutSpec.barAreaHeight
-                - layoutSpec.labelHeight
-                - layoutSpec.labelTopGap
-            let resolved = max(layoutSpec.minBarHeight, maxBarHeight * clamped)
-            barHeightConstraint?.constant = resolved
             if gradient.superlayer !== bar.layer {
                 bar.layer.addSublayer(gradient)
             }
             bar.backgroundColor = .clear
+            bar.alpha = 1
         } else {
-            barHeightConstraint?.constant = layoutSpec.minBarHeight
             gradient.removeFromSuperlayer()
             bar.backgroundColor = AppColors.whiteOverlay08
+            bar.alpha = layoutSpec.emptyTrackAlpha
         }
         setNeedsLayout()
     }

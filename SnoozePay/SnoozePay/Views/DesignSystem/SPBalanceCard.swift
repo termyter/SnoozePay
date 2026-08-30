@@ -94,7 +94,7 @@ final class SPBalanceCard: UIView {
         radialOverlay.setNeedsDisplay()
         // `CAGradientLayer.colors` and every `cgColor` on a `CALayer` are
         // snapshots — they do not follow a theme flip on their own.
-        valueLabel.setGradientColors(SPSupport.moneyGradientColors(for: traitCollection))
+        valueLabel.setGradientColors(valueColors(for: traitCollection))
         applyCardChrome()
     }
 
@@ -123,6 +123,33 @@ final class SPBalanceCard: UIView {
         }
     }
 
+    // MARK: - Zero-balance tone
+
+    /// Whether the card is showing an empty wallet. Green is this app's "you
+    /// have money, it works" signal, so a zero painted with the money ramp
+    /// said things were fine at the moment snoozing stopped working — while
+    /// the alarms list called the same zero a blocking state in red (#634).
+    var isZeroBalance: Bool { balance <= 0 }
+
+    /// Stops for the hero number. At zero this is a DEGENERATE gradient (three
+    /// identical stops), so the glyphs paint flat without tearing down the mask
+    /// the label is built around and the theme flip keeps working through the
+    /// same `setGradientColors` path.
+    ///
+    /// The ink is `fgOnPainWash` — the token the alarms-list pill already uses
+    /// for its zero, so both screens now name the state the same way. The pain
+    /// RAMP would not do: it opens on `pain300`, 2.77:1 on this near-white
+    /// card, under the 3:1 large-text floor even at 56pt.
+    static func valueColors(isZero: Bool, trait: UITraitCollection) -> [CGColor] {
+        guard isZero else { return SPSupport.moneyGradientColors(for: trait) }
+        let ink = AppColors.fgOnPainWash.resolvedColor(with: trait).cgColor
+        return Array(repeating: ink, count: SPSupport.moneyGradientLocations.count)
+    }
+
+    private func valueColors(for trait: UITraitCollection) -> [CGColor] {
+        Self.valueColors(isZero: isZeroBalance, trait: trait)
+    }
+
     // MARK: - Public API
 
     /// Update card data in-place. Cheaper than rebuilding the view when the
@@ -139,6 +166,10 @@ final class SPBalanceCard: UIView {
             balance,
             digitsFont: AppTypography.moneyXl
         )
+        // Crossing zero changes the tone, not just the digits — the ink and
+        // the corner highlight have to follow the new value.
+        valueLabel.setGradientColors(valueColors(for: traitCollection))
+        radialOverlay.isZeroBalance = isZeroBalance
         if let delta = delta {
             deltaLabel.isHidden = false
             deltaLabel.attributedText = renderDelta(delta)
@@ -194,7 +225,7 @@ final class SPBalanceCard: UIView {
         // it needed was trait resolution: the stops baked at `init` are plain
         // `CGColor`s and would otherwise keep the dark mint ramp on a white
         // card.
-        valueLabel.setGradientColors(SPSupport.moneyGradientColors(for: traitCollection))
+        valueLabel.setGradientColors(valueColors(for: traitCollection))
         valueLabel.adjustsFontForContentSizeCategory = false
         valueLabel.numberOfLines = 1
         valueLabel.adjustsFontSizeToFitWidth = true
@@ -299,6 +330,17 @@ final class SPBalanceCard: UIView {
 /// balance card. CSS uses `radial-gradient(80% 60% at 100% 0%, rgba(46,219,159,.18))`
 /// — CoreGraphics doesn't have a one-liner so we draw it in `draw(_:)`.
 private final class RadialOverlayView: UIView {
+
+    /// Swaps the corner highlight from money to pain while the wallet is
+    /// empty. Without this the zero number would sit in pain ink on a green
+    /// glow — the card would still be telling both stories at once (#634).
+    var isZeroBalance = false {
+        didSet {
+            guard isZeroBalance != oldValue else { return }
+            setNeedsDisplay()
+        }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
@@ -315,9 +357,10 @@ private final class RadialOverlayView: UIView {
         // Resolve against this view's own traits rather than letting `.cgColor`
         // snapshot `UITraitCollection.current`: the highlight has to be the
         // dark-theme mint on `bg2` and the light-theme deep green on the
-        // near-white card, and `draw(_:)` is not a safe place to assume which
-        // trait collection is current.
-        let tint = AppColors.money400
+        // near-white card (pain's equivalents while the wallet is empty), and
+        // `draw(_:)` is not a safe place to assume which trait collection is
+        // current.
+        let tint = (isZeroBalance ? AppColors.pain400 : AppColors.money400)
             .resolvedColor(with: traitCollection)
             .withAlphaComponent(0.18)
         let colors = [tint.cgColor, UIColor.clear.cgColor]

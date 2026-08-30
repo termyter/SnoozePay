@@ -100,7 +100,7 @@ final class StatisticsDataHealthTests: XCTestCase {
         XCTAssertFalse(viewModel.ledgerReadable)
         XCTAssertTrue(viewModel.heatmapDays.isEmpty)
         XCTAssertTrue(viewModel.weekdayStats.isEmpty)
-        XCTAssertNil(viewModel.worstWeekdayName)
+        XCTAssertTrue(viewModel.worstWeekdayNames.isEmpty)
         XCTAssertTrue(viewModel.weeklyTrend.isEmpty)
         XCTAssertEqual(viewModel.trendDiff, 0)
         XCTAssertEqual(viewModel.thisWeekCount, 0)
@@ -131,7 +131,7 @@ final class StatisticsDataHealthTests: XCTestCase {
         XCTAssertTrue(viewModel.heatmapDays.isEmpty,
             "A partial ledger must not turn the surviving wake into a clean heatmap cell")
         XCTAssertTrue(viewModel.weekdayStats.isEmpty)
-        XCTAssertNil(viewModel.worstWeekdayName)
+        XCTAssertTrue(viewModel.worstWeekdayNames.isEmpty)
         XCTAssertTrue(viewModel.weeklyTrend.isEmpty)
         XCTAssertEqual(viewModel.trendDiff, 0)
     }

@@ -20,6 +20,12 @@ import XCTest
 /// stable `accessibilityIdentifier`s, not localized button copy.
 final class FiringFlowUITests: XCTestCase {
 
+    /// Title of `firing.alert.snooze_not_scheduled` as the user sees it.
+    /// Spelled here because XCUITest is out of process and cannot read the
+    /// app's string catalogue; see `dismissAppAlert` for why the title must be
+    /// named at all.
+    private static let refusalAlertTitle = "Откладывание не запланировано"
+
     override func setUp() {
         super.setUp()
         // Fail fast: a missing element early means the later steps are
@@ -64,11 +70,27 @@ final class FiringFlowUITests: XCTestCase {
         // tapped — clear that alert here, deliberately, rather than leaving it
         // to XCUITest (see `dismissAppAlert`).
         snooze.tap()
-        XCTAssertTrue(dismissAppAlert(in: app, timeout: 10),
-                      "A snooze refused by an unauthorized backend should explain itself")
+        XCTAssertTrue(
+            dismissAppAlert(in: app, titled: Self.refusalAlertTitle, timeout: 10),
+            "A snooze refused by an unauthorized backend should explain itself"
+        )
+
+        // ⚠️ This assertion pins behaviour that is KNOWN TO BE WRONG — see #641.
+        // On a denied backend `scheduleSnooze` calls its completion
+        // synchronously, so `exitSnoozedState()` runs before the state is
+        // active (a no-op) and `enterSnoozedState()` then builds a countdown to
+        // a ring that will never happen, behind an alert that just said it will
+        // never happen. The countdown below IS that bug.
+        //
+        // It is asserted rather than inverted because it is what the app does
+        // today, and a test that fails on unchanged code is worse than one that
+        // documents the defect. When #641 is fixed, THIS TEST GOING RED IS
+        // EXPECTED — it is not a sign the fix is wrong. Replace the assertion
+        // with one on the active firing UI (or delete the snoozed-state tests
+        // outright, if PM decides foreground snooze goes away with it).
         let countdown = app.staticTexts["firing.countdown"]
         XCTAssertTrue(countdown.waitForExistence(timeout: 5),
-                      "Snoozed-state countdown should appear after «Поспать ещё»")
+                      "Snoozed-state countdown should appear after «Поспать ещё» (see #641)")
 
         // 3. «Я встал — выключить» → the WokeMorning summary is presented.
         dismiss.tap()
@@ -116,27 +138,73 @@ final class FiringFlowUITests: XCTestCase {
 /// one blind tap and a silent surrender that poisons every later step.
 ///
 /// It lives in this file rather than its own because `SnoozePayUITests` is a
-/// plain group in `project.pbxproj` — adding a file there is a PM-zone edit.
-extension XCTestCase {
+/// plain group in `project.pbxproj` — adding a file there is a PM-zone edit.extension XCTestCase {
 
-    /// Wait for an app-owned alert and dismiss it, re-tapping while it is
-    /// still up. Returns `false` when no alert showed up inside `timeout` —
-    /// callers decide whether that is a failure or the normal case.
+    /// Wait for the app-owned alert titled `expectedTitle` and dismiss it,
+    /// re-tapping while it is still up. Returns `false` when that alert did
+    /// not show up inside `timeout` — callers decide whether that is a failure
+    /// or the normal case.
+    ///
+    /// Two separate defects are guarded here; they arrived from two directions
+    /// and are easy to conflate.
+    ///
+    /// **1. The tap gets dropped, so tap again.** The synthesized touch is
+    /// lost outright — in both #626 failures the app was *idle* and the alert
+    /// was still up 2.3 s after the tap (run 33295307930) and 10 s after it
+    /// (run 33295938983). That is not a slow runner; a slow runner was tested
+    /// directly and did NOT reproduce it (proof branch A stalled the main
+    /// thread on unfixed code and all seven E2E passed, twice). Same failure
+    /// `OnboardingFlowUITests` already documents (#523), same cure: re-tap
+    /// while the state the app owns has not changed, and fail loudly if it
+    /// never does.
+    ///
+    /// Re-tapping cannot double-fire into the screen underneath: the loop
+    /// re-checks that the alert is still on top before every tap, so a tap
+    /// that landed ends it.
+    ///
+    /// **2. The title is REQUIRED, so we know WHAT we dismissed.** Matching
+    /// «whatever alert is on screen» reads safe because every alert a tour
+    /// launch can raise has a single «Ок» — but that is exactly what makes
+    /// them indistinguishable. In particular `firing.alert.refund_failed` —
+    /// billed, no re-fire, refund ALSO failed, the `AppLogger.ui.fault`
+    /// wallet-desync case from #197 — is a single-«Ок» alert too. A regression
+    /// turning every refused snooze into a wallet desync would have kept these
+    /// tests green while the assertion message still claimed the refusal
+    /// «explains itself».
+    ///
+    /// The title is spelled as a literal rather than read from `Localized`:
+    /// XCUITest runs out of process and the app's string catalogue is not
+    /// linked into this target. The duplication is deliberate — if someone
+    /// changes the copy, this test should notice.
     ///
     /// Always button 0. Every alert a tour launch can raise is either
     /// single-action («Ок») or cancel-first («Отмена» then «Настройки»), and
     /// the second button of the latter leaves the app for Settings — so index
     /// 0 is the only safe choice.
     ///
-    /// Re-tapping cannot double-fire into the screen underneath: the loop
-    /// re-checks that the alert is still on top before every tap, so a tap
-    /// that landed ends it. Stacked alerts are dismissed the same way, one per
-    /// pass — the tour can raise two (a launch-time one plus a flow one) and
-    /// leaving the second up is indistinguishable from a dropped touch.
-    @discardableResult
-    func dismissAppAlert(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
-        let alert = app.alerts.firstMatch
-        guard alert.waitForExistence(timeout: timeout) else { return false }
+    /// Deliberately NOT `@discardableResult`: a `false` here means «the alert
+    /// never appeared», and a caller that drops it goes on to work against a
+    /// screen that may still be covered — the exact failure #626 exists to
+    /// kill. Callers must decide, in writing.
+    func dismissAppAlert(
+        in app: XCUIApplication,
+        titled expectedTitle: String,
+        timeout: TimeInterval
+    ) -> Bool {
+        let alert = app.alerts[expectedTitle]
+        guard alert.waitForExistence(timeout: timeout) else {
+            // Report what DID show up. «No alert titled X» sends the reader
+            // hunting for a missing alert; «no alert titled X, but there was
+            // one titled Y» hands them the actual regression.
+            let other = app.alerts.firstMatch
+            if other.exists {
+                XCTFail("""
+                    Expected the alert «\(expectedTitle)», \
+                    but the screen showed «\(other.label)» instead
+                    """)
+            }
+            return false
+        }
 
         var taps = 0
         while taps < 4, alert.exists {
@@ -147,8 +215,10 @@ extension XCTestCase {
             _ = alert.waitForNonExistence(timeout: 5)
         }
 
-        XCTAssertFalse(alert.exists,
-                       "Alert «\(alert.label)» should be gone after \(taps) tap(s) on its first button")
+        XCTAssertFalse(
+            alert.exists,
+            "Alert «\(expectedTitle)» should be gone after \(taps) tap(s) on its first button"
+        )
         return true
     }
 }
