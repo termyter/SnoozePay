@@ -8,13 +8,13 @@ import UIKit
 /// CALayer can render only one shadow natively, so the wider key stop is
 /// installed on the host layer via `apply(to:)` and the narrower ambient stop
 /// is rendered through a dedicated sibling sublayer inserted at index 0 by
-/// ``installAmbientShadow1Layer(on:cornerRadius:trait:)``. The sublayer is a
+/// ``installAmbientShadow1Layer(on:cornerRadius:trait:corners:openEdges:)``. The sublayer is a
 /// clear-filled `CAShapeLayer` masked to the region outside the card, so it
 /// contributes the halo without washing the card's own surface.
 ///
 /// Apply via `apply(to: layer)` from `traitCollectionDidChange` so the shadow
 /// re-resolves on theme switch, and call
-/// ``installAmbientShadow1Layer(on:cornerRadius:trait:)`` from both
+/// ``installAmbientShadow1Layer(on:cornerRadius:trait:corners:openEdges:)`` from both
 /// `traitCollectionDidChange` (to install/remove on theme flip) and
 /// `layoutSubviews` (so the ambient layer's frame stays in sync with the host).
 struct AppShadow {
@@ -37,7 +37,7 @@ struct AppShadow {
     /// `0 2px 8px rgba(0,0,0,.35)`. Light is the dominant stop of
     /// `0 1px 3px / 0 4px 14px rgba(8,14,30,.06)` — we use the wider 14pt
     /// radius for legibility on near-white surfaces. Pair with
-    /// ``installAmbientShadow1Layer(on:cornerRadius:trait:)`` to render the
+    /// ``installAmbientShadow1Layer(on:cornerRadius:trait:corners:openEdges:)`` to render the
     /// narrower ambient stop on light-mode surfaces.
     static func shadow1(for trait: UITraitCollection) -> AppShadow {
         if trait.userInterfaceStyle == .light {
@@ -97,7 +97,7 @@ struct AppShadow {
     /// The ambient layer is outset past the host by ``ambientShadow1Spread``
     /// and masked to the region *outside* the card, so only the halo composites
     /// onto the page. Without that mask the stop also washes the card's own
-    /// interior — see ``installHaloMask(on:cardRect:cornerRadius:)`` (#515).
+    /// interior — see ``installHaloMask(on:cardRect:cornerRadius:corners:)`` (#515).
     ///
     /// Dark mode collapses back to a single stop, so this method removes the
     /// ambient layer if `trait.userInterfaceStyle == .dark`.
@@ -108,7 +108,9 @@ struct AppShadow {
     static func installAmbientShadow1Layer(
         on hostLayer: CALayer,
         cornerRadius: CGFloat,
-        trait: UITraitCollection
+        trait: UITraitCollection,
+        corners: CACornerMask = .allCorners,
+        openEdges: UIRectEdge = []
     ) {
         let isLight = trait.userInterfaceStyle != .dark
         let existing = hostLayer.sublayers?.first { $0.name == ambientShadow1LayerName } as? CAShapeLayer
@@ -139,8 +141,8 @@ struct AppShadow {
         let cardRect = CGRect(
             origin: CGPoint(x: ambientShadow1Spread, y: ambientShadow1Spread),
             size: hostLayer.bounds.size
-        )
-        let path = UIBezierPath(roundedRect: cardRect, cornerRadius: cornerRadius).cgPath
+        ).grown(by: ambientShadow1Spread, on: openEdges)
+        let path = cardPath(cardRect, cornerRadius: cornerRadius, corners: corners)
         ambient.path = path
         ambient.fillColor = UIColor.clear.cgColor
         // Narrow ambient stop: `0 1px 3px rgba(8,14,30,.06)`.
@@ -154,7 +156,12 @@ struct AppShadow {
         // same offscreen-pass reasons as the wider stop.
         ambient.shadowPath = path
         ambient.masksToBounds = false
-        installHaloMask(on: ambient, cardRect: cardRect, cornerRadius: cornerRadius)
+        installHaloMask(
+            on: ambient,
+            cardRect: cardRect,
+            cornerRadius: cornerRadius,
+            corners: corners
+        )
     }
 
     /// Clip the ambient layer to the region *outside* the card it decorates.
@@ -175,17 +182,89 @@ struct AppShadow {
     private static func installHaloMask(
         on ambient: CAShapeLayer,
         cardRect: CGRect,
-        cornerRadius: CGFloat
+        cornerRadius: CGFloat,
+        corners: CACornerMask
     ) {
         let mask = (ambient.mask as? CAShapeLayer) ?? CAShapeLayer()
         mask.frame = ambient.bounds
         mask.fillRule = .evenOdd
         let halo = UIBezierPath(rect: ambient.bounds)
-        halo.append(UIBezierPath(roundedRect: cardRect, cornerRadius: cornerRadius))
+        halo.append(
+            UIBezierPath(
+                cgPath: cardPath(cardRect, cornerRadius: cornerRadius, corners: corners)
+            )
+        )
         halo.usesEvenOddFillRule = true
         mask.path = halo.cgPath
         if ambient.mask !== mask {
             ambient.mask = mask
         }
+    }
+
+    /// The card's real silhouette: a rect rounded only where `corners` says it
+    /// is rounded.
+    ///
+    /// This used to be an unconditional `UIBezierPath(roundedRect:cornerRadius:)`,
+    /// and that is the whole of #674. A section cap is rounded on one side and
+    /// square on the other, so a fully rounded hole leaves the two square
+    /// corners' little triangles OUTSIDE it — inside the visible part of the
+    /// halo mask. The ambient stop's interior (`#F0F1F2` over `bg1`) then
+    /// printed into exactly those triangles, which sit in the seam between two
+    /// rows, and the section read as if every row were individually rounded.
+    static func cardPath(
+        _ rect: CGRect,
+        cornerRadius: CGFloat,
+        corners: CACornerMask = .allCorners
+    ) -> CGPath {
+        // Clamped the way `CardRowBackgroundView.outlinePath` clamps, so a row
+        // shorter than two radii cannot ask for a corner bigger than itself.
+        let radius = max(0, min(cornerRadius, rect.width / 2, rect.height / 2))
+        return UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners.rectCorners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        ).cgPath
+    }
+}
+
+extension CACornerMask {
+    static let allCorners: CACornerMask = [
+        .layerMinXMinYCorner, .layerMaxXMinYCorner,
+        .layerMinXMaxYCorner, .layerMaxXMaxYCorner
+    ]
+
+    /// `UIBezierPath` speaks `UIRectCorner`; `CALayer` speaks `CACornerMask`.
+    /// The two name the same four corners in UIKit's y-down geometry.
+    var rectCorners: UIRectCorner {
+        var corners: UIRectCorner = []
+        if contains(.layerMinXMinYCorner) { corners.insert(.topLeft) }
+        if contains(.layerMaxXMinYCorner) { corners.insert(.topRight) }
+        if contains(.layerMinXMaxYCorner) { corners.insert(.bottomLeft) }
+        if contains(.layerMaxXMaxYCorner) { corners.insert(.bottomRight) }
+        return corners
+    }
+}
+
+extension CGRect {
+    /// Push the named edges outward by `amount`.
+    ///
+    /// Used for the edges a card shares with a neighbouring row. The halo is
+    /// the region outside the card, so an edge that is really the middle of a
+    /// taller card must be pushed past where the decoration can reach —
+    /// otherwise the stop haloes into the neighbour's surface and draws a
+    /// shadow line where the section is continuous.
+    func grown(by amount: CGFloat, on edges: UIRectEdge) -> CGRect {
+        var rect = self
+        if edges.contains(.top) {
+            rect.origin.y -= amount
+            rect.size.height += amount
+        }
+        if edges.contains(.bottom) { rect.size.height += amount }
+        if edges.contains(.left) {
+            rect.origin.x -= amount
+            rect.size.width += amount
+        }
+        if edges.contains(.right) { rect.size.width += amount }
+        return rect
     }
 }

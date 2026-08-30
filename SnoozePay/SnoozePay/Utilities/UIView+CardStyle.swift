@@ -153,6 +153,30 @@ enum CardRowPosition {
         case .middle: return []
         }
     }
+
+    /// Edges this row shares with a neighbour — not really the card's edge at
+    /// all, just the seam where the section continues.
+    ///
+    /// The AMBIENT stop's mask must not reach across these: the surface on the
+    /// far side is the next row's `bg1`, and the stop's interior painted there
+    /// reads as a boundary the section does not have (#674). Only the ambient
+    /// stop — the key stop is not masked and still casts into the seam, at a
+    /// measured 6/255 in light and 4/255 in dark.
+    /// `CardRowBandingTests.testTheSeamBetweenTwoRows_…` holds this, and it
+    /// asserts a GAP against a control rendered in the same run rather than a
+    /// threshold on one number — so do not go looking there for a constant.
+    ///
+    /// `.middle` answers `[.top, .bottom]` for a caller that never arrives:
+    /// a middle row installs no stop at all. The mapping is kept correct
+    /// rather than removed — see `CardRowSeamShadowTests.testAMiddleRow_…`.
+    var openEdges: UIRectEdge {
+        switch self {
+        case .single: return []
+        case .first: return .bottom
+        case .last: return .top
+        case .middle: return [.top, .bottom]
+        }
+    }
 }
 
 extension UITableViewCell {
@@ -222,11 +246,36 @@ final class CardRowBackgroundView: UIView {
         outline.frame = bounds
         outline.path = outlinePath(lineWidth: outline.lineWidth)
         guard position != .middle else { return }
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: cardCornerRadius).cgPath
+        // The ambient stop is the half of this that shows: masking it out of
+        // the seam takes the light-mode band from 11/255 to 6/255, measured on
+        // two stacked rows (`CardRowBandingTests.testTheSeamBetweenTwoRows_…`,
+        // where 11 is that test's own control — an earlier note here said 10,
+        // which came from a different control: a full revert of the PR).
+        //
+        // The key stop's path is corrected for honesty, not for pixels. The
+        // layer's real silhouette is part-square via `maskedCorners`, and a
+        // fully rounded `shadowPath` described a shape the layer does not have.
+        // Reverting just this line moves the rendered seam by NOTHING — 6/255
+        // light and 4/255 dark either way — because the corners it fixes sit
+        // where the two rows' own fills already cover the difference. Claiming
+        // it fixes the seam, or that it changes dark mode, would be wrong; it
+        // is held at the path level by `CardRowSeamShadowTests`.
+        //
+        // Pushing the key path past the seam the way the ambient mask is pushed
+        // would make things worse, not better: a shadow is always cast around
+        // whatever path it is given, so growing it moves the band deeper into
+        // the neighbour instead of removing it.
+        layer.shadowPath = AppShadow.cardPath(
+            bounds,
+            cornerRadius: cardCornerRadius,
+            corners: position.maskedCorners
+        )
         AppShadow.installAmbientShadow1Layer(
             on: layer,
             cornerRadius: cardCornerRadius,
-            trait: traitCollection
+            trait: traitCollection,
+            corners: position.maskedCorners,
+            openEdges: position.openEdges
         )
     }
 
