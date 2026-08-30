@@ -118,6 +118,56 @@ enum AppColors {
     /// Darkest stop of `--sp-grad-warn`.
     static let warnFill600 = UIColor(hex: 0xC97A06)
 
+    /// `PenaltyCell`'s 32pt bold mono amount and its `₽` suffix — that one
+    /// numeral and nothing else.
+    ///
+    /// The name carries the size on purpose. This is a `warnFill*` value used
+    /// as **ink**, which the rule two blocks up otherwise forbids, and the
+    /// exemption is bought entirely by 32pt. Issue #683 is open to make the
+    /// Settings snooze-price row match this one; that row's value label is
+    /// 14pt, and reaching for this token there would ship body text at
+    /// 2.15:1. `AppColorsContrastTests` asserts on token VALUES and would not
+    /// notice, so the fence is the name.
+    ///
+    /// ## Why it diverges from `warn400`
+    ///
+    /// The canon and our contrast rule disagree here, and the PM decided for
+    /// the canon's INTENT rather than its literal value (#673). Three numbers,
+    /// all on `bg1` light (`#FFFFFF`):
+    ///
+    /// | | value | ratio |
+    /// |---|---|---|
+    /// | canon amount, `--sp-warn-400` (`SPMore2.jsx:241`) | `#FFB84D` | 1.72:1 |
+    /// | shipped here, `--sp-warn-500` (`tokens.css:30`) | `#F59E0B` | **2.15:1** |
+    /// | our light `warn400` | `#966107` | 5.24:1 |
+    ///
+    /// So this is a THIRD value, not "the canon won": canon-literal is one ramp
+    /// stop lighter and measures worse than what ships. Naming it as canon
+    /// would be false — it is the closest stop that keeps the column reading as
+    /// one colour without dropping to 1.72:1.
+    ///
+    /// And the column is one colour in OUR build, not in the prototype. Canon
+    /// deliberately uses three values — amount `--sp-warn-400` (`:241`),
+    /// slider fill `--sp-warn-500` (`:214`), selected chip `--sp-grad-warn`, a
+    /// gradient `#FFD479 → #F59E0B → #C97A06` (`:248`). Our chip and track are
+    /// both flat `warnFill500`, so here the amount rendered bronze was the one
+    /// element out of step — which is what the PM reported as "wrong colour".
+    ///
+    /// ## The honest number
+    ///
+    /// 2.15:1 clears neither 4.5:1 nor the 3:1 large-text threshold. What
+    /// softens it is that the amount is usually not the only carrier of the
+    /// value — the same number is stated by the selected preset chip below it,
+    /// in `fgOnWarn` at 8.79:1.
+    ///
+    /// "Usually", not "never": the field takes free input, and a chip lights
+    /// only on an exact preset match, so at 137 ₽ the amount IS the sole
+    /// carrier and sits at 2.15:1. `PenaltyDisplayColorTests` pins the ratio,
+    /// the tie to the chip, and that boundary — including a test that goes red
+    /// if the redundancy is ever made unconditional, so this caveat cannot
+    /// outlive the condition it describes.
+    static let penaltyAmountDisplay32 = warnFill500
+
     // MARK: - Brand · Info
     /// Informational links only — `--sp-info-500` in `tokens.css`.
     static let info500 = dynamicColor(dark: 0x4F8BFF, light: 0x3257A1)
@@ -476,7 +526,42 @@ enum AppSpacing {
     /// Vertical padding inside a card (top / bottom).
     static let cardVerticalPadding: CGFloat = md
     /// Horizontal padding inside a card (leading / trailing of card contents).
-    static let cardHorizontalPadding: CGFloat = lg
+    ///
+    /// `sp5`. This used to read `lg` (16) — the exact value #672 was filed
+    /// against — while the cells that had drifted hardcoded their own. A named
+    /// token holding the wrong number is worse than no token: the next reader
+    /// reaches for it and silently reproduces the bug.
+    ///
+    /// ⚠️ The alarm form's ten cells do NOT reach 20 by one canon rule, and
+    /// for three of them the canon number is not 20 at all. The artboard is
+    /// `AlarmEdit()` in `docs/design/snoozepay-2026-04-27/project/components/
+    /// SPMore2.jsx`, lines 131–291 — every reference below is inside it:
+    ///
+    /// - screen gutter `20px` (`:145`, `:161`, `:196`) → canon 20:
+    ///   `NameCell`, `TimePickerCell`, `DayPickerCell`, `RepeatModeCell`
+    /// - `SPCard padding={20}` (`:198`, `:237`, `:257`) → canon 20:
+    ///   `SnoozeSliderCell`, `PenaltyCell`, `ProgressiveScaleCell`
+    /// - `SPCard padding={4}` (`:227`) → canon **4**:
+    ///   `SoundCell`, `ThemeRowCell`, `VibrationCell`
+    ///
+    /// The first two groups are not the same rule: a gutter insets a child of
+    /// the scroll container, a card padding insets the card's own contents.
+    /// They agree on 20 here by coincidence of this artboard, not by principle.
+    ///
+    /// The third group is a **known divergence**: canon gives those rows 4pt
+    /// and the app gives them 20. That is the same disagreement #677 settled
+    /// on the wallet's rows, and the comments elsewhere that miscite it as a
+    /// `4px 20px` canon rule are tracked in #685. This token holds 20 for all
+    /// ten deliberately — one token beats ten literals — but reading it as
+    /// "canon says 20 everywhere" is wrong twice over.
+    ///
+    /// An earlier version of this table cited `:106` and `padding={16}` at
+    /// `:44`. Both are in OTHER artboards (`AlarmDetail`, `Permissions`) and
+    /// say nothing about this screen. Within `AlarmEdit` the one real
+    /// dissenter is `:285`, `padding: "0 16px 24px"` on the delete button's
+    /// footer. `AppSpacing.screenInset` is likewise still `lg` (16) against a
+    /// canon gutter of 20 — the same disagreement one level up, not fixed here.
+    static let cardHorizontalPadding: CGFloat = sp5
 }
 
 /// App-wide corner radius constants — names aligned with `tokens.css`

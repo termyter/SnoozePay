@@ -50,8 +50,8 @@ final class PenaltyCell: UITableViewCell {
     private let amountField: UITextField = {
         let field = UITextField()
         field.font = AppFonts.mono(.bold, 32)
-        field.textColor = AppColors.warn400
-        field.tintColor = AppColors.warn400
+        field.textColor = AppColors.penaltyAmountDisplay32
+        field.tintColor = AppColors.penaltyAmountDisplay32
         field.keyboardType = .numberPad
         field.borderStyle = .none
         field.setContentHuggingPriority(.required, for: .horizontal)
@@ -80,7 +80,10 @@ final class PenaltyCell: UITableViewCell {
         let label = UILabel()
         label.text = "₽"
         label.font = AppFonts.mono(.bold, 32)
-        label.textColor = AppColors.warn400
+        // Same ink as the amount it sits beside. `setHelper(visible:)` repaints
+        // both together, but a path that shows the cell before `configure` runs
+        // would otherwise put a bronze glyph against an amber number (#673).
+        label.textColor = AppColors.penaltyAmountDisplay32
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -181,8 +184,14 @@ final class PenaltyCell: UITableViewCell {
         contentView.addSubview(column)
 
         NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.lg),
-            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.lg),
+            column.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor,
+                constant: AppSpacing.cardHorizontalPadding
+            ),
+            column.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor,
+                constant: -AppSpacing.cardHorizontalPadding
+            ),
             column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
             column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
         ])
@@ -253,8 +262,8 @@ final class PenaltyCell: UITableViewCell {
 
     private func setHelper(visible: Bool) {
         helperLabel.isHidden = !visible
-        amountField.textColor = visible ? AppColors.pain400 : AppColors.warn400
-        suffixLabel.textColor = visible ? AppColors.pain400 : AppColors.warn400
+        amountField.textColor = visible ? AppColors.pain400 : AppColors.penaltyAmountDisplay32
+        suffixLabel.textColor = visible ? AppColors.pain400 : AppColors.penaltyAmountDisplay32
     }
 
     // MARK: - Appearance
