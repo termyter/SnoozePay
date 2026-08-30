@@ -294,8 +294,35 @@ final class ProgressiveCardSurface: UIView {
             AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.10).cgColor,
             AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.02).cgColor
         ]
+        // ## The armed outline used to be 3x every other card (#675)
+        //
+        // `isPainTinted ? 1 : 1.0 / scale` — a hard-coded point for the armed
+        // state, one device pixel for everything else. Measured on hosted
+        // views at `displayScale == 3`, that made the armed card the ONLY
+        // 1.0pt outline in the app: `CardRowBackgroundView`, `applyCardStyle`
+        // and this card disarmed all render 0.3333, in both themes.
+        //
+        // So toggling this control off dropped its own outline 1.0 -> 0.333
+        // while its neighbours never moved, and that step — together with the
+        // gradient going and the `50 -> 100 -> 200 -> 400 РУБ` chain hiding
+        // (#688) — is what was reported as the card "losing its border" when
+        // switched off. The disarmed state was never the outlier; the armed
+        // one was.
+        //
+        // Two earlier attempts got this wrong in opposite directions: PR #682
+        // thickened the disarmed state, and an earlier revision of THIS branch
+        // thickened everything to 1.0 app-wide, both on measurements that read
+        // `AppShadow.ambientShadow1` — a fill-only `CAShapeLayer` sitting at
+        // sublayer index 0, carrying `CAShapeLayer`'s default `lineWidth` of 1
+        // and never stroked — instead of the outline. Select the outline by
+        // `strokeColor != nil`, never by position.
+        //
+        // The width is therefore the same in both states now, and arming is
+        // carried by ink and the gradient, exactly as `SPMore2.jsx` draws it.
+        // Whether 1/scale at `stroke1` (1.183:1 on white) is a visible edge at
+        // all is a real question, and an app-wide one: #689.
         let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = isPainTinted ? 1 : 1.0 / scale
+        layer.borderWidth = 1.0 / scale
         let stroke = isPainTinted
             ? AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.25)
             : AppColors.stroke1.resolvedColor(with: traitCollection)
