@@ -53,23 +53,24 @@ enum Weekday: Int, CaseIterable, Codable, Hashable {
 
     // MARK: - Display
 
-    /// Short label from the string catalogue, matching the existing UI strings
-    /// on `Alarm.repeatDaysDescription` ("Пн, Вт, …").
+    /// Short label for ``AppLocale/display``, Monday-first: «Пн», «Вт», …
     ///
-    /// The keys are spelled out per case rather than interpolated from a
-    /// suffix so that `git grep common.weekday.short` finds every one of them
-    /// — a catalogue key is an ordinary `String`, and an interpolated one is
-    /// invisible to every tool the project has.
+    /// Calendar data, not copy (#569): the names come from CLDR through
+    /// ``WeekdayNames/short`` rather than from `Localizable.xcstrings`. Asking
+    /// a translator for them would mean retyping a table every locale already
+    /// ships — and, the reason it matters here rather than being a matter of
+    /// taste, the alarm card renders `AlarmsListViewModel.weekdayPhrase` and
+    /// `Alarm.repeatDaysDescription` side by side. The first has always read
+    /// CLDR; a catalogue copy behind the second would let the two halves of a
+    /// single card disagree the moment a second language exists.
+    ///
+    /// Copy that *contains* a weekday («Будни · Пн–Пт») is the opposite case
+    /// and stays whole in the catalogue, per ``WeekdayNames``.
     var localizedShortName: String {
-        switch self {
-        case .monday: return Localized.text("common.weekday.short.mon")
-        case .tuesday: return Localized.text("common.weekday.short.tue")
-        case .wednesday: return Localized.text("common.weekday.short.wed")
-        case .thursday: return Localized.text("common.weekday.short.thu")
-        case .friday: return Localized.text("common.weekday.short.fri")
-        case .saturday: return Localized.text("common.weekday.short.sat")
-        case .sunday: return Localized.text("common.weekday.short.sun")
-        }
+        // `mondayFirst(_:)` yields [] when Foundation hands back anything but
+        // seven symbols, so this cannot index blindly.
+        let names = WeekdayNames.short
+        return names.indices.contains(legacyMondayFirstIndex) ? names[legacyMondayFirstIndex] : ""
     }
 }
 

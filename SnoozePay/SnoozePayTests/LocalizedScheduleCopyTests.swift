@@ -8,30 +8,29 @@ import XCTest
 /// Why this exists next to `AlarmModelTests`, `WeekdayTests`,
 /// `AlarmThemeTests`, `SoundThemePickerCatalogueTests` and
 /// `AlarmDeletionCopyTests`, all of which already pin the exact Russian
-/// strings: those files would go red on a *missing* key (`Localized.text`
-/// echoes the key, and "Пн" ≠ "common.weekday.short.mon"), but they cannot
-/// distinguish the two failures this migration actually introduces —
+/// strings: those files go red on a *missing* key, because `Localized.text`
+/// echoes the key and «Рассвет» ≠ `create_alarm.theme.name.dawn`. What they
+/// cannot see are the three failures this migration actually introduces —
 ///
 /// 1. a key that resolves but is wired to the wrong entry, when two entries
-///    happen to hold interchangeable-looking copy;
+///    hold interchangeable-looking copy;
 /// 2. a format string whose specifier survived into the rendered text,
-///    because `String(format:)` fails silently rather than throwing.
+///    because `String(format:)` fails silently rather than throwing;
+/// 3. copy quietly moving *into* the catalogue that does not belong there —
+///    weekday names are calendar data and must keep coming from CLDR (#569).
 ///
-/// Both are asserted structurally here (distinctness, absence of `%`), which
-/// is the part a byte-comparison against the old literals cannot cover.
+/// All three are asserted structurally (distinctness, absence of `%`, identity
+/// with `WeekdayNames`), which is the part a byte-comparison against the old
+/// literals cannot cover.
 final class LocalizedScheduleCopyTests: XCTestCase {
 
-    /// Every key this batch introduced. Listed once so that adding an entry to
-    /// the catalogue without adding it here is the only way past the miss
-    /// detector below.
+    /// The keys this batch introduced.
+    ///
+    /// Maintained by hand, and nothing forces a future key into it — the list
+    /// is a checklist, not a gate. What it does buy is that all 25 are checked
+    /// for presence in one place, so a typo in a key that only one rarely-hit
+    /// branch reads still fails the suite.
     private static let migratedKeys = [
-        "common.weekday.short.mon",
-        "common.weekday.short.tue",
-        "common.weekday.short.wed",
-        "common.weekday.short.thu",
-        "common.weekday.short.fri",
-        "common.weekday.short.sat",
-        "common.weekday.short.sun",
         "alarms.default_name",
         "alarms.days.weekdays_plain",
         "alarms.days.weekend_range",
@@ -81,16 +80,30 @@ final class LocalizedScheduleCopyTests: XCTestCase {
 
     // MARK: - Weekday
 
-    /// Seven cases, seven keys, and the failure a `switch` invites is pointing
-    /// two of them at one entry. `WeekdayTests` pins the values; this pins that
-    /// no two are the same, which is what a copy-pasted key line produces.
-    func testWeekdayShortNamesAreSevenDistinctPiecesOfCopy() {
-        let names = Weekday.allCases.map(\.localizedShortName)
-        XCTAssertEqual(Set(names).count, 7, "two weekdays share a catalogue key: \(names)")
-        for name in names {
-            XCTAssertTrue(
-                name.range(of: "\\p{Cyrillic}", options: .regularExpression) != nil,
-                "reads as a key rather than as copy: \(name)"
+    /// Weekday names are calendar data, not catalogue copy (#569). This pins
+    /// the seam rather than the seven strings — `WeekdayTests` and
+    /// `ViewModelLocalizationTests` already pin those — because the regression
+    /// worth catching is someone giving `Weekday` its own `common.weekday.*`
+    /// entries again. On the day `en` ships, that split is what makes one alarm
+    /// card render its caps row from CLDR and its detail line from a
+    /// translator's table.
+    func testWeekdayShortNamesComeFromTheCalendarNotTheCatalogue() {
+        XCTAssertEqual(
+            Weekday.allCases.sorted { $0.legacyMondayFirstIndex < $1.legacyMondayFirstIndex }
+                .map(\.localizedShortName),
+            WeekdayNames.short,
+            "Weekday stopped reading WeekdayNames — the alarm card can now disagree with itself"
+        )
+    }
+
+    /// The index guard, which exists because `WeekdayNames.mondayFirst(_:)`
+    /// returns `[]` rather than throwing when Foundation hands back anything
+    /// but seven symbols. Every case must land inside the array it indexes.
+    func testEveryWeekdayResolvesToANonEmptyName() {
+        for day in Weekday.allCases {
+            XCTAssertFalse(
+                day.localizedShortName.isEmpty,
+                "\(day) fell through the index guard in localizedShortName"
             )
         }
     }
@@ -102,16 +115,20 @@ final class LocalizedScheduleCopyTests: XCTestCase {
     /// validating one is the boundary, the historical one is what the app
     /// actually calls.
     func testBothInitializersDefaultToTheCatalogueName() {
+        // Pinned to the literal, not just to itself: this value is persisted
+        // into `Alarm.name` and compared against in
+        // `AlarmsListViewModel.weekdayPhrase`, so changing it silently changes
+        // which alarms show a name in the caps row (#623).
+        XCTAssertEqual(Alarm.defaultName, "Будильник")
         XCTAssertEqual(Alarm().name, Alarm.defaultName)
         XCTAssertEqual(Alarm(validating: UUID())?.name, Alarm.defaultName)
-        XCTAssertNotEqual(Alarm.defaultName, "alarms.default_name")
     }
 
     /// `repeatDaysDescription` stopped carrying its own weekday table and now
-    /// reads `Weekday.localizedShortName` — the same entries the delete sheet
-    /// and the day picker read. Asserting the identity rather than the literal
-    /// is what pins them together: a future PR that gives the alarm card its
-    /// own `alarms.weekday.*` keys goes red here, which is the point.
+    /// reads `Weekday.localizedShortName` — the same CLDR names the caps row,
+    /// the delete sheet and the day picker read. Asserting that identity as
+    /// well as the literal is what pins them together: a future PR that gives
+    /// the alarm card its own weekday source goes red here, which is the point.
     func testSubsetDescriptionIsBuiltFromTheSharedWeekdayNames() {
         let alarm = Alarm(validating: UUID(), repeatDays: [3, 1])
         XCTAssertEqual(
@@ -119,6 +136,41 @@ final class LocalizedScheduleCopyTests: XCTestCase {
             [Weekday.tuesday, .thursday].map(\.localizedShortName).joined(separator: ", ")
         )
         XCTAssertEqual(alarm?.repeatDaysDescription, "Вт, Чт", "sorted Mon-first, comma separated")
+    }
+
+    /// Corrupt storage carries weekday indices outside `0...6` (#72). The old
+    /// table dropped them through a `[safe:]` subscript that this batch
+    /// deleted, so the question is whether the replacement still holds.
+    ///
+    /// It is asserted through the decoder rather than through an initializer
+    /// because that is the only path such a value can travel: `repeatDays` is
+    /// `let`, `init(validating:)` returns `nil`, and the historical `init`
+    /// calls `preconditionFailure`. The `compactMap` inside
+    /// `repeatDaysDescription` is therefore defence in depth and cannot be
+    /// reached directly — what a test *can* pin is that the pair
+    /// (decoder sanitizes, description renders the survivors) still produces
+    /// «Вт, Чт», which is the behaviour the user sees.
+    func testCorruptWeekdayIndicesSurviveAsTheDaysThatAreStillValid() {
+        let payload: [String: Any] = [
+            "id": UUID().uuidString,
+            "time": 0,
+            "repeatDays": [-1, 1, 3, 99],
+            "name": "Test",
+            "soundID": "radar",
+            "vibrationEnabled": true,
+            "snoozeMinutes": 9,
+            "penaltyAmount": 50,
+            "progressiveScale": false,
+            "enabled": true
+        ]
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payload),
+            let alarm = try? JSONDecoder().decode(Alarm.self, from: data)
+        else {
+            return XCTFail("a legacy alarm payload must stay decodable")
+        }
+        XCTAssertEqual(alarm.repeatDays, [1, 3], "the decoder is what drops the bad indices")
+        XCTAssertEqual(alarm.repeatDaysDescription, "Вт, Чт")
     }
 
     /// «Будни» (the card's narrow form) and «Будни · Пн–Пт» (the delete
@@ -148,6 +200,21 @@ final class LocalizedScheduleCopyTests: XCTestCase {
         )
         for copy in names + subtitles {
             XCTAssertFalse(copy.contains("create_alarm."), "unresolved key: \(copy)")
+        }
+    }
+
+    /// `SoundThemePickerCatalogueTests` pins «Тёплый янтарь» and «Холодный
+    /// мятный»; the other four subtitles were only checked for being distinct
+    /// and non-empty, which a «ё»→«е» slip or a swapped pair passes green.
+    func testRemainingThemeSubtitlesKeepTheirExactCopy() {
+        let expected: [(AlarmTheme, String)] = [
+            (.mountains, "Молочный свет"),
+            (.forest, "Хвойный сумрак"),
+            (.neon, "Городская ночь"),
+            (.abstract, "Чистый цвет")
+        ]
+        for (theme, text) in expected {
+            XCTAssertEqual(AlarmThemeSubtitles.subtitle(for: theme), text, theme.id)
         }
     }
 
@@ -185,6 +252,24 @@ final class LocalizedScheduleCopyTests: XCTestCase {
                 "reads as a key rather than as copy: \(line)"
             )
         }
+    }
+
+    /// Two `compactDayPhrase` branches migrated to the catalogue without any
+    /// test entering them: `AlarmDeletionCopyTests` covers the weekdays range
+    /// but not the all-week and weekend ones. A wrong key in either renders the
+    /// key itself on the delete sheet.
+    func testOneShotCompactRangesCoverAllWeekAndWeekend() {
+        let sevenAM = Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date())!
+        XCTAssertEqual(
+            AlarmDeletionCopy.contextLine(
+                repeatDays: Array(0...6), repeatMode: .never, time: sevenAM
+            ),
+            "Единожды · Пн–Вс · 07:00"
+        )
+        XCTAssertEqual(
+            AlarmDeletionCopy.contextLine(repeatDays: [5, 6], repeatMode: .never, time: sevenAM),
+            "Единожды · Сб–Вс · 07:00"
+        )
     }
 
     /// The reassurance sentence and the two-sentence body are separate keys, so

@@ -288,6 +288,11 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
         let saved = repo.fetchAllOrFail().first
         XCTAssertEqual(saved?.name, "Будильник")
+        // The editor reads `Alarm.defaultName` rather than its own literal
+        // (#598): one default, one place to change it. The line above still
+        // pins the text, because this value is persisted and
+        // `AlarmsListViewModel` compares against it (#623).
+        XCTAssertEqual(saved?.name, Alarm.defaultName)
     }
 
     func testSave_editExistingAlarm() {

@@ -55,11 +55,21 @@ struct Alarm: Identifiable, Equatable, Codable {
     static let weekdayIndexRange: ClosedRange<Int> = 0...6
 
     /// The name a new alarm carries until the user types one of their own.
+    /// Read by both initializers here and by `CreateAlarmViewModel`.
     ///
-    /// Computed rather than `static let` because `Localized` opens its bundle
-    /// lazily: a stored property here would be initialized by whichever call
-    /// site touched `Alarm` first, and pinning the copy to that moment is a
-    /// bug waiting for the day the display language can change at runtime.
+    /// Computed rather than stored to match how the rest of the catalogue is
+    /// read (``Plural``, `Localized.text` call sites): a missing key should
+    /// surface wherever it is used, not hide behind whichever call site
+    /// happened to initialize a `static let` first. Today that is a
+    /// consistency argument and nothing more — `Localized.bundle` is itself a
+    /// `static let` resolved once per process, so a stored copy would hold the
+    /// same string.
+    ///
+    /// ⚠️ This value is **persisted** into `Alarm.name`, which makes it a
+    /// sentinel as well as copy: `AlarmsListViewModel.weekdayPhrase` suppresses
+    /// the default name in the caps row by comparing against it. That
+    /// comparison is against a literal on purpose and breaks once a second
+    /// language ships — see #623, which owns the model change that fixes it.
     static var defaultName: String { Localized.text("alarms.default_name") }
 
     // MARK: - Validating failable init (#207)
@@ -268,11 +278,13 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// Human-readable repeat days string (e.g. "Пн, Вт, Пт").
     ///
     /// The weekday table that used to live here is gone: the names now come
-    /// from `Weekday.localizedShortName`, the same catalogue entries the day
-    /// picker and the delete sheet read. Out-of-range indices are dropped
-    /// exactly as the file-local `[safe:]` subscript dropped them — that is
-    /// what `Weekday(legacyMondayFirstIndex:)` being failable buys, and it is
-    /// why the subscript itself could go with it.
+    /// from `Weekday.localizedShortName`, i.e. from CLDR via `WeekdayNames`,
+    /// which is the same source the caps row and the day picker read. Only the
+    /// bucket labels («Единожды», «Будни») are catalogue copy.
+    ///
+    /// Out-of-range indices are dropped exactly as the file-local `[safe:]`
+    /// subscript dropped them — that is what `Weekday(legacyMondayFirstIndex:)`
+    /// being failable buys, and it is why the subscript could go with the table.
     var repeatDaysDescription: String {
         guard !repeatDays.isEmpty else { return Localized.text("alarms.days.once") }
 

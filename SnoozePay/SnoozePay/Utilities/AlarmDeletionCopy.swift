@@ -13,10 +13,10 @@ import Foundation
 /// Two pieces compose that line:
 /// - `contextLine(repeatDays:repeatMode:time:)` — the alarm identity
 ///   («Будни · Пн–Пт · 07:00»), mirroring the caps-row phrasing of
-///   `AlarmsListViewModel.weekdayPhrase` (private there). The day *names* are
-///   shared through `Weekday.localizedShortName`; only the phrasing that
-///   differs from the caps row — the ranges and the three-segment one-shot
-///   line — gets its own `alarms.delete.*` keys.
+///   `AlarmsListViewModel.weekdayPhrase` (private there). The day *names* come
+///   from CLDR through `Weekday.localizedShortName`, not from the catalogue;
+///   only the phrasing — the ranges and the three-segment one-shot line — is
+///   copy, and it gets its own `alarms.delete.*` keys.
 /// - `body(contextLine:balance:)` — the reassurance sentence with the live
 ///   balance interpolated via `MoneyFormatter` (single money-string source).
 enum AlarmDeletionCopy {
@@ -58,7 +58,7 @@ enum AlarmDeletionCopy {
     // MARK: - Private
 
     /// Monday-first weekday indices, the legacy `repeatDays` convention. The
-    /// names themselves now come from `Weekday.localizedShortName`, so this
+    /// names themselves come from `Weekday.localizedShortName` (CLDR), so this
     /// file no longer carries a second copy of the table.
     private static let weekdayIndices = 0...6
     private static let weekdaysSet = [0, 1, 2, 3, 4]
