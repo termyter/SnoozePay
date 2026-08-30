@@ -118,7 +118,7 @@ final class CardRowSeamShadowTests: XCTestCase {
     /// moves the rendered seam by 0/255 in both themes, and the reason is NOT
     /// the ambient mask: that mask lives on a sublayer and cannot clip the
     /// host layer's own shadow, and in dark the ambient layer is not installed
-    /// at all (`AppShadow.swift:94-99`, held by
+    /// at all (`AppShadow.swift:118-123`, held by
     /// `CardRowBandingTests.testDarkRows_carryNoAmbientStop`). The reason is
     /// the one written at `UIView+CardStyle.swift:255` — the corners this fixes
     /// sit where the two rows' own opaque fills already cover the difference.

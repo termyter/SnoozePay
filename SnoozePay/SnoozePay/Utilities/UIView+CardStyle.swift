@@ -161,9 +161,10 @@ enum CardRowPosition {
     /// far side is the next row's `bg1`, and the stop's interior painted there
     /// reads as a boundary the section does not have (#674). Only the ambient
     /// stop — the key stop is not masked and still casts into the seam, at a
-    /// measured 6/255 in light and 4/255 in dark. See
-    /// `CardRowBandingTests.testTheSeamBetweenTwoRows_…` for both numbers and
-    /// for why 8/255 is where the line is drawn.
+    /// measured 6/255 in light and 4/255 in dark.
+    /// `CardRowBandingTests.testTheSeamBetweenTwoRows_…` holds this, and it
+    /// asserts a GAP against a control rendered in the same run rather than a
+    /// threshold on one number — so do not go looking there for a constant.
     ///
     /// `.middle` answers `[.top, .bottom]` for a caller that never arrives:
     /// a middle row installs no stop at all. The mapping is kept correct
@@ -246,8 +247,10 @@ final class CardRowBackgroundView: UIView {
         outline.path = outlinePath(lineWidth: outline.lineWidth)
         guard position != .middle else { return }
         // The ambient stop is the half of this that shows: masking it out of
-        // the seam takes the light-mode band from 10/255 to 6/255, measured on
-        // two stacked rows (`CardRowBandingTests.testTheSeamBetweenTwoRows_…`).
+        // the seam takes the light-mode band from 11/255 to 6/255, measured on
+        // two stacked rows (`CardRowBandingTests.testTheSeamBetweenTwoRows_…`,
+        // where 11 is that test's own control — an earlier note here said 10,
+        // which came from a different control: a full revert of the PR).
         //
         // The key stop's path is corrected for honesty, not for pixels. The
         // layer's real silhouette is part-square via `maskedCorners`, and a

@@ -152,8 +152,10 @@ final class CardRowBandingTests: XCTestCase {
     /// silently starts measuring something else.
     ///
     /// Then the whole measurement is taken TWICE: once as shipped, and once
-    /// with each row's ambient stop re-installed with `openEdges: []` so its
-    /// mask clips nothing. The assertion is the GAP between those two numbers,
+    /// with each row's ambient stop re-installed with `openEdges: []` and
+    /// `corners: .allCorners` so its mask clips nothing. That reverts the
+    /// AMBIENT half only — the key stop's `shadowPath` stays corrected, so
+    /// this control is not "the app before #674". The assertion is the GAP between those two numbers,
     /// never an absolute threshold. An absolute threshold would have to be
     /// calibrated on one machine and then trusted on the CI runner, which has
     /// a different simulator, scale and colour profile — and the quantity
@@ -178,12 +180,24 @@ final class CardRowBandingTests: XCTestCase {
 
             switch style {
             case .dark:
+                // Not "the control changed nothing", which is what the two
+                // numbers below would say: in dark `cardRows(in:)` finds
+                // nothing to re-install on, because there is no ambient
+                // sublayer to find. So the invariant is asserted directly, and
+                // the two renders stay as a reproducibility check on top.
+                XCTAssertTrue(
+                    Self.cardRows(in: laidOutSection(style: .dark)).isEmpty,
+                    """
+                    dark grew an ambient stop. This test's control cannot model that: \
+                    re-installing with the row's own dark trait REMOVES the layer rather \
+                    than unmasking it — see testDarkRows_carryNoAmbientStop
+                    """
+                )
                 XCTAssertEqual(
                     shipped.deviation, control.deviation, accuracy: 0.5,
                     """
-                    dark grew an ambient stop: disabling the mask moved the seam from \
-                    \(control.deviation)/255 to \(shipped.deviation)/255. Dark is supposed \
-                    to carry no ambient layer at all — see testDarkRows_carryNoAmbientStop
+                    two renders of the same dark fixture disagreed: \
+                    \(control.deviation)/255 vs \(shipped.deviation)/255
                     """
                 )
             default:
@@ -209,13 +223,21 @@ final class CardRowBandingTests: XCTestCase {
     /// does have to clear is sampling noise within one run, and there the only
     /// remaining source is `drawHierarchy(afterScreenUpdates:)` — a render
     /// server round trip that this very file has already seen return a black
-    /// frame once (run 33260176424, see `renderedFill`). A black frame moves
-    /// both sides together, so it cannot fake a gap.
+    /// frame once (run 33260176424, documented on `probeShadowRed` and
+    /// `present`). The two sides are separate frames, so a degenerate one
+    /// would NOT cancel out — a black shipped frame reads 0/255, the best
+    /// possible deviation, and would satisfy this gap instead of failing it.
+    /// That hole is closed inside `seamDeviation`, which makes each frame
+    /// prove it rendered `bg1` before its numbers are used.
     ///
-    /// 3 is a third of the ~5/255 separation measured locally. If a future
-    /// change makes this red, read both printed numbers before touching it:
-    /// the interesting failure is the control collapsing towards the shipped
-    /// number, which means the band stopped being there to remove.
+    /// The separation measured locally is 11 − 6 = 5/255, so 3 leaves 2/255 of
+    /// headroom — 40%, not a multiple. That is not generous, and the reason it
+    /// is workable is that both ends are measured in the same process rather
+    /// than one being carried between machines.
+    ///
+    /// If a future change makes this red, read both printed numbers before
+    /// touching it: the interesting failure is the control collapsing towards
+    /// the shipped number, which means the band stopped being there to remove.
     private static let seamGap: CGFloat = 3
 
     /// The worst deviation anywhere in the seam band, in one rasterisation.
@@ -247,8 +269,23 @@ final class CardRowBandingTests: XCTestCase {
         // server round trip, and scanning it per point would compare thousands
         // of independent rasterisations.
         let (bitmap, scale) = try XCTUnwrap(render(window, using: renderPath))
-        let reference = channels(
-            sample(bitmap, scale: scale, at: CGPoint(x: window.bounds.midX, y: 26))
+        let referenceColour = sample(bitmap, scale: scale, at: CGPoint(x: window.bounds.midX, y: 26))
+        let reference = channels(referenceColour)
+
+        // A degenerate frame reads 0 everywhere, and 0 is the BEST possible
+        // deviation — on the shipped side that would satisfy the gap
+        // assertion instead of failing it. `drawHierarchy(afterScreenUpdates:)`
+        // has returned an all-black frame in this file before (run
+        // 33260176424; see `probeShadowRed` and `present`), so each frame has
+        // to prove it rendered the card before its numbers are believed.
+        let fill = channels(AppColors.bg1.resolved(style))
+        XCTAssertEqual(
+            reference.red, fill.red, accuracy: 4.0 / 255,
+            """
+            \(style.debugName): the row's own centre came back \(hex(referenceColour)) \
+            instead of bg1 — this frame did not render, and every deviation \
+            measured against it is meaningless
+            """
         )
         var worst: (deviation: CGFloat, at: CGPoint, colour: UIColor) = (0, .zero, .clear)
 
