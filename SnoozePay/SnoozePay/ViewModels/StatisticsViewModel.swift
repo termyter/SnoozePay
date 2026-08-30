@@ -21,7 +21,10 @@ final class StatisticsViewModel {
     /// Semantics of a single heatmap cell, mirroring the JSX `'g'/'y'/'r'/'-'`
     /// statuses: woke = "встал сразу" (alarm dismissed, 0 snoozes),
     /// light = 1–2 snoozes, heavy = 3+, empty = no alarm / future / padding.
-    enum DayStatus: Equatable {
+    /// `CaseIterable` so the heatmap legend can be tested against the full set
+    /// of states rather than against a list someone remembered to update — a
+    /// new case makes `HeatmapLegendTests` fail to compile (#637).
+    enum DayStatus: Equatable, CaseIterable {
         case woke
         case light
         case heavy

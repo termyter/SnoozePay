@@ -39,10 +39,20 @@ extension StatisticsViewController {
         card.clipsToBounds = false
 
         let topRow = makeHeroTopRow()
-        let outer = UIStackView(arrangedSubviews: [topRow, heatmapView])
+        // The heatmap paints four states and used to name none of them. The
+        // only legend on this screen belongs to the NEXT card down («ЭТА
+        // НЕДЕЛЯ»: «зелёное — сэкономлено · красное — потеряно»), and read as
+        // this chart's caption it misled twice over — the map has no red in a
+        // clean month, and it has a gold the neighbour never mentions (#637).
+        // Placement mirrors `SPWeekMoneyCard`, which puts its own legend
+        // directly against its chart.
+        let legend = SPSupport.makeMetaLabel(Localized.text("statistics.streak.legend"))
+        legend.numberOfLines = 0
+        let outer = UIStackView(arrangedSubviews: [topRow, heatmapView, legend])
         outer.axis = .vertical
         outer.spacing = AppSpacing.sp5
         outer.alignment = .fill
+        outer.setCustomSpacing(AppSpacing.sp3, after: heatmapView)
         outer.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(outer)
         NSLayoutConstraint.activate([
