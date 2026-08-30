@@ -10,6 +10,39 @@ import UIKit
 
 extension SettingsViewController {
 
+    /// The only gate on the referral section, as a pure function of the flag
+    /// so BOTH positions can be laid out on a real table.
+    ///
+    /// Reading `AppFeatureFlags.referralEnabled` inline here is what made the
+    /// on-position untestable: it is a `let` shipping `false`, so the two
+    /// tests that wanted it had to `XCTSkipUnless` and never ran, and
+    /// reversibility — the whole promise of #676 — rested on helpers
+    /// production never called. Invert this `filter` and the suite goes red.
+    ///
+    /// The archaeology behind hiding rather than emptying — the 17.33pt
+    /// phantom footer, why `heightForFooterInSection` cannot take it back,
+    /// and why `.diagnostics` is treated differently (#684) — lives on
+    /// `ReferralEntryPointVisibilityTests`, next to the assertions that
+    /// measure it.
+    static func visibleSections(referralEnabled: Bool) -> [Section] {
+        Section.allCases.filter { $0 != .referral || referralEnabled }
+    }
+
+    /// The sections the table is currently showing, in order. A table section
+    /// INDEX is a position in this array, not a `Section` raw value.
+    var visibleSections: [Section] {
+        Self.visibleSections(referralEnabled: referralEnabled)
+    }
+
+    // The `.referral` section's rows and header are plain constants in
+    // `SettingsViewController`, not functions of the flag. They used to be
+    // `referralRowCount(referralEnabled:)` / `referralSectionTitle(...)`,
+    // gated a second time inside a `switch` that
+    // `visibleSections(referralEnabled:)` had already filtered. The off-branch
+    // was unreachable in production and the two tests pinning it were green
+    // against code that never ran (#676). One gate, in `visibleSections`,
+    // tested on a live table in both positions.
+
     /// Dispatches to one of three layouts (`myCode`, `friendInput`, `caption`).
     /// Centralising the switch keeps `cellForRowAt:` short and the row-index
     /// math next to the enum it indexes into.
@@ -98,7 +131,11 @@ extension SettingsViewController {
             input.textField.resignFirstResponder()
             // Friend-input cell needs a re-layout to flip the apply button
             // to disabled — the simplest path is a section reload.
-            tableView.reloadSections(IndexSet(integer: Section.referral.rawValue), with: .automatic)
+            // A table index, not a raw value: `.referral` is index 3 only
+            // while it is visible, and this path is reachable only then.
+            if let index = visibleSections.firstIndex(of: .referral) {
+                tableView.reloadSections(IndexSet(integer: index), with: .automatic)
+            }
             showToast(message: "Бонус начислен")
         } catch let error as ReferralService.ApplyError {
             input.error = error.errorDescription

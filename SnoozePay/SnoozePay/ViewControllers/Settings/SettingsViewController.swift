@@ -8,6 +8,9 @@ import os
 /// price) · Пригласить друга · Прочее (privacy · terms · contact · theme) +
 /// a `SnoozePay {version} · build {build}` footer.
 ///
+/// Пригласить друга renders only while `AppFeatureFlags.referralEnabled` is
+/// on; it ships hidden (#676) because nothing backs the invite yet.
+///
 /// The legacy АККАУНТ section (transaction history + balance) was removed —
 /// history is canonical in the Wallet tab now, so the duplicate row pushed a
 /// stale non-V3 list.
@@ -104,6 +107,25 @@ class SettingsViewController: UIViewController {
 
     let referralService = ReferralService.shared
 
+    /// The referral flag this screen obeys. Defaults to the shipped constant;
+    /// tests set it to lay the real table out in the other position.
+    ///
+    /// Not a global read at every call site: `AppFeatureFlags.referralEnabled`
+    /// is a `let`, so with the flag read inline there is no way to exercise
+    /// the on-position on a live table at all.
+    var referralEnabled: Bool = AppFeatureFlags.referralEnabled {
+        didSet {
+            guard isViewLoaded, oldValue != referralEnabled else { return }
+            // Without this the table keeps the old `numberOfSections` while
+            // `visibleSections` returns the new list, and taps route to the
+            // wrong section. Held by
+            // `testFlippingTheFlagOnALaidOutTableRebuildsIt` — the other
+            // referral tests set the flag BEFORE hosting and never reach
+            // here, so that one test is the whole guard.
+            tableView.reloadData()
+        }
+    }
+
     /// Held weak so the cell may be recycled without a dangling reference.
     /// Used to surface inline validation messages from
     /// `handleApplyFriendCodeTapped` without a full `reloadData`.
@@ -190,16 +212,24 @@ class SettingsViewController: UIViewController {
 
 extension SettingsViewController: UITableViewDataSource {
 
+    /// The section at a table index, or `nil` if the index is out of step with
+    /// `visibleSections`.
+    func visibleSection(at index: Int) -> Section? {
+        visibleSections.indices.contains(index) ? visibleSections[index] : nil
+    }
+
     func numberOfSections(in tableView: UITableView) -> Int {
-        Section.allCases.count
+        visibleSections.count
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        guard let sec = Section(rawValue: section) else { return 0 }
+        guard let sec = visibleSection(at: section) else { return 0 }
         switch sec {
         case .finance:            return FinanceRow.allCases.count
         case .soundNotifications: return SoundRow.allCases.count
         case .rules:              return 1 // Прогрессивная цена
+        // Unreachable while the flag is off: `visibleSections` has
+        // already filtered the section out, so no index maps here.
         case .referral:           return ReferralRow.allCases.count
         case .other:              return OtherRow.allCases.count
         case .diagnostics:        return isRecoveryVisible ? 1 : 0
@@ -207,7 +237,7 @@ extension SettingsViewController: UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard let sec = Section(rawValue: section) else { return nil }
+        guard let sec = visibleSection(at: section) else { return nil }
         switch sec {
         case .finance:            return "ФИНАНСЫ"
         case .soundNotifications: return "ЗВУК И УВЕДОМЛЕНИЯ"
@@ -230,6 +260,17 @@ extension SettingsViewController: UITableViewDataSource {
         return makeSettingsSectionHeader(text: title)
     }
 
+    /// ⚠️ `.leastNonzeroMagnitude` works HERE and does not work for footers.
+    ///
+    /// UIKit ignores it from `heightForFooterInSection` when the section has
+    /// no footer view: measured, `contentSize.height` came back
+    /// 875.0000089009603 with that delegate method and 875.0000089009603
+    /// without it, to the last digit. **Do not add one** — a hidden section's
+    /// 17.33pt of grouped footer can only be removed by removing the section,
+    /// which is what `visibleSections` does. Nothing will go red if you do:
+    /// the method is inert, and the test that once passed alongside it was
+    /// re-reading the constant the method had just returned. The measurements
+    /// are in `ReferralEntryPointVisibilityTests` (#676, #684).
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard self.tableView(tableView, titleForHeaderInSection: section) != nil else {
             return .leastNonzeroMagnitude
@@ -240,7 +281,7 @@ extension SettingsViewController: UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let section = Section(rawValue: indexPath.section) else { return UITableViewCell() }
+        guard let section = visibleSection(at: indexPath.section) else { return UITableViewCell() }
 
         switch section {
         case .finance:            return makeFinanceCell(at: indexPath)
@@ -278,7 +319,7 @@ extension SettingsViewController: UITableViewDelegate {
     /// measures the 52pt rhythm; only a row that needs MORE grows. A fixed
     /// height could never do anything but clip.
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard Section(rawValue: indexPath.section) == .referral else {
+        guard visibleSection(at: indexPath.section) == .referral else {
             return UITableView.automaticDimension
         }
         return referralRowHeight(row: indexPath.row)
@@ -302,7 +343,7 @@ extension SettingsViewController: UITableViewDelegate {
         // collapses on first layout pass. The two-storey theme row (~90pt) gets
         // its own estimate so it doesn't jump on first display; the rest match
         // the 52pt row rhythm.
-        if Section(rawValue: indexPath.section) == .other,
+        if visibleSection(at: indexPath.section) == .other,
            OtherRow(rawValue: indexPath.row) == .theme {
             return 90
         }
@@ -321,7 +362,7 @@ extension SettingsViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let section = Section(rawValue: indexPath.section) else { return }
+        guard let section = visibleSection(at: indexPath.section) else { return }
 
         switch section {
         case .finance:

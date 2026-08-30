@@ -92,26 +92,44 @@ final class SettingsSubtitleRowHeightTests: XCTestCase {
 
     // MARK: - The fix itself
 
+    /// Iterated over the LIVE indices, not over `Section.allCases.rawValue`.
+    ///
+    /// After #676 a hidden section is absent, so raw values and table indices
+    /// no longer agree: `.other` (4) would resolve to `.diagnostics`, and
+    /// `.diagnostics` (5) to nothing at all. Both would pass vacuously —
+    /// `heightForRowAt` answers `automaticDimension` for everything that is not
+    /// `.referral`, including an index that resolves to `nil` — and the failure
+    /// message would name the wrong section.
     func testEverySettingsSectionOutsideReferralSelfSizes() {
         let sut = makeSUT()
         let table = sut.tableView
 
-        for section in SettingsViewController.Section.allCases where section != .referral {
-            let height = sut.tableView(table, heightForRowAt: IndexPath(row: 0, section: section.rawValue))
+        for index in sut.visibleSections.indices where sut.visibleSections[index] != .referral {
+            let height = sut.tableView(table, heightForRowAt: IndexPath(row: 0, section: index))
             XCTAssertEqual(
                 height, UITableView.automaticDimension,
-                "\(section) returns a fixed height — the next row that grows will be clipped"
+                "\(sut.visibleSections[index]) returns a fixed height — "
+                    + "the next row that grows will be clipped"
             )
         }
+        XCTAssertTrue(
+            sut.visibleSections.contains(.other),
+            "the loop stopped covering `.other`, which is the section this file exists for"
+        )
     }
 
     /// The contact row specifically, named so a future reader can trace the
     /// issue straight to the assertion.
-    func testContactRowSelfSizes() {
+    ///
+    /// The live index, for the reason spelled out above: at the raw value this
+    /// used to pass while measuring `.diagnostics`, i.e. the guard for #632
+    /// («support@snoozepav.app», a domain that does not exist) had quietly
+    /// stopped touching the row it is named for.
+    func testContactRowSelfSizes() throws {
         let sut = makeSUT()
         let indexPath = IndexPath(
             row: SettingsViewController.OtherRow.contact.rawValue,
-            section: SettingsViewController.Section.other.rawValue
+            section: try XCTUnwrap(sut.visibleSections.firstIndex(of: .other))
         )
 
         XCTAssertEqual(
@@ -142,11 +160,23 @@ final class SettingsSubtitleRowHeightTests: XCTestCase {
 
     /// Referral keeps its own heights — it is built from different cells with
     /// no shared floor, so it was deliberately left out of the rewrite.
-    func testReferralKeepsItsOwnRowHeights() {
+    ///
+    /// Skipped while the section is hidden (#676). It used to run anyway and
+    /// pass: with `.referral` absent, `heightForRowAt` fell through to the
+    /// `automaticDimension` branch for a section that does not exist, and
+    /// `XCTAssertNotEqual(-1, -1)` is the only reason it was noticed at all.
+    /// A test that keeps reporting green about an unreachable path is worse
+    /// than no test.
+    func testReferralKeepsItsOwnRowHeights() throws {
         let sut = makeSUT()
+        // Not `XCTSkipUnless(AppFeatureFlags.referralEnabled)`: the shipped
+        // flag is `false`, so that form never ran at all — and a test that
+        // never runs is exactly the failure this doc describes, one level up.
+        sut.referralEnabled = true
+        let section = try XCTUnwrap(sut.visibleSections.firstIndex(of: .referral))
         let indexPath = IndexPath(
             row: SettingsViewController.ReferralRow.myCode.rawValue,
-            section: SettingsViewController.Section.referral.rawValue
+            section: section
         )
 
         XCTAssertNotEqual(

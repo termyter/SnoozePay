@@ -263,7 +263,9 @@ extension SettingsViewController {
         if let popover = sheet.popoverPresentationController {
             let indexPath = IndexPath(
                 row: FinanceRow.snoozeDuration.rawValue,
-                section: Section.finance.rawValue
+                // A table index. Correct today only because `.finance` is
+                // never hidden — see `visibleSections`.
+                section: visibleSections.firstIndex(of: .finance) ?? 0
             )
             popover.sourceView = tableView
             popover.sourceRect = tableView.rectForRow(at: indexPath)
@@ -293,7 +295,9 @@ extension SettingsViewController {
         if let popover = sheet.popoverPresentationController {
             let indexPath = IndexPath(
                 row: FinanceRow.defaultPrice.rawValue,
-                section: Section.finance.rawValue
+                // A table index. Correct today only because `.finance` is
+                // never hidden — see `visibleSections`.
+                section: visibleSections.firstIndex(of: .finance) ?? 0
             )
             popover.sourceView = tableView
             popover.sourceRect = tableView.rectForRow(at: indexPath)

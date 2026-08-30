@@ -62,7 +62,7 @@ final class SettingsSectionsTests: XCTestCase {
 
     func testFinanceSection_priceThenSnoozeDuration() {
         let sut = makeSUT()
-        let section = SettingsViewController.Section.finance.rawValue
+        let section = sut.index(of: .finance)
         XCTAssertEqual(sut.tableView(sut.tableView, numberOfRowsInSection: section), 2)
         XCTAssertEqual(SettingsViewController.FinanceRow.defaultPrice.rawValue, 0)
         XCTAssertEqual(SettingsViewController.FinanceRow.snoozeDuration.rawValue, 1)
@@ -75,7 +75,7 @@ final class SettingsSectionsTests: XCTestCase {
     /// silently shifting `indexPath.row` under the two survivors.
     func testSoundSection_volumeThenVibration() {
         let sut = makeSUT()
-        let section = SettingsViewController.Section.soundNotifications.rawValue
+        let section = sut.index(of: .soundNotifications)
         XCTAssertEqual(sut.tableView(sut.tableView, numberOfRowsInSection: section), 2)
         XCTAssertEqual(
             SettingsViewController.SoundRow.allCases,
@@ -87,7 +87,7 @@ final class SettingsSectionsTests: XCTestCase {
 
     func testRulesSection_progressiveOnly() {
         let sut = makeSUT()
-        let section = SettingsViewController.Section.rules.rawValue
+        let section = sut.index(of: .rules)
         // Only «Прогрессивная цена» — «Бонус за серию»/«Защита от скуки» are
         // intentionally omitted (no backing rule).
         XCTAssertEqual(sut.tableView(sut.tableView, numberOfRowsInSection: section), 1)
@@ -95,7 +95,7 @@ final class SettingsSectionsTests: XCTestCase {
 
     func testOtherSection_privacyTermsContactTheme() {
         let sut = makeSUT()
-        let section = SettingsViewController.Section.other.rawValue
+        let section = sut.index(of: .other)
         XCTAssertEqual(sut.tableView(sut.tableView, numberOfRowsInSection: section), 4)
         XCTAssertEqual(
             SettingsViewController.OtherRow.allCases,
@@ -109,19 +109,19 @@ final class SettingsSectionsTests: XCTestCase {
         let sut = makeSUT()
         let table = sut.tableView
         XCTAssertEqual(
-            sut.tableView(table, titleForHeaderInSection: SettingsViewController.Section.finance.rawValue),
+            sut.tableView(table, titleForHeaderInSection: sut.index(of: .finance)),
             "ФИНАНСЫ"
         )
         XCTAssertEqual(
-            sut.tableView(table, titleForHeaderInSection: SettingsViewController.Section.soundNotifications.rawValue),
+            sut.tableView(table, titleForHeaderInSection: sut.index(of: .soundNotifications)),
             "ЗВУК И УВЕДОМЛЕНИЯ"
         )
         XCTAssertEqual(
-            sut.tableView(table, titleForHeaderInSection: SettingsViewController.Section.rules.rawValue),
+            sut.tableView(table, titleForHeaderInSection: sut.index(of: .rules)),
             "ПРАВИЛА"
         )
         XCTAssertEqual(
-            sut.tableView(table, titleForHeaderInSection: SettingsViewController.Section.other.rawValue),
+            sut.tableView(table, titleForHeaderInSection: sut.index(of: .other)),
             "ПРОЧЕЕ"
         )
     }
@@ -144,5 +144,23 @@ final class SettingsSectionsTests: XCTestCase {
         let empty = Bundle()
         let footer = SettingsViewController.versionFooterString(bundle: empty)
         XCTAssertEqual(footer, "SnoozePay — · build —")
+    }
+}
+
+/// Section indices in these tests are POSITIONS in the live table, not raw
+/// values: `.referral` is hidden behind a flag (#676), so everything after it
+/// shifts up. A probe written against the raw value silently reads the wrong
+/// section — which is how `testOtherSection_…` came to assert 0 rows.
+private extension SettingsViewController {
+    func index(of section: Section, file: StaticString = #filePath, line: UInt = #line) -> Int {
+        guard let index = visibleSections.firstIndex(of: section) else {
+            // Loud on purpose. This helper exists because a raw-value probe
+            // read the WRONG section in silence; answering `NSNotFound` would
+            // fail one assertion later with «0 is not equal to 4» and hide the
+            // actual cause all over again.
+            XCTFail("section \(section) is not visible; nothing to probe", file: file, line: line)
+            return 0
+        }
+        return index
     }
 }
