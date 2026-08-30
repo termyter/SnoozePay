@@ -59,7 +59,11 @@ final class OnboardingFlowUITests: XCTestCase {
 
     func testOnboardingThroughPermissionsToMain() {
         let app = XCUIApplication()
-        app.launchArguments = ["-uitour", "onboarding"]
+        // `-uitour-alarmkit granted` (#626): this class is the one that walks
+        // `PermissionsViewController`, so it is the one that can reach a real
+        // authorization request — and a SpringBoard prompt raised here does
+        // not stay here, it lands in whichever class launches next.
+        app.launchArguments = ["-uitour", "onboarding", "-uitour-alarmkit", "granted"]
         app.launch()
 
         let primary = app.buttons["onboarding.primaryButton"]

@@ -30,7 +30,14 @@ final class ProgressiveSnoozeUITests: XCTestCase {
 
     func testProgressiveSnoozeShowsPillAndLadder() {
         let app = XCUIApplication()
-        app.launchArguments = ["-uitour", "firing-progressive", "-uitour-balance", "1000"]
+        // `-uitour-alarmkit denied` for the same reason as in
+        // `FiringFlowUITests`: the snoozed state this test is about only
+        // exists on a backend that does not arm the next ring itself, so the
+        // test states that backend instead of inheriting the simulator's.
+        app.launchArguments = [
+            "-uitour", "firing-progressive", "-uitour-balance", "1000",
+            "-uitour-alarmkit", "denied"
+        ]
         app.launch()
 
         // 1. Firing screen — affordable snooze present.
@@ -38,8 +45,10 @@ final class ProgressiveSnoozeUITests: XCTestCase {
         XCTAssertTrue(snooze.waitForExistence(timeout: 10),
                       "Progressive firing screen should show the snooze CTA")
 
-        // 2. Snooze → snoozed state in place (live countdown).
+        // 2. Snooze → the refusal is stated, then the snoozed state in place.
         snooze.tap()
+        XCTAssertTrue(dismissAppAlert(in: app, timeout: 10),
+                      "A snooze refused by an unauthorized backend should explain itself")
         let countdown = app.staticTexts["firing.countdown"]
         XCTAssertTrue(countdown.waitForExistence(timeout: 5),
                       "Snoozed-state countdown should appear after «Поспать ещё»")
