@@ -52,7 +52,8 @@ final class CreateAlarmViewModel {
         // global defaults (#283). Editing an existing alarm always keeps its
         // own saved values; only `alarm == nil` falls through to the defaults.
         self.time = alarm?.time ?? Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
-        self.repeatDays = alarm?.repeatDays ?? []
+        let seededDays = alarm?.repeatDays ?? []
+        self.repeatDays = seededDays
         // New alarms start with an empty name so the form shows the
         // "Название" placeholder (#231); `makeAlarmFromCurrentState` leaves the
         // name unset when the user saves without typing one.
@@ -74,8 +75,64 @@ final class CreateAlarmViewModel {
         self.volume = alarm?.volume ?? defaults.volume
         self.volumeFadeIn = alarm?.volumeFadeIn ?? false
         self.theme = alarm?.theme ?? .dawn
-        self.repeatMode = alarm?.repeatMode ?? .weekly
+        self.repeatMode = Self.openingRepeatMode(stored: alarm?.repeatMode ?? .weekly, days: seededDays)
     }
+
+    /// The mode the form must OPEN in, given the stored mode and day set (#633).
+    ///
+    /// «Еженедельно» with an empty day set is not a schedule: `AlarmKitScheduler`
+    /// builds `.never` recurrence for it, and the list row reads «ЕДИНОЖДЫ». The
+    /// form used to open in exactly that state and then save it — the user saw
+    /// «Еженедельно» plus «повторяться каждую неделю», and got a one-shot alarm
+    /// with no warning. So the opening mode follows the days:
+    ///
+    /// - new alarm (no days yet) → `.never`, which is what saving right away
+    ///   actually produces;
+    /// - alarm stored as weekly with zero days (created by the old form) →
+    ///   `.never` too, because that is how it has been ringing all along;
+    /// - anything with days → its own stored mode, untouched.
+    ///
+    /// This is not the silent substitution the issue is about: it replaces a
+    /// default (or a lie about an existing alarm) with the truth BEFORE the user
+    /// makes a choice. Once they do choose «Еженедельно», the choice is honoured
+    /// or refused — never quietly downgraded, see ``validationError``.
+    static func openingRepeatMode(stored: AlarmRepeatMode, days: [Int]) -> AlarmRepeatMode {
+        days.isEmpty ? .never : stored
+    }
+
+    // MARK: - Validation (#633)
+
+    /// Why the current form state cannot be saved.
+    ///
+    /// `LocalizedError` so the view-controller can push it through the same
+    /// `presentSaveError(title:error:)` path as the persist / schedule
+    /// failures instead of inventing a second alert flavour.
+    enum ValidationError: Error, Equatable, LocalizedError {
+        /// «Еженедельно» selected with no weekday chips lit. Previously saved
+        /// as a one-shot alarm with no indication that the mode had changed.
+        case weeklyWithoutDays
+
+        /// What the user reads. Non-optional so the hint under the pill can
+        /// use it directly — the two must say the same thing.
+        var message: String {
+            switch self {
+            case .weeklyWithoutDays:
+                return "Выберите хотя бы один день недели — иначе повторять нечего."
+            }
+        }
+
+        var errorDescription: String? { message }
+    }
+
+    /// The reason the form is currently unsavable, or `nil` when it is fine.
+    var validationError: ValidationError? {
+        repeatMode == .weekly && repeatDays.isEmpty ? .weeklyWithoutDays : nil
+    }
+
+    /// Whether «Готово» / «Сохранить» may be tapped. The controller mirrors
+    /// this onto the button's `isEnabled`; `save` enforces it regardless, so
+    /// a missed UI refresh cannot resurrect the silent downgrade.
+    var canSave: Bool { validationError == nil }
 
     // MARK: - Save
 
@@ -86,10 +143,14 @@ final class CreateAlarmViewModel {
     /// notification request itself didn't register, which historically
     /// surfaced as a fake "Будильник создан" toast on a silently dropped
     /// alarm.
+    /// `invalid` is #633 — the form describes a schedule the app cannot build
+    /// («Еженедельно» with zero days). It used to be persisted as a one-shot
+    /// alarm, i.e. a different mode than the one on screen, without a word.
     enum SaveOutcome: Equatable {
         case success
         case persistFailed
         case schedulingFailed(AlarmScheduler.SchedulingError)
+        case invalid(ValidationError)
     }
 
     /// Save the alarm and report the outcome asynchronously.
@@ -99,6 +160,13 @@ final class CreateAlarmViewModel {
     /// The repository contract guarantees `schedulingResult` only fires on
     /// the successful-persist path, so we never deliver two outcomes.
     func save(completion: @escaping (SaveOutcome) -> Void) {
+        // Refuse before touching the store (#633): persisting here would write
+        // a mode the screen does not show.
+        if let error = validationError {
+            completion(.invalid(error))
+            return
+        }
+
         let alarm = makeAlarmFromCurrentState()
 
         let didPersist = alarmRepository.save(alarm) { schedulingResult in
@@ -119,9 +187,13 @@ final class CreateAlarmViewModel {
     /// tests that don't care about the scheduling outcome (issue #72 used
     /// the boolean to gate the dismiss path before #118 introduced the
     /// scheduling failure path).
+    /// Returns `false` for an invalid form too (#633) — "nothing was saved" is
+    /// what the boolean has always meant, and the reason is in
+    /// ``validationError``.
     @discardableResult
     func save() -> Bool {
-        alarmRepository.save(makeAlarmFromCurrentState())
+        guard canSave else { return false }
+        return alarmRepository.save(makeAlarmFromCurrentState())
     }
 
     private func makeAlarmFromCurrentState() -> Alarm {
@@ -175,12 +247,29 @@ final class CreateAlarmViewModel {
     /// One-line explanation of the selected repeat mode, rendered under the
     /// Никогда / Еженедельно pill so the user understands what changes
     /// without leaving the screen (`SPScreensV2.jsx` RepeatSegmented).
+    ///
+    /// The hint also carries the validation copy (#633): it is the one line on
+    /// the screen that already explains the repeat behaviour, so an unsavable
+    /// combination says so there rather than in a modal the user meets only
+    /// after tapping a button that no longer works. Both zero-day cases are
+    /// spelled out — "по выбранным дням" with nothing selected was the promise
+    /// the old form failed to keep.
+    ///
+    /// Copy stays inline here, matching the two literals it joins; the
+    /// catalogue migration (#612) covered `ViewControllers/Alarms`, not the
+    /// view-models, and splitting one three-way switch across both homes would
+    /// be worse than either.
     var repeatModeHint: String {
+        let noDays = repeatDays.isEmpty
         switch repeatMode {
         case .never:
-            return "Будильник сработает в выбранные дни один раз и отключится."
+            return noDays
+                ? "Будильник сработает один раз и отключится."
+                : "Будильник сработает в выбранные дни один раз и отключится."
         case .weekly:
-            return "Будет повторяться каждую неделю по выбранным дням."
+            return noDays
+                ? ValidationError.weeklyWithoutDays.message
+                : "Будет повторяться каждую неделю по выбранным дням."
         }
     }
 

@@ -52,6 +52,9 @@ extension CreateAlarmViewController {
                 guard let self else { return }
                 self.viewModel.toggleDay(day)
                 cell?.configure(selectedDays: self.viewModel.repeatDays)
+                // Emptying the day set under «Еженедельно» makes the form
+                // unsavable — say so under the pill right away (#633).
+                self.refreshRepeatValidity()
             }
         }
         return cell
@@ -65,17 +68,47 @@ extension CreateAlarmViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: RepeatModeCell.reuseID, for: indexPath)
         if let cell = cell as? RepeatModeCell {
             cell.configure(mode: viewModel.repeatMode, hint: viewModel.repeatModeHint)
-            cell.onModeChanged = { [weak self, weak cell] mode in
+            cell.onModeChanged = { [weak self] mode in
                 guard let self else { return }
                 self.viewModel.repeatMode = mode
-                cell?.configure(mode: mode, hint: self.viewModel.repeatModeHint)
-                guard self.view.window != nil else { return }
-                // Animate the self-sizing height change without reloading the
-                // cell — a reload would tear down the pill mid-gesture.
-                self.tableView.performBatchUpdates(nil)
+                // Repaints the pill + hint and dims «Готово» when the new mode
+                // is «Еженедельно» without days (#633); the height change is
+                // animated there without reloading the cell, since a reload
+                // would tear down the pill mid-gesture.
+                self.refreshRepeatValidity()
             }
         }
         return cell
+    }
+
+    // MARK: - Repeat-mode validation (#633)
+
+    /// Re-evaluate whether the form describes a schedule the app can build,
+    /// after a day chip or the repeat pill changed. Repaints the hint under
+    /// the pill and dims «Готово» while «Еженедельно» has no days — the
+    /// combination that used to be saved as a one-shot alarm in silence.
+    ///
+    /// Lives next to the two rows that can produce that state; also called
+    /// from `viewDidLoad` so the button starts in the right state.
+    func refreshRepeatValidity() {
+        saveButton?.isEnabled = viewModel.canSave
+        guard let cell = tableView.cellForRow(at: repeatModeIndexPath) as? RepeatModeCell else { return }
+        cell.configure(mode: viewModel.repeatMode, hint: viewModel.repeatModeHint)
+        guard view.window != nil else { return }
+        // The hints wrap to different line counts; re-measure without a reload
+        // so the pill isn't torn down mid-gesture.
+        tableView.performBatchUpdates(nil)
+    }
+
+    /// Scrolls the reason for a refused save into view. The hint under the
+    /// pill already carries it, so there is nothing to add — only to show.
+    func revealRepeatModeRow() {
+        refreshRepeatValidity()
+        tableView.scrollToRow(at: repeatModeIndexPath, at: .middle, animated: true)
+    }
+
+    private var repeatModeIndexPath: IndexPath {
+        IndexPath(row: RepeatRow.mode.rawValue, section: Section.repeatDays.rawValue)
     }
 
     func makeNameCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
