@@ -3025,6 +3025,66 @@
         }
       }
     },
+    "statistics.ledger_unavailable.partial" : {
+      "comment" : "Statistics state column: the charge ledger decoded, but some rows carry types this build cannot classify, so the week's figures are withheld rather than understated.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "История списаний прочитана не полностью — данные за неделю скрыты, чтобы не показать заниженные суммы"
+          }
+        }
+      }
+    },
+    "statistics.ledger_unavailable.unreadable" : {
+      "comment" : "Statistics state column: the charge ledger failed to decode, so the week's figures are hidden.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать историю списаний — данные за неделю скрыты"
+          }
+        }
+      }
+    },
+    "statistics.savings.alarms_unreadable" : {
+      "comment" : "Caption under the weekly totals when the alarm store cannot be read, so no snooze price is available to value a clean morning with.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать будильники — сэкономленное не посчитать"
+          }
+        }
+      }
+    },
+    "statistics.savings.free_alarms" : {
+      "comment" : "Caption under the weekly totals when every alarm is free — a genuine «saved 0 ₽» week rather than a broken screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Снуз на ваших будильниках бесплатный — экономить нечего"
+          }
+        }
+      }
+    },
+    "statistics.savings.no_price" : {
+      "comment" : "Caption under the weekly totals when no alarm carries a snooze price yet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сэкономленное появится, когда у будильника будет цена снуза"
+          }
+        }
+      }
+    },
     "statistics.tooltip.no_alarm" : {
       "comment" : "Heatmap tooltip: no alarm was scheduled that day.",
       "extractionState" : "manual",
@@ -3145,6 +3205,54 @@
         }
       }
     },
+    "statistics.wake_time.delta_earlier" : {
+      "comment" : "Wake-time card, third column caption: the user now gets up earlier than in the previous window. Followed by the delta value, statistics.wake_time.delta_value.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Раньше на"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.delta_later" : {
+      "comment" : "Wake-time card, third column caption: the user now gets up later than in the previous window.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Позже на"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.delta_unchanged" : {
+      "comment" : "Wake-time card, third column caption: both windows share the same median wake time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без изменений"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.delta_value" : {
+      "comment" : "Wake-time card, third column value; %lld is the delta in whole minutes and is always positive — its direction is carried by the caption above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld мин"
+          }
+        }
+      }
+    },
     "statistics.wake_time.pending" : {
       "comment" : "Shown instead of the comparison columns until a previous window's worth of wake history exists.",
       "extractionState" : "manual",
@@ -3153,6 +3261,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сравнение появится, когда наберётся история"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.samples_pending" : {
+      "comment" : "Wake-time card while the window holds fewer mornings than the minimum. %1$lld is how many are still missing, %2$@ its declined noun from plural.mornings — positional because a translator may need the noun first.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Копим историю: нужно ещё %1$lld %2$@"
           }
         }
       }

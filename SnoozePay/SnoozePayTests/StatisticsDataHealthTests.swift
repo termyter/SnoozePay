@@ -220,8 +220,13 @@ final class StatisticsDataHealthTests: XCTestCase {
         XCTAssertEqual(viewModel.snoozePriceState, .known(0))
         XCTAssertEqual(viewModel.weekMoneySummary.saved!, 0, accuracy: 0.0001)
         XCTAssertFalse(viewModel.weekMoneySummary.isEmpty, "A confirmed wake is data")
-        XCTAssertNotNil(viewModel.savingsNote,
-            "A zero triplet without a reason is indistinguishable from a bug")
+        // Spelled out rather than «not nil» since #599 moved the sentence into
+        // Localizable.xcstrings: a wrong key still returns a non-nil string.
+        XCTAssertEqual(
+            viewModel.savingsNote,
+            "Снуз на ваших будильниках бесплатный — экономить нечего",
+            "A zero triplet without a reason is indistinguishable from a bug"
+        )
     }
 
     /// …but a week with nothing in it shows the empty copy, not the
