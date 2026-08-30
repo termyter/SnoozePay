@@ -10,6 +10,24 @@ import UIKit
 
 extension SettingsViewController {
 
+    /// Rows the `.referral` section renders. Zero while
+    /// `AppFeatureFlags.referralEnabled` is off (#676) — the section case
+    /// stays in place rather than being deleted so `ReferralRow`, the cells
+    /// and their heights keep compiling against a live table.
+    ///
+    /// A pure function of the flag (like `shouldShowRecovery`) so both
+    /// positions are asserted in tests, not just the one we happen to ship.
+    static func referralRowCount(referralEnabled: Bool) -> Int {
+        referralEnabled ? ReferralRow.allCases.count : 0
+    }
+
+    /// The `.referral` header, or `nil` when the section is hidden — an
+    /// empty section must not leave a stray caps title behind (same rule the
+    /// `.diagnostics` section follows).
+    static func referralSectionTitle(referralEnabled: Bool) -> String? {
+        referralEnabled ? "ПРИГЛАСИТЬ ДРУГА" : nil
+    }
+
     /// Dispatches to one of three layouts (`myCode`, `friendInput`, `caption`).
     /// Centralising the switch keeps `cellForRowAt:` short and the row-index
     /// math next to the enum it indexes into.

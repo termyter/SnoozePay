@@ -8,6 +8,9 @@ import os
 /// price) · Пригласить друга · Прочее (privacy · terms · contact · theme) +
 /// a `SnoozePay {version} · build {build}` footer.
 ///
+/// Пригласить друга renders only while `AppFeatureFlags.referralEnabled` is
+/// on; it ships hidden (#676) because nothing backs the invite yet.
+///
 /// The legacy АККАУНТ section (transaction history + balance) was removed —
 /// history is canonical in the Wallet tab now, so the duplicate row pushed a
 /// stale non-V3 list.
@@ -200,7 +203,7 @@ extension SettingsViewController: UITableViewDataSource {
         case .finance:            return FinanceRow.allCases.count
         case .soundNotifications: return SoundRow.allCases.count
         case .rules:              return 1 // Прогрессивная цена
-        case .referral:           return ReferralRow.allCases.count
+        case .referral:           return Self.referralRowCount(referralEnabled: AppFeatureFlags.referralEnabled)
         case .other:              return OtherRow.allCases.count
         case .diagnostics:        return isRecoveryVisible ? 1 : 0
         }
@@ -212,7 +215,7 @@ extension SettingsViewController: UITableViewDataSource {
         case .finance:            return "ФИНАНСЫ"
         case .soundNotifications: return "ЗВУК И УВЕДОМЛЕНИЯ"
         case .rules:              return "ПРАВИЛА"
-        case .referral:           return "ПРИГЛАСИТЬ ДРУГА"
+        case .referral:           return Self.referralSectionTitle(referralEnabled: AppFeatureFlags.referralEnabled)
         case .other:              return "ПРОЧЕЕ"
         // No header when the recovery row is hidden, so the empty section
         // collapses entirely rather than leaving a stray caps title.
@@ -256,6 +259,23 @@ extension SettingsViewController: UITableViewDataSource {
 // MARK: - UITableViewDelegate
 
 extension SettingsViewController: UITableViewDelegate {
+
+    /// A section with no rows and no header must not reserve the grouped
+    /// footer gap either, or hiding one leaves the space it used to occupy.
+    ///
+    /// This never mattered while `.diagnostics` was the only hideable section
+    /// — it sits last, where its gap merges into the padding above the version
+    /// footer. `.referral` sits in the middle (#676), so its leftover gap would
+    /// read as a double break between «ПРАВИЛА» and «ПРОЧЕЕ». Sections that do
+    /// render fall through to the system value, so the existing rhythm is
+    /// untouched.
+    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
+        let isEmpty = self.tableView(tableView, numberOfRowsInSection: section) == 0
+        guard isEmpty, self.tableView(tableView, titleForHeaderInSection: section) == nil else {
+            return UITableView.automaticDimension
+        }
+        return .leastNonzeroMagnitude
+    }
 
     /// Every section but `.referral` self-sizes.
     ///

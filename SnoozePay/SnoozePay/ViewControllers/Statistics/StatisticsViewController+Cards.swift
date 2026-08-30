@@ -284,19 +284,30 @@ extension StatisticsViewController {
     /// DEBUG section exposing the StreakModalV2 / Referral / AlarmOff modals
     /// while we don't have real trigger plumbing. Drops out of release builds
     /// via the `#if DEBUG` gate (kept per issue #235 scope).
+    ///
+    /// The referral shortcut follows `AppFeatureFlags.referralEnabled` along
+    /// with the Settings section (#676): it is the only other way into
+    /// `ReferralViewController`, and leaving it wired would make "hidden"
+    /// depend on which build you happen to be running.
     func makeDebugButtonsRow() -> UIView {
         let caps = makeCapsLabel("DEBUG · MODALS", color: AppColors.fg3)
 
         let streakBtn = SPButton(title: "Streak modal", variant: .money, size: .md, fullWidth: true)
         streakBtn.addTarget(self, action: #selector(debugStreakTapped), for: .touchUpInside)
 
-        let referralBtn = SPButton(title: "Реферальная программа", variant: .quiet, size: .md, fullWidth: true)
-        referralBtn.addTarget(self, action: #selector(debugReferralTapped), for: .touchUpInside)
+        var buttons: [UIView] = [caps, streakBtn]
+
+        if AppFeatureFlags.referralEnabled {
+            let referralBtn = SPButton(title: "Реферальная программа", variant: .quiet, size: .md, fullWidth: true)
+            referralBtn.addTarget(self, action: #selector(debugReferralTapped), for: .touchUpInside)
+            buttons.append(referralBtn)
+        }
 
         let alarmOffBtn = SPButton(title: "AlarmOff warning", variant: .pain, size: .md, fullWidth: true)
         alarmOffBtn.addTarget(self, action: #selector(debugAlarmOffTapped), for: .touchUpInside)
+        buttons.append(alarmOffBtn)
 
-        let stack = UIStackView(arrangedSubviews: [caps, streakBtn, referralBtn, alarmOffBtn])
+        let stack = UIStackView(arrangedSubviews: buttons)
         stack.axis = .vertical
         stack.spacing = AppSpacing.sp2
         stack.alignment = .fill
