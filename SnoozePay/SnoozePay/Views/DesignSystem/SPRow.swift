@@ -38,6 +38,14 @@ final class SPRow: UIControl {
     ///   - leading: Optional leading view (icon, image, badge). Sized via
     ///     its own intrinsic content; rendered in a 24pt-wide column.
     ///   - trailing: Optional trailing view (chevron, switch, value label).
+    ///   - titleLines: How many lines the title may wrap onto. Defaults to 1,
+    ///     which is the canon row (`.sp-row` is a single-line list item). Pass
+    ///     2 where the row's own copy is longer than the run the layout can
+    ///     give it — the wallet's «Возврат за откладывание» needs 210pt and the
+    ///     widest phone can spare 210pt only with a zero card inset (#677).
+    ///     A truncated title is worse than a two-storey one: the amount beside
+    ///     it stays put either way, and the ellipsis eats the noun that says
+    ///     WHAT the money did.
     ///   - divider: When `true` (default) draws a 1px hairline along the
     ///     bottom edge using `stroke1`. The first / last row in a stack
     ///     normally hides this manually.
@@ -48,6 +56,7 @@ final class SPRow: UIControl {
         subtitle: String? = nil,
         leading: UIView? = nil,
         trailing: UIView? = nil,
+        titleLines: Int = 1,
         divider: Bool = true,
         onTap: (() -> Void)? = nil
     ) {
@@ -55,6 +64,7 @@ final class SPRow: UIControl {
         self.onTap = onTap
         super.init(frame: .zero)
         configure()
+        titleLabel.numberOfLines = titleLines
         titleLabel.text = title
         if let subtitle = subtitle {
             subtitleLabel.text = subtitle
@@ -128,6 +138,7 @@ final class SPRow: UIControl {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = AppTypography.bodyLg
         titleLabel.textColor = AppColors.fg1
+        // Overwritten from `init` by `titleLines`; 1 is the canon default.
         titleLabel.numberOfLines = 1
 
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
