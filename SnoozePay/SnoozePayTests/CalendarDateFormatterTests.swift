@@ -21,7 +21,14 @@ final class CalendarDateFormatterTests: XCTestCase {
     /// CI runs, and so the day boundary cannot drift under the assertions.
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        // Not `?? .current`: a fallback to the runner's zone would silently
+        // change which day the instant belongs to, and the resulting failure
+        // would read as «the formatter broke» rather than «the fixture did».
+        // Same call `WallClockFormatter` makes, for the same reason.
+        guard let gmt = TimeZone(secondsFromGMT: 0) else {
+            preconditionFailure("GMT is not constructible — Foundation is broken")
+        }
+        calendar.timeZone = gmt
         return calendar
     }()
 

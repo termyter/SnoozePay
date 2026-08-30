@@ -79,7 +79,30 @@ enum CalendarDateFormatter {
         locale: Locale = AppLocale.display,
         calendar: Calendar? = nil
     ) -> String {
-        makeFormatter(style: style, locale: locale, calendar: calendar).string(from: date)
+        let rendered = makeFormatter(
+            style: style, locale: locale, calendar: calendar
+        ).string(from: date)
+        // Checked on the RESULT, not on `dateFormat`. The pattern is a proxy
+        // for the symptom, and the proxy is loose in both directions: a
+        // locale with no CLDR data (`root`, `""`) resolves `dMMMM` to a
+        // perfectly non-empty `MMMM d` and then renders the raw ICU
+        // placeholder «M01 12», which a pattern check waves through. Watching
+        // what actually leaves the function is the only check that matches
+        // what a reader would see.
+        //
+        // No `assertionFailure`: `testNoStyleRendersEmptyForAnyPlausibleLocale`
+        // sweeps every locale on the runner precisely to find this, and a trap
+        // here would SIGTRAP the test host — the 1034-test suite would report a
+        // nameless crash instead of naming the locale that broke.
+        if rendered.isEmpty {
+            AppLogger.ui.fault(
+                """
+                CalendarDateFormatter: \(style.skeleton, privacy: .public) rendered \
+                nothing for \(locale.identifier, privacy: .public)
+                """
+            )
+        }
+        return rendered
     }
 
     /// «Пт · 27 апр.» — the firing screen's top-bar date (artboard,
@@ -134,26 +157,18 @@ enum CalendarDateFormatter {
         // The locale has to be set first: the template resolves against
         // whatever is on the formatter at the moment of the call.
         formatter.setLocalizedDateFormatFromTemplate(style.skeleton)
-        let resolvedPattern = formatter.dateFormat ?? ""
-        guard !resolvedPattern.isEmpty else {
-            // A formatter whose pattern never resolved renders the EMPTY
-            // STRING, not a wrong date — verified against Foundation. A blank
-            // group header with no log line is the worst way to find that out.
-            let identifier = locale.identifier
-            let skeleton = style.skeleton
-            AppLogger.ui.fault(
-                "CalendarDateFormatter: \(skeleton, privacy: .public) unresolved for \(identifier, privacy: .public)"
-            )
-            assertionFailure("`\(style.skeleton)` did not resolve for locale \(locale.identifier)")
-            // Degrade to the locale's own medium date rather than to nothing.
-            // It says more than the caller asked for («12 янв. 2026 г.») but it
-            // is still the locale's ordering — substituting a guessed literal
-            // pattern would re-freeze the field order this file exists to
-            // unfreeze.
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .none
-            return formatter
-        }
+        // No fallback pattern, and no `.medium` either. `.medium` looked
+        // defensible — it is the locale's own ordering, not a guessed literal —
+        // but it answers a different question than the caller asked: `E` means
+        // «weekday», and `.medium` returns the full date. The firing screen,
+        // which joins the two halves by hand, would have rendered
+        // «27 АПР. 2026 Г. · 27 АПР.» — plausible, duplicated and wrong, with
+        // the weekday simply gone. `WallClockFormatter` faced this exact choice
+        // and refused a fallback for the same reason: a quiet plausible lie is
+        // worse than a loud blank, which is what gets a ticket filed.
+        //
+        // The reader-visible check therefore lives in `string(from:…)`, on the
+        // rendered string rather than on the pattern.
         return formatter
     }
 }
