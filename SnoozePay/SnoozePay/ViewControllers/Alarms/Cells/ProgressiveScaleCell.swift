@@ -56,10 +56,19 @@ final class ProgressiveScaleCell: UITableViewCell {
         return label
     }()
 
+    /// The canon's `flex: 1` column — title row, subtitle and chain sit beside
+    /// the switch, not under it (`SPMore2.jsx` L260).
+    ///
+    /// `.fill`, not `.leading`: under `.leading` every row kept its intrinsic
+    /// width, which for a `numberOfLines = 0` label is its SINGLE-LINE width.
+    /// The column then had no definite width of its own, so where the subtitle
+    /// broke was decided by compression-resistance tie-breaks rather than by
+    /// the space available — it wrapped at "в 2 / раза" with half the card
+    /// still empty to its right (#638).
     private let contentStack: UIStackView = {
         let stack = UIStackView()
         stack.axis = .vertical
-        stack.alignment = .leading
+        stack.alignment = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
@@ -117,8 +126,11 @@ final class ProgressiveScaleCell: UITableViewCell {
             contentStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
             contentStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
             contentStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp5),
+            // `equalTo`, not `lessThanOrEqualTo`: the column has to CLAIM the
+            // width the switch leaves it, which is what `flex: 1` does in the
+            // canon. Merely capping it left the width indefinite (#638).
             contentStack.trailingAnchor.constraint(
-                lessThanOrEqualTo: toggle.leadingAnchor, constant: -AppSpacing.sp3
+                equalTo: toggle.leadingAnchor, constant: -AppSpacing.sp3
             ),
 
             toggle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
