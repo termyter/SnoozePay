@@ -240,6 +240,9 @@ extension StatisticsViewModel {
         /// Median, not mean (PM decision, 2026-07-30): one 00:30 dismissal
         /// among thirteen 07:00 mornings drags a mean by ~28 minutes and
         /// turns the headline into an artefact of a single outlier.
+        ///
+        /// Non-`nil` values are always inside ``minuteOfDayRange`` — see the
+        /// initialiser.
         let medianMinutes: Int?
         /// Median of the window immediately before it — `nil` when that
         /// window is below `minimumSamples`, in which case the card drops the
@@ -251,6 +254,43 @@ extension StatisticsViewModel {
         /// Mornings required per window before a figure is shown at all.
         let minimumSamples: Int
 
+        /// Minutes-since-midnight a wall clock can actually show.
+        static let minuteOfDayRange = 0...(24 * 60 - 1)
+
+        /// Drops a "median" that is not a time of day (#657).
+        ///
+        /// ``WallClockFormatter/string(minutesSinceMidnight:style:locale:)``
+        /// clamps its input, which is the right call *for a formatter*: 1500
+        /// must render as neither "25:00" nor next-day "1:00". But the clamp
+        /// is the wrong end of the pipe for a statistic — it turns an
+        /// aggregation defect into "23:59", a perfectly plausible wake time
+        /// that nobody will ever report, where "25:00" would have had someone
+        /// filing an issue by lunchtime. A figure the card cannot vouch for is
+        /// better absent than plausible, so it is rejected here and the
+        /// columns that would have carried it drop out.
+        ///
+        /// Today's pipeline cannot produce such a value: ``minuteOfDay`` reads
+        /// `Calendar` hour/minute components, which are 0…23 and 0…59. This
+        /// guards the *contract*, so a future aggregation (a circular median,
+        /// a merged window, a decoded blob) fails by visible omission rather
+        /// than by looking fine.
+        init(
+            medianMinutes: Int?,
+            baselineMedianMinutes: Int?,
+            recentSampleCount: Int,
+            minimumSamples: Int
+        ) {
+            self.medianMinutes = WakeTimeStats.timeOfDay(medianMinutes)
+            self.baselineMedianMinutes = WakeTimeStats.timeOfDay(baselineMedianMinutes)
+            self.recentSampleCount = recentSampleCount
+            self.minimumSamples = minimumSamples
+        }
+
+        private static func timeOfDay(_ minutes: Int?) -> Int? {
+            guard let minutes, minuteOfDayRange.contains(minutes) else { return nil }
+            return minutes
+        }
+
         /// `baseline − median`; positive = the user now gets up *earlier*.
         var deltaMinutes: Int? {
             guard let median = medianMinutes, let baseline = baselineMedianMinutes else {
@@ -261,6 +301,18 @@ extension StatisticsViewModel {
 
         /// Mornings still missing before the median can be shown.
         var samplesUntilReady: Int { max(0, minimumSamples - recentSampleCount) }
+
+        /// `true` while the median is missing *because history is short* —
+        /// the only case in which "Копим историю: нужно ещё N утр" is true.
+        ///
+        /// Separating it from the rejected-median case matters: there the
+        /// window is full, `samplesUntilReady` is 0, and the same copy would
+        /// read "нужно ещё 0 утр".
+        var isAccumulating: Bool { medianMinutes == nil && recentSampleCount < minimumSamples }
+
+        /// `true` when there is neither a median to publish nor an honest
+        /// "still accumulating" story to tell — the host hides the card.
+        var hasNothingToShow: Bool { medianMinutes == nil && !isAccumulating }
     }
 
     // MARK: - Pure aggregation — money
@@ -427,12 +479,13 @@ extension StatisticsViewModel {
     /// Typical wake time over the trailing `windowDays`, compared with the
     /// `windowDays` before that.
     ///
-    /// Returns `nil` only when the recent window holds **no** wake instants
-    /// at all — including every install that only ever wrote the legacy
-    /// day-granular history, for which the card is omitted entirely. With
-    /// between one and `minimumSamples − 1` mornings the struct comes back
-    /// with a `nil` median so the card can say it's still accumulating,
-    /// rather than publishing a "typical" time built from one morning.
+    /// Returns `nil` when the recent window holds **no** wake instants at all
+    /// — including every install that only ever wrote the legacy day-granular
+    /// history, for which the card is omitted entirely — and, since #657, when
+    /// a full window produced no median the card can vouch for. With between
+    /// one and `minimumSamples − 1` mornings the struct comes back with a
+    /// `nil` median so the card can say it's still accumulating, rather than
+    /// publishing a "typical" time built from one morning.
     static func wakeTimeStats(
         today: Date,
         wakeTimes: [Date],
@@ -450,7 +503,7 @@ extension StatisticsViewModel {
         let recent = firstWakes.filter { $0.key >= recentStart && $0.key <= todayStart }.map(\.value)
         guard !recent.isEmpty else { return nil }
         let baseline = firstWakes.filter { $0.key >= baselineStart && $0.key < recentStart }.map(\.value)
-        return WakeTimeStats(
+        let stats = WakeTimeStats(
             medianMinutes: medianMinuteOfDay(
                 recent, calendar: calendar, minimumSamples: minimumSamples
             ),
@@ -460,6 +513,10 @@ extension StatisticsViewModel {
             recentSampleCount: recent.count,
             minimumSamples: minimumSamples
         )
+        // A full window whose median the struct refused leaves the card with
+        // nothing to say: "Копим историю" would be a lie and a clamped 23:59
+        // would be a fabrication. The host hides it instead (#657).
+        return stats.hasNothingToShow ? nil : stats
     }
 
     // MARK: - Presentation strings

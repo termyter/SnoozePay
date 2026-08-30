@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import SnoozePay
 
@@ -122,6 +123,139 @@ final class StatisticsWakeTimeTests: XCTestCase {
         XCTAssertEqual(result?.medianMinutes, 7 * 60)
         XCTAssertNil(result?.baselineMedianMinutes, "Two mornings can't anchor a 'раньше было'")
         XCTAssertNil(result?.deltaMinutes)
+    }
+
+    // MARK: - A median that is not a time of day (#657)
+
+    /// Every oracle below is anchored on `lastMinuteOfDay`, **observed** from a
+    /// healthy run of the real aggregation rather than written down as 1439.
+    /// A hand-derived constant agrees with any mistake in the boundary it is
+    /// meant to pin.
+    private func lastMinuteOfDay() -> Int? {
+        stats(for: wakes(count: 5, at: 23, minute: 59, endingDaysBefore: 0))?.medianMinutes
+    }
+
+    /// The clamp lives in the formatter and stays there — 1500 minutes must
+    /// render as neither "25:00" nor next-day "1:00". This test exists to say
+    /// so out loud, because the next one turns on it.
+    func testClockText_stillClampsAnOutOfDayOffsetToTheLastMinute() {
+        guard let lastMinute = lastMinuteOfDay() else {
+            return XCTFail("Five 23:59 mornings should publish a median")
+        }
+
+        XCTAssertEqual(
+            StatisticsViewModel.clockText(minutes: 25 * 60),
+            StatisticsViewModel.clockText(minutes: lastMinute),
+            "The formatter clamps — that is its job, and why the statistic must not lean on it"
+        )
+    }
+
+    /// …and precisely because the clamped reading is indistinguishable from a
+    /// genuine 23:59, the statistic refuses the value instead of borrowing it.
+    func testWakeTimeStats_medianPastMidnightIsDropped_notClampedToAPlausibleTime() {
+        guard let lastMinute = lastMinuteOfDay() else {
+            return XCTFail("Five 23:59 mornings should publish a median")
+        }
+
+        let refused = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: lastMinute + 1,
+            baselineMedianMinutes: nil,
+            recentSampleCount: 5,
+            minimumSamples: 5
+        )
+
+        XCTAssertNil(refused.medianMinutes, "One minute past the day is not a wake time")
+        XCTAssertTrue(refused.hasNothingToShow, "…so the host drops the whole card")
+        XCTAssertFalse(refused.isAccumulating, "The window is full — history is not what's missing")
+    }
+
+    func testWakeTimeStats_negativeMedianIsDropped() {
+        let refused = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: -1, baselineMedianMinutes: nil, recentSampleCount: 5, minimumSamples: 5
+        )
+
+        XCTAssertNil(refused.medianMinutes)
+    }
+
+    /// The recent median survives an unusable baseline: only the comparison
+    /// goes, exactly as it does when the baseline window is merely short.
+    func testWakeTimeStats_outOfDayBaselineDropsOnlyTheComparison() {
+        let healthy = stats(
+            for: wakes(count: 5, at: 7, endingDaysBefore: 0)
+                + wakes(count: 5, at: 6, endingDaysBefore: 14)
+        )
+        guard let healthy, let median = healthy.medianMinutes, let lastMinute = lastMinuteOfDay() else {
+            return XCTFail("Two full windows should publish both figures")
+        }
+        XCTAssertNotNil(healthy.deltaMinutes, "Baseline: the comparison is there to lose")
+
+        let refused = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: median,
+            baselineMedianMinutes: lastMinute + 1,
+            recentSampleCount: healthy.recentSampleCount,
+            minimumSamples: healthy.minimumSamples
+        )
+
+        XCTAssertEqual(refused.medianMinutes, median, "The headline is unaffected")
+        XCTAssertNil(refused.baselineMedianMinutes)
+        XCTAssertNil(refused.deltaMinutes, "No baseline, no «раньше на»")
+        XCTAssertFalse(refused.hasNothingToShow, "The card still has a median to show")
+    }
+
+    /// A genuinely short window keeps saying it is accumulating — the fix must
+    /// not swallow state 2 along with the bad one.
+    func testWakeTimeStats_shortWindowStillReadsAsAccumulating() {
+        let result = stats(for: wakes(count: 4, at: 7, endingDaysBefore: 0))
+
+        XCTAssertEqual(result?.isAccumulating, true)
+        XCTAssertEqual(result?.hasNothingToShow, false)
+    }
+
+    /// The card's copy, compared against the copy it shows in the healthy
+    /// short-history case rather than against a string typed here.
+    func testWakeTimeCard_refusedMedianShowsNoCopyRatherThanZeroMornings() {
+        let card = SPWakeTimeCard()
+
+        let accumulating = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: nil, baselineMedianMinutes: nil, recentSampleCount: 1, minimumSamples: 5
+        )
+        card.apply(accumulating)
+        card.layoutIfNeeded()
+        let accumulatingCopy = Self.visibleStrings(in: card)
+        XCTAssertTrue(
+            accumulatingCopy.contains(StatisticsViewModel.wakeSamplesPendingText(4)),
+            "Baseline: a short window explains itself — «\(accumulatingCopy)»"
+        )
+
+        let refused = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: 25 * 60,
+            baselineMedianMinutes: nil,
+            recentSampleCount: 5,
+            minimumSamples: 5
+        )
+        card.apply(refused)
+        card.layoutIfNeeded()
+        let refusedCopy = Self.visibleStrings(in: card)
+
+        XCTAssertFalse(
+            refusedCopy.contains(StatisticsViewModel.wakeSamplesPendingText(0)),
+            "«нужно ещё 0 утр» is the copy this state would have invented"
+        )
+        let clamped = StatisticsViewModel.clockText(minutes: 25 * 60)
+        XCTAssertFalse(
+            refusedCopy.contains(clamped), "A clamped «\(clamped)» must not reach the screen"
+        )
+    }
+
+    /// Text a reader would actually see: hidden branches are skipped, because
+    /// `UILabel.text` outlives the state that set it.
+    private static func visibleStrings(in view: UIView) -> [String] {
+        guard !view.isHidden else { return [] }
+        var found: [String] = []
+        if let label = view as? UILabel {
+            found.append(contentsOf: [label.text, label.attributedText?.string].compactMap { $0 })
+        }
+        return found + view.subviews.flatMap { visibleStrings(in: $0) }
     }
 
     // MARK: - Median semantics

@@ -12,6 +12,12 @@ import UIKit
 ///      утр». A median over one or two mornings is noise, not a habit.
 ///   3. Median available, baseline still short → the comparison columns drop
 ///      out rather than inventing a «раньше было».
+///
+/// A fourth case exists only defensively: a median the aggregation refused as
+/// not-a-time-of-day (#657). `wakeTimeStats` already returns `nil` for it, so
+/// the host takes case 1; if such a value is handed to `apply` directly, the
+/// columns go and no copy replaces them — «нужно ещё 0 утр» would be worse
+/// than silence.
 final class SPWakeTimeCard: UIView {
 
     // MARK: - Subviews
@@ -70,7 +76,7 @@ final class SPWakeTimeCard: UIView {
             // typical yet.
             columnsRow.isHidden = true
             pendingLabel.isHidden = true
-            accumulatingLabel.isHidden = false
+            accumulatingLabel.isHidden = !stats.isAccumulating
             accumulatingLabel.text = StatisticsViewModel.wakeSamplesPendingText(
                 stats.samplesUntilReady
             )
