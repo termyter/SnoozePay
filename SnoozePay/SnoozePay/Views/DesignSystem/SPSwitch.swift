@@ -22,13 +22,47 @@ final class SPSwitch: UISwitch {
     override init(frame: CGRect) {
         super.init(frame: frame)
         applyBrandTint()
+        applyFixedSizeContract()
         seedAccessibility()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         applyBrandTint()
+        applyFixedSizeContract()
         seedAccessibility()
+    }
+
+    /// A switch is a fixed-size control: `UISwitch` draws its track and knob at
+    /// the intrinsic size **centred in its bounds** and clips to nothing, so a
+    /// squeezed frame doesn't shrink the control — it makes it spill out of the
+    /// frame on BOTH sides. Auto Layout has no way to know that, and with the
+    /// stock 750/750 priorities the switch is as compressible as the label
+    /// beside it.
+    ///
+    /// That tie is what produced #630: in the alarm card the caps label's
+    /// trailing is pinned to the switch's leading, so when a long title's
+    /// single-line intrinsic width exceeds the run, the deficit can be taken
+    /// out of EITHER view at equal cost — the split is degenerate. The engine
+    /// took ~38pt out of the switch, whose drawing stayed 62pt wide and,
+    /// re-centred in the narrower bounds, slid ~19pt to the right and past the
+    /// card edge. The trailing constraint was satisfied the whole time; the
+    /// *width* was the thing that moved, which is why probes that measured
+    /// `frame.maxX` found nothing wrong.
+    ///
+    /// Declaring it non-shrinkable here (rather than at each call site —
+    /// `SettingsIconRowCell` had already patched the other half of this by
+    /// hand) makes the split unique at every title length, and fixes
+    /// `ProgressiveScaleCell` too: it pins its text column to the switch the
+    /// same way.
+    ///
+    /// Only the compression side is raised. Hugging stays at the platform's
+    /// 750, which already outranks every label's 251, so the switch is not
+    /// stretched today — and leaving it optional keeps a stack that legitimately
+    /// stretches its trailing container from logging a broken constraint.
+    private func applyFixedSizeContract() {
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .vertical)
     }
 
     private func seedAccessibility() {

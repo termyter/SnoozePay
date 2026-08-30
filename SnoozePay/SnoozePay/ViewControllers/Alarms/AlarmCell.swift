@@ -62,6 +62,14 @@ final class AlarmCell: UITableViewCell {
         // wins over the card's compressed fitting pass — without it the
         // self-sizing cell could clip the second line instead of growing.
         label.setContentCompressionResistancePriority(.required, for: .vertical)
+        // …and deliberately WEAK horizontal resistance. A `numberOfLines = 0`
+        // label reports its single-line width as the intrinsic one, so a long
+        // title bids for ~600pt of run it is never going to get. At the stock
+        // 750 that bid tied with the switch's own 750 and the engine was free
+        // to settle the deficit against the switch instead of the text (#630).
+        // The label's width is fully determined by its leading/trailing
+        // constraints anyway — its job here is to wrap, not to claim width.
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
     }()
 
