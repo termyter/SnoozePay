@@ -165,18 +165,26 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
 
     /// The two caps affordances depend on runtime authorisation, so the states
     /// are applied directly instead of hoping the live screen lands on them.
+    ///
+    /// The expectations are upper-cased because the *view* upper-cases:
+    /// `PermissionCardView.capsLabel(text:color:)` renders `text.uppercased()`,
+    /// so the catalogue keeps «Дать» and the screen shows «ДАТЬ». Asserting on
+    /// the catalogue value verbatim is what made this test red on the first
+    /// CI run. Do not "fix" it by upper-casing the catalogue entry: the caps
+    /// treatment is presentation, and a language whose upper-casing is not a
+    /// per-character map needs the natural-case noun to work from.
     func testPermissionCardCapsAffordancesComeFromTheCatalogue() {
         let card = PermissionCardView(kind: .notifications)
 
         card.apply(status: .actionable)
         XCTAssertTrue(
-            strings(in: card).contains(Localized.text("onboarding.permissions.grant_caps")),
+            strings(in: card).contains(Localized.text("onboarding.permissions.grant_caps").uppercased()),
             "an ungranted card lost its explicit grant affordance"
         )
 
         card.apply(status: .unavailable)
         XCTAssertTrue(
-            strings(in: card).contains(Localized.text("onboarding.permissions.unavailable_caps")),
+            strings(in: card).contains(Localized.text("onboarding.permissions.unavailable_caps").uppercased()),
             "a card the user cannot act on lost its state caption"
         )
     }
