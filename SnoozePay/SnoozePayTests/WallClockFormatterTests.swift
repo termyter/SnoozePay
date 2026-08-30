@@ -191,17 +191,19 @@ final class WallClockFormatterTests: XCTestCase {
                       "Expected a wall clock with a separator, got «\(rendered)»")
     }
 
+    /// `before` is held as a strong reference on purpose. Comparing addresses
+    /// instead (`ObjectIdentifier`) reads the same but is unsound: the old
+    /// formatter deallocates inside `invalidate()` and the new one may be
+    /// allocated on the freed bytes, so a correct rebuild compares "equal".
     func testInvalidate_rebuildsTheCachedFormatter() {
-        let before = WallClockFormatter.cachedFormatterIdentityForTesting(style: .padded)
-        XCTAssertEqual(before,
-                       WallClockFormatter.cachedFormatterIdentityForTesting(style: .padded),
-                       "Without an invalidation the cache must return the same instance")
+        let before = WallClockFormatter.cachedFormatterForTesting(style: .padded)
+        XCTAssertTrue(before === WallClockFormatter.cachedFormatterForTesting(style: .padded),
+                      "Without an invalidation the cache must return the same instance")
 
         WallClockFormatter.invalidateCacheForTesting()
 
-        XCTAssertNotEqual(before,
-                          WallClockFormatter.cachedFormatterIdentityForTesting(style: .padded),
-                          "After invalidation the formatter must be rebuilt")
+        XCTAssertFalse(before === WallClockFormatter.cachedFormatterForTesting(style: .padded),
+                       "After invalidation the formatter must be rebuilt")
     }
 
     /// The one that guards the actual bug. `setLocalizedDateFormatFromTemplate`
@@ -213,7 +215,8 @@ final class WallClockFormatterTests: XCTestCase {
     /// «24-Hour Time» would keep seeing the old cycle until an app restart —
     /// #628 reopened through the cache.
     func testLocaleChangeNotification_rebuildsTheCachedFormatter() {
-        let before = WallClockFormatter.cachedFormatterIdentityForTesting(style: .compact)
+        // Strong reference, not an address — see the note on the test above.
+        let before = WallClockFormatter.cachedFormatterForTesting(style: .compact)
 
         NotificationCenter.default.post(
             name: NSLocale.currentLocaleDidChangeNotification,
@@ -222,9 +225,8 @@ final class WallClockFormatterTests: XCTestCase {
 
         // The observer runs synchronously on the posting thread, so no wait is
         // needed — and adding one would hide a broken observer behind a sleep.
-        XCTAssertNotEqual(before,
-                          WallClockFormatter.cachedFormatterIdentityForTesting(style: .compact),
-                          "A locale change must drop the frozen pattern (#628 via the cache)")
+        XCTAssertFalse(before === WallClockFormatter.cachedFormatterForTesting(style: .compact),
+                       "A locale change must drop the frozen pattern (#628 via the cache)")
     }
 
     /// The instant is built in UTC and the formatter is handed the *same* UTC

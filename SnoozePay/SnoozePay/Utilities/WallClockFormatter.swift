@@ -257,12 +257,20 @@ enum WallClockFormatter {
     }
 
     #if DEBUG
-    /// Identity of the cached formatter, so a test can prove a locale change
+    /// The cached formatter itself, so a test can prove a locale change
     /// actually rebuilds it. Without this the cached branch — the only one
     /// that runs in production on the hot paths — is unobservable, and a
     /// regression there passes green.
-    static func cachedFormatterIdentityForTesting(style: HourStyle) -> ObjectIdentifier {
-        ObjectIdentifier(cache.formatter(for: style))
+    ///
+    /// ⚠️ Returns the **object**, deliberately, and not an `ObjectIdentifier`.
+    /// An identifier is just the address: the caller holds no reference, the
+    /// old formatter deallocates on `invalidate()`, and the replacement is
+    /// free to land on the same bytes — so `!=` on identifiers reports "not
+    /// rebuilt" for a cache that rebuilt correctly. That is exactly how the
+    /// first version of this hook made CI red on working code. Handing back
+    /// the object keeps it alive, which makes `===` mean what it reads like.
+    static func cachedFormatterForTesting(style: HourStyle) -> DateFormatter {
+        cache.formatter(for: style)
     }
 
     /// Drop the cached pair, as the locale-change notification does.
