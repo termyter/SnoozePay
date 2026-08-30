@@ -172,6 +172,20 @@ extension AlarmFiringViewController {
         )
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
+        Self.proofStallMainThread()
+    }
+
+    /// PROOF-ONLY (#626), never merged. Makes the "loaded runner" condition
+    /// deterministic: the main thread is unavailable in 0.45 s chunks for the
+    /// next 5 s, so every accessibility round trip after this alert costs far
+    /// more than the 1.0 s window XCUITest's default interruption handler
+    /// allows itself to confirm a dismissal.
+    private static func proofStallMainThread() {
+        for step in 0..<10 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 + Double(step) * 0.5) {
+                Thread.sleep(forTimeInterval: 0.45)
+            }
+        }
     }
 
     /// Stronger banner for the degraded case (#197): the snooze didn't schedule
