@@ -601,7 +601,9 @@ final class AlarmsListViewModel {
         // alarm already on disk carries the Russian word, so localising the
         // comparison would stop suppressing the default name the moment the UI
         // language changed — a data-migration question that belongs with
-        // whoever owns `Alarm`'s default (#598), not with the caps row.
+        // whoever owns `Alarm`'s default, not with the caps row. #598 moved
+        // that default to `Alarm.defaultName`; the migration itself is #623,
+        // which is what makes this comparison correct again.
         let nameIsDefault = trimmed.isEmpty || trimmed.lowercased() == "будильник"
         if nameIsDefault {
             return daysPhrase
