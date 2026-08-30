@@ -344,7 +344,7 @@ final class StatisticsViewController: UIViewController {
 
         // Weekday distribution.
         weekdayHeadlineLabel.attributedText = Self.weekdayHeadline(
-            worstDayName: viewModel.worstWeekdayName
+            worstDayNames: viewModel.worstWeekdayNames
         )
         weekdayBarsView.stats = viewModel.weekdayStats
 
@@ -367,13 +367,21 @@ final class StatisticsViewController: UIViewController {
 
     /// "Чаще всего — среда" with the day tinted pain; falls back to a neutral
     /// caption when the 4-week window has no snoozes.
-    static func weekdayHeadline(worstDayName: String?) -> NSAttributedString {
-        guard let name = worstDayName else {
+    ///
+    /// Takes a LIST because days can tie for worst. Naming one of them would
+    /// put the same arbitrary choice into the copy that #636 removed from the
+    /// chart, and falling back to "Откладываний не было" would be a plain lie
+    /// when snoozes did happen. `ListFormatter` builds the conjunction for the
+    /// current locale, so no new hardcoded string is added while the catalogue
+    /// migration (#569) is still open.
+    static func weekdayHeadline(worstDayNames: [String]) -> NSAttributedString {
+        guard !worstDayNames.isEmpty else {
             return NSAttributedString(
                 string: "Откладываний не было",
                 attributes: [.font: AppTypography.h3, .foregroundColor: AppColors.fg1]
             )
         }
+        let name = ListFormatter.localizedString(byJoining: worstDayNames)
         let headline = NSMutableAttributedString(
             string: "Чаще всего — ",
             attributes: [.font: AppTypography.h3, .foregroundColor: AppColors.fg1]
