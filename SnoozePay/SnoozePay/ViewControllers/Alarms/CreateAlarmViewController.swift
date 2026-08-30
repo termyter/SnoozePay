@@ -115,6 +115,27 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Setup
 
+    /// Wrap a brand control as a bar-button item the bar does not re-decorate.
+    ///
+    /// iOS 26 paints its shared glass capsule OVER a custom view, sampling
+    /// what is behind it. On a control that already draws its own filled
+    /// background that is a translucent copy of our own fill laid over our own
+    /// ink: it lifted «Готово» from 7.05:1 to **2.41:1**, under WCAG's 3:1
+    /// floor, on the terminal action of the screen (#649). The `.money`
+    /// variant itself is fine — the same button measures 6.76:1 in the wallet
+    /// header; only the ones inside a navigation bar were washed out.
+    ///
+    /// The left items opt out too. Their contrast was never in danger (the
+    /// quiet pill measures 14.46:1 either way), but the capsule drew a second
+    /// ring around chrome that already has its own.
+    ///
+    /// `CreateAlarmBarButtonGlassTests` pins this, and carries the numbers.
+    private func barItem(for control: UIView) -> UIBarButtonItem {
+        let item = UIBarButtonItem(customView: control)
+        item.hidesSharedBackground = true
+        return item
+    }
+
     private func setupNavigationBar() {
         // V2 nav bar. Two modes differ by design (SPMore2.jsx `AlarmEdit`
         // artboard 10 vs `SPScreensV2.jsx` lines 496-502):
@@ -131,7 +152,7 @@ final class CreateAlarmViewController: UIViewController {
             )
             cancelButton.accessibilityIdentifier = "createAlarm.cancelButton"
             cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-            navigationItem.leftBarButtonItem = UIBarButtonItem(customView: cancelButton)
+            navigationItem.leftBarButtonItem = barItem(for: cancelButton)
         } else {
             let closeButton = UIButton(type: .system)
             closeButton.setImage(
@@ -149,7 +170,7 @@ final class CreateAlarmViewController: UIViewController {
             closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
             closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
             closeButton.accessibilityLabel = Localized.text("create_alarm.close.accessibility")
-            navigationItem.leftBarButtonItem = UIBarButtonItem(customView: closeButton)
+            navigationItem.leftBarButtonItem = barItem(for: closeButton)
         }
 
         let saveButton = SPButton(
@@ -161,7 +182,7 @@ final class CreateAlarmViewController: UIViewController {
         )
         saveButton.accessibilityIdentifier = "createAlarm.saveButton"
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: saveButton)
+        navigationItem.rightBarButtonItem = barItem(for: saveButton)
 
         // V2 title sits in caps + tracking. UIKit nav titles don't support
         // attributed text directly via `navigationItem.title`, so install a
