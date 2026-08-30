@@ -238,9 +238,15 @@ final class CardRowBandingTests: XCTestCase {
     /// The gap does NOT tell the two halves of #674 apart. The control reverts
     /// `corners` and `openEdges` together, so the 5/255 is their sum, and the
     /// `corners` half is worth about 1/255 on its own — a regression in it
-    /// alone would move shipped 6 → 7, leave a gap of 4, and pass here. That
-    /// half is held at the path level instead, by
-    /// `CardRowSeamShadowTests.testAmbientStop_isMaskedOutOfTheCornersACapRowDoesNotRound`.
+    /// alone would move shipped 6 → 7, leave a gap of 4, and pass here. The
+    /// `openEdges` half is held separately, at the path level, by
+    /// `CardRowSeamShadowTests.testAmbientStop_emitsNoHaloAcrossTheSeam`.
+    /// The `corners` half of the AMBIENT mask has no test of its own today:
+    /// `testAmbientStop_isMaskedOutOfTheCornersACapRowDoesNotRound` probes
+    /// (spread + inset, spread + maxY − inset), and with `openEdges` still
+    /// growing the hole downwards that point stays inside it whichever way
+    /// `corners` is set, so reverting `corners` alone does not turn it red.
+    /// Filed as #692.
     ///
     /// If a future change makes this red, read both printed numbers before
     /// touching it: the interesting failure is the control collapsing towards
