@@ -535,7 +535,7 @@ enum AppSpacing {
     /// ⚠️ The alarm form's ten cells do NOT reach 20 by one canon rule, and
     /// for three of them the canon number is not 20 at all. The artboard is
     /// `AlarmEdit()` in `docs/design/snoozepay-2026-04-27/project/components/
-    /// SPMore2.jsx`, lines 131–293 — every reference below is inside it:
+    /// SPMore2.jsx`, lines 131–291 — every reference below is inside it:
     ///
     /// - screen gutter `20px` (`:145`, `:161`, `:196`) → canon 20:
     ///   `NameCell`, `TimePickerCell`, `DayPickerCell`, `RepeatModeCell`
@@ -561,7 +561,7 @@ enum AppSpacing {
     /// dissenter is `:285`, `padding: "0 16px 24px"` on the delete button's
     /// footer. `AppSpacing.screenInset` is likewise still `lg` (16) against a
     /// canon gutter of 20 — the same disagreement one level up, not fixed here.
-        static let cardHorizontalPadding: CGFloat = sp5
+    static let cardHorizontalPadding: CGFloat = sp5
 }
 
 /// App-wide corner radius constants — names aligned with `tokens.css`

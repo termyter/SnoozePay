@@ -5,7 +5,7 @@ import XCTest
 ///
 /// The canon does NOT build this form out of one component — an earlier
 /// version of this header said it did, and that was checkably wrong. Inside
-/// artboard `AlarmEdit` (`SPMore2.jsx:131-293`) three different rules land the
+/// artboard `AlarmEdit` (`SPMore2.jsx:131-291`) three different rules land the
 /// content, and only two of them land it on 20: the screen gutter (`:145`,
 /// `:161`, `:196`), `SPCard padding={20}` (`:198`, `:237`, `:257`), and
 /// `SPCard padding={4}` (`:227`) for the Звук / Тема / Вибрация rows, where

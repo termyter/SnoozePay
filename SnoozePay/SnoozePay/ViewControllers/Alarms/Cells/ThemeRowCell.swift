@@ -90,8 +90,10 @@ final class ThemeRowCell: UITableViewCell {
         contentView.addSubview(chevronView)
         contentView.addSubview(valueLabel)
 
-        // 20pt horizontal insets — the V2 list-row rule `padding="4px 20px"`
-        // (#231).
+        // 20pt horizontal insets. NOT a canon rule: canon wraps these rows in
+        // `SPCard padding={4}` (`SPMore2.jsx:227`), i.e. 4pt. The 20 is the
+        // app's own, held so all ten cells of the form share one inset — see
+        // `AppSpacing.cardHorizontalPadding` (#231, #672, #685).
         NSLayoutConstraint.activate([
             thumbnail.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor,
