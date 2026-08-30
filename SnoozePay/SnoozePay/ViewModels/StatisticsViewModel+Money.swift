@@ -1,3 +1,4 @@
+import os
 import UIKit
 
 /// Money + wake-time aggregations of the statistics screen (#348,
@@ -52,6 +53,15 @@ extension StatisticsViewModel {
     static var partialLedgerErrorID: String { "STATS-348-LEDGER-PARTIAL" }
     /// Log identifier for an unreadable alarm store.
     static var alarmStoreErrorID: String { "STATS-348-ALARMS-UNREADABLE" }
+    /// Log identifier for a wake median the card refused as not-a-time-of-day.
+    ///
+    /// Hiding the card is the honest outcome for the reader, but it looks
+    /// exactly like a fresh install with no history — so without this line a
+    /// real aggregation defect leaves the product with no trace at all, and a
+    /// support ticket has nothing to grep. That is the trade #657 makes: it
+    /// replaces a bug that shouted a wrong number with one that says nothing,
+    /// and the shouting has to move into the log.
+    static var wakeMedianOutOfDayErrorID: String { "STATS-657-WAKE-MEDIAN-OUT-OF-DAY" }
 
     /// Outcome of resolving the snooze price.
     enum SnoozePriceState: Equatable {
@@ -253,6 +263,15 @@ extension StatisticsViewModel {
         let recentSampleCount: Int
         /// Mornings required per window before a figure is shown at all.
         let minimumSamples: Int
+        /// `true` when a median WAS produced upstream and this type refused it.
+        ///
+        /// Kept because «no median» and «a median we threw away» are different
+        /// facts that happen to share a `nil`. Without it a rejected value in a
+        /// short window is indistinguishable from short history, and the card
+        /// offers to keep counting mornings towards a figure it has already
+        /// decided it will not print. Being stored also puts it in `Equatable`,
+        /// so a refused 1500 no longer compares equal to an honest absence.
+        let medianWasRefused: Bool
 
         /// Minutes-since-midnight a wall clock can actually show.
         static let minuteOfDayRange = 0...(24 * 60 - 1)
@@ -280,14 +299,36 @@ extension StatisticsViewModel {
             recentSampleCount: Int,
             minimumSamples: Int
         ) {
-            self.medianMinutes = WakeTimeStats.timeOfDay(medianMinutes)
-            self.baselineMedianMinutes = WakeTimeStats.timeOfDay(baselineMedianMinutes)
+            let median = WakeTimeStats.timeOfDay(medianMinutes, field: "median")
+            self.medianMinutes = median
+            self.baselineMedianMinutes = WakeTimeStats.timeOfDay(
+                baselineMedianMinutes, field: "baseline"
+            )
+            self.medianWasRefused = medianMinutes != nil && median == nil
             self.recentSampleCount = recentSampleCount
             self.minimumSamples = minimumSamples
         }
 
-        private static func timeOfDay(_ minutes: Int?) -> Int? {
-            guard let minutes, minuteOfDayRange.contains(minutes) else { return nil }
+        /// Rejects a «median» that is not a time of day, loudly.
+        ///
+        /// Logged, not asserted, and the difference is deliberate: the tests
+        /// for this guard feed 1440 and `25 * 60` through the public
+        /// initialiser on purpose, so an `assertionFailure` here would take
+        /// down the very suite that proves the guard works. The branch is
+        /// unreachable in today's pipeline, which is exactly why the log has
+        /// to survive into release — if it ever fires, nothing else will say so.
+        private static func timeOfDay(_ minutes: Int?, field: String) -> Int? {
+            guard let minutes else { return nil }
+            guard minuteOfDayRange.contains(minutes) else {
+                AppLogger.ui.error(
+                    """
+                    [\(wakeMedianOutOfDayErrorID, privacy: .public)] \
+                    \(field, privacy: .public) \(minutes, privacy: .public) is not a \
+                    time of day — dropped, wake-time card suppressed
+                    """
+                )
+                return nil
+            }
             return minutes
         }
 
@@ -308,7 +349,9 @@ extension StatisticsViewModel {
         /// Separating it from the rejected-median case matters: there the
         /// window is full, `samplesUntilReady` is 0, and the same copy would
         /// read "нужно ещё 0 утр".
-        var isAccumulating: Bool { medianMinutes == nil && recentSampleCount < minimumSamples }
+        var isAccumulating: Bool {
+            medianMinutes == nil && !medianWasRefused && recentSampleCount < minimumSamples
+        }
 
         /// `true` when there is neither a median to publish nor an honest
         /// "still accumulating" story to tell — the host hides the card.

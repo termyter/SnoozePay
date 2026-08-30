@@ -72,14 +72,23 @@ final class SPWakeTimeCard: UIView {
 
     func apply(_ stats: StatisticsViewModel.WakeTimeStats) {
         guard let median = stats.medianMinutes else {
-            // State 2 — some mornings recorded, not enough to call anything
-            // typical yet.
+            // Two states share this branch. State 2 — some mornings recorded,
+            // not enough to call anything typical yet — offers to keep
+            // counting. State 4 — a full window whose median was refused, or
+            // no history at all — says nothing, and the host hides the card
+            // outright (#657).
             columnsRow.isHidden = true
             pendingLabel.isHidden = true
             accumulatingLabel.isHidden = !stats.isAccumulating
-            accumulatingLabel.text = StatisticsViewModel.wakeSamplesPendingText(
-                stats.samplesUntilReady
-            )
+            // Written only where it is shown. A `UILabel` keeps its text after
+            // being hidden, so assigning it unconditionally leaves «нужно ещё 0
+            // утр» loaded in the refused case, one visibility refactor away
+            // from the screen.
+            if stats.isAccumulating {
+                accumulatingLabel.text = StatisticsViewModel.wakeSamplesPendingText(
+                    stats.samplesUntilReady
+                )
+            }
             return
         }
         columnsRow.isHidden = false

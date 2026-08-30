@@ -74,6 +74,21 @@ enum WallClockFormatter {
         locale: Locale = AppLocale.display
     ) -> String {
         let clamped = min(max(0, minutes), minutesPerDay - 1)
+        // The clamp is right for a FORMATTER — 1500 must render as neither
+        // «25:00» nor next-day «1:00». It is wrong as the last word on the
+        // subject: #657 was an aggregation defect that reached the screen as a
+        // perfectly plausible «23:59» because this line swallowed it. The
+        // caller that prompted #657 now validates upstream, but this is
+        // module-visible API and the next caller would inherit the trap
+        // verbatim. So it clamps AND says so.
+        if clamped != minutes {
+            AppLogger.ui.error(
+                """
+                WallClockFormatter: minute offset \(minutes, privacy: .public) is outside \
+                a day — clamped to \(clamped, privacy: .public) for rendering
+                """
+            )
+        }
         let components = DateComponents(
             year: 2001, month: 1, day: 1,
             hour: clamped / 60, minute: clamped % 60

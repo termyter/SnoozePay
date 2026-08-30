@@ -211,6 +211,59 @@ final class StatisticsWakeTimeTests: XCTestCase {
         XCTAssertEqual(result?.hasNothingToShow, false)
     }
 
+    /// The hole the first cut of #657 left open: a refused median in a
+    /// window that is ALSO short.
+    ///
+    /// `isAccumulating` was `medianMinutes == nil && recentSampleCount <
+    /// minimumSamples`, and a refused median satisfies both — so the card
+    /// offered to keep counting mornings towards a figure it had already
+    /// decided it would never print, which is the reclassification the whole
+    /// issue is about, one window shorter. Unreachable today only because
+    /// `medianMinuteOfDay` returns nil below the threshold; the guard exists
+    /// for the CONTRACT, so the contract is what gets tested.
+    func testWakeTimeStats_refusedMedianInAShortWindowIsNotAccumulating() {
+        let honest = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: nil, baselineMedianMinutes: nil, recentSampleCount: 3, minimumSamples: 5
+        )
+        XCTAssertTrue(
+            honest.isAccumulating,
+            "Baseline: three mornings and no median really is short history"
+        )
+
+        let refused = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: 25 * 60,
+            baselineMedianMinutes: nil,
+            recentSampleCount: 3,
+            minimumSamples: 5
+        )
+        XCTAssertFalse(
+            refused.isAccumulating,
+            "A refused median must not be re-told as «keep counting mornings»"
+        )
+        XCTAssertTrue(
+            refused.hasNothingToShow,
+            "Nothing to publish and nothing honest to promise — the host hides the card"
+        )
+    }
+
+    /// Both sides share a `nil` median, and before `medianWasRefused` became
+    /// a stored property they compared equal — so a snapshot or an equality
+    /// assertion could not tell «we threw a value away» from «there was
+    /// nothing».
+    func testWakeTimeStats_aRefusedMedianIsNotEqualToAnHonestAbsence() {
+        let refused = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: 25 * 60,
+            baselineMedianMinutes: nil,
+            recentSampleCount: 5,
+            minimumSamples: 5
+        )
+        let absent = StatisticsViewModel.WakeTimeStats(
+            medianMinutes: nil, baselineMedianMinutes: nil, recentSampleCount: 5, minimumSamples: 5
+        )
+
+        XCTAssertNil(refused.medianMinutes, "Precondition: the value really was dropped")
+        XCTAssertNotEqual(refused, absent)
+    }
     /// The card's copy, compared against the copy it shows in the healthy
     /// short-history case rather than against a string typed here.
     func testWakeTimeCard_refusedMedianShowsNoCopyRatherThanZeroMornings() {
