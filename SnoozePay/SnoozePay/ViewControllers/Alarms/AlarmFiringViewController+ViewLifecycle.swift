@@ -171,7 +171,9 @@ extension AlarmFiringViewController {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        present(alert, animated: true)
+        // PROOF C (#626), never merged: the refusal is swallowed. The E2E must
+        // notice that a snooze which will never ring says nothing about it.
+        _ = alert
     }
 
     /// Stronger banner for the degraded case (#197): the snooze didn't schedule
