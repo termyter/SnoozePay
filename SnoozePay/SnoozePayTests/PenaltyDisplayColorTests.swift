@@ -3,12 +3,25 @@ import XCTest
 
 /// The snooze price numeral's ink, and the price paid for it.
 ///
-/// `AppColors.penaltyAmountDisplay32` is a `warnFill*` value used as text, which the
-/// token doctrine in `AppColors.swift` otherwise forbids. It is there because
-/// the canon and the doctrine disagree and the canon won by PM decision
-/// (#673): the amount, the preset chip under it and the slider track above it
-/// are one amber family in `SPMore2.jsx`, and rendering the largest of the
-/// three in bronze `#966107` is what the PM reported as a wrong colour.
+/// `AppColors.penaltyAmountDisplay32` is a `warnFill*` value used as text,
+/// which the token doctrine in `AppColors.swift` otherwise forbids.
+///
+/// It is NOT "the canon won" — an earlier version of this header said so, and
+/// that is not what happened. Canon paints the numeral `var(--sp-warn-400)`
+/// (`SPMore2.jsx:241`) on a dark surface; the app renders it on white. Three
+/// candidate inks, all measured against white:
+///
+/// | ink | ratio on white |
+/// |---|---|
+/// | `#FFB84D` (the literal canon value) | 1.719:1 |
+/// | `#F59E0B` (what this token resolves to) | 2.148:1 |
+/// | `#966107` (the bronze it replaced) | 5.237:1 |
+///
+/// So this is a THIRD value, chosen by PM decision (#673) because the amount,
+/// the preset chip under it and the slider track above it read as one amber
+/// family and the largest of the three was the odd one out. It buys that
+/// family at a real cost in contrast, and the cost is pinned below rather
+/// than left to be re-derived as "probably fine".
 ///
 /// These tests exist so that the trade-off cannot rot quietly. They pin the
 /// tie to the chip (so the two can never drift apart again) and they pin the

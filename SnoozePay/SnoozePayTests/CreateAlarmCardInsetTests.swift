@@ -3,12 +3,22 @@ import XCTest
 
 /// Horizontal content inset of every card on the create/edit-alarm form.
 ///
-/// The canon builds this whole form out of one component: `SPCard padding={20}`
-/// (`SPMore2.jsx`, artboard `AlarmEdit`). The app drifted off it one cell at a
-/// time — `TimePickerCell` and the list rows kept 20pt, while the name field,
-/// the day chips, the repeat pill, the snooze slider and the penalty column
-/// settled on `AppSpacing.lg` (16). On screen the two groups sit directly above
-/// each other, so the 4pt step reads as a misaligned column of text (#672).
+/// The canon does NOT build this form out of one component — an earlier
+/// version of this header said it did, and that was checkably wrong. Inside
+/// artboard `AlarmEdit` (`SPMore2.jsx:131-293`) three different rules land the
+/// content, and only two of them land it on 20: the screen gutter (`:145`,
+/// `:161`, `:196`), `SPCard padding={20}` (`:198`, `:237`, `:257`), and
+/// `SPCard padding={4}` (`:227`) for the Звук / Тема / Вибрация rows, where
+/// canon is 4 and the app deliberately holds 20. The full mapping lives on
+/// `AppSpacing.cardHorizontalPadding`.
+///
+/// What this file guards is therefore the APP's rule, not the canon's: every
+/// cell on the form agrees on one inset. The app drifted off that one cell at
+/// a time — `TimePickerCell` and the list rows kept 20pt, while the name
+/// field, the day chips, the repeat pill, the snooze slider and the penalty
+/// column settled on `AppSpacing.lg` (16). On screen the two groups sit
+/// directly above each other, so the 4pt step reads as a misaligned column of
+/// text (#672).
 ///
 /// Two oracles, on purpose. "Every cell agrees with every other" catches one
 /// cell drifting; "the shared value is 20" catches all of them drifting
@@ -105,7 +115,7 @@ final class CreateAlarmCardInsetTests: XCTestCase {
     /// draws, measured after a real layout pass rather than read off the
     /// constraint constants the production code sets.
     private func measuredInsets() throws -> [Measured] {
-        // Every cell type `CreateAlarmViewController+Sections.registerCells()`
+        // Every cell type `CreateAlarmViewController+Sections.registerSectionCells(in:)`
         // registers. Naming fewer than all of them is how the drift this test
         // exists to catch got in: the six that had drifted were fixed, and the
         // four that had not were left unwatched.

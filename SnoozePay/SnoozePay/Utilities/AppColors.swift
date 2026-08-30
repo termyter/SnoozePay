@@ -532,23 +532,36 @@ enum AppSpacing {
     /// token holding the wrong number is worse than no token: the next reader
     /// reaches for it and silently reproduces the bug.
     ///
-    /// ⚠️ The alarm form's ten cells reach 20 through THREE different canon
-    /// rules that happen to agree on the number, and this token collapses them:
+    /// ⚠️ The alarm form's ten cells do NOT reach 20 by one canon rule, and
+    /// for three of them the canon number is not 20 at all. The artboard is
+    /// `AlarmEdit()` in `docs/design/snoozepay-2026-04-27/project/components/
+    /// SPMore2.jsx`, lines 131–293 — every reference below is inside it:
     ///
-    /// | rule | cells |
-    /// |---|---|
-    /// | screen gutter `padding: "24px 20px 0"` (`SPMore2.jsx:196`) | `NameCell`, `DayPickerCell`, `RepeatModeCell` |
-    /// | `SPCard padding={20}` (`:106`, `:198`, `:237`) | `TimePickerCell`, `SnoozeSliderCell`, |
-    /// | | `PenaltyCell`, `ProgressiveScaleCell` |
-    /// | `SPCard padding={4}` + the row's own inset (`:227`) | `SoundCell`, `ThemeRowCell`, `VibrationCell` |
+    /// - screen gutter `20px` (`:145`, `:161`, `:196`) → canon 20:
+    ///   `NameCell`, `TimePickerCell`, `DayPickerCell`, `RepeatModeCell`
+    /// - `SPCard padding={20}` (`:198`, `:237`, `:257`) → canon 20:
+    ///   `SnoozeSliderCell`, `PenaltyCell`, `ProgressiveScaleCell`
+    /// - `SPCard padding={4}` (`:227`) → canon **4**:
+    ///   `SoundCell`, `ThemeRowCell`, `VibrationCell`
     ///
-    /// So an edit here moves all three at once. That is a deliberate trade —
-    /// one token beats ten literals — but it is not "the canon says 20
-    /// everywhere": `SPMore2.jsx` also carries `padding={16}` at `:44` and
-    /// `padding: "0 16px 24px"` at `:285`. `AppSpacing.screenInset` meanwhile is
-    /// still `lg` (16) while the canon gutter is 20, which is the same
-    /// disagreement one level up and is not fixed here.
-    static let cardHorizontalPadding: CGFloat = sp5
+    /// The first two groups are not the same rule: a gutter insets a child of
+    /// the scroll container, a card padding insets the card's own contents.
+    /// They agree on 20 here by coincidence of this artboard, not by principle.
+    ///
+    /// The third group is a **known divergence**: canon gives those rows 4pt
+    /// and the app gives them 20. That is the same disagreement #677 settled
+    /// on the wallet's rows, and the comments elsewhere that miscite it as a
+    /// `4px 20px` canon rule are tracked in #685. This token holds 20 for all
+    /// ten deliberately — one token beats ten literals — but reading it as
+    /// "canon says 20 everywhere" is wrong twice over.
+    ///
+    /// An earlier version of this table cited `:106` and `padding={16}` at
+    /// `:44`. Both are in OTHER artboards (`AlarmDetail`, `Permissions`) and
+    /// say nothing about this screen. Within `AlarmEdit` the one real
+    /// dissenter is `:285`, `padding: "0 16px 24px"` on the delete button's
+    /// footer. `AppSpacing.screenInset` is likewise still `lg` (16) against a
+    /// canon gutter of 20 — the same disagreement one level up, not fixed here.
+        static let cardHorizontalPadding: CGFloat = sp5
 }
 
 /// App-wide corner radius constants — names aligned with `tokens.css`
