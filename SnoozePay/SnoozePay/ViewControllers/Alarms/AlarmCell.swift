@@ -285,17 +285,32 @@ final class AlarmCell: UITableViewCell {
         applyEnabledTone(enabled)
         rebuildPills(price: priceText, multiplier: multiplier, soundName: soundName, enabled: enabled)
 
-        // Compose the VoiceOver summary from the same fields and refresh the
-        // toggle's value so the row reads as one coherent control pair.
+        // Compose the VoiceOver summary from the same fields.
+        //
+        // The toggle's *value* is deliberately NOT set here. `accessibilityValue`
+        // on a `UISwitch` belongs to the platform: once UIKit's accessibility
+        // layer is installed in the process — which is always the case when
+        // VoiceOver actually runs — the switch is re-classed and
+        // `-[UISwitchAccessibility accessibilityValue]` answers
+        //
+        //     return [self safeBoolForKey:@"isOn"] ? @"1" : @"0";
+        //
+        // with no branch that consults an assigned value (disassembled from
+        // `System/Library/AccessibilityBundles/UIKit.axbundle` on the iOS 26.5
+        // simulator runtime, 23F77 — it is a private implementation and Apple
+        // may change it, so re-read it before relying on the exact body). So
+        // the localised
+        // «включён» this line used to store was never spoken to anyone; VoiceOver
+        // announces the state itself, in the system's own wording (#645).
+        // `accessibilityLabel` is a different story — the same class resolves it
+        // through `accessibilityUserDefinedLabel`, i.e. it honours what we set,
+        // which is why the contextual «Будильник» in `setupUI` is a real contract.
         cardView.accessibilityLabel = Self.accessibilityLabel(
             time: time,
             daysCaps: daysCaps,
             priceText: priceText,
             multiplier: multiplier,
             soundName: soundName
-        )
-        toggleSwitch.accessibilityValue = Localized.text(
-            enabled ? "alarms.cell.toggle_on" : "alarms.cell.toggle_off"
         )
     }
 
@@ -469,9 +484,8 @@ final class AlarmCell: UITableViewCell {
     @objc private func toggleSwitchChanged() {
         let isOn = toggleSwitch.isOn
         applyEnabledTone(isOn)
-        toggleSwitch.accessibilityValue = Localized.text(
-            isOn ? "alarms.cell.toggle_on" : "alarms.cell.toggle_off"
-        )
+        // No `accessibilityValue` refresh here either — see `configure(...)`:
+        // the platform derives the switch's announced value from `isOn`.
         // Recolour the caps + pill set to track the new tone.
         if let attributed = capsLabel.attributedText?.string {
             capsLabel.attributedText = NSAttributedString(

@@ -45,8 +45,6 @@ final class AlarmEditorCopyTests: XCTestCase {
         "alarms.button.delete": "Удалить",
         "alarms.cell.accessibility": "Будильник %@",
         "alarms.cell.toggle_accessibility": "Будильник",
-        "alarms.cell.toggle_off": "выключен",
-        "alarms.cell.toggle_on": "включён",
         "alarms.debug.reset_onboarding.message": "Закройте приложение и запустите заново — "
             + "увидите экран приветствия.",
         "alarms.debug.reset_onboarding.title": "Онбординг сброшен",
@@ -270,21 +268,73 @@ final class AlarmEditorCopyTests: XCTestCase {
         )
     }
 
-    func testAlarmCardToggleAnnouncesItsStateFromTheCatalogue() {
-        let cell = AlarmCell(style: .default, reuseIdentifier: nil)
-        cell.configure(
-            time: "07:00",
-            daysCaps: "ВЫХОДНЫЕ",
-            priceText: "50 ₽",
-            multiplier: nil,
-            soundName: nil,
-            enabled: true
-        )
-        let toggle = Self.controls(in: cell.contentView).first {
-            $0.accessibilityLabel == Localized.text("alarms.cell.toggle_accessibility")
+    /// The card's toggle: its *label* comes from the catalogue, its *value*
+    /// comes from the platform — and this test claims only the first.
+    ///
+    /// #645. The assertion here used to read
+    /// `XCTAssertEqual(toggle?.accessibilityValue, Localized.text("alarms.cell.toggle_on"))`
+    /// and was green in the full suite but red under `-only-testing:`, reporting
+    /// `("1") is not equal to ("включён")`. That is not test order: `"1"` can
+    /// only be produced by UIKit's accessibility layer, whose
+    /// `-[UISwitchAccessibility accessibilityValue]` (disassembled from
+    /// `System/Library/AccessibilityBundles/UIKit.axbundle`) is exactly
+    ///
+    ///     return [self safeBoolForKey:@"isOn"] ? @"1" : @"0";
+    ///
+    /// — no branch reads back a value the app assigned. (Read off the iOS 26.5
+    /// simulator runtime, 23F77; private implementation, so re-read it before
+    /// leaning on the exact body.)
+    ///
+    /// What is established is the disassembly and the two observed runs. Which
+    /// run had the accessibility layer installed is the explanation that fits
+    /// them, not something this suite measured — but it does not need to be: in
+    /// production the layer IS installed whenever VoiceOver runs, so the red
+    /// result is the one that describes a user. The old expectation was
+    /// unreachable there, and `AlarmCell` no longer assigns it.
+    ///
+    /// The replacement oracle is a **baseline** rather than a constant: a bare
+    /// `UISwitch` in the same state, created next to the cell and read in the
+    /// same breath, so both sides see the same process.
+    ///
+    /// `UISwitch` and not `SPSwitch` on purpose. The value under test is
+    /// UIKit's derived one, and the card's control is an `SPSwitch`; baselining
+    /// against another `SPSwitch` would move both sides together the day
+    /// `SPSwitch` grows an `accessibilityValue` override of its own, and the
+    /// test would stay green while VoiceOver started saying something else.
+    /// The platform is the oracle, so the baseline has to be the platform.
+    /// Both `nil` (layer not installed) or both `"1"`/`"0"` (installed) —
+    /// either way the card is
+    /// compared against the platform, and re-introducing a hand-set value turns
+    /// this red in exactly the run that used to be green.
+    ///
+    /// `accessibilityLabel` is asserted as before: the same UIKit class resolves
+    /// it through `accessibilityUserDefinedLabel`, so it *is* ours to set.
+    func testAlarmCardToggleAnnouncesItsStateTheWayThePlatformDoes() throws {
+        for enabled in [true, false] {
+            let cell = AlarmCell(style: .default, reuseIdentifier: nil)
+            cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽",
+                           multiplier: nil, soundName: nil, enabled: enabled)
+            let baseline = UISwitch()
+            baseline.isOn = enabled
+
+            let toggle = try XCTUnwrap(
+                Self.controls(in: cell.contentView).compactMap { $0 as? UISwitch }.first {
+                    $0.accessibilityLabel == Localized.text("alarms.cell.toggle_accessibility")
+                },
+                "the card's switch lost its VoiceOver label (enabled: \(enabled))"
+            )
+            XCTAssertEqual(toggle.isOn, enabled, "the card's switch stopped tracking `enabled`")
+            XCTAssertEqual(
+                toggle.accessibilityValue, baseline.accessibilityValue,
+                """
+                the card announces its state differently from a bare UISwitch in the same \
+                state (enabled: \(enabled)) — card: \
+                \(toggle.accessibilityValue.map { "\"\($0)\"" } ?? "nil"), \
+                platform: \(baseline.accessibilityValue.map { "\"\($0)\"" } ?? "nil"). \
+                Something assigned accessibilityValue again, and VoiceOver will ignore it
+                """
+            )
         }
-        XCTAssertNotNil(toggle, "the card's switch lost its VoiceOver label")
-        XCTAssertEqual(toggle?.accessibilityValue, Localized.text("alarms.cell.toggle_on"))
     }
 
     /// Two arguments in a row, one of them a declined noun: a swapped pair
