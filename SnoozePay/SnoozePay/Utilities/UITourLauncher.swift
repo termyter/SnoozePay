@@ -37,7 +37,22 @@ import UIKit
 ///                            loads at `AppDelegate` time, before any mount.
 enum UITourLauncher {
 
-    static var requestedScreen: String? { value(after: "-uitour") }
+    /// Spelled once so `isTourLaunch` and `requestedScreen` cannot drift.
+    static let screenArgument = "-uitour"
+
+    static var requestedScreen: String? { value(after: screenArgument) }
+
+    /// `true` when `arguments` mount a tour screen. Read by `AppDelegate` to
+    /// skip the launch-time permission re-ask (#626): a tour launch shows one
+    /// screen and must never cover it with a dialog nobody asked for.
+    ///
+    /// Keyed on the screen id being present, not merely on the flag: a bare
+    /// `-uitour` mounts nothing, so the app is running normally and should
+    /// behave normally. Pure over `arguments` so the rule is unit-testable
+    /// without launching an app.
+    static func isTourLaunch(arguments: [String]) -> Bool {
+        value(after: screenArgument, in: arguments) != nil
+    }
 
     // MARK: - Mounting
 

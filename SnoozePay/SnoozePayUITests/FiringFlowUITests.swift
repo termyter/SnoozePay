@@ -40,7 +40,14 @@ final class FiringFlowUITests: XCTestCase {
         // `-uitour firing` mounts AlarmFiringViewController as root;
         // `-uitour-balance 1000` guarantees the snooze is affordable so the
         // flow reaches the snoozed state rather than the no-balance layout.
-        app.launchArguments = ["-uitour", "firing", "-uitour-balance", "1000"]
+        // `-uitour-alarmkit denied` states the backend this flow runs on
+        // instead of inheriting whatever the simulator answers (#626): the
+        // in-place snoozed state below exists only on a backend that does NOT
+        // arm the next ring itself — on an authorized one the screen closes
+        // and the system owns it (#383).
+        app.launchArguments = [
+            "-uitour", "firing", "-uitour-balance", "1000", "-uitour-alarmkit", "denied"
+        ]
         app.launch()
 
         // 1. Firing screen — snooze CTA + «Я встал» dismiss are both present.
@@ -51,8 +58,14 @@ final class FiringFlowUITests: XCTestCase {
         XCTAssertTrue(dismiss.exists,
                       "«Я встал» dismiss button should be present on the firing screen")
 
-        // 2. Snooze → snoozed state with a live countdown appears in place.
+        // 2. Snooze → the refusal is stated, then the snoozed state with a live
+        // countdown appears in place. On the denied backend the schedule is
+        // refused (#472) and the screen says so before anything else can be
+        // tapped — clear that alert here, deliberately, rather than leaving it
+        // to XCUITest (see `dismissAppAlert`).
         snooze.tap()
+        XCTAssertTrue(dismissAppAlert(in: app, timeout: 10),
+                      "A snooze refused by an unauthorized backend should explain itself")
         let countdown = app.staticTexts["firing.countdown"]
         XCTAssertTrue(countdown.waitForExistence(timeout: 5),
                       "Snoozed-state countdown should appear after «Поспать ещё»")
@@ -69,5 +82,60 @@ final class FiringFlowUITests: XCTestCase {
                       "Closing the summary should return to the firing screen")
         XCTAssertFalse(wokeClose.exists,
                        "WokeMorning summary should be gone after «Закрыть»")
+    }
+}
+
+// MARK: - Alert handling shared by the E2E classes
+
+/// Why every E2E class dismisses the app's own alerts by hand instead of
+/// letting XCUITest do it — the mechanism behind #626.
+///
+/// When an alert covers the element a test is about to touch, XCUITest calls
+/// it an *interrupting element* and runs the default interruption handler.
+/// That handler taps a button, then waits a **fixed 1.0 s** for the alert to
+/// go away. The window is not configurable, and missing it is not retried:
+/// the handler falls through to a last-ditch predicate that matches only
+/// English button labels (`label CONTAINS[d] "Don’t" OR label CONTAINS
+/// "Cancel"`), finds nothing in a Russian alert, logs `unable to find any
+/// qualified button` and gives up **for the rest of the test**. From that
+/// point every tap resolves to `Computed hit point {-1, -1}` and every
+/// `waitForExistence` after it times out against a covered screen.
+///
+/// On a loaded runner the round trip after the tap costs more than 1.0 s, so
+/// which test dies is decided by which one drew the slow second — the exact
+/// signature reported in #626 (two red runs in a row, a different test each
+/// time, always on a `waitForExistence` right after a tap). Run 33295307930
+/// missed the window by 1.01 s; the green run 33294965122 on the same code
+/// made it with room to spare and confirmed handling.
+///
+/// Doing it here removes the coin flip: our own wait has a budget we choose,
+/// and the assertion fails loudly if the alert will not go away, instead of
+/// silently poisoning the remaining steps.
+///
+/// It lives in this file rather than its own because `SnoozePayUITests` is a
+/// plain group in `project.pbxproj` — adding a file there is a PM-zone edit.
+extension XCTestCase {
+
+    /// Wait for an app-owned alert and dismiss it through its first button.
+    /// Returns `false` when no alert showed up inside `timeout` — callers
+    /// decide whether that is a failure or the normal case.
+    ///
+    /// Always button 0. Every alert a tour launch can raise is either
+    /// single-action («Ок») or cancel-first («Отмена» then «Настройки»), and
+    /// the second button of the latter leaves the app for Settings — so index
+    /// 0 is the only safe choice. It is verified rather than trusted: the
+    /// alert must be gone afterwards.
+    @discardableResult
+    func dismissAppAlert(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        let alert = app.alerts.firstMatch
+        guard alert.waitForExistence(timeout: timeout) else { return false }
+
+        let button = alert.buttons.element(boundBy: 0)
+        XCTAssertTrue(button.waitForExistence(timeout: 5),
+                      "Alert «\(alert.label)» should offer a dismissing button")
+        button.tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 10),
+                      "Alert «\(alert.label)» should close after tapping «\(button.label)»")
+        return true
     }
 }

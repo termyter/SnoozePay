@@ -43,7 +43,14 @@ final class NoBalanceTopUpUITests: XCTestCase {
 
     func testNoBalanceTopUpReenablesSnooze() {
         let app = XCUIApplication()
-        app.launchArguments = ["-uitour", "firing-nobalance", "-uitour-storekit-empty"]
+        // `-uitour-alarmkit granted` states the backend rather than inheriting
+        // the simulator's (#626). This flow never snoozes, so the grant only
+        // buys the guarantee that no authorization prompt can appear over the
+        // screen — whatever order the classes happen to run in.
+        app.launchArguments = [
+            "-uitour", "firing-nobalance", "-uitour-storekit-empty",
+            "-uitour-alarmkit", "granted"
+        ]
         app.launch()
 
         // 1. No-balance layout — top-up CTA present, normal snooze absent.

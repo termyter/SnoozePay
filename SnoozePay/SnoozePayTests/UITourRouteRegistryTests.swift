@@ -122,4 +122,45 @@ final class UITourRouteRegistryTests: XCTestCase {
         window.rootViewController = nil
     }
 }
+
+/// `UITourLauncher.isTourLaunch(arguments:)` — the rule `AppDelegate` uses to
+/// skip the launch-time permission re-ask (#626).
+///
+/// Worth its own cases because both ways it can be wrong are silent. Too
+/// eager, and a hand-run DEBUG build stops asking for alarm authorization and
+/// quietly never rings. Too shy, and the E2E run goes back to covering the
+/// mounted screen with «Уведомления выключены» — the alert that made two
+/// firing-screen tests red on `main` while the code under test was innocent.
+final class UITourLaunchDetectionTests: XCTestCase {
+
+    func testTourLaunch_isDetectedFromTheScreenId() {
+        XCTAssertTrue(UITourLauncher.isTourLaunch(arguments: ["-uitour", "firing"]))
+        XCTAssertTrue(UITourLauncher.isTourLaunch(
+            arguments: ["-uitour", "firing-progressive", "-uitour-balance", "1000"]
+        ))
+    }
+
+    func testPlainLaunch_isNotATourLaunch() {
+        XCTAssertFalse(UITourLauncher.isTourLaunch(arguments: []))
+        XCTAssertFalse(
+            UITourLauncher.isTourLaunch(arguments: ["-uitour-balance", "1000"]),
+            "a tour option without the screen argument does not mount anything"
+        )
+    }
+
+    func testBareFlagWithoutAScreenId_isNotATourLaunch() {
+        XCTAssertFalse(
+            UITourLauncher.isTourLaunch(arguments: ["-uitour"]),
+            "nothing gets mounted, so the app is running normally and must behave normally"
+        )
+    }
+
+    func testArgumentSpelling_matchesTheUITestLaunchArguments() {
+        XCTAssertEqual(
+            UITourLauncher.screenArgument,
+            "-uitour",
+            "spelling is contract with every E2E class's launchArguments — change both or neither"
+        )
+    }
+}
 #endif

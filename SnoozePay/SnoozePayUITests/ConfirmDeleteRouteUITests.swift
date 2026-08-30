@@ -27,7 +27,10 @@ final class ConfirmDeleteRouteUITests: XCTestCase {
 
     func testConfirmDeleteRouteShowsTitleBodyAndBothActions() {
         let app = XCUIApplication()
-        app.launchArguments = ["-uitour", "confirm-delete"]
+        // `-uitour-alarmkit granted` states the backend rather than inheriting
+        // the simulator's (#626) — no class may leave an authorization prompt
+        // to chance, including the ones that never schedule anything.
+        app.launchArguments = ["-uitour", "confirm-delete", "-uitour-alarmkit", "granted"]
         app.launch()
 
         let title = app.staticTexts["confirmDelete.title"]

@@ -35,6 +35,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// successful re-arm.
     private var lastRescheduleFailedCount = 0
 
+    /// `true` when this process was started by the DEBUG screen router
+    /// (`-uitour <screen>`). Always `false` in RELEASE — the whole tour is
+    /// compiled out — so the launch-time behaviour a shipped build gets is
+    /// unchanged by construction, not by convention.
+    private static var isUITourLaunch: Bool {
+        #if DEBUG
+        return UITourLauncher.isTourLaunch(arguments: ProcessInfo.processInfo.arguments)
+        #else
+        return false
+        #endif
+    }
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -58,7 +70,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // explanatory screen. Once Permissions has been shown at least once,
         // the auto-request resumes for subsequent launches so the existing
         // "permission revoked from Settings" alert keeps firing.
-        if PermissionsViewController.hasBeenShown {
+        //
+        // A `-uitour` launch is excluded (#626). The tour mounts ONE screen
+        // directly and must never put a dialog over it — the same contract
+        // `UITourAlarmKitBackend` states for the system prompt. The re-ask here
+        // broke it transitively: `OnboardingFlowUITests` taps «Готово», which
+        // flips `hasBeenShown` in the simulator's UserDefaults, and every tour
+        // launch after it in the same run asked again, was refused, and covered
+        // the mounted screen with «Уведомления выключены» — an alert the test
+        // never asked for and could only hope XCUITest would swat away in time.
+        if PermissionsViewController.hasBeenShown, !AppDelegate.isUITourLaunch {
             AlarmScheduler.shared.requestPermission { [weak self] granted in
                 if !granted {
                     AppLogger.appDelegate.notice("alarm permission denied — alarms will not fire")
