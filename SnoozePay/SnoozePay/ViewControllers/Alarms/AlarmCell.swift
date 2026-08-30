@@ -296,7 +296,10 @@ final class AlarmCell: UITableViewCell {
         //     return [self safeBoolForKey:@"isOn"] ? @"1" : @"0";
         //
         // with no branch that consults an assigned value (disassembled from
-        // `System/Library/AccessibilityBundles/UIKit.axbundle`). So the localised
+        // `System/Library/AccessibilityBundles/UIKit.axbundle` on the iOS 26.5
+        // simulator runtime, 23F77 — it is a private implementation and Apple
+        // may change it, so re-read it before relying on the exact body). So
+        // the localised
         // «включён» this line used to store was never spoken to anyone; VoiceOver
         // announces the state itself, in the system's own wording (#645).
         // `accessibilityLabel` is a different story — the same class resolves it

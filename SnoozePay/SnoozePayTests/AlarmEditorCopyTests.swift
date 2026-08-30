@@ -281,12 +281,16 @@ final class AlarmEditorCopyTests: XCTestCase {
     ///
     ///     return [self safeBoolForKey:@"isOn"] ? @"1" : @"0";
     ///
-    /// — no branch reads back a value the app assigned. So the *red* run was
-    /// the honest one: it happened to be the run in which that layer was
-    /// installed, which is the state every VoiceOver user is in. The green run
-    /// only meant the layer had not been installed in the process yet, so the
-    /// plain stored property answered instead. The old expectation was therefore
-    /// unreachable in production, and `AlarmCell` no longer assigns it.
+    /// — no branch reads back a value the app assigned. (Read off the iOS 26.5
+    /// simulator runtime, 23F77; private implementation, so re-read it before
+    /// leaning on the exact body.)
+    ///
+    /// What is established is the disassembly and the two observed runs. Which
+    /// run had the accessibility layer installed is the explanation that fits
+    /// them, not something this suite measured — but it does not need to be: in
+    /// production the layer IS installed whenever VoiceOver runs, so the red
+    /// result is the one that describes a user. The old expectation was
+    /// unreachable there, and `AlarmCell` no longer assigns it.
     ///
     /// The replacement oracle is a **baseline** rather than a constant: a bare
     /// `UISwitch` in the same state, created next to the cell and read in the
@@ -297,8 +301,9 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// against another `SPSwitch` would move both sides together the day
     /// `SPSwitch` grows an `accessibilityValue` override of its own, and the
     /// test would stay green while VoiceOver started saying something else.
-    /// The platform is the oracle, so the baseline has to be the platform. Both `nil` (layer not
-    /// installed) or both `"1"`/`"0"` (installed) — either way the card is
+    /// The platform is the oracle, so the baseline has to be the platform.
+    /// Both `nil` (layer not installed) or both `"1"`/`"0"` (installed) —
+    /// either way the card is
     /// compared against the platform, and re-introducing a hand-set value turns
     /// this red in exactly the run that used to be green.
     ///
