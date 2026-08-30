@@ -170,7 +170,15 @@ extension AlarmFiringViewController {
             message: Localized.format("firing.alert.snooze_not_scheduled.message", detail),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default) { _ in
+            // PROOF-ONLY (#626), never merged. Makes the "loaded runner"
+            // condition deterministic instead of waiting to draw it: the main
+            // thread is unavailable for 4 s from the moment this alert's
+            // button is pressed, so the alert cannot leave the accessibility
+            // tree inside the fixed 1.0 s window XCUITest's default
+            // interruption handler gives itself to confirm a dismissal.
+            Thread.sleep(forTimeInterval: 4.0)
+        })
         present(alert, animated: true)
     }
 
