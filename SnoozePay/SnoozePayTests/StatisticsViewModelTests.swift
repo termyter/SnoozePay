@@ -384,12 +384,12 @@ final class StatisticsViewModelDataTests: XCTestCase {
         XCTAssertEqual(averages.reduce(0, +), 0, "Charges older than 4 weeks must not count")
     }
 
-    func testWorstIndex_picksHighestAverage() {
-        XCTAssertEqual(StatisticsViewModel.worstIndex(of: [1, 0.5, 1.75, 0, 1, 0.25, 0]), 2)
+    func testWorstIndices_picksHighestAverage() {
+        XCTAssertEqual(StatisticsViewModel.worstIndices(of: [1, 0.5, 1.75, 0, 1, 0.25, 0]), [2])
     }
 
-    func testWorstIndex_allZero_returnsNil() {
-        XCTAssertNil(StatisticsViewModel.worstIndex(of: [0, 0, 0, 0, 0, 0, 0]))
+    func testWorstIndices_allZero_returnsEmpty() {
+        XCTAssertEqual(StatisticsViewModel.worstIndices(of: [0, 0, 0, 0, 0, 0, 0]), [])
     }
 
     func testWeekdayStats_instance_marksWorstDay() {
@@ -405,13 +405,13 @@ final class StatisticsViewModelDataTests: XCTestCase {
         XCTAssertEqual(stats.count, 7)
         XCTAssertEqual(stats.map(\.label), StatisticsViewModel.weekdayShortLabels)
         XCTAssertEqual(stats.filter(\.isWorst).count, 1)
-        XCTAssertNotNil(vm.worstWeekdayName)
+        XCTAssertFalse(vm.worstWeekdayNames.isEmpty)
     }
 
     func testWorstWeekdayName_nilWhenNoSnoozes() {
         let vm = makeVM()
         vm.loadData()
-        XCTAssertNil(vm.worstWeekdayName)
+        XCTAssertTrue(vm.worstWeekdayNames.isEmpty)
     }
 
     // MARK: - 8-week trend

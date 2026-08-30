@@ -707,7 +707,7 @@ final class StatisticsViewModelTests: XCTestCase {
         // With no transactions, the hero caption celebrates the clean ledger
         // and the weekday card has no "worst day" to point at.
         XCTAssertEqual(vm.lastSlipText, "Срывов ещё не было")
-        XCTAssertNil(vm.worstWeekdayName)
+        XCTAssertTrue(vm.worstWeekdayNames.isEmpty)
     }
 
     func testEmptyDataHeatmap_hasFullWeeksOfEmptyCells() {

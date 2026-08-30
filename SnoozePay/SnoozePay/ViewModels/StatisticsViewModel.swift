@@ -59,7 +59,8 @@ final class StatisticsViewModel {
         let label: String
         /// Average snoozes on this weekday across the 4-week window.
         let average: Double
-        /// `true` for the single worst (highest-average) day.
+        /// `true` for every day sharing the highest average — more than one
+        /// when they tie (#636).
         let isWorst: Bool
     }
 
@@ -157,7 +158,7 @@ final class StatisticsViewModel {
     /// asks after it (#459).
     private(set) var heatmapDays: [HeatmapDay] = []
     private(set) var weekdayStats: [WeekdayStat] = []
-    private(set) var worstWeekdayName: String?
+    private(set) var worstWeekdayNames: [String] = []
     private(set) var weeklyTrend: [WeekTrendPoint] = []
     private(set) var trendDiff = 0
 
@@ -314,7 +315,7 @@ final class StatisticsViewModel {
             weekMoneySummary = .empty
             heatmapDays = []
             weekdayStats = []
-            worstWeekdayName = nil
+            worstWeekdayNames = []
             weeklyTrend = []
             trendDiff = 0
             wakeTimeStats = Self.wakeTimeStats(
@@ -349,11 +350,11 @@ final class StatisticsViewModel {
         let averages = Self.weekdayAverages(
             today: today, snoozesByDay: snoozesByDay, calendar: calendar
         )
-        let worst = Self.worstIndex(of: averages)
+        let worst = Set(Self.worstIndices(of: averages))
         weekdayStats = zip(Self.weekdayShortLabels, averages.indices).map { label, index in
-            WeekdayStat(label: label, average: averages[index], isWorst: index == worst)
+            WeekdayStat(label: label, average: averages[index], isWorst: worst.contains(index))
         }
-        worstWeekdayName = worst.map { Self.weekdayFullNames[$0] }
+        worstWeekdayNames = Self.worstIndices(of: averages).map { Self.weekdayFullNames[$0] }
         let counts = Self.weeklyCounts(
             today: today, snoozesByDay: snoozesByDay, calendar: calendar
         )
@@ -402,8 +403,8 @@ final class StatisticsViewModel {
 
     // `weekdayStats` holds seven Monday-first bars: the average snooze count
     // per weekday over the snapshot's trailing 28-day window.
-    // `worstWeekdayName` is its full lowercase name ("среда"), or `nil`
-    // when the window carries no snoozes.
+    // `worstWeekdayNames` holds the full lowercase names ("среда") of every
+    // day tied for worst — empty when the window carries no snoozes.
     // MARK: - 8-week trend
 
     // `weeklyTrend` holds eight calendar weeks oldest → newest; the last
@@ -519,11 +520,22 @@ final class StatisticsViewModel {
         return mondayFirstWeekdays.map { Double(totals[$0] ?? 0) / 4.0 }
     }
 
-    /// Index of the single worst (highest) average; `nil` when every value
-    /// is zero — "Чаще всего" makes no sense on a clean month.
-    static func worstIndex(of averages: [Double]) -> Int? {
-        guard let maxValue = averages.max(), maxValue > 0 else { return nil }
-        return averages.firstIndex(of: maxValue)
+    /// Indices of EVERY day sharing the highest average; empty when every
+    /// value is zero — "Чаще всего" makes no sense on a clean month.
+    ///
+    /// Ties are resolved by highlighting all of them, deliberately. This used
+    /// to be `firstIndex(of:)`, which handed the pain tint to whichever tied
+    /// day the array happened to reach first: two days both averaging 0,5 came
+    /// out one red and one grey, and the user was shown a difference that
+    /// wasn't in the data (#636).
+    ///
+    /// Of the three ways out, this is the only one that neither invents a
+    /// distinction nor hides one. Highlighting none would suppress a real
+    /// finding — those days ARE the worst — and picking the earliest or the
+    /// latest would still be an arbitrary rule the chart cannot communicate.
+    static func worstIndices(of averages: [Double]) -> [Int] {
+        guard let maxValue = averages.max(), maxValue > 0 else { return [] }
+        return averages.indices.filter { averages[$0] == maxValue }
     }
 
     /// Snooze totals for the trailing 8 calendar weeks (Monday-start),
