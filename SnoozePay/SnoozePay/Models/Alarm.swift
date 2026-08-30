@@ -286,16 +286,30 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// The `switch` has no `default`, so a new case — which anyone adding a
     /// field must write, since `init(from:)` needs the key to read it — stops
     /// this file from building until its value is encoded. The loop visits each
-    /// key exactly once, in declaration order, which is the order the
-    /// straight-line version wrote them in: same bytes, same shape on disk.
+    /// key exactly once and writes the same value under the same key as the
+    /// straight-line version did — same key SET, same values, so the shape on
+    /// disk is unchanged.
+    ///
+    /// Not «same bytes»: key order in the emitted JSON is Foundation's, not
+    /// ours, and always was — a keyed container is dictionary-backed without
+    /// `.sortedKeys`. That is fine because nothing depends on order:
+    /// `JSONDecoder` looks keys up, `AlarmRepository.persist` hands the `Data`
+    /// straight to `UserDefaults`, and no test compares encoded bytes. Said
+    /// plainly here because this is the paragraph someone reads before
+    /// touching an encoder that owns live user data — and believing an
+    /// ordering guarantee that was never there is how they would «preserve»
+    /// one that costs something.
+    ///
     /// `AlarmCodingContractTests` pins the two things the compiler still
     /// cannot see — a property that never got a key, and an arm that writes
     /// nothing.
     ///
     /// Complexity is suppressed deliberately: fifteen arms performing one
     /// `encode` each are a table, not branching logic, and the default
-    /// threshold would turn into a lint ERROR at ~18 keys — i.e. adding a field
-    /// would start failing the linter instead of the compiler.
+    /// threshold would turn into a lint ERROR at 19 keys — complexity is
+    /// `cases + 1`, the default error threshold is 20, and we are at 15 cases
+    /// today. Past that, adding a field would start failing the linter instead
+    /// of the compiler, which is the opposite of the point of this PR.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases {

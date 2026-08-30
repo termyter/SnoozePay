@@ -130,8 +130,15 @@ final class AlarmCodingContractTests: XCTestCase {
 
     /// Value-by-value pin of what lands in `UserDefaults`. These literals
     /// describe the format as it shipped BEFORE the encoder was rewritten;
-    /// the rewrite kept the declaration order of `CodingKeys`, so the same
-    /// values go into the same container in the same order.
+    /// the rewrite writes the same value under the same key, so the shape is
+    /// unchanged. Order is deliberately NOT asserted — key order in the
+    /// emitted JSON belongs to Foundation, not to us, and asserting it would
+    /// pin a guarantee that never existed.
+    ///
+    /// Every field here holds a DISTINCT non-default value on purpose: that is
+    /// what makes the test catch an arm that encodes the right key from the
+    /// wrong property. Simplifying the fixture to defaults would quietly
+    /// disarm it.
     func testEncodedPayload_hasTheShippedWireShape() throws {
         let json = try encodedJSON(Self.fullySpecifiedAlarm)
 
