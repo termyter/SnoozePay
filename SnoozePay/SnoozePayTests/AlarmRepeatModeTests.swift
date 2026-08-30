@@ -139,8 +139,14 @@ final class AlarmRepeatModeTests: XCTestCase {
 
     // MARK: - CreateAlarmViewModel seeding + persistence
 
-    func testCreateVM_newAlarm_defaultsToWeekly() {
-        XCTAssertEqual(CreateAlarmViewModel().repeatMode, .weekly)
+    /// Was `defaultsToWeekly` until #633. A new form has no days selected, and
+    /// «Еженедельно» without days is not a schedule the app can build — it used
+    /// to save as a one-shot alarm while the pill still read «Еженедельно».
+    /// The form now opens in the mode it would actually save.
+    func testCreateVM_newAlarm_defaultsToNeverWhileNoDaysAreSelected() {
+        let viewModel = CreateAlarmViewModel()
+        XCTAssertTrue(viewModel.repeatDays.isEmpty)
+        XCTAssertEqual(viewModel.repeatMode, .never)
     }
 
     func testCreateVM_editingOneShotAlarm_seedsNever() {
@@ -163,6 +169,9 @@ final class AlarmRepeatModeTests: XCTestCase {
 
     func testCreateVM_hintMatchesMode() {
         let viewModel = CreateAlarmViewModel()
+        // With days selected, so the hints read as they did before #633 — the
+        // zero-day wording is asserted in `CreateAlarmRepeatValidityTests`.
+        viewModel.toggleDay(0)
 
         viewModel.repeatMode = .never
         XCTAssertEqual(

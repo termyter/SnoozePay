@@ -32,6 +32,11 @@ final class CreateAlarmViewController: UIViewController {
         return view
     }()
 
+    /// The nav-bar «Готово» / «Сохранить» button, kept so the repeat-mode
+    /// validation can dim it (#633). Weak — the `UIBarButtonItem` owns it;
+    /// `internal` so `+Sections` can reach it from `refreshRepeatValidity()`.
+    weak var saveButton: SPButton?
+
     // MARK: - Sections
 
     /// Section order matches the V2 AlarmEdit artboard (`SPMore2.jsx` /
@@ -97,6 +102,7 @@ final class CreateAlarmViewController: UIViewController {
         view.backgroundColor = AppColors.bg0
         setupNavigationBar()
         setupTableView()
+        refreshRepeatValidity()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -161,6 +167,8 @@ final class CreateAlarmViewController: UIViewController {
         )
         saveButton.accessibilityIdentifier = "createAlarm.saveButton"
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
+        // `isEnabled` is set by `refreshRepeatValidity()` from viewDidLoad (#633).
+        self.saveButton = saveButton
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: saveButton)
 
         // V2 title sits in caps + tracking. UIKit nav titles don't support
@@ -281,6 +289,12 @@ final class CreateAlarmViewController: UIViewController {
                     title: Localized.text("create_alarm.error.schedule_failed"),
                     error: error
                 )
+            case .invalid:
+                // Unreachable through the button, which is dimmed while the
+                // form is invalid — this is the belt to that suspenders (#633).
+                // The reason is already on screen under the repeat pill, so
+                // bring it into view instead of stacking an alert on top of it.
+                self.revealRepeatModeRow()
             }
         }
     }
