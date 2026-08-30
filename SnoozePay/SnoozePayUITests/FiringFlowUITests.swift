@@ -14,6 +14,11 @@ import XCTest
 ///   3. Tap «Я встал — выключить» → the WokeMorning summary is presented.
 ///   4. Tap «Закрыть» → the summary unwinds back to the firing screen.
 ///
+/// This file holds BOTH halves of that tap: `FiringFlowUITests` below drives
+/// the denied backend (in-place snoozed state), `AlarmKitSnoozeHandoffUITests`
+/// the authorized one (the screen closes, #642). They share a file because
+/// `SnoozePayUITests` is a plain `PBXGroup` — see that class's doc.
+///
 /// This is intentionally ONE test: a stability probe. If it runs reliably and
 /// green on CI, the e2e suite is worth expanding; if XCUITest proves flaky on
 /// the CI simulator, we keep e2e thin and lean on unit tests. Selectors are
@@ -104,6 +109,137 @@ final class FiringFlowUITests: XCTestCase {
                       "Closing the summary should return to the firing screen")
         XCTAssertFalse(wokeClose.exists,
                        "WokeMorning summary should be gone after «Закрыть»")
+    }
+}
+
+// MARK: - The authorized half of the same tap
+
+/// End-to-end for the AUTHORIZED snooze — the path a normal user is on (#642).
+///
+/// With AlarmKit authorized the snooze re-fires as a REAL system alarm: the
+/// scheduler stops the currently-alerting alarm and reschedules it, so the
+/// in-app firing screen has nothing left to do and closes; the system owns the
+/// next ring (#383). The in-place «отложено» countdown that `FiringFlowUITests`
+/// above and `ProgressiveSnoozeUITests` assert is the OTHER branch — the one
+/// for a backend that does not arm the next ring itself. Both of those pin
+/// `-uitour-alarmkit denied` (#639), which left the branch every real user
+/// takes with no E2E at all. This class is that branch.
+///
+/// Two things make it an assertion rather than a screenshot:
+///
+///   * `-uitour-alarmkit granted` pins the backend, because a simulator has no
+///     way to grant AlarmKit authorization and an unpinned run would test
+///     whatever the runtime happened to answer (`UITourAlarmKitBackend`, #606).
+///   * `-uitour firing-presented` mounts the screen the way
+///     `AlarmFiringPresenter` does — full-screen OVER the tab bar. The plain
+///     `firing` route makes it the window ROOT, and `dismiss` on a view
+///     controller nothing is presenting is a no-op, so on that route "the
+///     screen closed" is not observable at all: the test would have passed
+///     against an app that did nothing.
+///
+/// It lives in this file, next to the denied half it mirrors, for the reason
+/// `dismissAppAlert` does: `SnoozePayUITests` is a plain `PBXGroup` in
+/// `project.pbxproj` (not a synchronized folder like `SnoozePayTests`), so a
+/// new .swift file there is not compiled until someone edits the project — a
+/// PM-zone edit, and a silent no-op test until it happens.
+final class AlarmKitSnoozeHandoffUITests: XCTestCase {
+
+    /// Title of `firing.alert.snooze_not_scheduled` — the refusal raised on the
+    /// DENIED path. Named here so this test can say "the authorized path raised
+    /// the unauthorized path's alert" instead of timing out against a covered
+    /// screen. Spelled as a literal for the reason given in `dismissAppAlert`.
+    private static let refusalAlertTitle = "Откладывание не запланировано"
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
+    override func tearDown() {
+        // Same reason as above (#438): don't leak a firing instance into the
+        // next class's launch.
+        XCUIApplication().terminate()
+        super.tearDown()
+    }
+
+    func testAuthorizedSnoozeClosesFiringScreenInsteadOfSnoozingInPlace() {
+        let app = XCUIApplication()
+        // `-uitour-balance 1000` keeps the 50 ₽ snooze affordable, so the tap
+        // reaches the scheduler instead of the no-balance layout.
+        app.launchArguments = [
+            "-uitour", "firing-presented", "-uitour-balance", "1000",
+            "-uitour-alarmkit", "granted"
+        ]
+        app.launch()
+
+        // 1. Firing screen up, presented over the tab bar.
+        let snooze = app.buttons["firing.snoozeButton"]
+        XCTAssertTrue(snooze.waitForExistence(timeout: 15),
+                      "Firing snooze CTA should appear on the presented firing route")
+        // The host is covered while the full-screen firing screen is up. Pinned
+        // because step 3 measures against it: if the tab bar were reachable all
+        // along, "the tab bar is back" would prove nothing.
+        XCTAssertFalse(app.tabBars.firstMatch.exists,
+                       "The full-screen firing screen should cover the tab bar it was presented over")
+
+        let countdown = app.staticTexts["firing.countdown"]
+        let refusal = app.alerts[Self.refusalAlertTitle]
+
+        // 2. «Поспать ещё» → the screen closes, because the next ring became a
+        // system alarm.
+        //
+        // Tapped in a bounded loop for the reason `dismissAppAlert` documents:
+        // XCUITest drops synthesized touches outright (#523, #626, #647) — app
+        // idle, element on screen, nothing happened. A dropped tap and a screen
+        // that refuses to close look identical after one attempt, so we name
+        // the two ways it is a real defect, then try once more; if the app is
+        // genuinely stuck the second attempt fails too and the test goes red.
+        var taps = 0
+        var closed = false
+        while taps < 2, !closed {
+            snooze.tap()
+            taps += 1
+            closed = snooze.waitForNonExistence(timeout: 10)
+            guard !closed else { break }
+
+            XCTAssertFalse(
+                refusal.exists,
+                """
+                The authorized path raised «\(Self.refusalAlertTitle)» — the alert that belongs \
+                to a backend refusing to schedule. An authorized snooze must arm the next ring, \
+                not explain why it won't
+                """
+            )
+            XCTAssertFalse(
+                countdown.exists,
+                """
+                The firing screen entered the in-place snoozed state (countdown to the next \
+                ring). On an authorized backend the system owns that ring (#383): the screen \
+                must close instead of counting down to an alarm it does not control
+                """
+            )
+        }
+
+        XCTAssertTrue(
+            closed,
+            "«Поспать ещё» on an authorized backend should close the firing screen (\(taps) tap(s))"
+        )
+
+        // 3. What is underneath is the app the user came from — the screen was
+        // dismissed, not merely re-rendered without its CTA.
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5),
+                      "Closing the firing screen should reveal the tab bar it was presented over")
+        XCTAssertFalse(countdown.exists,
+                       "The snoozed-state countdown must not be left behind after the hand-off")
+
+        // 4. And nothing was swallowed into an alert on the way out. The
+        // authorized path schedules cleanly, so ANY alert here — the refusal,
+        // or the billed-and-refund-failed one (#197) — is a regression, and the
+        // failure names which.
+        let strayAlert = app.alerts.firstMatch
+        if strayAlert.exists {
+            XCTFail("An authorized snooze should raise no alert, but «\(strayAlert.label)» is up")
+        }
     }
 }
 
