@@ -109,30 +109,6 @@
         }
       }
     },
-    "alarms.cell.toggle_off" : {
-      "comment" : "Alarm card, VoiceOver value of the on/off switch when the alarm will not ring.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "выключен"
-          }
-        }
-      }
-    },
-    "alarms.cell.toggle_on" : {
-      "comment" : "Alarm card, VoiceOver value of the on/off switch when the alarm will ring.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "включён"
-          }
-        }
-      }
-    },
     "alarms.days.every_day" : {
       "comment" : "Alarm-card caps row: the alarm repeats on all seven weekdays.",
       "extractionState" : "manual",
