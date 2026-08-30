@@ -3085,6 +3085,18 @@
         }
       }
     },
+    "statistics.streak.legend" : {
+      "comment" : "Legend under the streak heatmap. Names all four cell states. The neighbouring statistics.week.legend belongs to a DIFFERENT card and describes a different pair of colours — read as this chart's caption it misleads twice over (#637).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "зелёное — встал сразу · золотое — 1⁠–⁠2 откладывания · красное — 3 и больше · серое — без будильника"
+          }
+        }
+      }
+    },
     "statistics.tooltip.no_alarm" : {
       "comment" : "Heatmap tooltip: no alarm was scheduled that day.",
       "extractionState" : "manual",
