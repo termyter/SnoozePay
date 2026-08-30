@@ -110,10 +110,14 @@ final class CardRowSeamShadowTests: XCTestCase {
         )
     }
 
-    /// The key stop is the other half of the fix, and it is not a mask: a
-    /// shadow is cast around whatever path it is given, so the only way to
-    /// stop a `.first` row shadowing along the seam is to give the key stop
-    /// the row's real, part-square outline.
+    /// The key stop's path is the other half of the change, and — unlike the
+    /// ambient mask — it changes no pixel today. A shadow is cast around
+    /// whatever path it is given, so a `.first` row whose key stop is fully
+    /// rounded does emit into the seam; measured, the ambient mask already
+    /// covers every bit of that emission, and reverting this line alone moves
+    /// the seam by 0/255 in both themes. It is kept because the key stop
+    /// should not owe its correctness to a mask installed elsewhere: give it
+    /// the row's real, part-square outline and the two halves are independent.
     ///
     /// A square corner contains the point just inside it; a corner rounded by
     /// `AppRadius.sm` does not. `assertCorner` proves the second half on a

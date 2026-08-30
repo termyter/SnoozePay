@@ -140,43 +140,69 @@ final class CardRowBandingTests: XCTestCase {
     /// Every other fixture in these two files hosts a single row, so the seam
     /// existed only as a coordinate, never as a boundary between two real
     /// surfaces. `path.contains` proves the mask's geometry; only a pixel
-    /// proves what a reader sees. Scanned column-by-column down the middle of
-    /// the seam and reported as the worst deviation from `bg1`, so the failure
-    /// message carries the number rather than just a verdict.
+    /// proves what a reader sees.
+    ///
+    /// ## The oracle is differential
+    ///
+    /// The seam is compared against a pixel from the MIDDLE of the same row in
+    /// the same frame, not against the `bg1` token. Comparing to the token
+    /// folds in colour-space round-tripping — this file measures that at 3/255
+    /// and absorbs it in `assertSameColour` — which would leave a threshold
+    /// with almost no room above it. Against the row's own centre the bias
+    /// cancels and what remains is the band and nothing else.
+    ///
+    /// ## Numbers
+    ///
+    /// Measured against the token, before the differential rewrite, so they
+    /// carry that 3/255 bias and are quoted only for scale:
+    ///
+    /// | | without the fix | with it |
+    /// |---|---|---|
+    /// | light | 10/255 | 6/255 |
+    /// | dark | 4/255 | 4/255 |
+    ///
+    /// Dark does not move because dark carries no ambient stop at all
+    /// (`testDarkRows_carryNoAmbientStop`) — its 4/255 is the key stop's own
+    /// residue, which nothing here masks. Reverting `layer.shadowPath` alone
+    /// moves neither number.
     func testTheSeamBetweenTwoRows_rendersAsOneContinuousFill() throws {
         let renderPath = try shadowCapableRenderPath()
         for style in [UIUserInterfaceStyle.light, .dark] {
             let window = laidOutSection(style: style)
-            let reference = channels(AppColors.bg1.resolved(style))
+            // ONE frame. `drawHierarchy(afterScreenUpdates:)` is a forced
+            // render-server round trip, and scanning it per point would
+            // compare thousands of independent rasterisations.
+            let (bitmap, scale) = try XCTUnwrap(render(window, using: renderPath))
+            let reference = channels(
+                sample(bitmap, scale: scale, at: CGPoint(x: window.bounds.midX, y: 26))
+            )
             var worst: (deviation: CGFloat, at: CGPoint, colour: UIColor) = (0, .zero, .clear)
 
-            // Both axes, and the horizontal one is the half that matters for
-            // the corners. `shadowPath` changed only where a cap row is SQUARE
-            // — the two ends of the seam — so a probe down the middle cannot
-            // see that half of the fix at all, in either theme. Sampled across
-            // the full width as well as through the depth of the seam.
-            let seamXs = stride(from: 2.0, through: window.bounds.width - 2, by: 4.0)
-            let seamYs = stride(from: -6.0, through: 6.0, by: 0.5)
-            for point in seamYs.flatMap({ offset in
-                seamXs.map { CGPoint(x: $0, y: Self.rowHeight + offset) }
-            }) {
-                let sample = pixel(of: window, at: point, using: renderPath)
-                let got = channels(sample)
-                let deviation = max(
-                    abs(got.red - reference.red),
-                    abs(got.green - reference.green),
-                    abs(got.blue - reference.blue)
-                ) * 255
-                if deviation > worst.deviation { worst = (deviation, point, sample) }
+            // Both axes. The horizontal one is the half that matters for the
+            // corners: `shadowPath` changed only where a cap row is SQUARE —
+            // the two ends of the seam — so a probe down the middle cannot see
+            // that half of the fix at all, in either theme.
+            for offset in stride(from: -6.0, through: 6.0, by: 0.5) {
+                for xPos in stride(from: 2.0, through: window.bounds.width - 2, by: 4.0) {
+                    let point = CGPoint(x: xPos, y: Self.rowHeight + offset)
+                    let got = channels(sample(bitmap, scale: scale, at: point))
+                    let deviation = max(
+                        abs(got.red - reference.red),
+                        abs(got.green - reference.green),
+                        abs(got.blue - reference.blue)
+                    ) * 255
+                    if deviation > worst.deviation {
+                        worst = (deviation, point, sample(bitmap, scale: scale, at: point))
+                    }
+                }
             }
 
             XCTAssertLessThanOrEqual(
                 worst.deviation, Self.seamTolerance,
                 """
-                \(style.debugName): the seam is \(worst.deviation)/255 off `bg1` at \
-                \(worst.at) (\(hex(worst.colour)) vs \(hex(AppColors.bg1.resolved(style)))). \
-                A section reads as separately-rounded rows exactly when this band \
-                is visible — see #674
+                \(style.debugName): the seam is \(worst.deviation)/255 away from the \
+                row's own centre at \(worst.at) (\(hex(worst.colour))). A section reads \
+                as separately-rounded rows exactly when this band is visible — see #674
                 """
             )
         }
@@ -184,12 +210,25 @@ final class CardRowBandingTests: XCTestCase {
 
     /// What counts as "one continuous fill" in the seam.
     ///
-    /// Not the 3/255 of `assertSameColour`, which is renderer round-tripping
-    /// slack on a flat surface. This is a gradient boundary between two layers
-    /// that each cast their own light-mode key stop, and the number that
-    /// matters is the one the eye picks up: the banding #515 was filed for
-    /// measured 15/255 per channel. Held at 8 — comfortably below what was
-    /// reported as visible, comfortably above renderer noise.
+    /// Not the 3/255 of `assertSameColour`: that is round-tripping slack, and
+    /// the differential oracle above subtracts it by measuring against a pixel
+    /// from the same frame. Measured, there was none to subtract — the seam
+    /// reads 6/255 against the row's centre and 6/255 against the `bg1` token
+    /// alike — so what this number gates is the band itself.
+    ///
+    /// The discrimination window is **6…11** in light, both ends measured with
+    /// this exact oracle: 6/255 is the key stop's own residue, which nothing
+    /// here masks, and 11/255 is what the same assertion reports when
+    /// `openEdges` is forced to `[]` so the ambient mask covers nothing. At 8
+    /// the margin is 2/255 below and 3/255 above, and no more than that.
+    ///
+    /// That is tight, and calling it comfortable would be false. What makes it
+    /// usable is that the two sources of jitter are gone rather than budgeted
+    /// for: the scan reads ONE rasterisation instead of thousands, and the
+    /// oracle is a difference within that frame rather than a comparison to a
+    /// token. Repeated runs return the same 6.000000000000007, and the control
+    /// the same 10.99999999999999. If a future change needs this raised,
+    /// re-measure both ends — do not widen it on the strength of one red run.
     private static let seamTolerance: CGFloat = 8
 
     private static let rowHeight: CGFloat = 52
@@ -364,7 +403,13 @@ final class CardRowBandingTests: XCTestCase {
 
     // MARK: - Pixels
 
-    private func pixel(of view: UIView, at point: CGPoint, using renderPath: RenderPath) -> UIColor {
+    /// Rasterise `view` ONCE.
+    ///
+    /// `drawHierarchy(afterScreenUpdates: true)` is a forced render-server
+    /// round trip, so calling it per sample is both slow and wrong: a scan of
+    /// N points would compare N INDEPENDENT rasterisations, which is a lottery
+    /// on a test whose whole margin is a few /255. One frame, many samples.
+    private func render(_ view: UIView, using renderPath: RenderPath) -> (CGImage, CGFloat)? {
         let image = UIGraphicsImageRenderer(bounds: view.bounds).image { context in
             switch renderPath {
             case .hierarchy:
@@ -375,16 +420,25 @@ final class CardRowBandingTests: XCTestCase {
         }
         guard let bitmap = image.cgImage else {
             XCTFail("rendering produced no bitmap")
-            return .clear
+            return nil
         }
-        let scale = image.scale
+        return (bitmap, image.scale)
+    }
+
+    private func sample(_ bitmap: CGImage, scale: CGFloat, at point: CGPoint) -> UIColor {
         let x = min(max(Int(point.x * scale), 0), bitmap.width - 1)
         let y = min(max(Int(point.y * scale), 0), bitmap.height - 1)
-        guard let sample = bitmap.cropping(to: CGRect(x: x, y: y, width: 1, height: 1)) else {
+        guard let cropped = bitmap.cropping(to: CGRect(x: x, y: y, width: 1, height: 1)) else {
             XCTFail("could not crop the sample pixel")
             return .clear
         }
-        return colour(of: sample)
+        return colour(of: cropped)
+    }
+
+    /// Kept for the single-sample call sites, which pay for their own frame.
+    private func pixel(of view: UIView, at point: CGPoint, using renderPath: RenderPath) -> UIColor {
+        guard let (bitmap, scale) = render(view, using: renderPath) else { return .clear }
+        return sample(bitmap, scale: scale, at: point)
     }
 
     private func colour(of sample: CGImage) -> UIColor {
