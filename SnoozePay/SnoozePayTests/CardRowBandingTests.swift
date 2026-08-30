@@ -142,94 +142,146 @@ final class CardRowBandingTests: XCTestCase {
     /// surfaces. `path.contains` proves the mask's geometry; only a pixel
     /// proves what a reader sees.
     ///
-    /// ## The oracle is differential
+    /// ## The oracle is differential, twice over
     ///
-    /// The seam is compared against a pixel from the MIDDLE of the same row in
-    /// the same frame, not against the `bg1` token. Comparing to the token
-    /// folds in colour-space round-tripping — this file measures that at 3/255
-    /// and absorbs it in `assertSameColour` — which would leave a threshold
-    /// with almost no room above it. Against the row's own centre the bias
-    /// cancels and what remains is the band and nothing else.
+    /// Each probe is compared against a pixel from the MIDDLE of the same row
+    /// in the same frame, not against the `bg1` token. That is not about
+    /// jitter — measured, the two oracles return the same number to 14 decimal
+    /// places — it is about not depending on a token's VALUE: change `bg1`, or
+    /// change how it resolves in the test trait, and a token-based baseline
+    /// silently starts measuring something else.
     ///
-    /// ## Numbers
+    /// Then the whole measurement is taken TWICE: once as shipped, and once
+    /// with each row's ambient stop re-installed with `openEdges: []` so its
+    /// mask clips nothing. The assertion is the GAP between those two numbers,
+    /// never an absolute threshold. An absolute threshold would have to be
+    /// calibrated on one machine and then trusted on the CI runner, which has
+    /// a different simulator, scale and colour profile — and the quantity
+    /// being thresholded is a `max` over ~2150 samples, the least stable
+    /// statistic available. Both ends are now measured wherever the test runs.
     ///
-    /// Measured against the token, before the differential rewrite, so they
-    /// carry that 3/255 bias and are quoted only for scale:
+    /// ## Numbers, and where they came from
     ///
-    /// | | without the fix | with it |
-    /// |---|---|---|
-    /// | light | 10/255 | 6/255 |
-    /// | dark | 4/255 | 4/255 |
+    /// On the PM's simulator, light: **11/255** for the control, **6/255** as
+    /// shipped. Dark: 4/255 either way, and that is not a defect — dark
+    /// carries no ambient stop at all (`testDarkRows_carryNoAmbientStop`), so
+    /// there is no mask for `openEdges` to disable and its 4/255 is the key
+    /// stop's own residue. The assertions below say exactly that: a gap in
+    /// light, none in dark.
     ///
-    /// Dark does not move because dark carries no ambient stop at all
-    /// (`testDarkRows_carryNoAmbientStop`) — its 4/255 is the key stop's own
-    /// residue, which nothing here masks. Reverting `layer.shadowPath` alone
-    /// moves neither number.
+    /// These figures are recorded for scale only. Nothing asserts them.
     func testTheSeamBetweenTwoRows_rendersAsOneContinuousFill() throws {
         let renderPath = try shadowCapableRenderPath()
         for style in [UIUserInterfaceStyle.light, .dark] {
-            let window = laidOutSection(style: style)
-            // ONE frame. `drawHierarchy(afterScreenUpdates:)` is a forced
-            // render-server round trip, and scanning it per point would
-            // compare thousands of independent rasterisations.
-            let (bitmap, scale) = try XCTUnwrap(render(window, using: renderPath))
-            let reference = channels(
-                sample(bitmap, scale: scale, at: CGPoint(x: window.bounds.midX, y: 26))
-            )
-            var worst: (deviation: CGFloat, at: CGPoint, colour: UIColor) = (0, .zero, .clear)
+            let shipped = try seamDeviation(style: style, unmasked: false, using: renderPath)
+            let control = try seamDeviation(style: style, unmasked: true, using: renderPath)
 
-            // Both axes. The horizontal one is the half that matters for the
-            // corners: `shadowPath` changed only where a cap row is SQUARE —
-            // the two ends of the seam — so a probe down the middle cannot see
-            // that half of the fix at all, in either theme.
-            for offset in stride(from: -6.0, through: 6.0, by: 0.5) {
-                for xPos in stride(from: 2.0, through: window.bounds.width - 2, by: 4.0) {
-                    let point = CGPoint(x: xPos, y: Self.rowHeight + offset)
-                    let got = channels(sample(bitmap, scale: scale, at: point))
-                    let deviation = max(
-                        abs(got.red - reference.red),
-                        abs(got.green - reference.green),
-                        abs(got.blue - reference.blue)
-                    ) * 255
-                    if deviation > worst.deviation {
-                        worst = (deviation, point, sample(bitmap, scale: scale, at: point))
-                    }
-                }
+            switch style {
+            case .dark:
+                XCTAssertEqual(
+                    shipped.deviation, control.deviation, accuracy: 0.5,
+                    """
+                    dark grew an ambient stop: disabling the mask moved the seam from \
+                    \(control.deviation)/255 to \(shipped.deviation)/255. Dark is supposed \
+                    to carry no ambient layer at all — see testDarkRows_carryNoAmbientStop
+                    """
+                )
+            default:
+                XCTAssertGreaterThanOrEqual(
+                    control.deviation - shipped.deviation, Self.seamGap,
+                    """
+                    \(style.debugName): the ambient mask is not removing the band. \
+                    With the mask disabled the seam sits \(control.deviation)/255 from the \
+                    row's own centre; as shipped it sits \(shipped.deviation)/255 at \
+                    \(shipped.at) (\(hex(shipped.colour))). A section reads as \
+                    separately-rounded rows exactly when that band survives — see #674
+                    """
+                )
             }
-
-            XCTAssertLessThanOrEqual(
-                worst.deviation, Self.seamTolerance,
-                """
-                \(style.debugName): the seam is \(worst.deviation)/255 away from the \
-                row's own centre at \(worst.at) (\(hex(worst.colour))). A section reads \
-                as separately-rounded rows exactly when this band is visible — see #674
-                """
-            )
         }
     }
 
-    /// What counts as "one continuous fill" in the seam.
+    /// How much better the masked seam has to be than the unmasked one.
     ///
-    /// Not the 3/255 of `assertSameColour`: that is round-tripping slack, and
-    /// the differential oracle above subtracts it by measuring against a pixel
-    /// from the same frame. Measured, there was none to subtract — the seam
-    /// reads 6/255 against the row's centre and 6/255 against the `bg1` token
-    /// alike — so what this number gates is the band itself.
+    /// Both sides are measured in the same process on the same machine, so
+    /// this is a gap between two numbers rather than a threshold on one, and
+    /// it does not have to absorb any machine-to-machine variation. What it
+    /// does have to clear is sampling noise within one run, and there the only
+    /// remaining source is `drawHierarchy(afterScreenUpdates:)` — a render
+    /// server round trip that this very file has already seen return a black
+    /// frame once (run 33260176424, see `renderedFill`). A black frame moves
+    /// both sides together, so it cannot fake a gap.
     ///
-    /// The discrimination window is **6…11** in light, both ends measured with
-    /// this exact oracle: 6/255 is the key stop's own residue, which nothing
-    /// here masks, and 11/255 is what the same assertion reports when
-    /// `openEdges` is forced to `[]` so the ambient mask covers nothing. At 8
-    /// the margin is 2/255 below and 3/255 above, and no more than that.
+    /// 3 is a third of the ~5/255 separation measured locally. If a future
+    /// change makes this red, read both printed numbers before touching it:
+    /// the interesting failure is the control collapsing towards the shipped
+    /// number, which means the band stopped being there to remove.
+    private static let seamGap: CGFloat = 3
+
+    /// The worst deviation anywhere in the seam band, in one rasterisation.
     ///
-    /// That is tight, and calling it comfortable would be false. What makes it
-    /// usable is that the two sources of jitter are gone rather than budgeted
-    /// for: the scan reads ONE rasterisation instead of thousands, and the
-    /// oracle is a difference within that frame rather than a comparison to a
-    /// token. Repeated runs return the same 6.000000000000007, and the control
-    /// the same 10.99999999999999. If a future change needs this raised,
-    /// re-measure both ends — do not widen it on the strength of one red run.
-    private static let seamTolerance: CGFloat = 8
+    /// `unmasked: true` re-installs each row's ambient stop with
+    /// `openEdges: []` AFTER layout has settled, so its mask clips nothing —
+    /// which is the pre-#674 rendering. It is re-applied immediately before
+    /// the frame is taken; if a layout pass were to slip in between and put
+    /// the real mask back, the control would collapse onto the shipped number
+    /// and the gap assertion goes red rather than quietly green.
+    private func seamDeviation(
+        style: UIUserInterfaceStyle,
+        unmasked: Bool,
+        using renderPath: RenderPath
+    ) throws -> (deviation: CGFloat, at: CGPoint, colour: UIColor) {
+        let window = laidOutSection(style: style)
+        if unmasked {
+            for row in Self.cardRows(in: window) {
+                AppShadow.installAmbientShadow1Layer(
+                    on: row.layer,
+                    cornerRadius: AppRadius.sm,
+                    trait: row.traitCollection,
+                    corners: .allCorners,
+                    openEdges: []
+                )
+            }
+        }
+        // ONE frame. `drawHierarchy(afterScreenUpdates:)` is a forced render
+        // server round trip, and scanning it per point would compare thousands
+        // of independent rasterisations.
+        let (bitmap, scale) = try XCTUnwrap(render(window, using: renderPath))
+        let reference = channels(
+            sample(bitmap, scale: scale, at: CGPoint(x: window.bounds.midX, y: 26))
+        )
+        var worst: (deviation: CGFloat, at: CGPoint, colour: UIColor) = (0, .zero, .clear)
+
+        // Both axes. The horizontal one is the half that matters for the
+        // corners: `shadowPath` changed only where a cap row is SQUARE — the
+        // two ends of the seam — so a probe down the middle cannot see that
+        // half of the fix at all, in either theme.
+        for offset in stride(from: -6.0, through: 6.0, by: 0.5) {
+            for xPos in stride(from: 2.0, through: window.bounds.width - 2, by: 4.0) {
+                let point = CGPoint(x: xPos, y: Self.rowHeight + offset)
+                let got = channels(sample(bitmap, scale: scale, at: point))
+                let deviation = max(
+                    abs(got.red - reference.red),
+                    abs(got.green - reference.green),
+                    abs(got.blue - reference.blue)
+                ) * 255
+                if deviation > worst.deviation {
+                    worst = (deviation, point, sample(bitmap, scale: scale, at: point))
+                }
+            }
+        }
+        return worst
+    }
+
+    /// The two styled row views inside a `laidOutSection` window.
+    private static func cardRows(in view: UIView) -> [UIView] {
+        view.subviews.flatMap { subview -> [UIView] in
+            let isRow = subview.layer.sublayers?.contains {
+                $0.name == AppShadow.ambientShadow1LayerName
+            } ?? false
+            return isRow ? [subview] : cardRows(in: subview)
+        }
+    }
 
     private static let rowHeight: CGFloat = 52
 

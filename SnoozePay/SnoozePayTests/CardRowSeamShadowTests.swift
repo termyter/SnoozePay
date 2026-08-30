@@ -33,7 +33,8 @@ private struct CornerProbe {
 /// continuous fill — not a gap in the fill. What the eye makes of it is "every
 /// row is rounded", which is how the PM reported it.
 ///
-/// These assertions are on the mask path, so they are exact and cheap. The
+/// These assertions are path-level — some on the ambient mask, some on the
+/// key stop's `shadowPath` — so they are exact and cheap. The
 /// rendered counterpart lives in `CardRowBandingTests`, next to the render
 /// probe it needs.
 @MainActor
@@ -113,11 +114,18 @@ final class CardRowSeamShadowTests: XCTestCase {
     /// The key stop's path is the other half of the change, and — unlike the
     /// ambient mask — it changes no pixel today. A shadow is cast around
     /// whatever path it is given, so a `.first` row whose key stop is fully
-    /// rounded does emit into the seam; measured, the ambient mask already
-    /// covers every bit of that emission, and reverting this line alone moves
-    /// the seam by 0/255 in both themes. It is kept because the key stop
-    /// should not owe its correctness to a mask installed elsewhere: give it
-    /// the row's real, part-square outline and the two halves are independent.
+    /// rounded does emit into the seam. Measured, reverting this line alone
+    /// moves the rendered seam by 0/255 in both themes, and the reason is NOT
+    /// the ambient mask: that mask lives on a sublayer and cannot clip the
+    /// host layer's own shadow, and in dark the ambient layer is not installed
+    /// at all (`AppShadow.swift:94-99`, held by
+    /// `CardRowBandingTests.testDarkRows_carryNoAmbientStop`). The reason is
+    /// the one written at `UIView+CardStyle.swift:255` — the corners this fixes
+    /// sit where the two rows' own opaque fills already cover the difference.
+    ///
+    /// It is kept because the key stop should not describe a silhouette the
+    /// layer does not have: the moment a row's fill stops covering that
+    /// corner, an unfixed key stop starts printing there.
     ///
     /// A square corner contains the point just inside it; a corner rounded by
     /// `AppRadius.sm` does not. `assertCorner` proves the second half on a
