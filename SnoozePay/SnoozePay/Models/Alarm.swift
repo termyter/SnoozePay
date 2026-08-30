@@ -18,7 +18,12 @@ struct Alarm: Identifiable, Equatable, Codable {
     let id: UUID
     let time: Date
     let repeatDays: [Int] // 0 = Monday, 6 = Sunday
-    let name: String
+    /// The name the user typed, or `nil` while the alarm still carries the
+    /// auto-assigned default (#623). Storing the ABSENCE of a user name makes
+    /// ``nameIsDefault`` a fact about the alarm instead of a guess made by
+    /// comparing ``name`` against whatever the default reads in the language
+    /// the reader runs. Persisted as `name` + `nameIsDefault` — see `encode(to:)`.
+    let customName: String?
     let soundID: String
     let vibrationEnabled: Bool
     let snoozeMinutes: Int
@@ -65,12 +70,34 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// `static let` resolved once per process, so a stored copy would hold the
     /// same string.
     ///
-    /// ⚠️ This value is **persisted** into `Alarm.name`, which makes it a
-    /// sentinel as well as copy: `AlarmsListViewModel.weekdayPhrase` suppresses
-    /// the default name in the caps row by comparing against it. That
-    /// comparison is against a literal on purpose and breaks once a second
-    /// language ships — see #623, which owns the model change that fixes it.
+    /// Since #623 this is no longer a sentinel: nothing compares a persisted
+    /// name against it. An alarm that never got a user-typed name stores
+    /// `customName == nil` and resolves this value at DISPLAY time, so the
+    /// default follows the UI language instead of freezing the language the
+    /// alarm happened to be created in.
     static var defaultName: String { Localized.text("alarms.default_name") }
+
+    /// Every string that has ever shipped as the auto-assigned default name,
+    /// lowercased and trimmed. Read by the decoder ONLY, and only for records
+    /// written before the `nameIsDefault` key existed — those can carry nothing
+    /// but the Russian default, Russian being the only language shipped to
+    /// date. The set is therefore frozen: every language shipping from here on
+    /// writes the flag and never has to be inferred. Growing it would be the
+    /// "compare against all historical defaults" design #623 rejected.
+    private static let legacyDefaultNames: Set<String> = ["будильник"]
+
+    // MARK: - Name
+
+    /// Display name: the user's own, or the default resolved in the language
+    /// the app is running in right now.
+    var name: String { customName ?? Alarm.defaultName }
+
+    /// `true` while the alarm carries the auto-assigned default name, i.e. the
+    /// user never typed one of their own. Provenance, not spelling: an alarm
+    /// the user deliberately named "Будильник" reads `false` and keeps showing
+    /// that name — hiding a typed name because it collides with today's default
+    /// would be exactly the language-dependent behaviour #623 removed.
+    var nameIsDefault: Bool { customName == nil }
 
     // MARK: - Validating failable init (#207)
 
@@ -85,7 +112,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         validating id: UUID,
         time: Date = Date(),
         repeatDays: [Int] = [],
-        name: String = Alarm.defaultName,
+        name: String? = nil,
         soundID: String = "radar",
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
@@ -105,7 +132,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.id = id
         self.time = time
         self.repeatDays = repeatDays
-        self.name = name
+        self.customName = name
         self.soundID = soundID
         self.vibrationEnabled = vibrationEnabled
         self.snoozeMinutes = snoozeMinutes
@@ -126,7 +153,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         id: UUID = UUID(),
         time: Date = Date(),
         repeatDays: [Int] = [],
-        name: String = Alarm.defaultName,
+        name: String? = nil,
         soundID: String = "radar",
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
@@ -193,7 +220,10 @@ struct Alarm: Identifiable, Equatable, Codable {
             id: id,
             time: time ?? self.time,
             repeatDays: repeatDays ?? self.repeatDays,
-            name: name ?? self.name,
+            // A name passed here is one the caller set, so it lands as a
+            // custom name; omitting it preserves whichever state the alarm was
+            // already in, "still on the default" included (#623).
+            name: name ?? customName,
             soundID: soundID ?? self.soundID,
             vibrationEnabled: vibrationEnabled ?? self.vibrationEnabled,
             snoozeMinutes: snoozeMinutes ?? self.snoozeMinutes,
@@ -209,7 +239,8 @@ struct Alarm: Identifiable, Equatable, Codable {
 
     // MARK: - Codable (backwards-compatible decode)
     //
-    // `volume` + `volumeFadeIn` were added in #150 and `theme` in #151.
+    // `volume` + `volumeFadeIn` were added in #150, `theme` in #151 and
+    // `nameIsDefault` in #623.
     // Pre-#150 / pre-#151 stored alarms do not carry these keys —
     // `decodeIfPresent` plus the documented defaults keeps existing JSON
     // readable without forcing a migration step. Synthesized Codable would
@@ -226,9 +257,34 @@ struct Alarm: Identifiable, Equatable, Codable {
     // values satisfy the same invariants `init(validating:...)` enforces.
 
     private enum CodingKeys: String, CodingKey {
-        case id, time, repeatDays, name, soundID, vibrationEnabled
+        case id, time, repeatDays, name, nameIsDefault, soundID, vibrationEnabled
         case snoozeMinutes, penaltyAmount, progressiveScale, enabled
         case volume, volumeFadeIn, theme, repeatMode
+    }
+
+    /// Hand-rolled because the storage key `name` no longer maps one-to-one
+    /// onto a stored property: `customName` is optional, and the pair written
+    /// to disk is a resolved display string plus a `nameIsDefault` flag (#623).
+    /// Writing the RESOLVED name under the historical key is what keeps the
+    /// record readable by a build that predates the flag — it sees what it
+    /// always saw instead of throwing `keyNotFound` and locking the store.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(time, forKey: .time)
+        try container.encode(repeatDays, forKey: .repeatDays)
+        try container.encode(name, forKey: .name)
+        try container.encode(nameIsDefault, forKey: .nameIsDefault)
+        try container.encode(soundID, forKey: .soundID)
+        try container.encode(vibrationEnabled, forKey: .vibrationEnabled)
+        try container.encode(snoozeMinutes, forKey: .snoozeMinutes)
+        try container.encode(penaltyAmount, forKey: .penaltyAmount)
+        try container.encode(progressiveScale, forKey: .progressiveScale)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(volume, forKey: .volume)
+        try container.encode(volumeFadeIn, forKey: .volumeFadeIn)
+        try container.encode(theme, forKey: .theme)
+        try container.encode(repeatMode, forKey: .repeatMode)
     }
 
     init(from decoder: Decoder) throws {
@@ -238,7 +294,17 @@ struct Alarm: Identifiable, Equatable, Codable {
         // Drop illegal weekday indices from corrupt legacy storage.
         let rawRepeatDays = try container.decode([Int].self, forKey: .repeatDays)
         self.repeatDays = rawRepeatDays.filter(Self.weekdayIndexRange.contains)
-        self.name = try container.decode(String.self, forKey: .name)
+        // Migration: pre-#623 alarms have no `nameIsDefault` key, so the flag
+        // is inferred ONCE, on read, from the frozen set of names that ever
+        // shipped as a default. That inference is safe precisely because such
+        // records predate the second language — it is the one moment where
+        // comparing a persisted name against a literal is correct.
+        let storedName = try container.decode(String.self, forKey: .name)
+        let storedNameIsDefault = try container.decodeIfPresent(Bool.self, forKey: .nameIsDefault)
+            ?? Self.legacyDefaultNames.contains(
+                storedName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            )
+        self.customName = storedNameIsDefault ? nil : storedName
         self.soundID = try container.decode(String.self, forKey: .soundID)
         self.vibrationEnabled = try container.decode(Bool.self, forKey: .vibrationEnabled)
         // Clamp into the canonical range. Legacy alarms persisted under the

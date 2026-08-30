@@ -592,19 +592,19 @@ final class AlarmsListViewModel {
             repeatMode: alarm.repeatMode
         ).uppercased()
         let trimmed = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Default name "Будильник" is suppressed in the caps row — it's the
+        // The auto-assigned default name is suppressed here — it's the
         // boilerplate label every freshly-created alarm carries and would
         // crowd the caps line.
         //
-        // The literal stays a literal on purpose (#569): this compares against
-        // a value PERSISTED in `Alarm.name`, not against copy on screen. Every
-        // alarm already on disk carries the Russian word, so localising the
-        // comparison would stop suppressing the default name the moment the UI
-        // language changed — a data-migration question that belongs with
-        // whoever owns `Alarm`'s default, not with the caps row. #598 moved
-        // that default to `Alarm.defaultName`; the migration itself is #623,
-        // which is what makes this comparison correct again.
-        let nameIsDefault = trimmed.isEmpty || trimmed.lowercased() == "будильник"
+        // This asks the MODEL whether the user ever typed a name (#623); it no
+        // longer compares the persisted string against a literal. The old
+        // comparison could only ever be right in one language: a name written
+        // to disk in the locale the alarm was created in was matched against
+        // the default spelled in the locale the reader happens to run, so the
+        // first shipped translation turned "БУДНИ · ПН–ПТ" into
+        // "ALARM · БУДНИ · ПН–ПТ". A whitespace-only name is still treated as
+        // absent so the row never renders a dangling "·".
+        let nameIsDefault = trimmed.isEmpty || alarm.nameIsDefault
         if nameIsDefault {
             return daysPhrase
         }

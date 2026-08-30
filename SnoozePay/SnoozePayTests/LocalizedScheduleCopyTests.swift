@@ -115,10 +115,11 @@ final class LocalizedScheduleCopyTests: XCTestCase {
     /// validating one is the boundary, the historical one is what the app
     /// actually calls.
     func testBothInitializersDefaultToTheCatalogueName() {
-        // Pinned to the literal, not just to itself: this value is persisted
-        // into `Alarm.name` and compared against in
-        // `AlarmsListViewModel.weekdayPhrase`, so changing it silently changes
-        // which alarms show a name in the caps row (#623).
+        // Pinned to the literal, not just to itself: a self-comparison is
+        // green whatever the catalogue holds. Since #623 the value is no
+        // longer a sentinel — an unnamed alarm stores no name and resolves
+        // this at display time — so changing it changes copy only, which is
+        // exactly what this assertion is here to make visible.
         XCTAssertEqual(Alarm.defaultName, "Будильник")
         XCTAssertEqual(Alarm().name, Alarm.defaultName)
         XCTAssertEqual(Alarm(validating: UUID())?.name, Alarm.defaultName)
