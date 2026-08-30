@@ -80,7 +80,10 @@ final class PenaltyCell: UITableViewCell {
         let label = UILabel()
         label.text = "₽"
         label.font = AppFonts.mono(.bold, 32)
-        label.textColor = AppColors.warn400
+        // Same ink as the amount it sits beside. `setHelper(visible:)` repaints
+        // both together, but a path that shows the cell before `configure` runs
+        // would otherwise put a bronze glyph against an amber number (#673).
+        label.textColor = AppColors.priceDisplay
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -181,8 +184,8 @@ final class PenaltyCell: UITableViewCell {
         contentView.addSubview(column)
 
         NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
-            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
+            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
             column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
             column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
         ])

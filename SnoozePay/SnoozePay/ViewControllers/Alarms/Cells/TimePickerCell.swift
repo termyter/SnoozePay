@@ -99,8 +99,8 @@ final class TimePickerCell: UITableViewCell {
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
             stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp4),
-            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
-            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
+            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
             // Wheels span the full readable width so the picker doesn't shrink
             // to the readout's intrinsic size inside the centred stack.
             picker.leadingAnchor.constraint(equalTo: stack.leadingAnchor),

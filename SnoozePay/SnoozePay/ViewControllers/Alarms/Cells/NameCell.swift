@@ -59,8 +59,8 @@ final class NameCell: UITableViewCell {
         backgroundColor = AppColors.bg1
         contentView.addSubview(textField)
         NSLayoutConstraint.activate([
-            textField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
-            textField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            textField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
+            textField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
             textField.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.md),
             textField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md),
             textField.heightAnchor.constraint(greaterThanOrEqualToConstant: 36)

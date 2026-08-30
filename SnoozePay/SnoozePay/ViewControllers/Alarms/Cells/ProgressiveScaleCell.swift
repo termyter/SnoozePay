@@ -123,7 +123,7 @@ final class ProgressiveScaleCell: UITableViewCell {
             iconView.widthAnchor.constraint(equalToConstant: 20),
             iconView.heightAnchor.constraint(equalToConstant: 20),
 
-            contentStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
+            contentStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
             contentStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
             contentStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp5),
             // `equalTo`, not `lessThanOrEqualTo`: the column has to CLAIM the
@@ -133,7 +133,7 @@ final class ProgressiveScaleCell: UITableViewCell {
                 equalTo: toggle.leadingAnchor, constant: -AppSpacing.sp3
             ),
 
-            toggle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            toggle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
             toggle.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5)
         ])
     }

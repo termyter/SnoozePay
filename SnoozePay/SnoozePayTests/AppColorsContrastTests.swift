@@ -168,6 +168,14 @@ final class AppColorsContrastTests: XCTestCase {
     /// The ink half has to clear body text on every surface it can land on —
     /// this is the #489 property, and switching an ink call site to the fill
     /// tone would drop it to 1.85:1 on the light card.
+    ///
+    /// There is exactly ONE registered exception: `AppColors.priceDisplay`,
+    /// the 32pt snooze amount, which is `warnFill500` used as ink by PM
+    /// decision (#673). It is named here so the rule and its exception cannot
+    /// drift apart in separate files; the ratio it costs and the mitigation it
+    /// leans on are pinned by `PenaltyDisplayColorTests`. Any *other* ink call
+    /// site moving onto a fill tone is still the regression this test exists
+    /// to catch.
     func testWarnInk_clearsBodyTextOnEverySurface() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (name, surface) in [("bg0", AppColors.bg0), ("bg1", AppColors.bg1), ("bg2", AppColors.bg2)] {

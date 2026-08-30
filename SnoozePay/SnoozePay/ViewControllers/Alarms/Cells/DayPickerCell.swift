@@ -66,8 +66,8 @@ final class DayPickerCell: UITableViewCell {
 
         contentView.addSubview(stackView)
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
-            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
+            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
             stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp2),
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp2)
         ])

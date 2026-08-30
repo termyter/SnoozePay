@@ -121,13 +121,13 @@ final class RepeatModeCell: UITableViewCell {
 
         NSLayoutConstraint.activate([
             captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp2),
-            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
-            captionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
+            captionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
 
             track.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: AppSpacing.sp2),
             track.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             track.leadingAnchor.constraint(
-                greaterThanOrEqualTo: contentView.leadingAnchor, constant: AppSpacing.sp5
+                greaterThanOrEqualTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding
             ),
 
             segmentStack.topAnchor.constraint(equalTo: track.topAnchor, constant: Self.trackPadding),

@@ -63,7 +63,7 @@ final class VibrationCell: UITableViewCell {
         // 20pt horizontal insets — the V2 list-row rule `padding="4px 20px"`
         // (#231).
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.sp5),
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: AppSpacing.cardHorizontalPadding),
             iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 24),
             iconView.heightAnchor.constraint(equalToConstant: 24),
@@ -71,7 +71,7 @@ final class VibrationCell: UITableViewCell {
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: AppSpacing.sp3),
             titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            toggle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.sp5),
+            toggle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -AppSpacing.cardHorizontalPadding),
             toggle.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 48)

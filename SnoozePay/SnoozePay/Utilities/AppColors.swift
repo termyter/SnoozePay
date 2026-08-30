@@ -136,12 +136,17 @@ enum AppColors {
     ///   rendered bronze is what the PM reported as "wrong colour".
     ///
     /// ⚠️ The honest number: `#F59E0B` on `bg1` measures **2.15:1**, which
-    /// clears neither 4.5:1 nor the 3:1 large-text threshold. What makes that
-    /// survivable rather than merely broken is that the amount is never the
-    /// only carrier of the value — the same number is stated by the selected
-    /// preset chip below it, in `fgOnWarn` at 8.79:1. `PenaltyDisplayColorTests`
-    /// pins both the ratio and the tie to the chip so neither can drift
-    /// unnoticed.
+    /// clears neither 4.5:1 nor the 3:1 large-text threshold. What softens
+    /// that is that the amount is usually not the only carrier of the value —
+    /// the same number is stated by the selected preset chip below it, in
+    /// `fgOnWarn` at 8.79:1.
+    ///
+    /// "Usually", not "never": the field takes free input, and a chip lights
+    /// only on an exact preset match, so at 137 ₽ the amount IS the sole
+    /// carrier and sits at 2.15:1. `PenaltyDisplayColorTests` pins the ratio,
+    /// the tie to the chip, and that boundary — including a test that goes red
+    /// if the redundancy is ever made unconditional, so this caveat cannot
+    /// outlive the condition it describes.
     static let priceDisplay = warnFill500
 
     // MARK: - Brand · Info
@@ -502,7 +507,14 @@ enum AppSpacing {
     /// Vertical padding inside a card (top / bottom).
     static let cardVerticalPadding: CGFloat = md
     /// Horizontal padding inside a card (leading / trailing of card contents).
-    static let cardHorizontalPadding: CGFloat = lg
+    ///
+    /// `sp5`, because the canon builds every card of the alarm form out of one
+    /// `SPCard padding={20}` (`SPMore2.jsx`, artboard `AlarmEdit`). This used
+    /// to read `lg` (16) — the exact value #672 was filed against — while the
+    /// cells that had drifted hardcoded their own. A named token holding the
+    /// wrong number is worse than no token: the next reader reaches for it and
+    /// silently reproduces the bug.
+    static let cardHorizontalPadding: CGFloat = sp5
 }
 
 /// App-wide corner radius constants — names aligned with `tokens.css`

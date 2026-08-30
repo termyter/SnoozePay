@@ -14,7 +14,16 @@ import XCTest
 /// tie to the chip (so the two can never drift apart again) and they pin the
 /// contrast ratio the exception actually costs (so nobody re-derives it as
 /// "probably fine").
+@MainActor
 final class PenaltyDisplayColorTests: XCTestCase {
+
+    private var hostWindows: [UIWindow] = []
+
+    override func tearDown() {
+        hostWindows.forEach { $0.isHidden = true }
+        hostWindows.removeAll()
+        super.tearDown()
+    }
 
     /// The amount and the selected preset chip are the same amber, in both
     /// themes. This is the whole point of the token: one family, one value.
@@ -42,10 +51,14 @@ final class PenaltyDisplayColorTests: XCTestCase {
     /// The cost of the exception, stated rather than assumed.
     ///
     /// On the light card the amount measures ~2.15:1, below both 4.5:1 and the
-    /// 3:1 large-text threshold. What keeps that from being a lost value is
-    /// that the same number is also carried by the selected chip, whose ink is
+    /// 3:1 large-text threshold. The mitigation is that the same number is
+    /// usually also carried by the selected preset chip, whose ink is
     /// `fgOnWarn` — the assertion below holds that second carrier to the full
     /// 4.5:1 so the redundancy can't be removed without this test going red.
+    ///
+    /// ⚠️ "Usually" is doing real work in that sentence, and
+    /// `testTheChipOnlyCarriesTheValueOnPresetAmounts` pins exactly where it
+    /// stops being true.
     func testTheLightModeShortfallIsPinnedAndTheChipCarriesTheValue() {
         let onCard = contrastRatio(
             AppColors.priceDisplay.resolved(.light),
@@ -76,6 +89,118 @@ final class PenaltyDisplayColorTests: XCTestCase {
             better, or the price has no readable representation at all
             """
         )
+    }
+
+    // MARK: - Where the mitigation runs out
+
+    /// The honest boundary of the accessibility argument above.
+    ///
+    /// The field is a free `numberPad` with a 1 ₽ floor, and a chip lights only
+    /// on an exact preset match (`abs(preset - currentAmount) < .ulpOfOne`).
+    /// So for 137 ₽ there is no second carrier at all: the number exists on
+    /// screen exactly once, at 2.15:1.
+    ///
+    /// This test does not assert that that is acceptable — it asserts that it
+    /// is TRUE, so the trade-off in `AppColors.priceDisplay` cannot be read as
+    /// broader than it is. If the redundancy is ever made unconditional (a
+    /// chip that reflects any amount, a second readout), this test goes red and
+    /// the caveat can come out of the comment.
+    func testTheChipOnlyCarriesTheValueOnPresetAmounts() {
+        XCTAssertEqual(
+            selectedChipCount(forAmount: 50),
+            1,
+            "a preset amount must light its chip — that is the accessible carrier"
+        )
+        XCTAssertEqual(
+            selectedChipCount(forAmount: 137),
+            0,
+            """
+            a chip lit for a non-preset amount would mean the mitigation is \
+            unconditional — good news, but the caveat in AppColors.priceDisplay \
+            then needs rewriting rather than leaving as-is
+            """
+        )
+    }
+
+    /// The branch this PR actually edits: the amount and its `₽` are repainted
+    /// together when the typed value stops validating, and back again when it
+    /// starts. A regression that left the restoring half on the old bronze
+    /// would be invisible without this.
+    func testInvalidInputRepaintsBothGlyphsAndValidInputRestoresThem() throws {
+        let cell = hostedCell(amount: 50)
+        let field = try XCTUnwrap(descendant(UITextField.self, in: cell))
+        let suffix = try XCTUnwrap(
+            descendants(UILabel.self, in: cell).first { $0.text == "₽" },
+            "the rouble glyph is gone"
+        )
+
+        assertSameInk(field.textColor, suffix.textColor, "valid amount")
+        XCTAssertEqual(hex(try XCTUnwrap(field.textColor), .light), hex(AppColors.priceDisplay, .light))
+
+        field.text = ""
+        field.sendActions(for: .editingChanged)
+        assertSameInk(field.textColor, suffix.textColor, "invalid amount")
+        XCTAssertEqual(
+            hex(try XCTUnwrap(field.textColor), .light),
+            hex(AppColors.pain400, .light),
+            "an amount that does not validate must read as pain, not as a price"
+        )
+
+        field.text = "137"
+        field.sendActions(for: .editingChanged)
+        assertSameInk(field.textColor, suffix.textColor, "restored amount")
+        XCTAssertEqual(
+            hex(try XCTUnwrap(field.textColor), .light),
+            hex(AppColors.priceDisplay, .light),
+            "the restoring half of the branch kept an old ink"
+        )
+    }
+
+    private func assertSameInk(_ lhs: UIColor?, _ rhs: UIColor?, _ context: String) {
+        guard let lhs, let rhs else {
+            XCTFail("\(context): one of the two glyphs has no colour at all")
+            return
+        }
+        XCTAssertEqual(
+            hex(lhs, .light),
+            hex(rhs, .light),
+            "\(context): the amount and its ₽ drifted apart"
+        )
+    }
+
+    private func selectedChipCount(forAmount amount: Double) -> Int {
+        let cell = hostedCell(amount: amount)
+        let selected = hex(AppColors.warnFill500, .light)
+        return descendants(UIButton.self, in: cell)
+            .filter { $0.backgroundColor.map { hex($0, .light) } == selected }
+            .count
+    }
+
+    private func hostedCell(amount: Double) -> PenaltyCell {
+        let cell = PenaltyCell(style: .default, reuseIdentifier: nil)
+        cell.configure(amount: amount)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 343, height: 400))
+        window.overrideUserInterfaceStyle = .light
+        window.isHidden = false
+        hostWindows.append(window)
+        cell.frame = CGRect(x: 0, y: 0, width: 343, height: 240)
+        window.addSubview(cell)
+        window.setNeedsLayout()
+        window.layoutIfNeeded()
+        return cell
+    }
+
+    private func descendant<T: UIView>(_ type: T.Type, in root: UIView) -> T? {
+        descendants(type, in: root).first
+    }
+
+    private func descendants<T: UIView>(_ type: T.Type, in root: UIView) -> [T] {
+        var found: [T] = []
+        for subview in root.subviews {
+            if let match = subview as? T { found.append(match) }
+            found.append(contentsOf: descendants(type, in: subview))
+        }
+        return found
     }
 
     // MARK: - Helpers
