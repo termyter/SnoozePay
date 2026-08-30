@@ -146,6 +146,59 @@ final class CreateAlarmLightThemeTests: XCTestCase {
         }
     }
 
+    /// The card's outline is the same weight as every other card's, in both
+    /// states and both themes (#675).
+    ///
+    /// The armed state used to hard-code `borderWidth = 1` — the only 1.0pt
+    /// outline in the app — so switching the control off dropped this card's
+    /// own outline to a third of what it had just been while its neighbours
+    /// never moved. That step is what was reported as a lost border.
+    ///
+    /// ⚠️ The sibling's outline is selected by `strokeColor != nil`, NOT by
+    /// position. `AppShadow.ambientShadow1` is also a `CAShapeLayer`, sits at
+    /// sublayer index 0 in light, is fill-only and never stroked, and carries
+    /// `CAShapeLayer`'s default `lineWidth` of 1. Reading `.first` returns
+    /// that layer in light and the real outline in dark, which is exactly how
+    /// two revisions of this fix ended up chasing a theme-dependent width that
+    /// does not exist. A helper that reports a shadow's default as a hairline
+    /// is worse than no helper.
+    func testProgressiveCardOutline_isTheSameWeightAsASiblingCardRow() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let sibling = try XCTUnwrap(
+                hostedSiblingCardRowOutlineWidth(style: style),
+                "the sibling card row draws no stroked outline to compare against"
+            )
+            for armed in [false, true] {
+                let card = hostedProgressiveCard(painTinted: armed, style: style)
+                XCTAssertEqual(
+                    card.layer.borderWidth, sibling, accuracy: 0.001,
+                    """
+                    \(style.debugName), armed: \(armed) — the progressive card draws a \
+                    \(card.layer.borderWidth)pt outline where its sibling card row draws \
+                    \(sibling)pt
+                    """
+                )
+            }
+        }
+    }
+
+    /// …and that weight does not depend on the theme.
+    ///
+    /// Asserted across themes rather than within one, because a comparison
+    /// inside a single theme stays green when two classes regress together.
+    func testTheCardHairlineWeightDoesNotDependOnTheTheme() throws {
+        let light = try XCTUnwrap(hostedSiblingCardRowOutlineWidth(style: .light))
+        let dark = try XCTUnwrap(hostedSiblingCardRowOutlineWidth(style: .dark))
+        XCTAssertEqual(light, dark, accuracy: 0.001, "the card hairline is theme-dependent")
+
+        let cardLight = hostedProgressiveCard(painTinted: false, style: .light)
+        let cardDark = hostedProgressiveCard(painTinted: false, style: .dark)
+        XCTAssertEqual(
+            cardLight.layer.borderWidth, cardDark.layer.borderWidth, accuracy: 0.001,
+            "the progressive card's hairline is theme-dependent"
+        )
+    }
+
     // MARK: - Confirm-delete sheet
 
     /// The sheet's copy is composed, not literal, so the empty-string case is
@@ -239,6 +292,27 @@ final class CreateAlarmLightThemeTests: XCTestCase {
         window.setNeedsLayout()
         window.layoutIfNeeded()
         return view
+    }
+
+    /// The hairline weight a plain sibling card row draws, read off the real
+    /// stroked layer.
+    ///
+    /// `CardRowBackgroundView.outline` is private, so this finds it by the one
+    /// property that distinguishes it: it strokes. Filtering by position
+    /// instead picks up `AppShadow.ambientShadow1` in light — see the note on
+    /// `testProgressiveCardOutline_isTheSameWeightAsASiblingCardRow`. Returns
+    /// `nil` rather than a default, so a missing layer fails the unwrap
+    /// instead of passing a comparison against 0.
+    private func hostedSiblingCardRowOutlineWidth(style: UIUserInterfaceStyle) -> CGFloat? {
+        let row = host(
+            CardRowBackgroundView(position: .single, cornerRadius: AppRadius.sm),
+            style: style,
+            size: CGSize(width: 343, height: 52)
+        )
+        return row.layer.sublayers?
+            .compactMap { $0 as? CAShapeLayer }
+            .first { $0.strokeColor != nil }?
+            .lineWidth
     }
 
     private func hostedProgressiveCard(
