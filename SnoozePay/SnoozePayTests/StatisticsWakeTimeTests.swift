@@ -211,6 +211,43 @@ final class StatisticsWakeTimeTests: XCTestCase {
         XCTAssertEqual(result?.hasNothingToShow, false)
     }
 
+    /// The card is reused between `apply` calls, so «not written» is not the
+    /// same as «not there». Sequence: a short window says «нужно ещё 4 утра»,
+    /// the data then goes bad — the sentence must not survive behind the
+    /// hidden label.
+    func testWakeTimeCard_refusedMedianClearsCopyLeftByAnEarlierState() {
+        let card = SPWakeTimeCard()
+        card.apply(
+            StatisticsViewModel.WakeTimeStats(
+                medianMinutes: nil,
+                baselineMedianMinutes: nil,
+                recentSampleCount: 1,
+                minimumSamples: 5
+            )
+        )
+        card.layoutIfNeeded()
+        XCTAssertTrue(
+            Self.visibleStrings(in: card)
+                .contains(StatisticsViewModel.wakeSamplesPendingText(4)),
+            "Baseline: the short window really did write the sentence"
+        )
+
+        card.apply(
+            StatisticsViewModel.WakeTimeStats(
+                medianMinutes: 25 * 60,
+                baselineMedianMinutes: nil,
+                recentSampleCount: 5,
+                minimumSamples: 5
+            )
+        )
+        card.layoutIfNeeded()
+
+        let leftovers = Self.allStrings(in: card)
+        XCTAssertFalse(
+            leftovers.contains(where: { $0.contains("утр") }),
+            "«\(leftovers)» still carries the earlier state's sentence"
+        )
+    }
     /// The hole the first cut of #657 left open: a refused median in a
     /// window that is ALSO short.
     ///
@@ -309,6 +346,17 @@ final class StatisticsWakeTimeTests: XCTestCase {
             found.append(contentsOf: [label.text, label.attributedText?.string].compactMap { $0 })
         }
         return found + view.subviews.flatMap { visibleStrings(in: $0) }
+    }
+
+    /// Every string in the tree, hidden branches INCLUDED — the opposite
+    /// lens, for the one claim that is about what a hidden label still
+    /// carries rather than about what a reader sees.
+    private static func allStrings(in view: UIView) -> [String] {
+        var found: [String] = []
+        if let label = view as? UILabel {
+            found.append(contentsOf: [label.text, label.attributedText?.string].compactMap { $0 })
+        }
+        return found + view.subviews.flatMap { allStrings(in: $0) }
     }
 
     // MARK: - Median semantics

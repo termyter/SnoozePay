@@ -299,10 +299,14 @@ extension StatisticsViewModel {
             recentSampleCount: Int,
             minimumSamples: Int
         ) {
-            let median = WakeTimeStats.timeOfDay(medianMinutes, field: "median")
+            let median = WakeTimeStats.timeOfDay(
+                medianMinutes, field: "median", consequence: "wake-time card suppressed"
+            )
             self.medianMinutes = median
             self.baselineMedianMinutes = WakeTimeStats.timeOfDay(
-                baselineMedianMinutes, field: "baseline"
+                baselineMedianMinutes,
+                field: "baseline",
+                consequence: "comparison columns dropped, card still shown"
             )
             self.medianWasRefused = medianMinutes != nil && median == nil
             self.recentSampleCount = recentSampleCount
@@ -317,14 +321,27 @@ extension StatisticsViewModel {
         /// down the very suite that proves the guard works. The branch is
         /// unreachable in today's pipeline, which is exactly why the log has
         /// to survive into release — if it ever fires, nothing else will say so.
-        private static func timeOfDay(_ minutes: Int?, field: String) -> Int? {
+        /// `consequence` comes from the call site rather than being baked into
+        /// the message, because the two fields do NOT have the same one: a
+        /// refused median hides the card, a refused baseline only drops the
+        /// comparison columns and leaves the card on screen — which this PR's
+        /// own `testWakeTimeStats_outOfDayBaselineDropsOnlyTheComparison`
+        /// asserts. A single shared sentence therefore told the truth in one
+        /// call and lied in the other, and a wrong diagnosis is worse than a
+        /// vague one: it sends whoever greps the ID looking for a card that
+        /// never disappeared.
+        private static func timeOfDay(
+            _ minutes: Int?,
+            field: String,
+            consequence: String
+        ) -> Int? {
             guard let minutes else { return nil }
             guard minuteOfDayRange.contains(minutes) else {
                 AppLogger.ui.error(
                     """
                     [\(wakeMedianOutOfDayErrorID, privacy: .public)] \
                     \(field, privacy: .public) \(minutes, privacy: .public) is not a \
-                    time of day — dropped, wake-time card suppressed
+                    time of day — dropped, \(consequence, privacy: .public)
                     """
                 )
                 return nil

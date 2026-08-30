@@ -80,15 +80,15 @@ final class SPWakeTimeCard: UIView {
             columnsRow.isHidden = true
             pendingLabel.isHidden = true
             accumulatingLabel.isHidden = !stats.isAccumulating
-            // Written only where it is shown. A `UILabel` keeps its text after
-            // being hidden, so assigning it unconditionally leaves «нужно ещё 0
-            // утр» loaded in the refused case, one visibility refactor away
-            // from the screen.
-            if stats.isAccumulating {
-                accumulatingLabel.text = StatisticsViewModel.wakeSamplesPendingText(
-                    stats.samplesUntilReady
-                )
-            }
+            // Cleared, not merely left unwritten. A `UILabel` keeps its text
+            // after being hidden, and this card is reused across `apply` calls:
+            // a short window writes «нужно ещё 4 утра», the data then goes bad,
+            // and skipping the assignment would leave that sentence loaded
+            // behind a hidden label — one visibility refactor away from the
+            // screen, which is the thing being guarded against.
+            accumulatingLabel.text = stats.isAccumulating
+                ? StatisticsViewModel.wakeSamplesPendingText(stats.samplesUntilReady)
+                : nil
             return
         }
         columnsRow.isHidden = false
