@@ -289,8 +289,15 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// unreachable in production, and `AlarmCell` no longer assigns it.
     ///
     /// The replacement oracle is a **baseline** rather than a constant: a bare
-    /// `SPSwitch` in the same state, created next to the cell and read in the
-    /// same breath, so both sides see the same process. Both `nil` (layer not
+    /// `UISwitch` in the same state, created next to the cell and read in the
+    /// same breath, so both sides see the same process.
+    ///
+    /// `UISwitch` and not `SPSwitch` on purpose. The value under test is
+    /// UIKit's derived one, and the card's control is an `SPSwitch`; baselining
+    /// against another `SPSwitch` would move both sides together the day
+    /// `SPSwitch` grows an `accessibilityValue` override of its own, and the
+    /// test would stay green while VoiceOver started saying something else.
+    /// The platform is the oracle, so the baseline has to be the platform. Both `nil` (layer not
     /// installed) or both `"1"`/`"0"` (installed) — either way the card is
     /// compared against the platform, and re-introducing a hand-set value turns
     /// this red in exactly the run that used to be green.
@@ -302,7 +309,7 @@ final class AlarmEditorCopyTests: XCTestCase {
             let cell = AlarmCell(style: .default, reuseIdentifier: nil)
             cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽",
                            multiplier: nil, soundName: nil, enabled: enabled)
-            let baseline = SPSwitch()
+            let baseline = UISwitch()
             baseline.isOn = enabled
 
             let toggle = try XCTUnwrap(
@@ -314,8 +321,13 @@ final class AlarmEditorCopyTests: XCTestCase {
             XCTAssertEqual(toggle.isOn, enabled, "the card's switch stopped tracking `enabled`")
             XCTAssertEqual(
                 toggle.accessibilityValue, baseline.accessibilityValue,
-                "the card announces its state differently from a bare switch in the same state — "
-                    + "something assigned accessibilityValue again, and VoiceOver will ignore it"
+                """
+                the card announces its state differently from a bare UISwitch in the same \
+                state (enabled: \(enabled)) — card: \
+                \(toggle.accessibilityValue.map { "\"\($0)\"" } ?? "nil"), \
+                platform: \(baseline.accessibilityValue.map { "\"\($0)\"" } ?? "nil"). \
+                Something assigned accessibilityValue again, and VoiceOver will ignore it
+                """
             )
         }
     }
