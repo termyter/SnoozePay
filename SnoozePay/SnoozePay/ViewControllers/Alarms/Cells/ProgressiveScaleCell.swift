@@ -216,6 +216,10 @@ final class ProgressiveScaleCell: UITableViewCell {
 /// hierarchy (see `CreateAlarmLightThemeTests`).
 final class ProgressiveCardSurface: UIView {
 
+    /// Frame weight, identical armed and disarmed — see `applyThemedDecoration`.
+    /// The canon's card is `1px solid` (`SPMore2.jsx` L258).
+    static let borderWidth: CGFloat = 1
+
     /// Whether the card is currently showing its armed (pain-tinted) state.
     /// Kept so a theme flip can repaint the right hairline without the cell
     /// having to re-`configure`.
@@ -277,6 +281,19 @@ final class ProgressiveCardSurface: UIView {
     /// edge — the shadow alone leaves a floating slab. Disarmed the stroke is
     /// the neutral `stroke1` every other card uses; armed it becomes the pain
     /// tint from `SPMore2.jsx`.
+    ///
+    /// Both states now carry the SAME 1pt weight (#675). Disarmed used to draw
+    /// `1 / displayScale` — one physical pixel of an 8% ink — and that is the
+    /// state the PM reported: armed, the card has a clear frame; disarmed, the
+    /// frame all but vanishes and the card reads as a formless white slab
+    /// beside the identically-white «Цена откладывания» card above it. Only
+    /// the colour should say whether the mode is armed; the silhouette should
+    /// not come and go with it.
+    ///
+    /// The card can afford the extra weight where its neighbours cannot: it is
+    /// a standalone card, and the canon gives it an explicit `1px solid`
+    /// border (`SPMore2.jsx` L257-258), where the `.insetGrouped` rows around
+    /// it are one section sharing a hairline.
     private func applyThemedDecoration() {
         AppShadow.shadow1(for: traitCollection).apply(to: layer)
         AppShadow.installAmbientShadow1Layer(
@@ -288,8 +305,7 @@ final class ProgressiveCardSurface: UIView {
             AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.10).cgColor,
             AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.02).cgColor
         ]
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = isPainTinted ? 1 : 1.0 / scale
+        layer.borderWidth = Self.borderWidth
         let stroke = isPainTinted
             ? AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.25)
             : AppColors.stroke1.resolvedColor(with: traitCollection)
