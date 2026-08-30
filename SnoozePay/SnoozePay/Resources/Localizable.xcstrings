@@ -3397,6 +3397,42 @@
         }
       }
     },
+    "wallet.history.filter.all" : {
+      "comment" : "Transaction-history type-filter chip: no restriction on the direction of the row.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Все"
+          }
+        }
+      }
+    },
+    "wallet.history.filter.charges" : {
+      "comment" : "Transaction-history type-filter chip: debits only (snooze charges).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Списания"
+          }
+        }
+      }
+    },
+    "wallet.history.filter.credits" : {
+      "comment" : "Transaction-history type-filter chip: everything that adds money — paid top-ups, referral bonuses and penalty reversals.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поступления"
+          }
+        }
+      }
+    },
     "wallet.history.link_all" : {
       "comment" : "Link from the wallet preview into the full history screen. The arrow is part of the copy so a translation can move it.",
       "extractionState" : "manual",
@@ -3481,6 +3517,42 @@
         }
       }
     },
+    "wallet.history.timestamp.date" : {
+      "comment" : "Wallet preview row timestamp for a day older than yesterday. %1$@ is the date rendered by the locale's own «d MMM» template, %2$@ the 24-hour clock time. Positional, and the «·» separator is part of the string, so a translation can reorder or replace it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "wallet.history.timestamp.today" : {
+      "comment" : "Wallet preview row timestamp for today. %@ is the 24-hour clock time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сегодня · %@"
+          }
+        }
+      }
+    },
+    "wallet.history.timestamp.yesterday" : {
+      "comment" : "Wallet preview row timestamp for yesterday.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вчера · %@"
+          }
+        }
+      }
+    },
     "wallet.history.title" : {
       "comment" : "Navigation title of the transaction-history screen.",
       "extractionState" : "manual",
@@ -3501,6 +3573,150 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Часть операций не распознана — итоги ниже могут быть неполными"
+          }
+        }
+      }
+    },
+    "wallet.month.short_01" : {
+      "comment" : "Abbreviated month name (январь) for the transaction-history period chips and the month grid of the picker sheet. Copy rather than calendar data, unlike the full names: ru_RU's own shortStandaloneMonthSymbols carry trailing periods, leave four months unabbreviated («март», «май», «июнь», «июль») and range from three to five characters, where the grid on artboard 21b is a fixed set of three-letter tokens.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "янв"
+          }
+        }
+      }
+    },
+    "wallet.month.short_02" : {
+      "comment" : "Abbreviated month name (февраль). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "фев"
+          }
+        }
+      }
+    },
+    "wallet.month.short_03" : {
+      "comment" : "Abbreviated month name (март). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "мар"
+          }
+        }
+      }
+    },
+    "wallet.month.short_04" : {
+      "comment" : "Abbreviated month name (апрель). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "апр"
+          }
+        }
+      }
+    },
+    "wallet.month.short_05" : {
+      "comment" : "Abbreviated month name (май). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "май"
+          }
+        }
+      }
+    },
+    "wallet.month.short_06" : {
+      "comment" : "Abbreviated month name (июнь). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "июн"
+          }
+        }
+      }
+    },
+    "wallet.month.short_07" : {
+      "comment" : "Abbreviated month name (июль). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "июл"
+          }
+        }
+      }
+    },
+    "wallet.month.short_08" : {
+      "comment" : "Abbreviated month name (август). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "авг"
+          }
+        }
+      }
+    },
+    "wallet.month.short_09" : {
+      "comment" : "Abbreviated month name (сентябрь). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сен"
+          }
+        }
+      }
+    },
+    "wallet.month.short_10" : {
+      "comment" : "Abbreviated month name (октябрь). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "окт"
+          }
+        }
+      }
+    },
+    "wallet.month.short_11" : {
+      "comment" : "Abbreviated month name (ноябрь). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ноя"
+          }
+        }
+      }
+    },
+    "wallet.month.short_12" : {
+      "comment" : "Abbreviated month name (декабрь). See wallet.month.short_01 for why these are copy and the full names are not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "дек"
           }
         }
       }
@@ -3537,6 +3753,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Выберите месяц"
+          }
+        }
+      }
+    },
+    "wallet.period.month_count" : {
+      "comment" : "Month counter beside the caption of the period-picker sheet. %lld is the number of months in the selected range; the Russian abbreviation does not decline (1 / 3 / 5 мес.), hence one key instead of a plural set.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld мес."
           }
         }
       }

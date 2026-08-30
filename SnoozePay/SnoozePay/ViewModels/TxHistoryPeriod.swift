@@ -28,35 +28,63 @@ struct YearMonth: Equatable, Hashable, Comparable {
         lhs.linearIndex < rhs.linearIndex
     }
 
-    // MARK: - Russian month names
+    // MARK: - Month names
 
-    /// Lowercase nominative names — Russian only capitalizes month names at
-    /// sentence start, so tokens stay lowercase and call sites capitalize.
-    static let fullNames = [
-        "январь", "февраль", "март", "апрель", "май", "июнь",
-        "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"
-    ]
-    static let shortNames = [
-        "янв", "фев", "мар", "апр", "май", "июн",
-        "июл", "авг", "сен", "окт", "ноя", "дек"
-    ]
+    /// Lowercase nominative names, read from the calendar rather than from
+    /// `Localizable.xcstrings` — the same call ``WeekdayNames`` makes and for
+    /// the same reason (#569): a month name is data every locale ships with
+    /// CLDR, not copy a translator should retype.
+    ///
+    /// The substitution is exact, which is why it is safe: `ru_RU`'s
+    /// `standaloneMonthSymbols` is «январь … декабрь» character for character.
+    /// Nominative *because* they are standalone symbols — the genitive
+    /// («12 января») lives in `monthSymbols` and is what a `d MMMM` pattern
+    /// picks up, so deriving these does not disturb the declension of dates
+    /// rendered elsewhere. Russian only capitalizes month names at sentence
+    /// start, so tokens stay lowercase and call sites capitalize.
+    ///
+    /// Stored rather than computed: these come from the system and cannot go
+    /// missing, unlike catalogue copy (``Plural``).
+    static let fullNames: [String] = {
+        let formatter = DateFormatter()
+        formatter.locale = AppLocale.display
+        guard let symbols = formatter.standaloneMonthSymbols, symbols.count == 12 else { return [] }
+        return symbols
+    }()
+
+    /// Abbreviated names — **copy**, unlike ``fullNames``. `ru_RU`'s
+    /// `shortStandaloneMonthSymbols` is «янв., февр., март, апр., май, июнь,
+    /// июль, авг., сент., окт., нояб., дек.»: trailing periods, four months
+    /// not abbreviated at all and widths from three to five characters, where
+    /// the design's month grid (artboard 21b) is a fixed set of three-letter
+    /// tokens. So these stay in the catalogue, and
+    /// `WalletHistoryLocalizationTests` pins the mismatch — a future CLDR
+    /// revision that closes it should surface as one named failure, not as a
+    /// silent invitation to re-derive them.
+    static var shortNames: [String] { (1...12).map { shortName(ofMonth: $0) } }
+
+    /// Abbreviated name of `month` (1-based), straight from the catalogue —
+    /// avoids building all twelve to read one.
+    static func shortName(ofMonth month: Int) -> String {
+        Localized.text(String(format: "wallet.month.short_%02d", month))
+    }
 
     /// "январь 2026" — chip / summary caption for a single month.
     var fullCaption: String { "\(Self.fullNames[month - 1]) \(year)" }
     /// "янв 2026" — compact range-chip caption.
-    var shortCaption: String { "\(Self.shortNames[month - 1]) \(year)" }
+    var shortCaption: String { "\(Self.shortName(ofMonth: month)) \(year)" }
     /// "Январь 2026" — picker-sheet selected-range row.
     var capitalizedCaption: String {
         "\(Self.fullNames[month - 1].capitalized(with: AppLocale.display)) \(year)"
     }
     /// "Янв" — month-grid cell label.
     var gridLabel: String {
-        Self.shortNames[month - 1].capitalized(with: AppLocale.display)
+        Self.shortName(ofMonth: month).capitalized(with: AppLocale.display)
     }
     /// "Янв 2026" — capitalized compact caption for the (sentence-start)
     /// header chip when a range is selected.
     var capitalizedShortCaption: String {
-        "\(Self.shortNames[month - 1].capitalized(with: AppLocale.display)) \(year)"
+        "\(Self.shortName(ofMonth: month).capitalized(with: AppLocale.display)) \(year)"
     }
 }
 
@@ -128,8 +156,11 @@ struct TxHistoryPeriod: Equatable {
             : "\(start.capitalizedCaption) — \(end.capitalizedCaption)"
     }
 
-    /// "3 мес." — month counter next to the picker caption.
-    var monthCountText: String { "\(monthCount) мес." }
+    /// "3 мес." — month counter next to the picker caption. One key, not a
+    /// plural set: the Russian abbreviation does not decline (1 / 3 / 5 мес.),
+    /// and a language that does decline it can add its own variations to this
+    /// entry without a call-site change.
+    var monthCountText: String { Localized.format("wallet.period.month_count", monthCount) }
 }
 
 /// Transaction-type filter for the chip row under the summary card
@@ -148,9 +179,9 @@ enum TxHistoryTypeFilter: CaseIterable {
     /// Chip label.
     var title: String {
         switch self {
-        case .all: return "Все"
-        case .charges: return "Списания"
-        case .credits: return "Поступления"
+        case .all: return Localized.text("wallet.history.filter.all")
+        case .charges: return Localized.text("wallet.history.filter.charges")
+        case .credits: return Localized.text("wallet.history.filter.credits")
         }
     }
 
