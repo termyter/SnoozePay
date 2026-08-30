@@ -113,7 +113,17 @@ class SettingsViewController: UIViewController {
     /// Not a global read at every call site: `AppFeatureFlags.referralEnabled`
     /// is a `let`, so with the flag read inline there is no way to exercise
     /// the on-position on a live table at all.
-    var referralEnabled: Bool = AppFeatureFlags.referralEnabled
+    var referralEnabled: Bool = AppFeatureFlags.referralEnabled {
+        didSet {
+            guard isViewLoaded, oldValue != referralEnabled else { return }
+            // Without this the table keeps the old `numberOfSections` while
+            // `visibleSections` returns the new list, and taps route to the
+            // wrong section — the exact off-by-one
+            // `testTheIndexTheHiddenSectionVacatedNowBelongsToItsSuccessor`
+            // exists to catch.
+            tableView.reloadData()
+        }
+    }
 
     /// Held weak so the cell may be recycled without a dangling reference.
     /// Used to surface inline validation messages from
@@ -200,44 +210,6 @@ class SettingsViewController: UIViewController {
 // MARK: - UITableViewDataSource
 
 extension SettingsViewController: UITableViewDataSource {
-
-    /// The sections the table is currently showing, in order.
-    ///
-    /// A table section INDEX is a position in this array, not a `Section` raw
-    /// value. Hiding a section removes it rather than leaving it present with
-    /// zero rows, because an empty section is not free: measured on a laid-out
-    /// table at 402pt, a hidden `.referral` still reserved **17.33pt** of
-    /// grouped footer, which is exactly the double break between «ПРАВИЛА» and
-    /// «ПРОЧЕЕ» that #676 is about.
-    ///
-    /// ⚠️ `heightForFooterInSection` cannot take that back, and an earlier
-    /// version of this PR tried. UIKit ignores `.leastNonzeroMagnitude` from
-    /// the FOOTER callback for a section with no footer view — the header
-    /// callback below honours the same value, so do not read this as a rule
-    /// about both: `contentSize.height` came back
-    /// **875.0000089009603** with the delegate method and 875.0000089009603
-    /// without it — the same number to the last digit. The test that passed
-    /// alongside it re-read the constant the method had just returned, which is
-    /// why nobody noticed. Do not reintroduce it.
-    ///
-    /// `.diagnostics` deliberately stays in the list even when it has no rows.
-    /// Its phantom footer merges into the padding above the version footer
-    /// rather than splitting two visible sections, so removing it would move
-    /// the version line up by that same 17.33pt — a change to a part of the
-    /// screen #676 has no business touching. Unifying the two rules is its own
-    /// piece of work, filed as #684.
-    /// Pure function of the flag — the ONLY gate on the referral section —
-    /// so BOTH positions can be laid out on a real table. Reading
-    /// the global here directly is what made the on-position untestable: the
-    /// two tests that wanted it had to skip, and reversibility — the whole
-    /// promise of #676 — rested on helpers production never calls.
-    static func visibleSections(referralEnabled: Bool) -> [Section] {
-        Section.allCases.filter { $0 != .referral || referralEnabled }
-    }
-
-    var visibleSections: [Section] {
-        Self.visibleSections(referralEnabled: referralEnabled)
-    }
 
     /// The section at a table index, or `nil` if the index is out of step with
     /// `visibleSections`.

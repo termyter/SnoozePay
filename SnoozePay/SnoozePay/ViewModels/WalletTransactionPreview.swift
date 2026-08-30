@@ -67,7 +67,8 @@ enum WalletTransactionPreview {
             // Unified with the history screen — honest copy + the same gift
             // glyph (issue #282). The only source was ever the referral
             // bonus, and #676 hid that entry point, so nothing mints
-            // `.promotion` today; this renders pre-existing rows.
+            // `.promotion` in a release build; this renders pre-existing rows.
+            // DEBUG still seeds one via `UITourLauncher` under `-uitour-seed`.
             title = Localized.text("wallet.tx.promotion")
             icon = "gift"
             isDebit = false
