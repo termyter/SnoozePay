@@ -56,31 +56,31 @@ enum WalletTransactionPreview {
         let isDebit: Bool
         switch transaction.type {
         case .charge:
-            title = "Поспать ещё"
+            title = Localized.text("wallet.tx.charge")
             icon = "flame"
             isDebit = true
         case .topup:
-            title = "Пополнение баланса"
+            title = Localized.text("wallet.tx.topup")
             icon = "plus"
             isDebit = false
         case .promotion:
             // Unified with the history screen — honest copy (the only
             // promotion source today is the referral bonus) + the same gift
             // glyph (issue #282).
-            title = "Бонус за друга"
+            title = Localized.text("wallet.tx.promotion")
             icon = "gift"
             isDebit = false
         case .refund:
             // Penalty returned because the snooze never armed (#358) — the
             // "undo" glyph reads as a reversal, not as fresh money in.
-            title = "Возврат за откладывание"
+            title = Localized.text("wallet.tx.refund")
             icon = "arrow.uturn.backward"
             isDebit = false
         case .unknown:
             // Row written by a newer build than this one (see
             // `TransactionType.unknown`). Render something neutral rather than
             // hiding it — the ledger row exists and the user should see it.
-            title = "Операция"
+            title = Localized.text("wallet.tx.unknown")
             icon = "questionmark"
             isDebit = false
         }
@@ -111,6 +111,13 @@ enum WalletTransactionPreview {
 
     /// "Сегодня · HH:mm" / "Вчера · HH:mm" / "d MMM · HH:mm" relative to
     /// the injected `now` (so tests don't depend on the wall clock).
+    ///
+    /// All three shapes are whole catalogue strings, separator included: the
+    /// «·» is punctuation a language may well place differently, and there is
+    /// nothing to gain from freezing it in Swift. The clock stays `HH:mm`
+    /// though — a 24-hour reading is what the design shows and what every
+    /// other time label in the app renders (#569 moves *copy*, not the
+    /// question of am/pm).
     static func timestampText(for date: Date, now: Date, calendar: Calendar = .current) -> String {
         let timeFormatter = DateFormatter()
         timeFormatter.locale = AppLocale.display
@@ -120,17 +127,20 @@ enum WalletTransactionPreview {
         let time = timeFormatter.string(from: date)
 
         if calendar.isDate(date, inSameDayAs: now) {
-            return "Сегодня · \(time)"
+            return Localized.format("wallet.history.timestamp.today", time)
         }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
            calendar.isDate(date, inSameDayAs: yesterday) {
-            return "Вчера · \(time)"
+            return Localized.format("wallet.history.timestamp.yesterday", time)
         }
         let dayFormatter = DateFormatter()
         dayFormatter.locale = AppLocale.display
         dayFormatter.calendar = calendar
         dayFormatter.timeZone = calendar.timeZone
-        dayFormatter.dateFormat = "d MMM"
-        return "\(dayFormatter.string(from: date)) · \(time)"
+        // Template, not the literal pattern: day-then-month is a property of
+        // the locale, and under `ru_RU` it resolves to the same `d MMM` this
+        // line used to hardcode (asserted in `WalletHistoryLocalizationTests`).
+        dayFormatter.setLocalizedDateFormatFromTemplate("dMMM")
+        return Localized.format("wallet.history.timestamp.date", dayFormatter.string(from: date), time)
     }
 }
