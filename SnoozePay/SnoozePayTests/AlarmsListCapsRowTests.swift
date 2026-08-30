@@ -143,4 +143,76 @@ final class AlarmsListCapsRowTests: XCTestCase {
         vm.loadData()
         XCTAssertEqual(vm.alarmDaysCaps(at: 0), "СПОРТ · ЕДИНОЖДЫ · ВТ, ЧТ")
     }
+
+    // MARK: - Default-name suppression (#623)
+    //
+    // The row asks the model whether the user ever typed a name instead of
+    // matching the persisted string against the literal "будильник". These
+    // four cases are the ones that told the two mechanisms apart, and the
+    // last three go through a hand-built payload because that is the only way
+    // to express "written by a build other than this one".
+
+    func testCapsRow_defaultName_suppressesTheName() {
+        repo.save(Alarm(repeatDays: [0, 1, 2, 3, 4], penaltyAmount: 50))
+        XCTAssertEqual(capsRow(), "БУДНИ · ПН–ПТ")
+    }
+
+    func testCapsRow_defaultNameWrittenInAnotherLocale_stillSuppressesTheName() throws {
+        // What an English build persists: the flag is set, the string is not
+        // the Russian word. The old literal comparison rendered this as
+        // "ALARM · БУДНИ · ПН–ПТ".
+        try saveRawAlarm(name: "Alarm", nameIsDefault: true)
+        let caps = capsRow()
+        XCTAssertEqual(caps, "БУДНИ · ПН–ПТ")
+        XCTAssertFalse(caps.contains("ALARM"), "A default name must not reach the caps row in any language")
+    }
+
+    func testCapsRow_legacyRecordWithoutTheFlag_stillSuppressesTheName() throws {
+        // What is on users' disks today: `name`, no `nameIsDefault`.
+        try saveRawAlarm(name: "Будильник", nameIsDefault: nil)
+        XCTAssertEqual(capsRow(), "БУДНИ · ПН–ПТ")
+    }
+
+    func testCapsRow_legacyRecordWithAUserName_stillShowsTheName() throws {
+        try saveRawAlarm(name: "Спорт", nameIsDefault: nil)
+        XCTAssertEqual(capsRow(), "СПОРТ · БУДНИ · ПН–ПТ")
+    }
+
+    /// Provenance, not spelling (see `AlarmDefaultNameTests`): a name the user
+    /// typed is rendered even when it reads like the default.
+    func testCapsRow_userTypedTheDefaultWord_showsTheName() {
+        repo.save(Alarm(repeatDays: [0, 1, 2, 3, 4], name: "Будильник", penaltyAmount: 50))
+        XCTAssertEqual(capsRow(), "БУДИЛЬНИК · БУДНИ · ПН–ПТ")
+    }
+
+    func testCapsRow_whitespaceName_suppressesTheName() {
+        repo.save(Alarm(repeatDays: [0, 1, 2, 3, 4], name: "   ", penaltyAmount: 50))
+        XCTAssertEqual(capsRow(), "БУДНИ · ПН–ПТ", "A blank name must not leave a dangling «·»")
+    }
+
+    // MARK: - Helpers
+
+    private func capsRow() -> String {
+        let vm = AlarmsListViewModel(alarmRepository: repo, balanceService: .shared)
+        vm.loadData()
+        return vm.alarmDaysCaps(at: 0)
+    }
+
+    /// Persist a single Пн–Пт alarm whose name keys are written by hand, which
+    /// is how a record from another app version or another UI language is
+    /// reproduced without a second language actually shipping.
+    private func saveRawAlarm(name: String, nameIsDefault: Bool?) throws {
+        let encoded = try JSONEncoder().encode(Alarm(repeatDays: [0, 1, 2, 3, 4], penaltyAmount: 50))
+        var json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        json["name"] = name
+        if let nameIsDefault {
+            json["nameIsDefault"] = nameIsDefault
+        } else {
+            json.removeValue(forKey: "nameIsDefault")
+        }
+        let payload = try JSONSerialization.data(withJSONObject: [json])
+        testDefaults.set(payload, forKey: "stored_alarms")
+    }
 }

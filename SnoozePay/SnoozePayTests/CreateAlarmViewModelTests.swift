@@ -289,10 +289,48 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let saved = repo.fetchAllOrFail().first
         XCTAssertEqual(saved?.name, "Будильник")
         // The editor reads `Alarm.defaultName` rather than its own literal
-        // (#598): one default, one place to change it. The line above still
-        // pins the text, because this value is persisted and
-        // `AlarmsListViewModel` compares against it (#623).
+        // (#598): one default, one place to change it. Since #623 an empty
+        // field stores NO name at all and the default is resolved on display,
+        // so the alarm keeps reading as default-named after a translation
+        // ships instead of freezing today's Russian word into storage.
         XCTAssertEqual(saved?.name, Alarm.defaultName)
+        XCTAssertEqual(saved?.nameIsDefault, true)
+        XCTAssertNil(saved?.customName)
+    }
+
+    /// Opening a default-named alarm in the editor must not silently turn its
+    /// default into a typed name: the field seeds empty (placeholder visible),
+    /// and saving without touching it leaves the alarm on the default (#623).
+    /// Echoing "Будильник" into the field would make the alarms list start
+    /// printing "БУДИЛЬНИК · …" for an alarm the user merely opened.
+    func testEdit_defaultNamedAlarm_seedsEmptyFieldAndStaysDefault() {
+        let original = Alarm(repeatDays: [0], penaltyAmount: 50)
+        repo.save(original)
+
+        let vm = CreateAlarmViewModel(alarm: original, repository: repo)
+        XCTAssertEqual(vm.name, "", "A default name is not something the user typed")
+
+        vm.penaltyAmount = 120
+        vm.save()
+
+        let saved = repo.fetchAllOrFail().first
+        XCTAssertEqual(saved?.penaltyAmount, 120)
+        XCTAssertEqual(saved?.nameIsDefault, true)
+        XCTAssertEqual(saved?.name, Alarm.defaultName)
+    }
+
+    func testEdit_namedAlarm_keepsTheNameUserOwned() {
+        let original = Alarm(repeatDays: [0], name: "Спорт", penaltyAmount: 50)
+        repo.save(original)
+
+        let vm = CreateAlarmViewModel(alarm: original, repository: repo)
+        XCTAssertEqual(vm.name, "Спорт")
+
+        vm.save()
+
+        let saved = repo.fetchAllOrFail().first
+        XCTAssertEqual(saved?.name, "Спорт")
+        XCTAssertEqual(saved?.nameIsDefault, false)
     }
 
     func testSave_editExistingAlarm() {

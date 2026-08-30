@@ -54,9 +54,14 @@ final class CreateAlarmViewModel {
         self.time = alarm?.time ?? Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
         self.repeatDays = alarm?.repeatDays ?? []
         // New alarms start with an empty name so the form shows the
-        // "Название" placeholder (#231); `makeAlarmFromCurrentState` falls
-        // back to `Alarm.defaultName` when the user saves without typing one.
-        self.name = alarm?.name ?? ""
+        // "Название" placeholder (#231); `makeAlarmFromCurrentState` leaves the
+        // name unset when the user saves without typing one.
+        //
+        // An alarm that is still on the auto-assigned default seeds an empty
+        // field too (#623). Echoing the default into the field would turn it
+        // into a user-typed name on the very next save — the alarm would start
+        // showing "БУДИЛЬНИК · …" in the caps row just because it was opened.
+        self.name = alarm.map { $0.nameIsDefault ? "" : $0.name } ?? ""
         self.soundID = alarm?.soundID ?? "radar"
         self.vibrationEnabled = alarm?.vibrationEnabled ?? defaults.vibrationEnabled
         // Clamp legacy values silently — pre-#143 alarms could store up to 30
@@ -135,7 +140,9 @@ final class CreateAlarmViewModel {
             id: existingID ?? UUID(),
             time: time,
             repeatDays: safeRepeatDays,
-            name: name.isEmpty ? Alarm.defaultName : name,
+            // Empty field → no user name at all, rather than a copy of the
+            // default frozen into storage in today's language (#623).
+            name: name.isEmpty ? nil : name,
             soundID: soundID,
             vibrationEnabled: vibrationEnabled,
             snoozeMinutes: safeSnooze,
