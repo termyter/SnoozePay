@@ -625,13 +625,12 @@ final class StatisticsViewModel {
 
     /// "8 января" — shared by the hero meta line and the heatmap tooltip.
     static func dayMonthText(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = AppLocale.display
         // Template, not a literal pattern: the day/month ORDER is a property of
         // the locale («8 января» vs "January 8"), so it is behaviour to derive
         // rather than copy to translate (#569). Resolves to the same "d MMMM"
-        // under `ru_RU`, so nothing on screen moves today.
-        formatter.setLocalizedDateFormatFromTemplate("dMMMM")
-        return formatter.string(from: date)
+        // under `ru_RU`, so nothing on screen moves today. The skeleton itself
+        // now lives in `CalendarDateFormatter` — this call site had it inline
+        // before the type existed (#654).
+        return CalendarDateFormatter.string(from: date, style: .dayMonth)
     }
 }
