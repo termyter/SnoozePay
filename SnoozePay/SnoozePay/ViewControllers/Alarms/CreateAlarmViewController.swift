@@ -126,7 +126,7 @@ final class CreateAlarmViewController: UIViewController {
     /// iOS 26 paints its shared glass capsule OVER a custom view, sampling
     /// what is behind it. On a control that already draws its own filled
     /// background that is a translucent copy of our own fill laid over our own
-    /// ink: it lifted «Готово» from 7.05:1 to **2.41:1**, under WCAG's 3:1
+    /// ink: it cut «Готово» from 7.05:1 down to **2.41:1**, under WCAG's 3:1
     /// floor, on the terminal action of the screen (#649). The `.money`
     /// variant itself is fine — the same button measures 6.76:1 in the wallet
     /// header; only the ones inside a navigation bar were washed out.

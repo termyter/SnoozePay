@@ -25,14 +25,14 @@ import XCTest
 /// screenshots and are recorded in the PR.
 final class CreateAlarmBarButtonGlassTests: XCTestCase {
 
+    /// The bar items are built in `viewDidLoad`, so nothing here needs a
+    /// window or a navigation stack — `loadViewIfNeeded()` is the whole
+    /// requirement. The earlier version of this helper showed four unowned
+    /// windows over the test host and never took them down, which is the
+    /// convention `CreateAlarmLightThemeTests` deliberately does not follow.
     private func hosted(alarm: Alarm?) -> CreateAlarmViewController {
         let sut = CreateAlarmViewController(alarm: alarm)
-        let nav = UINavigationController(rootViewController: sut)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        window.rootViewController = nav
-        window.isHidden = false
         sut.loadViewIfNeeded()
-        window.layoutIfNeeded()
         return sut
     }
 
