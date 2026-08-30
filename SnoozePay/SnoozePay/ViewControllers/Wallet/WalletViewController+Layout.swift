@@ -106,6 +106,28 @@ extension WalletViewController {
     func makeTxPreviewCard(items: [WalletTransactionPreviewItem]) -> UIView {
         guard !items.isEmpty else { return makeTxPreviewEmptyCard() }
 
+        // 20pt of horizontal inset is a PM decision (#677) that KNOWINGLY
+        // diverges from the canon. Canon renders this exact card as
+        // `<SPCard padding={4} radius={16}>` (`SPScreensV2.jsx:473`) and gives
+        // `.sp-row` only `padding: 14px 0`, so the prototype puts the icon 4pt
+        // from the card edge. There is no `4px 20px` row rule in the prototype
+        // — the one occurrence of that string is a screen-section container
+        // (`SPMore4.jsx:212`). Do not cite this comment as canon.
+        //
+        // What the decision buys, measured off a native 3× screenshot of the
+        // alarm form (1206×2622, ÷3 for pt): the `.insetGrouped` card sits
+        // 20.0pt from the screen edge and the «Тема» swatch inside it another
+        // 20.0pt in, i.e. row content at 40pt. These wallet cards sit in a
+        // stack with `AppSpacing.screenInset` (16) margins, so `sp1` put row
+        // content at 16+4 = 20pt and `sp5` puts it at 16+20 = 36pt — closer to
+        // the list it has to stand beside, not past it.
+        //
+        // The inset lives here rather than inside `SPRow` because `SPRow` pins
+        // its content edge-to-edge on purpose, matching `.sp-row`. That leaves
+        // the host card owning the horizontal inset.
+        //
+        // It is paid for out of the title's run — hence `titleLines: 2` below
+        // and `WalletRowInsetTests`.
         let card = SPCard(tone: .surface, padding: AppSpacing.sp1, cornerRadius: AppRadius.md)
         let container = UIStackView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -114,8 +136,12 @@ extension WalletViewController {
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
             container.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor),
-            container.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor)
+            container.leadingAnchor.constraint(
+                equalTo: card.leadingAnchor, constant: AppSpacing.sp5
+            ),
+            container.trailingAnchor.constraint(
+                equalTo: card.trailingAnchor, constant: -AppSpacing.sp5
+            )
         ])
         for (index, item) in items.enumerated() {
             let row = SPRow(
@@ -123,6 +149,10 @@ extension WalletViewController {
                 subtitle: item.timestampText,
                 leading: makeTxIcon(systemName: item.iconSystemName, isDebit: item.isDebit),
                 trailing: makeTxAmountLabel(text: item.amountText, isDebit: item.isDebit),
+                // Two lines, not one: «Возврат за откладывание» needs 210pt of
+                // run and the widest supported phone can spare 210pt only at a
+                // zero card inset. Measured — see `WalletRowInsetTests` (#677).
+                titleLines: 2,
                 divider: index < items.count - 1
             )
             container.addArrangedSubview(row)

@@ -38,6 +38,22 @@ final class SPRow: UIControl {
     ///   - leading: Optional leading view (icon, image, badge). Sized via
     ///     its own intrinsic content; rendered in a 24pt-wide column.
     ///   - trailing: Optional trailing view (chevron, switch, value label).
+    ///   - titleLines: How many lines the title may wrap onto. Defaults to 1.
+    ///     That default is the app's, NOT the canon's: `.sp-row__title`
+    ///     (`components.css:97`) sets no `white-space` and no clamp, and
+    ///     `.sp-row__main` (`:96`) is `flex: 1; min-width: 0`, so the
+    ///     prototype's title wraps to as many lines as it needs. The only
+    ///     `nowrap` rules in that file are `:13` (`.sp-btn`) and `:126`
+    ///     (`.sp-preset__pop`). 1 is a deliberate tightening — it keeps a
+    ///     list's rows on one rhythm — and `titleLines: 2` is therefore a step
+    ///     back TOWARDS canon, not away from it.
+    ///
+    ///     Pass 2 where the row's own copy is longer than the run the layout
+    ///     can give it — the wallet's «Возврат за откладывание» needs 210pt
+    ///     and the widest phone can spare 210pt only with a zero card inset
+    ///     (#677). A truncated title is worse than a two-storey one: the
+    ///     amount beside it stays put either way, and the ellipsis eats the
+    ///     noun that says WHAT the money did.
     ///   - divider: When `true` (default) draws a 1px hairline along the
     ///     bottom edge using `stroke1`. The first / last row in a stack
     ///     normally hides this manually.
@@ -48,6 +64,7 @@ final class SPRow: UIControl {
         subtitle: String? = nil,
         leading: UIView? = nil,
         trailing: UIView? = nil,
+        titleLines: Int = 1,
         divider: Bool = true,
         onTap: (() -> Void)? = nil
     ) {
@@ -55,6 +72,7 @@ final class SPRow: UIControl {
         self.onTap = onTap
         super.init(frame: .zero)
         configure()
+        titleLabel.numberOfLines = titleLines
         titleLabel.text = title
         if let subtitle = subtitle {
             subtitleLabel.text = subtitle
@@ -128,6 +146,8 @@ final class SPRow: UIControl {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = AppTypography.bodyLg
         titleLabel.textColor = AppColors.fg1
+        // Overwritten from `init` by `titleLines`. 1 is the app's default,
+        // not the prototype's — see the `titleLines` parameter doc.
         titleLabel.numberOfLines = 1
 
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false

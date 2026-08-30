@@ -316,8 +316,17 @@ final class WalletTransactionHistoryViewController: UIViewController {
         container.spacing = 0
         card.addSubview(container)
         NSLayoutConstraint.activate([
-            container.leadingAnchor.constraint(equalTo: card.layoutMarginsGuide.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: card.layoutMarginsGuide.trailingAnchor),
+            // Same inset as the wallet preview card, and for the same reason
+            // — see `WalletViewController+Layout.makeTxPreviewCard`, where the
+            // measurement and the canon divergence are written down. The two
+            // screens render the same rows, so they have to agree or «Все
+            // операции» visibly shifts the list sideways (#677).
+            container.leadingAnchor.constraint(
+                equalTo: card.leadingAnchor, constant: AppSpacing.sp5
+            ),
+            container.trailingAnchor.constraint(
+                equalTo: card.trailingAnchor, constant: -AppSpacing.sp5
+            ),
             container.topAnchor.constraint(equalTo: card.layoutMarginsGuide.topAnchor),
             container.bottomAnchor.constraint(equalTo: card.layoutMarginsGuide.bottomAnchor)
         ])
@@ -341,6 +350,10 @@ final class WalletTransactionHistoryViewController: UIViewController {
             subtitle: subtitle,
             leading: leading,
             trailing: trailing,
+            // Two lines, not one: «Возврат за откладывание» needs 210pt of
+            // run and the widest supported phone can spare 210pt only at a
+            // zero card inset. Measured — see `WalletRowInsetTests` (#677).
+            titleLines: 2,
             divider: divider
         )
     }
