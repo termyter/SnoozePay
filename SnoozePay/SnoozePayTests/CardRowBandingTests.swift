@@ -331,7 +331,9 @@ final class CardRowBandingTests: XCTestCase {
     }
 
     /// 3/255 of slack absorbs colour-space round-tripping through the
-    /// renderer. The defect this file pins is 15/255 per channel.
+    /// renderer. The banding this file pins measured 15/255 per channel before
+    /// #515; the seam wash #674 fixed is softer, so the tolerance is what makes
+    /// both readable as "the same fill".
     private func assertSameColour(_ lhs: UIColor, _ rhs: UIColor, _ message: String) {
         let left = channels(lhs)
         let right = channels(rhs)

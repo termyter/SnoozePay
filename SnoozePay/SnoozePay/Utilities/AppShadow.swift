@@ -211,18 +211,18 @@ struct AppShadow {
     /// halo mask. The ambient stop's interior (`#F0F1F2` over `bg1`) then
     /// printed into exactly those triangles, which sit in the seam between two
     /// rows, and the section read as if every row were individually rounded.
-    private static func cardPath(
+    static func cardPath(
         _ rect: CGRect,
         cornerRadius: CGFloat,
-        corners: CACornerMask
+        corners: CACornerMask = .allCorners
     ) -> CGPath {
-        guard corners != .allCorners else {
-            return UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius).cgPath
-        }
+        // Clamped the way `CardRowBackgroundView.outlinePath` clamps, so a row
+        // shorter than two radii cannot ask for a corner bigger than itself.
+        let radius = max(0, min(cornerRadius, rect.width / 2, rect.height / 2))
         return UIBezierPath(
             roundedRect: rect,
             byRoundingCorners: corners.rectCorners,
-            cornerRadii: CGSize(width: cornerRadius, height: cornerRadius)
+            cornerRadii: CGSize(width: radius, height: radius)
         ).cgPath
     }
 }

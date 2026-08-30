@@ -160,6 +160,12 @@ enum CardRowPosition {
     /// The decoration must not emit a halo or a shadow across these: the
     /// surface on the far side is the next row's `bg1`, and anything painted
     /// there reads as a boundary the section does not have (#674).
+    /// Edges this row shares with a neighbour, i.e. the ones a halo must not
+    /// cross because the surface on the far side is `bg1`, not the page.
+    ///
+    /// `.middle` answers `[.top, .bottom]` for a caller that never arrives:
+    /// a middle row installs no stop at all. The mapping is kept correct
+    /// rather than removed — see `CardRowSeamShadowTests.testAMiddleRow_…`.
     var openEdges: UIRectEdge {
         switch self {
         case .single: return []
@@ -248,11 +254,11 @@ final class CardRowBackgroundView: UIView {
         // stop does would move the band deeper into the neighbour rather than
         // remove it, because a shadow is always cast around whatever path it
         // is given.
-        layer.shadowPath = UIBezierPath(
-            roundedRect: bounds,
-            byRoundingCorners: position.maskedCorners.rectCorners,
-            cornerRadii: CGSize(width: cardCornerRadius, height: cardCornerRadius)
-        ).cgPath
+        layer.shadowPath = AppShadow.cardPath(
+            bounds,
+            cornerRadius: cardCornerRadius,
+            corners: position.maskedCorners
+        )
         AppShadow.installAmbientShadow1Layer(
             on: layer,
             cornerRadius: cardCornerRadius,
