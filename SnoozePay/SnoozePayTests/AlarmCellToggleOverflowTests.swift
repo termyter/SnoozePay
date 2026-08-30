@@ -17,9 +17,9 @@ import XCTest
 /// The drawing is 186 px wide in BOTH rows — the control was not stretched or
 /// squeezed visually, it was displaced by ~57 px (19 pt) to the right. And its
 /// `trailing` constraint was satisfied the whole time. Those two facts only fit
-/// together one way: `UISwitch` renders its intrinsic-size track centred in its
-/// bounds and does not clip, so a frame squeezed by 38 pt keeps a 62 pt drawing
-/// that now hangs 19 pt off each side. Half of 38 is the 19 that was measured.
+/// together one way: `UISwitch` renders a full-size track centred in its bounds
+/// and does not clip, so a frame squeezed by 38 pt keeps a 63 pt drawing that
+/// now hangs 19 pt off each side. Half of 38 is the 19 that was measured.
 ///
 /// The squeeze came from a degenerate tie. `capsLabel.trailing` is pinned to
 /// `toggleSwitch.leading`, and a `numberOfLines = 0` label reports its
@@ -31,9 +31,26 @@ import XCTest
 /// ## What these tests measure
 ///
 /// Not `frame.maxX` — that was green before the fix and is the reason earlier
-/// probes found nothing. They measure the **drawn box** (intrinsic size centred
-/// on the switch's centre, which is what a screenshot sees) against the card,
-/// and the switch's laid-out width against its intrinsic width.
+/// probes found nothing. They measure the **drawn box** (a full-size track
+/// centred on the switch's centre, which is what a screenshot sees) against the
+/// card, and the switch's laid-out width against the same switch in a row whose
+/// title fits.
+///
+/// ## The 2 pt that is not a defect
+///
+/// `UISwitch` has non-zero `alignmentRectInsets` on iOS 26. A laid-out switch
+/// under no pressure measures **63 pt** in `bounds` while `intrinsicContentSize`
+/// reports **61 pt**, and Auto Layout positions the 61 pt alignment rect — so a
+/// trailing constraint at 20 pt padding puts `frame.maxX` 2 pt further out, and
+/// the visible gap is 18 pt, not 20. Every trailing-pinned switch in the system
+/// does this.
+///
+/// The first version of these tests compared `frame` against `alignmentRect`
+/// values and `bounds.width` against `intrinsicContentSize.width`, and went red
+/// by exactly 2 pt on a branch whose screenshots were correct. The oracle, not
+/// the layout, was miscalibrated — the same failure the fix itself is about, in
+/// a different form. Hence: baselines (the one-line row) where a baseline
+/// exists, and inset terms derived from the live control where one does not.
 final class AlarmCellToggleOverflowTests: XCTestCase {
 
     /// iPhone 16 Pro portrait — the width the reported screenshot was taken at
@@ -99,18 +116,43 @@ final class AlarmCellToggleOverflowTests: XCTestCase {
         try XCTUnwrap(toggle.superview, "toggle has no card superview")
     }
 
-    /// What a screenshot sees: `UISwitch` paints its intrinsic-size track
-    /// centred in its bounds and clips to nothing, so the drawn box is NOT
-    /// `frame` once the frame has been compressed.
+    /// What a screenshot sees: `UISwitch` paints a track of its NATURAL FRAME
+    /// size centred in its bounds and clips to nothing, so the drawn box is
+    /// not `frame` once the frame has been compressed.
+    ///
+    /// ⚠️ Natural frame size, **not** `intrinsicContentSize`. On iOS 26 the
+    /// switch has non-zero `alignmentRectInsets`: a laid-out, uncompressed
+    /// switch measures 63pt in `bounds` against a 61pt intrinsic width, and
+    /// Auto Layout positions the 61pt alignment rect, not the 63pt frame. The
+    /// screenshot agrees with the frame — the track in #630 is 188px ≈ 62.7pt
+    /// wide, in both the one-line and the two-line row. Feeding the intrinsic
+    /// size in here instead makes every box 2pt narrow, which is enough to
+    /// call a correct layout broken.
     private func drawnBox(of toggle: SPSwitch, in card: UIView) -> CGRect {
         let centre = toggle.convert(CGPoint(x: toggle.bounds.midX, y: toggle.bounds.midY), to: card)
-        let size = toggle.intrinsicContentSize
+        let size = naturalFrameSize(of: toggle)
         return CGRect(
             x: centre.x - size.width / 2,
             y: centre.y - size.height / 2,
             width: size.width,
             height: size.height
         )
+    }
+
+    /// The frame the switch occupies when nothing compresses it: its intrinsic
+    /// content size grown back out by its own alignment-rect insets.
+    private func naturalFrameSize(of toggle: SPSwitch) -> CGSize {
+        toggle.frame(
+            forAlignmentRect: CGRect(origin: .zero, size: toggle.intrinsicContentSize)
+        ).size
+    }
+
+    /// How far the frame's right edge sits beyond the alignment rect Auto
+    /// Layout actually positions — 2pt on iOS 26, 0 on a platform without the
+    /// inset. Derived from the live control, never hardcoded.
+    private func trailingAlignmentInset(of toggle: SPSwitch) -> CGFloat {
+        let frame = CGRect(origin: .zero, size: naturalFrameSize(of: toggle))
+        return frame.maxX - toggle.alignmentRect(forFrame: frame).maxX
     }
 
     private func descendants<T: UIView>(of type: T.Type, in root: UIView) -> [T] {
@@ -161,21 +203,40 @@ final class AlarmCellToggleOverflowTests: XCTestCase {
         let card = try cardView(of: toggle)
 
         let drawn = drawnBox(of: toggle, in: card)
+        // The padding is honoured on the ALIGNMENT rect — that is the edge the
+        // trailing constraint pins — so the drawing legitimately reaches one
+        // alignment inset further right. Ignoring that term asks the switch to
+        // sit 2pt inside where UIKit puts every trailing-pinned switch in the
+        // system, and fails a layout that is correct. The defect this guards
+        // is 18pt, so the term costs the test nothing.
+        let limit = card.bounds.maxX - pad + trailingAlignmentInset(of: toggle)
         XCTAssertLessThanOrEqual(
-            drawn.maxX, card.bounds.maxX - pad + 0.5,
+            drawn.maxX, limit + 0.5,
             "Toggle is drawn past the card's inner padding — it overflows the card edge"
         )
     }
 
     /// Why it overflowed: the frame lost width while the drawing kept it.
     /// A control the user has to hit cannot be a source of slack.
-    func testToggleKeepsItsIntrinsicWidthWhenTitleWraps() throws {
-        let cell = layoutCell(daysCaps: twoLineName)
-        let toggle = try toggleView(in: cell)
+    ///
+    /// The oracle is the ONE-LINE card, not `intrinsicContentSize`. The two
+    /// differ by the alignment-rect inset (63 vs 61 on iOS 26), so comparing
+    /// against the intrinsic width fails by 2pt on a switch that was never
+    /// compressed — a measurement that reports a defect the screen does not
+    /// have. A row whose title happens to fit is the same switch under no
+    /// pressure, which is exactly the baseline this claim needs.
+    func testToggleKeepsItsFullWidthWhenTitleWraps() throws {
+        let relaxed = try toggleView(in: layoutCell(daysCaps: shortName))
+        let wrapped = try toggleView(in: layoutCell(daysCaps: twoLineName))
 
         XCTAssertEqual(
-            toggle.bounds.width, toggle.intrinsicContentSize.width, accuracy: 0.5,
-            "Switch frame was compressed; its drawing does not shrink with it, so it spills out of bounds"
+            wrapped.bounds.width, relaxed.bounds.width, accuracy: 0.5,
+            "Wrapping the title compressed the switch by \(relaxed.bounds.width - wrapped.bounds.width)pt; "
+                + "its drawing does not shrink with it, so it spills out of bounds"
+        )
+        XCTAssertGreaterThanOrEqual(
+            wrapped.bounds.width, wrapped.intrinsicContentSize.width,
+            "A switch narrower than its own intrinsic width is being squeezed"
         )
     }
 
@@ -200,9 +261,14 @@ final class AlarmCellToggleOverflowTests: XCTestCase {
             let toggle = try toggleView(in: cell)
             let card = try cardView(of: toggle)
 
+            // `alignmentRect`, not `frame`: a trailing constraint pins the
+            // alignment rect, and on iOS 26 the switch's frame runs 2pt past
+            // it. Asserting on the frame here fails on every build, fixed or
+            // not, and says nothing about the anchor.
             XCTAssertEqual(
-                toggle.frame.maxX, card.bounds.maxX - pad, accuracy: 0.5,
-                "Toggle frame trailing must sit exactly one card padding from the edge"
+                toggle.alignmentRect(forFrame: toggle.frame).maxX,
+                card.bounds.maxX - pad, accuracy: 0.5,
+                "Toggle trailing must sit exactly one card padding from the edge"
             )
         }
     }
