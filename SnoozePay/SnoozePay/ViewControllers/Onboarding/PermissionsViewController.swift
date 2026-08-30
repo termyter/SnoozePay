@@ -2,9 +2,9 @@ import UIKit
 
 /// Permissions screen — V3 (`docs/design/v2-handoff/components/SPMore2.jsx`
 /// `Permissions`, artboard 05). Shown once after Onboarding finishes, before
-/// the main alarms list. Caps "последний шаг" eyebrow → h1 "Чтобы будильник
-/// работал" → body copy → two permission cards (Notifications, Background)
-/// → "Готово" CTA in flow 28pt after the cards (not pinned to the bottom).
+/// the main alarms list. Caps «последний шаг» eyebrow → h1 «Чтобы будильник
+/// работал» → body copy → two permission cards (Notifications, Background)
+/// → «Готово» CTA in flow 28pt after the cards (not pinned to the bottom).
 /// Layout padding follows the JSX `70px 16px 52px` frame: 16pt below the
 /// safe-area top, 16pt sides.
 ///
@@ -13,7 +13,7 @@ import UIKit
 /// is already delivered by AlarmKit, the current scheduling backend, while
 /// the `com.apple.developer.usernotifications.critical-alerts` entitlement
 /// is granted by Apple on application and effectively never to alarm apps.
-/// The card therefore sat permanently on "Недоступно". Card spacing is
+/// The card therefore sat permanently on «Недоступно». Card spacing is
 /// unchanged (`AppSpacing.sp3`, the JSX `gap: 12`); the column is simply one
 /// card shorter.
 ///
@@ -26,7 +26,7 @@ import UIKit
 ///    and renders as granted.
 ///
 /// Persistence: `permissions_screen_shown` UserDefaults key prevents re-show
-/// on subsequent launches even when the user picks "Готово" without granting
+/// on subsequent launches even when the user picks «Готово» without granting
 /// anything. Future grants / revocations happen through Settings; the screen
 /// does not nag.
 final class PermissionsViewController: UIViewController {
@@ -39,7 +39,7 @@ final class PermissionsViewController: UIViewController {
     static let hasBeenShownKey = "permissions_screen_shown"
 
     /// `true` once the user has dismissed the permissions screen at least
-    /// once (either by granting or via "Готово"). Read by SceneDelegate to
+    /// once (either by granting or via «Готово»). Read by SceneDelegate to
     /// decide whether to present the screen on a given launch.
     static var hasBeenShown: Bool {
         UserDefaults.standard.bool(forKey: hasBeenShownKey)
@@ -47,7 +47,7 @@ final class PermissionsViewController: UIViewController {
 
     // MARK: - Callback
 
-    /// Invoked once the user finishes (grant complete or "Готово"). SceneDelegate
+    /// Invoked once the user finishes (grant complete or «Готово»). SceneDelegate
     /// uses this to swap the root from this VC to the tab bar.
     var onFinished: (() -> Void)?
 
@@ -65,7 +65,7 @@ final class PermissionsViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.attributedText = NSAttributedString(
-            string: "ПОСЛЕДНИЙ ШАГ",
+            string: Localized.text("onboarding.permissions.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -78,7 +78,7 @@ final class PermissionsViewController: UIViewController {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Чтобы будильник работал"
+        label.text = Localized.text("onboarding.permissions.title")
         label.font = AppTypography.h1
         label.textColor = .white
         label.numberOfLines = 0
@@ -86,7 +86,7 @@ final class PermissionsViewController: UIViewController {
         // -0.02em at 32pt ≈ -0.64; clamp to -0.32 per spec direction so it
         // tightens without bleeding into adjacent glyphs.
         label.attributedText = NSAttributedString(
-            string: "Чтобы будильник работал",
+            string: Localized.text("onboarding.permissions.title"),
             attributes: [
                 .font: AppTypography.h1,
                 .kern: -0.32,
@@ -99,7 +99,7 @@ final class PermissionsViewController: UIViewController {
     private let bodyLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Эти разрешения нужны, чтобы будильник прозвенел даже на беззвучном режиме."
+        label.text = Localized.text("onboarding.permissions.body")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg2
         label.numberOfLines = 0
@@ -116,7 +116,7 @@ final class PermissionsViewController: UIViewController {
     }()
 
     private let ctaButton = SPButton(
-        title: "Готово",
+        title: Localized.text("common.button.done"),
         variant: .money,
         size: .lg,
         fullWidth: true
@@ -223,7 +223,7 @@ final class PermissionsViewController: UIViewController {
 
             ctaButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             ctaButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
-            // V3: "Готово" lives in flow 28pt after the cards (JSX
+            // V3: «Готово» lives in flow 28pt after the cards (JSX
             // `marginTop: 28`) instead of pinning to the screen bottom —
             // cards no longer flex-grow into the gap.
             ctaButton.topAnchor.constraint(

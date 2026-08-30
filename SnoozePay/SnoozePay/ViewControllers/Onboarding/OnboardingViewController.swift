@@ -7,13 +7,13 @@ import UIKit
 /// 1. Concept — giant clock "07:00" with a warn "−50 ₽" pill and a hero h1.
 /// 2. Mechanics — three numbered steps explaining the snooze-tax loop.
 /// 3. Deposit — caps eyebrow, h1, three option cards (250 / 500 / 1000 ₽)
-///    with a money-tinted selection, plus a "Пополнить {value} ₽" CTA and a
-///    secondary "Позже — попробовать без баланса" link.
+///    with a money-tinted selection, plus a «Пополнить {value} ₽» CTA and a
+///    secondary «Позже — попробовать без баланса» link.
 ///
 /// V3 (2026-06 handoff, `docs/design/v2-handoff/components/SPMore.jsx`):
-/// a "Пропустить" pill floats top-right on every page, the deposit page
+/// a «Пропустить» pill floats top-right on every page, the deposit page
 /// content centres vertically like pages 1/2, and the green CTA keeps the
-/// same bottom Y on all pages (the secondary "Позже" slot stays in the
+/// same bottom Y on all pages (the secondary «Позже» slot stays in the
 /// layout on pages 1/2 at alpha 0 — the UIKit equivalent of the JSX's
 /// 20pt CTA-anchor spacer).
 ///
@@ -33,7 +33,7 @@ final class OnboardingViewController: UIViewController {
     static let firstTopUpDoneKey = "first_top_up_done"
 
     /// `true` once the user has finished onboarding (either Apple Pay path
-    /// or "Позже" path). Read by `SceneDelegate`.
+    /// or «Позже» path). Read by `SceneDelegate`.
     static var isCompleted: Bool {
         UserDefaults.standard.bool(forKey: completedKey)
     }
@@ -41,7 +41,7 @@ final class OnboardingViewController: UIViewController {
     // MARK: - Page data
 
     /// Deposit presets shown on step 3. The middle preset is the default
-    /// selection so the "Пополнить" CTA reads "500 ₽" on first appear.
+    /// selection so the «Пополнить» CTA reads «500 ₽» on first appear.
     struct DepositOption {
         let amount: Decimal
         let title: String
@@ -54,25 +54,27 @@ final class OnboardingViewController: UIViewController {
     let depositOptions: [DepositOption] = [
         DepositOption(
             amount: 250,
-            title: "Попробовать",
-            description: "≈ 5 откладываний по \(MoneyFormatter.string(50))",
+            title: Localized.text("onboarding.page3.option1_title"),
+            description: Localized.format(
+                "onboarding.page3.option1_body", MoneyFormatter.string(50)
+            ),
             isPopular: false
         ),
         DepositOption(
             amount: 500,
-            title: "Серьёзно",
-            description: "≈ 10 откладываний · хватит на 2 недели",
+            title: Localized.text("onboarding.page3.option2_title"),
+            description: Localized.text("onboarding.page3.option2_body"),
             isPopular: true
         ),
         DepositOption(
             amount: 1000,
-            title: "Решительно",
-            description: "≈ 20 откладываний · спокойный месяц",
+            title: Localized.text("onboarding.page3.option3_title"),
+            description: Localized.text("onboarding.page3.option3_body"),
             isPopular: false
         )
     ]
 
-    /// Default-selected option index — the "Серьёзно" 500 ₽ preset.
+    /// Default-selected option index — the «Серьёзно» 500 ₽ preset.
     let defaultDepositIndex: Int = 1
 
     /// Cached page count — drives `UIPageControl.numberOfPages` and the
@@ -130,18 +132,18 @@ final class OnboardingViewController: UIViewController {
         return stack
     }()
 
-    /// "Пропустить" escape hatch floating top-right on every page
+    /// «Пропустить» escape hatch floating top-right on every page
     /// (`SPMore.jsx OnboardingSkip` — pill 16pt below the status bar, 16pt
     /// from the trailing edge, `whiteOverlay06` fill + `whiteOverlay08`
     /// hairline, `fg3` buttonSm label). Completes onboarding exactly like
-    /// the "Позже" secondary.
+    /// the «Позже» secondary.
     let skipButton: UIButton = {
         var configuration = UIButton.Configuration.plain()
         configuration.contentInsets = NSDirectionalEdgeInsets(
             top: 6, leading: 14, bottom: 6, trailing: 14
         )
         configuration.attributedTitle = AttributedString(
-            "Пропустить",
+            Localized.text("onboarding.button.skip"),
             attributes: AttributeContainer([
                 .font: AppTypography.buttonSm,
                 .foregroundColor: AppColors.fg3
@@ -157,25 +159,25 @@ final class OnboardingViewController: UIViewController {
     }()
 
     /// Primary CTA visible on every page. On pages 1 & 2 the title reads
-    /// "Дальше"; on page 3 the VC swaps the instance via
-    /// `rebuildDepositCTA()` so the title becomes "Пополнить" with a money
+    /// «Дальше»; on page 3 the VC swaps the instance via
+    /// `rebuildDepositCTA()` so the title becomes «Пополнить» with a money
     /// suffix and a leading wallet icon. `internal` so the `+Pages` extension
     /// can swap the live instance + re-pin the constraints.
     var primaryButton = SPButton(
-        title: "Дальше",
+        title: Localized.text("onboarding.button.next"),
         variant: .money,
         size: .lg,
         fullWidth: true
     )
 
-    /// Secondary "Позже — попробовать без баланса" link visible only on
+    /// Secondary «Позже — попробовать без баланса» link visible only on
     /// step 3. Always part of `ctaStack`'s layout — on steps 1/2 it fades to
     /// alpha 0 (interaction off) instead of collapsing, so the green primary
     /// CTA keeps the exact same bottom Y across all pages (the JSX mockup
     /// approximates this with a 20pt spacer; the shared-stack layout makes
     /// the alignment exact).
     let laterButton = SPButton(
-        title: "Позже — попробовать без баланса",
+        title: Localized.text("onboarding.button.later"),
         variant: .quiet,
         size: .md,
         fullWidth: true
@@ -344,7 +346,7 @@ final class OnboardingViewController: UIViewController {
             pageControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             pageControl.bottomAnchor.constraint(equalTo: dotsStack.topAnchor),
 
-            // "Пропустить" pill — JSX `top: 70; right: 16` on a 54pt-status-bar
+            // «Пропустить» pill — JSX `top: 70; right: 16` on a 54pt-status-bar
             // frame ⇒ 16pt below the safe-area top, 16pt from the trailing edge.
             skipButton.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor,
@@ -411,7 +413,7 @@ extension OnboardingViewController: UIScrollViewDelegate {
 
     /// A slow drag released without momentum settles here (`decelerate == false`)
     /// and never reaches `scrollViewDidEndDecelerating`. Resolve the page so the
-    /// dot-row, glow, "Позже" link and primary CTA stay in sync. (#408)
+    /// dot-row, glow, «Позже» link and primary CTA stay in sync. (#408)
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         guard !decelerate else { return }
         settlePagerState(for: scrollView)

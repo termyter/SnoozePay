@@ -206,7 +206,7 @@ final class OnboardingPageDot: UIView {
     }
 }
 
-/// Deposit option card used on Onboarding step 3 — title h4, "ПОПУЛЯРНО"
+/// Deposit option card used on Onboarding step 3 — title h4, «ПОПУЛЯРНО»
 /// caps tag when applicable, description meta, trailing mono amount. When
 /// `isSelectedOption` is true the fill takes a 8% money tint, the border
 /// becomes `money400` at 40%, and the amount glyph switches to `money300`.
@@ -259,7 +259,7 @@ final class OnboardingDepositOptionView: UIControl {
         popularLabel.translatesAutoresizingMaskIntoConstraints = false
         if option.isPopular {
             popularLabel.attributedText = NSAttributedString(
-                string: "ПОПУЛЯРНО",
+                string: Localized.text("onboarding.deposit_option.popular_caps"),
                 attributes: [
                     .font: AppFonts.sans(.bold, 10),
                     .kern: 10 * 0.12,
@@ -307,7 +307,7 @@ final class OnboardingDepositOptionView: UIControl {
         // its own intrinsic width, so the multi-line description asked for its
         // full single-line width inside a column the incompressible amount
         // label had already capped. On the one card whose title row carries a
-        // second visible label — the "ПОПУЛЯРНО" tag — the engine settled that
+        // second visible label — the «ПОПУЛЯРНО» tag — the engine settled that
         // by squeezing the description to 8pt and wrapping it one character
         // per line, 550pt tall, blowing the card up to 608pt (#534).
         let textStack = UIStackView(arrangedSubviews: [titleRow, descriptionLabel])
