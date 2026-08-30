@@ -15,6 +15,12 @@ import XCTest
 /// Selectors are stable `accessibilityIdentifier`s.
 final class ProgressiveSnoozeUITests: XCTestCase {
 
+    /// Title of `firing.alert.snooze_not_scheduled` as the user sees it.
+    /// Spelled here because XCUITest is out of process and cannot read the
+    /// app's string catalogue; see `dismissAppAlert` for why the title must be
+    /// named at all.
+    private static let refusalAlertTitle = "Откладывание не запланировано"
+
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
@@ -47,11 +53,27 @@ final class ProgressiveSnoozeUITests: XCTestCase {
 
         // 2. Snooze → the refusal is stated, then the snoozed state in place.
         snooze.tap()
-        XCTAssertTrue(dismissAppAlert(in: app, timeout: 10),
-                      "A snooze refused by an unauthorized backend should explain itself")
+        XCTAssertTrue(
+            dismissAppAlert(in: app, titled: Self.refusalAlertTitle, timeout: 10),
+            "A snooze refused by an unauthorized backend should explain itself"
+        )
+
+        // ⚠️ This assertion pins behaviour that is KNOWN TO BE WRONG — see #641.
+        // On a denied backend `scheduleSnooze` calls its completion
+        // synchronously, so `exitSnoozedState()` runs before the state is
+        // active (a no-op) and `enterSnoozedState()` then builds a countdown to
+        // a ring that will never happen, behind an alert that just said it will
+        // never happen. The countdown below IS that bug.
+        //
+        // It is asserted rather than inverted because it is what the app does
+        // today, and a test that fails on unchanged code is worse than one that
+        // documents the defect. When #641 is fixed, THIS TEST GOING RED IS
+        // EXPECTED — it is not a sign the fix is wrong. Replace the assertion
+        // with one on the active firing UI (or delete the snoozed-state tests
+        // outright, if PM decides foreground snooze goes away with it).
         let countdown = app.staticTexts["firing.countdown"]
         XCTAssertTrue(countdown.waitForExistence(timeout: 5),
-                      "Snoozed-state countdown should appear after «Поспать ещё»")
+                      "Snoozed-state countdown should appear after «Поспать ещё» (see #641)")
 
         // 3. Progressive chrome — the pill names the next snooze ordinal.
         let pill = app.staticTexts["firing.snoozed.progressivePill"]

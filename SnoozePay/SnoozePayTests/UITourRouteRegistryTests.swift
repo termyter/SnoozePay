@@ -155,6 +155,21 @@ final class UITourLaunchDetectionTests: XCTestCase {
         )
     }
 
+    /// The parser takes the NEXT argument whatever it is, so a `-uitour`
+    /// followed by another option reads that option as the screen id. That is
+    /// deliberate, not an oversight: an unknown id still mounts something
+    /// (`UITourRoutes.mounter(for:)` falls back to the tab bar), so a screen is
+    /// on display and skipping the permission re-ask stays correct.
+    ///
+    /// Pinned by a test so the next reader cannot "tidy" it into a known-ids
+    /// check without first deciding what an unknown id should mount.
+    func testFlagFollowedByAnotherOption_countsAsATourLaunch() {
+        XCTAssertTrue(
+            UITourLauncher.isTourLaunch(arguments: ["-uitour", "-uitour-balance", "1000"]),
+            "an unknown screen id still mounts a fallback screen, so this is a tour launch"
+        )
+    }
+
     func testArgumentSpelling_matchesTheUITestLaunchArguments() {
         XCTAssertEqual(
             UITourLauncher.screenArgument,

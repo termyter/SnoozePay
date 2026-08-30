@@ -46,10 +46,21 @@ enum UITourLauncher {
     /// skip the launch-time permission re-ask (#626): a tour launch shows one
     /// screen and must never cover it with a dialog nobody asked for.
     ///
-    /// Keyed on the screen id being present, not merely on the flag: a bare
-    /// `-uitour` mounts nothing, so the app is running normally and should
-    /// behave normally. Pure over `arguments` so the rule is unit-testable
-    /// without launching an app.
+    /// Keyed on a value FOLLOWING the flag, not merely on the flag: a trailing
+    /// `-uitour` with nothing after it mounts nothing, so the app is running
+    /// normally and should behave normally.
+    ///
+    /// «A value» is literal — `value(after:in:)` takes the next argument
+    /// whatever it is, so `["-uitour", "-uitour-balance", "1000"]` reads
+    /// `"-uitour-balance"` as the screen id. That stays correct for this
+    /// predicate rather than by luck: an unknown id still mounts something
+    /// (`UITourRoutes.mounter(for:)` falls back to the tab bar), so a screen is
+    /// on display and skipping the permission re-ask is still right. Do not
+    /// «fix» this into a known-ids check without also deciding what an unknown
+    /// id should mount.
+    ///
+    /// Pure over `arguments` so the rule is unit-testable without launching an
+    /// app.
     static func isTourLaunch(arguments: [String]) -> Bool {
         value(after: screenArgument, in: arguments) != nil
     }
