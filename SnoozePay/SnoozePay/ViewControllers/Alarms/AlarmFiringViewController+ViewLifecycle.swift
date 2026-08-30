@@ -194,18 +194,17 @@ extension AlarmFiringViewController {
 
 // MARK: - Time formatter
 
-/// Cached formatter — `updateTime()` runs once per second; rebuilding a
-/// `DateFormatter` each tick is ~1ms wasted. Locale fixed to `en_US_POSIX`
-/// so `HH:mm` is honoured regardless of the user's region.
+/// The firing screen's big clock, its snooze targets and the deletion copy —
+/// padded hour ("07:00") per the artboard.
+///
+/// Kept as a named seam because four call sites read from it, but the
+/// formatting itself moved to ``WallClockFormatter`` in #628: the
+/// `en_US_POSIX` pin this used to carry meant a user on 12-hour time saw
+/// "19:00" here while every other clock on their phone said "7:00 PM".
+/// Caching still matters — `updateTime()` runs once per second — and now lives
+/// with the shared formatter.
 enum AlarmFiringTimeFormatter {
-    private static let formatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
     static func string(from date: Date) -> String {
-        formatter.string(from: date)
+        WallClockFormatter.string(from: date, style: .padded)
     }
 }

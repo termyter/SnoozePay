@@ -41,11 +41,6 @@ enum TransactionAlarmContext {
     }
 
     private static func timeString(for date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = AppLocale.display
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        WallClockFormatter.string(from: date, style: .padded, calendar: calendar)
     }
 }

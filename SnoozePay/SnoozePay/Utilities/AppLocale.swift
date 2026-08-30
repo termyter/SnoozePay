@@ -8,12 +8,17 @@ import Foundation
 /// hardcoded locales were deliberate. Now the decision lives here: switching
 /// the app to the device locale is editing `display` and nothing else.
 ///
-/// ⚠️ **`en_US_POSIX` is a different thing and does not belong here.**
-/// `AlarmsListViewModel`, `TimePickerCell` and
-/// `AlarmFiringViewController+ViewLifecycle` pin POSIX because they *parse*
-/// fixed-format strings ("HH:mm"), where a user locale would produce a
-/// different — and occasionally unparseable — result. Those three stay as they
-/// are; they are not display locales and must not be routed through `display`.
+/// ⚠️ **`en_US_POSIX` is a different thing and does not belong here.** It is
+/// for *parsing* or emitting fixed-format strings — a log line, a storage key,
+/// an API timestamp — where a user locale would produce a different and
+/// occasionally unparseable result. Nothing in the app does that today.
+///
+/// It is specifically **not** a way to force 24-hour time. `AlarmsListViewModel`,
+/// `TimePickerCell` and `AlarmFiringViewController+ViewLifecycle` each pinned
+/// POSIX for exactly that, and each thereby showed "19:00" to a reader whose
+/// phone says "7:00 PM" everywhere else — am/pm is a *regional* setting, not a
+/// language one. #628 routed all three through ``WallClockFormatter``, which
+/// takes the hour cycle from the locale and the hour *width* from the design.
 enum AppLocale {
 
     /// Locale for every formatter whose output a human reads: dates, month
