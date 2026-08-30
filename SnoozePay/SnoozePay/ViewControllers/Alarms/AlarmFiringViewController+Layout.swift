@@ -95,7 +95,12 @@ extension AlarmFiringViewController {
     /// Both elements are added unconditionally; the +Theme extension can
     /// hide the whole row when a custom-photo theme is in effect.
     private func installTopHeader() {
-        let dateString = Self.dateFormatter.string(from: Date())
+        // «ПТ · 27 АПР.» — the « · » and the weekday-first order are the
+        // artboard's (`SPScreensV2.jsx` L64); what is inside each half —
+        // day before month, the abbreviation, the trailing dot — is the
+        // locale's, which is why the pattern is no longer written out here
+        // (#654).
+        let dateString = CalendarDateFormatter.weekdayAndDayMonthShort(from: Date())
         dateLabel.attributedText = NSAttributedString(
             string: dateString.uppercased(),
             attributes: [
@@ -214,18 +219,6 @@ extension AlarmFiringViewController {
     func installDawnAtmosphericBackground() {
         installDawnBackground()
     }
-
-    // MARK: - Date formatter
-    //
-    // Captured once so we don't rebuild a `DateFormatter` on every firing.
-    // Locale fixed to `ru_RU` so «Пт · 27 апр» reads as in the spec; format
-    // "EEE · d MMM" matches `SPScreensV2.jsx` line 64.
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = AppLocale.display
-        formatter.dateFormat = "EEE · d MMM"
-        return formatter
-    }()
 }
 
 // MARK: - Hex helper

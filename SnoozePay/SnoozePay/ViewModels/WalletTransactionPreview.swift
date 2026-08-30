@@ -133,14 +133,13 @@ enum WalletTransactionPreview {
            calendar.isDate(date, inSameDayAs: yesterday) {
             return Localized.format("wallet.history.timestamp.yesterday", time)
         }
-        let dayFormatter = DateFormatter()
-        dayFormatter.locale = AppLocale.display
-        dayFormatter.calendar = calendar
-        dayFormatter.timeZone = calendar.timeZone
         // Template, not the literal pattern: day-then-month is a property of
         // the locale, and under `ru_RU` it resolves to the same `d MMM` this
         // line used to hardcode (asserted in `WalletHistoryLocalizationTests`).
-        dayFormatter.setLocalizedDateFormatFromTemplate("dMMM")
-        return Localized.format("wallet.history.timestamp.date", dayFormatter.string(from: date), time)
+        // The skeleton moved into `CalendarDateFormatter` with #654; the
+        // calendar still travels with it, since it carries the time zone that
+        // decides which day the instant belongs to.
+        let day = CalendarDateFormatter.string(from: date, style: .dayMonthShort, calendar: calendar)
+        return Localized.format("wallet.history.timestamp.date", day, time)
     }
 }

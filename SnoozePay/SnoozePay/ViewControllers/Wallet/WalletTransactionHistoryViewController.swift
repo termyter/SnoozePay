@@ -508,10 +508,10 @@ final class WalletTransactionHistoryViewController: UIViewController {
         if calendar.isDateInToday(date) { return Localized.text("wallet.history.day.today") }
         if calendar.isDateInYesterday(date) { return Localized.text("wallet.history.day.yesterday") }
         // «12 января» — full genitive month, sentence case (artboard 21b).
-        let formatter = DateFormatter()
-        formatter.locale = AppLocale.display
-        formatter.dateFormat = "d MMMM"
-        return formatter.string(from: date)
+        // The genitive comes from the *formatting* month form the day+month
+        // skeleton picks; a standalone caption («январь 2026») needs the other
+        // one and gets it from `YearMonth.fullNames` (#654).
+        return CalendarDateFormatter.string(from: date, style: .dayMonth, calendar: calendar)
     }
 }
 
