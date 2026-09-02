@@ -110,9 +110,14 @@ extension WalletViewController {
         // diverges from the canon. Canon renders this exact card as
         // `<SPCard padding={4} radius={16}>` (`SPScreensV2.jsx:473`) and gives
         // `.sp-row` only `padding: 14px 0`, so the prototype puts the icon 4pt
-        // from the card edge. There is no `4px 20px` row rule in the prototype
-        // — the one occurrence of that string is a screen-section container
-        // (`SPMore4.jsx:212`). Do not cite this comment as canon.
+        // from the card edge. There is no `4px 20px` row rule in the prototype:
+        // as a standalone padding value that shorthand occurs once, on a theme
+        // block inside a settings card (`SPMore4.jsx:212`). A substring grep
+        // looks like five hits only because four screen-section containers
+        // read `padding: "24px 20px 0"` (`SPScreensV2.jsx:581`,
+        // `SPMore2.jsx:196` and `:412`, `SPMore3.jsx:193`) — one of those
+        // minus its leading `2` is the likeliest origin of the invented rule
+        // (#685). Do not cite this comment as canon.
         //
         // What the decision buys, measured off a native 3× screenshot of the
         // alarm form (1206×2622, ÷3 for pt): the `.insetGrouped` card sits
