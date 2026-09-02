@@ -58,7 +58,20 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     private func makeSettings() -> SettingsViewController {
         let suite = "test.referral.visibility.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
-        let sut = SettingsViewController(alarmDefaults: AlarmDefaults(defaults: defaults))
+        // The referral service is pinned to the same throwaway suite, not left
+        // at `.shared`. Laying the section out in the ON position calls
+        // `getMyCode()`, which GENERATES AND PERSISTS a code on first read —
+        // against `.shared` that write lands in `UserDefaults.standard` (#690).
+        let sut = SettingsViewController(
+            alarmDefaults: AlarmDefaults(defaults: defaults),
+            referralService: ReferralService(
+                defaults: defaults,
+                balanceService: BalanceService(
+                    defaults: defaults,
+                    notificationCenter: NotificationCenter()
+                )
+            )
+        )
         sut.loadViewIfNeeded()
         return sut
     }

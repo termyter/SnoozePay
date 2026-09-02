@@ -21,6 +21,18 @@ class SettingsViewController: UIViewController {
     private let themeService: ThemeService
     let alarmDefaults: AlarmDefaults
 
+    /// Backs the `.referral` section. Internal so the cross-file
+    /// `SettingsViewController+Referral` extension can reach it.
+    ///
+    /// Injected rather than read as `ReferralService.shared` at the point of
+    /// use: the shared instance is bound to `UserDefaults.standard`, so
+    /// laying this screen out with the referral section visible wrote
+    /// `referral_my_code` into the real user (and, in the suite, the test
+    /// host's) defaults — `getMyCode()` generates and persists on first read.
+    /// `alarmDefaults` already had this seam; the referral state was leaking
+    /// past it (#690).
+    let referralService: ReferralService
+
     // MARK: - UI
 
     /// Internal so `SettingsViewController+Referral` can call
@@ -33,9 +45,14 @@ class SettingsViewController: UIViewController {
 
     // MARK: - Init
 
-    init(themeService: ThemeService = .shared, alarmDefaults: AlarmDefaults = .shared) {
+    init(
+        themeService: ThemeService = .shared,
+        alarmDefaults: AlarmDefaults = .shared,
+        referralService: ReferralService = .shared
+    ) {
         self.themeService = themeService
         self.alarmDefaults = alarmDefaults
+        self.referralService = referralService
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -104,8 +121,6 @@ class SettingsViewController: UIViewController {
         case friendInput  // SPInput "Код друга" + Применить button
         case caption      // "За каждого друга — +200 ₽ ..." footer text
     }
-
-    let referralService = ReferralService.shared
 
     /// The referral flag this screen obeys. Defaults to the shipped constant;
     /// tests set it to lay the real table out in the other position.
