@@ -129,4 +129,38 @@ enum Localized {
         guard !arguments.isEmpty else { return template }
         return String(format: template, locale: AppLocale.display, arguments: arguments)
     }
+
+    /// `key`'s copy with its single `%@` replaced by `replacement`, each side
+    /// keeping its own attributes.
+    ///
+    /// Exists so a sentence containing a differently-styled run — a mono
+    /// pain-tinted amount, a tinted weekday name — can stay **one** catalogue
+    /// entry. Without it a call site reaches for a prefix literal, an `append`
+    /// and a suffix literal, which is rule 2 of ``format(_:_:)`` above broken
+    /// by the layout: it freezes Russian word order into every future
+    /// translation, and a language that puts the amount first can no longer be
+    /// expressed at all.
+    ///
+    /// ``format(_:_:)`` cannot serve here — it returns a plain `String`, so the
+    /// substituted run would arrive flattened to the surrounding font.
+    ///
+    /// An entry that lost its specifier **appends** `replacement` rather than
+    /// dropping it: a sentence with the amount in an odd place is still
+    /// readable, whereas one silently missing its amount reads as fact and is
+    /// wrong. Either way the per-slice localization tests fail on the absent
+    /// specifier, so this is a floor, not a fix.
+    static func attributed(
+        _ key: String,
+        attributes: [NSAttributedString.Key: Any],
+        replacing replacement: NSAttributedString
+    ) -> NSMutableAttributedString {
+        let template = optionalText(key) ?? key
+        let result = NSMutableAttributedString(string: template, attributes: attributes)
+        guard let placeholder = template.range(of: "%@") else {
+            result.append(replacement)
+            return result
+        }
+        result.replaceCharacters(in: NSRange(placeholder, in: template), with: replacement)
+        return result
+    }
 }

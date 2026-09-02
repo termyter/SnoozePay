@@ -101,13 +101,13 @@ final class AlarmOffWarningViewController: UIViewController {
     // MARK: - Top bar
 
     private func makeTopBar() -> UIView {
-        let closeButton = SPButton(title: "Закрыть", variant: .quiet, size: .sm)
+        let closeButton = SPButton(title: Localized.text("common.button.close"), variant: .quiet, size: .sm)
         closeButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
 
         let caps = UILabel()
         caps.attributedText = NSAttributedString(
-            string: "ВНИМАНИЕ",
+            string: Localized.text("alarm_off.caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
@@ -195,36 +195,31 @@ final class AlarmOffWarningViewController: UIViewController {
         headline.font = AppTypography.h1
         headline.textColor = AppColors.fg1
         headline.numberOfLines = 0
-        headline.text = "Вы поспали ещё 3 раза подряд"
+        headline.text = Localized.text("alarm_off.headline")
         headline.translatesAutoresizingMaskIntoConstraints = false
 
         let body = UILabel()
         body.font = AppTypography.bodyLg
         body.textColor = AppColors.fg2
         body.numberOfLines = 0
-        // Inline pain-tinted mono amount via NSAttributedString.
-        let prefix = "За эту неделю списано "
-        let suffix = ". Возможно, что-то пошло не так. Что хотите сделать?"
-        let attr = NSMutableAttributedString(
-            string: prefix,
+        // Inline pain-tinted mono amount via NSAttributedString. One catalogue
+        // entry with the amount as `%@`, where the code held a prefix and a
+        // suffix literal around an `append`: where the sum falls in the
+        // sentence is a property of the language, and that pair could only ever
+        // render it in the middle (`Localized.attributed`).
+        let attr = Localized.attributed(
+            "alarm_off.body",
             attributes: [
                 .font: AppTypography.bodyLg,
                 .foregroundColor: AppColors.fg2
-            ]
+            ],
+            replacing: MoneyFormatter.attributed(
+                Decimal(750),
+                digitsFont: AppFonts.mono(.bold, 17),
+                prefix: "−",
+                color: AppColors.pain400
+            )
         )
-        attr.append(MoneyFormatter.attributed(
-            Decimal(750),
-            digitsFont: AppFonts.mono(.bold, 17),
-            prefix: "−",
-            color: AppColors.pain400
-        ))
-        attr.append(NSAttributedString(
-            string: suffix,
-            attributes: [
-                .font: AppTypography.bodyLg,
-                .foregroundColor: AppColors.fg2
-            ]
-        ))
         body.attributedText = attr
         body.translatesAutoresizingMaskIntoConstraints = false
 
@@ -244,22 +239,26 @@ final class AlarmOffWarningViewController: UIViewController {
                 icon: "clock.fill",
                 iconTint: AppColors.fg2,
                 iconBackground: AppColors.whiteOverlay06,
-                title: "Перенести будильник",
-                subtitle: "Сегодня поздно лёг — встаём в 08:00"
+                title: Localized.text("alarm_off.reschedule.title"),
+                subtitle: Localized.text("alarm_off.reschedule.subtitle")
             ),
             makeSuggestionRow(
                 icon: "creditcard.fill",
                 iconTint: AppColors.warn400,
                 iconBackground: AppColors.warnFill500.withAlphaComponent(0.14),
-                title: "Снизить цену откладывания",
-                subtitle: "Сейчас \(MoneyFormatter.string(50)) → попробовать \(MoneyFormatter.string(20))"
+                title: Localized.text("alarm_off.lower_price.title"),
+                subtitle: Localized.format(
+                    "alarm_off.lower_price.subtitle",
+                    MoneyFormatter.string(50),
+                    MoneyFormatter.string(20)
+                )
             ),
             makeSuggestionRow(
                 icon: "xmark",
                 iconTint: AppColors.pain400,
                 iconBackground: AppColors.pain500.withAlphaComponent(0.14),
-                title: "Выключить SnoozePay",
-                subtitle: "Будильник останется обычным"
+                title: Localized.text("alarm_off.disable.title"),
+                subtitle: Localized.text("alarm_off.disable.subtitle")
             )
         ])
         stack.axis = .vertical
@@ -373,7 +372,7 @@ final class AlarmOffWarningViewController: UIViewController {
 
     private func makeFooterButton() -> UIView {
         let button = SPButton(
-            title: "Всё в порядке, продолжаем",
+            title: Localized.text("alarm_off.button.dismiss"),
             variant: .ghost,
             size: .md,
             fullWidth: true

@@ -49,7 +49,7 @@ final class StatisticsViewController: UIViewController {
 
     /// Fixed page-title header (#319) — same chrome as Будильники / Кошелёк.
     private let header: SPPageHeader = {
-        let view = SPPageHeader(title: "Статистика")
+        let view = SPPageHeader(title: Localized.text("statistics.title"))
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -212,7 +212,7 @@ final class StatisticsViewController: UIViewController {
         // The fixed page-title header carries the title; suppress the nav bar's
         // own title so the screen doesn't render «Статистика» twice (#319,
         // matching the AlarmsList #280 chrome).
-        title = "Статистика"
+        title = Localized.text("statistics.title")
         navigationItem.title = ""
         navigationController?.navigationBar.prefersLargeTitles = false
         view.backgroundColor = AppColors.bg0
@@ -322,8 +322,9 @@ final class StatisticsViewController: UIViewController {
     private func presentRepositoryError(_ error: LocalizedError) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
-            title: "Ошибка данных",
-            message: error.errorDescription ?? "Не удалось загрузить статистику.",
+            title: Localized.text("statistics.error.title"),
+            message: error.errorDescription
+                ?? Localized.text("statistics.error.message"),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -401,22 +402,31 @@ final class StatisticsViewController: UIViewController {
     /// current locale, so no new hardcoded string is added while the catalogue
     /// migration (#569) is still open.
     static func weekdayHeadline(worstDayNames: [String]) -> NSAttributedString {
+        let base: [NSAttributedString.Key: Any] = [
+            .font: AppTypography.h3,
+            .foregroundColor: AppColors.fg1
+        ]
         guard !worstDayNames.isEmpty else {
             return NSAttributedString(
-                string: "Откладываний не было",
-                attributes: [.font: AppTypography.h3, .foregroundColor: AppColors.fg1]
+                string: Localized.text("statistics.weekday.no_snoozes"),
+                attributes: base
             )
         }
         let name = ListFormatter.localizedString(byJoining: worstDayNames)
-        let headline = NSMutableAttributedString(
-            string: "Чаще всего — ",
-            attributes: [.font: AppTypography.h3, .foregroundColor: AppColors.fg1]
+        // One entry holding the whole sentence with the day as `%@`, rather
+        // than the prefix literal this replaces: a language that leads with the
+        // day name cannot be expressed by a fixed prefix + `append`.
+        return Localized.attributed(
+            "statistics.weekday.worst_day",
+            attributes: base,
+            replacing: NSAttributedString(
+                string: name,
+                attributes: [
+                    .font: AppTypography.h3,
+                    .foregroundColor: StatisticsAccentTones.pain
+                ]
+            )
         )
-        headline.append(NSAttributedString(
-            string: name,
-            attributes: [.font: AppTypography.h3, .foregroundColor: StatisticsAccentTones.pain]
-        ))
-        return headline
     }
 
     /// money = improving, neutral = flat, pain = worse — shared by the arrow,

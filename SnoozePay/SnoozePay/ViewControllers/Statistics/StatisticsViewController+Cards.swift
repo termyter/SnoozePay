@@ -70,7 +70,10 @@ extension StatisticsViewController {
     /// Top row of the hero card — text column on the left, flame badge on the
     /// right.
     private func makeHeroTopRow() -> UIView {
-        let caps = makeCapsLabel("СЕРИЯ", color: StatisticsAccentTones.warn)
+        let caps = makeCapsLabel(
+            Localized.text("statistics.streak.caps"),
+            color: StatisticsAccentTones.warn
+        )
         let numberRow = UIStackView(arrangedSubviews: [streakBigLabel, streakBigWordLabel])
         numberRow.axis = .horizontal
         numberRow.alignment = .firstBaseline
@@ -174,8 +177,8 @@ extension StatisticsViewController {
     func makeWeekdayCard() -> UIView {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
 
-        let caps = makeCapsLabel("ПО ДНЯМ НЕДЕЛИ", color: AppColors.fg3)
-        let meta = makeMetaLabel("За последние 4 недели")
+        let caps = makeCapsLabel(Localized.text("statistics.weekday.caps"), color: AppColors.fg3)
+        let meta = makeMetaLabel(Localized.text("statistics.weekday.meta"))
 
         let header = UIStackView(arrangedSubviews: [caps, weekdayHeadlineLabel, meta])
         header.axis = .vertical
@@ -207,7 +210,7 @@ extension StatisticsViewController {
     func makeTrendCard() -> UIView {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
 
-        let caps = makeCapsLabel("ДИНАМИКА ОТКЛАДЫВАНИЙ", color: AppColors.fg3)
+        let caps = makeCapsLabel(Localized.text("statistics.trend.caps"), color: AppColors.fg3)
 
         let headlineRow = UIStackView(arrangedSubviews: [trendHeadlineLabel, trendArrowView])
         headlineRow.axis = .horizontal
@@ -222,7 +225,7 @@ extension StatisticsViewController {
         leftColumn.spacing = AppSpacing.sp1 / 2
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
 
-        let weekCaption = makeMetaLabel("Эта неделя")
+        let weekCaption = makeMetaLabel(Localized.text("statistics.trend.week_caption"))
         weekCaption.textAlignment = .right
         let rightColumn = UIStackView(arrangedSubviews: [weekCaption, trendWeekValueLabel])
         rightColumn.axis = .vertical
@@ -237,8 +240,8 @@ extension StatisticsViewController {
         summaryRow.spacing = AppSpacing.sp3
         summaryRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let axisLeft = makeMetaLabel("8 недель назад")
-        let axisRight = makeMetaLabel("эта неделя")
+        let axisLeft = makeMetaLabel(Localized.text("statistics.trend.axis_start"))
+        let axisRight = makeMetaLabel(Localized.text("statistics.trend.axis_end"))
         axisRight.font = AppFonts.sans(.semibold, 13)
         axisRight.textColor = AppColors.fg1
         axisRight.textAlignment = .right

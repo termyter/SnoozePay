@@ -1,6 +1,126 @@
 {
   "sourceLanguage" : "ru",
   "strings" : {
+    "alarm_off.body" : {
+      "comment" : "Body of the alarm-off warning sheet. %@ is the week's charged total, which the call site substitutes as an attributed run in mono/pain — one entry rather than the prefix + suffix pair it replaces, so the amount's position stays a property of the language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За эту неделю списано %@. Возможно, что-то пошло не так. Что хотите сделать?"
+          }
+        }
+      }
+    },
+    "alarm_off.button.dismiss" : {
+      "comment" : "Footer CTA of the alarm-off warning sheet — declines all three suggestions and closes it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё в порядке, продолжаем"
+          }
+        }
+      }
+    },
+    "alarm_off.caps" : {
+      "comment" : "Caps banner at the top of the alarm-off warning sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ВНИМАНИЕ"
+          }
+        }
+      }
+    },
+    "alarm_off.disable.subtitle" : {
+      "comment" : "Subtitle of the third suggestion row on the alarm-off warning sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник останется обычным"
+          }
+        }
+      }
+    },
+    "alarm_off.disable.title" : {
+      "comment" : "Third suggestion row on the alarm-off warning sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выключить SnoozePay"
+          }
+        }
+      }
+    },
+    "alarm_off.headline" : {
+      "comment" : "Headline of the alarm-off warning sheet. The «3 раза» is still the design's placeholder figure, not a computed one — the sheet has no backend wiring yet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы поспали ещё 3 раза подряд"
+          }
+        }
+      }
+    },
+    "alarm_off.lower_price.subtitle" : {
+      "comment" : "Subtitle of the second suggestion row. %1$@ is the current snooze price and %2$@ the proposed lower one, both already formatted as money — positional so a translator may swap the order.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сейчас %1$@ → попробовать %2$@"
+          }
+        }
+      }
+    },
+    "alarm_off.lower_price.title" : {
+      "comment" : "Second suggestion row on the alarm-off warning sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Снизить цену откладывания"
+          }
+        }
+      }
+    },
+    "alarm_off.reschedule.subtitle" : {
+      "comment" : "Subtitle of the first suggestion row on the alarm-off warning sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сегодня поздно лёг — встаём в 08:00"
+          }
+        }
+      }
+    },
+    "alarm_off.reschedule.title" : {
+      "comment" : "First suggestion row on the alarm-off warning sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перенести будильник"
+          }
+        }
+      }
+    },
     "alarms.backend_guard.action.open_settings" : {
       "comment" : "CTA on the AlarmKit requirement screen that deep-links into Settings, used by the states the app can no longer resolve on its own.",
       "extractionState" : "manual",
@@ -3397,6 +3517,30 @@
         }
       }
     },
+    "statistics.error.message" : {
+      "comment" : "Fallback body of the statistics load-failure alert, used when the error carries no errorDescription of its own.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить статистику."
+          }
+        }
+      }
+    },
+    "statistics.error.title" : {
+      "comment" : "Alert shown when the statistics repository fails to load.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ошибка данных"
+          }
+        }
+      }
+    },
     "statistics.last_slip" : {
       "comment" : "Hero meta line; %@ is a day-and-month date («8 января»).",
       "extractionState" : "manual",
@@ -3481,6 +3625,18 @@
         }
       }
     },
+    "statistics.streak.caps" : {
+      "comment" : "Caps caption on the statistics hero card, above the big streak count. Kept separate from streak.behavioral.caps — see that entry.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "СЕРИЯ"
+          }
+        }
+      }
+    },
     "statistics.streak.legend" : {
       "comment" : "Legend under the streak heatmap. Names all four cell states. The neighbouring statistics.week.legend belongs to a DIFFERENT card and describes a different pair of colours — read as this chart's caption it misleads twice over (#637).",
       "extractionState" : "manual",
@@ -3489,6 +3645,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "зелёное — встал сразу · золотое — 1⁠–⁠2 откладывания · красное — 3 и больше · серое — без будильника"
+          }
+        }
+      }
+    },
+    "statistics.title" : {
+      "comment" : "Statistics screen title, rendered by the fixed page header; the controller sets the same copy on `title` for VoiceOver while the nav bar's own title stays empty (#319).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Статистика"
           }
         }
       }
@@ -3517,6 +3685,30 @@
         }
       }
     },
+    "statistics.trend.axis_end" : {
+      "comment" : "Right label under the trend chart. Lower case where statistics.trend.week_caption is capitalised: this one is an axis tick and that one a column heading, and they may well diverge in English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "эта неделя"
+          }
+        }
+      }
+    },
+    "statistics.trend.axis_start" : {
+      "comment" : "Left label under the trend chart — the oldest of the eight weeks.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 недель назад"
+          }
+        }
+      }
+    },
     "statistics.trend.better" : {
       "comment" : "8-week trend headline: fewer snoozes than last week.",
       "extractionState" : "manual",
@@ -3525,6 +3717,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Становится лучше"
+          }
+        }
+      }
+    },
+    "statistics.trend.caps" : {
+      "comment" : "Caps caption of the 8-week trend card on Statistics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ДИНАМИКА ОТКЛАДЫВАНИЙ"
           }
         }
       }
@@ -3561,6 +3765,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Стабильно"
+          }
+        }
+      }
+    },
+    "statistics.trend.week_caption" : {
+      "comment" : "Caption above the current-week snooze count in the trend card's right column. Sentence case, unlike statistics.trend.axis_end which labels the chart axis below it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта неделя"
           }
         }
       }
@@ -3753,6 +3969,162 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Потратили"
+          }
+        }
+      }
+    },
+    "statistics.weekday.caps" : {
+      "comment" : "Caps caption of the weekday-distribution card on Statistics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПО ДНЯМ НЕДЕЛИ"
+          }
+        }
+      }
+    },
+    "statistics.weekday.meta" : {
+      "comment" : "Window caption under the weekday-distribution headline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За последние 4 недели"
+          }
+        }
+      }
+    },
+    "statistics.weekday.no_snoozes" : {
+      "comment" : "Weekday-card headline when the 4-week window holds no snoozes at all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладываний не было"
+          }
+        }
+      }
+    },
+    "statistics.weekday.worst_day" : {
+      "comment" : "Weekday-card headline naming the worst day(s). %@ is the day name, or a ListFormatter conjunction when days tie; the call site substitutes it as an attributed run tinted pain, so this is one entry rather than the prefix it replaces.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чаще всего — %@"
+          }
+        }
+      }
+    },
+    "streak.behavioral.body" : {
+      "comment" : "Body on the streak sheet without a money figure. One entry rather than the two concatenated halves it replaces.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это уже не случайность — это привычка. Тело знает, что подъём вовремя — это просто."
+          }
+        }
+      }
+    },
+    "streak.behavioral.caps" : {
+      "comment" : "Caps caption on the streak sheet when there is no trustworthy money figure. Separate from statistics.streak.caps although both read «СЕРИЯ»: this one is the caps member of the sheet's Copy triple, whose savings-mode sibling is a whole sentence, so coupling the two would let a change to the statistics card silently rewrite the sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "СЕРИЯ"
+          }
+        }
+      }
+    },
+    "streak.behavioral.headline" : {
+      "comment" : "Streak-sheet headline without a money figure. %1$lld is the day count, %2$@ its declined noun from plural.days.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld %2$@ без откладываний"
+          }
+        }
+      }
+    },
+    "streak.button.share" : {
+      "comment" : "Share CTA on the streak sheet, shown only in savings mode.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поделиться победой"
+          }
+        }
+      }
+    },
+    "streak.savings.body" : {
+      "comment" : "Body under the money hero. One entry rather than the two concatenated halves it replaces: a sentence split across + freezes Russian word order into every future translation.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти деньги остались у вас на балансе. Потратьте их на следующей слабой неделе."
+          }
+        }
+      }
+    },
+    "streak.savings.caps" : {
+      "comment" : "Caps caption above the money hero on the streak sheet. %1$lld is the streak length, %2$@ its declined noun from plural.days uppercased by the call site — positional because a translator may need the noun first.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "СЕРИЯ · %1$lld %2$@ БЕЗ ОТКЛАДЫВАНИЙ"
+          }
+        }
+      }
+    },
+    "streak.savings.headline_days" : {
+      "comment" : "Streak-sheet headline for any streak other than 7 days. %1$lld is the day count, %2$@ its declined noun from plural.days.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сэкономили за %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "streak.savings.headline_week" : {
+      "comment" : "Streak-sheet headline for the exact 7-day case, which the design artboard spells as a week rather than a day count.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сэкономили за неделю"
+          }
+        }
+      }
+    },
+    "streak.share.message" : {
+      "comment" : "Text handed to UIActivityViewController by the streak sheet's share CTA; wording fixed by PM on 2026-07-30 (#347). %1$lld is the day count, %2$@ its declined noun from plural.days, %3$@ the formatted amount. One entry rather than the two concatenated halves it replaces.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Я не откладываю будильник %1$lld %2$@ и сэкономил %3$@ — SnoozePay"
           }
         }
       }
