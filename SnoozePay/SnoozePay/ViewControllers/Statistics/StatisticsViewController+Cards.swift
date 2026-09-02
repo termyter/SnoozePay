@@ -300,7 +300,11 @@ extension StatisticsViewController {
 
         var buttons: [UIView] = [caps, streakBtn]
 
-        // MUTATION CHECK (#691): the referral shortcut is deliberately cut here.
+        if referralShortcutEnabled {
+            let referralBtn = SPButton(title: "Реферальная программа", variant: .quiet, size: .md, fullWidth: true)
+            referralBtn.addTarget(self, action: #selector(debugReferralTapped), for: .touchUpInside)
+            buttons.append(referralBtn)
+        }
 
         let alarmOffBtn = SPButton(title: "AlarmOff warning", variant: .pain, size: .md, fullWidth: true)
         alarmOffBtn.addTarget(self, action: #selector(debugAlarmOffTapped), for: .touchUpInside)
