@@ -204,20 +204,20 @@ final class AppHairlineTests: XCTestCase {
             row.leadingAnchor.constraint(equalTo: host.view.leadingAnchor),
             row.trailingAnchor.constraint(equalTo: host.view.trailingAnchor)
         ])
-        // @3x, so the expected value (1/3) differs from the provisional 0.5 —
-        // on an @2x host the two coincide and the assertion would pass without
-        // the upgrade ever happening.
-        row.traitOverrides.displayScale = 3
-        assertScale(3, of: row)
+        // @2x, so the expected value (0.5) differs from the provisional 1/3 —
+        // the host screen is @3x, where the two coincide and the assertion
+        // would pass without the upgrade ever happening.
+        row.traitOverrides.displayScale = 2
+        assertScale(2, of: row)
         row.setNeedsLayout()
         window.layoutIfNeeded()
 
         let height = try XCTUnwrap(dividerHeightConstraint(of: row))
         XCTAssertEqual(
-            height.constant, 1.0 / 3.0, accuracy: 0.0001,
+            height.constant, 0.5, accuracy: 0.0001,
             """
             the hosted row kept a \(height.constant)pt divider where its own traits call \
-            for \(1.0 / 3.0)pt — the provisional constant was never re-read
+            for 0.5pt — the provisional constant was never re-read
             """
         )
         XCTAssertNotEqual(
@@ -261,12 +261,23 @@ final class AppHairlineTests: XCTestCase {
     /// The harness guard, deliberately fatal rather than a skip: if trait
     /// overrides stop propagating, these tests measure nothing and have to say
     /// so in red instead of quietly not running.
+    ///
+    /// `updateTraitsIfNeeded()` is not defensive padding — it is the whole
+    /// reason this file used to be skipped. A write to `traitOverrides` is
+    /// applied on the next update cycle, not at assignment, so reading
+    /// `traitCollection` on the next line returns the *old* scale. On a @3x
+    /// simulator an override to @3x is indistinguishable from no override at
+    /// all, which is why one test in this file passed while three failed:
+    /// only the three overriding *downward* could see the difference. The
+    /// original `XCTSkipUnless` read that as "this harness cannot override
+    /// scales" and stepped aside; it was a missing update call.
     private func assertScale(
         _ expected: CGFloat,
         of view: UIView,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        view.updateTraitsIfNeeded()
         XCTAssertEqual(
             view.traitCollection.displayScale, expected, accuracy: 0.0001,
             """

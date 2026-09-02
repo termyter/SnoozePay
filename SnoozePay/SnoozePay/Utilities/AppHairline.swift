@@ -22,16 +22,21 @@ enum AppHairline {
     /// The width to use *before* a view knows which screen it will draw on —
     /// i.e. when a constraint has to be built in `init`.
     ///
-    /// 0.5pt is exactly one pixel at @2x and half a pixel at @3x, so it is
+    /// 1/3pt is one device pixel at @3x and two thirds of one at @2x, so it is
     /// never *thicker* than a real hairline on any display iOS ships. That
     /// asymmetry is the whole point: too thin is a faint line, too thick is a
     /// deliberate-looking divider, and only the second one is mistaken for
-    /// design. This is what `1.0 / max(displayScale, 2)` used to buy at
-    /// ``SPRow``, kept as a named constant instead of an arithmetic accident.
+    /// design.
+    ///
+    /// The 0.5pt this shipped with in round 2 broke exactly that promise —
+    /// at @3x it is one and a half device pixels, thicker than the 1/3pt the
+    /// `1.0 / max(displayScale, 2)` it replaced resolved to on every @3x
+    /// phone. `testProvisionalWidth_isNeverThickerThanARealHairline` is what
+    /// caught it; the constant, not the claim, was the thing that was wrong.
     ///
     /// Pair it with a re-read once the view has a window — a provisional value
     /// that is never replaced is just a wrong value with a nicer name.
-    static let provisionalWidth: CGFloat = 0.5
+    static let provisionalWidth: CGFloat = 1.0 / 3.0
 
     /// Width of a single device pixel for the display described by `trait`.
     ///
