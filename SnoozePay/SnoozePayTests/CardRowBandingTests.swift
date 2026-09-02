@@ -241,14 +241,17 @@ final class CardRowBandingTests: XCTestCase {
     /// alone would move shipped 6 → 7, leave a gap of 4, and pass here. The
     /// `openEdges` half is held separately, at the path level, by
     /// `CardRowSeamShadowTests.testAmbientStop_emitsNoHaloAcrossTheSeam`.
-    /// The `corners` half of the AMBIENT mask is held at the path level too,
-    /// by the grown-corner probe in
+    /// The `corners` half of the AMBIENT mask is held at the path level, by the
+    /// two grown-corner probes in
     /// `CardRowSeamShadowTests.testAmbientStop_isMaskedOutOfTheCornersACapRowDoesNotRound`
-    /// (#692). Its original probe — (spread + inset, spread + maxY − inset) —
-    /// could not: with `openEdges` still growing the hole downwards that point
-    /// stays inside the hole whichever way `corners` is set. The probe added
-    /// for #692 sits in the corner of the GROWN hole instead, which is the one
-    /// place the two halves are separable.
+    /// (#692) — one asserting the squared corners stay square, one asserting the
+    /// rounded corners stay rounded. Both are needed: the square probe alone
+    /// leaves `corners: []` at the call site green across the whole suite.
+    /// That test's original probe — (spread + inset, spread + maxY − inset) —
+    /// held neither: with `openEdges` still growing the hole downwards that
+    /// point stays inside the hole whichever way `corners` is set. The probes
+    /// added for #692 sit in the corners of the GROWN hole instead, which is
+    /// the one place the two halves of #674 are separable.
     ///
     /// If a future change makes this red, read both printed numbers before
     /// touching it: the interesting failure is the control collapsing towards
