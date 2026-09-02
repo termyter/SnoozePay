@@ -29,6 +29,9 @@ final class SPRow: UIControl {
     private let divider = UIView()
     private let mainStack = UIStackView()
     private let textStack = UIStackView()
+    /// Held so `layoutSubviews` can swap the provisional hairline for the one
+    /// the row's actual screen calls for.
+    private var dividerHeightConstraint: NSLayoutConstraint?
 
     // MARK: - Init
 
@@ -177,6 +180,18 @@ final class SPRow: UIControl {
         divider.isHidden = !showsDivider
         addSubview(divider)
 
+        // `configure()` runs from `init`, so the row has neither a superview
+        // nor a window here and its scale is not knowable yet. Build the
+        // divider at the provisional width — never thicker than a real
+        // hairline — and re-read it in `layoutSubviews` once there is a screen
+        // to ask. Freezing a full point here is the failure that matters: on a
+        // screenshot 1pt is indistinguishable from a divider somebody drew on
+        // purpose, so the defect reads as intent.
+        let dividerHeight = divider.heightAnchor.constraint(
+            equalToConstant: AppHairline.provisionalWidth
+        )
+        dividerHeightConstraint = dividerHeight
+
         NSLayoutConstraint.activate([
             // 14pt vertical padding × 2 + content height. Hit-target floor
             // is enforced via `heightAnchor >= 44`.
@@ -188,13 +203,25 @@ final class SPRow: UIControl {
             divider.leadingAnchor.constraint(equalTo: leadingAnchor),
             divider.trailingAnchor.constraint(equalTo: trailingAnchor),
             divider.bottomAnchor.constraint(equalTo: bottomAnchor),
-            // 1px hairline — divide by display scale so the line stays a
-            // single device pixel on @2x/@3x. `traitCollection.displayScale`
-            // is `0` until the view is in a window, so fall back to 2x.
-            divider.heightAnchor.constraint(
-                equalToConstant: 1.0 / max(traitCollection.displayScale, 2)
-            )
+            dividerHeight
         ])
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // No `window != nil` guard: `testADetachedView_reportsTheSameScaleAsAHostedOne`
+        // pins that a view outside a window still reports its screen's scale,
+        // so there is a real number to read here and `AppHairline.width(for:)`
+        // will not hit its degenerate branch. Guarding would leave the
+        // provisional width frozen with no log and no assertion — the exact
+        // thing `provisionalWidth`'s own docstring calls a wrong value with a
+        // nicer name. Written only on change, so laying out never re-dirties
+        // the engine.
+        guard let dividerHeight = dividerHeightConstraint else { return }
+        let width = hairlineWidth
+        if dividerHeight.constant != width {
+            dividerHeight.constant = width
+        }
     }
 
     private func install(_ view: UIView, in container: UIView) {

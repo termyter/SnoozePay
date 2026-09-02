@@ -319,10 +319,10 @@ final class ProgressiveCardSurface: UIView {
         //
         // The width is therefore the same in both states now, and arming is
         // carried by ink and the gradient, exactly as `SPMore2.jsx` draws it.
-        // Whether 1/scale at `stroke1` (1.183:1 on white) is a visible edge at
-        // all is a real question, and an app-wide one: #689.
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = 1.0 / scale
+        // Whether one device pixel of `stroke1` (1.183:1 on white) is a
+        // visible edge at all is a real question, and an app-wide one — the
+        // fork is written up on #689 and belongs to the PM.
+        layer.borderWidth = hairlineWidth
         let stroke = isPainTinted
             ? AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.25)
             : AppColors.stroke1.resolvedColor(with: traitCollection)

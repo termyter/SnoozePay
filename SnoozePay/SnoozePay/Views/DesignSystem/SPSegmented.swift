@@ -187,8 +187,7 @@ final class SPSegmented: UIControl {
             indicator.layer.borderWidth = 0
             return
         }
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        indicator.layer.borderWidth = 1.0 / scale
+        indicator.layer.borderWidth = hairlineWidth
         indicator.layer.borderColor = AppColors.stroke1
             .resolvedColor(with: traitCollection).cgColor
     }

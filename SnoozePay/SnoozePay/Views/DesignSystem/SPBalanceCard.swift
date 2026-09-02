@@ -117,8 +117,7 @@ final class SPBalanceCard: UIView {
         if trait.userInterfaceStyle == .dark {
             layer.borderWidth = 0
         } else {
-            let scale = trait.displayScale > 0 ? trait.displayScale : 1
-            layer.borderWidth = 1.0 / scale
+            layer.borderWidth = AppHairline.width(for: trait)
             layer.borderColor = AppColors.stroke1.resolvedColor(with: trait).cgColor
         }
     }

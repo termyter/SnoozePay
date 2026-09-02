@@ -154,7 +154,13 @@ final class SoundPickerRowCell: UITableViewCell {
             contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 64)
         ])
 
-        let dividerHeight = divider.heightAnchor.constraint(equalToConstant: 0.5)
+        // Same shape as `SPRow`: the constraint is built before the cell has
+        // a screen, so it starts at the provisional width and is re-read in
+        // `layoutSubviews`. A literal here is how the two sites drifted apart
+        // in the first place — #689 is about there being one source.
+        let dividerHeight = divider.heightAnchor.constraint(
+            equalToConstant: AppHairline.provisionalWidth
+        )
         dividerHeight.isActive = true
         dividerHeightConstraint = dividerHeight
     }
@@ -162,8 +168,27 @@ final class SoundPickerRowCell: UITableViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         iconTileGradient.frame = iconTile.bounds
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        dividerHeightConstraint?.constant = 1.0 / scale
+        // Unconditional, as it was before #689 — see the note in
+        // `SPRow.layoutSubviews`. Two reasons, and neither is "cells that
+        // never appear": those draw nothing, and cells that do appear get a
+        // windowed pass either way. What a `window != nil` guard would
+        // actually cost is (1) a provisional width left in place with no log
+        // and no assertion — a wrong value with a nicer name, by this
+        // constant's own docstring — and (2) self-sizing:
+        // `SoundPickerViewController` sets `rowHeight = .automaticDimension`
+        // (`:73`), so this cell's height comes from a measuring layout pass
+        // rather than a fixed number. Whether UIKit runs that pass before or
+        // after the cell joins the window is an undocumented implementation
+        // detail — which is exactly why the re-read must not depend on it.
+        // Not `UITourLauncher`, which mounts its screen as the window root
+        // (`UITourLauncher.mount`), and not `systemLayoutSizeFitting`, which
+        // no call site invokes on this cell — an earlier revision of this
+        // comment claimed both. Written only on change.
+        guard let dividerHeight = dividerHeightConstraint else { return }
+        let width = hairlineWidth
+        if dividerHeight.constant != width {
+            dividerHeight.constant = width
+        }
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")

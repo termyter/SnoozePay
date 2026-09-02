@@ -41,11 +41,7 @@ extension UIView {
         // (8% white on dark, 8% near-black ink on light), so the border has
         // visible weight in light mode where the system's grey separator
         // washes out against the brand ink.
-        // Hairline width — `traitCollection.displayScale` resolves to the
-        // current screen's scale (1×, 2× or 3×). Falls back to 1× if the
-        // view isn't yet in a window (`displayScale == 0`).
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = 1.0 / scale
+        layer.borderWidth = hairlineWidth
         layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
     }
 
@@ -286,8 +282,7 @@ final class CardRowBackgroundView: UIView {
         if position != .middle {
             AppShadow.shadow1(for: traitCollection).apply(to: layer)
         }
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        outline.lineWidth = 1.0 / scale
+        outline.lineWidth = hairlineWidth
         outline.strokeColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
         setNeedsLayout()
     }
