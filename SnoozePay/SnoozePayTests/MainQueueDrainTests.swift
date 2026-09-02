@@ -177,6 +177,51 @@ final class MainQueueDrainTests: XCTestCase {
         XCTAssertTrue(outcome.diagnosis.contains("probe"), "the diagnosis must describe the probe")
     }
 
+    /// A probe that outlived the deadline has no round trip to report, and one
+    /// that came back late has nothing outstanding — a single noun for both
+    /// puts the wrong one on half the failures.
+    ///
+    /// Constructed directly, like the interrupted case below, because which of
+    /// the two paths a real busy queue takes is a race on its final turn.
+    /// Hardcoding `lastProbeReturned: true` at either construction site in
+    /// `drainMainQueueOutcome` turns this red; without it that mutation is
+    /// green and "round trip" quietly goes back to describing a probe that
+    /// never returned.
+    ///
+    /// Each half asserts the ABSENCE of the other's wording as well as the
+    /// presence of its own: a mutation that welded both sentences into one
+    /// would survive presence-only assertions.
+    func testCapExhaustionDistinguishesALateProbeFromOneThatNeverCameBack() {
+        let cameBackLate = MainQueueDrainOutcome.capExhausted(
+            turns: 5, lastProbe: 0.2, lastProbeReturned: true, cap: 1
+        ).diagnosis
+        let neverCameBack = MainQueueDrainOutcome.capExhausted(
+            turns: 5, lastProbe: 0.98, lastProbeReturned: false, cap: 1
+        ).diagnosis
+
+        XCTAssertTrue(
+            cameBackLate.contains("round trip"),
+            "a probe that did come back must be reported as a round trip, got: \(cameBackLate)"
+        )
+        XCTAssertFalse(
+            cameBackLate.contains("still outstanding"),
+            "a probe that came back is not outstanding, got: \(cameBackLate)"
+        )
+
+        XCTAssertTrue(
+            neverCameBack.contains("still outstanding"),
+            "a probe that never returned must be reported as outstanding, got: \(neverCameBack)"
+        )
+        XCTAssertFalse(
+            neverCameBack.contains("round trip"),
+            """
+            a probe that never came back has no round trip to report — this is the exact \
+            wording that had the diagnosis claim a late arrival where there was none. \
+            Got: \(neverCameBack)
+            """
+        )
+    }
+
     /// A wait cut short is not a timeout, and saying "never went quiet within
     /// 60 s" about it would be false. Constructed directly because
     /// `.interrupted` needs nested waiters to occur naturally.
