@@ -288,19 +288,6 @@ final class AppHairlineTests: XCTestCase {
         )
     }
 
-    /// The same for the cell, whose off-window passes are not hypothetical:
-    /// `systemLayoutSizeFitting` and the reuse pool both lay a cell out before
-    /// it has a window.
-    func testDetachedCell_upgradesTheDivider_whenLaidOutWithoutAWindow() throws {
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: 343, height: 64))
-        let cell = SoundPickerRowCell(style: .default, reuseIdentifier: SoundPickerRowCell.reuseID)
-        cell.frame = container.bounds
-        container.addSubview(cell)
-        try assertOffWindowLayoutUpgradesTheDivider(
-            of: cell, laidOutBy: container, constraint: { self.dividerHeightConstraint(of: $0) }
-        )
-    }
-
     // MARK: - SoundPickerRowCell — the same pattern, one screen over
 
     /// `SoundPickerRowCell` builds the identical divider constraint before it
@@ -361,6 +348,19 @@ final class AppHairlineTests: XCTestCase {
         )
     }
 
+    /// The same for the cell, whose off-window passes are not hypothetical:
+    /// `SoundPickerViewController` sets `rowHeight = .automaticDimension`, so
+    /// the table measures each cell before it joins the window hierarchy.
+    func testDetachedCell_upgradesTheDivider_whenLaidOutWithoutAWindow() throws {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 343, height: 64))
+        let cell = SoundPickerRowCell(style: .default, reuseIdentifier: SoundPickerRowCell.reuseID)
+        cell.frame = container.bounds
+        container.addSubview(cell)
+        try assertOffWindowLayoutUpgradesTheDivider(
+            of: cell, laidOutBy: container, constraint: { self.dividerHeightConstraint(of: $0) }
+        )
+    }
+
     // MARK: - Fixtures
 
     /// A real window, because a detached view's trait collection is not the
@@ -392,7 +392,12 @@ final class AppHairlineTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        XCTAssertNil(container.window, "the container is in a window — this measures the guarded path")
+        XCTAssertNil(
+            container.window,
+            "the container is in a window, so a restored `window != nil` guard would pass here "
+                + "and this would measure nothing",
+            file: file, line: line
+        )
 
         let before = try XCTUnwrap(constraint(view), file: file, line: line).constant
         XCTAssertEqual(
@@ -434,13 +439,17 @@ final class AppHairlineTests: XCTestCase {
         return abs(atTwo - AppHairline.provisionalWidth) > 0.0001 ? 2 : 3
     }
 
-    /// The cell's divider is private too. Its `contentView` holds two plain
-    /// `UIView`s — the icon tile and the hairline — and only the hairline is
-    /// pinned to the bottom; the tile is centred vertically. Discriminating on
-    /// that rather than on the tile's 36pt size keeps a production literal out
-    /// of the test: resizing the tile would otherwise turn this into a red
-    /// test with a wrong diagnosis. Then look for the height constraint in
-    /// both places a single-item constraint can be filed.
+    /// The cell's divider is private too. It is the one view *flush* with the
+    /// bottom of `contentView` — an equality pin at zero. The text stack also
+    /// carries a bottom constraint (`lessThanOrEqualTo`, −14), so the relation
+    /// and the constant are part of the predicate rather than left to the
+    /// type filter: swap that stack for a plain container in some future
+    /// refactor and a type-only filter would hand back the wrong view.
+    ///
+    /// Discriminating this way rather than on the tile's 36pt size also keeps
+    /// a production literal out of the test — resizing the tile would
+    /// otherwise redden this with a wrong diagnosis. Then look for the height
+    /// constraint in both places a single-item constraint can be filed.
     private func dividerHeightConstraint(of cell: SoundPickerRowCell) -> NSLayoutConstraint? {
         let plainViews = cell.contentView.subviews.filter {
             !($0 is UIStackView) && !($0 is UIImageView)
@@ -449,6 +458,8 @@ final class AppHairlineTests: XCTestCase {
             cell.contentView.constraints.contains {
                 ($0.firstItem as? UIView) === view
                     && $0.firstAttribute == .bottom
+                    && $0.relation == .equal
+                    && abs($0.constant) < 0.0001
                     && ($0.secondItem as? UIView) === cell.contentView
             }
         }) else { return nil }

@@ -174,9 +174,13 @@ final class SoundPickerRowCell: UITableViewCell {
         // windowed pass either way. What a `window != nil` guard would
         // actually cost is (1) a provisional width left in place with no log
         // and no assertion — a wrong value with a nicer name, by this
-        // constant's own docstring — and (2) off-window rendering:
-        // `systemLayoutSizeFitting` and the `UITourLauncher` snapshot audits
-        // measure and draw before there is a window. Written only on change.
+        // constant's own docstring — and (2) self-sizing:
+        // `SoundPickerViewController` sets `rowHeight = .automaticDimension`,
+        // and the table measures a cell before it is in the window hierarchy.
+        // Not `UITourLauncher`, which mounts its screen as the window root
+        // (`UITourLauncher.mount`), and not `systemLayoutSizeFitting`, which
+        // no call site invokes on this cell — an earlier revision of this
+        // comment claimed both. Written only on change.
         guard let dividerHeight = dividerHeightConstraint else { return }
         let width = hairlineWidth
         if dividerHeight.constant != width {
