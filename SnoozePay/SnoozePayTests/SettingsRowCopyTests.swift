@@ -21,18 +21,24 @@ import XCTest
 ///
 /// # What layer 3 does NOT reach
 ///
-/// Four of the sixteen keys are only ever read while a `UIAlertController` is
-/// on screen, and presenting one needs a window and a run-loop beat that this
-/// suite pays for once and then everybody waits on (#618). They are covered by
+/// Five of the sixteen keys are only ever read while a `UIAlertController` is
+/// being assembled, and this slice left that assembly inline in
+/// `presentRecoveryConfirmation()` / the two pickers. They are covered by
 /// layers 1 and 2 only:
 ///
 ///  * `settings.picker.applies_to_new_alarms`
 ///  * `settings.recovery.alert_title`
 ///  * `settings.recovery.alert_message`
 ///  * `settings.recovery.confirm`
+///  * `common.button.cancel` — its words are asserted here, but no call site
+///    of it is; the key predates this slice and three other screens read it.
 ///
-/// `common.button.cancel` is listed for its words but not owned here — it
-/// predates this slice and three other screens read it.
+/// "Not covered in this slice", not "not reachable": the same move that made
+/// the recovery row testable would work here — extracting
+/// `makeRecoveryAlert() -> UIAlertController` would put `alert.title`,
+/// `alert.message` and `alert.actions.map(\.title)` in reach with no window
+/// and no presentation at all. That is a change to production structure, and
+/// this slice moves strings only.
 @MainActor
 final class SettingsRowCopyTests: XCTestCase {
 

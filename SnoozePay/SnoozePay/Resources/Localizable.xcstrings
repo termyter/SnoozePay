@@ -3458,7 +3458,7 @@
       }
     },
     "settings.row.privacy_policy" : {
-      "comment" : "Settings row that opens the privacy policy, and the title of the screen it opens.",
+      "comment" : "Settings row that opens the privacy policy. The same words are the title of the screen it opens AND the first line of that screen's placeholder body, so they are read three times over.",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {
@@ -3494,7 +3494,7 @@
       }
     },
     "settings.row.terms" : {
-      "comment" : "Settings row that opens the terms of use, and the title of the screen it opens.",
+      "comment" : "Settings row that opens the terms of use. The same words are the title of the screen it opens AND the first line of that screen's placeholder body, so they are read three times over.",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {
