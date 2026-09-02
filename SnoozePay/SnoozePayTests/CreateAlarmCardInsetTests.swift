@@ -22,10 +22,10 @@ import XCTest
 ///
 /// Two oracles, on purpose. "Every cell agrees with every other" catches one
 /// cell drifting; "the shared value is 20" catches all of them drifting
-/// together. The second compares against the LITERAL canon number rather than
-/// `AppSpacing.cardHorizontalPadding`, because the token is ours and the canon
-/// is not — redefining the token would otherwise move both sides at once and
-/// keep the test green while the form left the canon.
+/// together. The second compares against a literal 20 rather than against
+/// `AppSpacing.cardHorizontalPadding`, because reading the token on both sides
+/// would let a redefinition move them together and keep the test green while
+/// the form drifted.
 ///
 /// What this measures is the CARD's padding: the leading edge of the views the
 /// cell itself positions. How far a child then insets its own content — a text
@@ -35,8 +35,31 @@ import XCTest
 /// question from this one.
 final class CreateAlarmCardInsetTests: XCTestCase {
 
-    /// `SPCard padding={20}` — the literal from the canon, not our token.
-    private static let canonCardPadding: CGFloat = 20
+    /// The inset this form standardised on (#231, #672), held here as a literal
+    /// rather than read from `AppSpacing.cardHorizontalPadding` so a
+    /// redefinition of the token cannot move both sides of the comparison.
+    ///
+    /// It is ours, not the canon's, and this name must not drift back toward
+    /// "canon": `SoundCell`, `VibrationCell` and `ThemeRowCell` — three of the
+    /// ten cells measured below — render the Звук / Тема / Вибрация card, which
+    /// the canon sets to `padding={4}` (`SPMore2.jsx:227`). The app holds 20
+    /// there deliberately, against the canon rather than with it.
+    ///
+    /// The full per-cell mapping — including why the two groups that do land on
+    /// 20 agree by coincidence of this artboard and not by one rule — lives on
+    /// `AppSpacing.cardHorizontalPadding`. It is not restated here — a second
+    /// copy drifts, and the drift lands on whichever copy the reader happens to
+    /// be standing next to.
+    private static let standardisedCardPadding: CGFloat = 20
+
+    /// `standardisedCardPadding` written the way a reader writes it: `%g` drops
+    /// the `.0` that interpolating a `CGFloat` prints, and still shows a
+    /// fraction if the constant ever becomes one. Used where the text states a
+    /// DECISION; measured values keep their `.0`, because a measurement of
+    /// exactly 20.0 and a decision of 20 are different claims.
+    private static var standardisedCardPaddingText: String {
+        String(format: "%g", standardisedCardPadding)
+    }
 
     /// Card width on a 390pt screen minus the `.insetGrouped` gutters — the
     /// same width `CreateAlarmLightThemeTests` hosts these cells at.
@@ -63,37 +86,46 @@ final class CreateAlarmCardInsetTests: XCTestCase {
                 accuracy: 0.5,
                 """
                 \(name) starts its content \(inset)pt from the card edge while \
-                \(reference.name) starts at \(reference.inset)pt — the form's \
-                cards must share one inset, see SPMore2.jsx AlarmEdit
+                \(reference.name) starts at \(reference.inset)pt. The form's \
+                cards must share one inset — this app's rule (#672), not \
+                something SPMore2.jsx settles.
                 """
             )
         }
     }
 
-    func testTheSharedInsetIsTheCanonCardPadding() throws {
+    func testTheSharedInsetIsTheValueWeStandardisedOn() throws {
         let measured = try measuredInsets()
         let reference = try reference(in: measured)
 
         XCTAssertEqual(
             reference.inset,
-            Self.canonCardPadding,
+            Self.standardisedCardPadding,
             accuracy: 0.5,
             """
-            The form's cards agree on \(reference.inset)pt, but the canon card \
-            is `SPCard padding={20}` (SPMore2.jsx, artboard AlarmEdit)
+            The form's cards agree on \(reference.inset)pt, but this form \
+            standardised on \(Self.standardisedCardPaddingText)pt (#231, \
+            #672). Check that decision before changing the number here; the \
+            canon does not settle it, putting 20 on three cards of AlarmEdit \
+            and 4 on the Звук / Тема / Вибрация one.
             """
         )
     }
 
-    /// The token the cells actually read must be the canon number too — a
-    /// named `cardHorizontalPadding` holding 16 is what #672 was filed against,
-    /// and a reader reaching for the token would silently reproduce it.
-    func testTheCardPaddingTokenCarriesTheCanonNumber() {
+    /// The token the cells actually read must carry that same number — a
+    /// `cardHorizontalPadding` named like this one but holding 16 is what #672
+    /// was filed against, and a reader reaching for the token would silently
+    /// reproduce it.
+    func testTheCardPaddingTokenCarriesTheStandardisedNumber() {
         XCTAssertEqual(
             AppSpacing.cardHorizontalPadding,
-            Self.canonCardPadding,
+            Self.standardisedCardPadding,
             accuracy: 0.001,
-            "AppSpacing.cardHorizontalPadding drifted off the canon SPCard padding={20}"
+            """
+            AppSpacing.cardHorizontalPadding drifted off the \
+            \(Self.standardisedCardPaddingText)pt this form standardised on \
+            (#231, #672)
+            """
         )
     }
 
