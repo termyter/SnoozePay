@@ -19,18 +19,24 @@ import XCTest
 /// A regression here would be silent again, so it is pinned by measuring
 /// `UserDefaults.standard` directly, before and after.
 ///
-/// Each test asserts BOTH that the injected store received the referral state
-/// and that `UserDefaults.standard` did not move. The two are not equal in
-/// strength and it is worth being precise about which does the work: a
-/// `UserDefaults(suiteName:)` store is disjoint from `.standard`, so
-/// «the injected suite has the code» is the assertion that fails under the
-/// old behaviour, on a clean host and on a host that already carries the key
-/// alike. «`.standard` is unchanged» is the weaker of the two on its own — it
-/// would pass on a host where the key is already present, because
-/// `getMyCode()` reads an existing valid code back instead of writing. It is
-/// kept because it states the user-visible promise directly (#690 is «tests
-/// write into the real user's settings»), and because it is what would catch
-/// a future call site that writes to both stores.
+/// Every test that drives the screen asserts BOTH that the injected store
+/// received the referral state and that `UserDefaults.standard` did not move.
+/// The two are not equal in strength and it is worth being precise about which
+/// does the work: a `UserDefaults(suiteName:)` store is disjoint from
+/// `.standard`, so «the injected suite has the code» is the assertion that
+/// fails under the old behaviour, on a clean host and on a host that already
+/// carries the key alike. «`.standard` is unchanged» is the weaker of the two
+/// on its own — it would pass on a host where the key is already present,
+/// because `getMyCode()` reads an existing valid code back instead of writing.
+/// It is kept because it states the user-visible promise directly (#690 is
+/// «tests write into the real user's settings»), and because it is what would
+/// catch a future call site that writes to both stores.
+///
+/// One test breaks that pattern and asserts neither half:
+/// `testTheDefaultInitializerKeepsTheSharedService` pins the production
+/// default, which means evaluating the real `.shared` graph, which writes. It
+/// snapshots the keys that graph can move and puts them back — the reasoning
+/// is on the test itself.
 @MainActor
 final class SettingsReferralIsolationTests: XCTestCase {
 
@@ -44,6 +50,12 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// path spends money, not just referral state.
     private let balanceKey = "user_balance"
 
+    /// Everything in `.standard` that resolving `ReferralService.shared` can
+    /// move, directly or through the `BalanceService.shared` it pulls in.
+    private var sharedGraphKeys: [String] {
+        [myCodeKey, appliedCodeKey, balanceKey, "balance_ledger_opening"]
+    }
+
     /// Name + store for every throwaway suite this case created, so tearDown
     /// can delete the plists it left in the host container.
     private var suites: [(name: String, defaults: UserDefaults)] = []
@@ -51,6 +63,11 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// Cells are handed out `unowned`-ish by the table; hold them so
     /// `sut.friendCodeInput` (a `weak var`) survives to be asserted on.
     private var retainedCells: [UITableViewCell] = []
+    /// Named pasteboards this case created, torn down with the suites. Nothing
+    /// in either test target touched `UIPasteboard` before this file, and the
+    /// first thing to do so should not be the thing that clobbers the
+    /// developer's clipboard.
+    private var pasteboardNames: [UIPasteboard.Name] = []
 
     override func tearDown() {
         hostWindows.forEach { $0.isHidden = true }
@@ -58,6 +75,8 @@ final class SettingsReferralIsolationTests: XCTestCase {
         retainedCells.removeAll()
         suites.forEach { $0.defaults.removePersistentDomain(forName: $0.name) }
         suites.removeAll()
+        pasteboardNames.forEach { UIPasteboard.remove(withName: $0) }
+        pasteboardNames.removeAll()
         super.tearDown()
     }
 
@@ -70,8 +89,25 @@ final class SettingsReferralIsolationTests: XCTestCase {
         return defaults
     }
 
-    /// Settings with every store it touches pinned to `defaults`, laid out at a
-    /// real device width with the referral section visible.
+    /// A private pasteboard, removed in tearDown. Registered on the same line
+    /// it is created, so a failure between here and the assertions still frees
+    /// it.
+    private func makePasteboard() -> UIPasteboard {
+        let pasteboard = UIPasteboard.withUniqueName()
+        pasteboardNames.append(pasteboard.name)
+        return pasteboard
+    }
+
+    /// Settings with every store this test asserts on pinned to `defaults`,
+    /// laid out at a real device width with the referral section visible.
+    ///
+    /// Not every store the screen touches, and the difference is worth naming.
+    /// Two remain shared: `themeService` (`ThemeService.shared`, which reads
+    /// and writes `preferred_theme` in `.standard`) and `WakeEventStore.shared`,
+    /// which `TransactionRepository` takes by default. The wake store leaks
+    /// nothing today — it is read from `currentStreak()`, never from
+    /// `record()` — but «every store» would be the wrong promise to make.
+    /// Both are #700.
     ///
     /// The wallet comes back with it: the apply path credits 200 ₽, so «where
     /// did the money land» is half of what there is to assert, and the
@@ -206,22 +242,30 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// until now nothing in the suite called it — put `ReferralService.shared`
     /// back on that one line and every other test here stays green.
     ///
-    /// The pasteboard is read back rather than trusted: it is the only way to
-    /// tell «copied the injected store's code» from «copied a code», and the
-    /// value being read is one this process just wrote, so no paste prompt is
-    /// involved.
+    /// The copy goes to a pasteboard this test owns, via the same kind of seam
+    /// as the service. `UIPasteboard.general` is shared process-wide and, in
+    /// the Simulator, synced to the Mac's clipboard by default — asserting
+    /// against it would mean this file reproduced #690 against a different
+    /// shared store while claiming to close it. An owned pasteboard also lets
+    /// the value be read back without the system paste prompt that reading
+    /// another writer's `.general` content can raise.
+    ///
+    /// `.general` is deliberately neither read nor asserted on here: the
+    /// production default is pinned separately by the fact that the parameter
+    /// has one, and reading it is the part with the side effects.
     func testCopyingTheCodeReadsTheInjectedStore() throws {
         let standard = UserDefaults.standard
         let myCodeBefore = standard.string(forKey: myCodeKey)
 
         let defaults = makeSuite("copy")
         let sut = laidOutSettings(defaults: defaults).sut
+        let pasteboard = makePasteboard()
 
-        sut.copyMyCodeToPasteboard()
+        sut.copyMyCodeToPasteboard(pasteboard: pasteboard)
 
         let stored = try XCTUnwrap(defaults.string(forKey: myCodeKey))
         XCTAssertEqual(
-            UIPasteboard.general.string, stored,
+            pasteboard.string, stored,
             "the copied code is not the one in the injected store"
         )
         XCTAssertEqual(
@@ -282,7 +326,36 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// Production still gets the shared instance. Without this, the seam could
     /// be «fixed» by handing every caller its own service — which would give
     /// the app a second referral store and a code that changes per screen.
+    ///
+    /// This is the one test here that cannot avoid the real `.shared` graph —
+    /// pinning the default IS evaluating it — and that graph writes. Resolving
+    /// `ReferralService.shared` forces `BalanceService.shared`, whose `init`
+    /// ends in `readRawBalance()`, and that path is not a read: it adopts an
+    /// opening balance (`balance_ledger_opening`) and rewrites the
+    /// `user_balance` cache when the ledger derives a different total. Whether
+    /// it fires here depends on who forced the singleton first, which is
+    /// exactly the order dependence this file exists to remove.
+    ///
+    /// So the four keys are captured and PUT BACK rather than asserted
+    /// unchanged. An assertion would encode the order dependence instead of
+    /// removing it: it would be green only while some alphabetically earlier
+    /// test happened to pay for the singleton first, and red the day this class
+    /// ran alone. Restoring leaves `.standard` as found in either order, and
+    /// the wallet re-derives from the ledger on its next read, so nothing
+    /// downstream is left holding a stale cache.
     func testTheDefaultInitializerKeepsTheSharedService() {
+        let standard = UserDefaults.standard
+        let before = sharedGraphKeys.map { ($0, standard.object(forKey: $0)) }
+        defer {
+            for (key, value) in before {
+                if let value {
+                    standard.set(value, forKey: key)
+                } else {
+                    standard.removeObject(forKey: key)
+                }
+            }
+        }
+
         XCTAssertTrue(SettingsViewController().referralService === ReferralService.shared)
     }
 }
