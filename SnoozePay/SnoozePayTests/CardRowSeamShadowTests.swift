@@ -56,6 +56,12 @@ final class CardRowSeamShadowTests: XCTestCase {
     /// fell outside the hole — inside the visible part of the mask. The stop's
     /// interior printed there, in the seam between two rows, and the section
     /// read as if every row were separately rounded.
+    ///
+    /// The hole is cut by two independent arguments — `corners` and
+    /// `openEdges` — and this is the test that holds the first of them.
+    /// `testAmbientStop_emitsNoHaloAcrossTheSeam` holds the second, so the
+    /// probes here are deliberately placed where `openEdges` cannot decide the
+    /// answer for them; see the comment at the grown-corner probe.
     func testAmbientStop_isMaskedOutOfTheCornersACapRowDoesNotRound() throws {
         let cases: [(CardRowPosition, String)] = [
             (.first, "bottom"),
@@ -79,6 +85,46 @@ final class CardRowSeamShadowTests: XCTestCase {
                     \(position) is square at the \(squareSide), so its \(squareSide)-\(side) \
                     corner is the row's own opaque fill — the ambient stop must not \
                     composite there
+                    """
+                )
+            }
+
+            // Those probes cannot see `corners` at all (#692): `openEdges` has
+            // already grown the hole 8pt past the seam, so on `.first` the
+            // bottom-left arc centres at (20, 56) and still swallows (10, 58) —
+            // 10.2pt out against a 12pt radius. Both halves of #674 pass them.
+            //
+            // The corner of the GROWN hole is where the halves separate, and
+            // its extent is read off the production path rather than recomputed
+            // here — so a reverted `openEdges` moves this probe with it and the
+            // claim below keeps answering the `corners` question alone. A
+            // literal coordinate cannot: staying inside the UNGROWN hole needs
+            // y ≤ 60, and there the region outside a 12pt arc is the sliver
+            // x < 8.69, flush against the layer's own edge.
+            //
+            // `inset` in from both edges of that corner puts the probe
+            // √2·(radius − inset) = 14.1pt from the arc's centre, 2.1pt clear of
+            // it — which holds while inset < radius·(1 − 1/√2) = 3.5pt, and the
+            // control asserts that rather than assuming it.
+            let hole = try XCTUnwrap(ambient.path).boundingBoxOfPath
+            let grownY = squareSide == "bottom" ? hole.maxY - inset : hole.minY + inset
+            let ifRounded = AppShadow.cardPath(hole, cornerRadius: AppRadius.sm, corners: .allCorners)
+            for (x, side) in [(hole.minX + inset, "left"), (hole.maxX - inset, "right")] {
+                let probe = CGPoint(x: x, y: grownY)
+                XCTAssertFalse(
+                    ifRounded.contains(probe, using: .evenOdd),
+                    """
+                    control for \(position) \(squareSide)-\(side): a hole rounded by \
+                    \(AppRadius.sm)pt has to expose a point \(inset)pt inside that corner, \
+                    or the assertion below passes for the wrong reason
+                    """
+                )
+                XCTAssertFalse(
+                    path.contains(probe, using: .evenOdd),
+                    """
+                    \(position) is square at the \(squareSide), so the hole must reach into \
+                    its \(squareSide)-\(side) corner past the seam — rounding it there leaves \
+                    the stop's interior printing in the gap between the two rows
                     """
                 )
             }

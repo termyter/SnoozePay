@@ -270,7 +270,7 @@ final class CardRowBackgroundView: UIView {
             on: layer,
             cornerRadius: cardCornerRadius,
             trait: traitCollection,
-            corners: position.maskedCorners,
+            corners: .allCorners, // MUTATION #692 run A — reverts the `corners` half
             openEdges: position.openEdges
         )
     }
