@@ -1,6 +1,30 @@
 {
   "sourceLanguage" : "ru",
   "strings" : {
+    "alarms.backend_guard.action.open_settings" : {
+      "comment" : "CTA on the AlarmKit requirement screen that deep-links into Settings, used by the states the app can no longer resolve on its own.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открыть Настройки"
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.action.request" : {
+      "comment" : "CTA on the AlarmKit requirement screen that raises the system permission dialog in place.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить"
+          }
+        }
+      }
+    },
     "alarms.backend_guard.create_anyway" : {
       "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user taps «+».",
       "extractionState" : "manual",
@@ -21,6 +45,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Всё равно включить"
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.message.indeterminate" : {
+      "comment" : "AlarmKit requirement copy when the probe was inconclusive. Hedged on purpose: the app is reporting its own failure, not the user's.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложение не смогло узнать, разрешены ли будильники и уведомления. Проверьте их в Настройках — без разрешения будильники не сработают."
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.message.not_requested" : {
+      "comment" : "AlarmKit requirement copy when the grant has never been requested — the user can still be shown the system dialog in place. One entry although the source concatenated two Swift literals: it is one sentence pair and must stay reorderable in translation.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложение ещё не спросило разрешение на будильники и уведомления. Без него созданные будильники не сработают."
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.message.unavailable" : {
+      "comment" : "AlarmKit requirement copy when the grant was denied or revoked, so the only way back is Settings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешение на будильники и уведомления выключено. Включите его в Настройках — иначе созданные будильники не сработают."
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.title.indeterminate" : {
+      "comment" : "Heading of the AlarmKit requirement screen when the authorization probe itself failed, so the app cannot say whether alarms will ring. Deliberately weaker than the «wont ring» heading — this state does not gate alarm creation.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось проверить разрешения"
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.title.wont_ring" : {
+      "comment" : "Heading of the AlarmKit permission requirement screen / banner, shown both when the grant was never asked for and when it is switched off. One entry for both states because the sentence is the same promise being broken; the message below it is what differs.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильники не зазвонят"
           }
         }
       }
@@ -865,6 +949,18 @@
         }
       }
     },
+    "create_alarm.progressive.step" : {
+      "comment" : "One rung of the progressive-penalty chain, spoken by VoiceOver as «1-е: 50 ₽». %1$lld is the 1-based step number carrying a Russian ordinal ending, %2$@ the formatted sum.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld-е: %2$@"
+          }
+        }
+      }
+    },
     "create_alarm.progressive.subtitle" : {
       "comment" : "Alarm editor: meta line of the progressive-mode card.",
       "extractionState" : "manual",
@@ -897,6 +993,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ПОВТОР"
+          }
+        }
+      }
+    },
+    "create_alarm.repeat.hint.once" : {
+      "comment" : "Alarm editor hint under the repeat pill: «Никогда» with no weekday selected.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник сработает один раз и отключится."
+          }
+        }
+      }
+    },
+    "create_alarm.repeat.hint.once_on_days" : {
+      "comment" : "Alarm editor hint under the repeat pill: «Никогда» with weekdays selected — it fires once on the next of them, then switches itself off.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник сработает в выбранные дни один раз и отключится."
+          }
+        }
+      }
+    },
+    "create_alarm.repeat.hint.weekly" : {
+      "comment" : "Alarm editor hint under the repeat pill: «Еженедельно» with at least one weekday selected.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будет повторяться каждую неделю по выбранным дням."
           }
         }
       }
@@ -1317,6 +1449,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Новый будильник"
+          }
+        }
+      }
+    },
+    "create_alarm.validation.weekly_without_days" : {
+      "comment" : "Alarm editor: why «Еженедельно» with no weekday selected cannot be saved. Rendered both as the hint under the repeat pill and as the save-blocked alert body, so the two always say the same thing.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите хотя бы один день недели — иначе повторять нечего."
           }
         }
       }
@@ -1825,6 +1969,30 @@
         }
       }
     },
+    "firing.snooze.button.affordable" : {
+      "comment" : "Title of the firing-screen snooze button when the balance covers the charge. %1$lld is the snooze length in minutes, %2$@ the formatted price; the leading «−» is U+2212, matching the ledger.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%1$lld минут · −%2$@"
+          }
+        }
+      }
+    },
+    "firing.snooze.button.no_balance" : {
+      "comment" : "Title of the firing-screen snooze button when the balance cannot cover the next charge, so the button states the reason instead of a price.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс пуст"
+          }
+        }
+      }
+    },
     "firing.snooze.caps" : {
       "comment" : "Caps line of the snooze CTA, after a clock glyph. %lld is the snooze length in minutes. The call site uppercases the result, so the value is stored in sentence case.",
       "extractionState" : "manual",
@@ -1833,6 +2001,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Спать ещё %lld мин"
+          }
+        }
+      }
+    },
+    "firing.snoozed.suffix" : {
+      "comment" : "Snoozed-state hero suffix naming the next ring, e.g. «Будни · отложено до 07:05». %@ is the wall-clock time. Lowercase: it follows the alarm name in the same line, and stands alone only when the alarm is unnamed. Distinct from `firing.action.snooze` on purpose — that one is an imperative button, this names an event that already happened.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "отложено до %@"
           }
         }
       }

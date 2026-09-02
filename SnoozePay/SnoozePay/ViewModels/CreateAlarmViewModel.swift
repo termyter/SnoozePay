@@ -117,7 +117,7 @@ final class CreateAlarmViewModel {
         var message: String {
             switch self {
             case .weeklyWithoutDays:
-                return "Выберите хотя бы один день недели — иначе повторять нечего."
+                return Localized.text("create_alarm.validation.weekly_without_days")
             }
         }
 
@@ -255,21 +255,20 @@ final class CreateAlarmViewModel {
     /// spelled out — "по выбранным дням" with nothing selected was the promise
     /// the old form failed to keep.
     ///
-    /// Copy stays inline here, matching the two literals it joins; the
-    /// catalogue migration (#612) covered `ViewControllers/Alarms`, not the
-    /// view-models, and splitting one three-way switch across both homes would
-    /// be worse than either.
+    /// All four branches read the catalogue (#599); the validation branch goes
+    /// through ``ValidationError/message`` so the hint and the save-blocked
+    /// alert cannot drift onto two different keys.
     var repeatModeHint: String {
         let noDays = repeatDays.isEmpty
         switch repeatMode {
         case .never:
             return noDays
-                ? "Будильник сработает один раз и отключится."
-                : "Будильник сработает в выбранные дни один раз и отключится."
+                ? Localized.text("create_alarm.repeat.hint.once")
+                : Localized.text("create_alarm.repeat.hint.once_on_days")
         case .weekly:
             return noDays
                 ? ValidationError.weeklyWithoutDays.message
-                : "Будет повторяться каждую неделю по выбранным дням."
+                : Localized.text("create_alarm.repeat.hint.weekly")
         }
     }
 
@@ -313,7 +312,10 @@ final class CreateAlarmViewModel {
     /// accessibility label.
     var progressiveScalePreview: String {
         progressiveChain.enumerated()
-            .map { "\($0.offset + 1)-е: \(MoneyFormatter.string($0.element))" }
+            .map { step -> String in
+                let sum = MoneyFormatter.string(step.element)
+                return Localized.format("create_alarm.progressive.step", step.offset + 1, sum)
+            }
             .joined(separator: " → ")
     }
 

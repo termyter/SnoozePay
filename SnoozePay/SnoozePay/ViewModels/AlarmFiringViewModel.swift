@@ -256,9 +256,13 @@ final class AlarmFiringViewModel {
 
     var snoozeButtonTitle: String {
         if canSnooze {
-            return "+\(alarm.snoozeMinutes) минут · −\(MoneyFormatter.string(currentPenalty))"
+            return Localized.format(
+                "firing.snooze.button.affordable",
+                alarm.snoozeMinutes,
+                MoneyFormatter.string(currentPenalty)
+            )
         } else {
-            return "Баланс пуст"
+            return Localized.text("firing.snooze.button.no_balance")
         }
     }
 
@@ -363,7 +367,7 @@ final class AlarmFiringViewModel {
     func snoozedHeroTitle(anchor: Date? = nil) -> String {
         let time = nextRingTimeText(anchor: anchor)
         let name = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let suffix = "отложено до \(time)"
+        let suffix = Localized.format("firing.snoozed.suffix", time)
         return name.isEmpty ? suffix : "\(name) · \(suffix)"
     }
 
