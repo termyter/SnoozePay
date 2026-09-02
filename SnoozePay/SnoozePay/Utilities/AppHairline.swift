@@ -12,16 +12,52 @@ import UIKit
 /// in multi-window setups.
 enum AppHairline {
 
+    /// Returned when the trait collection carries no usable scale. 1pt is
+    /// drawable — thicker than intended, but visible, which beats a division
+    /// by zero. Exposed so a test can pin the value without invoking the
+    /// branch, which traps (see `width(for:)`).
+    static let degenerateWidth: CGFloat = 1
+
+    /// The width to use *before* a view knows which screen it will draw on —
+    /// i.e. when a constraint has to be built in `init`.
+    ///
+    /// 0.5pt is exactly one pixel at @2x and half a pixel at @3x, so it is
+    /// never *thicker* than a real hairline on any display iOS ships. That
+    /// asymmetry is the whole point: too thin is a faint line, too thick is a
+    /// deliberate-looking divider, and only the second one is mistaken for
+    /// design. This is what `1.0 / max(displayScale, 2)` used to buy at
+    /// ``SPRow``, kept as a named constant instead of an arithmetic accident.
+    ///
+    /// Pair it with a re-read once the view has a window — a provisional value
+    /// that is never replaced is just a wrong value with a nicer name.
+    static let provisionalWidth: CGFloat = 0.5
+
     /// Width of a single device pixel for the display described by `trait`.
     ///
-    /// `displayScale` is `0` for a trait collection that has never been
-    /// resolved against a screen; the fallback of 1× then yields a plain 1pt
-    /// line, which is visible rather than invisible. Detached views on the
-    /// current SDK already report a real scale, so the fallback is a guard,
-    /// not the normal path.
+    /// A `displayScale` of 0 is not a benign input: it means the trait
+    /// collection was read before it resolved against a screen, which is the
+    /// same defect class the header of this file is about. Twelve hand-rolled
+    /// copies of this arithmetic each swallowed that case silently; now that
+    /// they are one line, that line says so — loudly in DEBUG and CI, and
+    /// still drawable in release.
     static func width(for trait: UITraitCollection) -> CGFloat {
         let scale = trait.displayScale
-        guard scale > 0 else { return 1 }
+        guard scale > 0 else {
+            AppLogger.ui.error(
+                """
+                AppHairline: displayScale is 0 — a trait collection was read before it \
+                resolved against a screen. Drawing a 1pt line instead of a hairline.
+                """
+            )
+            assertionFailure(
+                """
+                AppHairline.width(for:) got displayScale == 0. The caller read a trait \
+                collection before it had a screen — build the constraint with \
+                AppHairline.provisionalWidth and re-read it in layoutSubviews.
+                """
+            )
+            return degenerateWidth
+        }
         return 1.0 / scale
     }
 }
