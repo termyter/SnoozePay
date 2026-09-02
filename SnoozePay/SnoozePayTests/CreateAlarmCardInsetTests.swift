@@ -35,19 +35,32 @@ import XCTest
 /// question from this one.
 final class CreateAlarmCardInsetTests: XCTestCase {
 
-    /// The inset this form standardised on (#231, #672, #677), held here as a
-    /// literal rather than read from `AppSpacing.cardHorizontalPadding` so a
+    /// The inset this form standardised on (#231, #672), held here as a literal
+    /// rather than read from `AppSpacing.cardHorizontalPadding` so a
     /// redefinition of the token cannot move both sides of the comparison.
     ///
-    /// It is NOT "what the canon says these cards use", and the name it used to
-    /// carry said it was. 20 is `SPCard`'s own default parameter
-    /// (`SPComponents.jsx:38`), and it is the literal on the three
-    /// `padding={20}` cards of artboard `AlarmEdit` (`SPMore2.jsx:198`, `:237`,
-    /// `:257`). But `SoundCell`, `VibrationCell` and `ThemeRowCell` — three of
-    /// the ten cells measured below — map to the Звук / Тема / Вибрация card,
-    /// which is `padding={4}` there (`:227`). For those the app holds 20
-    /// against the canon, by our decision, not with it.
+    /// It is ours, not the canon's, and this name must not drift back toward
+    /// "canon": `SoundCell`, `VibrationCell` and `ThemeRowCell` — three of the
+    /// ten cells measured below — render the Звук / Тема / Вибрация card, which
+    /// the canon sets to `padding={4}` (`SPMore2.jsx:227`). The app holds 20
+    /// there deliberately, against the canon rather than with it.
+    ///
+    /// The full per-cell mapping — including why the two groups that do land on
+    /// 20 agree by coincidence of this artboard and not by one rule — lives on
+    /// `AppSpacing.cardHorizontalPadding`. It is not restated here: this
+    /// docstring is the second copy, and the first thing it did as a copy was
+    /// drift, citing #677 as a decision about this form when #677 settled the
+    /// same disagreement on the wallet's rows.
     private static let standardisedCardPadding: CGFloat = 20
+
+    /// `standardisedCardPadding` written the way a reader writes it: `%g` drops
+    /// the `.0` that interpolating a `CGFloat` prints, and still shows a
+    /// fraction if the constant ever becomes one. Used where the text states a
+    /// DECISION; measured values keep their `.0`, because a measurement of
+    /// exactly 20.0 and a decision of 20 are different claims.
+    private static var standardisedCardPaddingText: String {
+        String(format: "%g", standardisedCardPadding)
+    }
 
     /// Card width on a 390pt screen minus the `.insetGrouped` gutters — the
     /// same width `CreateAlarmLightThemeTests` hosts these cells at.
@@ -74,9 +87,9 @@ final class CreateAlarmCardInsetTests: XCTestCase {
                 accuracy: 0.5,
                 """
                 \(name) starts its content \(inset)pt from the card edge while \
-                \(reference.name) starts at \(reference.inset)pt — the form's \
-                cards must share one inset — that is this app's rule (#672), \
-                not something SPMore2.jsx settles
+                \(reference.name) starts at \(reference.inset)pt. The form's \
+                cards must share one inset — this app's rule (#672), not \
+                something SPMore2.jsx settles.
                 """
             )
         }
@@ -92,10 +105,10 @@ final class CreateAlarmCardInsetTests: XCTestCase {
             accuracy: 0.5,
             """
             The form's cards agree on \(reference.inset)pt, but this form \
-            standardised on \(Self.standardisedCardPadding)pt (#231, #672, \
-            #677). Before changing the number here, check that is what was \
-            decided — the canon does not settle it, it puts 20 on three cards \
-            of AlarmEdit and 4 on the Звук / Тема / Вибрация one.
+            standardised on \(Self.standardisedCardPaddingText)pt (#231, \
+            #672). Check that decision before changing the number here; the \
+            canon does not settle it, putting 20 on three cards of AlarmEdit \
+            and 4 on the Звук / Тема / Вибрация one.
             """
         )
     }
@@ -111,8 +124,8 @@ final class CreateAlarmCardInsetTests: XCTestCase {
             accuracy: 0.001,
             """
             AppSpacing.cardHorizontalPadding drifted off the \
-            \(Self.standardisedCardPadding)pt this form standardised on \
-            (#231, #672, #677)
+            \(Self.standardisedCardPaddingText)pt this form standardised on \
+            (#231, #672)
             """
         )
     }
