@@ -229,14 +229,12 @@ final class SPCard: UIView {
             layer.borderWidth = 0
             return
         }
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = 1.0 / scale
+        layer.borderWidth = hairlineWidth
         layer.borderColor = AppColors.stroke1.resolvedColor(with: traitCollection).cgColor
     }
 
     private func applyOutlineStroke() {
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = 1.0 / scale
+        layer.borderWidth = hairlineWidth
         layer.borderColor = AppColors.stroke2.resolvedColor(with: traitCollection).cgColor
     }
 

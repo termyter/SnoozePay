@@ -162,8 +162,7 @@ final class SoundPickerRowCell: UITableViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         iconTileGradient.frame = iconTile.bounds
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        dividerHeightConstraint?.constant = 1.0 / scale
+        dividerHeightConstraint?.constant = hairlineWidth
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")

@@ -188,12 +188,11 @@ final class SPRow: UIControl {
             divider.leadingAnchor.constraint(equalTo: leadingAnchor),
             divider.trailingAnchor.constraint(equalTo: trailingAnchor),
             divider.bottomAnchor.constraint(equalTo: bottomAnchor),
-            // 1px hairline — divide by display scale so the line stays a
-            // single device pixel on @2x/@3x. `traitCollection.displayScale`
-            // is `0` until the view is in a window, so fall back to 2x.
-            divider.heightAnchor.constraint(
-                equalToConstant: 1.0 / max(traitCollection.displayScale, 2)
-            )
+            // One device pixel — see ``AppHairline``. Captured once at build
+            // time, unlike the border sites that re-read on every themed pass,
+            // so a row moved between displays of different scale would keep
+            // the old constant. No such path exists today.
+            divider.heightAnchor.constraint(equalToConstant: hairlineWidth)
         ])
     }
 

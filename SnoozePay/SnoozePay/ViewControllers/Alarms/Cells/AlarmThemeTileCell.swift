@@ -222,9 +222,8 @@ final class AlarmThemeTileCell: UICollectionViewCell {
             card.layer.borderColor = AppColors.money500.cgColor
             card.layer.borderWidth = 2
         } else {
-            let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
             card.layer.borderColor = AppColors.stroke1.cgColor
-            card.layer.borderWidth = 1.0 / scale
+            card.layer.borderWidth = hairlineWidth
         }
     }
 }

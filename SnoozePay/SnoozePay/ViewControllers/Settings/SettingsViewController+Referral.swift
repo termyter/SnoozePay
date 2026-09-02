@@ -389,8 +389,7 @@ final class SettingsToastLabel: UILabel {
         backgroundColor = Self.fillColor
         textColor = Self.inkColor
         AppShadow.shadow2(for: traitCollection).apply(to: layer)
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        layer.borderWidth = 1.0 / scale
+        layer.borderWidth = hairlineWidth
         layer.borderColor = AppColors.toastEdge.resolvedColor(with: traitCollection).cgColor
     }
 }

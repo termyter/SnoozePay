@@ -456,8 +456,7 @@ final class AlarmCell: UITableViewCell {
 
         // Light-mode hairline a11y deviation.
         if isLight {
-            let scale = trait.displayScale > 0 ? trait.displayScale : 1
-            cardView.layer.borderWidth = 1.0 / scale
+            cardView.layer.borderWidth = AppHairline.width(for: trait)
             cardView.layer.borderColor = AppColors.stroke1.resolvedColor(with: trait).cgColor
         } else {
             cardView.layer.borderWidth = 0
