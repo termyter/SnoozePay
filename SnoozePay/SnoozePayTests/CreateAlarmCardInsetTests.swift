@@ -47,10 +47,9 @@ final class CreateAlarmCardInsetTests: XCTestCase {
     ///
     /// The full per-cell mapping — including why the two groups that do land on
     /// 20 agree by coincidence of this artboard and not by one rule — lives on
-    /// `AppSpacing.cardHorizontalPadding`. It is not restated here: this
-    /// docstring is the second copy, and the first thing it did as a copy was
-    /// drift, citing #677 as a decision about this form when #677 settled the
-    /// same disagreement on the wallet's rows.
+    /// `AppSpacing.cardHorizontalPadding`. It is not restated here — a second
+    /// copy drifts, and the drift lands on whichever copy the reader happens to
+    /// be standing next to.
     private static let standardisedCardPadding: CGFloat = 20
 
     /// `standardisedCardPadding` written the way a reader writes it: `%g` drops
