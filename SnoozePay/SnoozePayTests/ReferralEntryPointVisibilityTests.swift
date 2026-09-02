@@ -26,9 +26,24 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
 
     private var hostWindows: [UIWindow] = []
 
+    /// Name + store for every throwaway suite `makeSettings` builds, so
+    /// tearDown can delete the domain instead of leaving it behind.
+    ///
+    /// This became load-bearing with the referral seam (#690) and was not
+    /// before: while the screen held `ReferralService.shared`, `getMyCode()`
+    /// wrote into `UserDefaults.standard` and these suites were never written
+    /// to, so they never materialised. Now the write lands here, and
+    /// `makeSettings()` runs eight times per pass of this class — eight
+    /// orphaned domains in the test host's container, with `cfprefsd` holding
+    /// each registered one for the life of the process. CI boots a clean
+    /// simulator and would never show it; a developer machine accumulates it.
+    private var suites: [(name: String, defaults: UserDefaults)] = []
+
     override func tearDown() {
         hostWindows.forEach { $0.isHidden = true }
         hostWindows.removeAll()
+        suites.forEach { $0.defaults.removePersistentDomain(forName: $0.name) }
+        suites.removeAll()
         super.tearDown()
     }
 
@@ -58,6 +73,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     private func makeSettings() -> SettingsViewController {
         let suite = "test.referral.visibility.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
+        suites.append((name: suite, defaults: defaults))
         // The referral service is pinned to the same throwaway suite, not left
         // at `.shared`. Laying the section out in the ON position calls
         // `getMyCode()`, which GENERATES AND PERSISTS a code on first read —

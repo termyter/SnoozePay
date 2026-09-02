@@ -19,16 +19,18 @@ import XCTest
 /// A regression here would be silent again, so it is pinned by measuring
 /// `UserDefaults.standard` directly, before and after.
 ///
-/// The pair of assertions in `testLayingOutTheReferralSection...` is
-/// deliberate and neither half stands alone:
-///
-///   * «standard is unchanged» alone passes on a host that ALREADY has
-///     `referral_my_code` — the buggy code would read the existing value back
-///     and write nothing.
-///   * «the injected suite got the code» alone passes on a host where the
-///     screen wrote to both.
-///
-/// Together they say the code came from, and went to, the injected store.
+/// Each test asserts BOTH that the injected store received the referral state
+/// and that `UserDefaults.standard` did not move. The two are not equal in
+/// strength and it is worth being precise about which does the work: a
+/// `UserDefaults(suiteName:)` store is disjoint from `.standard`, so
+/// «the injected suite has the code» is the assertion that fails under the
+/// old behaviour, on a clean host and on a host that already carries the key
+/// alike. «`.standard` is unchanged» is the weaker of the two on its own — it
+/// would pass on a host where the key is already present, because
+/// `getMyCode()` reads an existing valid code back instead of writing. It is
+/// kept because it states the user-visible promise directly (#690 is «tests
+/// write into the real user's settings»), and because it is what would catch
+/// a future call site that writes to both stores.
 @MainActor
 final class SettingsReferralIsolationTests: XCTestCase {
 
@@ -38,6 +40,9 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// could not catch the service renaming them out from under a migration.
     private let myCodeKey = "referral_my_code"
     private let appliedCodeKey = "referral_applied_code"
+    /// `BalanceService`'s cache of the wallet total. Here because the apply
+    /// path spends money, not just referral state.
+    private let balanceKey = "user_balance"
 
     /// Name + store for every throwaway suite this case created, so tearDown
     /// can delete the plists it left in the host container.
@@ -67,16 +72,18 @@ final class SettingsReferralIsolationTests: XCTestCase {
 
     /// Settings with every store it touches pinned to `defaults`, laid out at a
     /// real device width with the referral section visible.
-    private func laidOutSettings(defaults: UserDefaults) -> SettingsViewController {
+    ///
+    /// The wallet comes back with it: the apply path credits 200 ₽, so «where
+    /// did the money land» is half of what there is to assert, and the
+    /// service is otherwise unreachable from the test once it is inside the
+    /// view controller.
+    private func laidOutSettings(
+        defaults: UserDefaults
+    ) -> (sut: SettingsViewController, wallet: BalanceService) {
+        let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         let sut = SettingsViewController(
             alarmDefaults: AlarmDefaults(defaults: defaults),
-            referralService: ReferralService(
-                defaults: defaults,
-                balanceService: BalanceService(
-                    defaults: defaults,
-                    notificationCenter: NotificationCenter()
-                )
-            )
+            referralService: ReferralService(defaults: defaults, balanceService: wallet)
         )
         sut.loadViewIfNeeded()
         sut.referralEnabled = true
@@ -93,7 +100,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
         window.setNeedsLayout()
         window.layoutIfNeeded()
         sut.tableView.layoutIfNeeded()
-        return sut
+        return (sut: sut, wallet: wallet)
     }
 
     /// Builds one referral row through the real data source. Asked explicitly
@@ -134,12 +141,16 @@ final class SettingsReferralIsolationTests: XCTestCase {
         let appliedBefore = standard.string(forKey: appliedCodeKey)
 
         let defaults = makeSuite("write")
-        let sut = laidOutSettings(defaults: defaults)
+        let sut = laidOutSettings(defaults: defaults).sut
         let cell = try referralCell(.myCode, of: sut)
 
         let stored = try XCTUnwrap(
             defaults.string(forKey: myCodeKey),
-            "the screen generated no code in the injected store — it is still reading `.shared`"
+            """
+            no `\(myCodeKey)` in the injected store after the section was laid out — \
+            either the screen is back on `ReferralService.shared`, or the service \
+            renamed the key this test spells out
+            """
         )
         XCTAssertEqual(stored.count, 6)
         XCTAssertTrue(
@@ -170,7 +181,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
         let defaults = makeSuite("read")
         defaults.set("ABCDEF", forKey: appliedCodeKey)
 
-        let sut = laidOutSettings(defaults: defaults)
+        let sut = laidOutSettings(defaults: defaults).sut
         _ = try referralCell(.friendInput, of: sut)
 
         let input = try XCTUnwrap(sut.friendCodeInput)
@@ -186,6 +197,83 @@ final class SettingsReferralIsolationTests: XCTestCase {
         XCTAssertEqual(
             standard.string(forKey: appliedCodeKey), appliedBefore,
             "`\(appliedCodeKey)` in UserDefaults.standard changed"
+        )
+    }
+
+    // MARK: - The other two call sites
+
+    /// `copyMyCodeToPasteboard` is the second `getMyCode()` call site, and
+    /// until now nothing in the suite called it — put `ReferralService.shared`
+    /// back on that one line and every other test here stays green.
+    ///
+    /// The pasteboard is read back rather than trusted: it is the only way to
+    /// tell «copied the injected store's code» from «copied a code», and the
+    /// value being read is one this process just wrote, so no paste prompt is
+    /// involved.
+    func testCopyingTheCodeReadsTheInjectedStore() throws {
+        let standard = UserDefaults.standard
+        let myCodeBefore = standard.string(forKey: myCodeKey)
+
+        let defaults = makeSuite("copy")
+        let sut = laidOutSettings(defaults: defaults).sut
+
+        sut.copyMyCodeToPasteboard()
+
+        let stored = try XCTUnwrap(defaults.string(forKey: myCodeKey))
+        XCTAssertEqual(
+            UIPasteboard.general.string, stored,
+            "the copied code is not the one in the injected store"
+        )
+        XCTAssertEqual(
+            standard.string(forKey: myCodeKey), myCodeBefore,
+            "copying the code wrote `\(myCodeKey)` into UserDefaults.standard"
+        )
+    }
+
+    /// The apply path is the expensive one, and the reason it is pinned even
+    /// though no screen test taps «Применить» today: `applyFriendCode` writes
+    /// `referral_applied_code` AND credits 200 ₽ through `BalanceService`. On
+    /// `.shared` both land in the real user's defaults — a future test that
+    /// exercises the button would silently top up `user_balance` on whatever
+    /// machine ran it, which is a strictly worse version of #690.
+    func testApplyingAFriendCodeWritesOnlyToTheInjectedStores() throws {
+        let standard = UserDefaults.standard
+        let appliedBefore = standard.string(forKey: appliedCodeKey)
+        let balanceBefore = standard.object(forKey: balanceKey) as? Double
+
+        let defaults = makeSuite("apply")
+        // Own code fixed rather than generated: `applyFriendCode` rejects a
+        // self-apply, and a generated code could collide with the one being
+        // applied. Vanishingly unlikely, and free to rule out entirely.
+        defaults.set("ABCDEF", forKey: myCodeKey)
+
+        let fixture = laidOutSettings(defaults: defaults)
+        _ = try referralCell(.friendInput, of: fixture.sut)
+        let input = try XCTUnwrap(fixture.sut.friendCodeInput)
+        input.textField.text = "BCDEFG"
+
+        fixture.sut.handleApplyFriendCodeTapped()
+
+        XCTAssertNil(
+            input.error,
+            "the apply was rejected, so the assertions below would pass for the wrong reason"
+        )
+        XCTAssertEqual(
+            defaults.string(forKey: appliedCodeKey), "BCDEFG",
+            "the redeemed code did not land in the injected store"
+        )
+        XCTAssertEqual(
+            fixture.wallet.balance, ReferralService.referralBonusAmount,
+            "the bonus did not land in the injected wallet"
+        )
+
+        XCTAssertEqual(
+            standard.string(forKey: appliedCodeKey), appliedBefore,
+            "applying a friend code wrote `\(appliedCodeKey)` into UserDefaults.standard"
+        )
+        XCTAssertEqual(
+            standard.object(forKey: balanceKey) as? Double, balanceBefore,
+            "applying a friend code credited real money into `\(balanceKey)` in UserDefaults.standard"
         )
     }
 
