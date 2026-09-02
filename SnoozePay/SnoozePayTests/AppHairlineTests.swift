@@ -291,9 +291,9 @@ final class AppHairlineTests: XCTestCase {
     // MARK: - SoundPickerRowCell — the same pattern, one screen over
 
     /// `SoundPickerRowCell` builds the identical divider constraint before it
-    /// has a screen, and #689 folded it onto the same constant. It gets the
-    /// same two tests as ``SPRow``: cells are laid out for measurement and out
-    /// of the reuse pool, and a full point frozen there is 2–3 device pixels.
+    /// has a screen, and #689 folded it onto the same constant, so it gets the
+    /// same tests as ``SPRow``. A full point frozen at construction is 2–3
+    /// device pixels — a deliberate-looking rule rather than a hairline.
     func testDetachedCell_neverBuildsAPointThickDivider() throws {
         let cell = SoundPickerRowCell(style: .default, reuseIdentifier: SoundPickerRowCell.reuseID)
         let height = try XCTUnwrap(
@@ -348,9 +348,11 @@ final class AppHairlineTests: XCTestCase {
         )
     }
 
-    /// The same for the cell, whose off-window passes are not hypothetical:
-    /// `SoundPickerViewController` sets `rowHeight = .automaticDimension`, so
-    /// the table measures each cell before it joins the window hierarchy.
+    /// The same for the cell. `SoundPickerViewController` sets
+    /// `rowHeight = .automaticDimension`, so the cell's height comes from a
+    /// measuring pass; whether UIKit runs that pass before or after the cell
+    /// joins the window is undocumented, which is the reason the re-read may
+    /// not depend on it — and the reason this test exists.
     func testDetachedCell_upgradesTheDivider_whenLaidOutWithoutAWindow() throws {
         let container = UIView(frame: CGRect(x: 0, y: 0, width: 343, height: 64))
         let cell = SoundPickerRowCell(style: .default, reuseIdentifier: SoundPickerRowCell.reuseID)

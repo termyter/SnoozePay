@@ -175,8 +175,11 @@ final class SoundPickerRowCell: UITableViewCell {
         // actually cost is (1) a provisional width left in place with no log
         // and no assertion — a wrong value with a nicer name, by this
         // constant's own docstring — and (2) self-sizing:
-        // `SoundPickerViewController` sets `rowHeight = .automaticDimension`,
-        // and the table measures a cell before it is in the window hierarchy.
+        // `SoundPickerViewController` sets `rowHeight = .automaticDimension`
+        // (`:73`), so this cell's height comes from a measuring layout pass
+        // rather than a fixed number. Whether UIKit runs that pass before or
+        // after the cell joins the window is an undocumented implementation
+        // detail — which is exactly why the re-read must not depend on it.
         // Not `UITourLauncher`, which mounts its screen as the window root
         // (`UITourLauncher.mount`), and not `systemLayoutSizeFitting`, which
         // no call site invokes on this cell — an earlier revision of this
