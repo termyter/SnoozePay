@@ -24,6 +24,24 @@ final class StatisticsViewController: UIViewController {
 
     let viewModel = StatisticsViewModel()
 
+    // MARK: - Feature flags
+
+    #if DEBUG
+    /// Whether the DEBUG shortcut into `ReferralViewController` is built —
+    /// seeded from `AppFeatureFlags.referralEnabled`, the same gate Settings
+    /// reads (#676).
+    ///
+    /// An instance property rather than an inline read at the build site
+    /// (#691): the flag is a `let` that ships `false`, so the ON branch was
+    /// unreachable from a test and `contains(…) == AppFeatureFlags
+    /// .referralEnabled` stayed green against a button that had been deleted
+    /// outright. With the seam here both positions lay out.
+    ///
+    /// Read once in `setupLayout()`, so set it before the view loads —
+    /// unlike Settings there is no table to reload, the row is built once.
+    var referralShortcutEnabled = AppFeatureFlags.referralEnabled
+    #endif
+
     // MARK: - Layout containers
 
     let scrollView = UIScrollView()
