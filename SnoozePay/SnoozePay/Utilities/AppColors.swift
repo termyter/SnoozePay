@@ -551,11 +551,14 @@ enum AppSpacing {
     /// The third group is a **known divergence**: canon gives those rows 4pt
     /// and the app gives them 20. That is the same disagreement #677 settled
     /// on the wallet's rows. The comments elsewhere that used to miscite it as
-    /// a `4px 20px` canon rule were corrected in #685 — that string occurs
-    /// once in the whole prototype, as `padding: "4px 20px 12px"` on a theme
-    /// block in `SPMore4.jsx:212`, and it is not a row rule. This token holds
-    /// 20 for all ten deliberately — one token beats ten literals — but
-    /// reading it as
+    /// a `4px 20px` canon rule were corrected in #685: as a standalone padding
+    /// value that shorthand occurs once in the whole prototype, as
+    /// `padding: "4px 20px 12px"` on a theme block in `SPMore4.jsx:212`, and
+    /// it is not a row rule. A substring grep also matches four
+    /// `padding: "24px 20px 0"` section containers (`SPScreensV2.jsx:581`,
+    /// `SPMore2.jsx:196` and `:412`, `SPMore3.jsx:193`), which is probably
+    /// where the invented rule came from. This token holds 20 for all ten
+    /// deliberately — one token beats ten literals — but reading it as
     /// "canon says 20 everywhere" is wrong twice over.
     ///
     /// An earlier version of this table cited `:106` and `padding={16}` at
