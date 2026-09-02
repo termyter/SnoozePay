@@ -781,6 +781,126 @@
         }
       }
     },
+    "common.sound.name.bell" : {
+      "comment" : "Display name of the «bell» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Колокольчик"
+          }
+        }
+      }
+    },
+    "common.sound.name.birds" : {
+      "comment" : "Display name of the «birds» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Птицы"
+          }
+        }
+      }
+    },
+    "common.sound.name.classic" : {
+      "comment" : "Display name of the «classic» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Классика"
+          }
+        }
+      }
+    },
+    "common.sound.name.dawn" : {
+      "comment" : "Display name of the «dawn» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*. Not the alarm theme of the same name: that is create_alarm.theme.name.dawn, a background image, and the two words part company in any other language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рассвет"
+          }
+        }
+      }
+    },
+    "common.sound.name.drops" : {
+      "comment" : "Display name of the «drops» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Капли"
+          }
+        }
+      }
+    },
+    "common.sound.name.guitar" : {
+      "comment" : "Display name of the «guitar» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Гитара"
+          }
+        }
+      }
+    },
+    "common.sound.name.jazz" : {
+      "comment" : "Display name of the «jazz» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Джаз"
+          }
+        }
+      }
+    },
+    "common.sound.name.piano" : {
+      "comment" : "Display name of the «piano» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пиано"
+          }
+        }
+      }
+    },
+    "common.sound.name.radar" : {
+      "comment" : "Display name of the «radar» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Радар"
+          }
+        }
+      }
+    },
+    "common.sound.name.waves" : {
+      "comment" : "Display name of the «waves» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Волны"
+          }
+        }
+      }
+    },
     "common.switch.accessibility" : {
       "comment" : "Neutral VoiceOver label seeded by SPSwitch; call sites override it with a contextual one.",
       "extractionState" : "manual",
@@ -1101,6 +1221,150 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "По умолчанию"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.name.custom" : {
+      "comment" : "Sound picker: name of the disabled custom-melody slot. Substituted into create_alarm.sound_picker.custom_slot («%@ · скоро»), so it is a bare noun phrase and carries no trailing punctuation.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Своя мелодия"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.bell" : {
+      "comment" : "Sound picker: the descriptive line under «Колокольчик». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чистый звон без музыки"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.birds" : {
+      "comment" : "Sound picker: the descriptive line under «Птицы». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Только щебет, без музыки"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.classic" : {
+      "comment" : "Sound picker: the descriptive line under «Классика». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Старый добрый писк"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.custom" : {
+      "comment" : "Subtitle carried by the custom-melody slot in the model. The picker renders create_alarm.sound_picker.custom_slot_subtitle instead, so this one reaches no screen today; it is kept because the slot is an Entry like any other and a blank column would be a behaviour change.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скоро"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.dawn" : {
+      "comment" : "Sound picker: the descriptive line under «Рассвет». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тёплый рассвет с птицами"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.drops" : {
+      "comment" : "Sound picker: the descriptive line under «Капли». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мягкие капли воды"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.guitar" : {
+      "comment" : "Sound picker: the descriptive line under «Гитара». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Лёгкий струнный перебор"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.jazz" : {
+      "comment" : "Sound picker: the descriptive line under «Джаз». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бодрое утреннее настроение"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.piano" : {
+      "comment" : "Sound picker: the descriptive line under «Пиано». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спокойные клавиши"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.radar" : {
+      "comment" : "Sound picker: the descriptive line under «Радар». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нарастающий сигнал тревоги"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.waves" : {
+      "comment" : "Sound picker: the descriptive line under «Волны». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прибой и морской бриз"
           }
         }
       }
