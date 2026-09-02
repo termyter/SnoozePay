@@ -107,32 +107,24 @@ final class UITourWarningRoutesTests: XCTestCase {
         wait(for: [presented], timeout: 5)
 
         let sheet = host.rootViewController?.presentedViewController
-        let diagnostics = presentationDiagnostics(in: host)
         XCTAssertTrue(
             sheet is AlarmOffWarningViewController,
-            """
-            route presented \(type(of: sheet)) over the stats tab, expected the warning sheet. \
-            \(diagnostics)
-            """
+            self.unexpectedSheetMessage(sheet, in: host)
         )
     }
 
-    /// Printed on failure so the next red run names the missing link instead of
-    /// only saying one is missing. A chain of just `UITabBarController` means
-    /// the route never presented at all; a chain that reaches the sheet with
-    /// `window: nil` means it fired at a presenter that had left the hierarchy
-    /// and UIKit dropped it on the floor — two different bugs behind one
-    /// message otherwise (#618, #693).
-    private func presentationDiagnostics(in host: UIWindow) -> String {
-        var chain: [String] = []
-        var current = host.rootViewController
-        while let node = current {
-            let attached = node.viewIfLoaded?.window == nil ? "window: nil" : "window: set"
-            chain.append("\(type(of: node))(\(attached))")
-            current = node.presentedViewController
-        }
-        return "presentation chain: "
-            + (chain.isEmpty ? "no root view controller" : chain.joined(separator: " → "))
+    /// Built inside `XCTAssertTrue`'s `@autoclosure`, so a passing run pays for
+    /// none of it: walking the hierarchy and formatting a chain is work only the
+    /// failing run has any use for.
+    private func unexpectedSheetMessage(_ sheet: UIViewController?, in host: UIWindow) -> String {
+        // Named through the optional rather than with `type(of: sheet)`, which
+        // reports `Optional<UIViewController>` whatever is up there and so tells
+        // the next reader nothing about what actually came up.
+        let name = sheet.map { String(describing: type(of: $0)) } ?? "nothing"
+        return """
+            route presented \(name) over the stats tab, expected the warning sheet. \
+            \(presentationDiagnostics(rootedAt: host.rootViewController))
+            """
     }
 
     /// The presentation shape itself, asserted without waiting: a `.large`
