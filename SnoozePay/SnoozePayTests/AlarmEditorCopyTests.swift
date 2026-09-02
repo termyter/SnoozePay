@@ -224,16 +224,72 @@ final class AlarmEditorCopyTests: XCTestCase {
         XCTAssertTrue(plain.contains("80%"), "plain volume row reads \(plain)")
     }
 
-    /// Everything the sound screen renders at 80% volume. `volume`/`fadeIn` are
-    /// private and only settable through the initialiser, so each state needs
-    /// its own instance.
-    private static func volumeRowReadings(fadeIn: Bool) -> [String] {
+    /// 0.8 was the only volume the suite ever exercised, and it cannot tell the
+    /// rounding in `refreshVolumeLabel()` apart from any of its corruptions: as
+    /// a `Float`, `0.8 * 100` is exactly 80 whether the result is rounded,
+    /// truncated, floored or ceiled.
+    ///
+    /// Three seeds are needed to part all five realistic forms, and none of the
+    /// three is redundant — the obvious tidy-up here is to collapse them into
+    /// one value, which silently reopens the hole. In binary32:
+    ///
+    /// | seed  | `Float(v) * 100` | `.rounded()` | `.up` | `.down` / `Int(_:)` | `.toNearestOrEven` |
+    /// |-------|------------------|--------------|-------|---------------------|--------------------|
+    /// | 0.755 | 75.5 exactly     | 76           | 76    | 75                  | 76                 |
+    /// | 0.125 | 12.5 exactly     | 13           | 13    | 12                  | 12                 |
+    /// | 0.752 | 75.19999694…     | 75           | 76    | 75                  | 75                 |
+    ///
+    /// So: either tie kills truncation and `.rounded(.down)`; only the 12.5 tie
+    /// parts `.rounded()` from `.rounded(.toNearestOrEven)`; and only 0.752 —
+    /// whose product is deliberately *not* a tie — kills `.rounded(.up)`, because
+    /// on an exact `.5` the ceiling agrees with the shipped rounding and both
+    /// ties let that mutation through (#704).
+    ///
+    /// Such a value never comes off the slider — that quantises to 5% steps —
+    /// but it can come off disk: `Alarm.volume` is a stored `Float`.
+    func testVolumeRowRoundsAFractionalPercentInsteadOfTruncatingIt() {
+        for (volume, expected) in [
+            (Float(0.755), "76%"), (Float(0.125), "13%"), (Float(0.752), "75%")
+        ] {
+            let readings = Self.volumeRowReadings(fadeIn: false, volume: volume)
+            XCTAssertTrue(
+                readings.contains(expected),
+                "volume \(volume) should read «\(expected)», row reads \(readings)"
+            )
+        }
+    }
+
+    /// `refreshVolumeLabel()` formats `volume` without a clamp of its own, and
+    /// that is deliberate rather than an oversight left by the removal of
+    /// `VolumeCell` (#686): every writer of the property is already bounded —
+    /// the initialiser below, `VolumePickerViewController.sliderChanged()`
+    /// (which clamps before calling back), and `Alarm.clampedVolume` on the
+    /// persisted side. A fourth clamp at render time would be unreachable, i.e.
+    /// exactly the kind of code #686 deleted. What is worth pinning is the last
+    /// live boundary in front of the label: the seed. A corrupt persisted value
+    /// has to arrive as a percentage inside 0…100, and a non-finite one must not
+    /// reach `Int(_:)` at all — that conversion traps on NaN (#704).
+    func testSoundPickerClampsACorruptVolumeSeedInsteadOfRenderingIt() {
+        let tooLoud = Self.volumeRowReadings(fadeIn: false, volume: 1.4)
+        XCTAssertTrue(tooLoud.contains("100%"), "an over-range seed leaked out: \(tooLoud)")
+
+        let negative = Self.volumeRowReadings(fadeIn: false, volume: -0.2)
+        XCTAssertTrue(negative.contains("0%"), "a negative seed leaked out: \(negative)")
+
+        let garbage = Self.volumeRowReadings(fadeIn: false, volume: .nan)
+        XCTAssertTrue(garbage.contains("100%"), "a NaN seed did not fall back to full: \(garbage)")
+    }
+
+    /// Everything the sound screen renders at the given volume. `volume` and
+    /// `fadeIn` are private and only settable through the initialiser, so each
+    /// state needs its own instance.
+    private static func volumeRowReadings(fadeIn: Bool, volume: Float = 0.8) -> [String] {
         let picker = SoundPickerViewController(
             sounds: SoundCatalogue.entries,
             selectedID: SoundCatalogue.entries[0].id,
             onSelect: { _ in },
             previewSound: { _ in },
-            volume: 0.8,
+            volume: volume,
             fadeIn: fadeIn,
             // The volume block only mounts for a host that wired the handler.
             onVolumeChange: { _, _ in }
@@ -446,6 +502,14 @@ final class AlarmEditorCopyTests: XCTestCase {
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound.title").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.preview_caps").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.volume_row")))
+        // The key's other live call site. `VolumePickerViewController:118` is
+        // pinned by `testVolumeScreenRendersItsTitleAndFadeRow`; this caps
+        // caption above the volume card (`SoundPickerViewController:588`) was
+        // read by nothing, so swapping its key there stayed green (#704).
+        XCTAssertTrue(
+            rendered.contains(Localized.text("create_alarm.volume.title").uppercased()),
+            "the volume block lost its caps caption: \(rendered)"
+        )
         XCTAssertTrue(
             rendered.contains("80% · плавно"),
             "the volume row lost its reading: \(rendered)"
