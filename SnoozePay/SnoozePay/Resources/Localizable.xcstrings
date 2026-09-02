@@ -1573,6 +1573,54 @@
         }
       }
     },
+    "deposit.error.credit_failed" : {
+      "comment" : "Top-up: StoreKit reported a paid purchase but the ledger refused the credit.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось зачислить покупку. Свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "deposit.error.dedup_degraded" : {
+      "comment" : "Top-up: the processed-transaction table is type-drifted, so a new purchase is refused rather than risking a double credit.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось обработать покупку. Перезапустите приложение или свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "deposit.error.foreign_currency" : {
+      "comment" : "Top-up: a verified purchase arrived in a currency the wallet does not hold, so it could not be credited.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупка оплачена в другой валюте, чем баланс кошелька, и зачислить её не получилось. Свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "deposit.error.products_load_failed" : {
+      "comment" : "Top-up: Product.products(for:) threw while loading the five packages.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить пакеты пополнения. Проверь интернет-соединение."
+          }
+        }
+      }
+    },
     "deposit.error.products_unavailable" : {
       "comment" : "Release-build failure body when the StoreKit catalogue is empty: no balance is credited without a real transaction.",
       "extractionState" : "manual",
@@ -1581,6 +1629,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Не удалось загрузить пакеты пополнения. Попробуйте позже."
+          }
+        }
+      }
+    },
+    "deposit.error.unknown_product" : {
+      "comment" : "Top-up: the transaction names a product ID this build does not know, so nothing is credited.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Неизвестный пакет пополнения. Обнови приложение."
+          }
+        }
+      }
+    },
+    "deposit.error.unknown_result" : {
+      "comment" : "Top-up: StoreKit returned a PurchaseResult case this build does not handle.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупка не выполнена. Обнови приложение и попробуй ещё раз."
+          }
+        }
+      }
+    },
+    "deposit.error.verification_failed" : {
+      "comment" : "Top-up: the transaction's signature did not verify, so the purchase is left in the queue.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку."
           }
         }
       }
@@ -1621,6 +1705,42 @@
         }
       }
     },
+    "deposit.notification.credited.body" : {
+      "comment" : "Top-up: body of the credited local notification. %lld is the amount in roubles.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс пополнен на %lld ₽."
+          }
+        }
+      }
+    },
+    "deposit.notification.credited.title" : {
+      "comment" : "Top-up: local notification posted when a purchase is credited with no screen mounted to show the banner.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Баланс пополнен"
+          }
+        }
+      }
+    },
+    "deposit.notification.failed.title" : {
+      "comment" : "Top-up: local notification posted when a purchase failure arrives with no screen mounted; the body is the failure's own copy.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупка пополнения"
+          }
+        }
+      }
+    },
     "deposit.preset.popular" : {
       "comment" : "Badge floating above the recommended amount tile (SPAmountPreset).",
       "extractionState" : "manual",
@@ -1641,6 +1761,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "≈ %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "deposit.restore.error.cancelled" : {
+      "comment" : "Restore purchases: StoreKitError.userCancelled.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Действие отменено."
+          }
+        }
+      }
+    },
+    "deposit.restore.error.generic" : {
+      "comment" : "Restore purchases: fallback for an error with no typed branch. %@ is the system's own description.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@\n\nЕсли проблема повторяется, свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
+    "deposit.restore.error.icloud" : {
+      "comment" : "Restore purchases: the SKError cloud-service family.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверьте подключение к интернету и доступ к iCloud в Настройках."
+          }
+        }
+      }
+    },
+    "deposit.restore.error.network" : {
+      "comment" : "Restore purchases: advice shown for every network-shaped failure (URLError, SKError, StoreKitError.networkError).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверьте подключение к интернету и попробуйте снова."
+          }
+        }
+      }
+    },
+    "deposit.restore.error.not_entitled" : {
+      "comment" : "Restore purchases: StoreKitError.notEntitled — no Apple ID signed in.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Войдите в Apple ID в Настройках и попробуйте снова."
+          }
+        }
+      }
+    },
+    "deposit.restore.error.payment_not_allowed" : {
+      "comment" : "Restore purchases: SKError.paymentNotAllowed — purchases restricted by Screen Time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В вашем Apple ID запрещены покупки. Проверьте настройки экранного времени."
+          }
+        }
+      }
+    },
+    "deposit.restore.error.storefront" : {
+      "comment" : "Restore purchases: StoreKitError.notAvailableInStorefront.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупки временно недоступны в вашем регионе."
+          }
+        }
+      }
+    },
+    "deposit.restore.error.title" : {
+      "comment" : "Restore purchases: title of the alert shown when AppStore.sync() fails.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось восстановить покупки"
+          }
+        }
+      }
+    },
+    "deposit.restore.success.message" : {
+      "comment" : "Restore purchases: body of the alert shown after AppStore.sync() returns; crediting happens later via the transaction listener.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение нескольких секунд."
+          }
+        }
+      }
+    },
+    "deposit.restore.success.title" : {
+      "comment" : "Restore purchases: title of the alert shown after AppStore.sync() returns.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запрос отправлен"
           }
         }
       }
