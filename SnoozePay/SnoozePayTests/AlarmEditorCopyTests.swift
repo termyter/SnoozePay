@@ -5,8 +5,8 @@ import XCTest
 /// Pins the copy that #612 moved out of the alarms list and the alarm editor
 /// (`ViewControllers/Alarms`, slice 2 of 3) into `Localizable.xcstrings`.
 ///
-/// A wrong key is silent: `Localized.text` hands the key back, `VolumeCell`
-/// renders `create_alarm.volume.title` where «Громкость» used to be, and the
+/// A wrong key is silent: `Localized.text` hands the key back, `SoundCell`
+/// renders `create_alarm.sound.title` where «Звук» used to be, and the
 /// build ships. So, mirroring `DesignSystemCopyTests`, the assertions come in
 /// three layers and a red run names which one broke:
 ///
@@ -123,13 +123,15 @@ final class AlarmEditorCopyTests: XCTestCase {
         let sound = SoundCell(style: .default, reuseIdentifier: nil)
         let theme = ThemeRowCell(style: .default, reuseIdentifier: nil)
         let vibration = VibrationCell(style: .default, reuseIdentifier: nil)
-        let volume = VolumeCell(style: .default, reuseIdentifier: nil)
 
-        let rendered = [sound, theme, vibration, volume].flatMap { Self.strings(in: $0.contentView) }
+        let rendered = [sound, theme, vibration].flatMap { Self.strings(in: $0.contentView) }
         Self.assertNoKeysLeaked(in: rendered)
+        // «Громкость» is not a row of this card: #263 moved it under the sound
+        // screen, so `create_alarm.volume.title` is pinned by
+        // `testVolumeScreenRendersItsTitleAndFadeRow` instead.
         for key in [
             "create_alarm.sound.title", "create_alarm.theme.title",
-            "create_alarm.vibration.title", "create_alarm.volume.title"
+            "create_alarm.vibration.title"
         ] {
             XCTAssertTrue(
                 rendered.contains(Localized.text(key)),
@@ -209,18 +211,35 @@ final class AlarmEditorCopyTests: XCTestCase {
 
     /// «%lld%% · плавно» carries an escaped percent sign. Get the escape wrong
     /// and `String(format:)` eats the number instead of printing it, which no
-    /// catalogue-level assertion can see.
+    /// catalogue-level assertion can see. The reading is built by
+    /// `SoundPickerViewController.refreshVolumeLabel()` — the volume row moved
+    /// under the sound screen in #263 — and both of its branches are pinned
+    /// here, because only the faded one is exercised by
+    /// `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt`.
     func testVolumeRowKeepsBothItsNumberAndItsPercentSign() {
-        let cell = VolumeCell(style: .default, reuseIdentifier: nil)
+        let faded = Self.volumeRowReadings(fadeIn: true)
+        XCTAssertTrue(faded.contains("80% · плавно"), "faded volume row reads \(faded)")
 
-        cell.configure(volume: 0.8, fadeIn: true)
-        XCTAssertTrue(
-            Self.strings(in: cell.contentView).contains("80% · плавно"),
-            "faded volume row reads \(Self.strings(in: cell.contentView))"
+        let plain = Self.volumeRowReadings(fadeIn: false)
+        XCTAssertTrue(plain.contains("80%"), "plain volume row reads \(plain)")
+    }
+
+    /// Everything the sound screen renders at 80% volume. `volume`/`fadeIn` are
+    /// private and only settable through the initialiser, so each state needs
+    /// its own instance.
+    private static func volumeRowReadings(fadeIn: Bool) -> [String] {
+        let picker = SoundPickerViewController(
+            sounds: SoundCatalogue.entries,
+            selectedID: SoundCatalogue.entries[0].id,
+            onSelect: { _ in },
+            previewSound: { _ in },
+            volume: 0.8,
+            fadeIn: fadeIn,
+            // The volume block only mounts for a host that wired the handler.
+            onVolumeChange: { _, _ in }
         )
-
-        cell.configure(volume: 0.8, fadeIn: false)
-        XCTAssertTrue(Self.strings(in: cell.contentView).contains("80%"))
+        picker.loadViewIfNeeded()
+        return strings(in: picker.view)
     }
 
     /// The slider reading is one catalogue string whose number is then styled
