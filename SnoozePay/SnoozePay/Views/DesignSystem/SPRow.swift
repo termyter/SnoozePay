@@ -209,10 +209,15 @@ final class SPRow: UIControl {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Only once the row is in a window: off-screen there is no screen to
-        // take a scale from, and the provisional width already errs thin.
-        // Written only on change, so laying out never re-dirties the engine.
-        guard window != nil, let dividerHeight = dividerHeightConstraint else { return }
+        // No `window != nil` guard: `testADetachedView_reportsTheSameScaleAsAHostedOne`
+        // pins that a view outside a window still reports its screen's scale,
+        // so there is a real number to read here and `AppHairline.width(for:)`
+        // will not hit its degenerate branch. Guarding would leave the
+        // provisional width frozen with no log and no assertion — the exact
+        // thing `provisionalWidth`'s own docstring calls a wrong value with a
+        // nicer name. Written only on change, so laying out never re-dirties
+        // the engine.
+        guard let dividerHeight = dividerHeightConstraint else { return }
         let width = hairlineWidth
         if dividerHeight.constant != width {
             dividerHeight.constant = width

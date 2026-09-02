@@ -168,11 +168,12 @@ final class SoundPickerRowCell: UITableViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         iconTileGradient.frame = iconTile.bounds
-        // Only once the cell is in a window, and only on change — the same
-        // guard `SPRow` uses. Off-screen there is no screen to take a scale
-        // from, and `AppHairline.width(for:)` now trips an `assertionFailure`
-        // on a zero scale rather than swallowing it.
-        guard window != nil, let dividerHeight = dividerHeightConstraint else { return }
+        // Unconditional, as it was before #689 — see the note in
+        // `SPRow.layoutSubviews`. A cell is laid out for measurement and out
+        // of the reuse pool while `window == nil`, and skipping those passes
+        // would leave the provisional width in place on exactly the rows that
+        // never make it on screen. Written only on change.
+        guard let dividerHeight = dividerHeightConstraint else { return }
         let width = hairlineWidth
         if dividerHeight.constant != width {
             dividerHeight.constant = width

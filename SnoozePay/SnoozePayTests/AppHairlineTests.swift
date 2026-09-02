@@ -89,19 +89,22 @@ final class AppHairlineTests: XCTestCase {
     /// deleted comment at `SPRow` said "`displayScale` is `0` until the view
     /// is in a window"; this pins the answer instead of asserting around it.
     ///
-    /// `> 0` alone was not enough, and the gap mattered: the whole case for
-    /// `provisionalWidth` being 1/3 rather than 0.5 is that the
-    /// `1.0 / max(displayScale, 2)` it replaced resolved to the *real* scale
-    /// on a @3x phone. Under the deleted comment's claim that expression
-    /// would have been `max(0, 2)` → 0.5, and 0.5 would have been faithful.
-    /// A test that cannot tell 0 from 2 from 3 leaves that argument
-    /// unchecked, which is how round 3 nearly shipped on an assumption.
+    /// `> 0` alone was not enough. Two live decisions rest on the stronger
+    /// statement, and neither survives if a detached view answers differently
+    /// from a hosted one:
     ///
-    /// It is load-bearing twice over: `width(for:)` traps on a zero scale,
-    /// and production builds views detached all the time, so if the first
-    /// assertion ever goes red the `assertionFailure` is a landmine across
-    /// the app and every detached construction site needs the provisional
-    /// width instead.
+    /// - `layoutSubviews` in ``SPRow`` and `SoundPickerRowCell` re-reads the
+    ///   width **unconditionally**. A `window != nil` guard there would leave
+    ///   the provisional value frozen with no log and no assertion; it is
+    ///   omitted precisely because this test says the off-window read is the
+    ///   same read.
+    /// - `width(for:)` traps on a zero scale, and production builds views
+    ///   detached all the time. Red here means that `assertionFailure` is a
+    ///   landmine across the app.
+    ///
+    /// What it does *not* underwrite is the value of `provisionalWidth`: that
+    /// follows from "never thicker than a real hairline" alone, and is pinned
+    /// by `testProvisionalWidth_isNeverThickerThanARealHairline`.
     func testADetachedView_reportsTheSameScaleAsAHostedOne() {
         let detached = UIView().traitCollection.displayScale
         XCTAssertGreaterThan(
@@ -118,9 +121,10 @@ final class AppHairlineTests: XCTestCase {
             detached, hosted, accuracy: 0.0001,
             """
             a detached view reports @\(detached)x while a hosted one reports @\(hosted)x — \
-            `1.0 / max(displayScale, 2)` in an initialiser therefore did NOT resolve to this \
-            screen's hairline, and the argument for AppHairline.provisionalWidth being \
-            1/\(1.0 / AppHairline.provisionalWidth)pt has to be re-made from scratch
+            reading a hairline before a view has a window is no longer equivalent to reading \
+            it after, so `layoutSubviews` in SPRow and SoundPickerRowCell has to go back to \
+            skipping the off-window pass, and every detached construction site needs \
+            AppHairline.provisionalWidth rather than the view's own traits
             """
         )
     }
@@ -230,30 +234,85 @@ final class AppHairlineTests: XCTestCase {
             row.leadingAnchor.constraint(equalTo: host.view.leadingAnchor),
             row.trailingAnchor.constraint(equalTo: host.view.trailingAnchor)
         ])
-        // @2x, so the expected value (0.5) differs from the provisional 1/3 —
-        // the host screen is @3x, where the two coincide and the assertion
-        // would pass without the upgrade ever happening. That makes this test
-        // sensitive to `provisionalWidth`: move it back to 0.5 and the
-        // `XCTAssertNotEqual` below fires with the wrong diagnosis ("still at
-        // the pre-screen width") even though the upgrade worked. Red with a
-        // misleading message beats a degenerate green, but pick the override
-        // to differ from whatever the constant is.
-        row.traitOverrides.displayScale = 2
-        applyTraitOverrides(expecting: 2, on: row)
+        // The override has to land on a scale whose hairline differs from the
+        // provisional width, or "upgraded" and "never touched" are the same
+        // number and the assertions pass without the upgrade happening. Which
+        // scale that is depends on the constant, so derive it instead of
+        // hard-coding: at 1/3 an @3x override is the no-op, at 0.5 an @2x one.
+        let scale = scaleWhoseHairlineDiffersFromTheProvisionalWidth
+        let before = try XCTUnwrap(dividerHeightConstraint(of: row)).constant
+        row.traitOverrides.displayScale = scale
+        applyTraitOverrides(expecting: scale, on: row)
         row.setNeedsLayout()
         window.layoutIfNeeded()
 
         let height = try XCTUnwrap(dividerHeightConstraint(of: row))
         XCTAssertEqual(
-            height.constant, 0.5, accuracy: 0.0001,
+            height.constant, 1.0 / scale, accuracy: 0.0001,
             """
             the hosted row kept a \(height.constant)pt divider where its own traits call \
-            for 0.5pt — the provisional constant was never re-read
+            for \(1.0 / scale)pt — the provisional constant was never re-read
             """
         )
         XCTAssertNotEqual(
-            height.constant, AppHairline.provisionalWidth, accuracy: 0.0001,
-            "the divider is still sitting at the pre-screen width"
+            height.constant, before, accuracy: 0.0001,
+            "the divider still holds the width it was built with (\(before)pt)"
+        )
+    }
+
+    // MARK: - SoundPickerRowCell — the same pattern, one screen over
+
+    /// `SoundPickerRowCell` builds the identical divider constraint before it
+    /// has a screen, and #689 folded it onto the same constant. It gets the
+    /// same two tests as ``SPRow``: cells are laid out for measurement and out
+    /// of the reuse pool, and a full point frozen there is 2–3 device pixels.
+    func testDetachedCell_neverBuildsAPointThickDivider() throws {
+        let cell = SoundPickerRowCell(style: .default, reuseIdentifier: SoundPickerRowCell.reuseID)
+        let height = try XCTUnwrap(
+            dividerHeightConstraint(of: cell),
+            "the divider's height constraint is gone — this test no longer measures anything"
+        )
+        XCTAssertLessThan(
+            height.constant, 1.0,
+            """
+            a cell built outside a window froze a \(height.constant)pt divider — that is \
+            2–3 device pixels and reads as a deliberate rule, not a hairline
+            """
+        )
+    }
+
+    /// …and the re-read happens for the cell too. `layoutSubviews` there is
+    /// deliberately not guarded on `window != nil`, so this also pins that the
+    /// unguarded read returns a real number rather than tripping the
+    /// degenerate branch of `AppHairline.width(for:)`.
+    func testHostedCell_upgradesTheDividerToItsScreensHairline() throws {
+        let cell = SoundPickerRowCell(style: .default, reuseIdentifier: SoundPickerRowCell.reuseID)
+        cell.frame = CGRect(x: 0, y: 0, width: 343, height: 64)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        hostWindows.append(window)
+        host.view.addSubview(cell)
+
+        let scale = scaleWhoseHairlineDiffersFromTheProvisionalWidth
+        let before = try XCTUnwrap(dividerHeightConstraint(of: cell)).constant
+        cell.traitOverrides.displayScale = scale
+        applyTraitOverrides(expecting: scale, on: cell)
+        cell.setNeedsLayout()
+        window.layoutIfNeeded()
+
+        let height = try XCTUnwrap(dividerHeightConstraint(of: cell))
+        XCTAssertEqual(
+            height.constant, 1.0 / scale, accuracy: 0.0001,
+            """
+            the hosted cell kept a \(height.constant)pt divider where its own traits call \
+            for \(1.0 / scale)pt — the provisional constant was never re-read
+            """
+        )
+        XCTAssertNotEqual(
+            height.constant, before, accuracy: 0.0001,
+            "the divider still holds the width it was built with (\(before)pt)"
         )
     }
 
@@ -272,6 +331,42 @@ final class AppHairlineTests: XCTestCase {
         host.view.addSubview(view)
         window.layoutIfNeeded()
         return view
+    }
+
+    /// A display scale whose hairline is *not* the provisional width, so an
+    /// upgrade from one to the other is observable.
+    ///
+    /// Derived rather than written down: the answer flips whenever
+    /// `AppHairline.provisionalWidth` changes, and a hard-coded scale is how
+    /// an upgrade test quietly stops testing the upgrade. Both scales iOS
+    /// ships are candidates; one of them always differs, because two distinct
+    /// hairlines cannot both equal one constant.
+    private var scaleWhoseHairlineDiffersFromTheProvisionalWidth: CGFloat {
+        let atTwo = AppHairline.width(
+            for: UITraitCollection { mutableTraits in mutableTraits.displayScale = 2 }
+        )
+        return abs(atTwo - AppHairline.provisionalWidth) > 0.0001 ? 2 : 3
+    }
+
+    /// The cell's divider is private too. Its `contentView` holds two plain
+    /// `UIView`s — the 36×36 icon tile and the hairline — so pick the one that
+    /// is not pinned to a fixed square, and look for the height constraint in
+    /// both places a single-item constraint can be filed.
+    private func dividerHeightConstraint(of cell: SoundPickerRowCell) -> NSLayoutConstraint? {
+        let plainViews = cell.contentView.subviews.filter {
+            !($0 is UIStackView) && !($0 is UIImageView)
+        }
+        guard let divider = plainViews.first(where: { view in
+            !view.constraints.contains {
+                $0.firstAttribute == .width && abs($0.constant - 36) < 0.0001
+            }
+        }) else { return nil }
+        let candidates = divider.constraints + cell.contentView.constraints
+        return candidates.first {
+            ($0.firstItem as? UIView) === divider
+                && $0.firstAttribute == .height
+                && $0.secondItem === nil
+        }
     }
 
     /// `divider` is private, so find its height constraint the way the row
