@@ -34,12 +34,14 @@ enum AppHairline {
     /// phone. `testProvisionalWidth_isNeverThickerThanARealHairline` is what
     /// caught it; the constant, not the claim, was the thing that was wrong.
     ///
-    /// That the old expression saw a *real* scale in an initialiser is not
-    /// folklore — it is pinned by
-    /// `testADetachedView_reportsTheSameScaleAsAHostedOne`. The comment this
-    /// replaced claimed the opposite ("`displayScale` is `0` until the view
-    /// is in a window"), and had it been right, `max(0, 2)` would have made
-    /// 0.5 the faithful value. It is not right.
+    /// The value follows from that rule alone: the thinnest hairline iOS
+    /// ships is 1/3pt at @3x, so nothing wider can promise "never thicker".
+    /// It does *not* rest on what a detached view reports — an argument this
+    /// docstring used to make and that
+    /// `testADetachedView_reportsTheSameScaleAsAHostedOne` was wrongly
+    /// credited with settling. That test underwrites something else: that the
+    /// unconditional re-read in `layoutSubviews` finds a real scale instead
+    /// of the degenerate branch below.
     ///
     /// The cost, stated rather than glossed: at @2x this is two thirds of a
     /// device pixel, so an un-hosted row draws a faintly antialiased line

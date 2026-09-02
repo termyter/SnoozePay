@@ -169,10 +169,14 @@ final class SoundPickerRowCell: UITableViewCell {
         super.layoutSubviews()
         iconTileGradient.frame = iconTile.bounds
         // Unconditional, as it was before #689 — see the note in
-        // `SPRow.layoutSubviews`. A cell is laid out for measurement and out
-        // of the reuse pool while `window == nil`, and skipping those passes
-        // would leave the provisional width in place on exactly the rows that
-        // never make it on screen. Written only on change.
+        // `SPRow.layoutSubviews`. Two reasons, and neither is "cells that
+        // never appear": those draw nothing, and cells that do appear get a
+        // windowed pass either way. What a `window != nil` guard would
+        // actually cost is (1) a provisional width left in place with no log
+        // and no assertion — a wrong value with a nicer name, by this
+        // constant's own docstring — and (2) off-window rendering:
+        // `systemLayoutSizeFitting` and the `UITourLauncher` snapshot audits
+        // measure and draw before there is a window. Written only on change.
         guard let dividerHeight = dividerHeightConstraint else { return }
         let width = hairlineWidth
         if dividerHeight.constant != width {

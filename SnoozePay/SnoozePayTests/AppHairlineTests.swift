@@ -110,9 +110,11 @@ final class AppHairlineTests: XCTestCase {
         XCTAssertGreaterThan(
             detached, 0,
             """
-            a detached UIView reports displayScale \(detached) — the app resolves hairlines \
-            from views built outside a window, so every such site has to switch to \
-            AppHairline.provisionalWidth
+            a detached UIView reports displayScale \(detached) — `layoutSubviews` in SPRow \
+            and SoundPickerRowCell now re-reads the width unconditionally, so the very next \
+            off-window layout pass hits AppHairline.width(for:)'s degenerate branch and its \
+            assertionFailure takes down the whole test host. Restore the `window != nil` \
+            guards before anything else.
             """
         )
 
@@ -241,6 +243,10 @@ final class AppHairlineTests: XCTestCase {
         // hard-coding: at 1/3 an @3x override is the no-op, at 0.5 an @2x one.
         let scale = scaleWhoseHairlineDiffersFromTheProvisionalWidth
         let before = try XCTUnwrap(dividerHeightConstraint(of: row)).constant
+        XCTAssertEqual(
+            before, AppHairline.provisionalWidth, accuracy: 0.0001,
+            "fixture broken: the row was laid out already, so there is no upgrade left to measure"
+        )
         row.traitOverrides.displayScale = scale
         applyTraitOverrides(expecting: scale, on: row)
         row.setNeedsLayout()
@@ -257,6 +263,41 @@ final class AppHairlineTests: XCTestCase {
         XCTAssertNotEqual(
             height.constant, before, accuracy: 0.0001,
             "the divider still holds the width it was built with (\(before)pt)"
+        )
+    }
+
+    /// The off-window layout pass — the one a `window != nil` guard would
+    /// skip, and the only thing that makes its absence observable.
+    ///
+    /// Without this, restoring `guard window != nil` leaves every other test
+    /// in this file green: the hosted ones lay out inside a key window, where
+    /// the guard passes, and the detached ones never lay out at all. Round 5
+    /// removed those guards and claimed the hosted tests pinned the removal.
+    /// They did not — this does.
+    func testDetachedRow_upgradesTheDivider_whenLaidOutWithoutAWindow() throws {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 343, height: 52))
+        let row = SPRow(title: "Звук", divider: true)
+        container.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: container.topAnchor),
+            row.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: container.trailingAnchor)
+        ])
+        try assertOffWindowLayoutUpgradesTheDivider(
+            of: row, laidOutBy: container, constraint: { self.dividerHeightConstraint(of: $0) }
+        )
+    }
+
+    /// The same for the cell, whose off-window passes are not hypothetical:
+    /// `systemLayoutSizeFitting` and the reuse pool both lay a cell out before
+    /// it has a window.
+    func testDetachedCell_upgradesTheDivider_whenLaidOutWithoutAWindow() throws {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 343, height: 64))
+        let cell = SoundPickerRowCell(style: .default, reuseIdentifier: SoundPickerRowCell.reuseID)
+        cell.frame = container.bounds
+        container.addSubview(cell)
+        try assertOffWindowLayoutUpgradesTheDivider(
+            of: cell, laidOutBy: container, constraint: { self.dividerHeightConstraint(of: $0) }
         )
     }
 
@@ -297,6 +338,10 @@ final class AppHairlineTests: XCTestCase {
 
         let scale = scaleWhoseHairlineDiffersFromTheProvisionalWidth
         let before = try XCTUnwrap(dividerHeightConstraint(of: cell)).constant
+        XCTAssertEqual(
+            before, AppHairline.provisionalWidth, accuracy: 0.0001,
+            "fixture broken: the cell was laid out already, so there is no upgrade left to measure"
+        )
         cell.traitOverrides.displayScale = scale
         applyTraitOverrides(expecting: scale, on: cell)
         cell.setNeedsLayout()
@@ -333,6 +378,47 @@ final class AppHairlineTests: XCTestCase {
         return view
     }
 
+    /// Overrides the scale on a view that has **no window**, lays it out
+    /// through its container, and asserts the divider followed.
+    ///
+    /// The `XCTAssertEqual` on `before` is not padding: everything below
+    /// measures the difference an upgrade makes, so a fixture that has
+    /// already been laid out would compare two identical numbers and blame
+    /// the production code for it.
+    private func assertOffWindowLayoutUpgradesTheDivider<View: UIView>(
+        of view: View,
+        laidOutBy container: UIView,
+        constraint: (View) -> NSLayoutConstraint?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertNil(container.window, "the container is in a window — this measures the guarded path")
+
+        let before = try XCTUnwrap(constraint(view), file: file, line: line).constant
+        XCTAssertEqual(
+            before, AppHairline.provisionalWidth, accuracy: 0.0001,
+            "fixture broken: the view was laid out already, so there is no upgrade left to measure",
+            file: file, line: line
+        )
+
+        let scale = scaleWhoseHairlineDiffersFromTheProvisionalWidth
+        view.traitOverrides.displayScale = scale
+        applyTraitOverrides(expecting: scale, on: view)
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+
+        let height = try XCTUnwrap(constraint(view), file: file, line: line)
+        XCTAssertEqual(
+            height.constant, 1.0 / scale, accuracy: 0.0001,
+            """
+            an off-window layout pass left the divider at \(height.constant)pt where the \
+            view's own traits call for \(1.0 / scale)pt — a `window != nil` guard is back in \
+            layoutSubviews, and never-hosted views keep the provisional width in silence
+            """,
+            file: file, line: line
+        )
+    }
+
     /// A display scale whose hairline is *not* the provisional width, so an
     /// upgrade from one to the other is observable.
     ///
@@ -349,16 +435,21 @@ final class AppHairlineTests: XCTestCase {
     }
 
     /// The cell's divider is private too. Its `contentView` holds two plain
-    /// `UIView`s — the 36×36 icon tile and the hairline — so pick the one that
-    /// is not pinned to a fixed square, and look for the height constraint in
+    /// `UIView`s — the icon tile and the hairline — and only the hairline is
+    /// pinned to the bottom; the tile is centred vertically. Discriminating on
+    /// that rather than on the tile's 36pt size keeps a production literal out
+    /// of the test: resizing the tile would otherwise turn this into a red
+    /// test with a wrong diagnosis. Then look for the height constraint in
     /// both places a single-item constraint can be filed.
     private func dividerHeightConstraint(of cell: SoundPickerRowCell) -> NSLayoutConstraint? {
         let plainViews = cell.contentView.subviews.filter {
             !($0 is UIStackView) && !($0 is UIImageView)
         }
         guard let divider = plainViews.first(where: { view in
-            !view.constraints.contains {
-                $0.firstAttribute == .width && abs($0.constant - 36) < 0.0001
+            cell.contentView.constraints.contains {
+                ($0.firstItem as? UIView) === view
+                    && $0.firstAttribute == .bottom
+                    && ($0.secondItem as? UIView) === cell.contentView
             }
         }) else { return nil }
         let candidates = divider.constraints + cell.contentView.constraints
