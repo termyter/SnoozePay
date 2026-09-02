@@ -28,9 +28,10 @@ import Foundation
 ///
 /// The names are the shared half, so `AlarmsListViewModel.soundDisplayNames`
 /// — ten literals duplicating this list, deliberately left behind by #599 —
-/// collapses onto ``name(for:)`` rather than onto a second set of keys for the
-/// same ten words. That call site is not touched here; this slice only makes
-/// the collapse possible.
+/// collapses onto `Localized.text(nameKey(for:))` rather than onto a second
+/// set of keys for the same ten words. That call site is not touched here, and
+/// neither is an accessor minted for it in advance: this slice owns the keys,
+/// #599 owns the reader.
 enum SoundCatalogue {
 
     /// One selectable sound. `subtitle` is the V3 descriptive copy.
@@ -56,8 +57,9 @@ enum SoundCatalogue {
     ///
     /// Exposed rather than inlined so that a test can assert a call site reads
     /// *this* key, and so #599 has one place to point at instead of guessing
-    /// the spelling. The custom slot is not covered — it is picker-only copy
-    /// and names its keys inline in ``customSlot``.
+    /// the spelling — this is the whole seam that lane needs. The custom slot
+    /// is not covered: it is picker-only copy and names its keys inline in
+    /// ``customSlot``.
     static func nameKey(for soundID: String) -> String {
         "common.sound.name.\(soundID)"
     }
@@ -102,22 +104,11 @@ enum SoundCatalogue {
         )
     }
 
-    /// Display name for a given sound id, or `nil` when the id isn't
-    /// catalogued — a custom file, or a sound added to storage by a build that
-    /// knew more than this one.
-    ///
-    /// The custom slot returns `nil` like any other uncatalogued id, matching
-    /// ``subtitle(for:)``: it is not selectable, so no stored alarm names it.
-    static func name(for soundID: String) -> String? {
-        guard ids.contains(soundID) else { return nil }
-        return Localized.text(nameKey(for: soundID))
-    }
-
     /// Subtitle for a given sound id, or `nil` when the id isn't catalogued.
     ///
     /// The picker reads subtitles off ``entries`` rather than through here —
     /// it renders whole rows — so this is the lookup for a caller holding only
-    /// an id, as ``name(for:)`` is.
+    /// an id.
     static func subtitle(for soundID: String) -> String? {
         guard ids.contains(soundID) else { return nil }
         return Localized.text(subtitleKey(for: soundID))

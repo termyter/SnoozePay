@@ -26,26 +26,22 @@ import XCTest
 ///
 /// It reaches **22 of the 22 keys**: `SoundCatalogue` is the only production
 /// reader of all of them, and `entries` plus `customSlot` cover every one.
-/// `CreateAlarmViewModel.availableSounds` and `SoundCatalogue.name(for:)` /
-/// `subtitle(for:)` are exercised on top of that.
+/// `CreateAlarmViewModel.availableSounds` and `subtitle(for:)` are exercised on
+/// top of that.
 ///
-/// What it does **not** prove is that both screens named in `SoundCatalogue`'s
-/// docs render these keys today. Only one does:
+/// The names live under `common.*` because the words appear on two screens
+/// **today** — the picker row and the alarms-list cell's sound pill
+/// (`AlarmsListViewController:546` → `AlarmCell:397-401`). The rule in
+/// `Localized` is about where copy is *seen*, not about which key a call site
+/// happens to read, so the second screen still sourcing those words from its
+/// own ten literals does not weaken it.
 ///
-/// | screen | reads the keys? |
-/// |---|---|
-/// | sound picker (`SoundPickerViewController`) | yes, via `availableSounds` |
-/// | alarms list cell (`AlarmsListViewModel.alarmSoundName`) | **no** — still its own ten literals |
-///
-/// That second row is the reason the names live under `common.*` rather than
-/// `create_alarm.*`, so the claim is load-bearing and cannot rest on intent.
-/// ``testAlarmsListStillRendersTheSameWordsAsTheCatalogue`` pins it from the
-/// other end instead: it drives the un-migrated lookup table through the real
-/// view-model and asserts it agrees with the catalogue word for word. Today
-/// that proves the duplication is exact; when #599 collapses the table onto
-/// `SoundCatalogue.name(for:)`, the same test proves the collapse changed no
-/// copy. It does not, and cannot, assert *which* of the two sources the cell
-/// read — that is the point of removing one of them.
+/// What no assertion here can prove is *which* of the two sources the cell
+/// read, and ``testAlarmsListStillRendersTheSameWordsAsTheCatalogue`` does not
+/// try: it drives the un-migrated lookup table through the real view-model and
+/// asserts it agrees with the catalogue word for word. Today that pins the
+/// duplication as exact; after #599 collapses the table, the same test pins the
+/// collapse as changing no copy.
 ///
 /// One thing no layer here covers: `create_alarm.sound.subtitle.custom`
 /// («Скоро») reaches no screen at all. The picker substitutes
@@ -175,17 +171,14 @@ final class SoundCatalogueCopyTests: XCTestCase {
         XCTAssertEqual(slot.subtitle, "Скоро")
     }
 
-    func testLookupsResolveKnownIDsAndRejectEverythingElse() {
-        XCTAssertEqual(SoundCatalogue.name(for: "dawn"), "Рассвет")
-        XCTAssertEqual(SoundCatalogue.name(for: "jazz"), "Джаз")
+    func testSubtitleLookupResolvesKnownIDsAndRejectsEverythingElse() {
         XCTAssertEqual(SoundCatalogue.subtitle(for: "dawn"), "Тёплый рассвет с птицами")
         XCTAssertEqual(SoundCatalogue.subtitle(for: "birds"), "Только щебет, без музыки")
 
         // The custom slot is not selectable, so no stored alarm names it and
-        // both lookups treat it as uncatalogued — as they did before the move.
-        XCTAssertNil(SoundCatalogue.name(for: "custom"))
+        // the lookup treats it as uncatalogued — as it did before the move.
         XCTAssertNil(SoundCatalogue.subtitle(for: "custom"))
-        XCTAssertNil(SoundCatalogue.name(for: "nonexistent"))
+        XCTAssertNil(SoundCatalogue.subtitle(for: "nonexistent"))
         XCTAssertNil(SoundCatalogue.subtitle(for: ""))
     }
 
@@ -209,9 +202,9 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// `AlarmsListViewModel` still renders sound names from ten private
     /// literals of its own (#599's lane — untouched here). This asserts the two
     /// sources say the same thing for every catalogued id, which is what makes
-    /// the collapse onto `SoundCatalogue.name(for:)` a pure deletion. If the
-    /// collapse ever changes a word, this goes red on the word rather than on
-    /// the refactor.
+    /// the collapse onto `Localized.text(SoundCatalogue.nameKey(for:))` a pure
+    /// deletion. If the collapse ever changes a word, this goes red on the word
+    /// rather than on the refactor.
     func testAlarmsListStillRendersTheSameWordsAsTheCatalogue() {
         let suite = "test.soundCopy.list.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -229,7 +222,7 @@ final class SoundCatalogueCopyTests: XCTestCase {
         for (index, alarm) in viewModel.alarms.enumerated() {
             XCTAssertEqual(
                 viewModel.alarmSoundName(at: index),
-                SoundCatalogue.name(for: alarm.soundID),
+                SoundCatalogue.entries.first(where: { $0.id == alarm.soundID })?.name,
                 "alarms-list name for '\(alarm.soundID)' diverged from the catalogue"
             )
         }
