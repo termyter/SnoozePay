@@ -142,7 +142,7 @@ struct AppShadow {
             origin: CGPoint(x: ambientShadow1Spread, y: ambientShadow1Spread),
             size: hostLayer.bounds.size
         ).grown(by: ambientShadow1Spread, on: openEdges)
-        let path = cardPath(cardRect, cornerRadius: cornerRadius, corners: corners)
+        let path = cardPath(cardRect.insetBy(dx: 6, dy: 6), cornerRadius: cornerRadius, corners: corners) // MUTATION #692 run D
         ambient.path = path
         ambient.fillColor = UIColor.clear.cgColor
         // Narrow ambient stop: `0 1px 3px rgba(8,14,30,.06)`.
