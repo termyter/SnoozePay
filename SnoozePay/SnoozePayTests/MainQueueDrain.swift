@@ -22,7 +22,14 @@ enum MainQueueDrainOutcome {
 
     /// The cap ran out with the queue still busy — either because a probe kept
     /// coming back late, or because the last probe outlived the deadline.
-    case capExhausted(turns: Int, lastRoundTrip: TimeInterval, cap: TimeInterval)
+    ///
+    /// `lastProbeReturned` says which of those two happened, and the diagnosis
+    /// leans on it: a probe that never came back has no round trip to report,
+    /// and calling its wait one anyway would tell the reader it arrived late
+    /// when it did not arrive at all.
+    case capExhausted(
+        turns: Int, lastProbe: TimeInterval, lastProbeReturned: Bool, cap: TimeInterval
+    )
 
     /// The wait ended for a reason that is not a timeout (`.interrupted`,
     /// `.incorrectOrder`). Kept apart from `capExhausted` on purpose: claiming
@@ -40,15 +47,20 @@ enum MainQueueDrainOutcome {
         switch self {
         case .quiet:
             return ""
-        case let .capExhausted(turns, lastRoundTrip, cap):
+        case let .capExhausted(turns, lastProbe, lastProbeReturned, cap):
+            let lastProbeText = lastProbeReturned
+                ? """
+                    the last a \(seconds(lastProbe)) round trip against a \
+                    \(seconds(mainQueueQuietRoundTrip)) threshold
+                    """
+                : "the last still outstanding after \(seconds(lastProbe)), never coming back at all"
             return """
                 main queue never went quiet within its \(seconds(cap)) cap: \(turns) probe \
-                turns, the last a \(seconds(lastRoundTrip)) round trip against a \
-                \(seconds(mainQueueQuietRoundTrip)) threshold. Read both numbers before \
-                picking a cause — many turns that each only just miss the threshold is a \
-                runner starved of CPU, while a few long turns is a genuinely deep queue. \
-                Either way, whatever this test asserts next was going to be measured \
-                through it.
+                turns, \(lastProbeText). Read both numbers before picking a cause — many \
+                turns that each only just miss the \(seconds(mainQueueQuietRoundTrip)) \
+                threshold is a runner starved of CPU, while a few long turns is a genuinely \
+                deep queue. Either way, whatever this test asserts next was going to be \
+                measured through it.
                 """
         case let .waitEndedEarly(turns, waiterResult, cap):
             return """
@@ -82,32 +94,48 @@ enum MainQueueDrainOutcome {
 /// in turn. Once a turn is prompt the drain stops, so a block enqueued *by* that
 /// last prompt turn is left for the caller — by then there is no backlog to
 /// confuse it with.
+///
+/// Deliberately NOT `@discardableResult`: this function reports nothing, so a
+/// caller that drops its result has silently reintroduced the exact defect
+/// #698 is about. The compiler warning on the unused enum is the only thing
+/// standing between the two, which is why adding the attribute "for symmetry
+/// with `drainMainQueue`" would be a regression rather than a tidy-up.
 @MainActor
 func drainMainQueueOutcome(cap: TimeInterval = 60) -> MainQueueDrainOutcome {
     let deadline = Date().addingTimeInterval(cap)
     var turns = 0
-    var lastRoundTrip: TimeInterval = 0
+    var lastProbe: TimeInterval = 0
+    var lastProbeReturned = false
     while deadline.timeIntervalSinceNow > 0 {
         let turn = XCTestExpectation(description: "main queue turn")
         let enqueuedAt = Date()
         DispatchQueue.main.async { turn.fulfill() }
         let waiterResult = XCTWaiter.wait(for: [turn], timeout: deadline.timeIntervalSinceNow)
         turns += 1
-        lastRoundTrip = Date().timeIntervalSince(enqueuedAt)
+        // Measured before the branch below on purpose: on the path where the
+        // probe never came back, this is the only record of how long it was
+        // out, and reading it afterwards would report zero.
+        lastProbe = Date().timeIntervalSince(enqueuedAt)
+        lastProbeReturned = waiterResult == .completed
         guard waiterResult == .completed else {
-            // A probe that outlives the deadline IS the cap running out — the
-            // queue was busy right up to the end. Anything else is a different
-            // animal and says so.
+            // The inner wait is bounded by the cap's own deadline, so a timeout
+            // here can only mean the cap ran out with the probe still out —
+            // that IS cap exhaustion. Anything else is a different animal and
+            // says so.
             guard waiterResult == .timedOut else {
                 return .waitEndedEarly(turns: turns, waiterResult: waiterResult, cap: cap)
             }
-            return .capExhausted(turns: turns, lastRoundTrip: lastRoundTrip, cap: cap)
+            return .capExhausted(
+                turns: turns, lastProbe: lastProbe, lastProbeReturned: false, cap: cap
+            )
         }
-        if lastRoundTrip < mainQueueQuietRoundTrip {
+        if lastProbe < mainQueueQuietRoundTrip {
             return .quiet(turns: turns)
         }
     }
-    return .capExhausted(turns: turns, lastRoundTrip: lastRoundTrip, cap: cap)
+    return .capExhausted(
+        turns: turns, lastProbe: lastProbe, lastProbeReturned: lastProbeReturned, cap: cap
+    )
 }
 
 /// Drains the main queue and, if it never settles, says so by name.
@@ -138,6 +166,12 @@ func drainMainQueueOutcome(cap: TimeInterval = 60) -> MainQueueDrainOutcome {
 /// function is — under this target's default isolation every closure written at
 /// a call site is main-actor isolated anyway, and saying so avoids an isolation
 /// conversion that would otherwise be inferred silently.
+///
+/// NOT VERIFIED (#716): that this parameter's default is `XCTFail`. The tests
+/// pass their own sink, so replacing the default with `{ _, _, _ in }` leaves
+/// both tour suites reporting nothing and the whole run green — the one
+/// property #698 exists to guarantee, one level of indirection deeper than any
+/// assertion reaches. Delete this paragraph when #716 closes.
 ///
 /// The target is built with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
 /// (`project.pbxproj`, Debug and Release), so this — like every other

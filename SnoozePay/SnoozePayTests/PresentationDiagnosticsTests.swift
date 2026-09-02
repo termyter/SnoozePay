@@ -20,6 +20,12 @@ private final class ProbeViewController: UIViewController {}
 /// they are looking at when a tour route fails to present (#618, #693), so the
 /// parts that carry that meaning — the walk down the chain, the separator, and
 /// the per-node attachment — are each pinned here.
+///
+/// `@MainActor` spelled out rather than inherited from
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: these tests build and touch
+/// view controllers, and that has to stay a compile-time guarantee rather than
+/// a property of the build settings.
+@MainActor
 final class PresentationDiagnosticsTests: XCTestCase {
 
     func testAnEmptyHierarchyIsNamedInWords() {

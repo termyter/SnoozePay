@@ -55,6 +55,14 @@ private final class QueueHog {
 /// this class now performs the first drain in the whole target and absorbs the
 /// backlog of everything from A to L. That is the right place for it, and it
 /// does mean a genuinely stuck queue surfaces here first.
+///
+/// `@MainActor` is spelled out rather than inherited from
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, because the strictness of the
+/// no-op canary below rests on it: "this test body holds the main thread" is
+/// what makes an empty `order` proof rather than a race. Left implicit, a
+/// change to that build setting would degrade the canary quietly instead of
+/// failing to compile.
+@MainActor
 final class MainQueueDrainTests: XCTestCase {
 
     override func setUp() {
@@ -156,14 +164,14 @@ final class MainQueueDrainTests: XCTestCase {
         let outcome = drainMainQueueOutcome(cap: 1)
         hog.stop()
 
-        guard case let .capExhausted(turns, lastRoundTrip, cap) = outcome else {
+        guard case let .capExhausted(turns, lastProbe, _, cap) = outcome else {
             return XCTFail("a permanently busy queue must exhaust the cap, got \(outcome)")
         }
         XCTAssertFalse(outcome.isQuiet)
         XCTAssertGreaterThan(turns, 0, "the drain must count the turns it spent")
         XCTAssertGreaterThan(
-            lastRoundTrip, 0,
-            "the last round trip is half the evidence for telling starvation from backlog"
+            lastProbe, 0,
+            "the last probe's duration is half the evidence for telling starvation from backlog"
         )
         XCTAssertEqual(cap, 1, accuracy: 0.001, "the outcome must report the cap it was given")
         XCTAssertTrue(outcome.diagnosis.contains("probe"), "the diagnosis must describe the probe")
