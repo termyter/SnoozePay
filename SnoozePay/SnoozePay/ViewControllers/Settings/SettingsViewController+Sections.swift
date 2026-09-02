@@ -29,7 +29,7 @@ extension SettingsViewController {
         cell.configure(
             systemName: "rublesign.circle",
             iconColor: AppColors.warn400,
-            title: "Цена откладывания по умолчанию",
+            title: Localized.text("settings.row.default_price"),
             trailingText: Decimal(alarmDefaults.penaltyAmount).formattedRubles(),
             trailingColor: AppColors.warn400,
             accessory: .disclosureIndicator,
@@ -45,8 +45,8 @@ extension SettingsViewController {
         cell.configure(
             systemName: "clock",
             iconColor: AppColors.fg3,
-            title: "Длительность откладывания",
-            trailingText: "\(alarmDefaults.snoozeMinutes) мин",
+            title: Localized.text("settings.row.snooze_duration"),
+            trailingText: Localized.format("settings.picker.minutes_option", alarmDefaults.snoozeMinutes),
             trailingColor: AppColors.fg3,
             accessory: .disclosureIndicator,
             selectionStyle: .default
@@ -72,7 +72,7 @@ extension SettingsViewController {
         cell.configure(
             systemName: "speaker.wave.2",
             iconColor: AppColors.fg3,
-            title: "Громкость",
+            title: Localized.text("settings.row.volume"),
             trailingText: "\(percent)%",
             trailingColor: AppColors.fg3,
             accessory: .disclosureIndicator,
@@ -88,7 +88,7 @@ extension SettingsViewController {
         cell.configureSwitch(
             systemName: "iphone.radiowaves.left.and.right",
             iconColor: AppColors.fg3,
-            title: "Вибрация",
+            title: Localized.text("settings.row.vibration"),
             isOn: alarmDefaults.vibrationEnabled,
             onChange: { [weak self] isOn in
                 self?.alarmDefaults.vibrationEnabled = isOn
@@ -108,7 +108,7 @@ extension SettingsViewController {
         cell.configureSwitch(
             systemName: "flame",
             iconColor: AppColors.pain400,
-            title: "Прогрессивная цена",
+            title: Localized.text("settings.row.progressive_price"),
             // Design copy (`SPMore4.jsx:381`) — the doubling ramp reads clearer
             // than prose and won't clip (#313).
             subtitle: "50 → 100 → 200 → 400",
@@ -125,9 +125,9 @@ extension SettingsViewController {
     func makeOtherCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         switch OtherRow(rawValue: indexPath.row) {
         case .privacy:
-            return makeInfoRow(at: indexPath, title: "Политика конфиденциальности")
+            return makeInfoRow(at: indexPath, title: Localized.text("settings.row.privacy_policy"))
         case .terms:
-            return makeInfoRow(at: indexPath, title: "Пользовательское соглашение")
+            return makeInfoRow(at: indexPath, title: Localized.text("settings.row.terms"))
         case .contact:
             return makeContactRow(at: indexPath)
         case .theme:
@@ -153,7 +153,7 @@ extension SettingsViewController {
         cell.configure(
             systemName: "envelope",
             iconColor: AppColors.fg3,
-            title: "Связаться с нами",
+            title: Localized.text("settings.row.contact"),
             subtitle: AppConstants.supportEmail,
             accessory: .disclosureIndicator
         )
@@ -186,8 +186,8 @@ extension SettingsViewController {
         cell.configure(
             systemName: "exclamationmark.triangle",
             iconColor: AppColors.pain400,
-            title: "Стереть повреждённые данные",
-            subtitle: "Хранилище повреждено и заблокировано",
+            title: Localized.text("settings.recovery.row_title"),
+            subtitle: Localized.text("settings.recovery.row_subtitle"),
             accessory: .none,
             selectionStyle: .default
         )
@@ -199,13 +199,15 @@ extension SettingsViewController {
     /// consequence and the confirm button uses `.destructive` styling.
     func presentRecoveryConfirmation() {
         let alert = UIAlertController(
-            title: "Стереть повреждённые данные?",
-            message: "Будильники и история операций будут удалены безвозвратно, "
-                + "а хранилище разблокировано. Это действие нельзя отменить.",
+            title: Localized.text("settings.recovery.alert_title"),
+            // One key, not two: the sentence was assembled from two literals
+            // only to fit the line, and word order is the language's business.
+            message: Localized.text("settings.recovery.alert_message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Подтвердить", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
+        let confirmTitle = Localized.text("settings.recovery.confirm")
+        alert.addAction(UIAlertAction(title: confirmTitle, style: .destructive) { [weak self] _ in
             self?.performRecovery()
         })
         present(alert, animated: true)
@@ -248,17 +250,18 @@ extension SettingsViewController {
     /// 1–15 form range.
     func presentSnoozeDurationPicker() {
         let sheet = UIAlertController(
-            title: "Длительность откладывания",
-            message: "Применяется к новым будильникам",
+            title: Localized.text("settings.row.snooze_duration"),
+            message: Localized.text("settings.picker.applies_to_new_alarms"),
             preferredStyle: .actionSheet
         )
         for minutes in [3, 5, 9, 10, 15] {
-            sheet.addAction(UIAlertAction(title: "\(minutes) мин", style: .default) { [weak self] _ in
+            let title = Localized.format("settings.picker.minutes_option", minutes)
+            sheet.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
                 self?.alarmDefaults.snoozeMinutes = minutes
                 self?.tableView.reloadData()
             })
         }
-        sheet.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        sheet.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
         // iPad: anchor the popover to the tapped row.
         if let popover = sheet.popoverPresentationController {
             let indexPath = IndexPath(
@@ -279,8 +282,8 @@ extension SettingsViewController {
     /// the global default never rewrites existing alarms — only new ones inherit.
     func presentDefaultPricePicker() {
         let sheet = UIAlertController(
-            title: "Цена откладывания по умолчанию",
-            message: "Применяется к новым будильникам",
+            title: Localized.text("settings.row.default_price"),
+            message: Localized.text("settings.picker.applies_to_new_alarms"),
             preferredStyle: .actionSheet
         )
         for amount in [20, 50, 100, 200, 500] {
@@ -290,7 +293,7 @@ extension SettingsViewController {
                 self?.tableView.reloadData()
             })
         }
-        sheet.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        sheet.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
         // iPad: anchor the popover to the tapped row.
         if let popover = sheet.popoverPresentationController {
             let indexPath = IndexPath(

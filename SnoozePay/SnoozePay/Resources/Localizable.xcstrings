@@ -3349,6 +3349,186 @@
         }
       }
     },
+    "settings.picker.applies_to_new_alarms" : {
+      "comment" : "Message shared by both Settings default pickers: the value seeds new alarms only.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Применяется к новым будильникам"
+          }
+        }
+      }
+    },
+    "settings.picker.minutes_option" : {
+      "comment" : "A snooze duration in minutes, shown both as the row's trailing value and as an option in its picker.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld мин"
+          }
+        }
+      }
+    },
+    "settings.recovery.alert_message" : {
+      "comment" : "Body of the confirmation alert for erasing a corrupt store; spells out that the loss is permanent.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильники и история операций будут удалены безвозвратно, а хранилище разблокировано. Это действие нельзя отменить."
+          }
+        }
+      }
+    },
+    "settings.recovery.alert_title" : {
+      "comment" : "Title of the confirmation alert for erasing a corrupt store.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стереть повреждённые данные?"
+          }
+        }
+      }
+    },
+    "settings.recovery.confirm" : {
+      "comment" : "Destructive confirm button of the recovery alert.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подтвердить"
+          }
+        }
+      }
+    },
+    "settings.recovery.row_subtitle" : {
+      "comment" : "Subtitle of the recovery row, explaining why it is offered.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хранилище повреждено и заблокировано"
+          }
+        }
+      }
+    },
+    "settings.recovery.row_title" : {
+      "comment" : "Destructive Settings row that erases a store the app failed to load.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стереть повреждённые данные"
+          }
+        }
+      }
+    },
+    "settings.row.contact" : {
+      "comment" : "Settings row that opens a mail draft to support.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Связаться с нами"
+          }
+        }
+      }
+    },
+    "settings.row.default_price" : {
+      "comment" : "Settings row that opens the default snooze-price picker; also the title of that picker.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цена откладывания по умолчанию"
+          }
+        }
+      }
+    },
+    "settings.row.privacy_policy" : {
+      "comment" : "Settings row that opens the privacy policy, and the title of the screen it opens.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Политика конфиденциальности"
+          }
+        }
+      }
+    },
+    "settings.row.progressive_price" : {
+      "comment" : "Settings row with a switch for the doubling snooze price of new alarms.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прогрессивная цена"
+          }
+        }
+      }
+    },
+    "settings.row.snooze_duration" : {
+      "comment" : "Settings row that opens the default snooze-duration picker; also the title of that picker.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Длительность откладывания"
+          }
+        }
+      }
+    },
+    "settings.row.terms" : {
+      "comment" : "Settings row that opens the terms of use, and the title of the screen it opens.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пользовательское соглашение"
+          }
+        }
+      }
+    },
+    "settings.row.vibration" : {
+      "comment" : "Settings row with a switch for the default vibration of new alarms.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрация"
+          }
+        }
+      }
+    },
+    "settings.row.volume" : {
+      "comment" : "Settings row that opens the default alarm volume picker.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Громкость"
+          }
+        }
+      }
+    },
     "statistics.empty.body" : {
       "comment" : "Body of the statistics empty state (SPStatsEmptyState).",
       "extractionState" : "manual",
