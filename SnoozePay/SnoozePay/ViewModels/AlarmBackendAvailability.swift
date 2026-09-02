@@ -280,24 +280,21 @@ struct AlarmBackendWarning: Equatable {
         case .unresolved, .available:
             return nil
         case .notRequested:
-            title = "Будильники не зазвонят"
-            message = "Приложение ещё не спросило разрешение на будильники и уведомления. "
-                + "Без него созданные будильники не сработают."
-            actionTitle = "Разрешить"
+            title = Localized.text("alarms.backend_guard.title.wont_ring")
+            message = Localized.text("alarms.backend_guard.message.not_requested")
+            actionTitle = Localized.text("alarms.backend_guard.action.request")
             gatesAlarmCreation = true
             canRequestInApp = true
         case .unavailable:
-            title = "Будильники не зазвонят"
-            message = "Разрешение на будильники и уведомления выключено. "
-                + "Включите его в Настройках — иначе созданные будильники не сработают."
-            actionTitle = "Открыть Настройки"
+            title = Localized.text("alarms.backend_guard.title.wont_ring")
+            message = Localized.text("alarms.backend_guard.message.unavailable")
+            actionTitle = Localized.text("alarms.backend_guard.action.open_settings")
             gatesAlarmCreation = true
             canRequestInApp = false
         case .indeterminate:
-            title = "Не удалось проверить разрешения"
-            message = "Приложение не смогло узнать, разрешены ли будильники и уведомления. "
-                + "Проверьте их в Настройках — без разрешения будильники не сработают."
-            actionTitle = "Открыть Настройки"
+            title = Localized.text("alarms.backend_guard.title.indeterminate")
+            message = Localized.text("alarms.backend_guard.message.indeterminate")
+            actionTitle = Localized.text("alarms.backend_guard.action.open_settings")
             gatesAlarmCreation = false
             canRequestInApp = false
         }
