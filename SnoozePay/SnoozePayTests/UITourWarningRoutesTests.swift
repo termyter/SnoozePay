@@ -28,6 +28,20 @@ final class UITourWarningRoutesTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // #693, same class of failure as #618. This is one of the few suites
+        // that spins the main run loop, so without a drain it inherits the
+        // deferred UIKit work the ~1000 preceding synchronous tests left
+        // queued, and spends it inside the wait below. The clean build of
+        // 2026-09-01 shows exactly that: 45 s of wall clock burned on a 5 s
+        // timeout, i.e. the main queue never yielded once — not even to the
+        // poll's own unconditional deadline block, which is what should have
+        // turned "not presented" into a readable assertion failure.
+        //
+        // The drain takes that backlog out of what the wait measures, so the
+        // 5 s window keeps meaning "this route is broken" instead of "this
+        // runner was busy". Widening it would have to cover the whole backlog,
+        // and a window that wide stops noticing the regression the wait is for.
+        drainMainQueue()
         suiteName = "test.uitourRoutes.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
         repo = AlarmRepository(
@@ -44,6 +58,12 @@ final class UITourWarningRoutesTests: XCTestCase {
         // monitor a fixed answer — the exact cross-contamination this seam is
         // shaped to avoid.
         AlarmBackendMonitor.uiTourForcedAvailability = nil
+        // Dismiss and unroot before hiding: a window released while it still
+        // owns a presentation hands UIKit a dismissal to run *later*, and
+        // "later" is the next suite's first wait — this class contributing to
+        // the very backlog it drains for in `setUp` (#693).
+        window?.rootViewController?.dismiss(animated: false)
+        window?.rootViewController = nil
         // Hide before releasing: a visible window holding a presented sheet
         // outlives the test case otherwise.
         window?.isHidden = true
@@ -70,7 +90,10 @@ final class UITourWarningRoutesTests: XCTestCase {
         XCTAssertEqual(tabBar?.selectedIndex, 2, "the sheet's production presenter is the stats tab")
 
         // `presentLater` waits a beat for the root to lay out, so poll instead
-        // of hard-coding that delay — same shape as `AlarmSchedulerTests`.
+        // of hard-coding that delay — same shape as `AlarmSchedulerTests`. The
+        // deadline fulfils unconditionally so a route that never presents ends
+        // the test at the assertion below, which can name what IS on screen,
+        // rather than at a bare "Asynchronous wait failed".
         let presented = expectation(description: "warning sheet presented")
         let deadline = Date().addingTimeInterval(4)
         func poll() {
@@ -84,10 +107,32 @@ final class UITourWarningRoutesTests: XCTestCase {
         wait(for: [presented], timeout: 5)
 
         let sheet = host.rootViewController?.presentedViewController
+        let diagnostics = presentationDiagnostics(in: host)
         XCTAssertTrue(
             sheet is AlarmOffWarningViewController,
-            "route presented \(type(of: sheet)) over the stats tab, expected the warning sheet"
+            """
+            route presented \(type(of: sheet)) over the stats tab, expected the warning sheet. \
+            \(diagnostics)
+            """
         )
+    }
+
+    /// Printed on failure so the next red run names the missing link instead of
+    /// only saying one is missing. A chain of just `UITabBarController` means
+    /// the route never presented at all; a chain that reaches the sheet with
+    /// `window: nil` means it fired at a presenter that had left the hierarchy
+    /// and UIKit dropped it on the floor — two different bugs behind one
+    /// message otherwise (#618, #693).
+    private func presentationDiagnostics(in host: UIWindow) -> String {
+        var chain: [String] = []
+        var current = host.rootViewController
+        while let node = current {
+            let attached = node.viewIfLoaded?.window == nil ? "window: nil" : "window: set"
+            chain.append("\(type(of: node))(\(attached))")
+            current = node.presentedViewController
+        }
+        return "presentation chain: "
+            + (chain.isEmpty ? "no root view controller" : chain.joined(separator: " → "))
     }
 
     /// The presentation shape itself, asserted without waiting: a `.large`
