@@ -225,18 +225,32 @@ final class AlarmEditorCopyTests: XCTestCase {
     }
 
     /// 0.8 was the only volume the suite ever exercised, and it cannot tell the
-    /// rounding in `refreshVolumeLabel()` apart from its corruptions: as a
-    /// `Float`, `0.8 * 100` is 80 whether the result is rounded, truncated or
-    /// floored. These seeds land on a fractional percentage, where the three
-    /// part ways — `Float(0.755) * 100` is exactly 75.5 and `Float(0.125) * 100`
-    /// exactly 12.5, so truncation and `.rounded(.down)` read 75 / 12 while the
-    /// shipped `.rounded()` reads 76 / 13. The 12.5 tie additionally separates
-    /// `.rounded()` from `.rounded(.toNearestOrEven)`, which would read 12.
+    /// rounding in `refreshVolumeLabel()` apart from any of its corruptions: as
+    /// a `Float`, `0.8 * 100` is exactly 80 whether the result is rounded,
+    /// truncated, floored or ceiled.
+    ///
+    /// Three seeds are needed to part all five realistic forms, and none of the
+    /// three is redundant — the obvious tidy-up here is to collapse them into
+    /// one value, which silently reopens the hole. In binary32:
+    ///
+    /// | seed  | `Float(v) * 100` | `.rounded()` | `.up` | `.down` / `Int(_:)` | `.toNearestOrEven` |
+    /// |-------|------------------|--------------|-------|---------------------|--------------------|
+    /// | 0.755 | 75.5 exactly     | 76           | 76    | 75                  | 76                 |
+    /// | 0.125 | 12.5 exactly     | 13           | 13    | 12                  | 12                 |
+    /// | 0.752 | 75.19999694…     | 75           | 76    | 75                  | 75                 |
+    ///
+    /// So: either tie kills truncation and `.rounded(.down)`; only the 12.5 tie
+    /// parts `.rounded()` from `.rounded(.toNearestOrEven)`; and only 0.752 —
+    /// whose product is deliberately *not* a tie — kills `.rounded(.up)`, because
+    /// on an exact `.5` the ceiling agrees with the shipped rounding and both
+    /// ties let that mutation through (#704).
     ///
     /// Such a value never comes off the slider — that quantises to 5% steps —
     /// but it can come off disk: `Alarm.volume` is a stored `Float`.
     func testVolumeRowRoundsAFractionalPercentInsteadOfTruncatingIt() {
-        for (volume, expected) in [(Float(0.755), "76%"), (Float(0.125), "13%")] {
+        for (volume, expected) in [
+            (Float(0.755), "76%"), (Float(0.125), "13%"), (Float(0.752), "75%")
+        ] {
             let readings = Self.volumeRowReadings(fadeIn: false, volume: volume)
             XCTAssertTrue(
                 readings.contains(expected),
