@@ -107,18 +107,24 @@ final class UITourWarningRoutesTests: XCTestCase {
         wait(for: [presented], timeout: 5)
 
         let sheet = host.rootViewController?.presentedViewController
-        let diagnostics = presentationDiagnostics(rootedAt: host.rootViewController)
-        // Naming the class through the optional, not `type(of: sheet)`: that
-        // reports `Optional<UIViewController>` for every outcome, which tells
-        // the next reader nothing about what actually came up.
-        let sheetName = sheet.map { String(describing: type(of: $0)) } ?? "nothing"
         XCTAssertTrue(
             sheet is AlarmOffWarningViewController,
-            """
-            route presented \(sheetName) over the stats tab, expected the warning sheet. \
-            \(diagnostics)
-            """
+            self.unexpectedSheetMessage(sheet, in: host)
         )
+    }
+
+    /// Built inside `XCTAssertTrue`'s `@autoclosure`, so a passing run pays for
+    /// none of it: walking the hierarchy and formatting a chain is work only the
+    /// failing run has any use for.
+    private func unexpectedSheetMessage(_ sheet: UIViewController?, in host: UIWindow) -> String {
+        // Named through the optional rather than with `type(of: sheet)`, which
+        // reports `Optional<UIViewController>` whatever is up there and so tells
+        // the next reader nothing about what actually came up.
+        let name = sheet.map { String(describing: type(of: $0)) } ?? "nothing"
+        return """
+            route presented \(name) over the stats tab, expected the warning sheet. \
+            \(presentationDiagnostics(rootedAt: host.rootViewController))
+            """
     }
 
     /// The presentation shape itself, asserted without waiting: a `.large`
