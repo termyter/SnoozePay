@@ -70,9 +70,18 @@ final class StoreKitService {
     /// / record failed). Surfaced as a constant so tests can assert without
     /// hard-coding the same Russian string in two places. See #115.
     ///
-    /// Computed rather than stored, like its two neighbours: `Localized` reads
-    /// a bundle, and a `static let` would freeze the first-read language for
-    /// the lifetime of the process.
+    /// Computed rather than stored, like its two neighbours — for a narrower
+    /// reason than it looks. A stored `static let` caches its first lookup for
+    /// the lifetime of the process, which is a second cache in front of the one
+    /// `Localized` already keeps; dropping it leaves `Localized.bundle` as the
+    /// single place #596 has to touch when it collapses that bundle to `.main`,
+    /// at which point the computed form is the only correct one.
+    ///
+    /// It buys nothing at runtime *today*, and must not be read as making this
+    /// layer language-switchable. There is no runtime language switch, and it
+    /// is blocked a level below regardless: `Localized.bundle` is a lazy
+    /// `static let` resolved once per process, and `AppLocale.display` is
+    /// hardcoded to `ru_RU`.
     static var ledgerLockedFailureMessage: String { Localized.text("deposit.error.credit_failed") }
 
     /// User-facing copy when the dedup table is in a degraded (type-drifted)

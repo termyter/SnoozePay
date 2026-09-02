@@ -67,9 +67,11 @@ enum StoreKitRestoreErrorCopy {
 
     /// Common networking copy reused by URL / SK / StoreKit network branches.
     ///
-    /// A computed property rather than a stored one: `Localized` reads the
-    /// bundle, and a `static let` would freeze the first-read language for the
-    /// process lifetime.
+    /// Computed rather than stored so the only cache in the path is
+    /// `Localized.bundle` — the single place #596 has to touch when it
+    /// collapses that bundle to `.main`. No runtime effect today: the language
+    /// cannot change while the app runs, and `AppLocale.display` is hardcoded
+    /// to `ru_RU` regardless.
     private static var networkAdvice: String { Localized.text("deposit.restore.error.network") }
 
     static func message(for error: Error) -> String {

@@ -19,10 +19,36 @@ import XCTest
 ///     the migration, transcribed from the pre-migration literals rather than
 ///     read back out of the file under test. A list derived from the catalogue
 ///     would agree with any mistake in it.
-///  3. **Call-site layer** — the production entry points are invoked and what
-///     they return is compared against the catalogue. Layers 1 and 2 are both
-///     blind to a typo in the *key* at the call site, because there the
-///     catalogue itself is fine.
+///  3. **Call-site layer** — the production entry points that a test can reach
+///     are invoked and what they return is compared against the catalogue.
+///     Layers 1 and 2 are both blind to a typo in the *key* at the call site,
+///     because there the catalogue itself is fine.
+///
+/// Layer 3 reaches **13 of the 20 keys**, and the gap is worth naming rather
+/// than leaving for a reader to discover:
+///
+/// | reached | how |
+/// |---|---|
+/// | the three service failure messages | read straight off `StoreKitService` |
+/// | the two deferred-purchase notifications | posted through an injected spy |
+/// | the seven restore-error branches | `StoreKitRestoreErrorCopy.message(for:)` |
+///
+/// The other seven are not reachable without work this slice deliberately does
+/// not do:
+///
+/// - `deposit.error.products_load_failed`, `.unknown_product`,
+///   `.unknown_result`, `.verification_failed` are posted from inside
+///   `loadProducts()`, `purchase(_:)` and `handle(transactionResult:)`, which
+///   need a StoreKit substitution seam that does not exist yet, as
+///   `StoreKitServiceTests` records at its head.
+/// - `deposit.restore.success.title`, `.success.message` and `.error.title`
+///   are read by `presentRestoreSuccess()` / `presentRestoreError(_:)`, both
+///   `private` on a `UIViewController` extension and both reachable only
+///   through `AppStore.sync()`.
+///
+/// For those seven a call-site typo that lands on *another existing key* stays
+/// green here. Layers 1 and 2 still catch a typo that lands on no key at all,
+/// which is the far likelier of the two.
 @MainActor
 final class StoreKitCopyTests: XCTestCase {
 
