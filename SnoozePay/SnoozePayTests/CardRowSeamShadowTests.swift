@@ -56,6 +56,21 @@ final class CardRowSeamShadowTests: XCTestCase {
     /// fell outside the hole — inside the visible part of the mask. The stop's
     /// interior printed there, in the seam between two rows, and the section
     /// read as if every row were separately rounded.
+    ///
+    /// The hole is cut by two independent arguments — `corners` and
+    /// `openEdges` — and this is the test that holds the first, in both
+    /// directions: the corners a cap row squares must stay square, and the ones
+    /// it rounds must stay rounded. Only the square half is #692; the rounded
+    /// half was uncovered too, and without it `corners: []` at the call site
+    /// passed the entire suite while the section lost the halo on its outer
+    /// corners.
+    ///
+    /// `testAmbientStop_emitsNoHaloAcrossTheSeam` holds `openEdges`, so both
+    /// probes here are deliberately placed where `openEdges` cannot decide the
+    /// answer for them — otherwise this test would be a copy of that one rather
+    /// than cover for the half nothing else holds. See the comment at the
+    /// grown-corner probe for why that forces the coordinates to be measured
+    /// rather than written down.
     func testAmbientStop_isMaskedOutOfTheCornersACapRowDoesNotRound() throws {
         let cases: [(CardRowPosition, String)] = [
             (.first, "bottom"),
@@ -82,6 +97,10 @@ final class CardRowSeamShadowTests: XCTestCase {
                     """
                 )
             }
+
+            let hole = try XCTUnwrap(ambient.path).boundingBoxOfPath
+            assertSilhouetteStillDescribesTheRow(hole, of: row, spread: spread, context: "\(position)")
+            assertGrownHoleCorners(hole, in: path, of: row, position: position)
         }
     }
 
@@ -288,6 +307,150 @@ final class CardRowSeamShadowTests: XCTestCase {
                 side: .bottomRight, point: CGPoint(x: rect.maxX - inset, y: rect.maxY - inset)
             )
         ]
+    }
+
+    /// Ask both directions of `corners` at the corners of the GROWN hole, for a
+    /// `.first` or `.last` cap row.
+    ///
+    /// Inputs, so the numbers below stay re-derivable: the fixture row is
+    /// 343×52, `ambientShadow1Spread` is 8, the radius is what the row was
+    /// built with (`AppRadius.sm`, 12pt), and the probe inset is
+    /// ``cornerInset``, 2pt. The radius is read off the row's layer rather than
+    /// restated as a constant, because a control that assumes the radius cannot
+    /// fail when the radius is the thing that moved: below ~6.8pt effective
+    /// radius the real hole swallows the probe while a control on the stale
+    /// 12pt still clears it, which is exactly the regression the control exists
+    /// to catch. `AppShadow.cardPath` re-applies production's own clamp.
+    ///
+    /// Why the corners of the grown hole, and not a coordinate written down
+    /// here. The probes in the ROW cannot see `corners` at all (#692):
+    /// `openEdges` has already grown the hole 8pt past the seam, so on a
+    /// `.first` row the bottom-left arc WOULD centre at (20, 56) — it is square
+    /// as shipped — and even rounded it still swallows (10, 58), 10.2pt out
+    /// against a 12pt radius. Both halves of #674 pass them.
+    ///
+    /// The grown corner separates the halves, and its extent is read off the
+    /// production silhouette rather than recomputed, so a reverted `openEdges`
+    /// moves the probe with it and these assertions stay green. That is the
+    /// point, not an accident: a probe that also fired on an `openEdges` revert
+    /// would be a second copy of `testAmbientStop_emitsNoHaloAcrossTheSeam`
+    /// instead of cover for the half nothing else holds.
+    ///
+    /// No literal coordinate can do both. Staying inside the UNGROWN hole needs
+    /// y ≤ 60, and there the region outside a 12pt arc is the sliver x < 8.69 —
+    /// flush against the HOLE's own edge at x = 8, with the layer's edge 8pt
+    /// further out at x = 0, so there is no room left for an inset.
+    ///
+    /// `cornerInset` in from both edges of the corner puts the probe
+    /// √2·(radius − inset) = 14.1pt from the arc's centre, 2.1pt clear of a 12pt
+    /// radius — which holds while inset < radius·(1 − 1/√2) = 3.5pt. The control
+    /// asserts that every run instead of assuming it.
+    private func assertGrownHoleCorners(
+        _ hole: CGRect,
+        in mask: CGPath,
+        of row: UIView,
+        position: CardRowPosition,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let squareSide = position == .first ? "bottom" : "top"
+        let roundedSide = position == .first ? "top" : "bottom"
+        let inset = Self.cornerInset
+        let radius = row.layer.cornerRadius
+        let squareY = position == .first ? hole.maxY - inset : hole.minY + inset
+        let roundedY = position == .first ? hole.minY + inset : hole.maxY - inset
+        let ifRounded = AppShadow.cardPath(hole, cornerRadius: radius, corners: .allCorners)
+
+        for (x, side) in [(hole.minX + inset, "left"), (hole.maxX - inset, "right")] {
+            // The other direction, and the reason the square claim is not the
+            // whole of `corners`: where the section DOES round, the triangle
+            // outside the arc is the card's own outer corner and the halo
+            // belongs there. Without this, `corners: []` at the call site passes
+            // the entire suite while that halo disappears.
+            let roundedProbe = CGPoint(x: x, y: roundedY)
+            XCTAssertTrue(
+                mask.contains(roundedProbe, using: .evenOdd),
+                """
+                \(position) rounds its \(roundedSide) — probe \(roundedProbe), hole \(hole), \
+                radius \(radius)pt. Outside that arc is the section's own outer corner, so the \
+                mask has to keep the halo there
+                """,
+                file: file, line: line
+            )
+
+            let probe = CGPoint(x: x, y: squareY)
+            guard !ifRounded.contains(probe, using: .evenOdd) else {
+                // Deliberately not `XCTAssertFalse` + fallthrough: a dead
+                // control must not also print the claim below, whose stated
+                // diagnosis would then be the wrong one.
+                XCTFail(
+                    """
+                    control for \(position) \(squareSide)-\(side): probe \(probe) is inside hole \
+                    \(hole) even when that hole is rounded by \(radius)pt, so the claim below \
+                    would pass whatever `corners` did. Needs inset (\(inset)) < \
+                    radius·(1 − 1/√2) = \(radius * (1 - 1 / CGFloat(2).squareRoot()))
+                    """,
+                    file: file, line: line
+                )
+                continue
+            }
+            XCTAssertFalse(
+                mask.contains(probe, using: .evenOdd),
+                """
+                \(position) is square at the \(squareSide) — probe \(probe), hole \(hole), \
+                radius \(radius)pt. The mask exposes that point, so the stop's interior \
+                composites into the seam. Rounding \(squareSide)-\(side) is the likely cause, \
+                but read the printed hole against the row's \(row.bounds.size) footprint first: \
+                a silhouette that moved puts the probe somewhere else entirely
+                """,
+                file: file, line: line
+            )
+        }
+    }
+
+    /// Pin the oracle the grown-corner probes measure themselves against.
+    ///
+    /// Those probes take their coordinates from the ambient layer's own
+    /// silhouette (`ambient.path`), which nothing else in this suite reads. An
+    /// oracle free to move with the thing it measures proves nothing: shrink
+    /// the silhouette alone — `AppShadow.swift:145`, the line the mask does NOT
+    /// share, since `installHaloMask` recomputes the hole from `cardRect` — and
+    /// probe and control slide inside the real hole together. The test stays
+    /// green while the halo creeps in under the card.
+    ///
+    /// So the silhouette is held to two things it must be whatever `corners`
+    /// and `openEdges` say: exactly as wide as the row plus the spread on each
+    /// side, and never smaller than the row itself. `grown(by:on:)` only ever
+    /// pushes a seam edge OUTWARD, so both survive `openEdges: []` and cost
+    /// this test none of its orthogonality.
+    private func assertSilhouetteStillDescribesTheRow(
+        _ hole: CGRect,
+        of row: UIView,
+        spread: CGFloat,
+        context: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let footprint = CGRect(origin: CGPoint(x: spread, y: spread), size: row.bounds.size)
+        XCTAssertEqual(
+            hole.minX, spread, accuracy: 0.01,
+            "\(context): the silhouette starts \(spread)pt in, not at \(hole.minX)",
+            file: file, line: line
+        )
+        XCTAssertEqual(
+            hole.maxX, spread + row.bounds.maxX, accuracy: 0.01,
+            "\(context): the silhouette is never grown sideways, yet \(hole) is",
+            file: file, line: line
+        )
+        XCTAssertTrue(
+            hole.contains(footprint),
+            """
+            \(context): the ambient silhouette \(hole) no longer covers the row's own \
+            footprint \(footprint) — the corner probes would be measuring a hole that is \
+            not the card
+            """,
+            file: file, line: line
+        )
     }
 
     /// Ask whether `path` fills the point just inside one corner.
