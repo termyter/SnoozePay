@@ -635,10 +635,10 @@ extension SoundPickerViewController {
             // (#231, #672), and a plain `sp5` for the wallet's transaction
             // rows (#677, `WalletViewController+Layout.makeTxPreviewCard`).
             // This block likewise spells `sp5` and not `cardHorizontalPadding`:
-            // every call site of that token is in `Alarms/Cells/*`, and
-            // `CreateAlarmCardInsetTests` pins its value to the alarm form's
-            // card — reusing it here would tie this row to a test about a
-            // different screen.
+            // every production call site of that token is in `Alarms/Cells/*`,
+            // and `CreateAlarmCardInsetTests` pins its value to the alarm
+            // form's card — reusing it here would tie this row to a test
+            // about a different screen.
             row.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.sp5),
             row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.sp5),
             row.topAnchor.constraint(equalTo: card.topAnchor),
