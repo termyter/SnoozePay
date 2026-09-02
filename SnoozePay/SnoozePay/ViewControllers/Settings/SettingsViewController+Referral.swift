@@ -114,9 +114,13 @@ extension SettingsViewController {
     /// 1.5-second toast at the bottom-safe area. Chosen over a UIAlertController
     /// because a modal alert for "Скопировано" is too heavy a UX hit for an
     /// action this minor.
-    func copyMyCodeToPasteboard() {
+    ///
+    /// Pasteboard injected for the reason `referralService` is (#690): the
+    /// Simulator syncs `.general` to the Mac's clipboard, so a test copying
+    /// against it overwrites the developer's. Production passes nothing.
+    func copyMyCodeToPasteboard(pasteboard: UIPasteboard = .general) {
         let code = referralService.getMyCode()
-        UIPasteboard.general.string = code
+        pasteboard.string = code
         showToast(message: "Скопировано")
     }
 
