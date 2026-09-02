@@ -274,8 +274,21 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(SoundPickerRowCell.self, forCellReuseIdentifier: SoundPickerRowCell.reuseID)
-        // padding 0 card → pin the table to the card edges; rows draw their
-        // own 16pt inset to match the JSX «padding "4px 20px"» list recipe.
+        // padding 0 card → pin the table to the card edges; the horizontal
+        // inset is drawn per-row by `SoundPickerRowCell` instead. That inset is
+        // 16 and it IS canon: the sound buttons carry `padding: "14px 16px"`
+        // (`SPMore.jsx:323`), which is the rule `SoundPickerRowCell:125` cites.
+        //
+        // There is no `4px 20px` row rule in the prototype, and an earlier
+        // version of this comment claimed one. The single occurrence of that
+        // string is `padding: "4px 20px 12px"` on a theme block inside a
+        // settings card on another artboard (`SPMore4.jsx:212`) — unrelated to
+        // this list. Do not cite it (#685).
+        //
+        // One real divergence remains: canon wraps the list in
+        // `<SPCard padding={4} radius={20}>` (`SPMore.jsx:318`), so the
+        // prototype lands row content at 4+16 = 20pt from the card edge, while
+        // this card's padding 0 lands it at 16pt.
         listCard.addSubview(tableView)
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: listCard.topAnchor),
@@ -599,8 +612,20 @@ extension SoundPickerViewController {
         card.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(row)
         NSLayoutConstraint.activate([
-            // 20pt horizontal inset to match the JSX «padding "4px 20px"» list
-            // recipe used by the sound rows.
+            // 20pt here is chosen by hand, not taken from canon, and it does
+            // not match the sound rows either — those sit at 16 (`sp4`, per
+            // `SPMore.jsx:323`). The earlier «padding "4px 20px"» citation was
+            // wrong twice over: no such row rule exists in the prototype (its
+            // one occurrence is a section container, `SPMore4.jsx:212`), and
+            // the sound rows it claimed to match use a different inset (#685).
+            //
+            // Canon for a row card of this family is `<SPCard padding={4}>`
+            // (`SPMore.jsx:266`, `SPMore2.jsx:419`) wrapping `.sp-row`, which
+            // has `padding: 14px 0` (`components.css:86-88`) — 4pt, not 20.
+            // The 20 is kept because it is the value
+            // `AppSpacing.cardHorizontalPadding` holds for the alarm-form rows
+            // (#231, #672) and the wallet rows (#677), so this block lines up
+            // with the app's other row cards rather than with the prototype.
             row.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: AppSpacing.sp5),
             row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -AppSpacing.sp5),
             row.topAnchor.constraint(equalTo: card.topAnchor),
