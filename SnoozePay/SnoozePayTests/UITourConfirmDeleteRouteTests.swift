@@ -36,19 +36,12 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // #618. These are the first tests in the unit suite that spin the main
-        // run loop for any length of time, so without this they inherit every
-        // piece of deferred UIKit work the ~1000 preceding synchronous tests
-        // left queued. The failing run proves it: inside this class's own wait
+        // #618. The evidence for this class specifically: inside its own wait
         // the log flooded with "Unbalanced calls to begin/end appearance
         // transitions" for OnboardingViewController / StreakModalViewController
         // / UITabBarController — objects belonging to *other* suites — and the
         // route's own presentation was delivered ~9 s behind its 0.8 s beat.
-        //
-        // Draining here takes that backlog OUT of what the wait measures. The
-        // alternative — a wider timeout — would have to be wide enough to hold
-        // the whole backlog, and a window that wide no longer notices a real
-        // routing regression, which is the only thing this class is for.
+        // See `drainMainQueue` for why the fix is a drain and not a timeout.
         drainMainQueue()
         previousKeyWindow = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -199,27 +192,6 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     }
 
     // MARK: - Waiting
-
-    /// Runs the main queue until a freshly enqueued block comes back promptly,
-    /// i.e. until nothing of anyone else's is still queued ahead of it. The
-    /// queue is FIFO, so one prompt round trip is proof the backlog is gone;
-    /// the loop only exists because draining it can enqueue more work in turn.
-    ///
-    /// Capped rather than unbounded: a main queue that never goes quiet is a
-    /// finding, and it should surface as this class timing out — not as the
-    /// whole suite hanging with no output.
-    private func drainMainQueue(cap: TimeInterval = 60) {
-        let deadline = Date().addingTimeInterval(cap)
-        while deadline.timeIntervalSinceNow > 0 {
-            let turn = XCTestExpectation(description: "main queue turn")
-            let enqueuedAt = Date()
-            DispatchQueue.main.async { turn.fulfill() }
-            guard XCTWaiter.wait(
-                for: [turn], timeout: deadline.timeIntervalSinceNow
-            ) == .completed else { return }
-            if Date().timeIntervalSince(enqueuedAt) < 0.1 { return }
-        }
-    }
 
     /// Waits until the sheet is merely in the window hierarchy.
     private func waitForPresentedSheet(timeout: TimeInterval = 10) -> ConfirmDeleteAlarmViewController? {
