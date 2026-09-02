@@ -39,8 +39,8 @@ extension UIViewController {
 
     private func presentRestoreSuccess() {
         let alert = UIAlertController(
-            title: "Запрос отправлен",
-            message: "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение нескольких секунд.",
+            title: Localized.text("deposit.restore.success.title"),
+            message: Localized.text("deposit.restore.success.message"),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -49,7 +49,7 @@ extension UIViewController {
 
     private func presentRestoreError(_ error: Error) {
         let alert = UIAlertController(
-            title: "Не удалось восстановить покупки",
+            title: Localized.text("deposit.restore.error.title"),
             message: StoreKitRestoreErrorCopy.message(for: error),
             preferredStyle: .alert
         )
@@ -58,34 +58,41 @@ extension UIViewController {
     }
 }
 
-/// Translates StoreKit / SKError / URLError failures into actionable
-/// Russian copy. Kept as a standalone enum so the per-error matching doesn't
+/// Translates StoreKit / SKError / URLError failures into actionable copy from
+/// `Localizable.xcstrings`. Kept as a standalone enum so the per-error matching doesn't
 /// push any host controller's cyclomatic complexity over the project's lint
 /// threshold. Each helper handles one error family; the public
 /// `message(for:)` walks them in priority order.
 enum StoreKitRestoreErrorCopy {
 
     /// Common networking copy reused by URL / SK / StoreKit network branches.
-    private static let networkAdvice = "Проверьте подключение к интернету и попробуйте снова."
+    ///
+    /// A computed property rather than a stored one: `Localized` reads the
+    /// bundle, and a `static let` would freeze the first-read language for the
+    /// process lifetime.
+    private static var networkAdvice: String { Localized.text("deposit.restore.error.network") }
 
     static func message(for error: Error) -> String {
         if let typed = storeKitErrorMessage(error) { return typed }
         if let typed = skErrorMessage(error) { return typed }
         if let typed = urlErrorMessage(error) { return typed }
-        return "\(error.localizedDescription)\n\nЕсли проблема повторяется, свяжитесь с поддержкой."
+        // The system's own description leads the sentence, so it is a
+        // substitution rather than a concatenation — the suffix may need to
+        // precede it in another language.
+        return Localized.format("deposit.restore.error.generic", error.localizedDescription)
     }
 
     private static func storeKitErrorMessage(_ error: Error) -> String? {
         guard let storeKitError = error as? StoreKitError else { return nil }
         switch storeKitError {
         case .userCancelled:
-            return "Действие отменено."
+            return Localized.text("deposit.restore.error.cancelled")
         case .networkError:
             return networkAdvice
         case .notAvailableInStorefront:
-            return "Покупки временно недоступны в вашем регионе."
+            return Localized.text("deposit.restore.error.storefront")
         case .notEntitled:
-            return "Войдите в Apple ID в Настройках и попробуйте снова."
+            return Localized.text("deposit.restore.error.not_entitled")
         default:
             return nil
         }
@@ -95,11 +102,11 @@ enum StoreKitRestoreErrorCopy {
         guard let skError = error as? SKError else { return nil }
         switch skError.code {
         case .paymentNotAllowed:
-            return "В вашем Apple ID запрещены покупки. Проверьте настройки экранного времени."
+            return Localized.text("deposit.restore.error.payment_not_allowed")
         case .cloudServiceNetworkConnectionFailed,
              .cloudServicePermissionDenied,
              .cloudServiceRevoked:
-            return "Проверьте подключение к интернету и доступ к iCloud в Настройках."
+            return Localized.text("deposit.restore.error.icloud")
         default:
             return nil
         }

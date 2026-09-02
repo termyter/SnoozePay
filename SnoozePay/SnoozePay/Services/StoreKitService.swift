@@ -69,22 +69,23 @@ final class StoreKitService {
     /// reports success but `BalanceService.topUp` returns `false` (ledger locked
     /// / record failed). Surfaced as a constant so tests can assert without
     /// hard-coding the same Russian string in two places. See #115.
-    static let ledgerLockedFailureMessage = "Не удалось зачислить покупку. Свяжитесь с поддержкой."
+    ///
+    /// Computed rather than stored, like its two neighbours: `Localized` reads
+    /// a bundle, and a `static let` would freeze the first-read language for
+    /// the lifetime of the process.
+    static var ledgerLockedFailureMessage: String { Localized.text("deposit.error.credit_failed") }
 
     /// User-facing copy when the dedup table is in a degraded (type-drifted)
     /// state and we refuse to process new transactions to avoid a double-credit
     /// (#209). Surfaced as a constant so tests can assert it.
-    static let degradedDedupFailureMessage =
-        "Не удалось обработать покупку. Перезапустите приложение или свяжитесь с поддержкой."
+    static var degradedDedupFailureMessage: String { Localized.text("deposit.error.dedup_degraded") }
 
     /// User-facing copy when a verified purchase arrives in a currency the
     /// wallet does not hold (#563). The top-up screens refuse such a purchase
     /// before it starts (`ForeignCurrencyNotice`), so reaching this means the
     /// transaction came from outside that gate — an Ask-to-Buy approval or a
     /// restore that resolved after the storefront changed.
-    static let foreignCurrencyFailureMessage =
-        "Покупка оплачена в другой валюте, чем баланс кошелька, и зачислить её не получилось. "
-        + "Свяжитесь с поддержкой."
+    static var foreignCurrencyFailureMessage: String { Localized.text("deposit.error.foreign_currency") }
 
     private(set) var products: [Product] = []
 
@@ -247,7 +248,7 @@ final class StoreKitService {
             postProductsLoaded(products)
         } catch {
             AppLogger.storeKit.error("product load failed: \(error.localizedDescription, privacy: .public)")
-            postPurchaseFailed("Не удалось загрузить пакеты пополнения. Проверь интернет-соединение.")
+            postPurchaseFailed(Localized.text("deposit.error.products_load_failed"))
         }
     }
 
@@ -268,7 +269,7 @@ final class StoreKitService {
                     AppLogger.storeKit.error(
                         "unknown productID \(transaction.productID, privacy: .public) tx=\(transaction.id, privacy: .private) — not finishing"
                     )
-                    postPurchaseFailed("Неизвестный пакет пополнения. Обнови приложение.")
+                    postPurchaseFailed(Localized.text("deposit.error.unknown_product"))
                     return
                 }
                 switch markProcessed(transactionID: transaction.id) {
@@ -301,7 +302,7 @@ final class StoreKitService {
 
             @unknown default:
                 AppLogger.storeKit.error("unknown PurchaseResult case — likely future StoreKit addition")
-                postPurchaseFailed("Покупка не выполнена. Обнови приложение и попробуй ещё раз.")
+                postPurchaseFailed(Localized.text("deposit.error.unknown_result"))
             }
         } catch {
             AppLogger.storeKit.error(
@@ -340,7 +341,7 @@ final class StoreKitService {
                 AppLogger.storeKit.error(
                     "unknown productID \(transaction.productID, privacy: .public) tx=\(transaction.id, privacy: .private) — not finishing"
                 )
-                postPurchaseFailed("Неизвестный пакет пополнения. Обнови приложение.")
+                postPurchaseFailed(Localized.text("deposit.error.unknown_product"))
                 return
             }
             // Idempotency — guard against StoreKit replaying a transaction we already
@@ -375,7 +376,7 @@ final class StoreKitService {
             AppLogger.storeKit.error(
                 "unverified tx=\(transaction.id, privacy: .private) productID=\(transaction.productID, privacy: .public) error=\(errDesc, privacy: .public)"
             )
-            postPurchaseFailed("Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.")
+            postPurchaseFailed(Localized.text("deposit.error.verification_failed"))
         }
     }
 
@@ -450,8 +451,8 @@ final class StoreKitService {
         guard hasPurchaseFeedbackSubscriber else {
             let rubles = Int(amount.rounded())
             postLocalFeedbackNotification(
-                title: "Баланс пополнен",
-                body: "Баланс пополнен на \(rubles) ₽."
+                title: Localized.text("deposit.notification.credited.title"),
+                body: Localized.format("deposit.notification.credited.body", rubles)
             )
             return
         }
@@ -468,7 +469,7 @@ final class StoreKitService {
         // Same rationale as `postPurchaseCompleted` — a refund / verification
         // failure arriving with no screen mounted must not vanish silently (#45).
         guard hasPurchaseFeedbackSubscriber else {
-            postLocalFeedbackNotification(title: "Покупка пополнения", body: message)
+            postLocalFeedbackNotification(title: Localized.text("deposit.notification.failed.title"), body: message)
             return
         }
         NotificationCenter.default.post(
