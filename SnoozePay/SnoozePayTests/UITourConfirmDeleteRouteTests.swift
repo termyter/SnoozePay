@@ -70,7 +70,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         guard let sheet = waitForPresentedSheet() else {
             return XCTFail("""
                 `-uitour confirm-delete` never presented the confirmation sheet. \
-                \(presentationDiagnostics())
+                \(presentationDiagnostics(rootedAt: window?.rootViewController))
                 """)
         }
 
@@ -123,7 +123,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         guard let sheet = waitForSizedSheet() else {
             return XCTFail("""
                 `-uitour confirm-delete` never presented a sized confirmation sheet. \
-                \(presentationDiagnostics())
+                \(presentationDiagnostics(rootedAt: window?.rootViewController))
                 """)
         }
         let diagnostics = layoutDiagnostics()
@@ -155,7 +155,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         guard let sheet = waitForSizedSheet() else {
             return XCTFail("""
                 `-uitour confirm-delete` never presented a sized confirmation sheet. \
-                \(presentationDiagnostics())
+                \(presentationDiagnostics(rootedAt: window?.rootViewController))
                 """)
         }
         let diagnostics = layoutDiagnostics()
@@ -275,22 +275,6 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             node = current.superview
         }
         return !candidate.bounds.isEmpty
-    }
-
-    /// Printed on a wait timeout so the next failure names the missing link
-    /// instead of only saying that one is missing. "chain: UITabBarController"
-    /// means the route never fired at all; a chain that reaches the sheet with
-    /// `window: nil` means it fired at a presenter that had left the hierarchy
-    /// and UIKit dropped it — two different bugs behind one old message (#618).
-    private func presentationDiagnostics() -> String {
-        var chain: [String] = []
-        var current = window?.rootViewController
-        while let node = current {
-            let attached = node.viewIfLoaded?.window == nil ? "window: nil" : "window: set"
-            chain.append("\(type(of: node))(\(attached))")
-            current = node.presentedViewController
-        }
-        return "presentation chain: " + (chain.isEmpty ? "no root view controller" : chain.joined(separator: " → "))
     }
 
     /// Printed on timeout so a future failure says WHAT was zero-sized instead

@@ -107,32 +107,18 @@ final class UITourWarningRoutesTests: XCTestCase {
         wait(for: [presented], timeout: 5)
 
         let sheet = host.rootViewController?.presentedViewController
-        let diagnostics = presentationDiagnostics(in: host)
+        let diagnostics = presentationDiagnostics(rootedAt: host.rootViewController)
+        // Naming the class through the optional, not `type(of: sheet)`: that
+        // reports `Optional<UIViewController>` for every outcome, which tells
+        // the next reader nothing about what actually came up.
+        let sheetName = sheet.map { String(describing: type(of: $0)) } ?? "nothing"
         XCTAssertTrue(
             sheet is AlarmOffWarningViewController,
             """
-            route presented \(type(of: sheet)) over the stats tab, expected the warning sheet. \
+            route presented \(sheetName) over the stats tab, expected the warning sheet. \
             \(diagnostics)
             """
         )
-    }
-
-    /// Printed on failure so the next red run names the missing link instead of
-    /// only saying one is missing. A chain of just `UITabBarController` means
-    /// the route never presented at all; a chain that reaches the sheet with
-    /// `window: nil` means it fired at a presenter that had left the hierarchy
-    /// and UIKit dropped it on the floor — two different bugs behind one
-    /// message otherwise (#618, #693).
-    private func presentationDiagnostics(in host: UIWindow) -> String {
-        var chain: [String] = []
-        var current = host.rootViewController
-        while let node = current {
-            let attached = node.viewIfLoaded?.window == nil ? "window: nil" : "window: set"
-            chain.append("\(type(of: node))(\(attached))")
-            current = node.presentedViewController
-        }
-        return "presentation chain: "
-            + (chain.isEmpty ? "no root view controller" : chain.joined(separator: " → "))
     }
 
     /// The presentation shape itself, asserted without waiting: a `.large`
