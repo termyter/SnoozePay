@@ -154,7 +154,13 @@ final class SoundPickerRowCell: UITableViewCell {
             contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 64)
         ])
 
-        let dividerHeight = divider.heightAnchor.constraint(equalToConstant: 0.5)
+        // Same shape as `SPRow`: the constraint is built before the cell has
+        // a screen, so it starts at the provisional width and is re-read in
+        // `layoutSubviews`. A literal here is how the two sites drifted apart
+        // in the first place — #689 is about there being one source.
+        let dividerHeight = divider.heightAnchor.constraint(
+            equalToConstant: AppHairline.provisionalWidth
+        )
         dividerHeight.isActive = true
         dividerHeightConstraint = dividerHeight
     }
@@ -162,7 +168,15 @@ final class SoundPickerRowCell: UITableViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         iconTileGradient.frame = iconTile.bounds
-        dividerHeightConstraint?.constant = hairlineWidth
+        // Only once the cell is in a window, and only on change — the same
+        // guard `SPRow` uses. Off-screen there is no screen to take a scale
+        // from, and `AppHairline.width(for:)` now trips an `assertionFailure`
+        // on a zero scale rather than swallowing it.
+        guard window != nil, let dividerHeight = dividerHeightConstraint else { return }
+        let width = hairlineWidth
+        if dividerHeight.constant != width {
+            dividerHeight.constant = width
+        }
     }
 
     @available(iOS, deprecated: 17.0, message: "Replaced by registerForTraitChanges; kept for iOS 15/16.")

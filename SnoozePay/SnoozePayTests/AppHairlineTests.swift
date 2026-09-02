@@ -60,8 +60,12 @@ final class AppHairlineTests: XCTestCase {
     }
 
     /// The pre-screen width may never be *thicker* than a real hairline —
-    /// that asymmetry is the entire reason it exists. 0.5pt is one pixel at
-    /// @2x and half a pixel at @3x; anything ≥ 1pt reads as a deliberate rule.
+    /// that asymmetry is the entire reason it exists. 1/3pt is one device
+    /// pixel at @3x and two thirds of one at @2x, so it errs thin on every
+    /// display iOS ships; anything ≥ 1pt reads as a deliberate rule.
+    ///
+    /// Round 2 of #689 shipped 0.5 here with a docstring calling it "half a
+    /// pixel at @3x". It is one and a half, and this test is what said so.
     func testProvisionalWidth_isNeverThickerThanARealHairline() {
         XCTAssertLessThan(
             AppHairline.provisionalWidth, 1.0,
@@ -81,20 +85,42 @@ final class AppHairlineTests: XCTestCase {
     // MARK: - Where the scale comes from
 
     /// Settles, in code, the fact two comments in this repository disagreed
-    /// about: whether a view built outside a window reports a usable scale.
+    /// about: what a view built outside a window reports as its scale. The
+    /// deleted comment at `SPRow` said "`displayScale` is `0` until the view
+    /// is in a window"; this pins the answer instead of asserting around it.
     ///
-    /// It is load-bearing rather than trivia. `width(for:)` traps on a zero
-    /// scale, and production builds views detached all the time, so if this
-    /// ever goes red the `assertionFailure` is a landmine across the app and
-    /// every detached construction site needs the provisional width instead.
-    func testADetachedView_reportsAUsableDisplayScale() {
-        let scale = UIView().traitCollection.displayScale
+    /// `> 0` alone was not enough, and the gap mattered: the whole case for
+    /// `provisionalWidth` being 1/3 rather than 0.5 is that the
+    /// `1.0 / max(displayScale, 2)` it replaced resolved to the *real* scale
+    /// on a @3x phone. Under the deleted comment's claim that expression
+    /// would have been `max(0, 2)` → 0.5, and 0.5 would have been faithful.
+    /// A test that cannot tell 0 from 2 from 3 leaves that argument
+    /// unchecked, which is how round 3 nearly shipped on an assumption.
+    ///
+    /// It is load-bearing twice over: `width(for:)` traps on a zero scale,
+    /// and production builds views detached all the time, so if the first
+    /// assertion ever goes red the `assertionFailure` is a landmine across
+    /// the app and every detached construction site needs the provisional
+    /// width instead.
+    func testADetachedView_reportsTheSameScaleAsAHostedOne() {
+        let detached = UIView().traitCollection.displayScale
         XCTAssertGreaterThan(
-            scale, 0,
+            detached, 0,
             """
-            a detached UIView reports displayScale \(scale) — the app resolves hairlines \
+            a detached UIView reports displayScale \(detached) — the app resolves hairlines \
             from views built outside a window, so every such site has to switch to \
             AppHairline.provisionalWidth
+            """
+        )
+
+        let hosted = hostedView().traitCollection.displayScale
+        XCTAssertEqual(
+            detached, hosted, accuracy: 0.0001,
+            """
+            a detached view reports @\(detached)x while a hosted one reports @\(hosted)x — \
+            `1.0 / max(displayScale, 2)` in an initialiser therefore did NOT resolve to this \
+            screen's hairline, and the argument for AppHairline.provisionalWidth being \
+            1/\(1.0 / AppHairline.provisionalWidth)pt has to be re-made from scratch
             """
         )
     }
@@ -109,7 +135,7 @@ final class AppHairlineTests: XCTestCase {
         let otherScale: CGFloat = screenScale == 2 ? 3 : 2
 
         view.traitOverrides.displayScale = otherScale
-        assertScale(otherScale, of: view)
+        applyTraitOverrides(expecting: otherScale, on: view)
 
         XCTAssertEqual(
             view.hairlineWidth, 1.0 / otherScale, accuracy: 0.0001,
@@ -134,8 +160,8 @@ final class AppHairlineTests: XCTestCase {
 
         parent.traitOverrides.displayScale = 2
         child.traitOverrides.displayScale = 3
-        assertScale(2, of: parent)
-        assertScale(3, of: child)
+        applyTraitOverrides(expecting: 2, on: parent)
+        applyTraitOverrides(expecting: 3, on: child)
 
         XCTAssertEqual(parent.hairlineWidth, 0.5, accuracy: 0.0001, "the parent answered @3x")
         XCTAssertEqual(
@@ -150,11 +176,11 @@ final class AppHairlineTests: XCTestCase {
         let view = hostedView()
 
         view.traitOverrides.displayScale = 2
-        assertScale(2, of: view)
+        applyTraitOverrides(expecting: 2, on: view)
         let atTwo = view.hairlineWidth
 
         view.traitOverrides.displayScale = 3
-        assertScale(3, of: view)
+        applyTraitOverrides(expecting: 3, on: view)
         let atThree = view.hairlineWidth
 
         XCTAssertEqual(atTwo, 0.5, accuracy: 0.0001)
@@ -206,9 +232,14 @@ final class AppHairlineTests: XCTestCase {
         ])
         // @2x, so the expected value (0.5) differs from the provisional 1/3 —
         // the host screen is @3x, where the two coincide and the assertion
-        // would pass without the upgrade ever happening.
+        // would pass without the upgrade ever happening. That makes this test
+        // sensitive to `provisionalWidth`: move it back to 0.5 and the
+        // `XCTAssertNotEqual` below fires with the wrong diagnosis ("still at
+        // the pre-screen width") even though the upgrade worked. Red with a
+        // misleading message beats a degenerate green, but pick the override
+        // to differ from whatever the constant is.
         row.traitOverrides.displayScale = 2
-        assertScale(2, of: row)
+        applyTraitOverrides(expecting: 2, on: row)
         row.setNeedsLayout()
         window.layoutIfNeeded()
 
@@ -258,9 +289,17 @@ final class AppHairlineTests: XCTestCase {
         }
     }
 
-    /// The harness guard, deliberately fatal rather than a skip: if trait
-    /// overrides stop propagating, these tests measure nothing and have to say
-    /// so in red instead of quietly not running.
+    /// Applies a pending `traitOverrides` write and asserts it landed.
+    ///
+    /// **Not an optional check — the tests do not work without it.** None of
+    /// the callers run a layout pass after writing the override, so this call
+    /// is the only thing that applies it; delete it as a redundant assertion
+    /// and the tests below go back to measuring the pre-override scale, in
+    /// silence. Hence the imperative name.
+    ///
+    /// The assertion half is deliberately fatal rather than a skip: if trait
+    /// overrides stop propagating for some other reason, these tests measure
+    /// nothing and have to say so in red instead of quietly not running.
     ///
     /// `updateTraitsIfNeeded()` is not defensive padding — it is the whole
     /// reason this file used to be skipped. A write to `traitOverrides` is
@@ -271,9 +310,9 @@ final class AppHairlineTests: XCTestCase {
     /// only the three overriding *downward* could see the difference. The
     /// original `XCTSkipUnless` read that as "this harness cannot override
     /// scales" and stepped aside; it was a missing update call.
-    private func assertScale(
-        _ expected: CGFloat,
-        of view: UIView,
+    private func applyTraitOverrides(
+        expecting expected: CGFloat,
+        on view: UIView,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {

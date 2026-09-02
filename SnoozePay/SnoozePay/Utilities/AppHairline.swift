@@ -34,6 +34,19 @@ enum AppHairline {
     /// phone. `testProvisionalWidth_isNeverThickerThanARealHairline` is what
     /// caught it; the constant, not the claim, was the thing that was wrong.
     ///
+    /// That the old expression saw a *real* scale in an initialiser is not
+    /// folklore — it is pinned by
+    /// `testADetachedView_reportsTheSameScaleAsAHostedOne`. The comment this
+    /// replaced claimed the opposite ("`displayScale` is `0` until the view
+    /// is in a window"), and had it been right, `max(0, 2)` would have made
+    /// 0.5 the faithful value. It is not right.
+    ///
+    /// The cost, stated rather than glossed: at @2x this is two thirds of a
+    /// device pixel, so an un-hosted row draws a faintly antialiased line
+    /// where 0.5 drew a crisp one. That is the direction this constant errs
+    /// in on purpose, and no single number can be exact on both scales — the
+    /// exact value comes from the re-read, not from here.
+    ///
     /// Pair it with a re-read once the view has a window — a provisional value
     /// that is never replaced is just a wrong value with a nicer name.
     static let provisionalWidth: CGFloat = 1.0 / 3.0
