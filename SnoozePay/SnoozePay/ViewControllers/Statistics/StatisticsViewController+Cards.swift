@@ -289,6 +289,9 @@ extension StatisticsViewController {
     /// with the Settings section (#676): it is the only other way into
     /// `ReferralViewController`, and leaving it wired would make "hidden"
     /// depend on which build you happen to be running.
+    ///
+    /// The flag is read through `referralShortcutEnabled` rather than off
+    /// `AppFeatureFlags` here, so a test can lay out the ON position (#691).
     func makeDebugButtonsRow() -> UIView {
         let caps = makeCapsLabel("DEBUG · MODALS", color: AppColors.fg3)
 
@@ -297,7 +300,7 @@ extension StatisticsViewController {
 
         var buttons: [UIView] = [caps, streakBtn]
 
-        if AppFeatureFlags.referralEnabled {
+        if referralShortcutEnabled {
             let referralBtn = SPButton(title: "Реферальная программа", variant: .quiet, size: .md, fullWidth: true)
             referralBtn.addTarget(self, action: #selector(debugReferralTapped), for: .touchUpInside)
             buttons.append(referralBtn)

@@ -252,21 +252,129 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// The stats DEBUG row is the only other door into `ReferralViewController`.
     /// If it stayed wired, "hidden" would depend on which configuration you
     /// happen to be running — which is exactly the kind of half-hidden state
-    /// this issue is removing.
-    func testStatisticsDebugShortcutFollowsTheFlag() throws {
-        let row = StatisticsViewController().makeDebugButtonsRow()
-        let stack = try XCTUnwrap(row as? UIStackView)
-        let labels = stack.arrangedSubviews.compactMap { $0.accessibilityLabel }
+    /// #676 removed.
+    ///
+    /// The ON position, which is the half that was missing (#691): the single
+    /// test here used to assert `contains(…) == AppFeatureFlags.referralEnabled`
+    /// against a flag that ships `false`, i.e. `false == false` — green just as
+    /// happily against a shortcut deleted outright. Now `referralShortcutEnabled`
+    /// is settable per instance, so the button has to actually be built.
+    func testTheStatisticsShortcutIsBuiltWhenTheFlagIsOn() throws {
+        let labels = try debugRowLabels(referralShortcutEnabled: true)
 
-        XCTAssertEqual(
+        XCTAssertTrue(
             labels.contains("Реферальная программа"),
-            AppFeatureFlags.referralEnabled,
-            "debug shortcut visibility diverged from the flag; labels: \(labels)"
+            "the ON position builds no referral shortcut; labels: \(labels)"
+        )
+    }
+
+    /// …and the OFF position, which is what ships. Asserted as a pair with the
+    /// test above: either one alone passes against a hardcoded answer.
+    func testTheStatisticsShortcutIsAbsentWhenTheFlagIsOff() throws {
+        let labels = try debugRowLabels(referralShortcutEnabled: false)
+        let labelsWithTheFlagOn = try debugRowLabels(referralShortcutEnabled: true)
+
+        XCTAssertFalse(
+            labels.contains("Реферальная программа"),
+            "the referral shortcut survived the OFF position; labels: \(labels)"
         )
         // The neighbouring shortcuts are untouched — the gate is one button,
         // not the whole DEBUG row.
         XCTAssertTrue(labels.contains("Streak modal"), "labels: \(labels)")
         XCTAssertTrue(labels.contains("AlarmOff warning"), "labels: \(labels)")
+        XCTAssertEqual(
+            labelsWithTheFlagOn.count, labels.count + 1,
+            "the flag moved something other than the one referral button"
+        )
+    }
+
+    /// Present is not the same as wired: a button that renders and does
+    /// nothing would satisfy both tests above. So this taps the real control
+    /// on a hosted screen and asks the navigation stack where it landed.
+    ///
+    /// The push itself (bar restored, canon chrome) belongs to
+    /// `NavigationBarSymmetryTests`, which reaches `debugReferralTapped` by
+    /// selector. This one starts from the button, so a shortcut wired to the
+    /// wrong action — or to nothing — is caught here rather than nowhere.
+    func testTappingTheStatisticsShortcutOpensTheReferralScreen() throws {
+        let sut = StatisticsViewController()
+        sut.referralShortcutEnabled = true
+        let stack = UINavigationController(rootViewController: sut)
+        let window = makeHostWindow()
+        window.rootViewController = stack
+        sut.loadViewIfNeeded()
+
+        let button = try XCTUnwrap(
+            try liveDebugRow(of: sut).arrangedSubviews
+                .compactMap { $0 as? SPButton }
+                .first { $0.accessibilityLabel == "Реферальная программа" },
+            "the hosted screen has no referral shortcut to tap"
+        )
+        button.sendActions(for: .touchUpInside)
+
+        XCTAssertTrue(
+            stack.topViewController is ReferralViewController,
+            """
+            tapping the shortcut landed on \
+            \(String(describing: stack.topViewController)) — the button is \
+            built but not wired to the referral screen
+            """
+        )
+    }
+
+    /// The live screen must reach the flag through `referralShortcutEnabled`,
+    /// not by reading `AppFeatureFlags` inline again.
+    ///
+    /// Expressed against the shipped flag rather than a literal so the suite
+    /// survives the one-line re-enable; the two tests above are what pin the
+    /// behaviour in each position.
+    func testTheStatisticsScreenSeedsItsShortcutFromTheSharedFlag() throws {
+        let sut = StatisticsViewController()
+        XCTAssertEqual(sut.referralShortcutEnabled, AppFeatureFlags.referralEnabled)
+
+        let window = makeHostWindow()
+        window.rootViewController = sut
+        sut.loadViewIfNeeded()
+
+        let labels = try liveDebugRow(of: sut).arrangedSubviews.compactMap { $0.accessibilityLabel }
+        XCTAssertEqual(
+            labels.contains("Реферальная программа"), AppFeatureFlags.referralEnabled,
+            "the built screen stopped following its own flag; labels: \(labels)"
+        )
+    }
+
+    // MARK: - DEBUG-row helpers
+
+    private func debugRowLabels(referralShortcutEnabled: Bool) throws -> [String] {
+        let sut = StatisticsViewController()
+        sut.referralShortcutEnabled = referralShortcutEnabled
+        let stack = try XCTUnwrap(sut.makeDebugButtonsRow() as? UIStackView)
+        return stack.arrangedSubviews.compactMap { $0.accessibilityLabel }
+    }
+
+    /// The DEBUG row as `setupLayout()` actually installed it — found by the
+    /// shortcut it always carries rather than by position, so reordering the
+    /// cards above does not turn into a failure about the referral flag.
+    private func liveDebugRow(of sut: StatisticsViewController) throws -> UIStackView {
+        try XCTUnwrap(
+            sut.contentStack.arrangedSubviews
+                .compactMap { $0 as? UIStackView }
+                .first { candidate in
+                    candidate.arrangedSubviews.contains { $0.accessibilityLabel == "Streak modal" }
+                },
+            "the statistics screen built no DEBUG shortcut row"
+        )
+    }
+
+    private func makeHostWindow() -> UIWindow {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 900))
+        if let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first {
+            window.windowScene = scene
+        }
+        hostWindows.append(window)
+        return window
     }
     #endif
 
