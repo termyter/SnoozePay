@@ -167,11 +167,13 @@ func drainMainQueueOutcome(cap: TimeInterval = 60) -> MainQueueDrainOutcome {
 /// a call site is main-actor isolated anyway, and saying so avoids an isolation
 /// conversion that would otherwise be inferred silently.
 ///
-/// NOT VERIFIED (#716): that this parameter's default is `XCTFail`. The tests
-/// pass their own sink, so replacing the default with `{ _, _, _ in }` leaves
-/// both tour suites reporting nothing and the whole run green — the one
-/// property #698 exists to guarantee, one level of indirection deeper than any
-/// assertion reaches. Delete this paragraph when #716 closes.
+/// That the default below is `XCTFail` — and not something that returns without
+/// saying anything — is pinned by `MainQueueDrainXCTFailDefaultTests` (#716),
+/// which reaches this path with the default in place and asserts on the
+/// `XCTIssue` XCTest actually receives. Every other test passes its own sink,
+/// so without that class this line could be replaced with `{ _, _, _ in }` and
+/// the whole run would stay green while both tour suites went back to burning
+/// their cap in silence.
 ///
 /// The target is built with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
 /// (`project.pbxproj`, Debug and Release), so this — like every other

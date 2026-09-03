@@ -16,7 +16,12 @@ private final class OrderRecorder {
 /// probe takes to come back, and a sleeping block delays it exactly as a slow
 /// piece of real UIKit work would, without taking CPU from a runner that has
 /// three cores to begin with.
-private final class QueueHog {
+///
+/// Internal rather than `private` because `MainQueueDrainXCTFailDefaultTests`
+/// needs the same busy queue to reach the failure path (#716), and two hogs
+/// that drift apart would make the two suites test different conditions while
+/// reading as if they tested one.
+final class QueueHog {
 
     /// Comfortably over the 0.1 s threshold, so every probe round trip counts
     /// as "still spending" rather than depending on how loaded the runner is.
