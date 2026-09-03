@@ -291,6 +291,12 @@ enum UITourRoutes {
     }
 
     // MARK: - Sample data
+    //
+    // The alarm names in this section stay Swift literals (#598), for the
+    // reason spelled out once on `UITourLauncher.seedAlarms()`: an alarm name
+    // is user content, not UI copy, so it is not a catalogue candidate. This
+    // file is `#if DEBUG` in its entirety and the names render only under
+    // `-uitour`.
 
     private static func sampleAlarm() -> Alarm {
         Alarm(

@@ -191,6 +191,27 @@ enum UITourLauncher {
         }
     }
 
+    /// Demo alarms for `-uitour-seed`.
+    ///
+    /// # The three names below stay Swift literals (#598)
+    ///
+    /// They are the only Cyrillic left in this file and they are **not** copy,
+    /// so they do not belong in `Localizable.xcstrings`. An alarm's name is
+    /// user *content* — free text typed into `CreateAlarmViewController` and
+    /// stored as `Alarm.customName`. These three fabricate a plausible set of
+    /// it, the way the unit suite does (`SnoozeAffordabilityTests`,
+    /// `FiringCopyTests` and a dozen others hardcode «Работа» for the same
+    /// reason). Migrating them would hand a translator three demo alarm names
+    /// to translate as though they were UI chrome, in a file that is otherwise
+    /// the translation deliverable — and no key in the catalogue's 465 is
+    /// content rather than copy.
+    ///
+    /// They are also unreachable from a shipped build: this whole file is
+    /// `#if DEBUG`, and the names only ever render behind `-uitour-seed`.
+    ///
+    /// What IS copy on those seeded screens — the default name an unnamed
+    /// alarm falls back to — already reads the catalogue via
+    /// ``Alarm/defaultName``.
     private static func seedAlarms() {
         let repo = AlarmRepository.shared
         guard ((try? repo.fetchAllChecked()) ?? []).isEmpty else { return }

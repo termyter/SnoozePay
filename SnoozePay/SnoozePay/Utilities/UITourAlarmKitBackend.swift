@@ -69,6 +69,26 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
         isAuthorized ? .success(()) : .failure(NotAuthorized())
     }
 
+    /// Stands in for the error a real AlarmKit refusal would carry.
+    ///
+    /// # Its text stays a Swift literal (#598)
+    ///
+    /// `AlarmScheduler.SchedulingError.system(message:)` substitutes this into
+    /// `alarms.error.schedule_failed` *unchanged*, because on the real backend
+    /// `message` arrives already localized by the OS — the catalogue owns the
+    /// sentence around it, never the message itself. This double is that
+    /// message's stand-in, so it takes the same treatment.
+    ///
+    /// It is also unreachable on the path that would put it on screen:
+    /// `AlarmScheduler.schedule` checks authorization first and refuses a
+    /// denied backend with `.backendUnavailable`, which *is* catalogue-backed
+    /// (`alarms.error.backend_unavailable`).
+    /// `UITourAlarmKitOverrideTests.testDeniedOverride_makesSharedSchedulerRefuse`
+    /// pins exactly that, so this decision goes red if the guard ever moves.
+    ///
+    /// The «(UI-тур)» tag is the point of the string: it tells whoever meets it
+    /// that the failure is fabricated. That is a DEBUG diagnostic, and there is
+    /// nothing for a translator to do with it.
     struct NotAuthorized: LocalizedError {
         var errorDescription: String? { "AlarmKit не авторизован (UI-тур)" }
     }

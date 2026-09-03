@@ -84,6 +84,16 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// date. The set is therefore frozen: every language shipping from here on
     /// writes the flag and never has to be inferred. Growing it would be the
     /// "compare against all historical defaults" design #623 rejected.
+    ///
+    /// Not a catalogue candidate (#598), and the one literal here where
+    /// migrating would be an outright bug rather than a style choice: this is
+    /// matched against bytes already **on disk**, written by a build that
+    /// shipped only Russian. Reading it from the catalogue would compare a
+    /// record's frozen past against the reader's current language, so the
+    /// inference would silently stop firing for anyone not running in Russian
+    /// — the language-dependent behaviour #623 removed, reintroduced through
+    /// the decoder. `AlarmDefaultNameTests` covers the legacy path, down to
+    /// the trimming and case-folding.
     private static let legacyDefaultNames: Set<String> = ["будильник"]
 
     // MARK: - Name
