@@ -1,0 +1,196 @@
+import XCTest
+@testable import SnoozePay
+
+/// Pins the alarms-list sound pill after #599 deleted the ten private literals
+/// `AlarmsListViewModel` used to render it from, leaving
+/// `Localized.optionalText(SoundCatalogue.nameKey(for:))` as the only source.
+///
+/// This slice introduced **no catalogue keys**. The ten `common.sound.name.*`
+/// entries were already in `Localizable.xcstrings` — #598 put them there and
+/// exposed `SoundCatalogue.nameKey(for:)` as the seam this side was meant to
+/// collapse onto — so what is asserted here is a *reader*, not a migration.
+/// The keys read by this call site, named in full so the next slice has a
+/// checklist rather than a prefix to guess at:
+///
+///     common.sound.name.dawn      common.sound.name.waves
+///     common.sound.name.radar     common.sound.name.birds
+///     common.sound.name.drops     common.sound.name.classic
+///     common.sound.name.piano     common.sound.name.jazz
+///     common.sound.name.guitar
+///     common.sound.name.bell
+///
+/// Nothing else in `ViewModels/` reads copy this suite does not cover: the
+/// directory is at zero Cyrillic string literals as of this commit, which is
+/// what closes #599's lane.
+///
+/// Three layers, so a red run names which one broke:
+///
+///  1. **Catalogue layer** — each key exists and does not resolve to itself.
+///  2. **Copy layer** — each key still holds the word the deleted literal held.
+///     Transcribed from `AlarmsListViewModel.soundDisplayNames` as it stood on
+///     `origin/main`, not read back out of the catalogue: a list derived from
+///     the file under test agrees with any mistake in it.
+///  3. **Call-site layer** — the view model is driven for real and what it
+///     returns is compared against those same transcribed words. Layers 1 and 2
+///     are blind to a wrong key at the call site, because there the catalogue
+///     itself is fine.
+///
+/// # Why this is not folded into `SoundCatalogueCopyTests`
+///
+/// That suite owns the picker's 22 keys and asserts, from #598's side, that the
+/// alarms list agrees with the catalogue word for word — it compares the view
+/// model against `SoundCatalogue.entries`, i.e. catalogue against catalogue.
+/// After the collapse both sides read one key, so that comparison can no longer
+/// fail on a wrong word; it now only proves the two call sites agree. The
+/// hardcoded Russian below is what still fails when the *copy* moves, and it
+/// belongs with the reader it protects.
+///
+/// # The fallback is behaviour, not a detail
+///
+/// `alarmSoundName(at:)` renders the raw `soundID` for an id the catalogue does
+/// not know. That is why it reads through `optionalText` and not `text`, which
+/// echoes the key: a pill saying «common.sound.name.foo» would be a regression
+/// against one saying «foo». `testUncataloguedSoundStillFallsBackToItsRawID`
+/// is the assertion that keeps the two apart, and it is the one thing the
+/// collapse could plausibly have changed.
+final class AlarmsListSoundNameTests: XCTestCase {
+
+    /// Resolves synchronously so `repository.save` never reaches
+    /// `UNUserNotificationCenter`.
+    private final class NoopScheduler: AlarmScheduling {
+        func schedule(
+            _ alarm: Alarm,
+            completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
+        ) {
+            completion?(.success(()))
+        }
+        func cancel(_ alarmID: UUID) {}
+    }
+
+    /// The ten words the deleted lookup table held, keyed by sound id.
+    /// Transcribed from the pre-#599 literals.
+    private static let namesBeforeTheCollapse: [String: String] = [
+        "dawn": "Рассвет",
+        "radar": "Радар",
+        "drops": "Капли",
+        "piano": "Пиано",
+        "guitar": "Гитара",
+        "bell": "Колокольчик",
+        "waves": "Волны",
+        "birds": "Птицы",
+        "classic": "Классика",
+        "jazz": "Джаз"
+    ]
+
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+    private var repository: AlarmRepository!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.alarmsListSoundName.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)!
+        repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    private func makeViewModel(withSoundIDs soundIDs: [String]) -> AlarmsListViewModel {
+        for soundID in soundIDs {
+            repository.save(Alarm(name: "sound-\(soundID)", soundID: soundID))
+        }
+        let viewModel = AlarmsListViewModel(alarmRepository: repository)
+        viewModel.loadData()
+        return viewModel
+    }
+
+    // MARK: - Layer 1: the keys resolve
+
+    func testEveryKeyThisCallSiteReadsResolvesToCopyRatherThanToItself() {
+        for soundID in SoundCatalogue.ids {
+            let key = SoundCatalogue.nameKey(for: soundID)
+            XCTAssertNotNil(
+                Localized.optionalText(key),
+                "missing catalogue entry: \(key) — the sound pill would render the raw id"
+            )
+            XCTAssertNotEqual(Localized.text(key), key, "\(key) resolves to itself")
+        }
+    }
+
+    /// The lookup table covered exactly the catalogued ids. A sound added to
+    /// `SoundCatalogue.ids` without a name key would now reach the list screen
+    /// as a bare id instead of failing to compile, so the coverage is asserted
+    /// rather than assumed.
+    func testTheCatalogueCoversPreciselyTheSoundsTheDeletedTableCovered() {
+        XCTAssertEqual(Set(SoundCatalogue.ids), Set(Self.namesBeforeTheCollapse.keys))
+    }
+
+    // MARK: - Layer 2: the words did not move
+
+    func testCatalogueStillHoldsTheWordsTheDeletedTableHeld() {
+        for (soundID, expected) in Self.namesBeforeTheCollapse {
+            XCTAssertEqual(
+                Localized.text(SoundCatalogue.nameKey(for: soundID)), expected,
+                "copy drifted for sound '\(soundID)'"
+            )
+        }
+    }
+
+    // MARK: - Layer 3: what the view model hands the cell
+
+    func testEverySoundRendersTheWordItRenderedBeforeTheCollapse() {
+        let viewModel = makeViewModel(withSoundIDs: SoundCatalogue.ids)
+        XCTAssertEqual(viewModel.alarms.count, SoundCatalogue.ids.count)
+
+        for (index, alarm) in viewModel.alarms.enumerated() {
+            XCTAssertEqual(
+                viewModel.alarmSoundName(at: index),
+                Self.namesBeforeTheCollapse[alarm.soundID],
+                "alarms-list name for '\(alarm.soundID)' changed"
+            )
+        }
+    }
+
+    /// A wrong key at the call site resolves to nothing and falls through to
+    /// the raw id, which reads plausibly enough to survive review — «dawn» in a
+    /// pill is odd but not obviously broken. Asserting no returned name is an
+    /// id makes that failure loud.
+    func testNoSoundPillFallsThroughToAnIDOrToAKey() {
+        let viewModel = makeViewModel(withSoundIDs: SoundCatalogue.ids)
+
+        for (index, alarm) in viewModel.alarms.enumerated() {
+            let name = viewModel.alarmSoundName(at: index)
+            XCTAssertNotEqual(name, alarm.soundID, "'\(alarm.soundID)' fell back to its raw id")
+            XCTAssertNotEqual(name, SoundCatalogue.nameKey(for: alarm.soundID))
+            XCTAssertEqual(name?.hasPrefix("common."), false, "a catalogue key reached the cell")
+        }
+    }
+
+    /// The documented behaviour of this method, and the reason it reads through
+    /// `optionalText`. An id from a custom file — or from a build that shipped
+    /// a sound this one does not know — renders as itself.
+    func testUncataloguedSoundStillFallsBackToItsRawID() {
+        let unknown = ["custom", "nonexistent-sound"]
+        let viewModel = makeViewModel(withSoundIDs: unknown)
+
+        for (index, alarm) in viewModel.alarms.enumerated() {
+            XCTAssertEqual(viewModel.alarmSoundName(at: index), alarm.soundID)
+        }
+        // The custom slot has copy in the catalogue, but under the picker's own
+        // namespace. Reaching it from here would mean the list screen started
+        // rendering a row the user cannot pick.
+        XCTAssertNil(Localized.optionalText(SoundCatalogue.nameKey(for: "custom")))
+    }
+
+    /// Out-of-range indices returned `nil` before the collapse and still do —
+    /// the cell reads this as «no sound pill», not as an empty one.
+    func testOutOfRangeIndexYieldsNoName() {
+        let viewModel = makeViewModel(withSoundIDs: ["dawn"])
+        XCTAssertEqual(viewModel.alarmSoundName(at: 0), "Рассвет")
+        XCTAssertNil(viewModel.alarmSoundName(at: 1))
+        XCTAssertNil(viewModel.alarmSoundName(at: 99))
+    }
+}

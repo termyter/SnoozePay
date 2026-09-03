@@ -26,12 +26,13 @@ import Foundation
 /// | name | `common.sound.name.<id>` | picker row **and** alarms-list cell |
 /// | subtitle | `create_alarm.sound.subtitle.<id>` | picker row only |
 ///
-/// The names are the shared half, so `AlarmsListViewModel.soundDisplayNames`
-/// — ten literals duplicating this list, deliberately left behind by #599 —
-/// collapses onto `Localized.text(nameKey(for:))` rather than onto a second
-/// set of keys for the same ten words. That call site is not touched here, and
-/// neither is an accessor minted for it in advance: this slice owns the keys,
-/// #599 owns the reader.
+/// The names are the shared half, and both readers now resolve them through
+/// ``nameKey(for:)``: this type for the picker row, and
+/// `AlarmsListViewModel.alarmSoundName(at:)` for the alarms-list cell, whose
+/// ten duplicate literals #599 deleted rather than giving a second set of keys
+/// to the same ten words. The list VM reads the key through
+/// ``Localized/optionalText(_:)`` and not ``Localized/text(_:)`` because its
+/// documented miss behaviour is to render the raw sound id; see that method.
 enum SoundCatalogue {
 
     /// One selectable sound. `subtitle` is the V3 descriptive copy.

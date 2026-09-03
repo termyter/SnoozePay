@@ -656,34 +656,25 @@ final class AlarmsListViewModel {
 
     /// Human-readable name of the alarm's picked sound (e.g. "Рассвет",
     /// "Радар"). Falls back to the raw `soundID` when the id isn't in the
-    /// known catalogue (custom file or new sound not yet added to the
-    /// lookup table).
+    /// catalogue (a custom file, or a sound shipped after this build).
+    ///
+    /// Reads `SoundCatalogue.nameKey(for:)` (#599) instead of the ten private
+    /// literals this method used to carry. Those literals were a verbatim copy
+    /// of the picker's names, and #598 had already moved the picker's half into
+    /// `Localizable.xcstrings` and exposed the key spelling as a seam precisely
+    /// so this side could collapse onto it rather than mint a second set of
+    /// keys for the same ten words. `SoundCatalogueCopyTests`
+    /// `.testAlarmsListStillRendersTheSameWordsAsTheCatalogue` was written
+    /// against the duplication and now pins the collapse as changing no copy.
+    ///
+    /// `optionalText` rather than `text`, which is what `SoundCatalogue.entries`
+    /// uses: `text` echoes the key on a miss, and the documented behaviour of
+    /// *this* call site is to fall back to the raw id. A cell reading
+    /// «common.sound.name.foo» would be a regression against a pill that reads
+    /// «foo», so the miss is resolved here and not by the shared reader.
     func alarmSoundName(at index: Int) -> String? {
         guard index < alarms.count else { return nil }
         let soundID = alarms[index].soundID
-        return Self.soundDisplayNames[soundID] ?? soundID
+        return Localized.optionalText(SoundCatalogue.nameKey(for: soundID)) ?? soundID
     }
-
-    /// Sound-id → Russian display-name lookup. Mirrors the
-    /// `CreateAlarmViewModel.availableSounds` list so cells render the same
-    /// label the user picked in the editor without coupling the alarms-list
-    /// VM to the editor VM.
-    ///
-    /// Left un-migrated by #599 on purpose: these ten names are a verbatim
-    /// copy of `SoundCatalogue.entries` (Models, #598's lane). Giving them
-    /// catalogue keys here would create a second, competing set of keys for
-    /// the same ten words — the duplication has to collapse onto
-    /// `SoundCatalogue` first, and that is a refactor, not a string move.
-    private static let soundDisplayNames: [String: String] = [
-        "dawn": "Рассвет",
-        "radar": "Радар",
-        "drops": "Капли",
-        "piano": "Пиано",
-        "guitar": "Гитара",
-        "bell": "Колокольчик",
-        "waves": "Волны",
-        "birds": "Птицы",
-        "classic": "Классика",
-        "jazz": "Джаз"
-    ]
 }
