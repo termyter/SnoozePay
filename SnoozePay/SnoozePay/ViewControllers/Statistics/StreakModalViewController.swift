@@ -135,14 +135,14 @@ final class StreakModalViewController: UIViewController {
     private lazy var pipStrip = SPStreakPipStrip(completed: streakDays)
 
     private let shareButton = SPButton(
-        title: "Поделиться победой",
+        title: Localized.text("streak.button.share"),
         variant: .money,
         size: .lg,
         fullWidth: true
     )
 
     private lazy var closeButton = SPButton(
-        title: "Закрыть",
+        title: Localized.text("common.button.close"),
         // With a share CTA above it the close button is secondary; alone it is
         // the only action, so it keeps the V3 money treatment.
         variant: mode == .behavioral ? .money : .quiet,
@@ -519,15 +519,21 @@ extension StreakModalViewController {
                 // The design read "Деньги вернули на баланс" — but nothing was
                 // ever charged, so there is nothing to return. Same promise,
                 // honest wording.
-                body: "Эти деньги остались у вас на балансе. "
-                    + "Потратьте их на следующей слабой неделе."
+                //
+                // One catalogue entry, where the code concatenated two halves:
+                // a sentence split across `+` freezes Russian word order into
+                // every future translation (`Localized`).
+                body: Localized.text("streak.savings.body")
             )
         case .behavioral:
             return Copy(
-                caps: "СЕРИЯ",
-                headline: "\(streakDays) \(dayWord(for: streakDays)) без откладываний",
-                body: "Это уже не случайность — это привычка. "
-                    + "Тело знает, что подъём вовремя — это просто."
+                caps: Localized.text("streak.behavioral.caps"),
+                headline: Localized.format(
+                    "streak.behavioral.headline",
+                    streakDays,
+                    dayWord(for: streakDays)
+                ),
+                body: Localized.text("streak.behavioral.body")
             )
         }
     }
@@ -535,7 +541,11 @@ extension StreakModalViewController {
     /// Caps caption above the money hero, e.g.
     /// `"СЕРИЯ · 7 ДНЕЙ БЕЗ ОТКЛАДЫВАНИЙ"`.
     static func streakCaption(for streakDays: Int) -> String {
-        "СЕРИЯ · \(streakDays) \(dayWord(for: streakDays).uppercased()) БЕЗ ОТКЛАДЫВАНИЙ"
+        Localized.format(
+            "streak.savings.caps",
+            streakDays,
+            dayWord(for: streakDays).uppercased()
+        )
     }
 
     /// h3 line under the hero. The design artboard shows the 7-day case
@@ -543,8 +553,12 @@ extension StreakModalViewController {
     /// so the sentence stays true (a 3-day streak did not save "за неделю").
     static func savingsHeadline(for streakDays: Int) -> String {
         streakDays == 7
-            ? "Сэкономили за неделю"
-            : "Сэкономили за \(streakDays) \(dayWord(for: streakDays))"
+            ? Localized.text("streak.savings.headline_week")
+            : Localized.format(
+                "streak.savings.headline_days",
+                streakDays,
+                dayWord(for: streakDays)
+            )
     }
 
     /// Format the saved amount as `+1 234 ₽` with the brand thousand separator.
@@ -555,8 +569,12 @@ extension StreakModalViewController {
     /// Text handed to `UIActivityViewController` by "Поделиться победой".
     /// Wording fixed by PM on 2026-07-30 (#347).
     static func shareText(streakDays: Int, savedAmount: Decimal) -> String {
-        "Я не откладываю будильник \(streakDays) \(dayWord(for: streakDays)) "
-            + "и сэкономил \(savedAmount.formattedRubles()) — SnoozePay"
+        Localized.format(
+            "streak.share.message",
+            streakDays,
+            dayWord(for: streakDays),
+            savedAmount.formattedRubles()
+        )
     }
 
     /// Plural for "день / дня / дней". The streak-modal caption hits all three

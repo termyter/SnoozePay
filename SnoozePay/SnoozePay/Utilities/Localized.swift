@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Reads user-facing copy out of `Resources/Localizable.xcstrings`.
 ///
@@ -128,5 +129,113 @@ enum Localized {
         let template = optionalText(key) ?? key
         guard !arguments.isEmpty else { return template }
         return String(format: template, locale: AppLocale.display, arguments: arguments)
+    }
+
+    /// `key`'s copy with its **first** `%@` replaced by `replacement`, each
+    /// side keeping its own attributes.
+    ///
+    /// Exists so a sentence containing a differently-styled run — a mono
+    /// pain-tinted amount, a tinted weekday name — can stay **one** catalogue
+    /// entry. Without it a call site reaches for a prefix literal, an `append`
+    /// and a suffix literal, which is rule 2 of ``format(_:_:)`` above broken
+    /// by the layout: it freezes Russian word order into every future
+    /// translation, and a language that puts the amount first can no longer be
+    /// expressed at all.
+    ///
+    /// ``format(_:_:)`` cannot serve here — it returns a plain `String`, so the
+    /// substituted run would arrive flattened to the surrounding font.
+    ///
+    /// One specifier, by construction: there is a single `replacement` to
+    /// spend, so a template holding two `%@` renders the second one literally.
+    /// The per-slice localization tests assert the *count* and not merely the
+    /// presence, so a translation that grows a second specifier goes red
+    /// instead of printing a stray `%@` on screen.
+    ///
+    /// # Not the only idiom for this, and deliberately so
+    ///
+    /// `SnoozeSliderCell.valueText(_:)` solves the same sentence-shaped
+    /// problem from the other end: it renders the whole phrase through
+    /// ``format(_:_:)``, then *locates* the substituted fragment with
+    /// `range(of:)` and restyles it in place. That idiom is older than this
+    /// one and is not superseded by it — the two are not interchangeable:
+    ///
+    ///   * locate-and-restyle lays one **uniform** attribute set over the
+    ///     range it found. `alarm_off.body` substitutes
+    ///     `MoneyFormatter.attributed(_:)`, whose attributes are internally
+    ///     *non*-uniform — digits in mono, the narrow space refonted, the ₽
+    ///     sign its own run — which a single `addAttributes` cannot express;
+    ///   * searching rendered text can find the wrong occurrence. «3» in
+    ///     «3 мин» is unambiguous; an amount that also appears in the
+    ///     surrounding copy is not.
+    ///
+    /// Where the insertion *is* uniform and its rendered form unique, the
+    /// slider's idiom is the cheaper one — it needs no second lookup. Whether
+    /// the two should converge is #722, not a decision made here.
+    ///
+    /// # When the template has no specifier
+    ///
+    /// A missing or renamed entry, or a translation that dropped its `%@`,
+    /// reaches ``appendingUnplaceable(template:attributes:replacement:)``:
+    /// `replacement` is **appended** rather than dropped, because a sentence
+    /// with the amount in an odd place is still readable whereas one silently
+    /// missing its amount reads as fact and is wrong. That is a floor for the
+    /// release build, not a fix — so the branch also logs and traps, the way
+    /// ``AppHairline/width(for:)`` does on a degenerate scale. Without the
+    /// trap, the only thing between a lost `%@` and
+    ///
+    ///     За эту неделю списано. Возможно, что-то пошло не так. Что хотите
+    ///     сделать?−750 ₽
+    ///
+    /// is an assertion over the *Russian* copy — and the entire point of #569
+    /// is that a second language is coming, whose broken template no `ru`
+    /// assertion can see.
+    static func attributed(
+        _ key: String,
+        attributes: [NSAttributedString.Key: Any],
+        replacing replacement: NSAttributedString
+    ) -> NSMutableAttributedString {
+        let template = optionalText(key) ?? key
+        guard let placeholder = template.range(of: "%@") else {
+            AppLogger.ui.error(
+                """
+                Localized.attributed: key \(key, privacy: .public) resolved to a template with \
+                no specifier — appending the substituted run to the end of the sentence.
+                """
+            )
+            assertionFailure(
+                """
+                Localized.attributed("\(key)") got a template with no %@. Either the catalogue \
+                entry is missing or renamed, or a translation dropped the specifier. Release \
+                appends the run rather than losing it; fix the entry.
+                """
+            )
+            return appendingUnplaceable(
+                template: template,
+                attributes: attributes,
+                replacement: replacement
+            )
+        }
+        let result = NSMutableAttributedString(string: template, attributes: attributes)
+        result.replaceCharacters(in: NSRange(placeholder, in: template), with: replacement)
+        return result
+    }
+
+    /// What ``attributed(_:attributes:replacing:)`` returns once it has logged
+    /// and trapped on a template it cannot place the run into.
+    ///
+    /// Split out for the same reason `AppHairline.degenerateWidth` is a named
+    /// member rather than an inline literal: the branch traps by design, so a
+    /// test reaching it through ``attributed(_:attributes:replacing:)`` would
+    /// abort the suite instead of measuring anything. Called directly it pins
+    /// the one thing that still matters in a release build — the run is
+    /// appended, never dropped.
+    static func appendingUnplaceable(
+        template: String,
+        attributes: [NSAttributedString.Key: Any],
+        replacement: NSAttributedString
+    ) -> NSMutableAttributedString {
+        let result = NSMutableAttributedString(string: template, attributes: attributes)
+        result.append(replacement)
+        return result
     }
 }
