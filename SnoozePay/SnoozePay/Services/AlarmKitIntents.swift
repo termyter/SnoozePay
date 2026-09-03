@@ -51,6 +51,39 @@ import AppIntents
 @available(iOS 26.0, *)
 struct StopAlarmIntent: LiveActivityIntent {
 
+    /// # This literal cannot be moved into the catalogue yet (#723)
+    ///
+    /// It is not an oversight and not a missed migration: AppIntents exports
+    /// intent titles at **build** time, so `title` cannot read anything at
+    /// runtime, and the only bundle it will resolve against is the main one —
+    /// which is the one bundle this app's copy is not reachable through until
+    /// #596 fixes `knownRegions` (see ``Localized``).
+    ///
+    /// All four spellings were put through `appintentsmetadataprocessor`
+    /// directly, in that order. Its verbatim answers:
+    ///
+    /// | spelling | answer |
+    /// |---|---|
+    /// | `LocalizedStringResource(stringLiteral: <catalogue value read at runtime>)` | `error: 'LocalizedStringResource' must be initialized with a call to its initializer or a string literal` |
+    /// | `LocalizedStringResource(key, table:, bundle: .atURL(ruLprojURL))` | `error: AppIntents requires 'LocalizedStringResource' to use the main bundle` |
+    /// | `LocalizedStringResource(key, table:, bundle: .forClass(Anchor.self))` | same "must use the main bundle" — so the refusal is of the *bundle*, not of computed arguments |
+    /// | `LocalizedStringResource(key, table: "Localizable")` | accepted, metadata written |
+    ///
+    /// The last row is what this line becomes the day #596 lands, and not
+    /// before: today it would resolve through `Bundle.main`, miss, and leave
+    /// the intent named `alarm_kit.action.stop` wherever the system shows that
+    /// name — Shortcuts for certain, and possibly the alert itself.
+    ///
+    /// The words still live in the catalogue under
+    /// ``AlarmKitCopy/stopKey``, and `AlarmKitCopyTests` fails if this literal
+    /// and that entry ever stop agreeing — which is the most a build-time
+    /// export allows.
+    ///
+    /// Where this title is actually shown: Shortcuts and Siri, as the intent's
+    /// name. The alert's *stop button* is not ours to label —
+    /// `AlarmPresentation.Alert.stopButton` is deprecated in iOS 26.1 as "not
+    /// used anymore" and `AlarmKitScheduler.makePresentation` uses the 26.1
+    /// initializer, which has no stop button parameter.
     static let title: LocalizedStringResource = "Выключить будильник"
 
     /// Bring the app to the foreground when the system runs this intent so the
@@ -81,6 +114,13 @@ struct StopAlarmIntent: LiveActivityIntent {
 @available(iOS 26.0, *)
 struct SnoozeAlarmIntent: LiveActivityIntent {
 
+    /// Pinned to ``AlarmKitCopy/snoozeKey`` by `AlarmKitCopyTests` but kept a
+    /// literal for the build-time reason spelled out on `StopAlarmIntent.title`.
+    ///
+    /// The alert's secondary *button* shows the priced variant built in
+    /// `AlarmKitScheduler.makePresentation`, which is an ordinary
+    /// `AlarmButton` rather than an intent title and so does read the
+    /// catalogue. This is the intent's own name, which Shortcuts also displays.
     static let title: LocalizedStringResource = "Поспать ещё"
 
     /// Open the app so the paid-snooze flow runs in our firing screen (#379)

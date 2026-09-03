@@ -1,6 +1,42 @@
 {
   "sourceLanguage" : "ru",
   "strings" : {
+    "alarm_kit.action.snooze" : {
+      "comment" : "Name of SnoozeAlarmIntent, the intent wired to the AlarmKit alert's secondary action (AlarmConfiguration.secondaryIntent). Shortcuts and Siri show it. This is NOT the text of the alert's snooze button — that is alarm_kit.action.snooze.priced, set explicitly via AlarmButton(text:). Byte-identical to firing.action.snooze and still a separate entry. The reason is not that the words might diverge (they need not) but that firing.action.snooze titles the pre-#472 UNNotification category that nothing schedules any more (AlarmScheduler.registerCategories) and is expected to be deleted with it: one shared key would make that cleanup silently take a live intent name with it, and the person deleting legacy notification copy has no way to see that from where they stand. Since the words are identical either way, no user sees a difference — this is a namespace choice, not a copy one. #712's precedent points the other way (it merged byte-identical literals reached from two code paths) and is overridden here only by the pending deletion; #711 is not a precedent for this at all, having separated strings whose words differ. NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поспать ещё"
+          }
+        }
+      }
+    },
+    "alarm_kit.action.snooze.priced" : {
+      "comment" : "Secondary button on the AlarmKit alert, naming what this snooze costs (%@ is a sum already formatted by MoneyFormatter, e.g. «50 ₽»). The sign is U+2212 MINUS SIGN, not a hyphen. The one string of the three whose surface the app actually sets. Kept apart from the in-app CTA firing.snooze.button.affordable («+%1$lld минут · −%2$@»), which also names the minutes — the system button has no room for them.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поспать ещё (−%@)"
+          }
+        }
+      }
+    },
+    "alarm_kit.action.stop" : {
+      "comment" : "Name of StopAlarmIntent, the intent wired to the AlarmKit alert's stop action (AlarmConfiguration.stopIntent). Shortcuts and Siri show it. Whether the system also paints it on the alert itself is NOT established: AlarmPresentation.Alert.stopButton is deprecated in iOS 26.1 as \"not used anymore\", and AlarmKitScheduler uses the 26.1 initializer, which has no stop button parameter — so the app sets no stop button text anywhere. Kept apart from the two other ways the app says «stop»: firing.action.dismiss («Выключить») titles the pre-#472 UNNotification category that nothing schedules any more, and firing.button.dismiss («Я встал — выключить») is the in-app firing screen's CTA. #712 merged two literals because they were byte-identical, reached through two different code paths; that criterion does not apply here, because these three say different words. Merging any pair would rewrite what a user reads somewhere — a copy decision for the PM, not part of moving a literal into the catalogue (#723). NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выключить будильник"
+          }
+        }
+      }
+    },
     "alarm_off.body" : {
       "comment" : "Body of the alarm-off warning sheet. %@ is the week's charged total, which the call site substitutes as an attributed run in mono/pain — one entry rather than the prefix + suffix pair it replaces, so the amount's position stays a property of the language.",
       "extractionState" : "manual",
