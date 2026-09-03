@@ -51,7 +51,10 @@ import AppIntents
 @available(iOS 26.0, *)
 struct StopAlarmIntent: LiveActivityIntent {
 
-    static let title: LocalizedStringResource = "Выключить будильник"
+    /// Read from the catalogue rather than written as a literal: a
+    /// `LocalizedStringResource` built from a literal uses the literal as its
+    /// lookup key, which no entry matches (`AlarmKitCopy`).
+    static var title: LocalizedStringResource { AlarmKitCopy.stopTitle }
 
     /// Bring the app to the foreground when the system runs this intent so the
     /// router can present our custom firing screen (#379). Without this the
@@ -81,7 +84,10 @@ struct StopAlarmIntent: LiveActivityIntent {
 @available(iOS 26.0, *)
 struct SnoozeAlarmIntent: LiveActivityIntent {
 
-    static let title: LocalizedStringResource = "Поспать ещё"
+    /// See `StopAlarmIntent.title`. The alert's secondary *button* shows the
+    /// priced variant built in `AlarmKitScheduler.makePresentation`; this is
+    /// the intent's own name, which Shortcuts also displays.
+    static var title: LocalizedStringResource { AlarmKitCopy.snoozeTitle }
 
     /// Open the app so the paid-snooze flow runs in our firing screen (#379)
     /// rather than charging silently from the lock screen. See `StopAlarmIntent`.

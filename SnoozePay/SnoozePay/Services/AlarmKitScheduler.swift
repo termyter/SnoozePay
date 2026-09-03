@@ -465,8 +465,13 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// driven by `stopIntent`; the secondary (snooze) button shows the paid
     /// snooze cost and is driven by `secondaryIntent`.
     private static func makePresentation(for alarm: Alarm) -> AlarmPresentation {
-        let snoozeTitle: LocalizedStringResource =
-            "Поспать ещё (−\(MoneyFormatter.string(alarm.penalty(forSnoozeCount: 1))))"
+        // The price is substituted into a catalogue format rather than
+        // interpolated into a literal: interpolating made the whole rendered
+        // phrase the resource's lookup key, so the words could never come from
+        // the catalogue (`AlarmKitCopy`).
+        let snoozeTitle = AlarmKitCopy.pricedSnoozeTitle(
+            penalty: alarm.penalty(forSnoozeCount: 1)
+        )
         let snoozeButton = AlarmButton(
             text: snoozeTitle,
             textColor: .white,
