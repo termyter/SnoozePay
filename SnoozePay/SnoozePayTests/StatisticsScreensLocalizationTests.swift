@@ -150,7 +150,9 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     ///
     /// What this pins is the *value* of each entry, not their separateness —
     /// that is held by `testEveryMigratedKeyResolvesToCopyRatherThanToItself`,
-    /// since deleting either entry leaves the survivor's key echoing itself.
+    /// since deleting either entry leaves the *deleted* key echoing itself —
+    /// the survivor goes on resolving normally, which is why the survivor is
+    /// not what the assertion is watching.
     /// An `XCTAssertNotEqual` between the two key *literals* stood here until
     /// review and proved nothing: two different string constants are unequal
     /// at compile time, catalogue or no catalogue.
@@ -348,10 +350,13 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
 
     /// The other half of that pair: no key the app actually passes to
     /// `Localized.attributed` may reach the trapping branch. Both call sites
-    /// are listed literally — `StatisticsViewController:419` and
-    /// `AlarmOffWarningViewController:210` are the only two. A third one added
-    /// without a line here is the gap this cannot see, and the trap is what
-    /// covers that case instead; that is the division of labour between them.
+    /// are listed by symbol rather than by line — `StatisticsViewController`'s
+    /// worst-day caption and `AlarmOffWarningViewController`'s body are the
+    /// only two. Line numbers would go stale before the claim does, which in
+    /// an epic whose whole defect is stale prose is a mine, not a convenience.
+    /// A third call site added without a line here is the gap this cannot see,
+    /// and the trap is what covers that case instead; that is the division of
+    /// labour between them.
     func testAttributedSubstitutesInPlaceForEveryKeyTheAppPassesIt() {
         for key in ["alarm_off.body", "statistics.weekday.worst_day"] {
             let template = Localized.text(key)
