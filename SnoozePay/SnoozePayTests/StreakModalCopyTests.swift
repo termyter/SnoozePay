@@ -154,10 +154,23 @@ final class StreakModalCopyTests: XCTestCase {
         XCTAssertTrue(copy.body.contains("остались у вас на балансе"))
     }
 
+    /// The negative assertions below state what the behavioural body may not
+    /// say. They cannot state that it says anything at all: `Localized`
+    /// echoes a key it cannot resolve, and `streak.behavioral.body` quotes
+    /// neither «₽» nor «сэкономи», so a typo at the call site
+    /// (`Localized.text("streak.behavioral.bodyy")`) satisfies every one of
+    /// them. The positive assertion is what makes this test see that — and it
+    /// is the only call-site check `streak.behavioral.body` has, the catalogue
+    /// layer in `StatisticsScreensLocalizationTests` being blind to call-site
+    /// typos by construction.
     func testBehavioralModeCopyMentionsNoMoney() {
         let copy = StreakModalViewController.copy(streakDays: 7, mode: .behavioral)
         XCTAssertEqual(copy.caps, "СЕРИЯ")
         XCTAssertEqual(copy.headline, "7 дней без откладываний")
+        XCTAssertTrue(
+            copy.body.contains("это привычка"),
+            "behavioral body is not the habit copy: \(copy.body)"
+        )
         for line in [copy.caps, copy.headline, copy.body] {
             XCTAssertFalse(line.contains("₽"), "behavioral copy must not quote money: \(line)")
             XCTAssertFalse(

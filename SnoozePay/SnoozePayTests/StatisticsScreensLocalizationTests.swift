@@ -25,18 +25,26 @@ import XCTest
 ///     cannot: `Localized.text("alarm_off.capss")` leaves the catalogue
 ///     perfectly intact.
 ///
-/// Coverage is **28 of the 31 keys at the call site**, and the three
-/// exceptions are named rather than papered over:
+/// Coverage is **29 of 31 keys at the call site**; the two exceptions:
 ///
 ///   * `statistics.error.title` and `statistics.error.message` render from
-///     `presentRepositoryError`, which is private and reached only through
-///     `StatisticsViewModel.onLoadError`. Provoking it needs a repository
-///     stubbed to fail, which the view controller offers no seam for — its
-///     view model is not injectable. Catalogue layer only.
-///   * `streak.savings.body` is asserted here at the catalogue layer only,
-///     because `StreakModalCopyTests` already compares
-///     `StreakModalViewController.copy(streakDays:mode:)` against the Russian
-///     verbatim and would go red on its own.
+///     `presentRepositoryError`. Catalogue layer only — **not for want of a
+///     seam**, which is what this comment claimed until review. The seam is
+///     three lines wide: `StatisticsViewController.viewModel` is internal,
+///     `StatisticsViewModel.onLoadError` is internal, `bindViewModel()` runs
+///     in `viewDidLoad`, so `loadViewIfNeeded()` →
+///     `sut.viewModel.onLoadError?(error)` → read `presentedViewController`
+///     needs no injection. Left uncovered because this slice moves strings,
+///     not structure, and because the defect on that path — bare `catch`,
+///     optional `onLoadError`, second alert dropped by the
+///     `presentedViewController == nil` guard — is #721, which would rewrite
+///     any test written against today's behaviour.
+///
+/// Both streak bodies are covered at the call site by `StreakModalCopyTests`.
+/// Its behavioural test held only *negative* assertions until review — «no ₽»,
+/// «no сэкономи» — which an echoed key satisfies too, so
+/// `streak.behavioral.body` was the uncovered one and `streak.savings.body`
+/// the covered one: backwards from what this comment used to say.
 ///
 /// The rest of `StreakModalViewController` is deliberately **not** re-asserted
 /// here. `StreakModalCopyTests` already pins `streakCaption`,
@@ -109,6 +117,11 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// The part most easily lost in the trip through JSON: drop `%1$lld` while
     /// retyping and the sentence still reads perfectly, just without the
     /// number in it.
+    ///
+    /// Counted, not merely found: `Localized.attributed` spends its single
+    /// replacement on the *first* `%@` and renders any second one literally,
+    /// so a duplicated specifier ships «списано −750 ₽ … %@» and `contains`
+    /// alone never sees it.
     func testFormatKeysKeepTheirSpecifiers() {
         let expected: [String: [String]] = [
             "streak.savings.caps": ["%1$lld", "%2$@"],
@@ -122,9 +135,9 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
         for (key, specifiers) in expected {
             let value = Localized.text(key)
             for specifier in specifiers {
-                XCTAssertTrue(
-                    value.contains(specifier),
-                    "\(key) lost \(specifier) — that argument would vanish from the sentence"
+                XCTAssertEqual(
+                    value.components(separatedBy: specifier).count - 1, 1,
+                    "\(key) must hold exactly one \(specifier); it reads «\(value)»"
                 )
             }
         }
@@ -133,15 +146,17 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// Keys whose copy the two screens do not share, however alike they read.
     /// «СЕРИЯ» is one word in Russian and one word in English, which is exactly
     /// why a future edit to the statistics card would be tempting to apply to
-    /// the sheet as well; they are separate entries so it cannot happen by
-    /// accident.
+    /// the sheet as well.
+    ///
+    /// What this pins is the *value* of each entry, not their separateness —
+    /// that is held by `testEveryMigratedKeyResolvesToCopyRatherThanToItself`,
+    /// since deleting either entry leaves the survivor's key echoing itself.
+    /// An `XCTAssertNotEqual` between the two key *literals* stood here until
+    /// review and proved nothing: two different string constants are unequal
+    /// at compile time, catalogue or no catalogue.
     func testStreakCapsAreSeparateEntriesPerScreen() {
         XCTAssertEqual(Localized.text("statistics.streak.caps"), "СЕРИЯ")
         XCTAssertEqual(Localized.text("streak.behavioral.caps"), "СЕРИЯ")
-        XCTAssertNotEqual(
-            "statistics.streak.caps", "streak.behavioral.caps",
-            "the two screens must keep their own entry"
-        )
     }
 
     // MARK: - Call site: AlarmOffWarningViewController
@@ -200,7 +215,11 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// does, rather than through a hosted screen: these captions are static
     /// copy, and going via `refresh()` would make the assertion depend on
     /// whatever the repository happens to hold.
-    func testStatisticsCardsRenderTheirPreMigrationCaptions() {
+    ///
+    /// Expectations are unwrapped, not defaulted: `expected[name] ?? []` turns
+    /// a renamed card into zero iterations and a green run that checked
+    /// nothing.
+    func testStatisticsCardsRenderTheirPreMigrationCaptions() throws {
         let sut = StatisticsViewController()
 
         let cases: [(String, [String])] = [
@@ -214,7 +233,8 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
             "trend": ["ДИНАМИКА ОТКЛАДЫВАНИЙ", "Эта неделя", "8 недель назад", "эта неделя"]
         ]
         for (name, rendered) in cases {
-            for copy in expected[name] ?? [] {
+            let copies = try XCTUnwrap(expected[name], "no expectations declared for \(name)")
+            for copy in copies {
                 XCTAssertTrue(
                     rendered.contains(copy),
                     "«\(copy)» is not on the \(name) card; rendered: \(rendered)"
@@ -305,13 +325,51 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// A template without a specifier must not swallow the run. The amount
     /// landing in an odd place is recoverable by the reader; a sentence
     /// silently missing it reads as fact and is wrong.
-    func testAttributedAppendsWhenTheTemplateHasNoSpecifier() {
-        let result = Localized.attributed(
-            "streak.behavioral.caps",
+    ///
+    /// Asserted through the recovery itself rather than through
+    /// `Localized.attributed`, exactly as `AppHairlineTests` asserts
+    /// `degenerateWidth` instead of calling `width(for:)` with a zero scale:
+    /// that branch now traps on purpose, so reaching it the front way would
+    /// abort the suite rather than measure anything. A template with no `%@`
+    /// is a catalogue defect and until review it was silent; what stays
+    /// testable is the release-build floor.
+    ///
+    /// The template is a literal, not a real key: this test used
+    /// `streak.behavioral.caps`, and giving that entry a specifier would have
+    /// quietly changed the test's meaning instead of failing it.
+    func testAppendingUnplaceableKeepsTheRunRatherThanDroppingIt() {
+        let result = Localized.appendingUnplaceable(
+            template: "СЕРИЯ",
             attributes: [:],
-            replacing: NSAttributedString(string: "!")
+            replacement: NSAttributedString(string: "!")
         )
         XCTAssertEqual(result.string, "СЕРИЯ!")
+    }
+
+    /// The other half of that pair: no key the app actually passes to
+    /// `Localized.attributed` may reach the trapping branch. Both call sites
+    /// are listed literally — `StatisticsViewController:419` and
+    /// `AlarmOffWarningViewController:210` are the only two. A third one added
+    /// without a line here is the gap this cannot see, and the trap is what
+    /// covers that case instead; that is the division of labour between them.
+    func testAttributedSubstitutesInPlaceForEveryKeyTheAppPassesIt() {
+        for key in ["alarm_off.body", "statistics.weekday.worst_day"] {
+            let template = Localized.text(key)
+            XCTAssertTrue(
+                template.contains("%@"),
+                "\(key) would take the trapping branch: it reads «\(template)»"
+            )
+            let result = Localized.attributed(
+                key,
+                attributes: [:],
+                replacing: NSAttributedString(string: "X")
+            )
+            XCTAssertEqual(
+                result.string,
+                template.replacingOccurrences(of: "%@", with: "X"),
+                "\(key) did not substitute in place"
+            )
+        }
     }
 
     // MARK: - Helpers
