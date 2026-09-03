@@ -19,9 +19,18 @@ import XCTest
 ///     common.sound.name.guitar
 ///     common.sound.name.bell
 ///
-/// Nothing else in `ViewModels/` reads copy this suite does not cover: the
-/// directory is at zero Cyrillic string literals as of this commit, which is
-/// what closes #599's lane.
+/// Plus `common.sound.name.custom`, read only to assert it is **absent**: the
+/// picker's custom slot names its copy under `create_alarm.*`, and the list
+/// screen reaching it would mean it started rendering a row nobody can pick.
+///
+/// That is the whole of what this suite covers. It is not the whole of what
+/// `ViewModels/` reads — the directory resolves some fifty catalogue keys, and
+/// the rest are covered elsewhere in the test target (`ViewModelLocalizationTests`,
+/// `AlarmViewModelLocalizationTests`, and the per-screen copy suites). What
+/// closes #599's lane is a separate fact, measured with
+/// `count-cyrillic-literals.py`: zero Cyrillic string literals remain in
+/// `ViewModels/`. Zero literals is not the same claim as full coverage by this
+/// file, and the checklist above is only the former.
 ///
 /// Three layers, so a red run names which one broke:
 ///
@@ -102,7 +111,19 @@ final class AlarmsListSoundNameTests: XCTestCase {
         for soundID in soundIDs {
             repository.save(Alarm(name: "sound-\(soundID)", soundID: soundID))
         }
-        let viewModel = AlarmsListViewModel(alarmRepository: repository)
+        // A private centre, not `.default`: the view model registers three
+        // observers and defaults its `AlarmBackendMonitor` onto whichever
+        // centre it was handed, so on `.default` a test-host activation would
+        // drag `SystemAlarmBackendProbe` → `AlarmScheduler.shared` →
+        // `UNUserNotificationCenter` into this suite. `AlarmsListViewModel.init`
+        // documents exactly that hazard; `AlarmsListBackendGuardTests` and
+        // `AlarmsListZeroBalanceAndWrapTests` inject for the same reason.
+        // Nothing here posts a notification, so an isolated centre costs
+        // nothing.
+        let viewModel = AlarmsListViewModel(
+            alarmRepository: repository,
+            notificationCenter: NotificationCenter()
+        )
         viewModel.loadData()
         return viewModel
     }
@@ -154,10 +175,13 @@ final class AlarmsListSoundNameTests: XCTestCase {
         }
     }
 
-    /// A wrong key at the call site resolves to nothing and falls through to
-    /// the raw id, which reads plausibly enough to survive review — «dawn» in a
-    /// pill is odd but not obviously broken. Asserting no returned name is an
-    /// id makes that failure loud.
+    /// The same failure as the test above, approached from the other side: a
+    /// wrong key resolves to nothing and falls through to the raw id, which
+    /// reads plausibly enough to survive review — «dawn» in a pill is odd but
+    /// not obviously broken. Not an independent layer of protection (the
+    /// word-for-word check already fails on every mutation this one catches),
+    /// but it names the *cause* in its failure message rather than the symptom,
+    /// which is what a reader of a red run needs first.
     func testNoSoundPillFallsThroughToAnIDOrToAKey() {
         let viewModel = makeViewModel(withSoundIDs: SoundCatalogue.ids)
 
