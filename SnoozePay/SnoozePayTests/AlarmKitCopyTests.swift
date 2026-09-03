@@ -1,8 +1,11 @@
 import XCTest
 @testable import SnoozePay
 
-/// Pins the copy on the three buttons iOS renders while an alarm rings — on the
-/// lock screen, in the Dynamic Island and in a banner.
+/// Pins the three strings the app hands to AlarmKit and AppIntents for a
+/// ringing alarm: the text of the alert's secondary button, and the names of
+/// the two intents wired to the alert's actions (which Shortcuts and Siri
+/// show). Whether the system also paints the stop intent's name on the alert
+/// is not established here — see `AlarmKitCopy`.
 ///
 /// All three were literals in `AlarmKitIntents` / `AlarmKitScheduler`, and they
 /// were invisible to every other test here for a mechanical reason.
@@ -10,8 +13,7 @@ import XCTest
 /// and a resource built from a string literal uses that literal as its **lookup
 /// key**; the lookup misses and hands the literal straight back. So the words
 /// rendered correctly while living entirely in Swift — which is exactly the
-/// state that ships a Russian lock-screen button to an English user with
-/// nothing going red.
+/// state that ships Russian copy to an English user with nothing going red.
 ///
 /// # One of the three moved; two are pinned instead
 ///
@@ -44,11 +46,12 @@ import XCTest
 ///
 /// # What no assertion here reaches
 ///
-/// What the system actually paints on a locked screen. That needs a device with
-/// an armed alarm, and this project's tests run on a CI simulator. The layer-3
-/// assertions render each resource through the same `Bundle.main` path the
-/// system uses, so the claim they support is "the resource carries these
-/// words", not "the lock screen shows them".
+/// Where any of it is shown. That needs a device with an armed alarm, and this
+/// project's tests run on a CI simulator. The layer-3 assertions render each
+/// resource through the same `Bundle.main` path the system uses, so the claim
+/// they support is "the resource carries these words", not "this surface
+/// shows them" — least of all for the stop intent, whose title may or may not
+/// reach the alert at all (see `AlarmKitCopy`).
 final class AlarmKitCopyTests: XCTestCase {
 
     /// Transcribed from the literals as they stood on `origin/main` —
@@ -133,9 +136,9 @@ final class AlarmKitCopyTests: XCTestCase {
     /// `AlarmKitCopy` for the four spellings and its answer to each, and #727.
     ///
     /// This is the strongest assertion available under that constraint: the
-    /// catalogue holds the words, and if someone translates or rewords the
-    /// entry, this goes red and says the lock-screen literal did not follow.
-    /// It does **not** claim the button reads the catalogue — it does not.
+    /// catalogue holds the words, and if someone translates or rewords an
+    /// entry, this goes red and says the literal did not follow. It does
+    /// **not** claim either intent reads the catalogue — neither does.
     func testIntentTitleLiteralsStillAgreeWithTheirCatalogueEntries() throws {
         #if canImport(AppIntents)
         guard #available(iOS 26.0, *) else {
@@ -144,7 +147,7 @@ final class AlarmKitCopyTests: XCTestCase {
         XCTAssertEqual(
             String(localized: StopAlarmIntent.title),
             Localized.text(AlarmKitCopy.stopKey),
-            "the lock-screen stop button drifted from alarm_kit.action.stop"
+            "the stop intent's name drifted from alarm_kit.action.stop"
         )
         XCTAssertEqual(
             String(localized: SnoozeAlarmIntent.title),
@@ -156,28 +159,39 @@ final class AlarmKitCopyTests: XCTestCase {
         #endif
     }
 
-    // MARK: - The three surfaces that say «the same thing» differently
+    // MARK: - The keys that hold the same words on purpose
 
     /// «Поспать ещё» is byte-identical to `firing.action.snooze`, and the two
-    /// are separate entries on purpose: that key titles the pre-#472
-    /// `UNNotificationCategory` that nothing schedules any more
-    /// (`AlarmScheduler.registerCategories`) and will be deleted with it, while
-    /// this one is live on every ringing alarm.
+    /// are separate entries on purpose — but not for the reason an earlier
+    /// draft of this file gave, which was that one of them is live on a ringing
+    /// alarm. It is not: the alert's snooze button reads
+    /// ``AlarmKitCopy/pricedSnoozeKey``, and ``AlarmKitCopy/snoozeKey`` is the
+    /// intent's name in Shortcuts.
+    ///
+    /// The reason they stay apart is that `firing.action.snooze` titles the
+    /// pre-#472 `UNNotificationCategory` that nothing schedules any more
+    /// (`AlarmScheduler.registerCategories`) and is expected to be deleted with
+    /// it. One key for both would make that deletion take a live Shortcuts name
+    /// with it — a change whose blast radius is invisible from where it is
+    /// made. Since the words are identical either way, no user sees a
+    /// difference; this is a namespace choice, not a copy one.
     ///
     /// Both values are asserted, so editing either one alone goes red — and the
-    /// red run is the notice that the other surface did *not* follow.
-    func testTheLockScreenSnoozeKeepsItsOwnKeyDespiteIdenticalWords() {
+    /// red run is the notice that the other did *not* follow.
+    func testTheSnoozeIntentNameKeepsItsOwnKeyDespiteIdenticalWords() {
         XCTAssertNotEqual(AlarmKitCopy.snoozeKey, "firing.action.snooze")
         XCTAssertEqual(Localized.text("firing.action.snooze"), "Поспать ещё")
         XCTAssertEqual(Localized.text(AlarmKitCopy.snoozeKey), "Поспать ещё")
     }
 
-    /// «Stop» is said three different ways on three surfaces, and this change
+    /// «Stop» is said three different ways in three places, and this change
     /// moved strings without picking a winner: merging any pair would rewrite
     /// what a user reads somewhere, which is a copy decision rather than a
-    /// migration. The reasoning lives in each entry's `comment`; this pins the
-    /// state that reasoning describes, so a silent alignment costs a red run
-    /// instead of shipping.
+    /// migration. #712's criterion for merging — the two literals were
+    /// byte-identical — does not reach these, because they are not. The
+    /// reasoning lives in each entry's `comment`; this pins the state that
+    /// reasoning describes, so a silent alignment costs a red run instead of
+    /// shipping.
     func testTheThreeWaysTheAppSaysStopStayDistinct() {
         let system = Localized.text(AlarmKitCopy.stopKey)
         let legacyNotification = Localized.text("firing.action.dismiss")

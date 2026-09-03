@@ -70,13 +70,20 @@ struct StopAlarmIntent: LiveActivityIntent {
     /// | `LocalizedStringResource(key, table: "Localizable")` | accepted, metadata written |
     ///
     /// The last row is what this line becomes the day #596 lands, and not
-    /// before: today it would resolve through `Bundle.main`, miss, and paint
-    /// `alarm_kit.action.stop` on the lock screen.
+    /// before: today it would resolve through `Bundle.main`, miss, and leave
+    /// the intent named `alarm_kit.action.stop` wherever the system shows that
+    /// name — Shortcuts for certain, and possibly the alert itself.
     ///
     /// The words still live in the catalogue under
     /// ``AlarmKitCopy/stopKey``, and `AlarmKitCopyTests` fails if this literal
     /// and that entry ever stop agreeing — which is the most a build-time
     /// export allows.
+    ///
+    /// Where this title is actually shown: Shortcuts and Siri, as the intent's
+    /// name. The alert's *stop button* is not ours to label —
+    /// `AlarmPresentation.Alert.stopButton` is deprecated in iOS 26.1 as "not
+    /// used anymore" and `AlarmKitScheduler.makePresentation` uses the 26.1
+    /// initializer, which has no stop button parameter.
     static let title: LocalizedStringResource = "Выключить будильник"
 
     /// Bring the app to the foreground when the system runs this intent so the
