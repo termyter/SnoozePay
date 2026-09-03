@@ -26,7 +26,7 @@ final class ReferralMyCodeCell: UITableViewCell {
         backgroundColor = AppColors.bg1
 
         let titleLabel = UILabel()
-        titleLabel.text = "Ваш код"
+        titleLabel.text = Localized.text("referral.row.my_code")
         titleLabel.font = AppTypography.bodyLg
         titleLabel.textColor = AppColors.fg1
 
@@ -79,11 +79,11 @@ final class ReferralFriendInputCell: UITableViewCell {
     static let reuseID = "ReferralFriendInputCell"
 
     let input = SPInput(
-        label: "Код друга",
-        placeholder: "Введите 6 символов"
+        label: Localized.text("referral.row.friend_code_label"),
+        placeholder: Localized.text("referral.row.friend_code_placeholder")
     )
 
-    private let applyButton = SPButton(title: "Применить", variant: .money, size: .sm)
+    private let applyButton = SPButton(title: Localized.text("referral.button.apply"), variant: .money, size: .sm)
 
     /// Forwarded on every apply-button tap. Dropped in `prepareForReuse` so a
     /// recycled cell can't fire a stale owner's handler before reconfiguration.
@@ -148,7 +148,7 @@ final class ReferralFriendInputCell: UITableViewCell {
             input.textField.text = applied
             input.textField.isEnabled = false
             input.error = nil
-            input.hint = "Код уже применён"
+            input.hint = Localized.text("referral.row.already_applied")
             applyButton.isEnabled = false
         } else {
             input.textField.isEnabled = true

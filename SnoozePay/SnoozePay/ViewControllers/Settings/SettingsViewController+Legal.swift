@@ -27,7 +27,7 @@ final class LegalViewController: UIViewController {
         view.backgroundColor = AppColors.bg0
 
         let textView = UITextView()
-        textView.text = "\(legalTitle)\n\nДокумент будет добавлен перед публикацией в App Store."
+        textView.text = Localized.format("settings.legal.body", legalTitle)
         textView.font = AppTypography.body
         textView.textColor = AppColors.fg1
         textView.backgroundColor = .clear

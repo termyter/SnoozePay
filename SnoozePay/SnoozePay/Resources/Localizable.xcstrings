@@ -3481,6 +3481,18 @@
         }
       }
     },
+    "referral.error.apply_failed" : {
+      "comment" : "Inline error under the friend-code field in Settings when applyFriendCode throws something that is not a ReferralService.ApplyError — the catch-all branch. The typed errors have their own entries (referral.error.invalid_format, .own_code, .already_applied, .balance_locked).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось применить код"
+          }
+        }
+      }
+    },
     "referral.error.balance_locked" : {
       "comment" : "Error shown when the balance store is locked by corruption and the bonus cannot be credited safely.",
       "extractionState" : "manual",
@@ -3709,6 +3721,78 @@
         }
       }
     },
+    "referral.hint.bonus_credited" : {
+      "comment" : "Inline hint under the friend-code field right after a code is accepted. %@ is the credited amount, already formatted by MoneyFormatter (e.g. «200 ₽»), so the currency stays out of the template. Separate from referral.toast.bonus_credited, which is the toast fired at the same moment and names no amount.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бонус +%@ зачислен"
+          }
+        }
+      }
+    },
+    "referral.row.already_applied" : {
+      "comment" : "Hint under a frozen friend-code field in Settings: this device has already redeemed a code. Not referral.error.already_applied («Бонус по реферальному коду уже получен.») — that one is the error ReferralService raises on a second attempt. Different words, two entries (#711).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код уже применён"
+          }
+        }
+      }
+    },
+    "referral.row.bonus_caption" : {
+      "comment" : "Caption row closing the referral section in Settings. %@ is the per-friend bonus, already formatted by MoneyFormatter.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За каждого друга — +%@ на ваш баланс"
+          }
+        }
+      }
+    },
+    "referral.row.friend_code_label" : {
+      "comment" : "Label of the friend-code field in the Settings referral section. Not referral.section.friend_code («КОД ДРУГА»), the caps caption over the same field on the standalone referral screen — a different case is different copy (#711).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код друга"
+          }
+        }
+      }
+    },
+    "referral.row.friend_code_placeholder" : {
+      "comment" : "Placeholder of the friend-code field in the Settings referral section. The standalone referral screen shows a sample code instead (referral.field.friend_code_placeholder, «Например, WAKEUP-7K2»); different words, so a separate entry.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Введите 6 символов"
+          }
+        }
+      }
+    },
+    "referral.row.my_code" : {
+      "comment" : "Title of the first row of the Settings referral section, trailed by the user's own 6-character code. Not referral.section.personal_code («ВАШ КОД»), the caps caption over the same code on the standalone referral screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш код"
+          }
+        }
+      }
+    },
     "referral.section.friend_code" : {
       "comment" : "Caps section caption above the field where a friend's code is entered.",
       "extractionState" : "manual",
@@ -3765,6 +3849,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Пригласить"
+          }
+        }
+      }
+    },
+    "referral.toast.bonus_credited" : {
+      "comment" : "Toast shown after a friend's code is accepted. Fired together with the inline referral.hint.bonus_credited, which names the amount; this one deliberately does not.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бонус начислен"
+          }
+        }
+      }
+    },
+    "referral.toast.copied" : {
+      "comment" : "Toast shown after tapping the referral row copies the user's own code to the pasteboard.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скопировано"
+          }
+        }
+      }
+    },
+    "settings.legal.body" : {
+      "comment" : "Placeholder body of LegalViewController until the real documents land. %@ is that screen's own title, which is itself settings.row.privacy_policy or settings.row.terms — so a translator writes those two strings once for three positions.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@\n\nДокумент будет добавлен перед публикацией в App Store."
+          }
+        }
+      }
+    },
+    "settings.no_mail.message" : {
+      "comment" : "Body of the alert shown when no Mail client handles the mailto: URL (#316). %@ is AppConstants.supportEmail, an address and never translated.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Адрес поддержки %@ скопирован в буфер обмена."
+          }
+        }
+      }
+    },
+    "settings.no_mail.title" : {
+      "comment" : "Title of the alert shown when no Mail client handles the mailto: URL behind the «Связаться с нами» row (#316). Its sole action is common.button.ok.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Почта не настроена"
           }
         }
       }
@@ -3945,6 +4089,138 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Громкость"
+          }
+        }
+      }
+    },
+    "settings.section.finance" : {
+      "comment" : "Caps header over the default-price and snooze-duration rows in Settings. Uppercase is the design; SettingsSectionHeaderView also uppercases whatever it is handed, so a translation that is not shouted still renders in caps.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ФИНАНСЫ"
+          }
+        }
+      }
+    },
+    "settings.section.other" : {
+      "comment" : "Caps header over the legal, contact and theme rows in Settings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПРОЧЕЕ"
+          }
+        }
+      }
+    },
+    "settings.section.recovery" : {
+      "comment" : "Caps header of the diagnostics section in Settings. Rendered only while a repository reports a corrupt load; the row under it is settings.recovery.row_title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ВОССТАНОВЛЕНИЕ"
+          }
+        }
+      }
+    },
+    "settings.section.referral" : {
+      "comment" : "Caps header over the referral rows in Settings. The whole section is hidden behind AppFeatureFlags.referralEnabled (#676).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПРИГЛАСИТЬ ДРУГА"
+          }
+        }
+      }
+    },
+    "settings.section.rules" : {
+      "comment" : "Caps header over the progressive-price rule in Settings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПРАВИЛА"
+          }
+        }
+      }
+    },
+    "settings.section.sound" : {
+      "comment" : "Caps header over the volume and vibration rows in Settings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ЗВУК И УВЕДОМЛЕНИЯ"
+          }
+        }
+      }
+    },
+    "settings.theme.dark" : {
+      "comment" : "Third option of the appearance segment in Settings — always dark.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тёмная"
+          }
+        }
+      }
+    },
+    "settings.theme.light" : {
+      "comment" : "Second option of the appearance segment in Settings — always light.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Светлая"
+          }
+        }
+      }
+    },
+    "settings.theme.system" : {
+      "comment" : "First option of the appearance segment in Settings — follow the system appearance.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Системная"
+          }
+        }
+      }
+    },
+    "settings.theme.title" : {
+      "comment" : "Title of the Settings row carrying the light/dark appearance segment. Byte-identical to create_alarm.theme.title and deliberately a separate entry: that one titles the picture theme of an alarm's firing screen, this one the app's appearance. #712 merges byte-identical literals; it does not apply where the same word names two unrelated things, because one shared key would force both to move together in every future language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тема"
+          }
+        }
+      }
+    },
+    "settings.title" : {
+      "comment" : "Navigation title of the Settings screen, pushed from the gear icon on Alarms and Wallet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настройки"
           }
         }
       }

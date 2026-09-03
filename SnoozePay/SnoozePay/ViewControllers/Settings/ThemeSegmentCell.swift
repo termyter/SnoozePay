@@ -19,9 +19,9 @@ final class ThemeSegmentCell: UITableViewCell {
 
     /// Stable segment values mapped to the theme preference (index 0/1/2).
     private static let options: [SPSegmented.Option] = [
-        .init(value: "system", label: "Системная"),
-        .init(value: "light", label: "Светлая"),
-        .init(value: "dark", label: "Тёмная")
+        .init(value: "system", label: Localized.text("settings.theme.system")),
+        .init(value: "light", label: Localized.text("settings.theme.light")),
+        .init(value: "dark", label: Localized.text("settings.theme.dark"))
     ]
 
     // MARK: - UI
@@ -40,7 +40,7 @@ final class ThemeSegmentCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Тема"
+        label.text = Localized.text("settings.theme.title")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false

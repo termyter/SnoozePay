@@ -104,7 +104,7 @@ extension SettingsViewController {
             assertionFailure("dequeueReusableCell returned wrong type for \(ReferralCaptionCell.reuseID)")
             return UITableViewCell()
         }
-        cell.configure(text: "За каждого друга — +\(MoneyFormatter.string(200)) на ваш баланс")
+        cell.configure(text: Localized.format("referral.row.bonus_caption", MoneyFormatter.string(200)))
         return cell
     }
 
@@ -121,7 +121,7 @@ extension SettingsViewController {
     func copyMyCodeToPasteboard(pasteboard: UIPasteboard = .general) {
         let code = referralService.getMyCode()
         pasteboard.string = code
-        showToast(message: "Скопировано")
+        showToast(message: Localized.text("referral.toast.copied"))
     }
 
     func handleApplyFriendCodeTapped() {
@@ -130,7 +130,7 @@ extension SettingsViewController {
         do {
             let credited = try referralService.applyFriendCode(raw)
             input.error = nil
-            input.hint = "Бонус +\(MoneyFormatter.string(credited)) зачислен"
+            input.hint = Localized.format("referral.hint.bonus_credited", MoneyFormatter.string(credited))
             input.textField.isEnabled = false
             input.textField.resignFirstResponder()
             // Friend-input cell needs a re-layout to flip the apply button
@@ -140,11 +140,11 @@ extension SettingsViewController {
             if let index = visibleSections.firstIndex(of: .referral) {
                 tableView.reloadSections(IndexSet(integer: index), with: .automatic)
             }
-            showToast(message: "Бонус начислен")
+            showToast(message: Localized.text("referral.toast.bonus_credited"))
         } catch let error as ReferralService.ApplyError {
             input.error = error.errorDescription
         } catch {
-            input.error = "Не удалось применить код"
+            input.error = Localized.text("referral.error.apply_failed")
         }
     }
 
