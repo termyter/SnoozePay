@@ -11,10 +11,16 @@ import Foundation
 ///   2. the loop turned normally throughout and the route still never presented.
 ///
 /// The CI log of the red attempt cannot tell them apart, because a wait that
-/// ends empty looks identical either way. A poll that leaves a trail can: a
-/// `Timer` does not queue up missed fires, so a stalled loop shows as ticks that
-/// are simply absent, and the gap between the surviving ones measures the stall
-/// directly.
+/// ends empty looks identical either way. A poll that leaves a trail can.
+///
+/// The premise — stated as a premise, because this target does not test
+/// Foundation and a test that did would be slow and flaky for no gain — is that
+/// a repeating `Timer` coalesces rather than queues up the fires it missed. On
+/// that premise a stalled loop shows as ticks that are simply absent, and the
+/// gap between the surviving ones measures the stall directly. If it ever turned
+/// out that missed fires are replayed instead, this would under-report stalls;
+/// it would not invent one that did not happen, and the elapsed-versus-budget
+/// figure alongside it is independent of the premise either way.
 ///
 /// Deliberately a value type with injected timestamps: every number it reports
 /// is arithmetic over `Date`s handed to it, so its own tests are exact instead

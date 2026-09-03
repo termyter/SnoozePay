@@ -69,10 +69,9 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         // report on a non-quiet outcome is kept identical to the one
         // `drainMainQueue` would have made — this is extra evidence, not a
         // relaxed check.
-        let drainStarted = Date()
+        let setUpStarted = Date()
         let drain = drainMainQueueOutcome()
-        let drainElapsed = Date().timeIntervalSince(drainStarted)
-        setUpEvidence = "setUp drain took \(seconds(drainElapsed)) and ended \(drain)."
+        let drainElapsed = Date().timeIntervalSince(setUpStarted)
         if !drain.isQuiet {
             XCTFail(drain.diagnosis)
         }
@@ -81,6 +80,17 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
         window = makeHostWindow()
+        // The whole of setUp, not just the drain: building the host window and
+        // making it key is main-thread UIKit work like any other, and a stamp
+        // that skips it leaves a hole in the arithmetic against the duration
+        // XCTest reports. Only tearDown is outside every stamp here, so the
+        // remainder is named rather than left for the reader to hunt.
+        setUpEvidence = """
+            setUp took \(seconds(Date().timeIntervalSince(setUpStarted))), of which the \
+            drain \(seconds(drainElapsed)), ending \(drain); the host window took the \
+            rest. Anything unaccounted for against the test's reported duration is \
+            tearDown.
+            """
     }
 
     override func tearDown() {
@@ -305,11 +315,21 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     ///
     /// Order matters. The presentation chain is read FIRST, at the moment the
     /// wait gave up, so it describes that moment and not the aftermath. Only
-    /// then does the queue get probed — and whether the sheet turns up *during*
-    /// that probe is itself the discriminator this failure has been missing:
-    /// a sheet that appears once the queue is spun again was late, so the beat
-    /// was delivered and starved; a sheet still absent after it was never
-    /// presented at all, and the queue is not the story.
+    /// then does the queue get probed, and the chain is read a SECOND time:
+    /// what the route managed to mount while the queue was being spun is the
+    /// discriminator this failure has been missing. Anything new means the beat
+    /// had been delivered and was merely late — starvation. A chain identical
+    /// to the first means nothing was in flight and the route never presented.
+    ///
+    /// Both chains, rather than "did the sheet appear", because this route is
+    /// two steps: `presentLater(nav)`, then `nav.present(sheet)` from the
+    /// form's completion (`UITourRoutes.confirm-delete`). A starved queue
+    /// delivers the overdue beat ahead of the probe, so the first turn mounts
+    /// the nav — but UIKit may call that completion a turn later, while the
+    /// drain returns as soon as one round trip lands inside its 0.1 s
+    /// threshold. Asking only about the sheet would then print "nothing was
+    /// running late" over a beat that was exactly that, which is the misreading
+    /// this whole message exists to prevent.
     ///
     /// Bounded at 5 s, and only ever reached on a failing test, so it cannot
     /// grow a green run. It is emphatically not a wider timeout: by the time it
@@ -319,15 +339,17 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         let probeStarted = Date()
         let probe = drainMainQueueOutcome(cap: 5)
         let probeElapsed = Date().timeIntervalSince(probeStarted)
+        let chainAfterProbe = presentationDiagnostics(rootedAt: window?.rootViewController)
         let queue = probe.isQuiet
             ? "a fresh probe came back in \(seconds(probeElapsed)) (\(probe))"
             : probe.diagnosis
-        let afterwards = presentedConfirmSheet() == nil
-            ? "the sheet was STILL absent afterwards — nothing was merely running late"
-            : "the sheet APPEARED during that probe — the presentation was late, not declined"
         return """
-            \(headline) \(chainAtTimeout) \(setUpEvidence) \(mountEvidence) \(waitEvidence) \
-            After the timeout: \(queue), and \(afterwards).
+            \(headline) At the timeout, \(chainAtTimeout). \(setUpEvidence) \(mountEvidence) \
+            \(waitEvidence) After the timeout: \(queue). The chain then read: \
+            \(chainAfterProbe) — anything mounted during that probe, sheet or merely the \
+            edit form, means the route's beat had been delivered and was running late; \
+            a chain unchanged from the one above means nothing was in flight and the \
+            route never presented at all.
             """
     }
 
