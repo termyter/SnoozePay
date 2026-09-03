@@ -219,14 +219,14 @@ enum UITourLauncher {
         func at(_ hour: Int, _ minute: Int) -> Date {
             calendar.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
         }
-        repo.save(Alarm(
+        repo.save(Alarm(  // i18n:exempt имя будильника в фикстуре, не копия UI
             time: at(7, 30), repeatDays: [0, 1, 2, 3, 4], name: "Работа", penaltyAmount: 50
         ))
-        repo.save(Alarm(
+        repo.save(Alarm(  // i18n:exempt имя будильника в фикстуре, не копия UI
             time: at(9, 0), repeatDays: [5, 6], name: "Спортзал и длинная пробежка по набережной",
             penaltyAmount: 100, progressiveScale: true, theme: .ocean
         ))
-        repo.save(Alarm(
+        repo.save(Alarm(  // i18n:exempt имя будильника в фикстуре, не копия UI
             time: at(6, 15), repeatDays: [], name: "Рейс в Стамбул", penaltyAmount: 200,
             enabled: false, repeatMode: .never
         ))

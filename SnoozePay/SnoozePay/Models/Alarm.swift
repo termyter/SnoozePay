@@ -94,7 +94,7 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// — the language-dependent behaviour #623 removed, reintroduced through
     /// the decoder. `AlarmDefaultNameTests` covers the legacy path, down to
     /// the trimming and case-folding.
-    private static let legacyDefaultNames: Set<String> = ["будильник"]
+    private static let legacyDefaultNames: Set<String> = ["будильник"]  // i18n:exempt сентинел декодера на диске
 
     // MARK: - Name
 

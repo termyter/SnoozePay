@@ -84,7 +84,7 @@ struct StopAlarmIntent: LiveActivityIntent {
     /// `AlarmPresentation.Alert.stopButton` is deprecated in iOS 26.1 as "not
     /// used anymore" and `AlarmKitScheduler.makePresentation` uses the 26.1
     /// initializer, which has no stop button parameter.
-    static let title: LocalizedStringResource = "Выключить будильник"
+    static let title: LocalizedStringResource = "Выключить будильник"  // i18n:exempt AppIntent.title, см. #727
 
     /// Bring the app to the foreground when the system runs this intent so the
     /// router can present our custom firing screen (#379). Without this the
@@ -121,7 +121,7 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
     /// `AlarmKitScheduler.makePresentation`, which is an ordinary
     /// `AlarmButton` rather than an intent title and so does read the
     /// catalogue. This is the intent's own name, which Shortcuts also displays.
-    static let title: LocalizedStringResource = "Поспать ещё"
+    static let title: LocalizedStringResource = "Поспать ещё"  // i18n:exempt AppIntent.title, см. #727
 
     /// Open the app so the paid-snooze flow runs in our firing screen (#379)
     /// rather than charging silently from the lock screen. See `StopAlarmIntent`.
