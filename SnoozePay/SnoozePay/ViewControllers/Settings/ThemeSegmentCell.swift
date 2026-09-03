@@ -18,11 +18,19 @@ final class ThemeSegmentCell: UITableViewCell {
     static let reuseID = "ThemeSegmentCell"
 
     /// Stable segment values mapped to the theme preference (index 0/1/2).
-    private static let options: [SPSegmented.Option] = [
-        .init(value: "system", label: Localized.text("settings.theme.system")),
-        .init(value: "light", label: Localized.text("settings.theme.light")),
-        .init(value: "dark", label: Localized.text("settings.theme.dark"))
-    ]
+    ///
+    /// Computed, not a `static let`: a stored one would cache the labels for
+    /// the life of the process, giving this copy its own cache on top of the
+    /// one `Localized.bundle` already keeps. Same reason #712 dropped the
+    /// stored copy it found — after #596 the bundle can change, and
+    /// `Localized.bundle` should be the only place that has to notice.
+    private static var options: [SPSegmented.Option] {
+        [
+            .init(value: "system", label: Localized.text("settings.theme.system")),
+            .init(value: "light", label: Localized.text("settings.theme.light")),
+            .init(value: "dark", label: Localized.text("settings.theme.dark"))
+        ]
+    }
 
     // MARK: - UI
 

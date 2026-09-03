@@ -23,24 +23,38 @@ import XCTest
 ///
 /// # What layer 3 does not reach in this slice
 ///
-/// Five keys are read only from code that needs state this suite cannot fake
-/// honestly, so they are covered by layers 1 and 2 alone:
+/// Five of the twenty-five keys are read only from code this suite does not
+/// drive, and they are covered by layers 1 and 2 alone. The list is meant to
+/// be exhaustive, because the next slice will read it as a checklist and an
+/// incomplete one is worse than none:
 ///
-///  * `settings.section.recovery` — the diagnostics header exists only while
-///    `AlarmRepository.shared.lastLoadFailed` is set, which is global state
-///    with no seam;
+///  * `settings.section.recovery` — the diagnostics header is rendered only
+///    while `isRecoveryVisible` is true, and that reads
+///    `AlarmRepository.shared.lastLoadFailed`. Not «no seam»:
+///    `SettingsViewController` is not `final`, so a subclass could override
+///    the property. That is substituting the object under test for one that
+///    answers differently, which is a poor trade for a string assertion;
 ///  * `settings.no_mail.title` / `settings.no_mail.message` — assembled inside
-///    the completion handler of `UIApplication.shared.open`, which only runs
-///    when the host has no Mail client;
-///  * `referral.toast.bonus_credited` and `referral.hint.bonus_credited` —
-///    both need a successful `applyFriendCode`, i.e. a live balance to credit.
-///    `referral.toast.copied` shares their toast path and IS driven here, so
-///    the path itself is not untested.
+///    the completion handler of `UIApplication.shared.open`, which runs only
+///    on a host with no Mail client;
+///  * `referral.error.apply_failed` — the `catch`-all in
+///    `handleApplyFriendCodeTapped`, reached only when `applyFriendCode`
+///    throws something that is not an `ApplyError`. The service is injected,
+///    but as the concrete `ReferralService`, so there is nothing to substitute
+///    a throwing double for;
+///  * `common.button.ok` — its words are asserted here, but no call site of it
+///    is. The key predates this slice; the one call site this slice gave it is
+///    the no-mail alert above, and nothing else in the target drives it either.
 ///
 /// «Not covered in this slice», not «unreachable»: extracting
 /// `makeNoMailAlert() -> UIAlertController` would put the two alert strings in
 /// reach with no host at all. That is a change to production structure, and
 /// this slice moves strings only.
+///
+/// The two credited-bonus strings were on this list and are not any more: the
+/// apply path needs no live balance, only the injected wallet that
+/// `SettingsReferralIsolationTests` already uses, and
+/// `testApplyingAFriendCodeShowsTheCreditedBonusCopy` drives it.
 @MainActor
 final class SettingsScreenCopyTests: XCTestCase {
 
@@ -133,7 +147,7 @@ final class SettingsScreenCopyTests: XCTestCase {
     /// other picks a wallpaper for the firing screen. Only their separate
     /// existence is pinned — whether the words stay identical is a copy
     /// decision, and asserting equality would turn a legitimate divergence red.
-    func testTheAppearanceThemeKeepsItsOwnEntryFromTheAlarmTheme() {
+    func testBothThemeTitlesHaveTheirOwnCatalogueEntry() {
         for key in ["settings.theme.title", "create_alarm.theme.title"] {
             XCTAssertNotEqual(Localized.text(key), key, "\(key) lost its own catalogue entry")
         }
@@ -256,29 +270,99 @@ final class SettingsScreenCopyTests: XCTestCase {
             "copying the code put no toast on the window"
         )
         XCTAssertEqual(toast.text, Localized.text("referral.toast.copied"))
+
+        // The toast schedules its fade-out with `delay: 1.1`; left queued, it
+        // is spent inside the first neighbouring test that waits on anything
+        // (#618/#728). Paid for here instead.
+        drainMainQueue()
+    }
+
+    /// The credited-bonus copy — the hint under the field and the toast — is
+    /// the most-seen string in this slice: everyone who ever redeems a code
+    /// reads it. No live balance is needed to drive it, only the injected
+    /// wallet `SettingsReferralIsolationTests` already applies codes against.
+    ///
+    /// The captured `input` is the object the handler wrote to. The section
+    /// reload that follows builds a *new* cell, configured from the now-applied
+    /// code, whose hint is `referral.row.already_applied` — asserting on the
+    /// row after the reload would measure the other string.
+    func testApplyingAFriendCodeShowsTheCreditedBonusCopy() throws {
+        // Own code fixed rather than generated, for the reason
+        // `SettingsReferralIsolationTests` gives: `applyFriendCode` rejects a
+        // self-apply, and a generated code could collide with the one applied.
+        let fixture = makeFixture(referralEnabled: true, myCode: "ABCDEF")
+        let sut = hosted(fixture.sut)
+        let window = try XCTUnwrap(sut.view.window)
+
+        // Dequeuing the row is what points `friendCodeInput` at a live cell.
+        _ = retained(sut.cell(at: IndexPath(row: 1, section: sut.sectionIndex(of: .referral))))
+        let input = try XCTUnwrap(sut.friendCodeInput)
+        input.textField.text = "BCDEFG"
+
+        sut.handleApplyFriendCodeTapped()
+
+        XCTAssertNil(
+            input.error,
+            "the apply was rejected, so the assertions below would pass for the wrong reason"
+        )
+        // The amount in the copy is the amount credited, not a number this
+        // test also hard-codes: the wallet is asked what it received.
+        XCTAssertEqual(
+            fixture.wallet.balance, ReferralService.referralBonusAmount,
+            "the bonus did not land in the injected wallet"
+        )
+        XCTAssertEqual(
+            input.hint,
+            Localized.format("referral.hint.bonus_credited", MoneyFormatter.string(fixture.wallet.balance))
+        )
+        let toast = try XCTUnwrap(
+            Self.descendants(of: window).compactMap { $0 as? SettingsToastLabel }.first,
+            "the apply put no toast on the window"
+        )
+        XCTAssertEqual(toast.text, Localized.text("referral.toast.bonus_credited"))
+
+        drainMainQueue()
     }
 
     // MARK: - Helpers
 
-    /// Settings with every store it writes to pinned to a throwaway suite.
-    /// `getMyCode()` GENERATES and persists on first read, so a shared
-    /// `ReferralService` would write the referral code into the test host's
-    /// real defaults (#690).
-    private func makeSUT(referralEnabled: Bool = AppFeatureFlags.referralEnabled) -> SettingsViewController {
+    /// Settings with every store it writes to pinned to a throwaway suite,
+    /// plus the stores themselves for the tests that need to look inside.
+    ///
+    /// `getMyCode()` GENERATES and persists on first read, and `applyFriendCode`
+    /// credits real money, so a shared `ReferralService` would write both into
+    /// the test host's own defaults (#690).
+    private struct Fixture {
+        let sut: SettingsViewController
+        /// The injected wallet, so a test can ask what the apply path actually
+        /// credited instead of hard-coding the amount a second time.
+        let wallet: BalanceService
+    }
+
+    /// `myCode` is spelled against the raw key rather than asked of the
+    /// service, which keeps it `private` — the same choice, for the same
+    /// reason, as `SettingsReferralIsolationTests`.
+    private func makeFixture(
+        referralEnabled: Bool = AppFeatureFlags.referralEnabled,
+        myCode: String? = nil
+    ) -> Fixture {
         let name = "test.settings.screencopy.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         suites.append((name: name, defaults: defaults))
+        if let myCode { defaults.set(myCode, forKey: "referral_my_code") }
 
+        let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         let sut = SettingsViewController(
             alarmDefaults: AlarmDefaults(defaults: defaults),
-            referralService: ReferralService(
-                defaults: defaults,
-                balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
-            )
+            referralService: ReferralService(defaults: defaults, balanceService: wallet)
         )
         sut.referralEnabled = referralEnabled
         sut.loadViewIfNeeded()
-        return sut
+        return Fixture(sut: sut, wallet: wallet)
+    }
+
+    private func makeSUT(referralEnabled: Bool = AppFeatureFlags.referralEnabled) -> SettingsViewController {
+        makeFixture(referralEnabled: referralEnabled).sut
     }
 
     private func hosted(_ sut: SettingsViewController) -> SettingsViewController {
