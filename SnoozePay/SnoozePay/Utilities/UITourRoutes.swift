@@ -291,12 +291,18 @@ enum UITourRoutes {
     }
 
     // MARK: - Sample data
+    //
+    // The alarm names in this section stay Swift literals (#598), for the
+    // reason spelled out once on `UITourLauncher.seedAlarms()`: an alarm name
+    // is user content, not UI copy, so it is not a catalogue candidate. This
+    // file is `#if DEBUG` in its entirety and the names render only under
+    // `-uitour`.
 
     private static func sampleAlarm() -> Alarm {
         Alarm(
             time: Calendar.current.date(bySettingHour: 7, minute: 30, second: 0, of: Date()) ?? Date(),
             repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
-            name: "Работа",
+            name: "Работа",  // i18n:exempt имя будильника в фикстуре, не копия UI
             penaltyAmount: 50,
             theme: UITourLauncher.requestedTheme()
         )
@@ -313,7 +319,7 @@ enum UITourRoutes {
         Alarm(
             time: Date(),
             repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
-            name: "Работа",
+            name: "Работа",  // i18n:exempt имя будильника в фикстуре, не копия UI
             penaltyAmount: penalty,
             theme: UITourLauncher.requestedTheme()
         )
@@ -328,7 +334,7 @@ enum UITourRoutes {
         Alarm(
             time: Date(),
             repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
-            name: "Спортзал",
+            name: "Спортзал",  // i18n:exempt имя будильника в фикстуре, не копия UI
             penaltyAmount: 50,
             progressiveScale: true,
             theme: UITourLauncher.requestedTheme()

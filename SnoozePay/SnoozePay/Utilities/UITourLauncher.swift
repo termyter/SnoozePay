@@ -191,6 +191,27 @@ enum UITourLauncher {
         }
     }
 
+    /// Demo alarms for `-uitour-seed`.
+    ///
+    /// # The three names below stay Swift literals (#598)
+    ///
+    /// They are the only Cyrillic literals left in this file and they are
+    /// **not** copy, so they do not belong in `Localizable.xcstrings`. An
+    /// alarm's name is user *content* — free text typed into
+    /// `CreateAlarmViewController` and stored as `Alarm.customName`. These
+    /// three fabricate a plausible set of it, the way the unit suite does:
+    /// seven test files hardcode «Работа» for the same reason. Migrating them
+    /// would hand a translator three demo alarm names to translate as though
+    /// they were UI chrome, in a file that is otherwise the translation
+    /// deliverable — and no key in the catalogue is content rather than copy.
+    ///
+    /// They are also unreachable from a shipped build: this whole file is
+    /// `#if DEBUG`, and the names only ever render behind `-uitour-seed`.
+    ///
+    /// The default an *unnamed* alarm falls back to is a different thing and
+    /// is copy: it reads the catalogue via ``Alarm/defaultName``. All three
+    /// seeds above are named, so that default does not appear on these
+    /// screens.
     private static func seedAlarms() {
         let repo = AlarmRepository.shared
         guard ((try? repo.fetchAllChecked()) ?? []).isEmpty else { return }
@@ -198,14 +219,14 @@ enum UITourLauncher {
         func at(_ hour: Int, _ minute: Int) -> Date {
             calendar.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
         }
-        repo.save(Alarm(
+        repo.save(Alarm(  // i18n:exempt имя будильника в фикстуре, не копия UI
             time: at(7, 30), repeatDays: [0, 1, 2, 3, 4], name: "Работа", penaltyAmount: 50
         ))
-        repo.save(Alarm(
+        repo.save(Alarm(  // i18n:exempt имя будильника в фикстуре, не копия UI
             time: at(9, 0), repeatDays: [5, 6], name: "Спортзал и длинная пробежка по набережной",
             penaltyAmount: 100, progressiveScale: true, theme: .ocean
         ))
-        repo.save(Alarm(
+        repo.save(Alarm(  // i18n:exempt имя будильника в фикстуре, не копия UI
             time: at(6, 15), repeatDays: [], name: "Рейс в Стамбул", penaltyAmount: 200,
             enabled: false, repeatMode: .never
         ))
