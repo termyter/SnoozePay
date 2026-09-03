@@ -37,6 +37,17 @@ import XCTest
 /// it performs the first drain in the target and absorbs the backlog of
 /// everything from A to L. Sorting ahead of it would quietly move that job here.
 ///
+/// The name is not what makes these tests correct, though, and it must not be
+/// asked to. Nothing red-flags a rename, and the scheme sets no ordering, so
+/// review pointed out that this class was leaning on its neighbour twice over:
+/// for the A-to-L backlog, and — worse — at half its cap, since the drains
+/// below pass `cap: 1` and `cap: 30` where the sibling's `setUp` uses 60. Run
+/// out of order, `testTheDefaultSinkSaysNothingWhenTheQueueGoesQuiet` would
+/// assert a quiet queue against an unabsorbed backlog with half the budget,
+/// and read as a broken drain rather than as a sort order. So it drains in its
+/// own `setUp` instead: three lines that hold whatever the order turns out to
+/// be, rather than a paragraph that holds only while someone is reading it.
+///
 /// `@MainActor` is spelled out rather than inherited from
 /// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` for the same reason as in the
 /// sibling suite: these tests hold the main thread, and that is load-bearing.
@@ -49,6 +60,16 @@ final class MainQueueDrainXCTFailDefaultTests: XCTestCase {
     /// the same defect as the one under test one level up.
     private var capturedIssues: [XCTIssue] = []
     private var isCapturing = false
+
+    /// Absorbs whatever earlier suites left queued, exactly as the sibling
+    /// suite does (#618) — the first test here to spin the run loop would
+    /// otherwise pay for all of it. Uses the default sink deliberately: if the
+    /// backlog cannot be drained in 60 s, that is a failure worth seeing here
+    /// rather than a confusing one inside a test about the sink itself.
+    override func setUp() {
+        super.setUp()
+        drainMainQueue()
+    }
 
     override func record(_ issue: XCTIssue) {
         guard isCapturing else {
