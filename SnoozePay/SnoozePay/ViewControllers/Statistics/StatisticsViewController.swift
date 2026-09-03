@@ -1,3 +1,4 @@
+import os
 import UIKit
 
 /// Statistics screen — V3 behavioural redesign (#235, `SPMore4.jsx` `Stats()`,
@@ -320,15 +321,54 @@ final class StatisticsViewController: UIViewController {
     }
 
     private func presentRepositoryError(_ error: LocalizedError) {
-        guard presentedViewController == nil else { return }
+        let message = error.errorDescription
+            ?? Localized.text("statistics.error.message")
+
+        // The guard is right — stacking a second alert over the first throws a
+        // UIKit exception — but until #721 it was also the end of the story:
+        // every error after the first vanished here, and a screen showing one
+        // alert while swallowing three was indistinguishable in the logs from
+        // a screen that failed once.
+        if let diagnostic = Self.droppedAlertDiagnostic(
+            presenting: presentedViewController, message: message
+        ) {
+            AppLogger.ui.error("\(diagnostic, privacy: .public)")
+            return
+        }
+
+        AppLogger.ui.error(
+            """
+            [\(StatisticsViewModel.alertShownErrorID, privacy: .public)] Statistics load \
+            error shown to the user: \(message, privacy: .public)
+            """
+        )
         let alert = UIAlertController(
             title: Localized.text("statistics.error.title"),
-            message: error.errorDescription
-                ?? Localized.text("statistics.error.message"),
+            message: message,
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+
+    /// The line to log when an incoming load-error alert cannot be shown, or
+    /// `nil` when the screen is free to show it.
+    ///
+    /// A pure function rather than an inline `guard` body so the message —
+    /// which is the entire remedy for the dropped alert — can be asserted in a
+    /// test without staging a live presentation (#721). The class name of the
+    /// blocking controller is in it because "the ledger alert is already up"
+    /// and "a top-up sheet is up" are different situations for whoever reads
+    /// the log.
+    static func droppedAlertDiagnostic(
+        presenting presented: UIViewController?, message: String
+    ) -> String? {
+        guard let presented else { return nil }
+        return """
+            [\(StatisticsViewModel.alertDroppedErrorID)] Statistics load error alert \
+            dropped — \(type(of: presented)) is already presented. Unshown message: \
+            \(message)
+            """
     }
 
     private func refresh() {

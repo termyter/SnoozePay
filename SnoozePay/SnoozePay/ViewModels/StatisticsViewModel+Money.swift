@@ -53,6 +53,29 @@ extension StatisticsViewModel {
     static var partialLedgerErrorID: String { "STATS-348-LEDGER-PARTIAL" }
     /// Log identifier for an unreadable alarm store.
     static var alarmStoreErrorID: String { "STATS-348-ALARMS-UNREADABLE" }
+    /// Log identifier for a ledger that threw a `RepositoryError` on decode.
+    ///
+    /// The user gets an alert on this path — but only if the VC had already
+    /// bound, and only if no other alert is up. An alert is therefore not a
+    /// record that anything happened; this line is the record (#721).
+    static var ledgerUnreadableErrorID: String { "STATS-721-LEDGER-UNREADABLE" }
+    /// Log identifier for the load-failure alert actually reaching the user.
+    static var alertShownErrorID: String { "STATS-721-ALERT-SHOWN" }
+    /// Log identifier for a load-failure alert the screen could not show
+    /// because something else was already presented. Distinct from
+    /// `alertShownErrorID` so "the user was warned" and "the warning was
+    /// dropped" can be told apart in a sysdiagnose (#721).
+    static var alertDroppedErrorID: String { "STATS-721-ALERT-DROPPED" }
+    /// Log identifier for a ledger read that threw something other than
+    /// `TransactionRepository.RepositoryError`.
+    ///
+    /// Kept apart from `ledgerUnreadableErrorID` because the two mean opposite
+    /// things to whoever greps them: the first is a known, handled data state,
+    /// the second is a throw from a path that was not supposed to have one —
+    /// a new error type, a neighbouring call that started throwing, a
+    /// cancellation. Merging the IDs would hide the surprising case inside the
+    /// expected one.
+    static var unexpectedLedgerErrorID: String { "STATS-721-LEDGER-UNEXPECTED" }
     /// Log identifier for a wake median the card refused as not-a-time-of-day.
     ///
     /// Hiding the card is the honest outcome for the reader, but it looks
@@ -62,6 +85,20 @@ extension StatisticsViewModel {
     /// replaces a bug that shouted a wrong number with one that says nothing,
     /// and the shouting has to move into the log.
     static var wakeMedianOutOfDayErrorID: String { "STATS-657-WAKE-MEDIAN-OUT-OF-DAY" }
+
+    /// A ledger read that threw something the screen has no specific copy
+    /// for, wrapped so it can still reach the user as an alert (#721).
+    ///
+    /// The description is the screen's generic load-failure sentence rather
+    /// than the underlying error's: `errorDescription` is what the alert body
+    /// shows, and a decoder's English `debugDescription` in a Russian alert
+    /// tells the user nothing they can act on. The specifics belong in the
+    /// log, where `underlying` is printed in full.
+    struct UnexpectedLedgerFailure: LocalizedError {
+        let underlying: Error
+
+        var errorDescription: String? { Localized.text("statistics.error.message") }
+    }
 
     /// Outcome of resolving the snooze price.
     enum SnoozePriceState: Equatable {

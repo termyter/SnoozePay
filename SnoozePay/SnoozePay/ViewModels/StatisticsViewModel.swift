@@ -169,7 +169,25 @@ final class StatisticsViewModel {
     /// Fired when the transaction repository fails to decode the persisted
     /// ledger. The VC presents an alert so a corrupt blob shows the user a
     /// banner instead of a misleading "ноль откладываний" state (issue #72).
+    ///
+    /// Best-effort by construction: it is `nil` until `bindViewModel()` runs,
+    /// so a load that fails before then has no observer to tell. That is why
+    /// the log line in `handleLedgerLoadFailure(_:)` is emitted
+    /// unconditionally and says whether anyone was listening — the alert can
+    /// be missed, the trace cannot (#721).
     var onLoadError: ((LocalizedError) -> Void)?
+
+    /// Where a failed ledger read leaves its trace. Production writes to the
+    /// repository log; a test substitutes a collector, which is what makes
+    /// "this path leaves a trace" an assertion instead of a promise (#721).
+    ///
+    /// A closure for the same reason `onLoadError` is one. The trace is the
+    /// only evidence this branch ever ran — a `catch` whose logging nobody can
+    /// observe is one deletion away from the silent `catch` it replaces, and
+    /// that deletion is exactly what went unnoticed here for a year.
+    var logLoadFailure: (String) -> Void = { message in
+        AppLogger.repository.error("\(message, privacy: .public)")
+    }
 
     // MARK: - Init
 
@@ -242,11 +260,13 @@ final class StatisticsViewModel {
                     """
                 )
             }
-        } catch let error as TransactionRepository.RepositoryError {
-            resetLedgerState()
-            onLoadError?(error)
         } catch {
-            resetLedgerState()
+            // One exit for every thrown failure. The two-branch form this
+            // replaces treated "the ledger is corrupt" loudly and everything
+            // else — a decoder error of another type, a future throw from a
+            // neighbouring call, `CancellationError` — with an empty `catch`
+            // that left no alert, no log and no trace at all (#721).
+            handleLedgerLoadFailure(error)
         }
         wakeDays = capturedWakeDays
         wakeTimes = capturedWakeTimes
@@ -270,6 +290,54 @@ final class StatisticsViewModel {
         attemptedSnoozeDays = []
         streak = 0
         ledgerUnavailableReason = .ledgerUnreadable
+    }
+
+    /// Single exit for a ledger read that threw: withholds every
+    /// ledger-derived figure, records the failure, then offers it to the VC as
+    /// an alert — in that order, because only the first two are guaranteed to
+    /// happen.
+    ///
+    /// Internal so a test can drive the non-`RepositoryError` branch.
+    /// `fetchAllChecked()` throws nothing else *today*, which is precisely how
+    /// the old bare `catch` could stay empty without anyone noticing: a branch
+    /// no test can reach is a branch no one is watching.
+    ///
+    /// **No `assertionFailure` here**, unlike `AppHairline.width(for:)` or
+    /// `Localized.attributed`. Those trap on a programmer error — a trait read
+    /// before it had a screen, a template that lost its `%@` — states no user
+    /// input can produce. A corrupt `stored_transactions` is the opposite: a
+    /// data state a real install reaches through byte damage, a half-finished
+    /// migration or version skew, and it is the state a developer most needs a
+    /// live DEBUG session to inspect. Trapping would kill the build exactly
+    /// where the damaged blob is on screen. The log line is the whole remedy.
+    func handleLedgerLoadFailure(_ error: Error) {
+        resetLedgerState()
+
+        let presentable: LocalizedError
+        let errorID: String
+        if let repositoryError = error as? TransactionRepository.RepositoryError {
+            presentable = repositoryError
+            errorID = Self.ledgerUnreadableErrorID
+        } else {
+            // Shown rather than swallowed: the user is already looking at a
+            // screen with no numbers on it, and "не удалось загрузить" is a
+            // truer account of that than silence. The error ID separates the
+            // two causes for whoever reads the log.
+            presentable = UnexpectedLedgerFailure(underlying: error)
+            errorID = Self.unexpectedLedgerErrorID
+        }
+
+        // Emitted before the hand-off and independently of it: `onLoadError`
+        // is nil until the VC binds, so this used to evaporate through an
+        // optional chain. Whether anyone was listening is part of the record —
+        // "alert dropped" and "alert shown" are different incidents.
+        logLoadFailure(
+            """
+            [\(errorID)] Statistics ledger unreadable, every ledger-derived card withheld: \
+            \(String(describing: error)). Alert observer bound: \(onLoadError != nil).
+            """
+        )
+        onLoadError?(presentable)
     }
 
     /// Reads the alarms that price a saved morning.
