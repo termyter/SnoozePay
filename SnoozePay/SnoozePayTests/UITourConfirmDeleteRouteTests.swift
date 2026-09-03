@@ -34,6 +34,25 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     private var window: UIWindow!
     private var previousKeyWindow: UIWindow?
 
+    /// How the three phases of a test went, stamped as they happen and printed
+    /// only if a wait times out (#728).
+    ///
+    /// The red attempt of run 33698289556 is why these exist. It reported one
+    /// fact — "never presented" — and 23.4 s of wall clock around a 10 s wait,
+    /// which left every question open: whether the drain in `setUp` spent that
+    /// time, whether the wait overran its own budget, whether the run loop was
+    /// turning at all inside it. Three different mechanisms fit that log
+    /// equally well, and a flake this rare does not offer a second reading
+    /// unless the first one is instrumented.
+    private var setUpEvidence = "setUp: not stamped."
+    private var mountEvidence = "mount: not stamped."
+    private var waitEvidence = "wait: not stamped."
+
+    /// The poll interval of `waitForSheet`, shared with the census so the
+    /// summary compares surviving ticks against the rate they were due at
+    /// rather than a number written down twice.
+    private let pollInterval: TimeInterval = 0.05
+
     override func setUp() {
         super.setUp()
         // #618. The evidence for this class specifically: inside its own wait
@@ -42,12 +61,36 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         // / UITabBarController — objects belonging to *other* suites — and the
         // route's own presentation was delivered ~9 s behind its 0.8 s beat.
         // See `drainMainQueue` for why the fix is a drain and not a timeout.
-        drainMainQueue()
+        //
+        // Taken through `drainMainQueueOutcome` rather than `drainMainQueue` so
+        // the turns and the round trip survive into a later failure message:
+        // "the drain went quiet" and "the drain went quiet after 13 s of
+        // spending" are the same Bool and completely different diagnoses. The
+        // report on a non-quiet outcome is kept identical to the one
+        // `drainMainQueue` would have made — this is extra evidence, not a
+        // relaxed check.
+        let setUpStarted = Date()
+        let drain = drainMainQueueOutcome()
+        let drainElapsed = Date().timeIntervalSince(setUpStarted)
+        if !drain.isQuiet {
+            XCTFail(drain.diagnosis)
+        }
         previousKeyWindow = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
         window = makeHostWindow()
+        // The whole of setUp, not just the drain: building the host window and
+        // making it key is main-thread UIKit work like any other, and a stamp
+        // that skips it leaves a hole in the arithmetic against the duration
+        // XCTest reports. Only tearDown is outside every stamp here, so the
+        // remainder is named rather than left for the reader to hunt.
+        setUpEvidence = """
+            setUp took \(seconds(Date().timeIntervalSince(setUpStarted))), of which the \
+            drain \(seconds(drainElapsed)), ending \(drain); the host window took the \
+            rest. Anything unaccounted for against the test's reported duration is \
+            tearDown.
+            """
     }
 
     override func tearDown() {
@@ -65,13 +108,12 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// Deliberately waits only for "sheet is in the hierarchy", so a routing
     /// regression stays distinguishable from a layout-timing problem.
     func testConfirmDeleteRoutePresentsSheetOverTheEditForm() {
-        UITourLauncher.mount("confirm-delete", in: window)
+        mountRoute()
 
         guard let sheet = waitForPresentedSheet() else {
-            return XCTFail("""
-                `-uitour confirm-delete` never presented the confirmation sheet. \
-                \(presentationDiagnostics(rootedAt: window?.rootViewController))
-                """)
+            return XCTFail(
+                timeoutMessage("`-uitour confirm-delete` never presented the confirmation sheet.")
+            )
         }
 
         // The presenter must be the alarm-edit form, already on screen — this
@@ -95,7 +137,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// assert the check exists: without it, `root` ends up owning a
     /// presentation that nobody can ever see.
     func testConfirmDeleteRouteDoesNotPresentIntoADetachedPresenter() {
-        UITourLauncher.mount("confirm-delete", in: window)
+        mountRoute()
         guard let root = window.rootViewController else {
             return XCTFail("the route must mount a root before it presents anything")
         }
@@ -118,13 +160,12 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     func testConfirmDeleteSheetShowsTitleBodyAndBothActions() {
         let expectedBody = AlarmDeletionCopy.body(balance: BalanceService.shared.balance)
 
-        UITourLauncher.mount("confirm-delete", in: window)
+        mountRoute()
 
         guard let sheet = waitForSizedSheet() else {
-            return XCTFail("""
-                `-uitour confirm-delete` never presented a sized confirmation sheet. \
-                \(presentationDiagnostics(rootedAt: window?.rootViewController))
-                """)
+            return XCTFail(
+                timeoutMessage("`-uitour confirm-delete` never presented a sized confirmation sheet.")
+            )
         }
         let diagnostics = layoutDiagnostics()
 
@@ -150,13 +191,12 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// content actually lands INSIDE the window, which the wait predicate
     /// (size only) deliberately does not check.
     func testConfirmDeleteSheetContentIsOnScreen() {
-        UITourLauncher.mount("confirm-delete", in: window)
+        mountRoute()
 
         guard let sheet = waitForSizedSheet() else {
-            return XCTFail("""
-                `-uitour confirm-delete` never presented a sized confirmation sheet. \
-                \(presentationDiagnostics(rootedAt: window?.rootViewController))
-                """)
+            return XCTFail(
+                timeoutMessage("`-uitour confirm-delete` never presented a sized confirmation sheet.")
+            )
         }
         let diagnostics = layoutDiagnostics()
 
@@ -225,20 +265,96 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         return sheet
     }
 
+    /// The poll census and the elapsed stamp are the whole point of #728.
+    ///
+    /// A wait that ends empty says nothing about WHY, and the two candidates
+    /// need opposite fixes: a run loop that was not turning (the route's own
+    /// `asyncAfter` beat could not have been delivered either, so the drain in
+    /// `setUp` simply did not reach the backlog) versus a loop that turned all
+    /// the way through while the route declined to present. The census
+    /// separates them, and the elapsed-versus-budget figure catches the third
+    /// shape: an `XCTWaiter` cannot return while the loop is stuck, so a 10 s
+    /// wait that took 20 s IS the stall, measured from the outside.
     private func waitForSheet(
         timeout: TimeInterval,
         until isReady: @escaping (ConfirmDeleteAlarmViewController) -> Bool
     ) -> ConfirmDeleteAlarmViewController? {
         var found: ConfirmDeleteAlarmViewController?
         let ready = XCTestExpectation(description: "confirm-delete sheet ready")
-        let poll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] timer in
+        let started = Date()
+        var census = RunLoopCensus(interval: pollInterval, started: started)
+        let poll = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] timer in
+            census.record()
             guard let sheet = self?.presentedConfirmSheet(), isReady(sheet) else { return }
             found = sheet
             timer.invalidate()
             ready.fulfill()
         }
         defer { poll.invalidate() }
-        return XCTWaiter.wait(for: [ready], timeout: timeout) == .completed ? found : nil
+        let result = XCTWaiter.wait(for: [ready], timeout: timeout)
+        let elapsed = Date().timeIntervalSince(started)
+        waitEvidence = """
+            Wait: \(result) after \(seconds(elapsed)) against a \(seconds(timeout)) budget \
+            — \(census.summary())
+            """
+        return result == .completed ? found : nil
+    }
+
+    // MARK: - Evidence
+
+    /// Mounts the route and stamps when the call returned, so a later timeout
+    /// can say whether the wall clock went on `setUp`, on the mount, or inside
+    /// the wait. In the red attempt those three were indistinguishable.
+    private func mountRoute() {
+        let started = Date()
+        UITourLauncher.mount("confirm-delete", in: window)
+        mountEvidence = "Mount returned after \(seconds(Date().timeIntervalSince(started)))."
+    }
+
+    /// The one message every timed-out wait prints.
+    ///
+    /// Order matters. The presentation chain is read FIRST, at the moment the
+    /// wait gave up, so it describes that moment and not the aftermath. Only
+    /// then does the queue get probed, and the chain is read a SECOND time:
+    /// what the route managed to mount while the queue was being spun is the
+    /// discriminator this failure has been missing. Anything new means the beat
+    /// had been delivered and was merely late — starvation. A chain identical
+    /// to the first means nothing was in flight and the route never presented.
+    ///
+    /// Both chains, rather than "did the sheet appear", because this route is
+    /// two steps: `presentLater(nav)`, then `nav.present(sheet)` from the
+    /// form's completion (`UITourRoutes.confirm-delete`). A starved queue
+    /// delivers the overdue beat ahead of the probe, so the first turn mounts
+    /// the nav — but UIKit may call that completion a turn later, while the
+    /// drain returns as soon as one round trip lands inside its 0.1 s
+    /// threshold. Asking only about the sheet would then print "nothing was
+    /// running late" over a beat that was exactly that, which is the misreading
+    /// this whole message exists to prevent.
+    ///
+    /// Bounded at 5 s, and only ever reached on a failing test, so it cannot
+    /// grow a green run. It is emphatically not a wider timeout: by the time it
+    /// runs, the failure is already going to be recorded.
+    private func timeoutMessage(_ headline: String) -> String {
+        let chainAtTimeout = presentationDiagnostics(rootedAt: window?.rootViewController)
+        let probeStarted = Date()
+        let probe = drainMainQueueOutcome(cap: 5)
+        let probeElapsed = Date().timeIntervalSince(probeStarted)
+        let chainAfterProbe = presentationDiagnostics(rootedAt: window?.rootViewController)
+        let queue = probe.isQuiet
+            ? "a fresh probe came back in \(seconds(probeElapsed)) (\(probe))"
+            : probe.diagnosis
+        return """
+            \(headline) At the timeout, \(chainAtTimeout). \(setUpEvidence) \(mountEvidence) \
+            \(waitEvidence) After the timeout: \(queue). The chain then read: \
+            \(chainAfterProbe) — anything mounted during that probe, sheet or merely the \
+            edit form, means the route's beat had been delivered and was running late; \
+            a chain unchanged from the one above means nothing was in flight and the \
+            route never presented at all.
+            """
+    }
+
+    private func seconds(_ value: TimeInterval) -> String {
+        return String(format: "%.2f s", value)
     }
 
     // MARK: - Lookup
