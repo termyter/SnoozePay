@@ -90,7 +90,7 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
     /// that the failure is fabricated. That is a DEBUG diagnostic, and there is
     /// nothing for a translator to do with it.
     struct NotAuthorized: LocalizedError {
-        var errorDescription: String? { "AlarmKit не авторизован (UI-тур)" }  // i18n:exempt системное сообщение ОС
+        var errorDescription: String? { "AlarmKit не авторизован (UI-тур)" }  // i18n:exempt DEBUG-дубль сообщения ОС
     }
 }
 #endif

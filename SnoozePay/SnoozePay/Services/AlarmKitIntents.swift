@@ -51,7 +51,10 @@ import AppIntents
 @available(iOS 26.0, *)
 struct StopAlarmIntent: LiveActivityIntent {
 
-    /// # This literal cannot be moved into the catalogue yet (#723)
+    /// # This literal cannot be moved into the catalogue yet
+    ///
+    /// Established in #723 — which is **closed**, so do not read it as
+    /// "the blocker is gone". The open blocker is **#727**.
     ///
     /// It is not an oversight and not a missed migration: AppIntents exports
     /// intent titles at **build** time, so `title` cannot read anything at
