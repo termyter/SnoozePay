@@ -24,24 +24,16 @@ import XCTest
 ///
 /// # What layer 3 does and does not reach
 ///
-/// It reaches **22 of the 22 keys**: `SoundCatalogue` is the only production
-/// reader of all of them, and `entries` plus `customSlot` cover every one.
-/// `CreateAlarmViewModel.availableSounds` and `subtitle(for:)` are exercised on
-/// top of that.
+/// It reaches **22 of the 22 keys** through this type: `entries` plus
+/// `customSlot` cover every one, with `CreateAlarmViewModel.availableSounds`
+/// and `subtitle(for:)` exercised on top. The ten name keys have a second
+/// production reader — `AlarmsListViewModel.alarmSoundName(at:)` — which is
+/// covered from its own side in `AlarmsListSoundNameTests`.
 ///
-/// The names live under `common.*` because the words appear on two screens
-/// **today** — the picker row and the alarms-list cell's sound pill
-/// (`AlarmsListViewController:546` → `AlarmCell:397-401`). The rule in
-/// `Localized` is about where copy is *seen*, not about which key a call site
-/// happens to read, so the second screen still sourcing those words from its
-/// own ten literals does not weaken it.
-///
-/// What no assertion here can prove is *which* of the two sources the cell
-/// read, and ``testAlarmsListStillRendersTheSameWordsAsTheCatalogue`` does not
-/// try: it drives the un-migrated lookup table through the real view-model and
-/// asserts it agrees with the catalogue word for word. Today that pins the
-/// duplication as exact; after #599 collapses the table, the same test pins the
-/// collapse as changing no copy.
+/// The names live under `common.*` because the words appear on two screens —
+/// the picker row and the alarms-list cell's sound pill
+/// (`AlarmsListViewController:546` → `AlarmCell:397-401`). Both now read the
+/// same key: #599 deleted the ten literals the cell used to carry.
 ///
 /// One thing no layer here covers: `create_alarm.sound.subtitle.custom`
 /// («Скоро») reaches no screen at all. The picker substitutes
@@ -199,12 +191,14 @@ final class SoundCatalogueCopyTests: XCTestCase {
 
     // MARK: - The duplicate this slice unblocks
 
-    /// `AlarmsListViewModel` still renders sound names from ten private
-    /// literals of its own (#599's lane — untouched here). This asserts the two
-    /// sources say the same thing for every catalogued id, which is what makes
-    /// the collapse onto `Localized.text(SoundCatalogue.nameKey(for:))` a pure
-    /// deletion. If the collapse ever changes a word, this goes red on the word
-    /// rather than on the refactor.
+    /// Written while `AlarmsListViewModel` still rendered sound names from ten
+    /// private literals of its own, to prove the two sources agreed for every
+    /// catalogued id and so make the collapse a pure deletion. #599 has since
+    /// performed it, so this now asserts the surviving reader agrees with the
+    /// picker's — i.e. that no future change splits the two screens apart
+    /// again. The word-for-word check moved to `AlarmsListSoundNameTests`,
+    /// which holds the Russian as literals rather than reading it back out of
+    /// the catalogue both sides now share.
     func testAlarmsListStillRendersTheSameWordsAsTheCatalogue() {
         let suite = "test.soundCopy.list.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
