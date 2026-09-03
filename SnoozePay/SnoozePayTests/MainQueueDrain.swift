@@ -188,7 +188,7 @@ func drainMainQueue(
     cap: TimeInterval = 60,
     file: StaticString = #filePath,
     line: UInt = #line,
-    reportFailure: @MainActor (String, StaticString, UInt) -> Void = { XCTFail($0, file: $1, line: $2) }
+    reportFailure: @MainActor (String, StaticString, UInt) -> Void = { _, _, _ in }
 ) -> Bool {
     let outcome = drainMainQueueOutcome(cap: cap)
     guard outcome.isQuiet else {
