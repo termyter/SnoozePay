@@ -150,7 +150,7 @@ class SettingsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Настройки"
+        title = Localized.text("settings.title")
         // Settings is a child screen pushed from the gear icon on
         // AlarmsList/Wallet (#237) — inline title keeps the standard back
         // arrow visible and avoids flipping the shared nav bar into
@@ -254,14 +254,14 @@ extension SettingsViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard let sec = visibleSection(at: section) else { return nil }
         switch sec {
-        case .finance:            return "ФИНАНСЫ"
-        case .soundNotifications: return "ЗВУК И УВЕДОМЛЕНИЯ"
-        case .rules:              return "ПРАВИЛА"
-        case .referral:           return "ПРИГЛАСИТЬ ДРУГА"
-        case .other:              return "ПРОЧЕЕ"
+        case .finance:            return Localized.text("settings.section.finance")
+        case .soundNotifications: return Localized.text("settings.section.sound")
+        case .rules:              return Localized.text("settings.section.rules")
+        case .referral:           return Localized.text("settings.section.referral")
+        case .other:              return Localized.text("settings.section.other")
         // No header when the recovery row is hidden, so the empty section
         // collapses entirely rather than leaving a stray caps title.
-        case .diagnostics:        return isRecoveryVisible ? "ВОССТАНОВЛЕНИЕ" : nil
+        case .diagnostics:        return isRecoveryVisible ? Localized.text("settings.section.recovery") : nil
         }
     }
 
@@ -445,11 +445,11 @@ extension SettingsViewController: UITableViewDelegate {
             // copy the address and tell them so support is still reachable.
             UIPasteboard.general.string = AppConstants.supportEmail
             let alert = UIAlertController(
-                title: "Почта не настроена",
-                message: "Адрес поддержки \(AppConstants.supportEmail) скопирован в буфер обмена.",
+                title: Localized.text("settings.no_mail.title"),
+                message: Localized.format("settings.no_mail.message", AppConstants.supportEmail),
                 preferredStyle: .alert
             )
-            alert.addAction(UIAlertAction(title: "Ок", style: .default))
+            alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
             self?.present(alert, animated: true)
         }
     }
