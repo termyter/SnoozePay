@@ -422,9 +422,9 @@ extension SettingsViewController: UITableViewDelegate {
     private func handleOtherTap(row: Int) {
         switch OtherRow(rawValue: row) {
         case .privacy:
-            pushLegal(title: "Политика конфиденциальности")
+            pushLegal(title: Localized.text("settings.row.privacy_policy"))
         case .terms:
-            pushLegal(title: "Пользовательское соглашение")
+            pushLegal(title: Localized.text("settings.row.terms"))
         case .contact:
             openMailto()
         case .theme, .none:
