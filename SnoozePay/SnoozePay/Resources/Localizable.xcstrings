@@ -3758,7 +3758,7 @@
       }
     },
     "referral.row.friend_code_label" : {
-      "comment" : "Label of the friend-code field in the Settings referral section. Not referral.section.friend_code («КОД ДРУГА»), the caps caption over the same field on the standalone referral screen — a different case is different copy (#711).",
+      "comment" : "Label of the friend-code field in the Settings referral section. SPInput paints its label in the caps role and uppercases what it is handed, so this renders «КОД ДРУГА» on screen — same words as referral.section.friend_code, still a separate entry: that one is passed to the other screen's caption already uppercased, so lowercasing it there would show through and lowercasing this one would not. The case belongs to the view here and to the string there.",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {

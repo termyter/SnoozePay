@@ -194,9 +194,19 @@ final class SettingsScreenCopyTests: XCTestCase {
 
         assertRenders(["referral.row.my_code"], in: sut, at: IndexPath(row: 0, section: section))
         assertRenders(
-            ["referral.row.friend_code_label", "referral.row.friend_code_placeholder", "referral.button.apply"],
+            ["referral.row.friend_code_placeholder", "referral.button.apply"],
             in: sut,
             at: IndexPath(row: 1, section: section)
+        )
+
+        // `SPInput` paints its label in the caps role and uppercases whatever
+        // it is handed, so the field renders «КОД ДРУГА» from a catalogue entry
+        // that reads «Код друга». The rendered form is what to assert on
+        // (#719); asserting the entry verbatim fails on copy that is correct.
+        let field = Self.strings(in: retained(sut.cell(at: IndexPath(row: 1, section: section))))
+        XCTAssertTrue(
+            field.contains(Localized.text("referral.row.friend_code_label").uppercased()),
+            "the friend-code field renders \(field) — not the copy of referral.row.friend_code_label"
         )
 
         let caption = Self.strings(in: retained(sut.cell(at: IndexPath(row: 2, section: section))))
