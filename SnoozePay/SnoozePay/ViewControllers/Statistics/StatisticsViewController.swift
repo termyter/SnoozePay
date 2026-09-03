@@ -336,19 +336,27 @@ final class StatisticsViewController: UIViewController {
             return
         }
 
-        AppLogger.ui.error(
-            """
-            [\(StatisticsViewModel.alertShownErrorID, privacy: .public)] Statistics load \
-            error shown to the user: \(message, privacy: .public)
-            """
-        )
         let alert = UIAlertController(
             title: Localized.text("statistics.error.title"),
             message: message,
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        // Logged from the completion, not before the call. The production
+        // caller is `viewWillAppear`, where UIKit answers a `present` with
+        // "whose view is not in the window hierarchy" and does nothing —
+        // leaving `presentedViewController` nil, so the drop guard above stays
+        // silent too. A line written ahead of the call would then assert an
+        // alert that never appeared, which is the same defect class #721
+        // exists to close, only pointing the other way.
+        present(alert, animated: true) {
+            AppLogger.ui.error(
+                """
+                [\(StatisticsViewModel.alertShownErrorID, privacy: .public)] Statistics load \
+                error shown to the user: \(message, privacy: .public)
+                """
+            )
+        }
     }
 
     /// The line to log when an incoming load-error alert cannot be shown, or

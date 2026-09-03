@@ -200,15 +200,28 @@ final class StatisticsLoadFailureTraceTests: XCTestCase {
 /// The seam needs no injection — `StatisticsViewController.viewModel` and
 /// `StatisticsViewModel.onLoadError` are both internal and `bindViewModel()`
 /// runs in `viewDidLoad`, so `loadViewIfNeeded()` plus a call through the
-/// closure drives the real presentation path. `viewWillAppear` is never
-/// reached, so no production `loadData()` runs and the shared repositories
-/// stay untouched.
+/// closure drives the real presentation path.
+///
+/// The appearance cycle **does** run: `makeKeyAndVisible()` triggers it, so
+/// `viewWillAppear` fires and with it a production `loadData()` against
+/// `TransactionRepository.shared` / `UserDefaults.standard` — the same fact
+/// `NavigationBarSymmetryTests` and `WalletLightThemeTests` write down for
+/// their own windows. Harmless today, because nothing in this target writes a
+/// corrupt `stored_transactions` into the standard defaults. The day something
+/// does, that load would raise a *real* alert carrying this suite's expected
+/// title and body, and both tests below would go green for the wrong reason —
+/// which is what the precondition in `makeMountedController()` turns red.
 @MainActor
 final class StatisticsLoadErrorAlertTests: XCTestCase {
 
     /// Held for the test's lifetime — a released window takes the controller
     /// under assertion with it.
     private var window: UIWindow!
+    /// Restored in `tearDown`. A suite that takes key status and never hands
+    /// it back leaves every later presentation aimed at a window nobody is
+    /// looking at — the failure `UITourConfirmDeleteRouteTests` was burned by
+    /// and which is open right now as #728.
+    private var previousKeyWindow: UIWindow?
 
     override func setUp() {
         super.setUp()
@@ -216,6 +229,10 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         // would otherwise spend the backlog the ~1000 preceding synchronous
         // tests left queued inside its own wait (#618, #693).
         drainMainQueue()
+        previousKeyWindow = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
         window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
     }
 
@@ -224,6 +241,8 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         window?.rootViewController = nil
         window?.isHidden = true
         window = nil
+        previousKeyWindow?.makeKeyAndVisible()
+        previousKeyWindow = nil
         super.tearDown()
     }
 
@@ -232,6 +251,13 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.loadViewIfNeeded()
+        // Mounting runs the appearance cycle, and `viewWillAppear` loads the
+        // real ledger. Anything on screen at this point came from that load,
+        // not from the closure these tests drive.
+        XCTAssertNil(
+            controller.presentedViewController,
+            "mounting already presented something — the assertions below would grade the wrong alert"
+        )
         return controller
     }
 
@@ -244,7 +270,12 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
     /// a bare "Asynchronous wait failed".
     private func waitForAlert(on controller: UIViewController) -> UIAlertController? {
         let presented = expectation(description: "load error alert presented")
-        let deadline = Date().addingTimeInterval(4)
+        // 20 s to match the sibling presentation suites. The wait exists to
+        // tell "this never presents" from "this presents late"; on a saturated
+        // three-core runner a tight deadline answers "the runner was busy"
+        // instead, and seconds shaved off a 214–333 s job buy nothing against
+        // a flaky red.
+        let deadline = Date().addingTimeInterval(20)
         func poll() {
             if controller.presentedViewController != nil || Date() >= deadline {
                 presented.fulfill()
@@ -253,7 +284,7 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { poll() }
         }
         poll()
-        wait(for: [presented], timeout: 5)
+        wait(for: [presented], timeout: 25)
         return controller.presentedViewController as? UIAlertController
     }
 
@@ -296,8 +327,12 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             controller.presentedViewController === firstAlert,
             "a second alert must not replace or stack on the first"
         )
+        // The production sentence rather than a literal: the line has to read
+        // as the message the user did not get, and the test above already
+        // pins that this is the message the alert carries.
+        let unshownMessage = Localized.text("wallet.error.load_failed")
         let diagnostic = StatisticsViewController.droppedAlertDiagnostic(
-            presenting: firstAlert, message: "message the user never saw"
+            presenting: firstAlert, message: unshownMessage
         )
         XCTAssertNotNil(diagnostic, "a dropped alert with no log line is the defect #721 is about")
         XCTAssertTrue(
@@ -309,7 +344,7 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             "the line must name what blocked the alert; it reads «\(diagnostic ?? "")»"
         )
         XCTAssertTrue(
-            diagnostic?.contains("message the user never saw") == true,
+            diagnostic?.contains(unshownMessage) == true,
             "the unshown message is the part worth recovering; it reads «\(diagnostic ?? "")»"
         )
     }
