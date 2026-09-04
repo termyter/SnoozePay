@@ -117,7 +117,12 @@ final class CreateAlarmUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(explanation.exists,
                       "The alert must say the alarm would not ring, not just that something failed")
-        alert.buttons["OK"].tap()
+        // Dismissed by position, not by title. #664 routed this button through
+        // `common.button.ok`, so its label went from "OK" to «Ок» — a query on
+        // the old text matches nothing and the tap fails on a missing element.
+        // The alert is already identified by its own title above; the button is
+        // its only one. Same reason as FiringFlowUITests.
+        alert.buttons.element(boundBy: 0).tap()
 
         // And the form is still up: the user keeps the form they were on
         // instead of landing back on a list that implies success.
