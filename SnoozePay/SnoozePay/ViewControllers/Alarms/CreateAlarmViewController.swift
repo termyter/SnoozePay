@@ -330,7 +330,7 @@ final class CreateAlarmViewController: UIViewController {
             message: error.errorDescription ?? Localized.text("create_alarm.error.retry"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 
