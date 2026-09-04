@@ -30,22 +30,39 @@ enum AppLogger {
     /// `io.mobilife.SnoozePay` (#475/#476), so a support grep written from the
     /// docstring above it matched nothing at all (#670).
     ///
-    /// Internal rather than `private` for three readers: ``AppLogCategory``
-    /// builds the loggers from it, the older `OSLog(subsystem:category:)` sites
-    /// in `Services/` and ``Money`` pass it straight through, and
-    /// `AppLoggerSubsystemTests` reads it back.
-    static let subsystem = Bundle.main.bundleIdentifier ?? AppLogger.fallbackSubsystem
+    /// It was `fileprivate`, which already served ``AppLogCategory`` — that
+    /// lives in this file. Internal is for the two readers outside it: the
+    /// older `OSLog(subsystem:category:)` sites in `Services/` and ``Money``,
+    /// and `AppLoggerSubsystemTests`.
+    static let subsystem: String = {
+        guard let identifier = Bundle.main.bundleIdentifier else {
+            // Unreachable in all three targets this project has — see
+            // ``fallbackSubsystem``. The trap is what keeps that a checked
+            // claim rather than a remembered one, and it costs nothing while
+            // the claim holds. Were it ever to fire in release, the lines
+            // would carry the app's subsystem from a process that is not the
+            // app: a support grep would find them and believe them.
+            assertionFailure(
+                "Bundle.main declares no CFBundleIdentifier; logs would be misattributed to the app"
+            )
+            return AppLogger.fallbackSubsystem
+        }
+        return identifier
+    }()
 
     /// What ``subsystem`` falls back to when `Bundle.main` declares no
     /// `CFBundleIdentifier`.
     ///
-    /// `bundleIdentifier` is `String?`, so the `??` arm has to exist; it is not
-    /// dead, it is just for a different host. The app's `Info.plist` always
-    /// declares one, and this target's unit tests are injected into the app
-    /// process via `TEST_HOST`, so neither ever reaches here. A bundle-less
-    /// host — a bare `xctest` runner, a command-line tool linking the module —
-    /// does, and it logs under the app's identifier as of #475/#476 rather than
-    /// under an empty subsystem that unified logging would happily accept.
+    /// `bundleIdentifier` is `String?`, so the arm has to exist. It is not
+    /// reachable from any target this project has, and saying where the value
+    /// comes from is the point: `Info.plist` in the repository declares no
+    /// `CFBundleIdentifier` at all — the build injects it from
+    /// `PRODUCT_BUNDLE_IDENTIFIER` under `GENERATE_INFOPLIST_FILE = YES`, and
+    /// that setting is a no-touch zone. This target's unit tests run inside the
+    /// app process via `TEST_HOST`, and the UI-test runner never links this
+    /// module, so neither reaches here either. What would is a bundle-less host
+    /// this project does not build: a command-line tool linking the module.
+    /// (Not `xctest` — that tool carries `com.apple.dt.xctest.tool` of its own.)
     ///
     /// Being a literal, this is the one line in the file that can go stale the
     /// same way #670 did.

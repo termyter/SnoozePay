@@ -34,15 +34,19 @@ final class AppLoggerSubsystemTests: XCTestCase {
     /// Not the assertion — the thing the other two assertions stand on.
     ///
     /// `TEST_HOST` is what makes `Bundle.main` the app here. Dropping it is a
-    /// live idea (it is the only way to get the `Unit tests` job under ~200 s,
-    /// per CLAUDE.md), and the day it happens `Bundle.main` becomes the bare
-    /// `xctest` runner: ``testSubsystemFollowsTheRunningBundleIdentifier``
-    /// would then compare the app's subsystem against the RUNNER's identifier
-    /// and start failing for a reason that has nothing to do with logging,
-    /// while ``testTheFallbackLiteralStillSpellsTheAppsBundleIdentifier`` would
-    /// stop watching anything at all.
+    /// live idea — per CLAUDE.md it is the only way to get the `Unit tests` job
+    /// under ~200 s — so it is worth writing down what actually happens that
+    /// day, rather than what one would guess:
     ///
-    /// This test fails first, and its message names the cause.
+    /// - this test goes RED: `Bundle.main` is the runner, not the app;
+    /// - ``testTheFallbackLiteralStillSpellsTheAppsBundleIdentifier`` goes RED
+    ///   too, comparing the literal against the runner's identifier;
+    /// - ``testSubsystemFollowsTheRunningBundleIdentifier`` stays GREEN, because
+    ///   ``AppLogger/subsystem`` resolves in whatever process runs it, so both
+    ///   sides of that assertion move together.
+    ///
+    /// Two reds, one cause. This test's message names it, so the cheap reading
+    /// of the failure — «the logging tests broke» — is contradicted on screen.
     func testTheseTestsRunInsideTheAppProcess() {
         XCTAssertEqual(
             Bundle.main.bundleIdentifier, Self.appBundleID,
@@ -72,9 +76,11 @@ final class AppLoggerSubsystemTests: XCTestCase {
         )
     }
 
-    /// The `??` arm is a literal, so it is the part that can go stale again the
-    /// way #670 did — and it is the only part of this file a bundle-identifier
-    /// change makes red on its own.
+    /// The `??` arm is a literal, so it is the part of ``AppLogger`` that can go
+    /// stale again the way #670 did. It is not the only red a bundle-identifier
+    /// change produces: ``testTheseTestsRunInsideTheAppProcess`` pins the same
+    /// string against the same source and reddens with it. Two failures, one
+    /// edit — the message on each says which literal to move.
     ///
     /// The fallback is unreachable in the app and in this target (both have a
     /// `CFBundleIdentifier`), so nothing else would ever notice it rotting. It
