@@ -1897,6 +1897,18 @@
         }
       }
     },
+    "create_alarm.volume.title" : {
+      "comment" : "Alarm editor: title of the volume row, and the caps title of the volume screen it pushes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Громкость"
+          }
+        }
+      }
+    },
     "create_alarm.volume.value_fade" : {
       "comment" : "Trailing value of a volume row when fade-in is armed. %lld is the percentage; without fade-in the row shows the bare percentage and needs no copy.",
       "extractionState" : "manual",
