@@ -227,20 +227,50 @@ final class ProgressiveCardSurface: UIView {
     /// having to re-`configure`.
     private var isPainTinted = false
 
-    /// The card's corner radius. `radius={20}` on this card in the canon
-    /// (`SPScreensV2.jsx`), which is also what the `.insetGrouped` section
-    /// is rounded to. It used to be `AppRadius.sm` (12): the fill was
-    /// clipped to the section's larger arc while the border was stroked
-    /// along the smaller one, so the outline ran along the straight edges
-    /// and disappeared around every corner.
-    private static let cardRadius = AppRadius.lg
+    /// The card's corner radius — deliberately LARGER than the canon's
+    /// `radius={20}` (`SPScreensV2.jsx`), because on this screen 20 is not
+    /// reachable.
+    ///
+    /// `UITableView` masks an `.insetGrouped` cell's `backgroundView` to the
+    /// SECTION's own rounded rect, whose radius measured ~25pt on iOS 26.
+    /// The mask is installed after our `layoutSubviews`, so a runtime dump
+    /// taken there reports `mask=nil` and is misleading. What gives it away
+    /// is that the rendered corner does not follow this constant at all:
+    /// set to 4, the card still drew a ~25pt arc, and a green fill proved the
+    /// pixels were ours.
+    ///
+    /// Any outline we stroke at a radius BELOW the mask's bulges past it at
+    /// the corner and is clipped away — which is exactly the reported bug:
+    /// a solid line along the straight edges, nothing on the arc. Measured
+    /// with a 2pt probe, 12 and 20 failed identically. Above the mask's
+    /// radius our own shape has less material than the mask everywhere, so
+    /// nothing is clipped and fill and stroke describe one curve.
+    /// `AppRadius.xl` (28) is the smallest step on the scale that clears it.
+    ///
+    /// `CardRowBackgroundView` has the same clipped corner and always has —
+    /// invisibly, because `stroke1` is one device pixel. Here the outline is
+    /// pain-tinted, so the gap reads. Raising it app-wide is #689's fork.
+    private static let cardRadius = AppRadius.xl
+
+    /// The card's outline, stroked as a path rather than set as
+    /// `layer.borderWidth`.
+    ///
+    /// `borderWidth` is rendered by CoreAnimation as the ring between the
+    /// layer's rounded rect and an inset one, and that ring is NOT of uniform
+    /// width around a corner. Measured on this card with a 2pt probe: 1.3pt of
+    /// stroke at each tangent, 0.2pt at 20° and 70° into the arc, and nothing
+    /// at all at 45°. A stroked path has one line width everywhere, which is
+    /// why `CardRowBackgroundView` already draws its outline this way.
+    private let outline = CAShapeLayer()
 
     private let gradient: CAGradientLayer = {
         let layer = CAGradientLayer()
         layer.startPoint = CGPoint(x: 0, y: 0)
         layer.endPoint = CGPoint(x: 1, y: 1)
         layer.cornerRadius = ProgressiveCardSurface.cardRadius
-        layer.cornerCurve = .continuous
+        // Same curve as the surface it sits on, or the ramp's own corner
+        // shows past the card's on the arc.
+        layer.cornerCurve = .circular
         // `cornerRadius` alone does not clip a CAGradientLayer: the ramp is
         // the layer's CONTENT, and content is only clipped when the layer
         // masks. Without this the armed card painted a square gradient
@@ -260,14 +290,24 @@ final class ProgressiveCardSurface: UIView {
         // this card was the last one still reading a different dark grey.
         backgroundColor = AppColors.bg1
         layer.cornerRadius = ProgressiveCardSurface.cardRadius
-        // `.continuous`, matching the squircle UIKit masks the `.insetGrouped`
-        // section to. A default `.circular` corner of the same radius bulges
-        // OUTSIDE that mask around the 45° point, so the border was clipped
-        // away on every arc and survived only along the straight edges — read
-        // as "the outline is missing / a different colour in the corners".
-        layer.cornerCurve = .continuous
+        // `.circular` EXPLICITLY: iOS 26 defaults `cornerCurve` to
+        // `.continuous`, and a squircle of this radius carries its corner
+        // ~1.4x further from the tangent than the circular arc `outline`
+        // strokes. Leaving the default would put the fill back outside the
+        // stroke and reopen the gap this radius was raised to close.
+        layer.cornerCurve = .circular
+        // Deliberately NOT `.continuous`. `backgroundColor` is clipped to the
+        // squircle a continuous curve describes, but `borderWidth` is still
+        // stroked along the CIRCULAR arc of the same radius — and the two
+        // diverge most at 45°. Measured on this card at a 2pt probe width:
+        // 1.3pt of stroke at either tangent, 0.2pt at 20° and 70°, and NONE
+        // at 45°, all of it sitting inside the fill edge (r 17.7-19.0 against
+        // a fill boundary at 20). Circular corners keep fill and border on
+        // one curve, which is what every other card in the app already uses.
         layer.masksToBounds = false
         layer.addSublayer(gradient)
+        outline.fillColor = UIColor.clear.cgColor
+        layer.addSublayer(outline)
         applyThemedDecoration()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: ProgressiveCardSurface, _) in
             view.applyThemedDecoration()
@@ -281,6 +321,15 @@ final class ProgressiveCardSurface: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         gradient.frame = bounds
+        outline.frame = bounds
+        // Inset by half the line width so the stroke lands ON the card's
+        // edge instead of straddling it, and pull the radius in by the
+        // same amount so the inset path stays concentric with the fill.
+        let half = outline.lineWidth / 2
+        outline.path = UIBezierPath(
+            roundedRect: bounds.insetBy(dx: half, dy: half),
+            cornerRadius: max(0, ProgressiveCardSurface.cardRadius - half)
+        ).cgPath
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: ProgressiveCardSurface.cardRadius).cgPath
         // Light mode's `shadow1` is a two-stop recipe; the narrow ambient stop
         // lives on a sibling sublayer that has to track the host's bounds.
@@ -343,10 +392,11 @@ final class ProgressiveCardSurface: UIView {
         // Whether one device pixel of `stroke1` (1.183:1 on white) is a
         // visible edge at all is a real question, and an app-wide one — the
         // fork is written up on #689 and belongs to the PM.
-        layer.borderWidth = hairlineWidth
+        outline.lineWidth = hairlineWidth
         let stroke = isPainTinted
             ? AppColors.pain500.resolvedColor(with: traitCollection).withAlphaComponent(0.25)
             : AppColors.stroke1.resolvedColor(with: traitCollection)
-        layer.borderColor = stroke.cgColor
+        outline.strokeColor = stroke.cgColor
+        setNeedsLayout()
     }
 }

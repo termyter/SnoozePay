@@ -124,8 +124,8 @@ final class CreateAlarmLightThemeTests: XCTestCase {
         let light = hostedProgressiveCard(painTinted: false, style: .light)
         let dark = hostedProgressiveCard(painTinted: false, style: .dark)
         XCTAssertNotEqual(
-            light.layer.borderColor.map { hex(UIColor(cgColor: $0)) },
-            dark.layer.borderColor.map { hex(UIColor(cgColor: $0)) }
+            strokedOutline(of: light)?.strokeColor.map { hex(UIColor(cgColor: $0)) },
+            strokedOutline(of: dark)?.strokeColor.map { hex(UIColor(cgColor: $0)) }
         )
         XCTAssertNotEqual(light.layer.shadowRadius, dark.layer.shadowRadius)
     }
@@ -134,7 +134,7 @@ final class CreateAlarmLightThemeTests: XCTestCase {
     func testProgressiveCard_armedOutlineIsPainTinted() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let armed = hostedProgressiveCard(painTinted: true, style: style)
-            guard let border = armed.layer.borderColor else {
+            guard let border = strokedOutline(of: armed)?.strokeColor else {
                 return XCTFail("armed card has no outline in \(style.debugName)")
             }
             let expected = AppColors.pain500.resolved(style).withAlphaComponent(0.25)
@@ -181,12 +181,15 @@ final class CreateAlarmLightThemeTests: XCTestCase {
             )
             for armed in [false, true] {
                 let card = hostedProgressiveCard(painTinted: armed, style: style)
+                let width = try XCTUnwrap(
+                    strokedOutline(of: card)?.lineWidth,
+                    "\(style.debugName), armed: \(armed) — the card draws no stroked outline"
+                )
                 XCTAssertEqual(
-                    card.layer.borderWidth, sibling, accuracy: 0.001,
+                    width, sibling, accuracy: 0.001,
                     """
                     \(style.debugName), armed: \(armed) — the progressive card draws a \
-                    \(card.layer.borderWidth)pt outline where its sibling card row draws \
-                    \(sibling)pt
+                    \(width)pt outline where its sibling card row draws \(sibling)pt
                     """
                 )
             }
@@ -205,7 +208,9 @@ final class CreateAlarmLightThemeTests: XCTestCase {
         let cardLight = hostedProgressiveCard(painTinted: false, style: .light)
         let cardDark = hostedProgressiveCard(painTinted: false, style: .dark)
         XCTAssertEqual(
-            cardLight.layer.borderWidth, cardDark.layer.borderWidth, accuracy: 0.001,
+            try XCTUnwrap(strokedOutline(of: cardLight)?.lineWidth),
+            try XCTUnwrap(strokedOutline(of: cardDark)?.lineWidth),
+            accuracy: 0.001,
             "the progressive card's hairline is theme-dependent"
         )
     }
@@ -320,10 +325,26 @@ final class CreateAlarmLightThemeTests: XCTestCase {
             style: style,
             size: CGSize(width: 343, height: 52)
         )
-        return row.layer.sublayers?
+        return strokedOutline(of: row)?.lineWidth
+    }
+
+    /// The stroked outline of a card surface, selected by `strokeColor != nil`.
+    ///
+    /// Both card classes draw their outline as a `CAShapeLayer` path rather
+    /// than `layer.borderWidth`: an `.insetGrouped` cell's `backgroundView`
+    /// is masked to the section's own ~25pt rounded rect, so a border laid on
+    /// a tighter arc is clipped away exactly at the corners. Reading
+    /// `layer.borderWidth` here would therefore measure a property nothing
+    /// draws from.
+    ///
+    /// ⚠️ Never select by position. `AppShadow.ambientShadow1` is also a
+    /// `CAShapeLayer`, sits at sublayer index 0 in light mode, is fill-only,
+    /// and carries `CAShapeLayer`'s default `lineWidth` of 1 — so `.first`
+    /// returns a shadow's default in light and the real outline in dark.
+    private func strokedOutline(of view: UIView) -> CAShapeLayer? {
+        view.layer.sublayers?
             .compactMap { $0 as? CAShapeLayer }
-            .first { $0.strokeColor != nil }?
-            .lineWidth
+            .first { $0.strokeColor != nil }
     }
 
     private func hostedProgressiveCard(
