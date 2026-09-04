@@ -533,6 +533,22 @@ final class AlarmEditorCopyTests: XCTestCase {
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.preview_caps")))
     }
 
+    // MARK: - The guard itself
+
+    /// The guard is only as strong as the spellings it recognises, and nothing
+    /// else asserts on it: every other test here would stay green if it stopped
+    /// matching. A caps section label renders `Localized.text(key).uppercased()`,
+    /// so a missed lookup reaches the screen as `CREATE_ALARM.VOLUME.TITLE` —
+    /// both spellings have to be a failure.
+    func testKeyLeakGuardCatchesLowerAndUpperCasedKeys() {
+        let key = "create_alarm.volume.title"
+        for leaked in [key, key.uppercased()] {
+            XCTExpectFailure("the guard has to name «\(leaked)»") {
+                Self.assertNoKeysLeaked(in: ["Громкость", leaked])
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     /// Every piece of text the subtree renders — plain labels, attributed
@@ -587,14 +603,23 @@ final class AlarmEditorCopyTests: XCTestCase {
         return own + view.subviews.flatMap { textFields(in: $0) }
     }
 
-    /// A key that reached the screen looks like `create_alarm.volume.title`.
+    /// A key that reached the screen looks like `create_alarm.volume.title` —
+    /// or `CREATE_ALARM.VOLUME.TITLE`, because the caps section labels
+    /// upper-case whatever `Localized.text` hands back, the key included when
+    /// the lookup missed. Matching the lower-case spelling alone let those four
+    /// call sites walk a leaked key past the guard (#713).
     private static func assertNoKeysLeaked(
         in rendered: [String],
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        for key in allKeys where rendered.contains(key) {
-            XCTFail("«\(key)» rendered as its own key — the catalogue lookup missed", file: file, line: line)
+        for key in allKeys {
+            let spellings = [key, key.uppercased()]
+            guard let leaked = spellings.first(where: { rendered.contains($0) }) else { continue }
+            XCTFail(
+                "«\(leaked)» rendered as its own key — the catalogue lookup missed",
+                file: file, line: line
+            )
         }
     }
 }
