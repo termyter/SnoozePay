@@ -304,7 +304,13 @@ extension StatisticsViewController {
         var buttons: [UIView] = [caps, streakBtn]
 
         if referralShortcutEnabled {
-            let referralBtn = SPButton(title: "Реферальная программа", variant: .quiet, size: .md, fullWidth: true)
+            // English like every other button in this row. The row is built
+            // only under `#if DEBUG` (`StatisticsViewController:247`), so this
+            // string never ships and spending a catalogue key on it would put
+            // a developer shortcut in front of translators. #600's acceptance
+            // — no Cyrillic literals left in this layer — is met either way;
+            // matching the siblings is the cheaper of the two.
+            let referralBtn = SPButton(title: "Referral program", variant: .quiet, size: .md, fullWidth: true)
             referralBtn.addTarget(self, action: #selector(debugReferralTapped), for: .touchUpInside)
             buttons.append(referralBtn)
         }
