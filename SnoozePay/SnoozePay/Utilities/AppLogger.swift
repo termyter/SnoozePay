@@ -141,8 +141,12 @@ extension AppLogger {
     ///
     /// ⚠️ Nesting SHADOWS rather than chains: while an inner sink is installed
     /// the outer one sees nothing, and gets the lines back only after the inner
-    /// scope ends. `testWithTestSink_restoresThePreviousSink_evenWhenTheBodyThrows`
-    /// pins that. A helper that quietly opens its own window inside someone
+    /// scope ends. That follows from there being ONE global, the same way
+    /// case-to-logger follows from the table — no test asserts it, and
+    /// `testWithTestSink_restoresThePreviousSink_evenWhenTheBodyThrows` pins
+    /// only the restoring half (its inner body emits nothing, so a chaining
+    /// implementation would pass it too). The consequence is worth knowing
+    /// anyway: a helper that quietly opens its own window inside someone
     /// else's would make the outer `count ==` short by exactly the lines it
     /// swallowed, with nothing red to say so.
     ///
@@ -171,8 +175,12 @@ extension AppLogger {
     /// Writes one line to `category`'s logger — or to the installed test sink.
     ///
     /// The message is interpolated `privacy: .public`, which is what every call
-    /// site moved onto this seam already did explicitly, so nothing about what
-    /// reaches unified logging changes. Pass only text that is safe to make
+    /// site moved onto this seam already did explicitly, so the TEXT that
+    /// reaches unified logging is unchanged. Its shape is not: `Logger.error`
+    /// stores a format string plus its arguments as separate fields, `emit`
+    /// stores one already-built `%{public}s`. Nothing the app or a support grep
+    /// reads depends on that, but a Console predicate written against an
+    /// argument field would. Pass only text that is safe to make
     /// public: this seam makes `.public` the frictionless choice, and the file
     /// header's posture — identifiers do not leak by default — has to be kept
     /// by the caller here. An identifier still belongs at a direct

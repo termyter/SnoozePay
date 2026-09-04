@@ -372,6 +372,14 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             diagnostic?.contains("UIAlertController") == true,
             "the line must name what blocked the alert; it reads «\(diagnostic ?? "")»"
         )
+        // Ties the two halves together. Without it, `presentRepositoryError`
+        // could emit a bare grep handle and the assertions above would still
+        // pass: the ones on `dropLines` only look for the handle, and the ones
+        // on `diagnostic` test a value this test built itself.
+        XCTAssertEqual(
+            dropLines.first?.2, diagnostic,
+            "the emitted line must BE the diagnostic, not merely carry its handle"
+        )
         XCTAssertTrue(
             diagnostic?.contains(unshownMessage) == true,
             "the unshown message is the part worth recovering; it reads «\(diagnostic ?? "")»"

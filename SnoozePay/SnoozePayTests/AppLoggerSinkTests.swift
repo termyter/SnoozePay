@@ -103,6 +103,11 @@ final class AppLoggerSinkTests: XCTestCase {
         struct Boom: Error {}
         var outer: [String] = []
 
+        // `try` on the OUTER call is required, not decorative: `withTestSink`
+        // is `rethrows`, and the `try` inside `XCTAssertThrowsError`'s
+        // autoclosure makes the enclosing `perform` closure throwing as far as
+        // rethrows-checking is concerned. Dropping it does not warn — it fails
+        // to compile.
         try AppLogger.withTestSink({ outer.append($2) }, perform: {
             XCTAssertThrowsError(
                 try AppLogger.withTestSink({ _, _, _ in }, perform: { throw Boom() })
