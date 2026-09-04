@@ -1,3 +1,4 @@
+import os
 import UIKit
 import XCTest
 @testable import SnoozePay
@@ -321,11 +322,31 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         let firstAlert = waitForAlert(on: controller)
         XCTAssertNotNil(firstAlert, "test precondition: the first alert must be up")
 
-        controller.viewModel.onLoadError?(decodeFailure())
+        // Through the seam (#731), so this asserts the line was EMITTED, not
+        // merely that `droppedAlertDiagnostic` can build one. Deleting the
+        // `AppLogger.emit` in `presentRepositoryError` used to leave this whole
+        // suite green: the guard still returned, the second error still
+        // vanished, and the pure-function assertions below never noticed —
+        // which is verbatim the #721 defect this test exists to close.
+        //
+        // No new wall-clock: this branch returns synchronously without
+        // presenting, and the only wait in the test is the one already paid
+        // above for the FIRST alert.
+        var dropped: [(AppLogCategory, OSLogType, String)] = []
+        AppLogger.withTestSink({ dropped.append(($0, $1, $2)) }, perform: {
+            controller.viewModel.onLoadError?(decodeFailure())
+        })
 
         XCTAssertTrue(
             controller.presentedViewController === firstAlert,
             "a second alert must not replace or stack on the first"
+        )
+        XCTAssertEqual(dropped.count, 1, "the dropped alert must leave exactly one line")
+        XCTAssertEqual(dropped.first?.0, .ui, "a screen-level drop belongs to the UI category")
+        XCTAssertEqual(dropped.first?.1, .error, "a warning the user never saw is not a notice")
+        XCTAssertTrue(
+            dropped.first?.2.contains(StatisticsViewModel.alertDroppedErrorID) == true,
+            "the emitted line must carry the grep handle; it reads «\(dropped.first?.2 ?? "")»"
         )
         // The production sentence rather than a literal: the line has to read
         // as the message the user did not get, and the test above already

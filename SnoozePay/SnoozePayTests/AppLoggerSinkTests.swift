@@ -25,6 +25,7 @@ final class AppLoggerSinkTests: XCTestCase {
     private var testDefaults: UserDefaults!
     private var txRepo: TransactionRepository!
     private var wakeStore: WakeEventStore!
+    private var alarmRepo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
@@ -32,6 +33,11 @@ final class AppLoggerSinkTests: XCTestCase {
         testDefaults = UserDefaults(suiteName: suiteName)!
         wakeStore = WakeEventStore(defaults: testDefaults)
         txRepo = TransactionRepository(defaults: testDefaults, wakeStore: wakeStore)
+        // Injected rather than left on `.shared`: the ledger side is isolated to
+        // a UUID suite, and an alarm store still reading `UserDefaults.standard`
+        // would leave `lines.count == 1` protected only by the accident that
+        // `loadSnoozePrice()`'s catch has not been migrated to the seam yet.
+        alarmRepo = AlarmRepository(defaults: testDefaults)
     }
 
     override func tearDown() {
@@ -50,6 +56,7 @@ final class AppLoggerSinkTests: XCTestCase {
         StatisticsViewModel(
             repository: txRepo,
             wakeStore: wakeStore,
+            alarmRepository: alarmRepo,
             defaults: testDefaults,
             calendar: StatisticsViewModel.mondayFirstCalendar
         )
@@ -69,9 +76,9 @@ final class AppLoggerSinkTests: XCTestCase {
         corruptTheLedger()
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
 
-        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }) {
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
             makeVM().loadData()
-        }
+        })
 
         XCTAssertEqual(
             lines.count, 1,
@@ -96,12 +103,12 @@ final class AppLoggerSinkTests: XCTestCase {
         struct Boom: Error {}
         var outer: [String] = []
 
-        try AppLogger.withTestSink({ outer.append($2) }) {
+        try AppLogger.withTestSink({ outer.append($2) }, perform: {
             XCTAssertThrowsError(
-                try AppLogger.withTestSink({ _, _, _ in }) { throw Boom() }
+                try AppLogger.withTestSink({ _, _, _ in }, perform: { throw Boom() })
             )
             AppLogger.emit(.ui, .default, "after the inner sink is gone")
-        }
+        })
 
         XCTAssertEqual(
             outer, ["after the inner sink is gone"],
@@ -117,20 +124,38 @@ final class AppLoggerSinkTests: XCTestCase {
     /// category — otherwise a caller's category is decided by the seam rather
     /// than by the caller, and lines land where nobody greps for them.
     ///
-    /// Asserted over `allCases` rather than one sample: the routing lives in a
-    /// `switch` whose arms are copy-paste of each other, and the failure mode
-    /// of a slip there is one case answering with a neighbour's logger — which
-    /// reads exactly like a working seam until someone follows a support ticket.
+    /// ⚠️ This asserts PASS-THROUGH and nothing else. It does not — and with a
+    /// sink installed cannot — check which `Logger` a category resolves to:
+    /// `emit` returns at the sink before `category.logger` is evaluated. An
+    /// earlier revision of this file claimed otherwise, and review caught it;
+    /// the mapping is now raw-value data instead of a `switch`, and
+    /// `testEveryCategoryCarriesItsOwnName` covers the one way it can break.
     func testEmit_passesTheCallersCategoryAndLevelThrough() {
         var seen: [(AppLogCategory, OSLogType)] = []
 
-        AppLogger.withTestSink({ category, level, _ in seen.append((category, level)) }) {
+        AppLogger.withTestSink({ category, level, _ in seen.append((category, level)) }, perform: {
             for category in AppLogCategory.allCases {
                 AppLogger.emit(category, .fault, "probe")
             }
-        }
+        })
 
         XCTAssertEqual(seen.map(\.0), AppLogCategory.allCases, "the seam reordered or dropped a category")
         XCTAssertTrue(seen.allSatisfy { $0.1 == .fault }, "the seam rewrote the caller's level")
+    }
+
+    /// The category name is the `os_log` category, so two cases sharing one
+    /// would file two subsystems' lines under a single handle and make a
+    /// support grep return the wrong screen's history.
+    ///
+    /// This is the whole failure surface of the mapping now that it is data.
+    /// While it was a `switch`, the equivalent slip — one arm returning a
+    /// neighbour's logger — was not assertable at all.
+    func testEveryCategoryCarriesItsOwnName() {
+        let names = AppLogCategory.allCases.map(\.rawValue)
+        XCTAssertEqual(
+            Set(names).count, names.count,
+            "two categories share an os_log category name: \(names)"
+        )
+        XCTAssertFalse(names.contains(where: \.isEmpty), "an unnamed category cannot be grepped")
     }
 }
