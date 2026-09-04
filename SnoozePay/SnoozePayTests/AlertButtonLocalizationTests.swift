@@ -38,13 +38,15 @@ import XCTest
 ///    exists to stop is the copy-pasted one-liner, which is how all seven
 ///    arrived.
 /// 2. **A catalogue key whose own value is Latin.** There is a live one:
-///    `referral.applied.confirm` renders `"OK"`, so after #664 the app shows
-///    eight alerts reading «Ок» and one reading «OK». The call site is
+///    `referral.applied.confirm` renders `"OK"`, so the app reads «Ок»
+///    everywhere `common.button.ok` is used and «OK» in that one alert. The
+///    call site is
 ///    `Localized.text(…)`, i.e. not a literal, so this scan is *structurally*
 ///    blind to it. Tracked in #751.
 /// 3. **`UIAlertController(title:)`.** The pattern matches `UIAlertAction`
 ///    only, so an alert's own title stays invisible here — including the two
-///    literal ones left in `AppDelegate` (#752).
+///    literal ones left in `AppDelegate`: «Уведомления выключены» is tracked in
+///    #752, «Будильник» belongs to the wider literal migration.
 final class AlertButtonLocalizationTests: XCTestCase {
 
     /// The catalogue key every acknowledge button has to go through.
@@ -92,8 +94,10 @@ final class AlertButtonLocalizationTests: XCTestCase {
 
     /// The complement of the scan: the key the scan pushes everyone towards has
     /// to actually resolve. `Localized.text` echoes an absent key, so a rename
-    /// in the catalogue would otherwise leave eight alerts rendering
-    /// `common.button.ok` as their button title.
+    /// in the catalogue would otherwise leave every call site of it rendering
+    /// the key itself as a button title. Deliberately not counting them here:
+    /// #664 added eight, the catalogue key had readers before that, and a
+    /// number in a comment goes stale on the next alert.
     func testAcknowledgeKeyResolvesToCopyRatherThanTheKey() {
         let copy = Localized.text(Self.acknowledgeKey)
 
