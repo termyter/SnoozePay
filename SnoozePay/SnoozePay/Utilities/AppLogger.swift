@@ -158,12 +158,16 @@ extension AppLogger {
     ///
     /// That is a matter of COST, not of possibility, and an earlier revision
     /// of this comment overstated it as the latter. `perform` is synchronous,
-    /// but its body may turn the run loop — a `wait(for:timeout:)` inside it
-    /// keeps the sink installed for the whole wait. `StatisticsViewController`'s
-    /// ALERT-SHOWN line is exactly that shape and is left unobserved (#742) not
-    /// because it cannot be reached, but because reaching it means rewriting
-    /// the existing alert wait in a target that already carries a timeout
-    /// flake (#728).
+    /// but its BODY may turn the run loop — a `wait(for:timeout:)` inside it
+    /// keeps the sink installed for the whole wait.
+    ///
+    /// `StatisticsViewController`'s ALERT-SHOWN line is exactly that shape and
+    /// is covered that way by
+    /// `StatisticsLoadErrorAlertTests.testFirstLoadError_logsThatTheUserActuallySawIt`
+    /// (#742). Copy its shape rather than its ingredients: it waits for the
+    /// LINE, not for `presentedViewController`, which UIKit sets inside
+    /// `present` — before the completion runs — so a wait on that property
+    /// samples the sink too early and passes or fails on timing.
     static func withTestSink<T>(_ sink: @escaping Sink, perform: () throws -> T) rethrows -> T {
         let previous = testSink
         testSink = sink

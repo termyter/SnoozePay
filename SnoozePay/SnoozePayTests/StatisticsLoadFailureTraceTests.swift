@@ -289,6 +289,70 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         return controller.presentedViewController as? UIAlertController
     }
 
+    /// The last seam site that #731 could not observe (#742).
+    ///
+    /// ALERT-SHOWN is written from `present(_:animated:completion:)`'s
+    /// completion, which runs a runloop turn AFTER the call returns. #731
+    /// recorded that as something `withTestSink` "cannot see"; review corrected
+    /// it, and the correction is what this test is built on: `perform` is
+    /// synchronous, but nothing stops its BODY from turning the run loop, and
+    /// the sink stays installed for the whole wait.
+    ///
+    /// ⚠️ It waits on the LINE, not on `presentedViewController`. The sibling
+    /// `waitForAlert` returns as soon as UIKit sets that property — which
+    /// happens inside `present`, before the completion runs — so a test built
+    /// on it would sample the sink too early and pass or fail on timing.
+    /// Waiting for the thing being asserted is also why this costs no more
+    /// wall-clock than the poll it replaces: both end on the same presentation.
+    func testFirstLoadError_logsThatTheUserActuallySawIt() {
+        let controller = makeMountedController()
+        let shown = expectation(description: "the ALERT-SHOWN line reached the seam")
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        var fulfilled = false
+
+        // Drained IMMEDIATELY before the sink goes in, not just in `setUp`.
+        // #742 §2a warns that a sink which waits will catch a neighbour's
+        // deferred ALERT-SHOWN — and unlike the ALERT-DROPPED test, filtering
+        // by grep handle cannot save this one: the contaminant carries the
+        // SAME id, so it would land in `shownLines` and break `count == 1`.
+        // Without this the test is green only because XCTest runs the class
+        // alphabetically and «_logs…» sorts before «_presents…», which is not
+        // a property anyone should have to preserve when renaming a test.
+        drainMainQueue()
+
+        AppLogger.withTestSink({ category, level, message in
+            lines.append((category, level, message))
+            // Guarded: a second fulfil is an XCTest API misuse failure, and
+            // this branch is reached again by any later ALERT-SHOWN.
+            if !fulfilled, message.contains(StatisticsViewModel.alertShownErrorID) {
+                fulfilled = true
+                shown.fulfill()
+            }
+        }, perform: {
+            controller.viewModel.onLoadError?(decodeFailure())
+            // 25 s to match `waitForAlert`: on a saturated three-core runner a
+            // tight deadline answers "the runner was busy", not "it never logged".
+            wait(for: [shown], timeout: 25)
+        })
+
+        let shownLines = lines.filter { $0.message.contains(StatisticsViewModel.alertShownErrorID) }
+        XCTAssertEqual(
+            shownLines.count, 1,
+            "one shown alert must leave exactly one line; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(shownLines.first?.category, .ui, "an alert the user saw is a screen-level event")
+        XCTAssertEqual(shownLines.first?.level, .error, "the warning behind the alert is not a notice")
+        XCTAssertTrue(
+            shownLines.first?.message.contains(Localized.text("wallet.error.load_failed")) == true,
+            "the line has to carry the sentence the user actually read, not just its grep handle; "
+            + "it reads «\(shownLines.first?.message ?? "")»"
+        )
+        XCTAssertNotNil(
+            controller.presentedViewController as? UIAlertController,
+            "the line claims an alert was shown, so one has to be on screen"
+        )
+    }
+
     /// The first error reaches the user, with catalogue copy — the call-site
     /// coverage `statistics.error.title` never had (see
     /// `StatisticsScreensLocalizationTests`, which left it to #721).
