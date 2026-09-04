@@ -104,14 +104,18 @@ final class CreateAlarmLightThemeTests: XCTestCase {
     /// A white card on a `#F4F6FB` page is 1.06:1 of separation, so the
     /// disarmed card needs its hairline too — it used to draw one only while
     /// pain-tinted.
-    func testProgressiveCard_carriesShadowAndOutline_inBothThemes_disarmedToo() {
+    func testProgressiveCard_carriesShadowAndOutline_inBothThemes_disarmedToo() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let surface = hostedProgressiveCard(painTinted: false, style: style)
-            XCTAssertGreaterThan(
-                surface.layer.borderWidth, 0,
+            let outline = try XCTUnwrap(
+                strokedOutline(of: surface),
                 "disarmed progressive card has no outline in \(style.debugName)"
             )
-            XCTAssertNotNil(surface.layer.borderColor)
+            XCTAssertGreaterThan(
+                outline.lineWidth, 0,
+                "disarmed progressive card outline is zero-width in \(style.debugName)"
+            )
+            XCTAssertNotNil(outline.strokeColor)
             XCTAssertGreaterThan(surface.layer.shadowOpacity, 0)
             XCTAssertNotNil(surface.layer.shadowPath)
             XCTAssertFalse(surface.layer.masksToBounds, "masksToBounds would clip the shadow away")
