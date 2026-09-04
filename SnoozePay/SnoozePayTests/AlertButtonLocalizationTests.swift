@@ -1,8 +1,11 @@
 import XCTest
 @testable import SnoozePay
 
-/// Guards the acknowledge button of every `UIAlertController` against a
-/// hardcoded title.
+/// Guards acknowledge buttons against a hardcoded title *in the sources*.
+///
+/// Not "every `UIAlertController`" — the scan reads source lines, so it sees
+/// exactly the defects that are visible there. Its three blind spots are listed
+/// below, and one of them is currently occupied.
 ///
 /// # Why this scans sources instead of the catalogue
 ///
@@ -27,10 +30,21 @@ import XCTest
 ///
 /// # What it cannot see
 ///
-/// A title routed through a local variable (`let ok = "OK"; …title: ok`) reads
-/// as an identifier at the call site and passes. That is an accepted blind
-/// spot: the shape this file exists to stop is the copy-pasted one-liner, which
-/// is how all seven arrived.
+/// Three things, and naming them is the point — #650 failed by being trusted
+/// wider than its reach, and this test can fail the same way.
+///
+/// 1. **A title routed through a local variable** (`let ok = "OK"; …title: ok`)
+///    reads as an identifier at the call site. Accepted: the shape this file
+///    exists to stop is the copy-pasted one-liner, which is how all seven
+///    arrived.
+/// 2. **A catalogue key whose own value is Latin.** There is a live one:
+///    `referral.applied.confirm` renders `"OK"`, so after #664 the app shows
+///    eight alerts reading «Ок» and one reading «OK». The call site is
+///    `Localized.text(…)`, i.e. not a literal, so this scan is *structurally*
+///    blind to it. Tracked in #751.
+/// 3. **`UIAlertController(title:)`.** The pattern matches `UIAlertAction`
+///    only, so an alert's own title stays invisible here — including the two
+///    literal ones left in `AppDelegate` (#752).
 final class AlertButtonLocalizationTests: XCTestCase {
 
     /// The catalogue key every acknowledge button has to go through.
