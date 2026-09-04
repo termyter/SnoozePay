@@ -324,6 +324,12 @@ final class AlarmEditorCopyTests: XCTestCase {
         // Range bounds under the track read through the same key.
         XCTAssertTrue(Self.strings(in: cell.contentView).contains("1 мин"))
         XCTAssertTrue(Self.strings(in: cell.contentView).contains("15 мин"))
+
+        // The cell's caps label renders `create_alarm.snooze.caps`, which is in
+        // `allKeys` — but this was the one caps call site never handed to the
+        // guard, so a leak here stayed outside it however many spellings the
+        // guard learned.
+        Self.assertNoKeysLeaked(in: Self.strings(in: cell.contentView))
     }
 
     // MARK: - Layer 3: the alarms list
@@ -542,9 +548,20 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// both spellings have to be a failure.
     func testKeyLeakGuardCatchesLowerAndUpperCasedKeys() {
         let key = "create_alarm.volume.title"
+        // `isStrict` is already the default, but it is the whole contract here:
+        // with it off, a guard that stopped matching would record nothing and
+        // this test would pass. Written out so nobody turns it off by habit.
+        let strict = XCTExpectedFailure.Options()
+        strict.isStrict = true
         for leaked in [key, key.uppercased()] {
-            XCTExpectFailure("the guard has to name «\(leaked)»") {
+            // The matcher is not decoration. Without it the expectation accepts
+            // ANY recorded failure, so this test would prove only that the guard
+            // went red — not that it named the spelling that reached the screen.
+            // That naming is what the whole change is for, so it is asserted.
+            XCTExpectFailure("the guard has to name «\(leaked)»", options: strict) {
                 Self.assertNoKeysLeaked(in: ["Громкость", leaked])
+            } issueMatcher: { issue in
+                issue.compactDescription.contains("«\(leaked)»")
             }
         }
     }
@@ -606,8 +623,10 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// A key that reached the screen looks like `create_alarm.volume.title` —
     /// or `CREATE_ALARM.VOLUME.TITLE`, because the caps section labels
     /// upper-case whatever `Localized.text` hands back, the key included when
-    /// the lookup missed. Matching the lower-case spelling alone let those four
-    /// call sites walk a leaked key past the guard (#713).
+    /// the lookup missed. Matching the lower-case spelling alone let every caps
+    /// call site walk a leaked key past the guard (#713). Deliberately not
+    /// counting them: #713 said four, the file holds eight assertions over seven
+    /// keys, and a number here goes stale on the next caps label.
     private static func assertNoKeysLeaked(
         in rendered: [String],
         file: StaticString = #filePath,
