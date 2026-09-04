@@ -393,8 +393,22 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.repeatMode = rawRepeatMode.flatMap(AlarmRepeatMode.init(rawValue:)) ?? .weekly
     }
 
-    /// Shared volume sanitization: non-finite → full volume, then clamp 0...1.
-    private static func clampedVolume(_ raw: Float) -> Float {
+    /// The one place the ring-volume invariant lives: non-finite → full
+    /// volume, then clamp to `0...1`.
+    ///
+    /// Deliberately not `private` (#714). The same expression used to be
+    /// copy-pasted into `SoundPickerViewController`, `VolumePickerViewController`
+    /// and `AudioService.configurePlayerVolume`; all four agreed, but nothing
+    /// made them agree. A single copy drifting — say a NaN fallback of `0`
+    /// instead of `1.0` — would have made one alarm restored from corrupt
+    /// storage ring differently depending on which screen it reached, with
+    /// every per-copy test still green. Callers seed from this; they do not
+    /// restate it.
+    ///
+    /// `AlarmDefaults.volume` intentionally keeps its own expression: its
+    /// fallback is the named `fallbackVolume` constant ("what a *new* alarm
+    /// starts at"), a separate knob that happens to equal `1.0` today.
+    static func clampedVolume(_ raw: Float) -> Float {
         min(max(raw.isFinite ? raw : 1.0, 0), 1)
     }
 

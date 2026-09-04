@@ -262,9 +262,10 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// `refreshVolumeLabel()` formats `volume` without a clamp of its own, and
     /// that is deliberate rather than an oversight left by the removal of
     /// `VolumeCell` (#686): every writer of the property is already bounded —
-    /// the initialiser below, `VolumePickerViewController.sliderChanged()`
-    /// (which clamps before calling back), and `Alarm.clampedVolume` on the
-    /// persisted side. A fourth clamp at render time would be unreachable, i.e.
+    /// the initialiser below and the persisted side both go through
+    /// `Alarm.clampedVolume` (one implementation since #714), and
+    /// `VolumePickerViewController.sliderChanged()` quantises inside `0...1`
+    /// before calling back. A clamp at render time would be unreachable, i.e.
     /// exactly the kind of code #686 deleted. What is worth pinning is the last
     /// live boundary in front of the label: the seed. A corrupt persisted value
     /// has to arrive as a percentage inside 0…100, and a non-finite one must not

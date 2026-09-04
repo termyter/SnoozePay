@@ -70,6 +70,61 @@ final class AlarmValidationTests: XCTestCase {
         XCTAssertEqual(alarm?.volume, 1.0)
     }
 
+    // MARK: - The single volume clamp (#714)
+
+    // The expression behind these assertions used to exist in four independent
+    // copies (the model, both pickers, `AudioService`). They agreed byte for
+    // byte, so nothing here changes behaviour — the point is that there is now
+    // one implementation to hold to it, and these tests sit on that one.
+
+    func testClampedVolume_nonFiniteFallsBackToFullVolume() {
+        // The branch the whole invariant exists for. A corrupt alarm must ring
+        // loudly enough to wake someone; silently degrading to 0 would turn bad
+        // data into a missed alarm, which is the one failure this app cannot
+        // have. `Int(_:)` on the percentage also traps on NaN (#704).
+        XCTAssertEqual(Alarm.clampedVolume(Float.nan), 1.0)
+        XCTAssertEqual(Alarm.clampedVolume(Float.infinity), 1.0)
+        // Negative infinity is non-finite first and negative second, so it also
+        // rings full — not 0. Pinned because the order is easy to flip.
+        XCTAssertEqual(Alarm.clampedVolume(-Float.infinity), 1.0)
+    }
+
+    func testClampedVolume_clampsOutOfRangeToTheNearestBound() {
+        XCTAssertEqual(Alarm.clampedVolume(-0.2), 0.0)
+        XCTAssertEqual(Alarm.clampedVolume(-99), 0.0)
+        XCTAssertEqual(Alarm.clampedVolume(1.4), 1.0)
+        XCTAssertEqual(Alarm.clampedVolume(99), 1.0)
+    }
+
+    func testClampedVolume_leavesTheBoundsAndInRangeValuesAlone() {
+        // Exactly 0 and exactly 1 are legal inputs, not edges to be nudged.
+        XCTAssertEqual(Alarm.clampedVolume(0.0), 0.0)
+        XCTAssertEqual(Alarm.clampedVolume(1.0), 1.0)
+        XCTAssertEqual(Alarm.clampedVolume(0.5), 0.5)
+        XCTAssertEqual(Alarm.clampedVolume(0.755), 0.755)
+    }
+
+    func testClampedVolume_isWhatTheValidatingInitApplies() throws {
+        // Ties the shared helper to the CONSTRUCTION boundary — `init(validating:)`,
+        // not `init(from: Decoder)`. Both call `clampedVolume`, but only this one is
+        // exercised here, and the name used to promise the decode path. Nothing in
+        // the suite currently runs a non-finite or out-of-range `volume` through
+        // `JSONDecoder`; #766 covers that.
+        //
+        // Both sides call the same function, so this is tautological under a changed
+        // clamp and only fires when construction stops routing through the helper —
+        // which is exactly the drift #714 exists to prevent, and not coverage of the
+        // boundary values themselves. Those are pinned by the three tests above.
+        for raw in [Float.nan, -0.2, 0, 0.5, 1, 1.4] {
+            let stored = try XCTUnwrap(Alarm(validating: UUID(), volume: raw)?.volume)
+            XCTAssertEqual(
+                stored,
+                Alarm.clampedVolume(raw),
+                "construction diverged from the shared clamp for \(raw)"
+            )
+        }
+    }
+
     // MARK: - with(...) mutators
 
     func testWith_preservesIdentityAndUntouchedFields() {
