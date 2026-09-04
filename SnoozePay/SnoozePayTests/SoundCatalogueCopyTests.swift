@@ -16,7 +16,9 @@ import XCTest
 ///  2. **Copy layer** — every key still holds the exact words it held before
 ///     the migration, transcribed from the pre-migration literals rather than
 ///     read back out of the file under test. A list derived from the catalogue
-///     would agree with any mistake in it.
+///     would agree with any mistake in it. Keys, though, are not ids: this
+///     layer says the words exist under the right key, not that the right
+///     sound reaches them. ``subtitlesBySoundID`` is the second half.
 ///  3. **Call-site layer** — the production accessors are invoked and what
 ///     they return is compared against the catalogue. Layers 1 and 2 are blind
 ///     to a typo in the *key* at the call site, because there the catalogue
@@ -85,6 +87,40 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "create_alarm.sound.subtitle.custom": "Скоро"
     ]
 
+    /// The ten descriptive subtitles keyed by **sound id** rather than by
+    /// catalogue key. That difference is the whole reason the table exists.
+    ///
+    /// ``copy`` above pins *key → words*, so any expectation drawn from it has
+    /// to be looked up through `subtitleKey(for:)` — the very function layer 3
+    /// is checking. A `subtitleKey(for:)` that handed each id another sound's
+    /// key would move both sides of that comparison together and stay green
+    /// while every picker row read someone else's description. The three
+    /// outside checks #746 added survive that mutation too: a permutation
+    /// keeps the subtitles distinct from each other and distinct from the
+    /// names, and every key it lands on exists.
+    ///
+    /// This table is the outside view. It states which words belong to which
+    /// id, and nothing in `SoundCatalogue` can move it.
+    ///
+    /// The name column already has one — `namesBeforeTheCollapse` in
+    /// `AlarmsListSoundNameTests`, keyed by id and driven through the
+    /// alarms-list reader — so a permuted `nameKey(for:)` reddens there. The
+    /// subtitle column had none anywhere: #720 deleted the last id → words
+    /// pinning along with `subtitle(for:)`. Transcribed from
+    /// `Localizable.xcstrings`, where #598 left the pre-migration literals.
+    private static let subtitlesBySoundID: [String: String] = [
+        "dawn": "Тёплый рассвет с птицами",
+        "radar": "Нарастающий сигнал тревоги",
+        "drops": "Мягкие капли воды",
+        "piano": "Спокойные клавиши",
+        "guitar": "Лёгкий струнный перебор",
+        "bell": "Чистый звон без музыки",
+        "waves": "Прибой и морской бриз",
+        "birds": "Только щебет, без музыки",
+        "classic": "Старый добрый писк",
+        "jazz": "Бодрое утреннее настроение"
+    ]
+
     func testEveryMigratedKeyResolvesToCopy() {
         for key in Self.copy.keys.sorted() {
             XCTAssertNotNil(Localized.optionalText(key), "missing catalogue key: \(key)")
@@ -118,6 +154,23 @@ final class SoundCatalogueCopyTests: XCTestCase {
         XCTAssertEqual(Self.copy.count, SoundCatalogue.ids.count * 2 + 2)
     }
 
+    /// Two properties of ``subtitlesBySoundID`` itself, because an oracle that
+    /// silently stops covering a sound stops failing for it as well.
+    ///
+    /// The second one is what makes the first useful: if two ids were pinned to
+    /// the same words, a `subtitleKey(for:)` that swapped those two would still
+    /// satisfy every assertion in this file.
+    func testEverySoundIDIsPinnedToItsOwnSubtitle() {
+        XCTAssertEqual(
+            Set(SoundCatalogue.ids), Set(Self.subtitlesBySoundID.keys),
+            "the id → subtitle table no longer covers exactly the catalogue"
+        )
+        XCTAssertEqual(
+            Set(Self.subtitlesBySoundID.values).count, Self.subtitlesBySoundID.count,
+            "two sounds are pinned to the same subtitle — a swap between them would pass"
+        )
+    }
+
     /// «Рассвет» is a sound *and* an alarm theme, and the two entries were one
     /// tidy-up away from being merged when this slice added the second one.
     /// They are the same word only in Russian: one names a chime, the other a
@@ -147,15 +200,20 @@ final class SoundCatalogueCopyTests: XCTestCase {
         let entries = SoundCatalogue.entries
         XCTAssertEqual(entries.map { $0.id }, SoundCatalogue.ids)
         for entry in entries {
+            // Looked up BY the key builder it checks, so it is blind to a
+            // `nameKey(for:)` that points each id at another sound's key: both
+            // sides move together. What reddens on that is the id-keyed
+            // `namesBeforeTheCollapse` in `AlarmsListSoundNameTests`, driving
+            // the other production reader of these ten keys.
             let name = try XCTUnwrap(Self.copy[SoundCatalogue.nameKey(for: entry.id)])
-            let subtitle = try XCTUnwrap(Self.copy[SoundCatalogue.subtitleKey(for: entry.id)])
             XCTAssertEqual(entry.name, name)
-            XCTAssertEqual(entry.subtitle, subtitle)
-            // Both expectations above are looked up BY the key builders they check,
-            // so a broken `subtitleKey(for:)` lies on both sides and stays green.
-            // These two assertions are the outside view: they read the rendered
-            // words, not the key. `subtitle(for:)` used to supply it by pinning
-            // id → words directly; #720 deleted it, so it lives here now.
+            // The subtitle expectation is keyed by id and never touches
+            // `subtitleKey(for:)`, so a permuted builder fails here rather than
+            // agreeing with itself.
+            XCTAssertEqual(
+                entry.subtitle, Self.subtitlesBySoundID[entry.id],
+                "'\(entry.id)' reads the subtitle of another sound — subtitleKey is wired to the wrong id"
+            )
             XCTAssertNotEqual(
                 entry.name, entry.subtitle,
                 "'\(entry.id)': subtitle resolved to the name — subtitleKey is wired to the name namespace"
@@ -190,6 +248,10 @@ final class SoundCatalogueCopyTests: XCTestCase {
         for sound in viewModel.availableSounds {
             XCTAssertNotEqual(sound.name, SoundCatalogue.nameKey(for: sound.id))
             XCTAssertNotEqual(sound.subtitle, SoundCatalogue.subtitleKey(for: sound.id))
+            XCTAssertEqual(
+                sound.subtitle, Self.subtitlesBySoundID[sound.id],
+                "the picker would render another sound's description under '\(sound.id)'"
+            )
         }
     }
 
