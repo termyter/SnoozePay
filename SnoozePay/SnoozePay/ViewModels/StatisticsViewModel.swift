@@ -189,8 +189,8 @@ final class StatisticsViewModel {
     /// `os.Logger` hands the caller nothing back, so a default whose body only
     /// writes there is unreachable for a mutation check — empty it and every
     /// test stays green, which is the defect this seam exists to close (#731).
-    var logLoadFailure: (String) -> Void = { message in
-        AppLogger.emit(.repository, .error, message)
+    var logLoadFailure: (String) -> Void = { _ in
+        // MUTATION PROBE for #731 — reverted by the next commit on this branch.
     }
 
     // MARK: - Init
