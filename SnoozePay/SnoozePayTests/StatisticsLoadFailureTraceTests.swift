@@ -310,6 +310,16 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
         var fulfilled = false
 
+        // Drained IMMEDIATELY before the sink goes in, not just in `setUp`.
+        // #742 §2a warns that a sink which waits will catch a neighbour's
+        // deferred ALERT-SHOWN — and unlike the ALERT-DROPPED test, filtering
+        // by grep handle cannot save this one: the contaminant carries the
+        // SAME id, so it would land in `shownLines` and break `count == 1`.
+        // Without this the test is green only because XCTest runs the class
+        // alphabetically and «_logs…» sorts before «_presents…», which is not
+        // a property anyone should have to preserve when renaming a test.
+        drainMainQueue()
+
         AppLogger.withTestSink({ category, level, message in
             lines.append((category, level, message))
             // Guarded: a second fulfil is an XCTest API misuse failure, and
@@ -332,6 +342,11 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         )
         XCTAssertEqual(shownLines.first?.category, .ui, "an alert the user saw is a screen-level event")
         XCTAssertEqual(shownLines.first?.level, .error, "the warning behind the alert is not a notice")
+        XCTAssertTrue(
+            shownLines.first?.message.contains(Localized.text("wallet.error.load_failed")) == true,
+            "the line has to carry the sentence the user actually read, not just its grep handle; "
+            + "it reads «\(shownLines.first?.message ?? "")»"
+        )
         XCTAssertNotNil(
             controller.presentedViewController as? UIAlertController,
             "the line claims an alert was shown, so one has to be on screen"
