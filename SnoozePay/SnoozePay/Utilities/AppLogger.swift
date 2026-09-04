@@ -21,10 +21,17 @@ import os
 enum AppLogger {
 
     /// Kept `fileprivate` rather than `private` so ``AppLogCategory`` can build
-    /// the loggers from it. The eight `static let`s below now DERIVE from the
-    /// cases rather than repeating `Logger(subsystem:category:)` — one place
-    /// where a category name is spelled, so `AppLogger.repository` and
-    /// `AppLogCategory.repository` cannot drift apart.
+    /// the loggers from it. The eight `static let`s below DERIVE from the cases
+    /// rather than repeating `Logger(subsystem:category:)`, so a category name
+    /// is spelled in exactly one place.
+    ///
+    /// ⚠️ That removes the typo, not the mismatch. `static let repository =
+    /// AppLogCategory.ui.logger` compiles, ships every repository line under
+    /// «UI», and leaves the whole target green — `os.Logger` is not `Equatable`
+    /// and does not hand back its category, so nothing can assert this pairing.
+    /// It is a read-with-your-eyes invariant, held only by the case name
+    /// sitting on the same line as the property name. Review caught an earlier
+    /// revision of this comment claiming the two «cannot drift apart».
     fileprivate static let subsystem = "Ivan-Emelyanov.SnoozePay"
 
     /// AlarmScheduler — permission flow, schedule failures, snooze rescheduling.
@@ -70,8 +77,14 @@ enum AppLogger {
 /// caught as unobservable by construction: with a test sink installed `emit`
 /// returns before `logger` is ever evaluated, so swapping two arms left the
 /// whole 1034-test target green. A mapping nothing can assert is the defect
-/// this seam exists to close, one level up. As data, it is one line and the
-/// only thing that can go wrong — two cases sharing a name — is assertable.
+/// this seam exists to close, one level up. As data, the case-to-logger step is
+/// correct by construction and needs no test at all.
+///
+/// What still needs one is the raw values themselves: they ARE the `os_log`
+/// categories a support ticket is grepped by, and renaming one retargets every
+/// such grep without failing anything. `testEveryCategoryKeepsItsOsLogName`
+/// pins them. Uniqueness is NOT that test's job — the compiler rejects a
+/// duplicate raw value outright.
 enum AppLogCategory: String, CaseIterable {
     case scheduler = "Scheduler"
     case audio = "Audio"
@@ -86,10 +99,11 @@ enum AppLogCategory: String, CaseIterable {
     /// an `os_log_t`, and this seam is meant to take call sites at every level,
     /// including `.debug` ones that fire often.
     ///
-    /// The `??` arm is unreachable — the table is built from `allCases`, so
-    /// every case has an entry — and is spelled out rather than force-unwrapped
-    /// so a future case added without rebuilding the table degrades to a
-    /// correct logger instead of a crash.
+    /// The `??` arm is unreachable: the table is built from `allCases`, and a
+    /// case added later joins `allCases` on its own, so there is no way to add
+    /// one without an entry. It is spelled out rather than force-unwrapped
+    /// because a crash in the logging seam is a worse trade than a duplicate
+    /// `os_log_t` in a branch that cannot be taken.
     var logger: Logger {
         Self.loggers[self] ?? Logger(subsystem: AppLogger.subsystem, category: rawValue)
     }
@@ -125,14 +139,27 @@ extension AppLogger {
     /// `defer`, not a `tearDown`: a test that throws or returns early still
     /// restores.
     ///
+    /// ⚠️ Nesting SHADOWS rather than chains: while an inner sink is installed
+    /// the outer one sees nothing, and gets the lines back only after the inner
+    /// scope ends. `testWithTestSink_restoresThePreviousSink_evenWhenTheBodyThrows`
+    /// pins that. A helper that quietly opens its own window inside someone
+    /// else's would make the outer `count ==` short by exactly the lines it
+    /// swallowed, with nothing red to say so.
+    ///
     /// ⚠️ `perform` is SYNCHRONOUS and non-escaping, so the sink is gone the
     /// instant it returns. A line emitted from a completion handler — a
     /// `present(_:animated:completion:)` completion, an `async` continuation —
-    /// fires on a later runloop turn and this helper cannot see it. Wrapping
-    /// the *call* is not enough; the sink has to stay installed across the
-    /// wait, which means paying wall-clock. `StatisticsViewController`'s
-    /// ALERT-SHOWN line is exactly that shape and is deliberately left
-    /// unobserved (#742).
+    /// fires on a later runloop turn, so wrapping the *call* alone never sees
+    /// it: by the time the handler runs, the sink is already restored.
+    ///
+    /// That is a matter of COST, not of possibility, and an earlier revision
+    /// of this comment overstated it as the latter. `perform` is synchronous,
+    /// but its body may turn the run loop — a `wait(for:timeout:)` inside it
+    /// keeps the sink installed for the whole wait. `StatisticsViewController`'s
+    /// ALERT-SHOWN line is exactly that shape and is left unobserved (#742) not
+    /// because it cannot be reached, but because reaching it means rewriting
+    /// the existing alert wait in a target that already carries a timeout
+    /// flake (#728).
     static func withTestSink<T>(_ sink: @escaping Sink, perform: () throws -> T) rethrows -> T {
         let previous = testSink
         testSink = sink
@@ -166,6 +193,14 @@ extension AppLogger {
     ///   `emit` takes a `String` that is already built. Harmless at `.error`,
     ///   which is always enabled, and a real cost for a `.debug` line on a hot
     ///   path — those should stay on the direct call.
+    ///
+    /// One thing this seam does NOT make observable is its own last line. With
+    /// a sink installed `emit` returns above it, so no test reaches the
+    /// `category.logger.log` call: delete it and every line routed through the
+    /// seam vanishes from release builds while the suite stays green. That is
+    /// still the better trade — one unobservable line instead of one per call
+    /// site — but it is the residue, not zero, and reading it back would mean
+    /// polling `OSLogStore`, which is what this PR set out to avoid.
     static func emit(_ category: AppLogCategory, _ level: OSLogType, _ message: String) {
         #if DEBUG
         if let testSink {

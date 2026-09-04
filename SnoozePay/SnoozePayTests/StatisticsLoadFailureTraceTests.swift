@@ -332,6 +332,14 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         // No new wall-clock: this branch returns synchronously without
         // presenting, and the only wait in the test is the one already paid
         // above for the FIRST alert.
+        //
+        // Selected by grep handle rather than by `dropped.count`, deliberately.
+        // `waitForAlert` polls `presentedViewController`, which UIKit sets
+        // inside `present` — so it returns BEFORE the first alert's completion
+        // runs, and that completion writes ALERT-SHOWN. Today that line cannot
+        // land here only because `perform` never turns the run loop; add any
+        // wait inside this closure and a count-based assertion would fail
+        // pointing at the wrong line.
         var dropped: [(AppLogCategory, OSLogType, String)] = []
         AppLogger.withTestSink({ dropped.append(($0, $1, $2)) }, perform: {
             controller.viewModel.onLoadError?(decodeFailure())
@@ -341,13 +349,13 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             controller.presentedViewController === firstAlert,
             "a second alert must not replace or stack on the first"
         )
-        XCTAssertEqual(dropped.count, 1, "the dropped alert must leave exactly one line")
-        XCTAssertEqual(dropped.first?.0, .ui, "a screen-level drop belongs to the UI category")
-        XCTAssertEqual(dropped.first?.1, .error, "a warning the user never saw is not a notice")
-        XCTAssertTrue(
-            dropped.first?.2.contains(StatisticsViewModel.alertDroppedErrorID) == true,
-            "the emitted line must carry the grep handle; it reads «\(dropped.first?.2 ?? "")»"
+        let dropLines = dropped.filter { $0.2.contains(StatisticsViewModel.alertDroppedErrorID) }
+        XCTAssertEqual(
+            dropLines.count, 1,
+            "the dropped alert must leave exactly one ALERT-DROPPED line; the sink saw \(dropped.map(\.2))"
         )
+        XCTAssertEqual(dropLines.first?.0, .ui, "a screen-level drop belongs to the UI category")
+        XCTAssertEqual(dropLines.first?.1, .error, "a warning the user never saw is not a notice")
         // The production sentence rather than a literal: the line has to read
         // as the message the user did not get, and the test above already
         // pins that this is the message the alert carries.

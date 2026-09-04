@@ -128,8 +128,9 @@ final class AppLoggerSinkTests: XCTestCase {
     /// sink installed cannot — check which `Logger` a category resolves to:
     /// `emit` returns at the sink before `category.logger` is evaluated. An
     /// earlier revision of this file claimed otherwise, and review caught it;
-    /// the mapping is now raw-value data instead of a `switch`, and
-    /// `testEveryCategoryCarriesItsOwnName` covers the one way it can break.
+    /// the mapping is now raw-value data instead of a `switch`, so the
+    /// case-to-logger step is correct by construction and
+    /// `testEveryCategoryKeepsItsOsLogName` pins what is left — the names.
     func testEmit_passesTheCallersCategoryAndLevelThrough() {
         var seen: [(AppLogCategory, OSLogType)] = []
 
@@ -139,23 +140,48 @@ final class AppLoggerSinkTests: XCTestCase {
             }
         })
 
-        XCTAssertEqual(seen.map(\.0), AppLogCategory.allCases, "the seam reordered or dropped a category")
+        // Not a check on ORDER: both sides come from `allCases`, and the loop
+        // above walks it, so the sequences agree trivially. What this catches
+        // is `emit` hardcoding a category, or failing to call the sink for one.
+        XCTAssertEqual(
+            seen.map(\.0), AppLogCategory.allCases,
+            "the seam substituted a category of its own or swallowed a call"
+        )
         XCTAssertTrue(seen.allSatisfy { $0.1 == .fault }, "the seam rewrote the caller's level")
     }
 
-    /// The category name is the `os_log` category, so two cases sharing one
-    /// would file two subsystems' lines under a single handle and make a
-    /// support grep return the wrong screen's history.
+    /// The raw value IS the `os_log` category a support ticket is followed by,
+    /// so renaming one silently retargets every grep that was ever written
+    /// against it — nothing in the app reads these strings back, and nothing
+    /// else would go red.
     ///
-    /// This is the whole failure surface of the mapping now that it is data.
-    /// While it was a `switch`, the equivalent slip — one arm returning a
-    /// neighbour's logger — was not assertable at all.
-    func testEveryCategoryCarriesItsOwnName() {
-        let names = AppLogCategory.allCases.map(\.rawValue)
+    /// ⚠️ Uniqueness is deliberately NOT asserted here. Swift rejects a
+    /// duplicate raw value at compile time, so a test for it cannot fail and
+    /// would only look like coverage. An earlier revision asserted exactly
+    /// that and called it the mapping's whole failure surface; review caught
+    /// it. Pinning the names is the assertion the compiler does not already
+    /// make.
+    func testEveryCategoryKeepsItsOsLogName() {
+        let expected: [AppLogCategory: String] = [
+            .scheduler: "Scheduler",
+            .audio: "Audio",
+            .balance: "Balance",
+            .repository: "Repo",
+            .storeKit: "StoreKit",
+            .coordinator: "Coordinator",
+            .appDelegate: "AppDelegate",
+            .ui: "UI"
+        ]
+
         XCTAssertEqual(
-            Set(names).count, names.count,
-            "two categories share an os_log category name: \(names)"
+            expected.count, AppLogCategory.allCases.count,
+            "a category was added without pinning the os_log name it ships under"
         )
-        XCTAssertFalse(names.contains(where: \.isEmpty), "an unnamed category cannot be grepped")
+        for category in AppLogCategory.allCases {
+            XCTAssertEqual(
+                category.rawValue, expected[category],
+                "renaming an os_log category breaks every support grep written against the old name"
+            )
+        }
     }
 }
