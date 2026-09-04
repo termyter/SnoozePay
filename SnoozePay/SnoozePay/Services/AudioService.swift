@@ -342,12 +342,13 @@ final class AudioService {
         return player ?? Self.generateAlarmTone()
     }
 
-    /// Apply per-alarm volume + optional fade-in. Defensive `min/max` clamp
-    /// preserves the historical behaviour even when the caller hands us a
-    /// NaN/Inf value (a corrupt payload still produces a playable alarm).
+    /// Apply per-alarm volume + optional fade-in. The defensive clamp comes
+    /// from `Alarm.clampedVolume` so playback and persistence cannot disagree
+    /// about what a NaN/Inf value means (#714) — a corrupt payload still
+    /// produces a playable alarm, at the same volume everywhere.
     private func configurePlayerVolume(_ player: AVAudioPlayer, target volume: Float, fadeIn: Bool) {
         player.numberOfLoops = -1
-        let clampedVolume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
+        let clampedVolume = Alarm.clampedVolume(volume)
         if fadeIn {
             // Start at 0 and ramp up so the user is woken gently. AVAudio
             // schedules the ramp on the audio thread and survives screen

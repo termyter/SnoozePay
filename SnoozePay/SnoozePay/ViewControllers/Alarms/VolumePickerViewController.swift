@@ -96,7 +96,7 @@ final class VolumePickerViewController: UIViewController {
     init(volume: Float, fadeIn: Bool, onChange: ((Float, Bool) -> Void)? = nil) {
         // Clamp the seed value so a corrupt persisted volume can't push the
         // slider out of bounds and crash on the first valueChanged event.
-        self.volume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
+        self.volume = Alarm.clampedVolume(volume)
         self.fadeIn = fadeIn
         self.onChange = onChange
         super.init(nibName: nil, bundle: nil)

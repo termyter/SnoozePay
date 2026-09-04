@@ -193,7 +193,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         self.onSelect = onSelect
         self.previewSound = previewSound
         // Clamp the seed so a corrupt persisted volume can't render «-12%».
-        self.volume = min(max(volume.isFinite ? volume : 1.0, 0), 1)
+        self.volume = Alarm.clampedVolume(volume)
         self.fadeIn = fadeIn
         self.onVolumeChange = onVolumeChange
         super.init(nibName: nil, bundle: nil)
