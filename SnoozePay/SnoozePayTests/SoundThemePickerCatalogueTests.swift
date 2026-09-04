@@ -1,9 +1,13 @@
 import XCTest
 @testable import SnoozePay
 
-/// Unit tests for the extracted V3 picker logic (#285): the sound catalogue +
-/// subtitle mapping and the alarm-theme subtitle mapping. Pure-value tests —
-/// no simulator/UIKit layout exercised.
+/// Unit tests for the extracted V3 picker logic (#285): the sound catalogue's
+/// shape (its ids, its entries, the separate `custom` slot) and the alarm-theme
+/// subtitle mapping. Pure-value tests — no simulator/UIKit layout exercised.
+///
+/// The catalogue's own subtitle mapping is NOT checked here: #720 removed the
+/// `SoundCatalogue.subtitle(for:)` accessor these tests read it through. What
+/// the words actually say is pinned in `SoundCatalogueCopyTests`.
 final class SoundThemePickerCatalogueTests: XCTestCase {
 
     // MARK: - Sound catalogue

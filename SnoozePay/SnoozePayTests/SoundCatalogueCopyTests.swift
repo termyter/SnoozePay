@@ -151,10 +151,23 @@ final class SoundCatalogueCopyTests: XCTestCase {
             let subtitle = try XCTUnwrap(Self.copy[SoundCatalogue.subtitleKey(for: entry.id)])
             XCTAssertEqual(entry.name, name)
             XCTAssertEqual(entry.subtitle, subtitle)
+            // Both expectations above are looked up BY the key builders they check,
+            // so a broken `subtitleKey(for:)` lies on both sides and stays green.
+            // These two assertions are the outside view: they read the rendered
+            // words, not the key. `subtitle(for:)` used to supply it by pinning
+            // id → words directly; #720 deleted it, so it lives here now.
+            XCTAssertNotEqual(
+                entry.name, entry.subtitle,
+                "'\(entry.id)': subtitle resolved to the name — subtitleKey is wired to the name namespace"
+            )
         }
         XCTAssertEqual(
             Set(entries.map { $0.name }).count, entries.count,
             "two sounds resolved to the same name — one is wired to the wrong key"
+        )
+        XCTAssertEqual(
+            Set(entries.map { $0.subtitle }).count, entries.count,
+            "two sounds resolved to the same subtitle — one is wired to the wrong key"
         )
     }
 
