@@ -324,6 +324,12 @@ final class AlarmEditorCopyTests: XCTestCase {
         // Range bounds under the track read through the same key.
         XCTAssertTrue(Self.strings(in: cell.contentView).contains("1 мин"))
         XCTAssertTrue(Self.strings(in: cell.contentView).contains("15 мин"))
+
+        // The cell's caps label renders `create_alarm.snooze.caps`, which is in
+        // `allKeys` — but this was the one caps call site never handed to the
+        // guard, so a leak here stayed outside it however many spellings the
+        // guard learned.
+        Self.assertNoKeysLeaked(in: Self.strings(in: cell.contentView))
     }
 
     // MARK: - Layer 3: the alarms list
@@ -533,6 +539,33 @@ final class AlarmEditorCopyTests: XCTestCase {
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.preview_caps")))
     }
 
+    // MARK: - The guard itself
+
+    /// The guard is only as strong as the spellings it recognises, and nothing
+    /// else asserts on it: every other test here would stay green if it stopped
+    /// matching. A caps section label renders `Localized.text(key).uppercased()`,
+    /// so a missed lookup reaches the screen as `CREATE_ALARM.VOLUME.TITLE` —
+    /// both spellings have to be a failure.
+    func testKeyLeakGuardCatchesLowerAndUpperCasedKeys() {
+        let key = "create_alarm.volume.title"
+        for leaked in [key, key.uppercased()] {
+            // `strict` is already the default, but it is the whole contract
+            // here: with it off, a guard that stopped matching would record
+            // nothing and this test would pass. Written out so nobody turns it
+            // off by habit. It has to be the `strict:` parameter rather than an
+            // `XCTExpectedFailure.Options` value — no overload takes `options:`
+            // and an `issueMatcher:` closure together, and the matcher is the
+            // other half of the contract: without it the expectation swallows
+            // ANY recorded failure, so the test would prove only that the guard
+            // went red, not that it named the spelling that reached the screen.
+            XCTExpectFailure("the guard has to name «\(leaked)»", strict: true) {
+                Self.assertNoKeysLeaked(in: ["Громкость", leaked])
+            } issueMatcher: { issue in
+                issue.compactDescription.contains("«\(leaked)»")
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     /// Every piece of text the subtree renders — plain labels, attributed
@@ -587,14 +620,29 @@ final class AlarmEditorCopyTests: XCTestCase {
         return own + view.subviews.flatMap { textFields(in: $0) }
     }
 
-    /// A key that reached the screen looks like `create_alarm.volume.title`.
+    /// A key that reached the screen looks like `create_alarm.volume.title` —
+    /// or `CREATE_ALARM.VOLUME.TITLE`, because the caps section labels
+    /// upper-case whatever `Localized.text` hands back, the key included when
+    /// the lookup missed. Matching the lower-case spelling alone let every caps
+    /// call site walk a leaked key past the guard (#713). Deliberately not
+    /// counting the call sites: #713 said four, and any number written here
+    /// goes stale on the next caps label.
     private static func assertNoKeysLeaked(
         in rendered: [String],
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        for key in allKeys where rendered.contains(key) {
-            XCTFail("«\(key)» rendered as its own key — the catalogue lookup missed", file: file, line: line)
+        for key in allKeys {
+            // Both spellings are reported, not just the first match: a key that
+            // leaks into a plain label AND a caps one is two call sites to fix,
+            // and naming only the lower-case half sends the fixer to one of them.
+            let spellings = key == key.uppercased() ? [key] : [key, key.uppercased()]
+            for leaked in spellings where rendered.contains(leaked) {
+                XCTFail(
+                    "«\(leaked)» rendered as its own key — the catalogue lookup missed",
+                    file: file, line: line
+                )
+            }
         }
     }
 }
