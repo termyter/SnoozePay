@@ -1,9 +1,13 @@
 import XCTest
 @testable import SnoozePay
 
-/// Unit tests for the extracted V3 picker logic (#285): the sound catalogue +
-/// subtitle mapping and the alarm-theme subtitle mapping. Pure-value tests —
-/// no simulator/UIKit layout exercised.
+/// Unit tests for the extracted V3 picker logic (#285): the sound catalogue's
+/// shape (its ids, its entries, the separate `custom` slot) and the alarm-theme
+/// subtitle mapping. Pure-value tests — no simulator/UIKit layout exercised.
+///
+/// The catalogue's own subtitle mapping is NOT checked here: #720 removed the
+/// `SoundCatalogue.subtitle(for:)` accessor these tests read it through. What
+/// the words actually say is pinned in `SoundCatalogueCopyTests`.
 final class SoundThemePickerCatalogueTests: XCTestCase {
 
     // MARK: - Sound catalogue
@@ -22,16 +26,6 @@ final class SoundThemePickerCatalogueTests: XCTestCase {
             XCTAssertFalse(entry.name.isEmpty, "Sound '\(entry.id)' has empty name")
             XCTAssertFalse(entry.subtitle.isEmpty, "Sound '\(entry.id)' has empty subtitle")
         }
-    }
-
-    func testSoundCatalogue_subtitleLookup_resolvesKnownIDs() {
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "dawn"), "Тёплый рассвет с птицами")
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "birds"), "Только щебет, без музыки")
-    }
-
-    func testSoundCatalogue_subtitleLookup_returnsNilForUnknownID() {
-        XCTAssertNil(SoundCatalogue.subtitle(for: "nonexistent"))
-        XCTAssertNil(SoundCatalogue.subtitle(for: ""))
     }
 
     func testSoundCatalogue_customSlot_isDistinctAndNotInEntries() {

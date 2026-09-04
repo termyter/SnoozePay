@@ -26,7 +26,9 @@ import XCTest
 ///
 /// It reaches **22 of the 22 keys** through this type: `entries` plus
 /// `customSlot` cover every one, with `CreateAlarmViewModel.availableSounds`
-/// and `subtitle(for:)` exercised on top. The ten name keys have a second
+/// exercised on top. It used to name `subtitle(for:)` here as well; #720
+/// deleted that accessor as dead, and no key coverage moved with it because
+/// `entries` already reads all ten subtitle keys. The ten name keys have a second
 /// production reader — `AlarmsListViewModel.alarmSoundName(at:)` — which is
 /// covered from its own side in `AlarmsListSoundNameTests`.
 ///
@@ -149,10 +151,23 @@ final class SoundCatalogueCopyTests: XCTestCase {
             let subtitle = try XCTUnwrap(Self.copy[SoundCatalogue.subtitleKey(for: entry.id)])
             XCTAssertEqual(entry.name, name)
             XCTAssertEqual(entry.subtitle, subtitle)
+            // Both expectations above are looked up BY the key builders they check,
+            // so a broken `subtitleKey(for:)` lies on both sides and stays green.
+            // These two assertions are the outside view: they read the rendered
+            // words, not the key. `subtitle(for:)` used to supply it by pinning
+            // id → words directly; #720 deleted it, so it lives here now.
+            XCTAssertNotEqual(
+                entry.name, entry.subtitle,
+                "'\(entry.id)': subtitle resolved to the name — subtitleKey is wired to the name namespace"
+            )
         }
         XCTAssertEqual(
             Set(entries.map { $0.name }).count, entries.count,
             "two sounds resolved to the same name — one is wired to the wrong key"
+        )
+        XCTAssertEqual(
+            Set(entries.map { $0.subtitle }).count, entries.count,
+            "two sounds resolved to the same subtitle — one is wired to the wrong key"
         )
     }
 
@@ -161,17 +176,6 @@ final class SoundCatalogueCopyTests: XCTestCase {
         XCTAssertEqual(slot.id, "custom")
         XCTAssertEqual(slot.name, "Своя мелодия")
         XCTAssertEqual(slot.subtitle, "Скоро")
-    }
-
-    func testSubtitleLookupResolvesKnownIDsAndRejectsEverythingElse() {
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "dawn"), "Тёплый рассвет с птицами")
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "birds"), "Только щебет, без музыки")
-
-        // The custom slot is not selectable, so no stored alarm names it and
-        // the lookup treats it as uncatalogued — as it did before the move.
-        XCTAssertNil(SoundCatalogue.subtitle(for: "custom"))
-        XCTAssertNil(SoundCatalogue.subtitle(for: "nonexistent"))
-        XCTAssertNil(SoundCatalogue.subtitle(for: ""))
     }
 
     /// The editor's picker is fed from `availableSounds`, so a broken key would
