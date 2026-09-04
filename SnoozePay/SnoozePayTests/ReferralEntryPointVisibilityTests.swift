@@ -292,7 +292,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         let labels = try debugRowLabels(referralShortcutEnabled: true)
 
         XCTAssertTrue(
-            labels.contains("Реферальная программа"),
+            labels.contains("Referral program"),
             "the ON position builds no referral shortcut; labels: \(labels)"
         )
     }
@@ -304,7 +304,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         let labelsWithTheFlagOn = try debugRowLabels(referralShortcutEnabled: true)
 
         XCTAssertFalse(
-            labels.contains("Реферальная программа"),
+            labels.contains("Referral program"),
             "the referral shortcut survived the OFF position; labels: \(labels)"
         )
         // The neighbouring shortcuts are untouched — the gate is one button,
@@ -336,7 +336,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         let button = try XCTUnwrap(
             try liveDebugRow(of: sut).arrangedSubviews
                 .compactMap { $0 as? SPButton }
-                .first { $0.accessibilityLabel == "Реферальная программа" },
+                .first { $0.accessibilityLabel == "Referral program" },
             "the hosted screen has no referral shortcut to tap"
         )
         button.sendActions(for: .touchUpInside)
@@ -367,7 +367,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
 
         let labels = try liveDebugRow(of: sut).arrangedSubviews.compactMap { $0.accessibilityLabel }
         XCTAssertEqual(
-            labels.contains("Реферальная программа"), AppFeatureFlags.referralEnabled,
+            labels.contains("Referral program"), AppFeatureFlags.referralEnabled,
             "the built screen stopped following its own flag; labels: \(labels)"
         )
     }
