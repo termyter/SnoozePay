@@ -344,7 +344,7 @@ final class StatisticsViewController: UIViewController {
             message: message,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         // Logged from the completion, not before the call. The production
         // caller is `viewWillAppear`, where UIKit answers a `present` with
         // "whose view is not in the window hierarchy" and does nothing —

@@ -443,7 +443,7 @@ extension AlarmThemePickerViewController: PHPickerViewControllerDelegate {
             message: Localized.text("create_alarm.theme_picker.error.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 }

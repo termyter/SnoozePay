@@ -682,7 +682,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 message: message,
                 preferredStyle: .alert
             )
-            alert.addAction(UIAlertAction(title: "Ок", style: .default))
+            alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
             topVC.present(alert, animated: true)
         }
     }

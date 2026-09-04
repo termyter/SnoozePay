@@ -203,7 +203,7 @@ class AlarmsListViewController: UIViewController {
             message: Localized.text("alarms.debug.reset_onboarding.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
     #endif
@@ -387,7 +387,7 @@ class AlarmsListViewController: UIViewController {
             message: error.errorDescription ?? Localized.text("alarms.error.load_failed_fallback"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 

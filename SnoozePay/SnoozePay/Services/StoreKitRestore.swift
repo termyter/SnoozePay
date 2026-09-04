@@ -43,7 +43,7 @@ extension UIViewController {
             message: Localized.text("deposit.restore.success.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 
@@ -53,7 +53,7 @@ extension UIViewController {
             message: StoreKitRestoreErrorCopy.message(for: error),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 }
