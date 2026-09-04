@@ -548,17 +548,17 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// both spellings have to be a failure.
     func testKeyLeakGuardCatchesLowerAndUpperCasedKeys() {
         let key = "create_alarm.volume.title"
-        // `isStrict` is already the default, but it is the whole contract here:
-        // with it off, a guard that stopped matching would record nothing and
-        // this test would pass. Written out so nobody turns it off by habit.
-        let strict = XCTExpectedFailure.Options()
-        strict.isStrict = true
         for leaked in [key, key.uppercased()] {
-            // The matcher is not decoration. Without it the expectation accepts
-            // ANY recorded failure, so this test would prove only that the guard
-            // went red — not that it named the spelling that reached the screen.
-            // That naming is what the whole change is for, so it is asserted.
-            XCTExpectFailure("the guard has to name «\(leaked)»", options: strict) {
+            // `strict` is already the default, but it is the whole contract
+            // here: with it off, a guard that stopped matching would record
+            // nothing and this test would pass. Written out so nobody turns it
+            // off by habit. It has to be the `strict:` parameter rather than an
+            // `XCTExpectedFailure.Options` value — no overload takes `options:`
+            // and an `issueMatcher:` closure together, and the matcher is the
+            // other half of the contract: without it the expectation swallows
+            // ANY recorded failure, so the test would prove only that the guard
+            // went red, not that it named the spelling that reached the screen.
+            XCTExpectFailure("the guard has to name «\(leaked)»", strict: true) {
                 Self.assertNoKeysLeaked(in: ["Громкость", leaked])
             } issueMatcher: { issue in
                 issue.compactDescription.contains("«\(leaked)»")
@@ -625,20 +625,24 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// upper-case whatever `Localized.text` hands back, the key included when
     /// the lookup missed. Matching the lower-case spelling alone let every caps
     /// call site walk a leaked key past the guard (#713). Deliberately not
-    /// counting them: #713 said four, the file holds eight assertions over seven
-    /// keys, and a number here goes stale on the next caps label.
+    /// counting the call sites: #713 said four, and any number written here
+    /// goes stale on the next caps label.
     private static func assertNoKeysLeaked(
         in rendered: [String],
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         for key in allKeys {
-            let spellings = [key, key.uppercased()]
-            guard let leaked = spellings.first(where: { rendered.contains($0) }) else { continue }
-            XCTFail(
-                "«\(leaked)» rendered as its own key — the catalogue lookup missed",
-                file: file, line: line
-            )
+            // Both spellings are reported, not just the first match: a key that
+            // leaks into a plain label AND a caps one is two call sites to fix,
+            // and naming only the lower-case half sends the fixer to one of them.
+            let spellings = key == key.uppercased() ? [key] : [key, key.uppercased()]
+            for leaked in spellings where rendered.contains(leaked) {
+                XCTFail(
+                    "«\(leaked)» rendered as its own key — the catalogue lookup missed",
+                    file: file, line: line
+                )
+            }
         }
     }
 }
