@@ -1,3 +1,4 @@
+import os
 import XCTest
 import UserNotifications
 @testable import SnoozePay
@@ -43,14 +44,112 @@ final class AlarmSchedulerTests: XCTestCase {
         }
     }
 
-    func testAlarmSoundFileName_returnsCorrectFormat() {
-        // If any sound file exists in the bundle, it should return "name.ext"
-        let result = scheduler.alarmSoundFileName(for: "default_alarm")
-        if let name = result {
-            XCTAssertTrue(name.contains("."), "Filename should include extension separator")
-            XCTAssertTrue(name.hasPrefix("default_alarm."))
-        }
-        // If file doesn't exist, nil is acceptable
+    /// Runs through the DEFAULT lookup — no injected `resourceExists` — so it
+    /// asserts the production path all the way into `Bundle.main`.
+    ///
+    /// Unconditional on purpose. The previous version wrapped both assertions
+    /// in `if let name = result`, which made "the bundle has no sounds at all"
+    /// a pass; that is the one outcome a shipped build must never have, and it
+    /// is what `ALARM-749-DEFAULT-SOUND-MISSING` was added to report. The test
+    /// host IS the app bundle (`TEST_HOST`), and `default_alarm.caf` sits flat
+    /// at its root, so this also pins the injected-closure tests below to
+    /// something real: empty the default closure and this case goes red while
+    /// they stay green.
+    func testAlarmSoundFileName_resolvesTheBundledDefaultThroughTheRealBundle() {
+        XCTAssertEqual(
+            scheduler.alarmSoundFileName(for: AlarmScheduler.fallbackSoundID),
+            "default_alarm.caf",
+            "the app bundle must carry its own fallback alarm sound — without it every "
+            + "alarm rings AlarmKit's system tone"
+        )
+    }
+
+    // MARK: - The two failing lookups leave distinguishable traces (#749)
+    //
+    // Returning nil is the contract with AlarmKit and is unchanged; what these
+    // pin is that the branch says so. Until #749 a user report of "the alarm
+    // rang with the wrong sound" had nothing to grep: a missing sound file, a
+    // build with no default sound, and a perfectly resolved lookup were all
+    // equally silent.
+
+    func testAlarmSoundFileName_missingSoundWithFallbackPresent_logsTheDowngrade() {
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        let result = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            scheduler.alarmSoundFileName(for: "vanished_sound") { name, ext in
+                name == AlarmScheduler.fallbackSoundID && ext == "caf"
+            }
+        })
+
+        XCTAssertEqual(result, "default_alarm.caf", "the fallback still answers — the alarm rings")
+
+        let traces = lines.filter { $0.message.contains(AlarmScheduler.missingSoundErrorID) }
+        XCTAssertEqual(
+            traces.count, 1,
+            "a sound the bundle lost must leave exactly one trace; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(traces.first?.category, .audio, "a sound-resolution fault belongs to the Audio category")
+        XCTAssertEqual(
+            traces.first?.level, .error,
+            "ringing something other than what the user chose is not a notice"
+        )
+        XCTAssertTrue(
+            traces.first?.message.contains("vanished_sound") == true,
+            "the line must name the soundID that was not found; it reads «\(traces.first?.message ?? "")»"
+        )
+    }
+
+    /// The branch the real bundle cannot reach — the app ships
+    /// `default_alarm.caf`, so only an injected lookup can state its absence.
+    /// `.fault`, not `.error`: this one is a defective build, not a degraded
+    /// install of a correct one.
+    func testAlarmSoundFileName_nothingInTheBundle_logsTheBuildDefectAndStillReturnsNil() {
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        let result = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            scheduler.alarmSoundFileName(for: "vanished_sound") { _, _ in false }
+        })
+
+        XCTAssertNil(result, "nil is the contract with AlarmKit and #749 must not change it")
+
+        let traces = lines.filter { $0.message.contains(AlarmScheduler.missingFallbackSoundErrorID) }
+        XCTAssertEqual(
+            traces.count, 1,
+            "a bundle without its default sound must leave exactly one trace; "
+            + "the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(traces.first?.category, .audio, "a sound-resolution fault belongs to the Audio category")
+        XCTAssertEqual(traces.first?.level, .fault, "a build shipped without its own alarm sound is a fault")
+        XCTAssertTrue(
+            traces.first?.message.contains("vanished_sound") == true,
+            "the line must name the soundID that was not found; it reads «\(traces.first?.message ?? "")»"
+        )
+        XCTAssertTrue(
+            lines.allSatisfy { !$0.message.contains(AlarmScheduler.missingSoundErrorID) },
+            "the downgrade ID belongs to the branch where the alarm still rings; emitting both "
+            + "here would make a support grep count one incident twice"
+        )
+    }
+
+    /// Silence is load-bearing on the path that works: this runs on every
+    /// scheduled alarm and every snooze re-fire, so a line here would put an
+    /// `.error` in the log of a device where nothing is wrong.
+    func testAlarmSoundFileName_soundPresent_logsNothing() {
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        let result = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            scheduler.alarmSoundFileName(for: "radar") { name, ext in name == "radar" && ext == "caf" }
+        })
+
+        XCTAssertEqual(result, "radar.caf")
+        XCTAssertTrue(lines.isEmpty, "a resolved lookup must stay silent; the sink saw \(lines.map(\.message))")
+    }
+
+    /// The IDs are what a support ticket is grepped by, so telling the two
+    /// states apart depends on them staying different strings.
+    func testAlarmSoundErrorIDs_areDistinct() {
+        XCTAssertNotEqual(
+            AlarmScheduler.missingSoundErrorID,
+            AlarmScheduler.missingFallbackSoundErrorID,
+            "a lost user sound and a build without a default sound must not grep as one thing"
+        )
     }
 
     // MARK: - Permission

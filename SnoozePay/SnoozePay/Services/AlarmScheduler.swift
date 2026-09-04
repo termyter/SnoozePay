@@ -514,18 +514,90 @@ final class AlarmScheduler: AlarmScheduling {
         "snooze_\(alarmID.uuidString)"
     }
 
+    /// The sound every alarm falls back to when the one the user picked is not
+    /// in the bundle. Spelled once because two call sites read it: the lookup
+    /// and the line that reports the lookup failed.
+    static let fallbackSoundID = "default_alarm"
+
+    /// Extensions tried, in order, for both the requested sound and the
+    /// fallback. Part of the diagnostic: a line saying which extensions were
+    /// tried is what separates "the file is missing" from "the file is there
+    /// under an extension this list does not know".
+    static let alarmSoundExtensions = ["caf", "m4a", "wav", "mp3"]
+
+    /// Log identifier for a soundID with no bundled file, where
+    /// ``fallbackSoundID`` still answered. The alarm rings — with a sound the
+    /// user did not choose.
+    static var missingSoundErrorID: String { "ALARM-749-SOUND-MISSING" }
+
+    /// Log identifier for a lookup that found neither the requested sound nor
+    /// ``fallbackSoundID``.
+    ///
+    /// Kept apart from ``missingSoundErrorID`` because the two mean opposite
+    /// things to whoever greps them: the first is a degraded install of a
+    /// correct build, the second is a build assembled without its own default
+    /// sound — every alarm in it rings AlarmKit's system tone. `.fault`, not
+    /// `.error`, for the same reason.
+    static var missingFallbackSoundErrorID: String { "ALARM-749-DEFAULT-SOUND-MISSING" }
+
     /// Resolve alarm soundID to an actual file name with extension in the bundle.
     /// Returns nil if no matching file is found (AlarmKit then uses its default
     /// alert sound).
-    func alarmSoundFileName(for soundID: String) -> String? {
-        let extensions = ["caf", "m4a", "wav", "mp3"]
-        for ext in extensions where Bundle.main.url(forResource: soundID, withExtension: ext) != nil {
+    ///
+    /// Both failing paths log (#749). Neither changes what is returned: `nil`
+    /// is the contract with AlarmKit and stays. What changes is that a "the
+    /// alarm rang with the wrong sound" report now has something to grep —
+    /// before this, the two failures below were indistinguishable from a
+    /// successful lookup in unified logging, and the only way to tell them
+    /// apart was to read this function.
+    ///
+    /// `resourceExists` exists so a test can state which files the bundle
+    /// holds. `Bundle.main` in the test host IS the app bundle, so the
+    /// no-fallback-either branch is otherwise unreachable from a test: the app
+    /// ships `default_alarm.caf`, which is exactly the condition that branch
+    /// reports the absence of.
+    func alarmSoundFileName(
+        for soundID: String,
+        resourceExists: (String, String) -> Bool = { name, ext in
+            Bundle.main.url(forResource: name, withExtension: ext) != nil
+        }
+    ) -> String? {
+        let extensions = Self.alarmSoundExtensions
+        for ext in extensions where resourceExists(soundID, ext) {
             return "\(soundID).\(ext)"
         }
+        let tried = extensions.joined(separator: ",")
         // Try default alarm sound
-        for ext in extensions where Bundle.main.url(forResource: "default_alarm", withExtension: ext) != nil {
-            return "default_alarm.\(ext)"
+        for ext in extensions where resourceExists(Self.fallbackSoundID, ext) {
+            // Through `AppLogger.emit` rather than `AppLogger.audio.error`:
+            // `os.Logger` hands the caller nothing back, so a branch whose only
+            // evidence is its own log line would be one deletion away from the
+            // silence it replaces, with the suite still green (#731).
+            //
+            // Called on the main thread — `AlarmKitScheduler.makeConfiguration`
+            // runs synchronously, before the `Task` that awaits the schedule —
+            // which is what `emit`'s unguarded test sink requires.
+            AppLogger.emit(
+                .audio, .error,
+                """
+                [\(Self.missingSoundErrorID)] alarmSoundFileName: no bundled file for \
+                soundID '\(soundID)' (tried \(tried)); the alarm will ring \
+                \(Self.fallbackSoundID).\(ext) instead of the chosen sound
+                """
+            )
+            return "\(Self.fallbackSoundID).\(ext)"
         }
+        // soundID is a preset identifier ("classic", "radar") chosen from a
+        // fixed list, never user-entered text — safe to make public, which is
+        // what `emit` does to everything it is handed.
+        AppLogger.emit(
+            .audio, .fault,
+            """
+            [\(Self.missingFallbackSoundErrorID)] alarmSoundFileName: bundle has neither \
+            '\(soundID)' nor '\(Self.fallbackSoundID)' (tried \(tried)); every alarm in \
+            this build rings AlarmKit's system sound
+            """
+        )
         return nil
     }
 }
