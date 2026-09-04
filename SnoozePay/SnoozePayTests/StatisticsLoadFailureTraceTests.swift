@@ -1,3 +1,4 @@
+import os
 import UIKit
 import XCTest
 @testable import SnoozePay
@@ -321,12 +322,40 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         let firstAlert = waitForAlert(on: controller)
         XCTAssertNotNil(firstAlert, "test precondition: the first alert must be up")
 
-        controller.viewModel.onLoadError?(decodeFailure())
+        // Through the seam (#731), so this asserts the line was EMITTED, not
+        // merely that `droppedAlertDiagnostic` can build one. Deleting the
+        // `AppLogger.emit` in `presentRepositoryError` used to leave this whole
+        // suite green: the guard still returned, the second error still
+        // vanished, and the pure-function assertions below never noticed —
+        // which is verbatim the #721 defect this test exists to close.
+        //
+        // No new wall-clock: this branch returns synchronously without
+        // presenting, and the only wait in the test is the one already paid
+        // above for the FIRST alert.
+        //
+        // Selected by grep handle rather than by `dropped.count`, deliberately.
+        // `waitForAlert` polls `presentedViewController`, which UIKit sets
+        // inside `present` — so it returns BEFORE the first alert's completion
+        // runs, and that completion writes ALERT-SHOWN. Today that line cannot
+        // land here only because `perform` never turns the run loop; add any
+        // wait inside this closure and a count-based assertion would fail
+        // pointing at the wrong line.
+        var dropped: [(AppLogCategory, OSLogType, String)] = []
+        AppLogger.withTestSink({ dropped.append(($0, $1, $2)) }, perform: {
+            controller.viewModel.onLoadError?(decodeFailure())
+        })
 
         XCTAssertTrue(
             controller.presentedViewController === firstAlert,
             "a second alert must not replace or stack on the first"
         )
+        let dropLines = dropped.filter { $0.2.contains(StatisticsViewModel.alertDroppedErrorID) }
+        XCTAssertEqual(
+            dropLines.count, 1,
+            "the dropped alert must leave exactly one ALERT-DROPPED line; the sink saw \(dropped.map(\.2))"
+        )
+        XCTAssertEqual(dropLines.first?.0, .ui, "a screen-level drop belongs to the UI category")
+        XCTAssertEqual(dropLines.first?.1, .error, "a warning the user never saw is not a notice")
         // The production sentence rather than a literal: the line has to read
         // as the message the user did not get, and the test above already
         // pins that this is the message the alert carries.
@@ -342,6 +371,14 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         XCTAssertTrue(
             diagnostic?.contains("UIAlertController") == true,
             "the line must name what blocked the alert; it reads «\(diagnostic ?? "")»"
+        )
+        // Ties the two halves together. Without it, `presentRepositoryError`
+        // could emit a bare grep handle and the assertions above would still
+        // pass: the ones on `dropLines` only look for the handle, and the ones
+        // on `diagnostic` test a value this test built itself.
+        XCTAssertEqual(
+            dropLines.first?.2, diagnostic,
+            "the emitted line must BE the diagnostic, not merely carry its handle"
         )
         XCTAssertTrue(
             diagnostic?.contains(unshownMessage) == true,
