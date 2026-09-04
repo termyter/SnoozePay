@@ -62,9 +62,9 @@ final class AppLoggerSubsystemTests: XCTestCase {
 
     /// The subsystem must be READ from the running bundle, not spelled out.
     ///
-    /// ⚠️ What this can catch is narrow, and worth stating: with
-    /// `subsystem = Bundle.main.bundleIdentifier ?? …` in place it cannot fail,
-    /// because both sides evaluate the same expression. It fails when somebody
+    /// ⚠️ What this can catch is narrow, and worth stating: while ``subsystem``
+    /// is resolved from `Bundle.main.bundleIdentifier` it cannot fail, because
+    /// both sides read the same source in the same process. It fails when somebody
     /// puts a literal back — which is exactly the shape the code had before
     /// #670, and exactly the shape that went stale. The drift itself is caught
     /// one test down.
@@ -76,7 +76,7 @@ final class AppLoggerSubsystemTests: XCTestCase {
         )
     }
 
-    /// The `??` arm is a literal, so it is the part of ``AppLogger`` that can go
+    /// The fallback is a literal, so it is the part of ``AppLogger`` that can go
     /// stale again the way #670 did. It is not the only red a bundle-identifier
     /// change produces: ``testTheseTestsRunInsideTheAppProcess`` pins the same
     /// string against the same source and reddens with it. Two failures, one
