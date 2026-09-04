@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import SnoozePay
 
@@ -134,6 +135,63 @@ final class StatisticsDataHealthTests: XCTestCase {
         XCTAssertTrue(viewModel.worstWeekdayNames.isEmpty)
         XCTAssertTrue(viewModel.weeklyTrend.isEmpty)
         XCTAssertEqual(viewModel.trendDiff, 0)
+    }
+
+    /// The partial read is the one ledger failure that throws nothing: no
+    /// alert, no `onLoadError`, rows just stop counting. The `.public` log line
+    /// carrying `STATS-348-LEDGER-PARTIAL` is therefore the ONLY artefact an
+    /// incident leaves behind, and until #742 nothing asserted it was written —
+    /// delete the call and the assertions above still pass, because they read
+    /// the state, not the trace.
+    func testLoadData_unrecognizedTransactionType_writesTheSuppressionTrace() throws {
+        alarmRepo.save(Alarm(time: Date(), penaltyAmount: 50))
+        wakeStore.recordWake(on: Date(), calendar: calendar)
+        let ledger = [Transaction(type: .unknown("teleport"), amount: 50, createdAt: Date())]
+        testDefaults.set(try JSONEncoder().encode(ledger), forKey: "stored_transactions")
+
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            makeVM().loadData()
+        })
+
+        let traces = lines.filter { $0.message.contains(StatisticsViewModel.partialLedgerErrorID) }
+        XCTAssertEqual(
+            traces.count, 1,
+            "a partial read must leave exactly one trace; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(traces.first?.category, .repository, "a ledger fault belongs to the Repo category")
+        XCTAssertEqual(traces.first?.level, .error, "silently dropped money rows are not a notice")
+        XCTAssertTrue(
+            traces.first?.message.contains("teleport") == true,
+            "the line must name the token that was not understood; it reads «\(traces.first?.message ?? "")»"
+        )
+    }
+
+    /// Same hole one screen over: `snoozePriceState` going to
+    /// `.alarmStoreUnreadable` is asserted by the two tests below, but the
+    /// `STATS-348-ALARMS-UNREADABLE` line that tells support WHY was written
+    /// into a void nothing could read (#742).
+    func testLoadData_corruptAlarmStore_writesTheUnpricedTrace() {
+        wakeStore.recordWake(on: Date(), calendar: calendar)
+        testDefaults.set(Data("not json".utf8), forKey: "stored_alarms")
+
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            makeVM().loadData()
+        })
+
+        let traces = lines.filter { $0.message.contains(StatisticsViewModel.alarmStoreErrorID) }
+        XCTAssertEqual(
+            traces.count, 1,
+            "an unreadable alarm store must leave exactly one trace; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(traces.first?.category, .repository, "a persistence fault belongs to the Repo category")
+        XCTAssertEqual(traces.first?.level, .error, "a price the screen cannot show is not a notice")
+        XCTAssertTrue(
+            traces.first?.message.contains("decodeFailure") == true,
+            "the line must carry the underlying failure, not just that there was one; "
+            + "it reads «\(traces.first?.message ?? "")»"
+        )
     }
 
     /// The two ledger failures must stay distinguishable: the state column

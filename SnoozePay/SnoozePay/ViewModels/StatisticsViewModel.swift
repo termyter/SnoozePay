@@ -256,11 +256,16 @@ final class StatisticsViewModel {
                 // Nothing throws on this path, so this log is the only trace
                 // an incident leaves — version skew, byte damage to a `type`
                 // string, or a half-finished migration all land here.
-                AppLogger.repository.error(
+                // Through the seam (#742): every interpolation here was already
+                // `.public`, so unified logging receives the same sentence, and
+                // a test can now assert the line was written rather than only
+                // that the state changed.
+                AppLogger.emit(
+                    .repository, .error,
                     """
-                    [\(Self.partialLedgerErrorID, privacy: .public)] Statistics suppressed: \
-                    ledger carries \(unknownTokens.count, privacy: .public) unrecognised \
-                    type token(s): \(unknownTokens.sorted().joined(separator: ","), privacy: .public)
+                    [\(Self.partialLedgerErrorID)] Statistics suppressed: \
+                    ledger carries \(unknownTokens.count) unrecognised \
+                    type token(s): \(unknownTokens.sorted().joined(separator: ","))
                     """
                 )
             }
@@ -367,10 +372,14 @@ final class StatisticsViewModel {
             }
         } catch {
             snoozePriceState = .alarmStoreUnreadable
-            AppLogger.repository.error(
+            // Through the seam (#742). `String(describing: error)` carries a
+            // decoder diagnostic, never an alarm's label or id, so making the
+            // whole string `.public` keeps the file's no-identifier-leak posture.
+            AppLogger.emit(
+                .repository, .error,
                 """
-                [\(Self.alarmStoreErrorID, privacy: .public)] Savings unpriced: \
-                alarm store unreadable: \(String(describing: error), privacy: .public)
+                [\(Self.alarmStoreErrorID)] Savings unpriced: \
+                alarm store unreadable: \(String(describing: error))
                 """
             )
         }

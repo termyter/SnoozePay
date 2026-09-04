@@ -289,6 +289,55 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         return controller.presentedViewController as? UIAlertController
     }
 
+    /// The last seam site that #731 could not observe (#742).
+    ///
+    /// ALERT-SHOWN is written from `present(_:animated:completion:)`'s
+    /// completion, which runs a runloop turn AFTER the call returns. #731
+    /// recorded that as something `withTestSink` "cannot see"; review corrected
+    /// it, and the correction is what this test is built on: `perform` is
+    /// synchronous, but nothing stops its BODY from turning the run loop, and
+    /// the sink stays installed for the whole wait.
+    ///
+    /// ⚠️ It waits on the LINE, not on `presentedViewController`. The sibling
+    /// `waitForAlert` returns as soon as UIKit sets that property — which
+    /// happens inside `present`, before the completion runs — so a test built
+    /// on it would sample the sink too early and pass or fail on timing.
+    /// Waiting for the thing being asserted is also why this costs no more
+    /// wall-clock than the poll it replaces: both end on the same presentation.
+    func testFirstLoadError_logsThatTheUserActuallySawIt() {
+        let controller = makeMountedController()
+        let shown = expectation(description: "the ALERT-SHOWN line reached the seam")
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        var fulfilled = false
+
+        AppLogger.withTestSink({ category, level, message in
+            lines.append((category, level, message))
+            // Guarded: a second fulfil is an XCTest API misuse failure, and
+            // this branch is reached again by any later ALERT-SHOWN.
+            if !fulfilled, message.contains(StatisticsViewModel.alertShownErrorID) {
+                fulfilled = true
+                shown.fulfill()
+            }
+        }, perform: {
+            controller.viewModel.onLoadError?(decodeFailure())
+            // 25 s to match `waitForAlert`: on a saturated three-core runner a
+            // tight deadline answers "the runner was busy", not "it never logged".
+            wait(for: [shown], timeout: 25)
+        })
+
+        let shownLines = lines.filter { $0.message.contains(StatisticsViewModel.alertShownErrorID) }
+        XCTAssertEqual(
+            shownLines.count, 1,
+            "one shown alert must leave exactly one line; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(shownLines.first?.category, .ui, "an alert the user saw is a screen-level event")
+        XCTAssertEqual(shownLines.first?.level, .error, "the warning behind the alert is not a notice")
+        XCTAssertNotNil(
+            controller.presentedViewController as? UIAlertController,
+            "the line claims an alert was shown, so one has to be on screen"
+        )
+    }
+
     /// The first error reaches the user, with catalogue copy — the call-site
     /// coverage `statistics.error.title` never had (see
     /// `StatisticsScreensLocalizationTests`, which left it to #721).
