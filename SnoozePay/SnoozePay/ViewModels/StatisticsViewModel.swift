@@ -185,8 +185,12 @@ final class StatisticsViewModel {
     /// only evidence this branch ever ran — a `catch` whose logging nobody can
     /// observe is one deletion away from the silent `catch` it replaces, and
     /// that deletion is exactly what went unnoticed here for a year.
+    /// Through `AppLogger.emit`, not `AppLogger.repository.error` directly:
+    /// `os.Logger` hands the caller nothing back, so a default whose body only
+    /// writes there is unreachable for a mutation check — empty it and every
+    /// test stays green, which is the defect this seam exists to close (#731).
     var logLoadFailure: (String) -> Void = { message in
-        AppLogger.repository.error("\(message, privacy: .public)")
+        AppLogger.emit(.repository, .error, message)
     }
 
     // MARK: - Init

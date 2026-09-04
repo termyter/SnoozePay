@@ -332,7 +332,10 @@ final class StatisticsViewController: UIViewController {
         if let diagnostic = Self.droppedAlertDiagnostic(
             presenting: presentedViewController, message: message
         ) {
-            AppLogger.ui.error("\(diagnostic, privacy: .public)")
+            // `emit`, so a test can read the line back — the drop is invisible
+            // in the UI by construction (nothing new appears), which makes the
+            // line the only evidence the branch ran at all (#731).
+            AppLogger.emit(.ui, .error, diagnostic)
             return
         }
 
@@ -350,10 +353,11 @@ final class StatisticsViewController: UIViewController {
         // alert that never appeared, which is the same defect class #721
         // exists to close, only pointing the other way.
         present(alert, animated: true) {
-            AppLogger.ui.error(
+            AppLogger.emit(
+                .ui, .error,
                 """
-                [\(StatisticsViewModel.alertShownErrorID, privacy: .public)] Statistics load \
-                error shown to the user: \(message, privacy: .public)
+                [\(StatisticsViewModel.alertShownErrorID)] Statistics load \
+                error shown to the user: \(message)
                 """
             )
         }
