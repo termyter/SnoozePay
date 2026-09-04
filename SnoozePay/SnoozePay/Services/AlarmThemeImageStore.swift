@@ -10,7 +10,7 @@ import os
 /// gradient via `themedBackgroundFactory`.
 enum AlarmThemeImageStore {
 
-    private static let log = OSLog(subsystem: "Ivan-Emelyanov.SnoozePay", category: "AlarmThemeImageStore")
+    private static let log = OSLog(subsystem: AppLogger.subsystem, category: "AlarmThemeImageStore")
     private static let directoryName = "AlarmThemes"
     private static let jpegQuality: CGFloat = 0.85
 

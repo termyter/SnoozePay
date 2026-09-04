@@ -64,7 +64,7 @@ final class ReferralService {
     /// twice.
     private let queue = DispatchQueue(label: "com.snoozepay.referral.serial")
     private static let log = OSLog(
-        subsystem: "Ivan-Emelyanov.SnoozePay",
+        subsystem: AppLogger.subsystem,
         category: "ReferralService"
     )
 

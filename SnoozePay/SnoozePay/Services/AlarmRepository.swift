@@ -47,7 +47,7 @@ final class AlarmRepository {
     /// `UNUserNotificationCenter`.
     private let scheduler: AlarmScheduling
     private let queue = DispatchQueue(label: "com.snoozepay.alarms.serial")
-    private static let log = OSLog(subsystem: "Ivan-Emelyanov.SnoozePay", category: "AlarmRepository")
+    private static let log = OSLog(subsystem: AppLogger.subsystem, category: "AlarmRepository")
 
     /// Set inside `queue.sync` whenever a decode failure is observed. While
     /// true, `persist()` refuses to write — this prevents the user from
