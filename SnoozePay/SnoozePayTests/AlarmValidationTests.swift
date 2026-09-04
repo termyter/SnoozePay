@@ -104,8 +104,17 @@ final class AlarmValidationTests: XCTestCase {
         XCTAssertEqual(Alarm.clampedVolume(0.755), 0.755)
     }
 
-    func testClampedVolume_isWhatTheDecodePathApplies() throws {
-        // Ties the shared helper to the persisted path: same input, same value.
+    func testClampedVolume_isWhatTheValidatingInitApplies() throws {
+        // Ties the shared helper to the CONSTRUCTION boundary — `init(validating:)`,
+        // not `init(from: Decoder)`. Both call `clampedVolume`, but only this one is
+        // exercised here, and the name used to promise the decode path. Nothing in
+        // the suite currently runs a non-finite or out-of-range `volume` through
+        // `JSONDecoder`; #766 covers that.
+        //
+        // Both sides call the same function, so this is tautological under a changed
+        // clamp and only fires when construction stops routing through the helper —
+        // which is exactly the drift #714 exists to prevent, and not coverage of the
+        // boundary values themselves. Those are pinned by the three tests above.
         for raw in [Float.nan, -0.2, 0, 0.5, 1, 1.4] {
             let stored = try XCTUnwrap(Alarm(validating: UUID(), volume: raw)?.volume)
             XCTAssertEqual(
