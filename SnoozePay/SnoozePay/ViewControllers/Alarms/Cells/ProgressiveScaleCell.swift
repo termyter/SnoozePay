@@ -227,11 +227,26 @@ final class ProgressiveCardSurface: UIView {
     /// having to re-`configure`.
     private var isPainTinted = false
 
+    /// The card's corner radius. `radius={20}` on this card in the canon
+    /// (`SPScreensV2.jsx`), which is also what the `.insetGrouped` section
+    /// is rounded to. It used to be `AppRadius.sm` (12): the fill was
+    /// clipped to the section's larger arc while the border was stroked
+    /// along the smaller one, so the outline ran along the straight edges
+    /// and disappeared around every corner.
+    private static let cardRadius = AppRadius.lg
+
     private let gradient: CAGradientLayer = {
         let layer = CAGradientLayer()
         layer.startPoint = CGPoint(x: 0, y: 0)
         layer.endPoint = CGPoint(x: 1, y: 1)
-        layer.cornerRadius = AppRadius.sm
+        layer.cornerRadius = ProgressiveCardSurface.cardRadius
+        layer.cornerCurve = .continuous
+        // `cornerRadius` alone does not clip a CAGradientLayer: the ramp is
+        // the layer's CONTENT, and content is only clipped when the layer
+        // masks. Without this the armed card painted a square gradient
+        // under a rounded border, so each corner showed the ramp's own
+        // square edge outside the stroke and read as a different colour.
+        layer.masksToBounds = true
         layer.isHidden = true
         return layer
     }()
@@ -244,7 +259,13 @@ final class ProgressiveCardSurface: UIView {
         // painted by `CardRowBackgroundView`, which moved onto `bg1` in #496 —
         // this card was the last one still reading a different dark grey.
         backgroundColor = AppColors.bg1
-        layer.cornerRadius = AppRadius.sm
+        layer.cornerRadius = ProgressiveCardSurface.cardRadius
+        // `.continuous`, matching the squircle UIKit masks the `.insetGrouped`
+        // section to. A default `.circular` corner of the same radius bulges
+        // OUTSIDE that mask around the 45° point, so the border was clipped
+        // away on every arc and survived only along the straight edges — read
+        // as "the outline is missing / a different colour in the corners".
+        layer.cornerCurve = .continuous
         layer.masksToBounds = false
         layer.addSublayer(gradient)
         applyThemedDecoration()
@@ -260,12 +281,12 @@ final class ProgressiveCardSurface: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         gradient.frame = bounds
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: AppRadius.sm).cgPath
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: ProgressiveCardSurface.cardRadius).cgPath
         // Light mode's `shadow1` is a two-stop recipe; the narrow ambient stop
         // lives on a sibling sublayer that has to track the host's bounds.
         AppShadow.installAmbientShadow1Layer(
             on: layer,
-            cornerRadius: AppRadius.sm,
+            cornerRadius: ProgressiveCardSurface.cardRadius,
             trait: traitCollection
         )
     }
@@ -287,7 +308,7 @@ final class ProgressiveCardSurface: UIView {
         AppShadow.shadow1(for: traitCollection).apply(to: layer)
         AppShadow.installAmbientShadow1Layer(
             on: layer,
-            cornerRadius: AppRadius.sm,
+            cornerRadius: ProgressiveCardSurface.cardRadius,
             trait: traitCollection
         )
         gradient.colors = [

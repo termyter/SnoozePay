@@ -39,6 +39,7 @@ class SettingsViewController: UIViewController {
     /// `reloadSections` after a successful friend-code apply (issue #144).
     let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .insetGrouped)
+        table.showsVerticalScrollIndicator = false
         table.translatesAutoresizingMaskIntoConstraints = false
         return table
     }()

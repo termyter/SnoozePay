@@ -28,6 +28,7 @@ final class CreateAlarmViewController: UIViewController {
     /// theme row in place after the picker pops (#182).
     let tableView: UITableView = {
         let view = UITableView(frame: .zero, style: .insetGrouped)
+        view.showsVerticalScrollIndicator = false
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -218,6 +219,21 @@ final class CreateAlarmViewController: UIViewController {
         tableView.keyboardDismissMode = .interactive
         registerSectionCells(in: tableView)
 
+        // The page, not just `view`. `view.backgroundColor` above is set to
+        // `bg0` but the table covers it edge to edge, so without this line the
+        // ground between the cards is UITableView's default
+        // `systemGroupedBackground` — pure `#000000` in dark, `#F2F2F7` in
+        // light. Neither is a brand colour: the cards are the blue-tinted
+        // `bg1` `#0E1320`, so the seams read as neutral black stripes cutting
+        // between blue-grey slabs. `SettingsViewController` has always set it
+        // (its `setupTableView`); this screen was the one that missed it.
+        tableView.backgroundColor = AppColors.bg0
+
+        // Breathing room under the nav bar. `.insetGrouped` gives the first
+        // section only its own small top inset, which put the «Название» card
+        // hard against the bar.
+        tableView.contentInset.top = AppSpacing.sp4
+
         // Pin to safe area on top so the first section's «ПОВТОР» header is
         // not clipped under the navigation bar.
         NSLayoutConstraint.activate([
@@ -262,7 +278,9 @@ final class CreateAlarmViewController: UIViewController {
             deleteButton.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -AppSpacing.sp4),
             deleteButton.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -AppSpacing.sp2
+                // 24pt, the `padding: 0 16px 24px` this footer's own
+                // comment quotes from the artboard. It was 8.
+                constant: -AppSpacing.sp6
             )
         ])
     }

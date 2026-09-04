@@ -37,6 +37,7 @@ class AlarmsListViewController: UIViewController {
 
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .plain)
+        table.showsVerticalScrollIndicator = false
         table.backgroundColor = .clear
         table.separatorStyle = .none
         table.translatesAutoresizingMaskIntoConstraints = false

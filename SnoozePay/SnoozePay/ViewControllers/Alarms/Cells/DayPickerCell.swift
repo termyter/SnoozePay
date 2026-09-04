@@ -19,7 +19,11 @@ final class DayPickerCell: UITableViewCell {
     private let stackView: UIStackView = {
         let stack = UIStackView()
         stack.axis = .horizontal
-        stack.distribution = .fillEqually
+        // `.equalSpacing`, not `.fillEqually`: the latter stretched each
+        // chip to its slot width (~44pt) while the height stayed 36, so a
+        // circle drawn at `diameter / 2` rendered as an oval. Now the chip
+        // keeps its 36×36 box and the leftover width becomes gap.
+        stack.distribution = .equalSpacing
         stack.spacing = AppSpacing.sp2
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
@@ -60,6 +64,7 @@ final class DayPickerCell: UITableViewCell {
             button.layer.masksToBounds = true
             button.addTarget(self, action: #selector(dayTapped(_:)), for: .touchUpInside)
             button.heightAnchor.constraint(equalToConstant: Self.buttonDiameter).isActive = true
+            button.widthAnchor.constraint(equalToConstant: Self.buttonDiameter).isActive = true
             dayButtons.append(button)
             stackView.addArrangedSubview(button)
         }

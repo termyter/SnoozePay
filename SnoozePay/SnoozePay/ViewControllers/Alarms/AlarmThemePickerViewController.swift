@@ -160,6 +160,7 @@ final class AlarmThemePickerViewController: UIViewController {
 
         let layout = makeLayout()
         let grid = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        grid.showsVerticalScrollIndicator = false
         grid.translatesAutoresizingMaskIntoConstraints = false
         grid.backgroundColor = .clear
         grid.alwaysBounceVertical = true

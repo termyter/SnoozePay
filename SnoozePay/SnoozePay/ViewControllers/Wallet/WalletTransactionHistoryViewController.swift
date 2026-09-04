@@ -24,7 +24,11 @@ final class WalletTransactionHistoryViewController: UIViewController {
         let entries: [Transaction]
     }
 
-    private let scrollView = UIScrollView()
+    private let scrollView: UIScrollView = {
+        let view = UIScrollView()
+        view.showsVerticalScrollIndicator = false
+        return view
+    }()
     private let stack = UIStackView()
     private var groups: [Group] = []
     private var period: TxHistoryPeriod = .currentMonth()

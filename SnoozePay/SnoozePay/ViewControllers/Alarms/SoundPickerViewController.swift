@@ -44,7 +44,11 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     // MARK: - UI
 
     private let scrollView: UIScrollView = {
-        let view = UIScrollView()
+        let view: UIScrollView = {
+            let view = UIScrollView()
+            view.showsVerticalScrollIndicator = false
+            return view
+        }()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.alwaysBounceVertical = true
         return view
