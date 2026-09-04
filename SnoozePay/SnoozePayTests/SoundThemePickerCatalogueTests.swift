@@ -24,16 +24,6 @@ final class SoundThemePickerCatalogueTests: XCTestCase {
         }
     }
 
-    func testSoundCatalogue_subtitleLookup_resolvesKnownIDs() {
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "dawn"), "Тёплый рассвет с птицами")
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "birds"), "Только щебет, без музыки")
-    }
-
-    func testSoundCatalogue_subtitleLookup_returnsNilForUnknownID() {
-        XCTAssertNil(SoundCatalogue.subtitle(for: "nonexistent"))
-        XCTAssertNil(SoundCatalogue.subtitle(for: ""))
-    }
-
     func testSoundCatalogue_customSlot_isDistinctAndNotInEntries() {
         XCTAssertEqual(SoundCatalogue.customSlot.id, "custom")
         XCTAssertFalse(

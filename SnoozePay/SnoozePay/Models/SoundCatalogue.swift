@@ -104,14 +104,4 @@ enum SoundCatalogue {
             subtitle: Localized.text("create_alarm.sound.subtitle.custom")
         )
     }
-
-    /// Subtitle for a given sound id, or `nil` when the id isn't catalogued.
-    ///
-    /// The picker reads subtitles off ``entries`` rather than through here —
-    /// it renders whole rows — so this is the lookup for a caller holding only
-    /// an id.
-    static func subtitle(for soundID: String) -> String? {
-        guard ids.contains(soundID) else { return nil }
-        return Localized.text(subtitleKey(for: soundID))
-    }
 }

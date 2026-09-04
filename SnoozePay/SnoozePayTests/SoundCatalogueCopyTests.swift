@@ -26,7 +26,9 @@ import XCTest
 ///
 /// It reaches **22 of the 22 keys** through this type: `entries` plus
 /// `customSlot` cover every one, with `CreateAlarmViewModel.availableSounds`
-/// and `subtitle(for:)` exercised on top. The ten name keys have a second
+/// exercised on top. It used to name `subtitle(for:)` here as well; #720
+/// deleted that accessor as dead, and no key coverage moved with it because
+/// `entries` already reads all ten subtitle keys. The ten name keys have a second
 /// production reader — `AlarmsListViewModel.alarmSoundName(at:)` — which is
 /// covered from its own side in `AlarmsListSoundNameTests`.
 ///
@@ -161,17 +163,6 @@ final class SoundCatalogueCopyTests: XCTestCase {
         XCTAssertEqual(slot.id, "custom")
         XCTAssertEqual(slot.name, "Своя мелодия")
         XCTAssertEqual(slot.subtitle, "Скоро")
-    }
-
-    func testSubtitleLookupResolvesKnownIDsAndRejectsEverythingElse() {
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "dawn"), "Тёплый рассвет с птицами")
-        XCTAssertEqual(SoundCatalogue.subtitle(for: "birds"), "Только щебет, без музыки")
-
-        // The custom slot is not selectable, so no stored alarm names it and
-        // the lookup treats it as uncatalogued — as it did before the move.
-        XCTAssertNil(SoundCatalogue.subtitle(for: "custom"))
-        XCTAssertNil(SoundCatalogue.subtitle(for: "nonexistent"))
-        XCTAssertNil(SoundCatalogue.subtitle(for: ""))
     }
 
     /// The editor's picker is fed from `availableSounds`, so a broken key would
