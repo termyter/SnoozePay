@@ -166,7 +166,7 @@ enum BalanceLedgerStoreFactory {
     static let providerKey = "balance_ledger_provider"
 
     private static let log = OSLog(
-        subsystem: "Ivan-Emelyanov.SnoozePay",
+        subsystem: AppLogger.subsystem,
         category: "BalanceLedgerStore"
     )
 

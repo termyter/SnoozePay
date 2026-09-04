@@ -1,5 +1,5 @@
 import Foundation
-import os.log
+import os
 
 /// Persists transactions in UserDefaults with a serial queue protecting all reads and writes.
 /// Transactions are a financial ledger — losing entries due to a read-modify-write race
@@ -40,7 +40,7 @@ final class TransactionRepository {
     private let wakeStore: WakeEventStore
     private let queue = DispatchQueue(label: "com.snoozepay.transactions.serial")
     private static let log = OSLog(
-        subsystem: "Ivan-Emelyanov.SnoozePay",
+        subsystem: AppLogger.subsystem,
         category: "TransactionRepository"
     )
 

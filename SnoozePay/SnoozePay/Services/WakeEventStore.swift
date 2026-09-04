@@ -1,5 +1,5 @@
 import Foundation
-import os.log
+import os
 
 /// Persists the calendar days on which the user actually got up — i.e.
 /// dismissed a firing alarm (either from the in-app firing screen or the
@@ -43,7 +43,7 @@ final class WakeEventStore {
     private let defaults: UserDefaults
     private let queue = DispatchQueue(label: "com.snoozepay.wakedays.serial")
     private static let log = OSLog(
-        subsystem: "Ivan-Emelyanov.SnoozePay",
+        subsystem: AppLogger.subsystem,
         category: "WakeEventStore"
     )
 

@@ -12,27 +12,75 @@ import os
 ///     transaction IDs) don't leak into shared diagnostics by default;
 ///   * avoid the main-thread cost of `print()` on hot paths.
 ///
-/// Subsystem matches the bundle identifier so logs filter cleanly to this
-/// app in tools that aggregate across processes.
+/// The subsystem IS the running app's bundle identifier, read from
+/// `Bundle.main`, so logs filter cleanly to this app in tools that aggregate
+/// across processes — and the string to filter by is one the reader already
+/// has, instead of one they have to know about in advance.
 ///
 /// Usage:
 ///   AppLogger.scheduler.error("schedule failed: \(error.localizedDescription, privacy: .public)")
 ///   AppLogger.audio.notice("startAlarmSound: vibration only — no audio source")
 enum AppLogger {
 
-    /// Kept `fileprivate` rather than `private` so ``AppLogCategory`` can build
-    /// the loggers from it. The eight `static let`s below DERIVE from the cases
-    /// rather than repeating `Logger(subsystem:category:)`, so a category name
-    /// is spelled in exactly one place.
+    /// The `os_log` subsystem every line of this app ships under: the bundle
+    /// identifier of the process that is running, resolved once at first use.
     ///
-    /// ⚠️ That removes the typo, not the mismatch. `static let repository =
-    /// AppLogCategory.ui.logger` compiles, ships every repository line under
-    /// «UI», and leaves the whole target green — `os.Logger` is not `Equatable`
-    /// and does not hand back its category, so nothing can assert this pairing.
-    /// It is a read-with-your-eyes invariant, held only by the case name
-    /// sitting on the same line as the property name. Review caught an earlier
-    /// revision of this comment claiming the two «cannot drift apart».
-    fileprivate static let subsystem = "Ivan-Emelyanov.SnoozePay"
+    /// Resolved rather than spelled out because a spelled-out one drifts. This
+    /// one did: it stayed `Ivan-Emelyanov.SnoozePay` after the app moved to
+    /// `io.mobilife.SnoozePay` (#475/#476), so a support grep written from the
+    /// docstring above it matched nothing at all (#670).
+    ///
+    /// It was `fileprivate`, which already served ``AppLogCategory`` — that
+    /// lives in this file. Internal is for the two readers outside it: the
+    /// older `OSLog(subsystem:category:)` sites in `Services/` and ``Money``,
+    /// and `AppLoggerSubsystemTests`.
+    static let subsystem: String = {
+        guard let identifier = Bundle.main.bundleIdentifier else {
+            // Unreachable in all three targets this project has — see
+            // ``fallbackSubsystem``. The trap is what keeps that a checked
+            // claim rather than a remembered one, and it costs nothing while
+            // the claim holds. Were it ever to fire in release, the lines
+            // would carry the app's subsystem from a process that is not the
+            // app: a support grep would find them and believe them.
+            assertionFailure(
+                "Bundle.main declares no CFBundleIdentifier; logs would be misattributed to the app"
+            )
+            return AppLogger.fallbackSubsystem
+        }
+        return identifier
+    }()
+
+    /// What ``subsystem`` falls back to when `Bundle.main` declares no
+    /// `CFBundleIdentifier`.
+    ///
+    /// `bundleIdentifier` is `String?`, so the arm has to exist. It is not
+    /// reachable from any target this project has, and saying where the value
+    /// comes from is the point: `Info.plist` in the repository declares no
+    /// `CFBundleIdentifier` at all — the build injects it from
+    /// `PRODUCT_BUNDLE_IDENTIFIER` under `GENERATE_INFOPLIST_FILE = YES`, and
+    /// that setting is a no-touch zone. This target's unit tests run inside the
+    /// app process via `TEST_HOST`, and the UI-test runner never links this
+    /// module, so neither reaches here either. What would is a bundle-less host
+    /// this project does not build: a command-line tool linking the module.
+    /// (Not `xctest` — that tool carries `com.apple.dt.xctest.tool` of its own.)
+    ///
+    /// Being a literal, this is the one line in the file that can go stale the
+    /// same way #670 did.
+    /// `AppLoggerSubsystemTests.testTheFallbackLiteralStillSpellsTheAppsBundleIdentifier`
+    /// makes the next bundle-identifier change red instead of silent.
+    static let fallbackSubsystem = "io.mobilife.SnoozePay"
+
+    // The eight `static let`s below DERIVE from ``AppLogCategory`` rather than
+    // repeating `Logger(subsystem:category:)`, so a category name is spelled in
+    // exactly one place.
+    //
+    // ⚠️ That removes the typo, not the mismatch. `static let repository =
+    // AppLogCategory.ui.logger` compiles, ships every repository line under
+    // «UI», and leaves the whole target green — `os.Logger` is not `Equatable`
+    // and does not hand back its category, so nothing can assert this pairing.
+    // It is a read-with-your-eyes invariant, held only by the case name sitting
+    // on the same line as the property name. Review caught an earlier revision
+    // of this comment claiming the two «cannot drift apart».
 
     /// AlarmScheduler — permission flow, schedule failures, snooze rescheduling.
     static let scheduler = AppLogCategory.scheduler.logger

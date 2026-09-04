@@ -46,7 +46,7 @@ final class BalanceService {
     private let queue = DispatchQueue(label: "com.snoozepay.balance.serial")
     private let notificationCenter: NotificationCenter
     private static let log = OSLog(
-        subsystem: "Ivan-Emelyanov.SnoozePay",
+        subsystem: AppLogger.subsystem,
         category: "BalanceService"
     )
 

@@ -1,5 +1,5 @@
 import Foundation
-import os.log
+import os
 
 /// Value type for monetary amounts.
 ///
@@ -85,7 +85,7 @@ struct Money: Equatable, Hashable, Codable {
     }
 
     private static let log = OSLog(
-        subsystem: "Ivan-Emelyanov.SnoozePay",
+        subsystem: AppLogger.subsystem,
         category: "Money"
     )
 
