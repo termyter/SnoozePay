@@ -125,8 +125,10 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     ///
     /// `create_alarm.snooze.minutes` joined the list with #722, which pointed
     /// `SnoozeSliderCell.valueText(_:)` at `Localized.attributed`: before
-    /// that, the only reader of that entry was `String(format:)`, which is
-    /// indifferent to a second `%lld` beyond ignoring it. It is spelled
+    /// that, the only reader of that entry was `String(format:)`, which had
+    /// nothing to report about a second `%lld` — it reads one past the end of
+    /// the argument list and prints whatever is there, which is undefined
+    /// behaviour rather than an omission. It is spelled
     /// `%lld` rather than `%@` because of that older reader — the specifier is
     /// per entry, not a house style.
     ///

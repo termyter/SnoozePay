@@ -226,7 +226,8 @@ final class SnoozeSliderCell: UITableViewCell {
     /// written to be consumed by ``Localized/format(_:_:)``, which hands the
     /// template to `String(format:)` with an `Int`, and that is the spelling
     /// that path wants. Not because the spelling predates the restyling: this
-    /// reading has been styled apart since #220 (2026-05-12), two and a half
+    /// reading has been styled apart since #278 (2026-06-12) — #220 had only
+    /// set the whole label to `moneyMd` a month earlier — two and a half
     /// months before #612 (2026-08-30) moved the phrase into the catalogue,
     /// and that entry's own comment already says «the call site dims
     /// everything but the number». Respelling it `%@` now would churn the

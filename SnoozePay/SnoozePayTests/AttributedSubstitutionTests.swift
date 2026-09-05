@@ -58,11 +58,14 @@ import XCTest
 ///     replaced range the insertion's own attributes, which this mutation
 ///     leaves empty.
 ///   * **the slider's `attributes:` re-applied over the whole result** — same
-///     test, same first assertion, but the digit's font now reads `h4`. The
-///     run-width check below it never gets to speak.
+///     test, same first assertion, the digit's font reading `h4`. The two
+///     checks below it go red as well: `XCTAssertEqual` is not fatal, so the
+///     run is still measured and comes back widened to `0..<5`.
 ///   * **the placement widened from the specifier to the whole template** —
-///     same test, at the phrase equality: `valueText(7)` returns «7», so there
-///     is no run left to measure.
+///     same test, at the phrase equality: `valueText(7)` returns «7». The next
+///     assertion then reads a font at index 1 of a one-character string and
+///     throws `NSRangeException`; XCTest catches that and reds the test rather
+///     than taking the process down, unlike the `assertionFailure` below.
 ///   * **the insertion collapsed to one uniform face** —
 ///     `testInsertionKeepsItsOwnRunsWhenTheyDiffer`: the font at index 1 is
 ///     the first face rather than the second.
@@ -96,9 +99,11 @@ final class AttributedSubstitutionTests: XCTestCase {
     /// renders this into the label is pinned separately, by
     /// `AlarmEditorCopyTests.testSnoozeSliderReadingKeepsItsNumberInTheHeadlineFace`.
     ///
-    /// The method is `internal` for exactly this; `7` is chosen so the reading
-    /// cannot be confused with the range-bound labels under the track, which
-    /// read «1 мин» and «15 мин» through the same catalogue key.
+    /// The method is `internal` for exactly this. `7` carries no significance
+    /// here now that the label is out of the oracle — it did while this test
+    /// walked the view tree, because the range-bound labels under the track
+    /// read «1 мин» and «15 мин» through the same key, and that reason still
+    /// applies to `AlarmEditorCopyTests`, which does walk it.
     func testSliderReadingKeepsTheDigitInItsOwnRun() {
         let reading = SnoozeSliderCell.valueText(7)
 

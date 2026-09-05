@@ -176,9 +176,10 @@ enum Localized {
     ///
     /// Not — as this comment claimed until review — because the `%lld`
     /// predates anything wanting to restyle it. The order is the other way
-    /// round: the slider has dimmed everything but its number since #220
-    /// (2026-05-12), reworded in #278 (2026-06-12), while the catalogue entry
-    /// arrived only with #612 (2026-08-30), two and a half months later. Its
+    /// round: the slider has dimmed everything but its number since #278
+    /// (2026-06-12) — #220 (2026-05-12) had put the whole label in `moneyMd`,
+    /// which is one face, not two runs — while the catalogue entry arrived
+    /// only with #612 (2026-08-30), two and a half months later. Its
     /// own comment reads «The call site dims everything but the number», so
     /// the entry was written knowing about the restyle and chose `%lld`
     /// anyway.
