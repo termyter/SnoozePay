@@ -44,9 +44,11 @@ import XCTest
 ///    exists to stop is the copy-pasted one-liner, which is how all seven
 ///    arrived.
 /// 2. **`UIAlertController(title:)`.** The pattern matches `UIAlertAction`
-///    only, so an alert's own title stays invisible here — including the two
-///    literal ones left in `AppDelegate`: «Уведомления выключены» is tracked in
-///    #752, «Будильник» belongs to the wider literal migration.
+///    only, so an alert's own title stays invisible here — including the one
+///    literal left in `AppDelegate`, «Будильник», which belongs to the wider
+///    literal migration. Its neighbour «Уведомления выключены» was the other
+///    until #752 moved it, with its body and its two buttons, into the
+///    catalogue; `AppDelegateAlertTests` now pins those words.
 ///
 /// The third entry this list carried until #751 — a catalogue key whose own
 /// value is Latin — is no longer a blind spot of the *file*, only of the source
