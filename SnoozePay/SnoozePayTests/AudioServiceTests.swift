@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 import XCTest
 @testable import SnoozePay
 
@@ -544,5 +545,147 @@ final class AudioServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .playing)
 
         service.stopAlarmSound()
+    }
+
+    // MARK: - The two failing lookups leave distinguishable traces (#765)
+    //
+    // Falling back to the synthetic tone is the behaviour and is unchanged;
+    // what these pin is that the branch says so. Until #765 a user report of
+    // "the alarm beeped instead of ringing" had nothing to grep: a missing
+    // sound file, a build with no default sound, and a perfectly resolved
+    // lookup were all equally silent. Only `AVAudioPlayer.init` failing — the
+    // case where the file WAS found — left a line.
+
+    private typealias LoggedLine = (category: AppLogCategory, level: OSLogType, message: String)
+
+    /// The real `default_alarm.caf` inside the test host (which IS the app
+    /// bundle). Used as the file an injected lookup claims to have found, so
+    /// `AVAudioPlayer` gets openable audio and the tests assert on a player
+    /// built from a FILE rather than one built from in-memory WAV data.
+    private func bundledDefaultAlarmURL() throws -> URL {
+        try XCTUnwrap(
+            Bundle.main.url(forResource: AudioService.fallbackSoundID, withExtension: "caf"),
+            "the app bundle must carry its own fallback alarm sound"
+        )
+    }
+
+    func testResolveAlarmPlayer_missingSoundWithFallbackPresent_logsTheDowngrade() throws {
+        let fallbackURL = try bundledDefaultAlarmURL()
+        var lines: [LoggedLine] = []
+        let player = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            AudioService.shared.resolveAlarmPlayer(soundID: "vanished_sound") { name, ext in
+                name == AudioService.fallbackSoundID && ext == "caf" ? fallbackURL : nil
+            }
+        })
+
+        XCTAssertEqual(
+            player?.url?.lastPathComponent, "default_alarm.caf",
+            "the fallback file still answers — the alarm rings a real sound, not the synthetic tone"
+        )
+
+        let traces = lines.filter { $0.message.contains(AudioService.missingSoundErrorID) }
+        XCTAssertEqual(
+            traces.count, 1,
+            "a sound the bundle lost must leave exactly one trace; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(traces.first?.category, .audio, "a sound-resolution fault belongs to the Audio category")
+        XCTAssertEqual(
+            traces.first?.level, .error,
+            "ringing something other than what the user chose is not a notice"
+        )
+        XCTAssertTrue(
+            traces.first?.message.contains("vanished_sound") == true,
+            "the line must name the soundID that was not found; it reads «\(traces.first?.message ?? "")»"
+        )
+    }
+
+    /// The branch the real bundle cannot reach — the app ships
+    /// `default_alarm.caf`, so only an injected lookup can state its absence.
+    /// `.fault`, not `.error`: this one is a defective build, not a degraded
+    /// install of a correct one.
+    func testResolveAlarmPlayer_nothingInTheBundle_logsTheBuildDefectAndStillFallsBackToTheTone() {
+        var lines: [LoggedLine] = []
+        let player = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            AudioService.shared.resolveAlarmPlayer(soundID: "vanished_sound") { _, _ in nil }
+        })
+
+        XCTAssertNotNil(player, "the synthetic tone is the last resort and #765 must not remove it")
+        XCTAssertNil(
+            player?.url,
+            "a player carrying a file URL would mean the lookup did not actually fail"
+        )
+
+        let traces = lines.filter { $0.message.contains(AudioService.missingFallbackSoundErrorID) }
+        XCTAssertEqual(
+            traces.count, 1,
+            "a bundle without its default sound must leave exactly one trace; "
+            + "the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(traces.first?.category, .audio, "a sound-resolution fault belongs to the Audio category")
+        XCTAssertEqual(traces.first?.level, .fault, "a build shipped without its own alarm sound is a fault")
+        XCTAssertTrue(
+            traces.first?.message.contains("vanished_sound") == true,
+            "the line must name the soundID that was not found; it reads «\(traces.first?.message ?? "")»"
+        )
+        XCTAssertTrue(
+            lines.allSatisfy { !$0.message.contains(AudioService.missingSoundErrorID) },
+            "the downgrade ID belongs to the branch where a real sound still rings; emitting both "
+            + "here would make a support grep count one incident twice"
+        )
+    }
+
+    /// Silence is load-bearing on the path that works: this runs on every
+    /// firing alarm, so a line here would put an `.error` in the log of a
+    /// device where nothing is wrong.
+    func testResolveAlarmPlayer_soundPresent_logsNothing() throws {
+        let soundURL = try bundledDefaultAlarmURL()
+        var lines: [LoggedLine] = []
+        let player = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            // The lookup answers for the REQUESTED id, so the fallback branch
+            // is never entered — which is the state under test.
+            AudioService.shared.resolveAlarmPlayer(soundID: "radar") { name, ext in
+                name == "radar" && ext == "caf" ? soundURL : nil
+            }
+        })
+
+        XCTAssertNotNil(player, "a resolved lookup must produce a player")
+        XCTAssertTrue(lines.isEmpty, "a resolved lookup must stay silent; the sink saw \(lines.map(\.message))")
+    }
+
+    /// Runs through the DEFAULT lookup — no injected `resourceURL` — so it
+    /// asserts the production path all the way into `Bundle.main`.
+    ///
+    /// Without it the three cases above would all pass against a closure that
+    /// was handed to them, i.e. they would test the stub. The test host IS the
+    /// app bundle (`TEST_HOST`) and `default_alarm.caf` sits flat at its root,
+    /// so emptying the default closure makes this red — both assertions: the
+    /// lookup would find nothing, fall through to the synthetic tone (whose
+    /// player carries no `url`) and log the `.fault`.
+    func testResolveAlarmPlayer_resolvesTheBundledDefaultThroughTheRealBundle() {
+        var lines: [LoggedLine] = []
+        let player = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            AudioService.shared.resolveAlarmPlayer(soundID: AudioService.fallbackSoundID)
+        })
+
+        XCTAssertEqual(
+            player?.url?.lastPathComponent, "default_alarm.caf",
+            "the app bundle must carry its own fallback alarm sound — without it every alarm "
+            + "beeps the synthetic tone"
+        )
+        XCTAssertTrue(
+            lines.isEmpty,
+            "resolving the bundled default is the working path and must stay silent; "
+            + "the sink saw \(lines.map(\.message))"
+        )
+    }
+
+    /// The IDs are what a support ticket is grepped by, so telling the two
+    /// states apart depends on them staying different strings.
+    func testAlarmPlayerErrorIDs_areDistinct() {
+        XCTAssertNotEqual(
+            AudioService.missingSoundErrorID,
+            AudioService.missingFallbackSoundErrorID,
+            "a lost user sound and a build without a default sound must not grep as one thing"
+        )
     }
 }
