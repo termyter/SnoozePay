@@ -148,18 +148,40 @@ enum Localized {
     ///
     /// One specifier, by construction: there is a single `replacement` to
     /// spend, so a template holding two of them renders the second one
-    /// literally. The per-slice localization tests assert the *count* and not
-    /// merely the presence, so a translation that grows a second specifier
-    /// goes red instead of printing a stray `%@` on screen.
+    /// literally. What guards that is one hand-kept list —
+    /// `StatisticsScreensLocalizationTests.testFormatKeysKeepTheirSpecifiers`
+    /// — which asserts the *count* and not merely the presence for the eight
+    /// keys named in it. Every key the app passes to this method is currently
+    /// among them, `create_alarm.snooze.minutes` included since #722. It is a
+    /// list rather than a sweep of the catalogue, so the cover is exactly as
+    /// wide as the list: a call site added without its key going in has none.
+    ///
+    /// Named and left open: every one of those assertions reads the template
+    /// through ``text(_:)``, which resolves it for ``AppLocale/display`` —
+    /// `Locale(identifier: "ru_RU")` until #569 lands a second catalogue. A
+    /// *translation* that grows a second specifier is invisible to them; only
+    /// the Russian template is ever counted. Closing that needs a check that
+    /// reads every localization of an entry rather than the displayed one,
+    /// which is not this method's to invent.
     ///
     /// # `specifier` — the placeholder the template actually holds
     ///
     /// Defaults to `%@`, the shape a substituted run naturally lands in. It is
-    /// a parameter because a template whose value is a number was spelled
-    /// `%lld` long before anything wanted to restyle it —
-    /// `create_alarm.snooze.minutes` is «%lld мин» — and respelling it in the
-    /// catalogue would put every translator through a re-translation for a
-    /// call site's convenience.
+    /// a parameter because `create_alarm.snooze.minutes` reads «%lld мин»,
+    /// and that entry has only ever been consumed through ``format(_:_:)`` —
+    /// which hands the template to `String(format:)` with an `Int` argument,
+    /// where `%lld` is the spelling that path wants. Respelling it `%@` for a
+    /// call site's convenience is catalogue churn plus a re-translation in
+    /// every language, and buys nothing this parameter does not.
+    ///
+    /// Not — as this comment claimed until review — because the `%lld`
+    /// predates anything wanting to restyle it. The order is the other way
+    /// round: the slider has dimmed everything but its number since #220
+    /// (2026-05-12), reworded in #278 (2026-06-12), while the catalogue entry
+    /// arrived only with #612 (2026-08-30), two and a half months later. Its
+    /// own comment reads «The call site dims everything but the number», so
+    /// the entry was written knowing about the restyle and chose `%lld`
+    /// anyway.
     ///
     /// The caller renders the value into `replacement` itself, so this method
     /// never formats anything: it places a run that is already finished, and
@@ -190,7 +212,11 @@ enum Localized {
     ///
     /// What the retired idiom bought — no second lookup over a phrase at most
     /// a line long — is not worth two answers to one question.
-    /// `AttributedSubstitutionTests` pins the runs of both call sites, so an
+    /// There are three call sites, and two test files hold them.
+    /// `AttributedSubstitutionTests` pins the runs of the slider reading and
+    /// of `alarm_off.body`;
+    /// `StatisticsScreensLocalizationTests.testAttributedKeepsEachSideOwnAttributes`
+    /// pins the third, `statistics.weekday.worst_day`. Between them an
     /// insertion arriving flattened to the surrounding font is a red test
     /// rather than a slightly paler screen.
     ///
@@ -244,13 +270,14 @@ enum Localized {
         return result
     }
 
-    /// What ``attributed(_:attributes:replacing:)`` returns once it has logged
-    /// and trapped on a template it cannot place the run into.
+    /// What ``attributed(_:attributes:replacing:specifier:)`` returns once it
+    /// has logged and trapped on a template it cannot place the run into.
     ///
     /// Split out for the same reason `AppHairline.degenerateWidth` is a named
     /// member rather than an inline literal: the branch traps by design, so a
-    /// test reaching it through ``attributed(_:attributes:replacing:)`` would
-    /// abort the suite instead of measuring anything. Called directly it pins
+    /// test reaching it through
+    /// ``attributed(_:attributes:replacing:specifier:)`` would abort the suite
+    /// instead of measuring anything. Called directly it pins
     /// the one thing that still matters in a release build — the run is
     /// appended, never dropped.
     static func appendingUnplaceable(

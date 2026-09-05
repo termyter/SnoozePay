@@ -10,9 +10,24 @@ import XCTest
 /// `Localized.attributed` substitutes an already-styled run over the
 /// specifier. Neither doc comment mentioned the other and both argued the same
 /// motive as though it were theirs alone. The slider now goes through
-/// `Localized.attributed`, so these tests are what stops the retired idiom
-/// from growing back somewhere else and what stops the surviving one from
-/// quietly flattening its insertion.
+/// `Localized.attributed`.
+///
+/// # What these tests hold — and what they do not
+///
+/// They pin the **rendering**: the phrase, the run boundaries, the fonts and
+/// the colours on each side of an insertion. Nothing here inspects which
+/// mechanism produced that rendering, so — contrary to what this comment
+/// claimed until review — they are not what stops the retired idiom from
+/// growing back. For the slider's own inputs the two idioms agree byte for
+/// byte: minutes are 1...15, «7» occurs exactly once in «7 мин», and a
+/// `range(of:)` written back into `valueText(_:)` would pass every assertion
+/// in this file.
+///
+/// One test does separate the mechanisms —
+/// `testRunLandsOnTheSpecifierRatherThanOnTheFirstMatchingText` — and it
+/// separates them *inside* `Localized.attributed`, for a caller that still
+/// calls it. What keeps the app on one idiom is that there is one method with
+/// three call sites, which is a fact about the code and not about this file.
 ///
 /// # Why every expectation here is a literal
 ///
@@ -25,34 +40,67 @@ import XCTest
 /// its own attributes, or starts carrying them over the whole phrase, a run
 /// boundary moves and these go red.
 ///
-/// Mutation checks the assertions were written against (each names the first
-/// assertion that fires):
+/// # Mutations these assertions were written against
 ///
-/// | mutation | red |
-/// |---|---|
-/// | `replacing:` given a plain `NSAttributedString(string:)` | digit font is `h4`, not `moneyMd` |
-/// | slider's `attributes:` applied over the whole result | the digit's font run spans `0..<5`, not `0..<1` |
-/// | the placement widened to the whole template | the unit's run starts at 5, so `«7 мин»` is never found |
-/// | `specifier: "%lld"` dropped back to the `%@` default | «%lld мин» holds no `%@`, so the debug trap fires |
+/// ⚠️ Derived by **reading** the assertions, not by running them: no mutation
+/// below was committed or executed — this agent has no simulator tools and a
+/// local test run is barred in `/team`. Read each entry as «this is the
+/// assertion that should fire», not as a mutation-testing report. The one
+/// executor is the `Unit tests` job.
+///
+/// A list rather than a table: the reasons do not fit in a cell, and a cell
+/// that has to be shortened is where the wrong reason gets written down.
+///
+///   * **`replacing:` given a plain `NSAttributedString(string:)`** —
+///     `testSliderReadingKeepsTheDigitInItsOwnRun`, at the digit's font. It
+///     fails against `nil`, not against `h4`: the base attributes go on the
+///     *template's* characters, and `replaceCharacters(in:with:)` hands the
+///     replaced range the insertion's own attributes, which this mutation
+///     leaves empty.
+///   * **the slider's `attributes:` re-applied over the whole result** — same
+///     test, same first assertion, but the digit's font now reads `h4`. The
+///     run-width check below it never gets to speak.
+///   * **the placement widened from the specifier to the whole template** —
+///     same test, at the phrase equality: `valueText(7)` returns «7», so there
+///     is no run left to measure.
+///   * **the insertion collapsed to one uniform face** —
+///     `testInsertionKeepsItsOwnRunsWhenTheyDiffer`: the font at index 1 is
+///     the first face rather than the second.
+///   * **`MoneyFormatter`'s narrow space refonted to the digits face** —
+///     `testMoneyRunSurvivesPlacementWithAllThreeOfItsFaces`, at index 26.
+///   * **`Localized.attributed` reverted to render-then-`range(of:)`** —
+///     `testRunLandsOnTheSpecifierRatherThanOnTheFirstMatchingText`: the
+///     inserted run starts at 3 instead of 22.
+///
+/// One mutation is listed apart, because its consequence is not «a red test»
+/// and putting it in the list above would read as though it were: dropping
+/// `specifier: "%lld"` back to the `%@` default leaves «%lld мин» holding no
+/// `%@`, which reaches the `assertionFailure` inside `Localized.attributed`.
+/// In the DEBUG build the test target uses, that traps and **aborts the
+/// process** — the whole run dies and is reported as a crash, not as one
+/// failing assertion.
 final class AttributedSubstitutionTests: XCTestCase {
 
     // MARK: - The call site: the snooze slider's reading
 
-    /// The reading the slider actually shows: «7 мин» with the digit in the
-    /// mono headline face and the unit dimmed.
+    /// The reading the slider shows: «7 мин» with the digit in the mono
+    /// headline face and the unit dimmed.
     ///
-    /// Read off the rendered cell rather than off `valueText(_:)` — the method
-    /// is private, and the label is what a person sees. `7` is chosen so the
-    /// reading cannot be confused with the range-bound labels under the track,
-    /// which read «1 мин» and «15 мин» through the same catalogue key.
-    func testSliderReadingKeepsTheDigitInItsOwnRun() throws {
-        let cell = SnoozeSliderCell(style: .default, reuseIdentifier: nil)
-        cell.configure(minutes: 7)
-
-        let reading = try XCTUnwrap(
-            Self.attributedStrings(in: cell.contentView).first { $0.string == "7 мин" },
-            "the slider never rendered «7 мин»: \(Self.attributedStrings(in: cell.contentView).map(\.string))"
-        )
+    /// Read off `valueText(_:)` directly rather than off the label. Through
+    /// `valueLabel.attributedText` the two expectations that matter most —
+    /// `moneyMd` and `fg1` on the digit — are also the label's own defaults
+    /// (`SnoozeSliderCell.valueLabel`), so were `UILabel` to fill unattributed
+    /// stretches in from its own font and colour, the mutation «the insertion
+    /// carries no attributes» would read back as correct. Taking the method's
+    /// return value removes the label from the oracle. That the cell then
+    /// renders this into the label is pinned separately, by
+    /// `AlarmEditorCopyTests.testSnoozeSliderReadingKeepsItsNumberInTheHeadlineFace`.
+    ///
+    /// The method is `internal` for exactly this; `7` is chosen so the reading
+    /// cannot be confused with the range-bound labels under the track, which
+    /// read «1 мин» and «15 мин» through the same catalogue key.
+    func testSliderReadingKeepsTheDigitInItsOwnRun() {
+        let reading = SnoozeSliderCell.valueText(7)
 
         // The whole phrase, spelled out: one catalogue entry, not a digit
         // concatenated with a unit here.
@@ -94,17 +142,18 @@ final class AttributedSubstitutionTests: XCTestCase {
         )
     }
 
-    /// Two digits, to pin that the specifier is *replaced* rather than the
-    /// digits being searched for afterwards: «15 мин» has its number at the
-    /// same offset the template's `%lld` occupied, and both digits carry the
-    /// mono face.
-    func testSliderReadingStylesBothDigitsOfATwoDigitValue() throws {
-        let cell = SnoozeSliderCell(style: .default, reuseIdentifier: nil)
-        cell.configure(minutes: 12)
+    /// A two-digit value keeps **both** digits in the mono face, and the run
+    /// stops there.
+    ///
+    /// This does not distinguish the two idioms — `range(of: "12")` would find
+    /// the same two characters. What it catches is an insertion styled in part
+    /// (a run that covers the first digit only) and a run that spills into the
+    /// space, neither of which the single-digit case can see, since at length
+    /// 1 «too narrow» and «too wide» are the same assertion.
+    func testSliderReadingStylesBothDigitsOfATwoDigitValue() {
+        let reading = SnoozeSliderCell.valueText(12)
 
-        let reading = try XCTUnwrap(
-            Self.attributedStrings(in: cell.contentView).first { $0.string == "12 мин" }
-        )
+        XCTAssertEqual(reading.string, "12 мин")
         var digitRun = NSRange(location: NSNotFound, length: 0)
         XCTAssertEqual(reading.attribute(.font, at: 0, effectiveRange: &digitRun) as? UIFont, AppTypography.moneyMd)
         assertRun(
@@ -112,6 +161,53 @@ final class AttributedSubstitutionTests: XCTestCase {
             location: 0,
             length: 2,
             "the second digit fell out of the mono run"
+        )
+    }
+
+    // MARK: - The mechanism: placement by specifier, not by search
+
+    /// The property #722 names as the second reason this idiom survived, and
+    /// the only assertion in the file that a locate-and-restyle implementation
+    /// fails: the run lands where the **specifier stood**, not where a search
+    /// of the rendered sentence first hits.
+    ///
+    /// `alarm_off.body` reads «За эту неделю списано %@. …», so substituting
+    /// the fragment «эту» makes the rendered sentence hold it twice — at 3, in
+    /// the copy, and at 22, where the `%@` was. Render-then-`range(of:)`
+    /// restyles the first occurrence it finds, which is the wrong one and says
+    /// nothing about it; substitution over the specifier cannot.
+    ///
+    /// The slider's own inputs cannot express this — «7» occurs once in
+    /// «7 мин» — which is why the case had to be built from a call site whose
+    /// copy repeats a word, rather than found in one.
+    func testRunLandsOnTheSpecifierRatherThanOnTheFirstMatchingText() {
+        let inserted = UIFont.monospacedSystemFont(ofSize: 17, weight: .bold)
+        let surrounding = UIFont.systemFont(ofSize: 17)
+
+        let result = Localized.attributed(
+            "alarm_off.body",
+            attributes: [.font: surrounding],
+            replacing: NSAttributedString(string: "эту", attributes: [.font: inserted])
+        )
+
+        XCTAssertEqual(
+            result.string,
+            "За эту неделю списано эту. Возможно, что-то пошло не так. Что хотите сделать?"
+        )
+
+        // «За эту неделю списано » is 22 UTF-16 units; the earlier «эту» sits
+        // at 3.
+        var insertedRun = NSRange(location: NSNotFound, length: 0)
+        XCTAssertEqual(
+            result.attribute(.font, at: 22, effectiveRange: &insertedRun) as? UIFont,
+            inserted,
+            "the run did not land where the specifier was"
+        )
+        assertRun(insertedRun, location: 22, length: 3, "the inserted run is «эту» and nothing else")
+        XCTAssertEqual(
+            result.attribute(.font, at: 3, effectiveRange: nil) as? UIFont,
+            surrounding,
+            "the earlier «эту» was restyled — the run was located by text rather than placed by specifier"
         )
     }
 
@@ -221,8 +317,8 @@ final class AttributedSubstitutionTests: XCTestCase {
 
     /// A template with no specifier at all keeps the run rather than losing
     /// it. Reached through `appendingUnplaceable` directly: the path through
-    /// `attributed(_:attributes:replacing:)` traps by design, which would
-    /// abort the suite instead of measuring anything.
+    /// `attributed(_:attributes:replacing:specifier:)` traps by design, which
+    /// would abort the suite instead of measuring anything.
     func testUnplaceableRunIsAppendedRatherThanDropped() {
         let inserted = UIFont.monospacedSystemFont(ofSize: 17, weight: .bold)
         let result = Localized.appendingUnplaceable(
@@ -249,17 +345,5 @@ final class AttributedSubstitutionTests: XCTestCase {
     ) {
         XCTAssertEqual(range.location, location, "\(message) — run starts at \(range.location)", file: file, line: line)
         XCTAssertEqual(range.length, length, "\(message) — run is \(range.length) long", file: file, line: line)
-    }
-
-    /// Every `attributedText` in the tree, in traversal order.
-    private static func attributedStrings(in view: UIView) -> [NSAttributedString] {
-        var found: [NSAttributedString] = []
-        if let label = view as? UILabel, let text = label.attributedText {
-            found.append(text)
-        }
-        for subview in view.subviews {
-            found.append(contentsOf: attributedStrings(in: subview))
-        }
-        return found
     }
 }

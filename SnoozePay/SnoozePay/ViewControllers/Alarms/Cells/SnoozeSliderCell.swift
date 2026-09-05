@@ -222,12 +222,28 @@ final class SnoozeSliderCell: UITableViewCell {
     /// is the one that can also place an insertion whose own attributes are
     /// non-uniform, and that cannot restyle the wrong occurrence.
     ///
-    /// `specifier` is `%lld` because that is what the entry has held since
-    /// before anything wanted to restyle it; respelling the catalogue for this
-    /// call site's convenience would cost a re-translation. The number is
-    /// rendered through the same locale-aware path it had while the whole
-    /// phrase went through `String(format:locale:)`.
-    private static func valueText(_ minutes: Int) -> NSAttributedString {
+    /// `specifier` is `%lld` because the entry reads «%lld мин» — it was
+    /// written to be consumed by ``Localized/format(_:_:)``, which hands the
+    /// template to `String(format:)` with an `Int`, and that is the spelling
+    /// that path wants. Not because the spelling predates the restyling: this
+    /// reading has been styled apart since #220 (2026-05-12), two and a half
+    /// months before #612 (2026-08-30) moved the phrase into the catalogue,
+    /// and that entry's own comment already says «the call site dims
+    /// everything but the number». Respelling it `%@` now would churn the
+    /// catalogue and re-open the entry for translation, which is what the
+    /// `specifier` parameter exists to avoid. The number is rendered through
+    /// the same locale-aware path it had while the whole phrase went through
+    /// `String(format:locale:)`.
+    ///
+    /// Internal rather than private so `AttributedSubstitutionTests` can read
+    /// the return value directly. Through `valueLabel.attributedText` the two
+    /// expectations that matter most — `moneyMd` and `fg1` on the digit — are
+    /// also the label's own defaults (see `valueLabel` above), so a mutation
+    /// that inserts the number *without* attributes could come back looking
+    /// correct. Reading what this method returns removes the label from the
+    /// oracle; that the cell then renders it is pinned separately by
+    /// `AlarmEditorCopyTests.testSnoozeSliderReadingKeepsItsNumberInTheHeadlineFace`.
+    static func valueText(_ minutes: Int) -> NSAttributedString {
         Localized.attributed(
             "create_alarm.snooze.minutes",
             attributes: [
