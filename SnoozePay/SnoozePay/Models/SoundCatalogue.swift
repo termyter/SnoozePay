@@ -48,9 +48,9 @@ enum SoundCatalogue {
     ///
     /// The order is the picker's row order and is pinned to a literal copy of
     /// this list in `SoundCatalogueCopyTests.idsInCatalogueOrder` (#762), so
-    /// reordering or extending it costs a red run there on purpose. Until then
-    /// the prose above was the only thing saying so, and `ids.sort()` was green
-    /// across the target.
+    /// reordering or extending it costs a red run there on purpose. Before
+    /// #762 the prose above was the only thing saying so, and `ids.sort()` was
+    /// green across the target.
     static let ids: [String] = [
         "dawn", "radar", "drops", "piano", "guitar",
         "bell", "waves", "birds", "classic", "jazz"

@@ -145,7 +145,9 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// Transcribed from `CreateAlarmViewModel.availableSounds` as it stood
     /// before the V3 picker (`git show f59ee56^`), which is the list the
     /// docblock points at as the origin of the order. The prototype's
-    /// `SoundPicker` (`SPMore.jsx:295-302`) is *not* the source: it draws an
+    /// `SoundPicker` (the design canon copy, `snoozepay-2026-04-27/project/
+    /// components/SPMore.jsx:296-303` — the `v2-handoff` copy carries the same
+    /// block at different line numbers) is *not* the source: it draws an
     /// abbreviated six-row lineup with two ids the app never shipped
     /// («energy», «mountain»), and cutting to it is the mistake the docblock
     /// warns against.
