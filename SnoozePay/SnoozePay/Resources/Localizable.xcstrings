@@ -853,6 +853,18 @@
         }
       }
     },
+    "common.button.settings" : {
+      "comment" : "Opens the system Settings app from the notifications-disabled alert (AppDelegate). Byte-identical to settings.title and deliberately separate: that one titles this app's own Settings screen, and a language that distinguishes «the Settings app» from «settings» renders the two differently.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настройки"
+          }
+        }
+      }
+    },
     "common.button.top_up" : {
       "comment" : "Top-up verb shared by the alarms header pill, the wallet and the firing no-balance column. onboarding.button.deposit stays separate: there the amount is appended as a suffix and SnoozePayUITests matches the pair.",
       "extractionState" : "manual",
@@ -3249,6 +3261,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Будильник со ставкой"
+          }
+        }
+      }
+    },
+    "permissions.alert.notifications_disabled.message" : {
+      "comment" : "Body of the alert shown at launch when notification permission was denied. Its actions are common.button.cancel and common.button.settings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без разрешения на уведомления будильники не сработают. Включите их в Настройках."
+          }
+        }
+      }
+    },
+    "permissions.alert.notifications_disabled.title" : {
+      "comment" : "Title of the launch alert for denied notification permission. CreateAlarmUITests matches this alert by these exact words, and E2E only runs behind the ui-test label — AppDelegateAlertTests pins them in the always-on unit suite so a reword goes red on the PR that made it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления выключены"
           }
         }
       }

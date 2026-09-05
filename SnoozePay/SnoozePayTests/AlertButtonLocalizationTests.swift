@@ -29,10 +29,17 @@ import XCTest
 /// The two scripts are indistinguishable on screen and equally wrong, so both
 /// are matched — the fix for either is the same key, `common.button.ok`.
 ///
-/// Non-acknowledgement literals (`"Отмена"`, `"Настройки"` in `AppDelegate`)
-/// are deliberately *not* matched. They belong to the wider literal migration
-/// and flagging them here would make this test fail for a reason it cannot
-/// describe.
+/// A non-acknowledgement literal — a «Отмена», a «Настройки» — is deliberately
+/// *not* matched. Those belong to the wider literal migration, and flagging one
+/// here would make this test fail for a reason it cannot describe.
+///
+/// The pair that sentence used to name lived in `AppDelegate` and no longer
+/// does: #752 moved both into the catalogue, so at the time of writing the
+/// exclusion costs nothing — no `UIAlertAction` in the app passes a literal
+/// title at all. It is stated for the next such button, not for a live one.
+/// Item 2 below says the same thing about `UIAlertController(title:)`, where
+/// there IS still a live case; an earlier revision of this file had the two
+/// paragraphs contradicting each other on where the remaining literals are.
 ///
 /// # What it still cannot see
 ///
@@ -44,9 +51,11 @@ import XCTest
 ///    exists to stop is the copy-pasted one-liner, which is how all seven
 ///    arrived.
 /// 2. **`UIAlertController(title:)`.** The pattern matches `UIAlertAction`
-///    only, so an alert's own title stays invisible here — including the two
-///    literal ones left in `AppDelegate`: «Уведомления выключены» is tracked in
-///    #752, «Будильник» belongs to the wider literal migration.
+///    only, so an alert's own title stays invisible here — including the one
+///    literal left in `AppDelegate`, «Будильник», which belongs to the wider
+///    literal migration. Its neighbour «Уведомления выключены» was the other
+///    until #752 moved it, with its body and its two buttons, into the
+///    catalogue; `AppDelegateAlertTests` now pins those words.
 ///
 /// The third entry this list carried until #751 — a catalogue key whose own
 /// value is Latin — is no longer a blind spot of the *file*, only of the source
