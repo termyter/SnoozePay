@@ -124,9 +124,16 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// `AlarmRepository.shared`, `TransactionRepository.shared` and, as the
     /// latter's default, `WakeEventStore.shared` — through `isRecoveryVisible`.
     /// They are left shared on purpose: `lastLoadFailed` is an in-memory
-    /// `Bool` behind a serial queue, and none of the three initializers so
-    /// much as reads `UserDefaults`, so that path cannot move a key. A seam
-    /// for them would buy nothing and would hide that fact behind an injection.
+    /// `Bool` behind a serial queue, and none of the three initializers reads
+    /// `UserDefaults`. Four singletons, not three, though — they force
+    /// `AlarmScheduler.shared` as `AlarmRepository`'s default scheduler, and
+    /// through it `UNUserNotificationCenter.current()` and
+    /// `AlarmManager.shared` (`AppDelegate` forces the same one at launch, so
+    /// the first touch is normally long before this window), so
+    /// «cannot move a key» is NOT claimed for the whole closure: the
+    /// whole-domain diff below is what actually holds that line, and it names
+    /// the key if one ever moves. A seam for the three would buy nothing here
+    /// and would hide that fact behind an injection.
     ///
     /// The wallet comes back with it: the apply path credits 200 ₽, so «where
     /// did the money land» is half of what there is to assert, and the
@@ -235,9 +242,21 @@ final class SettingsReferralIsolationTests: XCTestCase {
         let sut = laidOutSettings(defaults: defaults).sut
         let cell = try referralCell(.myCode, of: sut)
 
-        // Taken before the assertions below so a failing XCTUnwrap cannot skip
-        // the measurement, and so nothing but the act sits between the two.
+        // Snapshot and verdict both go before the `XCTUnwrap`s below. Taking
+        // only the snapshot early is not enough: a throwing unwrap returns from
+        // the method, so the assertion this test is NAMED for would be skipped
+        // and the run would report a different failure than the one that
+        // matters. Nothing but the act sits between the two snapshots.
         let after = standard.dictionaryRepresentation()
+        let moved = Self.changedKeys(from: before, to: after)
+        XCTAssertTrue(
+            moved.isEmpty,
+            """
+            laying out Settings moved \(moved) in UserDefaults.standard — the real user's settings. \
+            A referral or theme key there means a store went back to `.shared`; any other key \
+            means the screen grew a write this file does not know about
+            """
+        )
 
         let stored = try XCTUnwrap(
             defaults.string(forKey: myCodeKey),
@@ -251,16 +270,6 @@ final class SettingsReferralIsolationTests: XCTestCase {
         XCTAssertTrue(
             labelTexts(in: cell).contains(stored),
             "the rendered row shows a code that is not the injected store's"
-        )
-
-        let moved = Self.changedKeys(from: before, to: after)
-        XCTAssertTrue(
-            moved.isEmpty,
-            """
-            laying out Settings moved \(moved) in UserDefaults.standard — the real user's settings. \
-            A referral or theme key there means a store went back to `.shared`; any other key \
-            means the screen grew a write this file does not know about
-            """
         )
     }
 
@@ -276,8 +285,11 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// enough: `ThemeService.shared` reads a single value, and a screen back
     /// on the singleton would still match a seed that happened to agree with
     /// the host machine. It cannot agree with both `light` and `dark` at
-    /// once, so the pair goes red under the old behaviour on any host,
-    /// without this test reading — let alone writing — what the host has.
+    /// once, so the pair goes red under the old behaviour on any host, without
+    /// the segment assertions consulting — let alone writing — what the host
+    /// has. (The test does read `preferred_theme` from `.standard` once — that
+    /// is the baseline for the third assertion, that laying Settings out did
+    /// not write the host's theme. The two index assertions never touch it.)
     ///
     /// The raw values are spelled out rather than taken from
     /// `ThemeService.Theme`, and the expected indices are literals rather than
