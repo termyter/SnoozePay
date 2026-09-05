@@ -361,8 +361,16 @@ final class AlarmEditorCopyTests: XCTestCase {
         let rendered = Self.strings(in: cell.contentView)
         Self.assertNoKeysLeaked(in: rendered)
 
-        // The caption is upper-cased at the call site, which is where that
-        // decision belongs — the catalogue holds sentence case.
+        // Recipe form. Safe only because `create_alarm.penalty.caps` is stored
+        // sentence-case and `PenaltyCell` upper-cases it: drop that call and the
+        // sides disagree, red. Both preview captions are literals instead, for
+        // two different reasons — `theme_picker.preview_caps` is stored already
+        // capped, so this form reads one string on both sides and cannot catch a
+        // caps change; `sound_picker.preview_caps` is stored sentence-case like
+        // this key, so the form is NOT blind there, and its literal buys
+        // independence from the WORD. Reasoned from the stored values, not
+        // measured. See `testThemePickerRendersItsTitleAndPreviewCaption` and
+        // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` (#665; #793).
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.caps").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.hint")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.minimum")))
@@ -723,7 +731,19 @@ final class AlarmEditorCopyTests: XCTestCase {
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
         Self.assertNoKeysLeaked(in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound.title").uppercased()))
-        XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.preview_caps").uppercased()))
+        // Pinned as a literal, on purpose — but not because the old form was
+        // blind to lost caps: this key holds «Превью», `SoundPickerViewController`
+        // upper-cases it at line 86, and removing that call would have failed
+        // `Localized.text(key).uppercased()` too. What the literal buys is
+        // independence from the *word*: re-type the entry as «Прослушать» and the
+        // old form still agrees with the screen, so only the word table above
+        // (layer 2) goes red, naming the catalogue row and not this screen. The
+        // theme caption below is the other case, where the recipe form really was
+        // blind (#665; unification in #793).
+        XCTAssertTrue(
+            rendered.contains("ПРЕВЬЮ"),
+            "the sound preview card lost its caps caption: \(rendered)"
+        )
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.volume_row")))
         // The key's other live call site. `VolumePickerViewController:118` is
         // pinned by `testVolumeScreenRendersItsTitleAndFadeRow`; this caps
@@ -743,17 +763,29 @@ final class AlarmEditorCopyTests: XCTestCase {
         )
     }
 
-    func testThemePickerRendersItsTitleAndSectionHeader() {
-        // No `layoutIfNeeded`: the grid's section header is a supplementary
-        // view, and forcing a collection-view pass here would buy one more
-        // assertion at the price of rendering every theme tile.
+    func testThemePickerRendersItsTitleAndPreviewCaption() {
+        // Not the section header, whatever the old name promised: it is a
+        // supplementary view only a full collection-view pass would render (hence
+        // no `layoutIfNeeded`), so `theme_picker.section_presets` is pinned by
+        // the word table above and by nothing on screen.
         let picker = AlarmThemePickerViewController(currentTheme: .dawn, onSelect: { _ in })
         picker.loadViewIfNeeded()
 
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
         Self.assertNoKeysLeaked(in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.title").uppercased()))
-        XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.preview_caps")))
+        // The literal, for the reason in
+        // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` — and this is
+        // the assertion that *was* blind: the key is stored already capped and
+        // `AlarmThemePickerViewController:84` upper-cases nothing, so the old
+        // right-hand side re-read the entry the label did and matched a screen
+        // that had dropped its caps. The *suite* was not blind: the word table
+        // above pins the exact value (the mutation had to change it too) and
+        // catches a re-typed caption — keep that row (#665; unification #793).
+        XCTAssertTrue(
+            rendered.contains("ПРЕВЬЮ ЭКРАНА ЗВОНКА"),
+            "the theme preview lost its caps caption: \(rendered)"
+        )
     }
 
     // MARK: - The guard itself
