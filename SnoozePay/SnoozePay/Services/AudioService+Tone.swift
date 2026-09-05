@@ -11,8 +11,12 @@ import os
 
 extension AudioService {
 
-    /// Generate a 440 Hz sine wave alarm tone as in-memory WAV data.
-    /// Returns an AVAudioPlayer ready to loop, or nil on failure.
+    /// Generate the synthetic alarm tone as in-memory WAV data: a 1.5 s mono
+    /// 16-bit PCM buffer at 44.1 kHz carrying two summed sine partials
+    /// (880 Hz, plus 660 Hz at 0.6 amplitude) under a 0.3s-on/0.2s-off pulse
+    /// envelope with a 20 ms fade at each end.
+    /// Returns an AVAudioPlayer over that buffer — looping is the caller's to
+    /// set via `numberOfLoops` — or nil if AVAudioPlayer rejects the data.
     static func generateAlarmTone() -> AVAudioPlayer? {
         let sampleRate: Double = 44100
         let duration: Double = 1.5 // seconds per loop cycle
@@ -38,8 +42,9 @@ extension AudioService {
         }
     }
 
-    /// Build interleaved 16-bit PCM samples with the dual-tone amplitude
-    /// envelope (880 Hz + 660 Hz, short fade-in/out, 0.3s-on/0.2s-off pulse).
+    /// Build the single-channel 16-bit PCM samples with the dual-tone
+    /// amplitude envelope (880 Hz + 660 Hz, 20 ms fade-in/out at the buffer
+    /// edges, 0.3s-on/0.2s-off pulse in between).
     private static func renderToneSamples(
         totalSamples: Int,
         sampleRate: Double,
