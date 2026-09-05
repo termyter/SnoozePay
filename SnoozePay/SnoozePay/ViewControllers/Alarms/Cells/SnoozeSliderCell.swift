@@ -208,28 +208,58 @@ final class SnoozeSliderCell: UITableViewCell {
     /// «{N} мин» with the unit dimmed to `fg3` per the V2 slider recipe
     /// (SPScreensV2.jsx:733-751) so the number reads as the headline.
     ///
-    /// The whole phrase is one catalogue string and the number is located in
-    /// the rendered result, rather than the two being concatenated here: a
-    /// language that puts its unit first would otherwise be unable to say so.
-    private static func valueText(_ minutes: Int) -> NSAttributedString {
-        let phrase = Localized.format("create_alarm.snooze.minutes", minutes)
-        let text = NSMutableAttributedString(
-            string: phrase,
+    /// The whole phrase is one catalogue string with the number substituted
+    /// into it, rather than the two being concatenated here: a language that
+    /// puts its unit first would otherwise be unable to say so. That argument
+    /// is not this method's own — it belongs to
+    /// ``Localized/attributed(_:attributes:replacing:specifier:)``, which is
+    /// where every styled substitution in the app now goes.
+    ///
+    /// Until #722 this method made the same argument in its own words and its
+    /// own way: render the phrase through ``Localized/format(_:_:)``, then
+    /// find the number again with `range(of:)` and restyle it in place. Two
+    /// mechanisms for one job, neither citing the other. The one that survived
+    /// is the one that can also place an insertion whose own attributes are
+    /// non-uniform, and that cannot restyle the wrong occurrence.
+    ///
+    /// `specifier` is `%lld` because the entry reads «%lld мин» — it was
+    /// written to be consumed by ``Localized/format(_:_:)``, which hands the
+    /// template to `String(format:)` with an `Int`, and that is the spelling
+    /// that path wants. Not because the spelling predates the restyling: this
+    /// reading has been styled apart since #278 (2026-06-12) — #220 had only
+    /// set the whole label to `moneyMd` a month earlier — two and a half
+    /// months before #612 (2026-08-30) moved the phrase into the catalogue,
+    /// and that entry's own comment already says «the call site dims
+    /// everything but the number». Respelling it `%@` now would churn the
+    /// catalogue and re-open the entry for translation, which is what the
+    /// `specifier` parameter exists to avoid. The number is rendered through
+    /// the same locale-aware path it had while the whole phrase went through
+    /// `String(format:locale:)`.
+    ///
+    /// Internal rather than private so `AttributedSubstitutionTests` can read
+    /// the return value directly. Through `valueLabel.attributedText` the two
+    /// expectations that matter most — `moneyMd` and `fg1` on the digit — are
+    /// also the label's own defaults (see `valueLabel` above), so a mutation
+    /// that inserts the number *without* attributes could come back looking
+    /// correct. Reading what this method returns removes the label from the
+    /// oracle; that the cell then renders it is pinned separately by
+    /// `AlarmEditorCopyTests.testSnoozeSliderReadingKeepsItsNumberInTheHeadlineFace`.
+    static func valueText(_ minutes: Int) -> NSAttributedString {
+        Localized.attributed(
+            "create_alarm.snooze.minutes",
             attributes: [
                 .font: AppTypography.h4,
                 .foregroundColor: AppColors.fg3
-            ]
-        )
-        if let digits = phrase.range(of: "\(minutes)") {
-            text.addAttributes(
-                [
+            ],
+            replacing: NSAttributedString(
+                string: String(format: "%lld", locale: AppLocale.display, arguments: [minutes]),
+                attributes: [
                     .font: AppTypography.moneyMd,
                     .foregroundColor: AppColors.fg1
-                ],
-                range: NSRange(digits, in: phrase)
-            )
-        }
-        return text
+                ]
+            ),
+            specifier: "%lld"
+        )
     }
 }
 

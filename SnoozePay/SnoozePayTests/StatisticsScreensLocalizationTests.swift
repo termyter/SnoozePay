@@ -119,9 +119,25 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// number in it.
     ///
     /// Counted, not merely found: `Localized.attributed` spends its single
-    /// replacement on the *first* `%@` and renders any second one literally,
-    /// so a duplicated specifier ships «списано −750 ₽ … %@» and `contains`
-    /// alone never sees it.
+    /// replacement on the *first* occurrence of its specifier and renders any
+    /// second one literally, so a duplicated specifier ships «списано −750 ₽ …
+    /// %@» and `contains` alone never sees it.
+    ///
+    /// `create_alarm.snooze.minutes` joined the list with #722, which pointed
+    /// `SnoozeSliderCell.valueText(_:)` at `Localized.attributed`: before
+    /// that, the only reader of that entry was `String(format:)`, which had
+    /// nothing to report about a second `%lld` — it reads one past the end of
+    /// the argument list and prints whatever is there, which is undefined
+    /// behaviour rather than an omission. It is spelled
+    /// `%lld` rather than `%@` because of that older reader — the specifier is
+    /// per entry, not a house style.
+    ///
+    /// The list is kept by hand, so it guards what is written in it and
+    /// nothing else. Two things it structurally cannot see: a key whose call
+    /// site was added without a line here, and a *translation* that grows a
+    /// second specifier — `Localized.text` resolves for `AppLocale.display`,
+    /// which is `Locale(identifier: "ru_RU")` until #569, so only the Russian
+    /// template is ever counted.
     func testFormatKeysKeepTheirSpecifiers() {
         let expected: [String: [String]] = [
             "streak.savings.caps": ["%1$lld", "%2$@"],
@@ -130,7 +146,8 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
             "streak.share.message": ["%1$lld", "%2$@", "%3$@"],
             "alarm_off.lower_price.subtitle": ["%1$@", "%2$@"],
             "alarm_off.body": ["%@"],
-            "statistics.weekday.worst_day": ["%@"]
+            "statistics.weekday.worst_day": ["%@"],
+            "create_alarm.snooze.minutes": ["%lld"]
         ]
         for (key, specifiers) in expected {
             let value = Localized.text(key)
@@ -349,29 +366,45 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     }
 
     /// The other half of that pair: no key the app actually passes to
-    /// `Localized.attributed` may reach the trapping branch. Both call sites
-    /// are listed by symbol rather than by line — `StatisticsViewController`'s
-    /// worst-day caption and `AlarmOffWarningViewController`'s body are the
-    /// only two. Line numbers would go stale before the claim does, which in
-    /// an epic whose whole defect is stale prose is a mine, not a convenience.
-    /// A third call site added without a line here is the gap this cannot see,
-    /// and the trap is what covers that case instead; that is the division of
-    /// labour between them.
+    /// `Localized.attributed` may reach the trapping branch. Call sites are
+    /// listed by symbol rather than by line — line numbers would go stale
+    /// before the claim does, which in an epic whose whole defect is stale
+    /// prose is a mine, not a convenience.
+    ///
+    /// There are three: `StatisticsViewController`'s worst-day caption,
+    /// `AlarmOffWarningViewController`'s body, and — since #722 —
+    /// `SnoozeSliderCell.valueText(_:)`. Avoiding line numbers did not save
+    /// this list from going stale anyway: it read «the only two» until the
+    /// third arrived and review caught it, which is the honest measure of what
+    /// a hand-kept list is worth. A fourth added without a line here is still
+    /// the gap this cannot see, and the trap inside `Localized.attributed` is
+    /// what covers that case instead; that is the division of labour.
+    ///
+    /// The specifier travels with the key rather than being assumed `%@`:
+    /// `create_alarm.snooze.minutes` holds `%lld`, and a loop hard-wired to
+    /// `%@` would have quietly reported that entry as taking the trapping
+    /// branch.
     func testAttributedSubstitutesInPlaceForEveryKeyTheAppPassesIt() {
-        for key in ["alarm_off.body", "statistics.weekday.worst_day"] {
+        let callSites = [
+            (key: "alarm_off.body", specifier: "%@"),
+            (key: "statistics.weekday.worst_day", specifier: "%@"),
+            (key: "create_alarm.snooze.minutes", specifier: "%lld")
+        ]
+        for (key, specifier) in callSites {
             let template = Localized.text(key)
             XCTAssertTrue(
-                template.contains("%@"),
+                template.contains(specifier),
                 "\(key) would take the trapping branch: it reads «\(template)»"
             )
             let result = Localized.attributed(
                 key,
                 attributes: [:],
-                replacing: NSAttributedString(string: "X")
+                replacing: NSAttributedString(string: "X"),
+                specifier: specifier
             )
             XCTAssertEqual(
                 result.string,
-                template.replacingOccurrences(of: "%@", with: "X"),
+                template.replacingOccurrences(of: specifier, with: "X"),
                 "\(key) did not substitute in place"
             )
         }
