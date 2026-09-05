@@ -19,10 +19,11 @@ final class AlarmSchedulerTests: XCTestCase {
 
     /// The four formats **in probe order**, written out rather than read from
     /// `AlarmScheduler.alarmSoundExtensions`. An expectation drawn from the
-    /// value under test agrees with any mistake in it: until #773 every case
-    /// below looped over the constant itself, so deleting `"m4a"` from it
-    /// deleted the two assertions that would have complained — a reviewer's
-    /// harness ran that mutation and the suite stayed green.
+    /// value under test agrees with any mistake in it: until #773 the one case
+    /// that covered the list — `…_searchesEverySupportedExtensionInBothLookups`
+    /// — looped over the constant itself, so deleting a format from it deleted
+    /// the two assertions that would have complained. A reviewer's harness ran
+    /// exactly that (`mp3` removed) and the suite stayed green.
     ///
     /// The order is a contract, not an implementation detail: the docblock on
     /// the constant says «tried, in order», and the extension that answers
@@ -34,7 +35,7 @@ final class AlarmSchedulerTests: XCTestCase {
     /// #749, which is where the list and its diagnostic («tried caf,m4a,wav,mp3»)
     /// were introduced. `AudioService.alarmSoundExtensions` carries the same four
     /// in the same order and is pinned separately, from its own side, in
-    /// `AudioServiceTests` (#770) — the two lists are independent constants and
+    /// `AudioServiceTests` (#765) — the two lists are independent constants and
     /// nothing makes them agree, so neither may be used as the other's oracle.
     private static let supportedExtensionsInProbeOrder = ["caf", "m4a", "wav", "mp3"]
 
@@ -49,8 +50,12 @@ final class AlarmSchedulerTests: XCTestCase {
     /// would stop resolving and downgrade to `default_alarm`, which is exactly
     /// the state #749 taught the code to report and this case exists to prevent.
     ///
-    /// The second assertion guards the oracle itself — a duplicate would mean
-    /// the transcription lost a format while keeping the length.
+    /// The second assertion guards the oracle itself, and it earns its place on
+    /// one specific mutation: a production list that repeats a format, with the
+    /// transcription dutifully kept in sync. Array equality is happy — the two
+    /// agree — and only the duplicate check notices that the list no longer
+    /// describes four distinct probes. (A duplicate introduced on THIS side
+    /// alone fires both assertions.)
     func testAlarmSoundExtensions_areTheFourFormatsInTheDocumentedProbeOrder() {
         XCTAssertEqual(
             AlarmScheduler.alarmSoundExtensions, Self.supportedExtensionsInProbeOrder,
@@ -64,9 +69,17 @@ final class AlarmSchedulerTests: XCTestCase {
     }
 
     /// Membership is not order, and the assertion above pins the constant, not
-    /// its use. A lookup that walked the same four backwards — `reversed()`, or
-    /// a `sorted()` tidy-up — leaves that one green while the first probe stops
-    /// being `caf`.
+    /// its use. A lookup that walked the same four in the other direction —
+    /// `extensions.reversed()` — leaves that one green while the first probe
+    /// stops being `caf`.
+    ///
+    /// Not `sorted()`, which was the first example written here and is wrong:
+    /// `["caf", "m4a", "wav", "mp3"].sorted()` is
+    /// `["caf", "m4a", "mp3", "wav"]`, so `caf` still goes first and this case
+    /// stays green. A `sorted()` applied to the CONSTANT is caught by the
+    /// equality assertion above; applied inside the loop it is caught by
+    /// neither, and it is harmless for the same reason — the probe order it
+    /// produces differs only past the format the bundle actually ships.
     ///
     /// Both lookups are asked with a bundle that answers for EVERY extension,
     /// so the one that comes back is whichever the loop reached first.
