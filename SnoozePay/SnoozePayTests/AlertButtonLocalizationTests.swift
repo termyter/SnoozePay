@@ -29,10 +29,17 @@ import XCTest
 /// The two scripts are indistinguishable on screen and equally wrong, so both
 /// are matched — the fix for either is the same key, `common.button.ok`.
 ///
-/// Non-acknowledgement literals (`"Отмена"`, `"Настройки"` in `AppDelegate`)
-/// are deliberately *not* matched. They belong to the wider literal migration
-/// and flagging them here would make this test fail for a reason it cannot
-/// describe.
+/// A non-acknowledgement literal — a «Отмена», a «Настройки» — is deliberately
+/// *not* matched. Those belong to the wider literal migration, and flagging one
+/// here would make this test fail for a reason it cannot describe.
+///
+/// The pair that sentence used to name lived in `AppDelegate` and no longer
+/// does: #752 moved both into the catalogue, so at the time of writing the
+/// exclusion costs nothing — no `UIAlertAction` in the app passes a literal
+/// title at all. It is stated for the next such button, not for a live one.
+/// Item 2 below says the same thing about `UIAlertController(title:)`, where
+/// there IS still a live case; an earlier revision of this file had the two
+/// paragraphs contradicting each other on where the remaining literals are.
 ///
 /// # What it still cannot see
 ///

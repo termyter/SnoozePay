@@ -345,6 +345,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func showNotificationsDisabledAlert(on rootVC: UIViewController) {
+        // ⚠️ The `present` at the bottom is still the bare one #752 replaced for
+        // the corrupt-data alert: no drop guard, no completion, no read-back —
+        // so a refusal here leaves neither an alert nor a line. Same defect
+        // class, heavier consequence (this is the warning that alarms will not
+        // fire at all) and a likelier trigger (cold start, from the permission
+        // callback). Tracked in #789, deliberately not fixed here: #752 is
+        // scoped to the corrupt-data alert and its own grep handles.
+        //
         // Catalogue copy since #752. These two button titles were the last
         // literal `UIAlertAction` titles in the app: #664 swept the ones that
         // read as acknowledgements, and «Отмена»/«Настройки» are neither, so
@@ -679,8 +687,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                     .first,
                 let rootVC = windowScene.windows.first?.rootViewController
             else {
-                AppLogger.appDelegate.error(
-                    "decode-failure alert: no window scene to present on"
+                // Same shape as the other two drops, on purpose. This is the
+                // third way the alert never reaches the user, and until the
+                // second round of #752 it was the one the promised grep did not
+                // find: the line existed but carried neither
+                // ``alertDroppedErrorID`` nor the message. A reader who greps
+                // the handle and finds nothing concludes «the alert was shown».
+                AppLogger.emit(
+                    .appDelegate, .error,
+                    AppDelegate.droppedAlertLine(
+                        reason: "no window scene to present on", message: message
+                    )
                 )
                 return
             }
@@ -720,8 +737,15 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// and not `.ui`, because the rest of this incident's trail (the fetch
     /// failure at the call site, the missing window scene above) is filed
     /// there, and one grep should return the whole story.
+    ///
+    /// The drop is decided TWICE: once before `present` by
+    /// ``droppedAlertDiagnostic(presenter:message:)``, which can say why, and
+    /// once after it by reading `presentedViewController` back, which cannot
+    /// say why but misses nothing. Only the pair closes #752 — the first alone
+    /// left every refusal outside its list of three producing no alert and no
+    /// line, which is the complaint verbatim.
     static func showAlarmDataCorruptedAlert(on topVC: UIViewController, message: String) {
-        if let diagnostic = droppedAlertDiagnostic(presenting: topVC, message: message) {
+        if let diagnostic = droppedAlertDiagnostic(presenter: topVC, message: message) {
             AppLogger.emit(.appDelegate, .error, diagnostic)
             return
         }
@@ -743,6 +767,33 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 "[\(AppDelegate.alertShownErrorID)] Alarm data-corrupted alert shown to the user: \(message)"
             )
         }
+
+        // The guard above names three refusals; UIKit has more, and does not
+        // publish them. For any of the others `present` returns having done
+        // nothing and called nothing — no alert, no completion, and therefore
+        // no line at all. That left #752 closed for three states and open for
+        // the rest: an alert stacked onto an already-presented
+        // `UIAlertController` (the walk in the caller ends ON one whenever the
+        // notifications-disabled alert is up) passes every check above and can
+        // still go nowhere.
+        //
+        // Read back rather than timed: UIKit assigns `presentedViewController`
+        // synchronously inside `present`, before the completion runs, so this
+        // needs no run loop and cannot flake. That assumption is load-bearing,
+        // so it is asserted rather than trusted —
+        // `testCorruptDataAlert_onAMountedPresenter_logsThatTheUserSawIt`
+        // fails on a DROPPED line for an alert it watches appear, which is
+        // exactly what a wrong assumption would produce here.
+        guard topVC.presentedViewController === alert else {
+            AppLogger.emit(
+                .appDelegate, .error,
+                AppDelegate.droppedAlertLine(
+                    reason: "\(type(of: topVC)) did not put the alert up",
+                    message: message
+                )
+            )
+            return
+        }
     }
 
     /// The line to log when the corrupt-data alert cannot be shown, or `nil`
@@ -753,15 +804,30 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// live presentation, which is the shape `StatisticsViewController` already
     /// uses.
     ///
-    /// All three refusals name states where `present` is a no-op anyway, so
+    /// The three refusals it names are states where `present` is a no-op anyway, so
     /// declining costs no alert that would otherwise have appeared; it only
     /// leaves a record where UIKit leaves none. The guard `Statistics` needs —
     /// "something is already presented" — is deliberately absent: the caller
     /// walks to the topmost controller first, so `presentedViewController` is
     /// nil by construction and this alert stacks on top of whatever is up
     /// rather than fighting it.
+    ///
+    /// ⚠️ The list is not exhaustive and cannot be: UIKit refuses for reasons it
+    /// does not publish. That is why the caller does NOT rely on this function
+    /// alone — it re-reads `presentedViewController` after `present` and covers
+    /// every other reason at once. This one still earns its place: it names WHY,
+    /// and it is the half a test can drive without a live transition.
+    ///
+    /// ⚠️ The label is `presenter:`, not `presenting:`. The other function of
+    /// this name in the app — ``StatisticsViewController/droppedAlertDiagnostic(presenting:message:)``
+    /// — takes the controller that BLOCKS the presentation
+    /// (`presentedViewController`); this one takes the controller that WOULD
+    /// perform it. The types are compatible, so copying a call from one file to
+    /// the other compiles and answers the opposite question. The differing
+    /// label is what makes that copy fail to build instead. (#790 tracks
+    /// bringing the `Statistics` one up to this shape.)
     static func droppedAlertDiagnostic(
-        presenting topVC: UIViewController, message: String
+        presenter topVC: UIViewController, message: String
     ) -> String? {
         let reason: String
         if topVC.viewIfLoaded?.window == nil {
@@ -773,9 +839,23 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         } else {
             return nil
         }
-        return """
-            [\(AppDelegate.alertDroppedErrorID)] Alarm data-corrupted alert dropped — \(reason). \
-            Unshown message: \(message)
-            """
+        return droppedAlertLine(reason: reason, message: message)
+    }
+
+    /// The single shape every "the user never saw it" line takes: the grep
+    /// handle, why, and the sentence that was lost.
+    ///
+    /// One builder rather than a spelled-out string per call site, because the
+    /// drops are found by ONE grep or by none. Three sites reach it: the
+    /// missing window scene, the three states
+    /// ``droppedAlertDiagnostic(presenter:message:)`` names, and the read-back
+    /// after `present` that covers whatever UIKit refuses for reasons it does
+    /// not publish. The window-scene one spent the first round of #752 outside
+    /// that grep precisely because it spelled out its own sentence.
+    static func droppedAlertLine(reason: String, message: String) -> String {
+        """
+        [\(AppDelegate.alertDroppedErrorID)] Alarm data-corrupted alert dropped — \(reason). \
+        Unshown message: \(message)
+        """
     }
 }
