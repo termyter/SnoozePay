@@ -19,6 +19,13 @@ import XCTest
 ///     to a typo in the *key* at the call site, because the catalogue is fine
 ///     in that case.
 ///
+/// Underneath all three sits the question of *how much* they cover, and the
+/// table of words is not what answers it: the list of keys the loops walk is
+/// read off the editor's own sources by `CatalogueKeyScanner`. It used to be
+/// `copy.keys.sorted()`, which made the table its own scope — lifting a pair out
+/// of it also lifted that key out of every loop and out of the leak guard, and
+/// nothing said so (#767).
+///
 /// Three things this slice deliberately did **not** migrate, asserted here so
 /// a later pass doesn't "finish the job" and break them:
 ///
@@ -99,7 +106,216 @@ final class AlarmEditorCopyTests: XCTestCase {
         "create_alarm.volume_picker.fade_title": "Постепенно нарастает"
     ]
 
-    private static var allKeys: [String] { copy.keys.sorted() }
+    // MARK: - Layer 0: how much of the screen the layers above cover
+
+    /// The sources this suite stands over: the alarm editor, the cells and
+    /// pickers it is built from, and the list it returns to.
+    ///
+    /// Naming the files is what makes the suite's *scope* independent of the
+    /// table above. `allKeys` used to read `copy.keys.sorted()`, so lifting a
+    /// pair out of the table lifted that key out of everything standing over it
+    /// — `testEveryMigratedKeyResolvesToCopy`,
+    /// `testMigratedCopyStillReadsTheWayItDidBefore` and `assertNoKeysLeaked`
+    /// all kept passing over a smaller world and said nothing (#767). The
+    /// scenario is not hypothetical: #720 deleted `subtitle(for:)` as dead code
+    /// and took a live id → words binding with it; #746 and #755 put it back.
+    ///
+    /// Shortening *this* list shrinks coverage just as effectively, and that is
+    /// accepted: it is a visible edit to a list whose only job is to say what is
+    /// covered, not a side effect of tidying a dictionary of words. (Shortening
+    /// it is loud for 16 of the 20 — the table then pins keys nothing reads and
+    /// `stale` fires. The other four hold only keys some other listed source
+    /// reads too, or `create_alarm.wake_up`, which lives in ``pinnedElsewhere``;
+    /// dropping one of those four is silent. Deletion is the visible half.)
+    ///
+    /// NEVER ADDING a file is the failure mode this list cannot see by itself: a
+    /// source it has not heard of contributes no keys, so its copy can never
+    /// come back `unpinned`, and being absent from the table it can never come
+    /// back `stale` either. ``coveredByAnotherSuite`` plus
+    /// ``testEverySourceUnderTheEditorIsAccountedFor`` is what makes a new file
+    /// red instead of silent.
+    private static let screenSources = [
+        "AlarmCell.swift",
+        "AlarmThemePickerViewController.swift",
+        "AlarmsListViewController.swift",
+        "ConfirmDeleteAlarmViewController.swift",
+        "CreateAlarmViewController.swift",
+        "CreateAlarmViewController+Pickers.swift",
+        "CreateAlarmViewController+Sections.swift",
+        "SoundPickerViewController.swift",
+        "VolumePickerViewController.swift",
+        "Cells/AlarmsStreakBannerView.swift",
+        "Cells/DayPickerCell.swift",
+        "Cells/NameCell.swift",
+        "Cells/PenaltyCell.swift",
+        "Cells/ProgressiveScaleCell.swift",
+        "Cells/RepeatModeCell.swift",
+        "Cells/SnoozeSliderCell.swift",
+        "Cells/SoundCell.swift",
+        "Cells/ThemeRowCell.swift",
+        "Cells/TimePickerCell.swift",
+        "Cells/VibrationCell.swift"
+    ]
+
+    /// The rest of the editor's directory, each name carrying the suite that
+    /// owns it — or, for a file with no catalogue keys yet, listed so that
+    /// growing one goes red here first.
+    ///
+    /// ``screenSources`` cannot police itself; this is the other half of the
+    /// partition, and `testEverySourceUnderTheEditorIsAccountedFor` asserts the
+    /// two cover the directory exactly. Adding a cell is an ordinary thing to
+    /// do, and nobody editing `Cells/SoundPickerRowCell.swift` will think to
+    /// open a copy suite — so the suite has to notice on its own.
+    private static let coveredByAnotherSuite: Set<String> = [
+        // FiringCopyTests
+        "AlarmFiringViewController.swift",
+        "AlarmFiringViewController+Audio.swift",
+        "AlarmFiringViewController+Layout.swift",
+        "AlarmFiringViewController+NoBalance.swift",
+        "AlarmFiringViewController+NoBalanceColumn.swift",
+        "AlarmFiringViewController+Progressive.swift",
+        "AlarmFiringViewController+Snoozed.swift",
+        "AlarmFiringViewController+SnoozedViews.swift",
+        "AlarmFiringViewController+Theme.swift",
+        "AlarmFiringViewController+ViewLifecycle.swift",
+        "WokeMorningContent.swift",
+        "WokeMorningViewController.swift",
+        // FiringTopUpCopyTests
+        "FiringTopUpBottomSheetViewController.swift",
+        "FiringTopUpCopy.swift",
+        "FiringTopUpPresetRow.swift",
+        // No catalogue keys today; listed so growing one goes red here first.
+        "Cells/AlarmThemeTileCell.swift",
+        "Cells/SoundPickerRowCell.swift"
+    ]
+
+    /// Keys those sources read whose words another suite already pins. Every
+    /// entry names that suite: an unexplained exception here is how the table
+    /// would start shrinking again, one line at a time.
+    private static let pinnedElsewhere: Set<String> = [
+        // `AlertButtonLocalizationTests` owns this one end to end — it pins the
+        // spelling («Ок», not «ОК» or «OK») and scans every source for alert
+        // buttons that bypass the key.
+        "common.button.ok",
+        // `LocalizableCatalogTests.testTimePickerHeaderResolves` pins «Подъём».
+        "create_alarm.wake_up"
+    ]
+
+    /// What those sources hand to `Localized`, read off this checkout instead of
+    /// off the table. External by construction: a table cannot vouch for its own
+    /// completeness.
+    private static let reading = CatalogueKeyScanner.read(
+        screenSources, under: alarmSourceDirectory()
+    )
+
+    /// Everything the loops below stand over: the keys the screens read plus the
+    /// keys the table claims.
+    ///
+    /// The union, not the reading alone. Were the reading to come back empty —
+    /// sources moved, the list renamed — swapping one source of truth for the
+    /// other would quietly disarm the leak guard, which is the exact failure
+    /// mode this change closes.
+    /// `testCopyTableHoldsExactlyTheKeysTheScreensRead` is what goes red then,
+    /// loudly and in one place.
+    private static var allKeys: [String] { Set(copy.keys).union(reading.keys).sorted() }
+
+    /// The check the table cannot perform on itself, in both directions:
+    ///
+    ///  * a key the screens read that the table does not pin — which covers both
+    ///    the case that used to be silent, a pair *removed* from the table, and
+    ///    a genuinely new key appearing on a screen;
+    ///  * a key the table pins that no listed source reads any more, i.e. an
+    ///    expectation standing over nothing.
+    func testCopyTableHoldsExactlyTheKeysTheScreensRead() {
+        XCTAssertEqual(
+            Self.reading.unreadable, [],
+            "listed sources could not be read — renamed or moved, and whatever "
+                + "copy they hold is now outside every assertion here"
+        )
+        XCTAssertFalse(
+            Self.reading.keys.isEmpty,
+            "the scan read no keys at all: the comparison below would be vacuous"
+        )
+
+        let gaps = Self.coverageGaps(copyKeys: Set(Self.copy.keys), keysOnScreen: Self.reading.keys)
+        XCTAssertEqual(
+            gaps.unpinned, [],
+            "the editor reads keys this table does not pin — add them with the "
+                + "words they render, or name the suite that pins them in "
+                + "`pinnedElsewhere`: \(gaps.unpinned)"
+        )
+        XCTAssertEqual(
+            gaps.stale, [],
+            "this table pins keys no listed source reads any more — the "
+                + "expectation stands over nothing: \(gaps.stale)"
+        )
+        // An exemption that outlived its call site subtracts nothing and would
+        // never be reported: `coverageGaps` only ever removes `pinnedElsewhere`
+        // from the reading. Without this line the set could keep growing on one
+        // side and rotting on the other.
+        XCTAssertEqual(
+            Self.pinnedElsewhere.subtracting(Self.reading.keys), [],
+            "`pinnedElsewhere` names keys no listed source reads any more — "
+                + "delete them, or the exemption list becomes its own blind spot"
+        )
+    }
+
+    /// The two lists have to cover the editor's directory exactly.
+    ///
+    /// This is the assertion ``screenSources`` cannot make about itself. A new
+    /// file under `ViewControllers/Alarms` is in neither set, contributes no
+    /// keys to the scan and holds none in the table, so both `unpinned` and
+    /// `stale` stay empty and the suite says nothing — the silence #767 was
+    /// filed about, moved one level out.
+    func testEverySourceUnderTheEditorIsAccountedFor() {
+        let root = Self.alarmSourceDirectory()
+        let onDisk = Set(
+            (FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
+                .compactMap { $0 as? URL }
+                .filter { $0.pathExtension == "swift" }
+                .map { $0.path.replacingOccurrences(of: root.path + "/", with: "") } ?? [])
+        )
+
+        XCTAssertFalse(
+            onDisk.isEmpty,
+            "enumerated nothing under \(root.path) — this check would be vacuous"
+        )
+        XCTAssertEqual(
+            onDisk.subtracting(Self.screenSources).subtracting(Self.coveredByAnotherSuite), [],
+            "a source under the editor is in neither list — add it to "
+                + "`screenSources`, or name the suite that pins its copy in "
+                + "`coveredByAnotherSuite`"
+        )
+    }
+
+    /// Both halves of the acceptance, asserted on the comparison instead of on
+    /// the checkout: mutating the real table or a real source to demonstrate the
+    /// redness demonstrates it once, in a PR nobody re-runs.
+    func testCoverageComparisonReportsAShrunkTableAndANewKeyOnScreenAlike() {
+        let onScreen: Set<String> = ["create_alarm.sound.title", "create_alarm.theme.title"]
+
+        // (a) a pair lifted out of the table.
+        let shrunk = Self.coverageGaps(copyKeys: ["create_alarm.sound.title"], keysOnScreen: onScreen)
+        XCTAssertEqual(shrunk.unpinned, ["create_alarm.theme.title"])
+        XCTAssertEqual(shrunk.stale, [])
+
+        // (b) a key a screen started reading that nobody transcribed.
+        let added = Self.coverageGaps(
+            copyKeys: onScreen, keysOnScreen: onScreen.union(["create_alarm.brand_new"])
+        )
+        XCTAssertEqual(added.unpinned, ["create_alarm.brand_new"])
+
+        // An expectation whose call site is gone: the other direction, and the
+        // reason the comparison is an equality rather than a containment.
+        let orphan = Self.coverageGaps(copyKeys: ["create_alarm.retired"], keysOnScreen: onScreen)
+        XCTAssertEqual(orphan.stale, ["create_alarm.retired"])
+
+        // The excused keys are subtracted, not ignored: a key another suite pins
+        // is neither unpinned nor stale here.
+        let excused = Self.coverageGaps(copyKeys: [], keysOnScreen: Self.pinnedElsewhere)
+        XCTAssertEqual(excused.unpinned, [])
+        XCTAssertEqual(excused.stale, [])
+    }
 
     func testEveryMigratedKeyResolvesToCopy() {
         for key in Self.allKeys {
@@ -713,5 +929,38 @@ final class AlarmEditorCopyTests: XCTestCase {
                 )
             }
         }
+    }
+
+    // MARK: - Helpers: the table against the sources
+
+    /// The two ways the table and the screens can disagree, as data.
+    ///
+    /// A function of both sides rather than a test body, so the tests can feed
+    /// it a shrunk table and a screen that grew a key — the two failures this
+    /// file has to be able to produce — without touching the checkout.
+    private static func coverageGaps(
+        copyKeys: Set<String>, keysOnScreen: Set<String>
+    ) -> (unpinned: [String], stale: [String]) {
+        let expected = keysOnScreen.subtracting(pinnedElsewhere)
+        return (expected.subtracting(copyKeys).sorted(), copyKeys.subtracting(expected).sorted())
+    }
+
+    /// Where `screenSources` live in *this* checkout, derived from the
+    /// compiled-in path of this file rather than from an absolute one.
+    ///
+    /// Parallel agents each build from their own worktree, so a hardcoded
+    /// `/Users/…` would have every one of them reading the same foreign clone —
+    /// the check would pass while the code under review went unread. `#filePath`
+    /// is the worktree this file was compiled from, by construction. Asking the
+    /// VCS for the root is not an option: this runs on the simulator, where
+    /// spawning a subprocess is unavailable. Same technique, same reasons, as
+    /// `AlertButtonLocalizationTests.appSourceRoot()`.
+    private static func alarmSourceDirectory(filePath: StaticString = #filePath) -> URL {
+        // <root>/SnoozePay/SnoozePayTests/AlarmEditorCopyTests.swift
+        URL(fileURLWithPath: "\(filePath)")
+            .deletingLastPathComponent()  // SnoozePayTests
+            .deletingLastPathComponent()  // SnoozePay (project dir)
+            .deletingLastPathComponent()  // repo root
+            .appendingPathComponent("SnoozePay/SnoozePay/ViewControllers/Alarms")
     }
 }
