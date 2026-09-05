@@ -17,30 +17,46 @@ final class AlarmSchedulerTests: XCTestCase {
 
     // MARK: - Sound file resolution
 
-    func testAlarmSoundFileName_returnsNilForMissingSoundFile() {
-        // A sound ID that definitely does not exist in the test bundle
-        let result = scheduler.alarmSoundFileName(for: "completely_nonexistent_sound_xyz_123")
-        // If default_alarm is also missing, should return nil
-        // If default_alarm exists, it returns a fallback — both are valid
-        // We just verify it doesn't crash and returns a consistent result
-        if result != nil {
-            // Fallback to default_alarm found in bundle
-            XCTAssertTrue(result!.hasPrefix("default_alarm."))
-        } else {
-            XCTAssertNil(result)
-        }
-    }
+    /// Both lookups in `alarmSoundFileName(for:)` are searches over
+    /// ``AlarmScheduler/alarmSoundExtensions``, not `.caf` special cases.
+    /// Every other case in this file resolves on the first extension, so
+    /// collapsing either loop to a single `caf` probe would leave them green
+    /// while a sound shipped as `.m4a` downgraded to `default_alarm` — the
+    /// state #749 exists to report.
+    ///
+    /// Unconditional, one assertion per extension, on purpose. The version
+    /// this replaces (`testAlarmSoundFileName_checksMultipleExtensions`)
+    /// asserted `validExtensions.contains(ext)` under `if let`, so `nil` —
+    /// the single answer that means the search found nothing — passed having
+    /// run no assertion at all.
+    ///
+    /// The sink around the fallback half is there to keep the run QUIET, not
+    /// to be read: that half takes the branch emitting
+    /// `ALARM-749-SOUND-MISSING`, and a healthy suite must not write that ID
+    /// into unified logging — it is the signal a support grep counts
+    /// degraded installs by (#764). What the line SAYS is pinned by
+    /// `testAlarmSoundFileName_missingSoundWithFallbackPresent_logsTheDowngrade`.
+    func testAlarmSoundFileName_searchesEverySupportedExtensionInBothLookups() {
+        for ext in AlarmScheduler.alarmSoundExtensions {
+            XCTAssertEqual(
+                scheduler.alarmSoundFileName(for: "radar") { name, candidate in
+                    name == "radar" && candidate == ext
+                },
+                "radar.\(ext)",
+                "a sound bundled only as .\(ext) must resolve, not downgrade to the fallback"
+            )
 
-    func testAlarmSoundFileName_checksMultipleExtensions() {
-        // Verify the method handles the extension search gracefully
-        // for a non-existent file it should try caf, m4a, wav, mp3
-        let result = scheduler.alarmSoundFileName(for: "no_such_sound_file")
-        // Should either be nil (no files at all) or a default_alarm fallback
-        if let name = result {
-            let validExtensions = ["caf", "m4a", "wav", "mp3"]
-            let ext = (name as NSString).pathExtension
-            XCTAssertTrue(validExtensions.contains(ext),
-                          "Returned filename should have one of the supported extensions")
+            let viaFallback = AppLogger.withTestSink({ _, _, _ in }, perform: {
+                scheduler.alarmSoundFileName(for: "vanished_sound") { name, candidate in
+                    name == AlarmScheduler.fallbackSoundID && candidate == ext
+                }
+            })
+            XCTAssertEqual(
+                viaFallback,
+                "\(AlarmScheduler.fallbackSoundID).\(ext)",
+                "the fallback is searched under every extension too — a build carrying only "
+                + "\(AlarmScheduler.fallbackSoundID).\(ext) still rings"
+            )
         }
     }
 
