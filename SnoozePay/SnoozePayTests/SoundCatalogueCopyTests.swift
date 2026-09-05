@@ -24,6 +24,12 @@ import XCTest
 ///     to a typo in the *key* at the call site, because there the catalogue
 ///     itself is fine.
 ///
+/// Alongside them, one thing that is not copy at all: the **order** of the ten
+/// ids, pinned to literals in ``idsInCatalogueOrder`` (#762). It sits here
+/// because this is where the catalogue's outside view already lives, and
+/// because the assertion it replaces used to sit in layer 3 pretending to do
+/// the job.
+///
 /// # What layer 3 does and does not reach
 ///
 /// It reaches **22 of the 22 keys** through this type: `entries` plus
@@ -121,6 +127,33 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "jazz": "Бодрое утреннее настроение"
     ]
 
+    /// The ten ids **in catalogue order**, written out rather than read from
+    /// `SoundCatalogue.ids`. This is the third table for the same reason as the
+    /// second: an expectation drawn from the value under test agrees with any
+    /// mistake in it.
+    ///
+    /// The order is a product decision, not an implementation detail — it is
+    /// the row order of the sound picker, and `SoundCatalogue` says so in prose
+    /// («in catalogue order», «do NOT cut to 6»). Until #762 nothing in the
+    /// target held it: the one assertion that looked like it did,
+    /// `entries.map { $0.id } == SoundCatalogue.ids`, read `ids` on both sides,
+    /// and the neighbours compare through `Set` (`AlarmsListSoundNameTests`) or
+    /// count only (`SoundThemePickerCatalogueTests`). A reviewer's harness
+    /// confirmed it: `SoundCatalogue.ids.sort()` was green in all three suites,
+    /// so an alphabetising tidy-up would have reshuffled the picker in silence.
+    ///
+    /// Transcribed from `CreateAlarmViewModel.availableSounds` as it stood
+    /// before the V3 picker (`git show f59ee56^`), which is the list the
+    /// docblock points at as the origin of the order. The prototype's
+    /// `SoundPicker` (`SPMore.jsx:295-302`) is *not* the source: it draws an
+    /// abbreviated six-row lineup with two ids the app never shipped
+    /// («energy», «mountain»), and cutting to it is the mistake the docblock
+    /// warns against.
+    private static let idsInCatalogueOrder: [String] = [
+        "dawn", "radar", "drops", "piano", "guitar",
+        "bell", "waves", "birds", "classic", "jazz"
+    ]
+
     func testEveryMigratedKeyResolvesToCopy() {
         for key in Self.copy.keys.sorted() {
             XCTAssertNotNil(Localized.optionalText(key), "missing catalogue key: \(key)")
@@ -171,6 +204,57 @@ final class SoundCatalogueCopyTests: XCTestCase {
         )
     }
 
+    // MARK: - The order the rows are drawn in
+
+    /// The lineup and its order, against literals.
+    ///
+    /// Equality of arrays is deliberately the whole assertion: it fails on a
+    /// reordering, on a dropped sound, and on an added one. The last case is
+    /// meant to be a red run — a new sound has a position in the picker, and
+    /// picking it is a decision, so it should cost an edit here rather than be
+    /// absorbed silently.
+    func testCatalogueKeepsItsTenSoundsInTheOrderTheDesignFixed() {
+        XCTAssertEqual(
+            SoundCatalogue.ids, Self.idsInCatalogueOrder,
+            "the sound picker's row order changed — reordering the lineup is a design decision"
+        )
+    }
+
+    /// Two properties of ``idsInCatalogueOrder`` itself, because an oracle that
+    /// quietly degenerates stops failing.
+    ///
+    /// A duplicate would mean the transcription lost a sound while keeping the
+    /// length, and «ten» is the count the docblock and
+    /// `SoundThemePickerCatalogueTests` both name.
+    func testTheOrderOracleStillListsTenDistinctSounds() {
+        XCTAssertEqual(Self.idsInCatalogueOrder.count, 10)
+        XCTAssertEqual(
+            Set(Self.idsInCatalogueOrder).count, Self.idsInCatalogueOrder.count,
+            "the pinned lineup repeats an id — it no longer describes ten sounds"
+        )
+    }
+
+    /// The order the *rendered* rows come out in, not just the id list.
+    ///
+    /// `entries` maps over `ids` today, so this looks redundant; it is the
+    /// assertion that survives that stopping being true — a future `entries`
+    /// that sorts, filters or appends would pass the test above and fail here.
+    func testEntriesAndTheEditorPickerRenderInThatSameOrder() {
+        XCTAssertEqual(SoundCatalogue.entries.map { $0.id }, Self.idsInCatalogueOrder)
+
+        let suite = "test.soundCopy.order.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let viewModel = CreateAlarmViewModel(repository: AlarmRepository(defaults: defaults))
+        XCTAssertEqual(
+            viewModel.availableSounds.map { $0.id }, Self.idsInCatalogueOrder,
+            "the editor's picker would draw its rows in a different order than the catalogue"
+        )
+    }
+
+    // MARK: - Words that share a spelling
+
     /// «Рассвет» is a sound *and* an alarm theme, and the two entries were one
     /// tidy-up away from being merged when this slice added the second one.
     /// They are the same word only in Russian: one names a chime, the other a
@@ -198,7 +282,10 @@ final class SoundCatalogueCopyTests: XCTestCase {
 
     func testEntriesReadAsCopyRatherThanAsKeys() throws {
         let entries = SoundCatalogue.entries
-        XCTAssertEqual(entries.map { $0.id }, SoundCatalogue.ids)
+        // Against the literal lineup, not against `SoundCatalogue.ids`: this
+        // line used to read `ids` on both sides and so asserted nothing about
+        // the order it appears to be checking (#762).
+        XCTAssertEqual(entries.map { $0.id }, Self.idsInCatalogueOrder)
         for entry in entries {
             // Looked up BY the key builder it checks, so it is blind to a
             // `nameKey(for:)` that points each id at another sound's key: both
