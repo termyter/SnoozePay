@@ -11,8 +11,24 @@ import os
 
 extension AudioService {
 
-    /// Generate a 440 Hz sine wave alarm tone as in-memory WAV data.
-    /// Returns an AVAudioPlayer ready to loop, or nil on failure.
+    /// Generate the synthetic alarm tone as in-memory WAV data: a 1.5 s mono
+    /// 16-bit PCM buffer at 44.1 kHz carrying two summed sine partials
+    /// (880 Hz, plus 660 Hz at 0.6 amplitude), gated by a 0.3s-on/0.2s-off
+    /// pulse between a 20 ms opening and closing ramp.
+    ///
+    /// "Between" is literal, and it is the one thing worth reading twice: the
+    /// ramps **replace** the pulse rather than shaping it. At 1.5 s the pulse
+    /// leaves 1.3–1.5 s silent, so the closing ramp lands inside an off phase
+    /// and brings the tone back to full scale after 180 ms of nothing — the
+    /// raw envelope there peaks at 1.012, which then clips. Looped
+    /// (`numberOfLoops = -1`, `AudioService.configurePlayerVolume`) that seam
+    /// repeats every cycle, which is the opposite of what a fade is usually
+    /// for. Filed as #792 against `renderToneSamples`; described here so the
+    /// next reader is not told it is the design.
+    ///
+    /// Returns an AVAudioPlayer over that buffer — looping is the caller's to
+    /// set via `numberOfLoops` — or nil if AVAudioPlayer rejects the data,
+    /// which is the only way this returns nil.
     static func generateAlarmTone() -> AVAudioPlayer? {
         let sampleRate: Double = 44100
         let duration: Double = 1.5 // seconds per loop cycle
@@ -38,8 +54,18 @@ extension AudioService {
         }
     }
 
-    /// Build interleaved 16-bit PCM samples with the dual-tone amplitude
-    /// envelope (880 Hz + 660 Hz, short fade-in/out, 0.3s-on/0.2s-off pulse).
+    /// Build the single-channel 16-bit PCM samples: the caller's carrier
+    /// frequency plus a fixed 660 Hz partial at 0.6 amplitude, under a 20 ms
+    /// linear ramp at each buffer edge and a 0.3s-on/0.2s-off pulse in
+    /// between. The three are branches of one `if`, not layers — see the
+    /// seam described on `generateAlarmTone()`.
+    ///
+    /// The summed partials peak at 1.566 (880 and 660 are 4:3, so the crests
+    /// never coincide), which the 0.7 scale below leaves at 1.096. That means
+    /// `Int16(clamping:)` clips 2818 of the 66150 samples — 4.3% — and the
+    /// distortion is part of the "recognizable alarm character", not an
+    /// accident. Anyone raising 0.6 or 0.7 should know the headroom is
+    /// already negative.
     private static func renderToneSamples(
         totalSamples: Int,
         sampleRate: Double,
@@ -50,10 +76,13 @@ extension AudioService {
 
         for sampleIndex in 0..<totalSamples {
             let timeSeconds = Double(sampleIndex) / sampleRate
-            // Dual-tone: 880 Hz + 660 Hz for recognizable alarm character
+            // Dual-tone for a recognizable alarm character; the partials and
+            // the headroom they leave are in the docstring above.
             let wave = sin(2.0 * .pi * frequency * timeSeconds)
                 + 0.6 * sin(2.0 * .pi * 660.0 * timeSeconds)
-            // Amplitude envelope: short fade-in/out to avoid click
+            // Amplitude envelope. The ramps avoid a click at the head; at
+            // the tail they cause one, because this `else if` overrides the
+            // off phase the pulse would have been in (#792).
             let envelope: Double
             let fadeFrames = Int(sampleRate * 0.02)
             if sampleIndex < fadeFrames {
