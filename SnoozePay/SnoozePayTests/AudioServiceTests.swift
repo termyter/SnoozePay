@@ -654,9 +654,11 @@ final class AudioServiceTests: XCTestCase {
     /// extensions while the fallback tried `caf`/`m4a` only; both now walk
     /// ``AudioService/alarmSoundExtensions``. Nothing shipped depends on the
     /// widening — the bundle carries `default_alarm.caf`, which the first probe
-    /// finds — so narrowing the list back to `["caf"]` leaves every other case
-    /// in this file green while a default shipped as `.m4a` downgrades to the
-    /// synthetic tone: the silent state #765 exists to make visible.
+    /// finds — so before this case existed, narrowing the list back to `["caf"]`
+    /// left the whole file green while a default shipped as `.m4a` downgraded to
+    /// the synthetic tone: the silent state #765 exists to make visible. That
+    /// narrowing now reddens this case AND the two `caf,m4a,wav,mp3` assertions
+    /// above, which read `tried` off the same list.
     ///
     /// The list is written out rather than read off the constant, for the same
     /// reason as the `caf,m4a,wav,mp3` assertions above.
@@ -729,7 +731,7 @@ final class AudioServiceTests: XCTestCase {
     /// Runs through the DEFAULT lookup — no injected `resourceURL` — so it
     /// asserts the production path all the way into `Bundle.main`.
     ///
-    /// Without it the three cases above would all pass against a closure that
+    /// Without it the four cases above would all pass against a closure that
     /// was handed to them, i.e. they would test the stub. The test host IS the
     /// app bundle (`TEST_HOST`) and `default_alarm.caf` sits flat at its root,
     /// so emptying the default closure makes this red — both assertions: the

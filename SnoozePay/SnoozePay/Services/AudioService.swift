@@ -369,10 +369,11 @@ final class AudioService {
     /// ⚠️ Reached from `startAlarmSoundLocked`, i.e. inside `queue.sync`, so
     /// unlike every other `AppLogger.emit` call site this one is not
     /// GUARANTEED to be on the main thread. `sync` runs the block on whichever
-    /// thread called it: both production callers are main
-    /// (`AlarmFiringViewController.viewDidAppear`, the notification-centre
-    /// delegate in `AppDelegate`), but the suite drives `startAlarmSound` from
-    /// background threads too.
+    /// thread called it: `AlarmFiringViewController.viewDidLoad` is main, but
+    /// the notification-centre delegate in `AppDelegate` carries no documented
+    /// main-thread guarantee — the `queue` docblock above says so outright —
+    /// and the suite drives `startAlarmSound` from background threads on
+    /// purpose (`testStartAlarmSound_fromBackgroundThread_reachesPlayingState`).
     ///
     /// `queue.sync` buys `emit`'s unguarded `testSink` nothing: it serialises
     /// audio work against other audio work, not against a test installing or
