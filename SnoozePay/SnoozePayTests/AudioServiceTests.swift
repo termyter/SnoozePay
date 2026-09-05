@@ -824,6 +824,33 @@ final class AudioServiceTests: XCTestCase {
         service.stopAlarmSound()
     }
 
+    /// Pins the assumption the two out-of-range rows above rest on.
+    ///
+    /// `AVAudioPlayer.volume` documents the same `0.0…1.0` range `UISlider`
+    /// has, and the seed test for the picker exists precisely because
+    /// `UISlider` clamps an out-of-range assignment itself — reading a control
+    /// that clamps is a green oracle for a screen that does not. Nothing says
+    /// `AVAudioPlayer` behaves differently; it just happens not to today.
+    ///
+    /// If that changes, `1.4` and `-0.2` read back as `1.0` and `0.0` no
+    /// matter what `startAlarmSound` did with them, the killer above collapses
+    /// to the single `.nan` case, and nothing goes red to say so. This test is
+    /// what goes red instead.
+    func testAVAudioPlayerDoesNotClampVolumeItself() throws {
+        let player = try XCTUnwrap(AudioService.generateAlarmTone())
+
+        player.volume = 1.4
+
+        XCTAssertEqual(
+            player.volume, 1.4,
+            """
+            AVAudioPlayer now clamps its own volume, so the 1.4 and -0.2 rows \
+            in testStartAlarmSound_clampsACorruptVolumeBeforeItReachesThePlayer \
+            no longer distinguish a dropped clamp from a working one.
+            """
+        )
+    }
+
     /// Nothing owned → nothing to report. Keeps the accessor from answering
     /// `0` for "stopped", which would leave every assertion above ambiguous
     /// between "clamped to zero" and "no player at all".
