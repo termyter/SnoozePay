@@ -362,7 +362,11 @@ final class AlarmEditorCopyTests: XCTestCase {
         Self.assertNoKeysLeaked(in: rendered)
 
         // The caption is upper-cased at the call site, which is where that
-        // decision belongs — the catalogue holds sentence case.
+        // decision belongs — and this key holds sentence case. That is a
+        // convention the catalogue does not enforce, not a fact about it:
+        // `create_alarm.theme_picker.preview_caps` is stored already capped.
+        // Which is why the two preview captions further down are pinned as
+        // literals rather than as `Localized.text(key)` (#665).
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.caps").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.hint")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.minimum")))
@@ -723,7 +727,18 @@ final class AlarmEditorCopyTests: XCTestCase {
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
         Self.assertNoKeysLeaked(in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound.title").uppercased()))
-        XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.preview_caps").uppercased()))
+        // Pinned as a literal, on purpose. `Localized.text(key).uppercased()`
+        // is not an expectation, it is the screen's own recipe evaluated a
+        // second time: it agrees with whatever capitalisation the catalogue
+        // happens to hold, so it cannot see the caps leave the screen. And
+        // «uppercase it at the call site» is not even the house rule — the
+        // theme picker's caption below is stored capped and upper-cases
+        // nothing, so the next person to unify the two conventions has to be
+        // able to fail here if they drop the caps (#665).
+        XCTAssertTrue(
+            rendered.contains("ПРЕВЬЮ"),
+            "the sound preview card lost its caps caption: \(rendered)"
+        )
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.volume_row")))
         // The key's other live call site. `VolumePickerViewController:118` is
         // pinned by `testVolumeScreenRendersItsTitleAndFadeRow`; this caps
@@ -753,7 +768,17 @@ final class AlarmEditorCopyTests: XCTestCase {
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
         Self.assertNoKeysLeaked(in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.title").uppercased()))
-        XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.preview_caps")))
+        // The literal, for the reason spelled out in
+        // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` — and this
+        // is the assertion that was blind: the key is stored already capped
+        // and `AlarmThemePickerViewController:84` upper-cases nothing, so
+        // `Localized.text(key)` on the right-hand side re-read the same
+        // catalogue entry the label did and would have matched a re-typed
+        // «Превью экрана звонка» exactly as happily (#665).
+        XCTAssertTrue(
+            rendered.contains("ПРЕВЬЮ ЭКРАНА ЗВОНКА"),
+            "the theme preview lost its caps caption: \(rendered)"
+        )
     }
 
     // MARK: - The guard itself
