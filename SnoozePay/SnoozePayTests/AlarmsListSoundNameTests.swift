@@ -54,6 +54,14 @@ import XCTest
 /// hardcoded Russian below is what still fails when the *copy* moves, and it
 /// belongs with the reader it protects.
 ///
+/// What that suite no longer does is *depend* on the table below. Until #763
+/// its own name expectation was looked up through `SoundCatalogue.nameKey(for:)`
+/// — the builder it was checking — so this file was the only place a permuted
+/// builder reddened, and deleting this suite would have unpinned the names
+/// project-wide without a single red run. It now carries its own id-keyed
+/// `namesBySoundID`. The two transcriptions are independent by design: each is
+/// checked against the catalogue, neither is derived from the other.
+///
 /// # The fallback is behaviour, not a detail
 ///
 /// `alarmSoundName(at:)` renders the raw `soundID` for an id the catalogue does
@@ -78,6 +86,12 @@ final class AlarmsListSoundNameTests: XCTestCase {
 
     /// The ten words the deleted lookup table held, keyed by sound id.
     /// Transcribed from the pre-#599 literals.
+    ///
+    /// `SoundCatalogueCopyTests.namesBySoundID` holds the same ten words for
+    /// the picker's reader. Duplicated rather than shared on purpose (#763): a
+    /// single table imported by both suites would make either one's deletion
+    /// silently weaken the other, which is exactly the coupling that change
+    /// removed.
     private static let namesBeforeTheCollapse: [String: String] = [
         "dawn": "Рассвет",
         "radar": "Радар",
