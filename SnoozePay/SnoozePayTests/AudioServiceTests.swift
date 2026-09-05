@@ -704,9 +704,13 @@ final class AudioServiceTests: XCTestCase {
                     : nil
             }
         })
+        // Filtered rather than `lines.first`, to match the loop above: an
+        // unrelated line emitted earlier in the same call would otherwise break
+        // this on a change that has nothing to do with probe order.
+        let downgrade = lines.first { $0.message.contains(AudioService.missingSoundErrorID) }
         XCTAssertTrue(
-            lines.first?.message.contains("default_alarm.caf") == true,
-            "caf is probed first — the format the app actually ships; it reads «\(lines.first?.message ?? "")»"
+            downgrade?.message.contains("default_alarm.caf") == true,
+            "caf is probed first — the format the app actually ships; it reads «\(downgrade?.message ?? "")»"
         )
     }
 
