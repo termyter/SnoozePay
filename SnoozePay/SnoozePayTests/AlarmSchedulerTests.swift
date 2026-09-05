@@ -17,12 +17,107 @@ final class AlarmSchedulerTests: XCTestCase {
 
     // MARK: - Sound file resolution
 
+    /// The four formats **in probe order**, written out rather than read from
+    /// `AlarmScheduler.alarmSoundExtensions`. An expectation drawn from the
+    /// value under test agrees with any mistake in it: until #773 the one case
+    /// that covered the list — `…_searchesEverySupportedExtensionInBothLookups`
+    /// — looped over the constant itself, so deleting a format from it deleted
+    /// the two assertions that would have complained. A reviewer's harness ran
+    /// exactly that (`mp3` removed) and the suite stayed green.
+    ///
+    /// The order is a contract, not an implementation detail: the docblock on
+    /// the constant says «tried, in order», and the extension that answers
+    /// first is the file the alarm actually rings. `caf` leads because that is
+    /// the format `Resources/Sounds/` ships, so the common case resolves on the
+    /// first probe.
+    ///
+    /// Transcribed from `AlarmScheduler.alarmSoundExtensions` as it stood at
+    /// #749, which is where the list and its diagnostic («tried caf,m4a,wav,mp3»)
+    /// were introduced. `AudioService.alarmSoundExtensions` carries the same four
+    /// in the same order and is pinned separately, from its own side, in
+    /// `AudioServiceTests` (#765) — the two lists are independent constants and
+    /// nothing makes them agree, so neither may be used as the other's oracle.
+    private static let supportedExtensionsInProbeOrder = ["caf", "m4a", "wav", "mp3"]
+
+    /// The list and its order, against literals.
+    ///
+    /// Array equality is deliberately the whole assertion: it fails on a
+    /// dropped format, on a reordering, and on an added one. The last case is
+    /// meant to cost an edit here — teaching the app a new sound format is a
+    /// decision, not something to absorb silently.
+    ///
+    /// Dropping a format is the mutation with teeth: a sound shipped as `.m4a`
+    /// would stop resolving and downgrade to `default_alarm`, which is exactly
+    /// the state #749 taught the code to report and this case exists to prevent.
+    ///
+    /// The second assertion guards the oracle itself, and it earns its place on
+    /// one specific mutation: a production list that repeats a format, with the
+    /// transcription dutifully kept in sync. Array equality is happy — the two
+    /// agree — and only the duplicate check notices that the list no longer
+    /// describes four distinct probes. (A duplicate introduced on THIS side
+    /// alone fires both assertions.)
+    func testAlarmSoundExtensions_areTheFourFormatsInTheDocumentedProbeOrder() {
+        XCTAssertEqual(
+            AlarmScheduler.alarmSoundExtensions, Self.supportedExtensionsInProbeOrder,
+            "the formats an alarm sound may ship in changed — dropping one silently downgrades "
+            + "that sound to \(AlarmScheduler.fallbackSoundID)"
+        )
+        XCTAssertEqual(
+            Set(Self.supportedExtensionsInProbeOrder).count, Self.supportedExtensionsInProbeOrder.count,
+            "the pinned list repeats a format — it no longer describes four distinct probes"
+        )
+    }
+
+    /// Membership is not order, and the assertion above pins the constant, not
+    /// its use. A lookup that walked the same four in the other direction —
+    /// `extensions.reversed()` — leaves that one green while the first probe
+    /// stops being `caf`.
+    ///
+    /// Not `sorted()`, which was the first example written here and is wrong:
+    /// `["caf", "m4a", "wav", "mp3"].sorted()` is
+    /// `["caf", "m4a", "mp3", "wav"]`, so `caf` still goes first and this case
+    /// stays green. A `sorted()` applied to the CONSTANT is caught by the
+    /// equality assertion above; applied inside the loop it is caught by
+    /// neither, and it is harmless for the same reason — the probe order it
+    /// produces differs only past the format the bundle actually ships.
+    ///
+    /// Both lookups are asked with a bundle that answers for EVERY extension,
+    /// so the one that comes back is whichever the loop reached first.
+    func testAlarmSoundFileName_probesTheFirstListedExtensionFirst() {
+        let first = Self.supportedExtensionsInProbeOrder[0]
+
+        XCTAssertEqual(
+            scheduler.alarmSoundFileName(for: "radar") { name, _ in name == "radar" },
+            "radar.\(first)",
+            "the requested sound must be probed as .\(first) before anything else — it is the "
+            + "format the app ships, so the common case has to resolve on the first probe"
+        )
+
+        let viaFallback = AppLogger.withTestSink({ _, _, _ in }, perform: {
+            scheduler.alarmSoundFileName(for: "vanished_sound") { name, _ in
+                name == AlarmScheduler.fallbackSoundID
+            }
+        })
+        XCTAssertEqual(
+            viaFallback,
+            "\(AlarmScheduler.fallbackSoundID).\(first)",
+            "the fallback lookup walks the same list in the same direction"
+        )
+    }
+
     /// Both lookups in `alarmSoundFileName(for:)` are searches over
     /// ``AlarmScheduler/alarmSoundExtensions``, not `.caf` special cases.
     /// No other case in this file exercises an extension past `caf`, so
     /// collapsing either loop to a single `caf` probe would leave them green
     /// while a sound shipped as `.m4a` downgraded to `default_alarm` — the
     /// state #749 exists to report.
+    ///
+    /// Loops over ``supportedExtensionsInProbeOrder``, not over the constant
+    /// itself (#773). Reading the list under test made this case shrink with
+    /// it: deleting a format deleted the two assertions that covered it, so the
+    /// downgrade it is here to catch happened in green. What it holds is the
+    /// half the literal cannot — that BOTH lookups actually walk the list —
+    /// which is why it stays rather than being replaced by the equality above.
     ///
     /// Unconditional, two assertions per extension — one per lookup — on purpose. The version
     /// this replaces (`testAlarmSoundFileName_checksMultipleExtensions`)
@@ -37,7 +132,7 @@ final class AlarmSchedulerTests: XCTestCase {
     /// degraded installs by (#764). What the line SAYS is pinned by
     /// `testAlarmSoundFileName_missingSoundWithFallbackPresent_logsTheDowngrade`.
     func testAlarmSoundFileName_searchesEverySupportedExtensionInBothLookups() {
-        for ext in AlarmScheduler.alarmSoundExtensions {
+        for ext in Self.supportedExtensionsInProbeOrder {
             XCTAssertEqual(
                 scheduler.alarmSoundFileName(for: "radar") { name, candidate in
                     name == "radar" && candidate == ext
