@@ -196,7 +196,15 @@ final class AppDelegateAlertTests: XCTestCase {
             "one shown alert must leave exactly one line; the sink saw \(lines.map(\.message))"
         )
         XCTAssertEqual(shownLines.first?.category, .appDelegate, "the rest of this trail is filed there")
-        XCTAssertEqual(shownLines.first?.level, .error, "an alarm the user lost is not a notice")
+        XCTAssertEqual(
+            shownLines.first?.level, .error,
+            """
+            one trail, one level: the DROPPED half is .error by the #721/#731 \
+            precedent (StatisticsViewController:361), and a SHOWN line filed a \
+            level below would fall out of the same log filter — leaving a reader \
+            who greps the pair seeing only the failures.
+            """
+        )
         XCTAssertTrue(
             shownLines.first?.message.contains(message) == true,
             "the line has to carry the sentence the user actually read; it reads «\(shownLines.first?.message ?? "")»"
@@ -260,8 +268,14 @@ final class AppDelegateAlertTests: XCTestCase {
             "the unshown message is the part worth recovering; it reads «\(dropLines.first?.message ?? "")»"
         )
         XCTAssertTrue(
-            dropLines.first?.message.contains("UIViewController") == true,
-            "the line must name what could not present; it reads «\(dropLines.first?.message ?? "")»"
+            dropLines.first?.message
+                .contains("UIViewController is not in the window hierarchy") == true,
+            """
+            the line must name WHY, not just what: «UIViewController» alone is \
+            the stub's type name and reads the same under all three refusals, \
+            so renaming the cause would leave this green. It reads \
+            «\(dropLines.first?.message ?? "")»
+            """
         )
 
         // Ties the two halves together: without it,
