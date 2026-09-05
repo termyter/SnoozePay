@@ -94,7 +94,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         "create_alarm.theme.title": "Тема",
         "create_alarm.theme_picker.error.message": "Попробуйте выбрать другое изображение.",
         "create_alarm.theme_picker.error.title": "Не удалось сохранить фото",
-        "create_alarm.theme_picker.preview_caps": "Превью экрана звонка",
+        "create_alarm.theme_picker.preview_caps": "ПРЕВЬЮ ЭКРАНА ЗВОНКА",
         "create_alarm.theme_picker.section_presets": "Готовые темы",
         "create_alarm.theme_picker.title": "Тема будильника",
         "create_alarm.title.edit": "Будильник",
