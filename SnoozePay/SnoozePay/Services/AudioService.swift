@@ -137,6 +137,22 @@ final class AudioService {
     /// `isPlaying && !isPaused`. Thread-safe snapshot read.
     var isPaused: Bool { queue.sync { _isPaused } }
 
+    /// Volume the owned player is currently set to, or `nil` when no player is
+    /// owned. Thread-safe snapshot read, same shape as `state` / `isPaused`.
+    ///
+    /// Exists so the clamp in `configurePlayerVolume` can be observed at the
+    /// only place it matters — on the player (#766). `audioPlayer` is
+    /// queue-confined, so `@testable` alone would not make it readable: a test
+    /// touching it from its own thread would race `startAlarmSound`, which the
+    /// suite deliberately drives from background threads. Reading through
+    /// `queue` is what makes the observation legal, not the access level.
+    ///
+    /// Not the *audible* volume during a fade-in: that ramp lives on the audio
+    /// thread and this reports the target handed to `setVolume(_:fadeDuration:)`
+    /// only after it completes. Callers that need the pre-ramp value read this
+    /// with `fadeIn == false`.
+    var currentPlayerVolume: Float? { queue.sync { audioPlayer?.volume } }
+
     private init() {
         // Resume the alarm after a phone call / Siri interruption — for an
         // alarm a permanent silence is a failed wake, so we re-activate and

@@ -213,6 +213,64 @@ final class AlarmValidationTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    // MARK: - The decode path's volume clamp (#766)
+
+    // `init(from: Decoder)` and `init(validating:)` both route through
+    // `Alarm.clampedVolume`, but until now only the second was driven with a
+    // bad value; the decode side was exercised with `0.5`, `0.4` and a missing
+    // key, none of which the clamp touches. Replacing `Self.clampedVolume(raw)`
+    // in the decoder with `raw` left the suite green.
+    //
+    // What JSON can and cannot deliver bounds these tests. There is no NaN
+    // literal in JSON, and `JSONDecoder.nonConformingFloatDecodingStrategy`
+    // defaults to `.throw`, so a stored `"volume"` reaches `clampedVolume`
+    // finite or not at all — the reachable half of the clamp on this path is
+    // the range clamp, and that is what the tests below pin.
+
+    func testDecode_clampsAnOutOfRangeVolumeInsteadOfStoringIt() throws {
+        // Expectations are literals, not `Alarm.clampedVolume(raw)`: an oracle
+        // that calls the code under test stays green under any clamp, including
+        // none. Below/above/absurd, so neither bound can be dropped quietly.
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "-5").volume, 0.0)
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "5").volume, 1.0)
+        // Still inside `Float` (max is about 3.4e38), so the scanner hands it
+        // over and the clamp — not the decoder — is what stops it.
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "1e38").volume, 1.0)
+    }
+
+    func testDecode_leavesAnInRangeVolumeAlone() throws {
+        // The clamp must not "fix" healthy data on the way in: an alarm set to
+        // 40% has to come back off disk at 40%, not at the 1.0 default.
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "0.4").volume, 0.4)
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "0").volume, 0.0)
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "1").volume, 1.0)
+    }
+
+    func testDecode_missingVolumeKeyRingsAtFullVolume() throws {
+        // Pre-#150 alarms carry no `volume` at all — they must keep ringing at
+        // full volume rather than decoding to silence.
+        XCTAssertEqual(try decodeLegacyAlarm().volume, 1.0)
+    }
+
+    /// The one input that would drive the clamp's *non-finite* branch through
+    /// JSON is a number too large for `Float`, and that is also the input JSON
+    /// may refuse to deliver: Foundation's scanner rejects a number it cannot
+    /// represent instead of handing an infinity to `init(from:)`. Whether the
+    /// payload dies in the scanner or survives to be clamped is Foundation's
+    /// call, not this app's — the invariant that must hold under both is that
+    /// no `Alarm` ever exists carrying a non-finite volume.
+    ///
+    /// The bounded cases above are what kill a dropped decode clamp; this one
+    /// guards the outcome nobody would notice until an alarm rang wrong.
+    func testDecode_cannotProduceAnAlarmWithANonFiniteVolume() {
+        let decoded = try? decodeLegacyAlarm(volumeJSON: "1e40")
+        XCTAssertTrue(
+            decoded.map { $0.volume == 1.0 } ?? true,
+            "a volume overflowing Float must be refused by the decoder or clamped to full "
+            + "volume, not stored as \(String(describing: decoded?.volume))"
+        )
+    }
+
     // MARK: - Helper
 
     /// Hand-rolled pre-validation alarm JSON mimicking corrupt legacy storage
@@ -220,8 +278,13 @@ final class AlarmValidationTests: XCTestCase {
     private func decodeLegacyAlarm(
         repeatDaysJSON: String = "[]",
         snoozeMinutesJSON: String = "9",
-        penaltyAmountJSON: String = "50.0"
+        penaltyAmountJSON: String = "50.0",
+        volumeJSON: String? = nil
     ) throws -> Alarm {
+        // `volume` is read with `decodeIfPresent`, and the absent-key fallback
+        // is its own case (`testDecode_missingVolumeKeyRingsAtFullVolume`), so
+        // the key is written only when a caller states a value for it.
+        let volumeEntry = volumeJSON.map { "\"volume\":\($0)," } ?? ""
         let json = """
         {
             "id":"\(UUID().uuidString)",
@@ -233,6 +296,7 @@ final class AlarmValidationTests: XCTestCase {
             "snoozeMinutes":\(snoozeMinutesJSON),
             "penaltyAmount":\(penaltyAmountJSON),
             "progressiveScale":false,
+            \(volumeEntry)
             "enabled":true
         }
         """.data(using: .utf8)!
