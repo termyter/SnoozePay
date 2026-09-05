@@ -314,32 +314,148 @@ final class AudioService {
         }
     }
 
-    /// Locate the bundled alarm sound (caf/m4a/wav/mp3 — in that order, with a
-    /// `default_alarm` fallback) and try to wrap it in `AVAudioPlayer`. If the
-    /// bundle hit fails or AVAudioPlayer rejects the file we fall back to the
-    /// in-memory synthetic tone so the user still hears *something*.
-    private func resolveAlarmPlayer(soundID: String) -> AVAudioPlayer? {
-        let url: URL? = Bundle.main.url(forResource: soundID, withExtension: "caf")
-            ?? Bundle.main.url(forResource: soundID, withExtension: "m4a")
-            ?? Bundle.main.url(forResource: soundID, withExtension: "wav")
-            ?? Bundle.main.url(forResource: soundID, withExtension: "mp3")
-            ?? Bundle.main.url(forResource: "default_alarm", withExtension: "caf")
-            ?? Bundle.main.url(forResource: "default_alarm", withExtension: "m4a")
+    /// Sound looked up when the requested `soundID` has no bundled file. Same
+    /// name as `AlarmScheduler.fallbackSoundID` and deliberately a separate
+    /// constant: the two resolve through different APIs (`Bundle.url` here, a
+    /// file name handed to AlarmKit there), so tying them together would say
+    /// they must stay equal, which nothing requires.
+    static let fallbackSoundID = "default_alarm"
 
-        var player: AVAudioPlayer?
-        if let soundURL = url {
-            do {
-                player = try AVAudioPlayer(contentsOf: soundURL)
-            } catch {
-                let name = soundURL.lastPathComponent
-                let desc = error.localizedDescription
-                AppLogger.audio.error(
-                    "AVAudioPlayer init failed for \(name, privacy: .public): \(desc, privacy: .public)"
-                )
-                player = nil
-            }
+    /// Extensions tried, in order, for both the requested sound and the
+    /// fallback. Part of the diagnostic: naming which extensions were tried is
+    /// what separates "the file is missing" from "the file is there under an
+    /// extension this list does not know".
+    ///
+    /// The pre-#765 `??` chain tried all four for `soundID` but only
+    /// `caf`/`m4a` for the fallback. Unified, so the two lookups cannot
+    /// disagree about what counts as a sound file. The bundle ships
+    /// `default_alarm.caf`, which the old chain already found first — the widening
+    /// changes nothing that is shipped.
+    static let alarmSoundExtensions = ["caf", "m4a", "wav", "mp3"]
+
+    /// Log identifier for a `soundID` with no bundled file, where
+    /// ``fallbackSoundID`` still answered. The alarm rings a real sound — one
+    /// the user did not choose.
+    static var missingSoundErrorID: String { "AUDIO-765-SOUND-MISSING" }
+
+    /// Log identifier for a lookup that found neither the requested sound nor
+    /// ``fallbackSoundID``, so playback falls through to the synthetic tone.
+    ///
+    /// Kept apart from ``missingSoundErrorID`` because the two mean opposite
+    /// things to whoever greps them: the first is a degraded install of a
+    /// correct build, the second is a build assembled without its own default
+    /// sound — every alarm in it beeps instead of ringing. `.fault`, not
+    /// `.error`, for the same reason.
+    static var missingFallbackSoundErrorID: String { "AUDIO-765-DEFAULT-SOUND-MISSING" }
+
+    /// Locate the bundled alarm sound (caf/m4a/wav/mp3 — in that order, with a
+    /// ``fallbackSoundID`` fallback) and try to wrap it in `AVAudioPlayer`. If
+    /// the bundle hit fails or AVAudioPlayer rejects the file we fall back to
+    /// the in-memory synthetic tone so the user still hears *something*.
+    ///
+    /// Both failing lookups log (#765). Neither changes what is returned — the
+    /// synthetic tone stays the last resort. What changes is that "the alarm
+    /// beeped instead of ringing" now has something to grep: before this, a
+    /// missing sound file, a build with no default sound, and a perfectly
+    /// resolved lookup were equally silent, and only the `AVAudioPlayer.init`
+    /// failure — the *less* likely cause — left a trace.
+    ///
+    /// `resourceURL` exists so a test can state which files the bundle holds.
+    /// `Bundle.main` in the test host IS the app bundle, so the
+    /// no-fallback-either branch is otherwise unreachable from a test: the app
+    /// ships `default_alarm.caf`, which is exactly the condition that branch
+    /// reports the absence of.
+    ///
+    /// ⚠️ Reached from `startAlarmSoundLocked`, i.e. inside `queue.sync`, so
+    /// unlike every other `AppLogger.emit` call site this one is not
+    /// GUARANTEED to be on the main thread. `sync` runs the block on whichever
+    /// thread called it: `AlarmFiringViewController.viewDidLoad` is main, but
+    /// the notification-centre delegate in `AppDelegate` carries no documented
+    /// main-thread guarantee — the `queue` docblock above says so outright —
+    /// and the suite drives `startAlarmSound` from background threads on
+    /// purpose (`testStartAlarmSound_fromBackgroundThread_reachesPlayingState`).
+    ///
+    /// `queue.sync` buys `emit`'s unguarded `testSink` nothing: it serialises
+    /// audio work against other audio work, not against a test installing or
+    /// removing the sink on its own thread. A test that wants to observe these
+    /// lines calls this method directly, as `AudioServiceTests` does, and takes
+    /// the ordering from its own thread rather than from the queue.
+    func resolveAlarmPlayer(
+        soundID: String,
+        resourceURL: (String, String) -> URL? = { name, ext in
+            Bundle.main.url(forResource: name, withExtension: ext)
         }
-        return player ?? Self.generateAlarmTone()
+    ) -> AVAudioPlayer? {
+        let url = Self.firstBundledURL(for: soundID, resourceURL: resourceURL)
+            ?? fallbackAlarmSoundURL(after: soundID, resourceURL: resourceURL)
+
+        guard let soundURL = url else { return Self.generateAlarmTone() }
+        do {
+            return try AVAudioPlayer(contentsOf: soundURL)
+        } catch {
+            let name = soundURL.lastPathComponent
+            let desc = error.localizedDescription
+            AppLogger.audio.error(
+                "AVAudioPlayer init failed for \(name, privacy: .public): \(desc, privacy: .public)"
+            )
+            return Self.generateAlarmTone()
+        }
+    }
+
+    /// Look up ``fallbackSoundID`` after `soundID` produced nothing, and report
+    /// which of the two failing states we are in.
+    ///
+    /// Through `AppLogger.emit` rather than `AppLogger.audio.error`: `os.Logger`
+    /// hands the caller nothing back, so a branch whose only evidence is its own
+    /// log line would be one deletion away from the silence it replaces, with
+    /// the suite still green (#731).
+    private func fallbackAlarmSoundURL(
+        after soundID: String,
+        resourceURL: (String, String) -> URL?
+    ) -> URL? {
+        let tried = Self.alarmSoundExtensions.joined(separator: ",")
+        let fallback = Self.firstBundledURL(for: Self.fallbackSoundID, resourceURL: resourceURL)
+
+        // soundID is a preset identifier ("classic", "radar") chosen from a
+        // fixed list, never user-entered text — safe to make public, which is
+        // what `emit` does to everything it is handed.
+        guard let fallback else {
+            AppLogger.emit(
+                .audio, .fault,
+                """
+                [\(Self.missingFallbackSoundErrorID)] resolveAlarmPlayer: bundle has neither \
+                '\(soundID)' nor '\(Self.fallbackSoundID)' (tried \(tried)); nothing bundled is \
+                left to play, so the alarm falls through to the synthetic tone — and to \
+                vibration alone if that cannot be built either
+                """
+            )
+            return nil
+        }
+
+        AppLogger.emit(
+            .audio, .error,
+            """
+            [\(Self.missingSoundErrorID)] resolveAlarmPlayer: no bundled file for soundID \
+            '\(soundID)' (tried \(tried)); falling back to \(fallback.lastPathComponent) \
+            instead of the chosen sound
+            """
+        )
+        return fallback
+    }
+
+    /// First hit for `name` across ``alarmSoundExtensions``, in order.
+    ///
+    /// A plain loop rather than `lazy.compactMap { … }.first`: the lazy
+    /// sequence would store `resourceURL`, and a non-escaping parameter cannot
+    /// be captured that way — the terse version does not compile.
+    private static func firstBundledURL(
+        for name: String,
+        resourceURL: (String, String) -> URL?
+    ) -> URL? {
+        for ext in alarmSoundExtensions {
+            if let url = resourceURL(name, ext) { return url }
+        }
+        return nil
     }
 
     /// Apply per-alarm volume + optional fade-in. The defensive clamp comes
