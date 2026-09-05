@@ -14,10 +14,29 @@ import Foundation
 ///
 /// A string literal in the shape of a key, sitting inside a `Localized.…(…)`
 /// call. Blind, by construction, to a key that is not a literal at its call site
-/// — assembled from parts, or held in a variable. That blindness is quiet in one
-/// direction only: such a key goes missing from the reading, so the table that
-/// pins it looks like it holds an entry nobody reads, which is a failure the
-/// caller reports rather than a silence.
+/// — assembled from parts, or held in a variable or a computed property.
+///
+/// That blindness is loud for a key the table ALREADY pins: it goes missing from
+/// the reading, so the table looks like it holds an entry nobody reads, and the
+/// caller reports that. It is **silent** for a genuinely new key introduced that
+/// way and never added to the table — absent from both sides, it cancels out.
+/// Nothing in this repository takes that shape today (one `Localized.…(` call
+/// site in the editor does not open with a quote, and it is the ternary below),
+/// and the fix if one appears is to spell the key at the call site, which is
+/// what every other site does.
+///
+/// Three more forms are missed and have no test, because none of them exists
+/// here: `Localized` reached through a `typealias`, a newline between
+/// `Localized` and its member, and a member name carrying a digit or an
+/// underscore (the member walk accepts letters only, and the API is
+/// `text`/`optionalText`/`format`/`attributed`/`appendingUnplaceable`). Two
+/// forms are over-reported rather than missed — a call quoted inside a `//`
+/// comment or inside a `"""` literal counts. Over-reporting is the harmless
+/// direction for a NEW key (it shows up as a key to pin, not as coverage that
+/// vanished), but it has one quiet edge worth knowing: commenting a call site
+/// out rather than deleting it keeps its key in the reading, so the table that
+/// still pins it does not come back `stale`. Deleting the line is loud;
+/// commenting it out is not.
 ///
 /// # Why a character walk and not a regex
 ///
@@ -81,6 +100,16 @@ enum CatalogueKeyScanner {
     /// matching close, collecting every key-shaped literal inside it, and hands
     /// back where to carry on. String literals are stepped over whole, so a
     /// bracket inside copy never moves the nesting depth.
+    ///
+    /// Only literals at `depth == 1` count — arguments of THIS call, not of a
+    /// call nested inside it. `Localized.format(key, UIImage(systemName:
+    /// "arrow.down"), n)` would otherwise contribute `arrow.down`: an SF Symbol
+    /// name is spelled exactly like a two-segment key, which is the whole reason
+    /// the walk is anchored on `Localized.` in the first place. Anchoring and
+    /// then reading through a nested call gives that back. Measured on this
+    /// checkout: the same 62 keys with and without the depth guard, and the
+    /// ternary at `CreateAlarmViewController:96` and the next-line key in
+    /// `AlarmsStreakBannerView:111` both sit at depth 1.
     private static func collect(
         from chars: [Character], openParenAt index: Int, into found: inout Set<String>
     ) -> Int {
@@ -91,7 +120,7 @@ enum CatalogueKeyScanner {
             switch chars[cursor] {
             case "\"":
                 let literal = stringLiteral(in: chars, openingAt: cursor)
-                if isCatalogueKey(literal.value) { found.insert(literal.value) }
+                if depth == 1, isCatalogueKey(literal.value) { found.insert(literal.value) }
                 cursor = literal.end
             case "(":
                 depth += 1

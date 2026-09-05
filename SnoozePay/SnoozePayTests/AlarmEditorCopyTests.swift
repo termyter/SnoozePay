@@ -122,7 +122,18 @@ final class AlarmEditorCopyTests: XCTestCase {
     ///
     /// Shortening *this* list shrinks coverage just as effectively, and that is
     /// accepted: it is a visible edit to a list whose only job is to say what is
-    /// covered, not a side effect of tidying a dictionary of words.
+    /// covered, not a side effect of tidying a dictionary of words. (Shortening
+    /// it is loud for 16 of the 20 — the table then pins keys nothing reads and
+    /// `stale` fires. The other four hold only keys some other listed source
+    /// reads too, or `create_alarm.wake_up`, which lives in ``pinnedElsewhere``;
+    /// dropping one of those four is silent. Deletion is the visible half.)
+    ///
+    /// NEVER ADDING a file is the failure mode this list cannot see by itself: a
+    /// source it has not heard of contributes no keys, so its copy can never
+    /// come back `unpinned`, and being absent from the table it can never come
+    /// back `stale` either. ``coveredByAnotherSuite`` plus
+    /// ``testEverySourceUnderTheEditorIsAccountedFor`` is what makes a new file
+    /// red instead of silent.
     private static let screenSources = [
         "AlarmCell.swift",
         "AlarmThemePickerViewController.swift",
@@ -144,6 +155,38 @@ final class AlarmEditorCopyTests: XCTestCase {
         "Cells/ThemeRowCell.swift",
         "Cells/TimePickerCell.swift",
         "Cells/VibrationCell.swift"
+    ]
+
+    /// The rest of the editor's directory, each name carrying the suite that
+    /// owns it — or, for a file with no catalogue keys yet, listed so that
+    /// growing one goes red here first.
+    ///
+    /// ``screenSources`` cannot police itself; this is the other half of the
+    /// partition, and `testEverySourceUnderTheEditorIsAccountedFor` asserts the
+    /// two cover the directory exactly. Adding a cell is an ordinary thing to
+    /// do, and nobody editing `Cells/SoundPickerRowCell.swift` will think to
+    /// open a copy suite — so the suite has to notice on its own.
+    private static let coveredByAnotherSuite: Set<String> = [
+        // FiringCopyTests
+        "AlarmFiringViewController.swift",
+        "AlarmFiringViewController+Audio.swift",
+        "AlarmFiringViewController+Layout.swift",
+        "AlarmFiringViewController+NoBalance.swift",
+        "AlarmFiringViewController+NoBalanceColumn.swift",
+        "AlarmFiringViewController+Progressive.swift",
+        "AlarmFiringViewController+Snoozed.swift",
+        "AlarmFiringViewController+SnoozedViews.swift",
+        "AlarmFiringViewController+Theme.swift",
+        "AlarmFiringViewController+ViewLifecycle.swift",
+        "WokeMorningContent.swift",
+        "WokeMorningViewController.swift",
+        // FiringTopUpCopyTests
+        "FiringTopUpBottomSheetViewController.swift",
+        "FiringTopUpCopy.swift",
+        "FiringTopUpPresetRow.swift",
+        // No catalogue keys today; listed so growing one goes red here first.
+        "Cells/AlarmThemeTileCell.swift",
+        "Cells/SoundPickerRowCell.swift"
     ]
 
     /// Keys those sources read whose words another suite already pins. Every
@@ -205,6 +248,43 @@ final class AlarmEditorCopyTests: XCTestCase {
             gaps.stale, [],
             "this table pins keys no listed source reads any more — the "
                 + "expectation stands over nothing: \(gaps.stale)"
+        )
+        // An exemption that outlived its call site subtracts nothing and would
+        // never be reported: `coverageGaps` only ever removes `pinnedElsewhere`
+        // from the reading. Without this line the set could keep growing on one
+        // side and rotting on the other.
+        XCTAssertEqual(
+            Self.pinnedElsewhere.subtracting(Self.reading.keys), [],
+            "`pinnedElsewhere` names keys no listed source reads any more — "
+                + "delete them, or the exemption list becomes its own blind spot"
+        )
+    }
+
+    /// The two lists have to cover the editor's directory exactly.
+    ///
+    /// This is the assertion ``screenSources`` cannot make about itself. A new
+    /// file under `ViewControllers/Alarms` is in neither set, contributes no
+    /// keys to the scan and holds none in the table, so both `unpinned` and
+    /// `stale` stay empty and the suite says nothing — the silence #767 was
+    /// filed about, moved one level out.
+    func testEverySourceUnderTheEditorIsAccountedFor() {
+        let root = Self.alarmSourceDirectory()
+        let onDisk = Set(
+            (FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
+                .compactMap { $0 as? URL }
+                .filter { $0.pathExtension == "swift" }
+                .map { $0.path.replacingOccurrences(of: root.path + "/", with: "") } ?? [])
+        )
+
+        XCTAssertFalse(
+            onDisk.isEmpty,
+            "enumerated nothing under \(root.path) — this check would be vacuous"
+        )
+        XCTAssertEqual(
+            onDisk.subtracting(Self.screenSources).subtracting(Self.coveredByAnotherSuite), [],
+            "a source under the editor is in neither list — add it to "
+                + "`screenSources`, or name the suite that pins its copy in "
+                + "`coveredByAnotherSuite`"
         )
     }
 
