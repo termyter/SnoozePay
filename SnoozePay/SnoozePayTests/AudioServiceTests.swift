@@ -768,13 +768,14 @@ final class AudioServiceTests: XCTestCase {
     // one on the playback path — a divergence there changes how loudly a real
     // alarm rings, not how a number is drawn.
     //
-    // The fade-in branch stays unpinned on purpose. It seeds the player at `0`
-    // and hands the clamped target to `setVolume(_:fadeDuration:)`, which the
-    // audio thread reaches over 30 seconds; nothing readable within a unit test
-    // distinguishes "clamped target" from "raw target" there. The non-fade
-    // branch below writes the same clamped value synchronously, so the shared
-    // expression is covered — what a fade-in-only regression would cost is a
-    // ramp that lands on the wrong ceiling half a minute in.
+    // The fade-in branch is pinned too, which an earlier revision of this file
+    // said was impossible: it claimed `player.volume` reports the ramp's target
+    // only once the ramp completes, so a unit test could not tell a clamped
+    // target from a raw one without waiting 30 seconds. Review disproved it by
+    // running AVFoundation — `volume` answers with the target immediately —
+    // and `testFadeInTargetIsClampedBeforeItReachesThePlayer` below is the
+    // consequence. That test is also what keeps the claim honest: if the
+    // platform ever behaves the way the old comment described, it goes red.
 
     /// The plain case: an in-range volume must arrive on the player unchanged.
     /// Pins the wiring rather than the clamp — `startAlarmSound` has to reach
@@ -820,6 +821,40 @@ final class AudioServiceTests: XCTestCase {
                 + "\(String(describing: service.currentPlayerVolume)) instead of \(expected)"
             )
         }
+
+        service.stopAlarmSound()
+    }
+
+    /// The fade-in branch of `configurePlayerVolume`, which seeds the player at
+    /// `0` and hands the target to `setVolume(_:fadeDuration:)`.
+    ///
+    /// Reachable synchronously because `AVAudioPlayer.volume` reports the ramp's
+    /// TARGET as soon as the ramp is scheduled — waiting out the 30 seconds is
+    /// not required, and believing otherwise is what left this branch unpinned
+    /// until review ran the platform instead of reasoning about it.
+    ///
+    /// `1.4` is the seed: clamped it reads `1.0`, unclamped it reads `1.4`, and
+    /// the two are exactly what a dropped clamp changes.
+    func testFadeInTargetIsClampedBeforeItReachesThePlayer() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+
+        service.startAlarmSound(soundID: "nonexistent_test_sound", volume: 1.4, fadeIn: true)
+
+        XCTAssertEqual(
+            service.currentPlayerVolume, 1.0,
+            """
+            the fade-in ramp reads \
+            \(String(describing: service.currentPlayerVolume)). 1.4 means the \
+            clamp was dropped — the alarm lands on the wrong ceiling half a \
+            minute in. 0.0 means something else: that iOS reports the ramp's \
+            CURRENT value rather than its target, the platform behaviour the \
+            comment above says was disproved. It was disproved on macOS \
+            AVFoundation, not here, so this assertion is what settles it — \
+            0.0 means delete this test and restore the note that the fade-in \
+            branch cannot be pinned synchronously.
+            """
+        )
 
         service.stopAlarmSound()
     }

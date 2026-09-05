@@ -148,9 +148,11 @@ final class AudioService {
     /// `queue` is what makes the observation legal, not the access level.
     ///
     /// Not the *audible* volume during a fade-in: that ramp lives on the audio
-    /// thread and this reports the target handed to `setVolume(_:fadeDuration:)`
-    /// only after it completes. Callers that need the pre-ramp value read this
-    /// with `fadeIn == false`.
+    /// thread, and `AVAudioPlayer.volume` answers with the target the moment
+    /// `setVolume(_:fadeDuration:)` is called, not when the ramp lands. So this
+    /// tells a caller where the fade is headed, never where it currently is.
+    /// `testFadeInTargetIsClampedBeforeItReachesThePlayer` is what holds that
+    /// reading to the platform.
     var currentPlayerVolume: Float? { queue.sync { audioPlayer?.volume } }
 
     private init() {
