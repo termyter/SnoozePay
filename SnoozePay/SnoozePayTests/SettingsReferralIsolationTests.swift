@@ -2,8 +2,9 @@ import UIKit
 import XCTest
 @testable import SnoozePay
 
-/// The Settings screen must reach referral state through an injected
-/// `ReferralService`, never through `ReferralService.shared` (#690).
+/// The Settings screen must reach its stores through injected services,
+/// never through their `.shared` instances: `ReferralService` (#690) and
+/// `ThemeService` (#700).
 ///
 /// `.shared` is bound to `UserDefaults.standard`, and `getMyCode()` is not a
 /// read: it GENERATES a code and persists it on first call. So the moment the
@@ -20,17 +21,23 @@ import XCTest
 /// `UserDefaults.standard` directly, before and after.
 ///
 /// Every test that drives the screen asserts BOTH that the injected store
-/// received the referral state and that `UserDefaults.standard` did not move.
-/// The two are not equal in strength and it is worth being precise about which
-/// does the work: a `UserDefaults(suiteName:)` store is disjoint from
-/// `.standard`, so «the injected suite has the code» is the assertion that
-/// fails under the old behaviour, on a clean host and on a host that already
-/// carries the key alike. «`.standard` is unchanged» is the weaker of the two
-/// on its own — it would pass on a host where the key is already present,
-/// because `getMyCode()` reads an existing valid code back instead of writing.
-/// It is kept because it states the user-visible promise directly (#690 is
-/// «tests write into the real user's settings»), and because it is what would
-/// catch a future call site that writes to both stores.
+/// received the state and that `UserDefaults.standard` did not move. The two
+/// are not equal in strength and it is worth being precise about which does
+/// the work: a `UserDefaults(suiteName:)` store is disjoint from `.standard`,
+/// so «the injected suite has the code» is the assertion that fails under the
+/// old behaviour, on a clean host and on a host that already carries the key
+/// alike. «`.standard` is unchanged» is the weaker of the two on its own — it
+/// would pass on a host where the key is already present, because
+/// `getMyCode()` reads an existing valid code back instead of writing. It is
+/// kept because it states the user-visible promise directly (#690 is «tests
+/// write into the real user's settings»), and because it is what would catch
+/// a future call site that writes to both stores.
+///
+/// The theme store is the case where only the first kind of assertion can
+/// work: showing the segment reads `preferred_theme` and never writes it, so
+/// no amount of watching `.standard` catches Settings reading the runner's own
+/// theme. `testTheThemeSegmentReadsTheInjectedStore` covers it from the read
+/// side instead, and the reasoning for the two seeded suites is on that test.
 ///
 /// One test breaks that pattern and asserts neither half:
 /// `testTheDefaultInitializerKeepsTheSharedService` pins the production
@@ -49,6 +56,10 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// `BalanceService`'s cache of the wallet total. Here because the apply
     /// path spends money, not just referral state.
     private let balanceKey = "user_balance"
+    /// `ThemeService`'s preference. Spelled out for the same reason as the
+    /// referral keys: it is `private` on the service, and a test that asked
+    /// the service for its own key could not notice a rename.
+    private let themeKey = "preferred_theme"
 
     /// Everything in `.standard` that resolving `ReferralService.shared` can
     /// move, directly or through the `BalanceService.shared` it pulls in.
@@ -98,16 +109,24 @@ final class SettingsReferralIsolationTests: XCTestCase {
         return pasteboard
     }
 
-    /// Settings with every store this test asserts on pinned to `defaults`,
-    /// laid out at a real device width with the referral section visible.
+    /// Settings with every store it reads through pinned to `defaults`, laid
+    /// out at a real device width with the referral section visible.
     ///
-    /// Not every store the screen touches, and the difference is worth naming.
-    /// Two remain shared: `themeService` (`ThemeService.shared`, which reads
-    /// and writes `preferred_theme` in `.standard`) and `WakeEventStore.shared`,
-    /// which `TransactionRepository` takes by default. The wake store leaks
-    /// nothing today — it is read from `currentStreak()`, never from
-    /// `record()` — but «every store» would be the wrong promise to make.
-    /// Both are #700.
+    /// `themeService` joined the list in #700. Its seam is not new — the
+    /// parameter has had a `.shared` default since #49 — but this helper went
+    /// on letting it fall through, so laying the screen out read
+    /// `preferred_theme` out of the runner's own settings and the segment
+    /// rendered whatever theme the machine happened to be in.
+    ///
+    /// «Every store it reads through» is now the literal truth rather than an
+    /// approximation, and the whole-domain assertion in the write-side test is
+    /// what keeps it that way. The screen does still force three singletons —
+    /// `AlarmRepository.shared`, `TransactionRepository.shared` and, as the
+    /// latter's default, `WakeEventStore.shared` — through `isRecoveryVisible`.
+    /// They are left shared on purpose: `lastLoadFailed` is an in-memory
+    /// `Bool` behind a serial queue, and none of the three initializers so
+    /// much as reads `UserDefaults`, so that path cannot move a key. A seam
+    /// for them would buy nothing and would hide that fact behind an injection.
     ///
     /// The wallet comes back with it: the apply path credits 200 ₽, so «where
     /// did the money land» is half of what there is to assert, and the
@@ -118,6 +137,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
     ) -> (sut: SettingsViewController, wallet: BalanceService) {
         let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         let sut = SettingsViewController(
+            themeService: ThemeService(defaults: defaults),
             alarmDefaults: AlarmDefaults(defaults: defaults),
             referralService: ReferralService(defaults: defaults, balanceService: wallet)
         )
@@ -171,14 +191,53 @@ final class SettingsReferralIsolationTests: XCTestCase {
 
     // MARK: - The write side
 
+    /// Keys that differ between two `dictionaryRepresentation()` snapshots,
+    /// including keys that appeared or disappeared. Values are compared with
+    /// `isEqual` rather than `==`: the dictionary is `[String: Any]`, and
+    /// every property-list type it can hold is an `NSObject`.
+    private static func changedKeys(
+        from before: [String: Any],
+        to after: [String: Any]
+    ) -> [String] {
+        Set(before.keys).union(after.keys).filter { key in
+            switch (before[key], after[key]) {
+            case (nil, nil): return false
+            case let (old?, new?): return !(old as AnyObject).isEqual(new)
+            default: return true
+            }
+        }.sorted()
+    }
+
+    /// Laying the screen out must not move ANY key in `UserDefaults.standard`,
+    /// which is what this test's name has always said and what it now
+    /// measures: the whole of `dictionaryRepresentation()`, before and after.
+    ///
+    /// It used to watch two keys, `referral_my_code` and
+    /// `referral_applied_code` — the pair #690 had just stopped leaking. That
+    /// is a narrower promise than the name, and the gap was not theoretical:
+    /// the theme row read `preferred_theme` straight out of the real defaults
+    /// for as long as this file has existed (#700), and a future write to
+    /// `stored_alarms` or `user_balance` from this screen would have gone
+    /// through green as well.
+    ///
+    /// The snapshot spans more than the keys SnoozePay owns — the app domain
+    /// plus the global and registration domains the process can see. That is
+    /// the point: a key this file has never heard of is exactly what it is
+    /// hunting. The cost is that a system-owned key moving inside the window
+    /// would fail it too. The failure names the key, and if one ever shows up
+    /// the fix is to narrow the measurement AND this test's name in the same
+    /// commit — narrowing only the measurement is how it got here.
     func testLayingOutTheReferralSectionLeavesStandardDefaultsUntouched() throws {
         let standard = UserDefaults.standard
-        let myCodeBefore = standard.string(forKey: myCodeKey)
-        let appliedBefore = standard.string(forKey: appliedCodeKey)
+        let before = standard.dictionaryRepresentation()
 
         let defaults = makeSuite("write")
         let sut = laidOutSettings(defaults: defaults).sut
         let cell = try referralCell(.myCode, of: sut)
+
+        // Taken before the assertions below so a failing XCTUnwrap cannot skip
+        // the measurement, and so nothing but the act sits between the two.
+        let after = standard.dictionaryRepresentation()
 
         let stored = try XCTUnwrap(
             defaults.string(forKey: myCodeKey),
@@ -194,13 +253,64 @@ final class SettingsReferralIsolationTests: XCTestCase {
             "the rendered row shows a code that is not the injected store's"
         )
 
+        let moved = Self.changedKeys(from: before, to: after)
+        XCTAssertTrue(
+            moved.isEmpty,
+            """
+            laying out Settings moved \(moved) in UserDefaults.standard — the real user's settings. \
+            A referral or theme key there means a store went back to `.shared`; any other key \
+            means the screen grew a write this file does not know about
+            """
+        )
+    }
+
+    // MARK: - The theme store
+
+    /// The theme segment must read its position from the injected
+    /// `ThemeService`. Until #700 it read `ThemeService.shared`, i.e.
+    /// `preferred_theme` in `.standard`, so the row rendered the theme of
+    /// whoever was running the suite — and the write-side test above could
+    /// not see it, because showing the segment only reads.
+    ///
+    /// Two screens, two suites, two different seeded themes. One would not be
+    /// enough: `ThemeService.shared` reads a single value, and a screen back
+    /// on the singleton would still match a seed that happened to agree with
+    /// the host machine. It cannot agree with both `light` and `dark` at
+    /// once, so the pair goes red under the old behaviour on any host,
+    /// without this test reading — let alone writing — what the host has.
+    ///
+    /// The raw values are spelled out rather than taken from
+    /// `ThemeService.Theme`, and the expected indices are literals rather than
+    /// `themeSegmentIndex` evaluated a second time: the mapping from stored
+    /// string to segment position is the thing under test, so it cannot also
+    /// be the source of the expectation.
+    func testTheThemeSegmentReadsTheInjectedStore() {
+        let standard = UserDefaults.standard
+        let themeBefore = standard.string(forKey: themeKey)
+
+        let lightStore = makeSuite("theme.light")
+        lightStore.set("light", forKey: themeKey)
+        let darkStore = makeSuite("theme.dark")
+        darkStore.set("dark", forKey: themeKey)
+
         XCTAssertEqual(
-            standard.string(forKey: myCodeKey), myCodeBefore,
-            "`\(myCodeKey)` in UserDefaults.standard changed — Settings still writes to the real user's defaults"
+            laidOutSettings(defaults: lightStore).sut.themeSegmentIndex, 1,
+            """
+            the segment is not on «Светлая» — the screen read the theme from somewhere \
+            other than the store it was handed
+            """
         )
         XCTAssertEqual(
-            standard.string(forKey: appliedCodeKey), appliedBefore,
-            "`\(appliedCodeKey)` in UserDefaults.standard changed"
+            laidOutSettings(defaults: darkStore).sut.themeSegmentIndex, 2,
+            """
+            the segment is not on «Тёмная» — the screen read the theme from somewhere \
+            other than the store it was handed
+            """
+        )
+
+        XCTAssertEqual(
+            standard.string(forKey: themeKey), themeBefore,
+            "`\(themeKey)` in UserDefaults.standard changed — laying out Settings wrote the user's theme"
         )
     }
 
