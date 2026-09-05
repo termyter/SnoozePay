@@ -56,13 +56,15 @@ final class AlarmPickerBarButtonGlassTests: XCTestCase {
         XCTAssertLessThanOrEqual(
             picker.navigationItem.rightBarButtonItems?.count ?? 1, 1,
             """
-            hidesSharedBackground is documented as IGNORED once the item shares \
-            a UIBarButtonItemGroup with another — UIBarButtonItem.h, iOS 26.5 \
-            SDK. A second right item silently brings the capsule back and the \
-            flag assertion above still passes. Written as an upper bound, not \
-            `== 1`: whether setting the singular property leaves the plural one \
-            nil or `[item]` is an implementation detail the SDK header does not \
-            promise, and only the second item is the defect.
+            UIBarButtonItem.h (iOS 26.5 SDK) says hidesSharedBackground is \
+            IGNORED once the item is in a UIBarButtonItemGroup holding more \
+            than one item. Whether a second RIGHT item lands in that one \
+            group or in a second single-item group the header does not say — \
+            so this guards the shape the header warns about rather than \
+            claiming the capsule certainly returns. An upper bound and not \
+            `== 1` because only a second item is the defect; a vanished item \
+            is already caught by the customView assertion above, and the \
+            `?? 1` is what absorbs a nil plural.
             """
         )
     }
@@ -81,13 +83,15 @@ final class AlarmPickerBarButtonGlassTests: XCTestCase {
         XCTAssertLessThanOrEqual(
             loadedPicker.navigationItem.rightBarButtonItems?.count ?? 1, 1,
             """
-            hidesSharedBackground is documented as IGNORED once the item shares \
-            a UIBarButtonItemGroup with another — UIBarButtonItem.h, iOS 26.5 \
-            SDK. A second right item silently brings the capsule back and the \
-            flag assertion above still passes. Written as an upper bound, not \
-            `== 1`: whether setting the singular property leaves the plural one \
-            nil or `[item]` is an implementation detail the SDK header does not \
-            promise, and only the second item is the defect.
+            UIBarButtonItem.h (iOS 26.5 SDK) says hidesSharedBackground is \
+            IGNORED once the item is in a UIBarButtonItemGroup holding more \
+            than one item. Whether a second RIGHT item lands in that one \
+            group or in a second single-item group the header does not say — \
+            so this guards the shape the header warns about rather than \
+            claiming the capsule certainly returns. An upper bound and not \
+            `== 1` because only a second item is the defect; a vanished item \
+            is already caught by the customView assertion above, and the \
+            `?? 1` is what absorbs a nil plural.
             """
         )
     }
