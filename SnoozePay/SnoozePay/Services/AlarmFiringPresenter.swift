@@ -188,12 +188,7 @@ final class AlarmFiringPresenter {
     /// when no scene/window is attached yet (cold-launch race) or the splash is
     /// still showing.
     private static func isLaunchRootReady() -> Bool {
-        guard
-            let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first,
-            let rootVC = windowScene.windows.first?.rootViewController
-        else {
+        guard let rootVC = ActiveWindowLocator.rootViewController() else {
             return false
         }
         return !(rootVC is SplashViewController)
@@ -202,12 +197,7 @@ final class AlarmFiringPresenter {
     /// Topmost presented VC of the active foreground window scene, or `nil`
     /// when no scene/window is attached yet (cold-launch race).
     private static func topViewController() -> UIViewController? {
-        guard
-            let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first,
-            let rootVC = windowScene.windows.first?.rootViewController
-        else {
+        guard let rootVC = ActiveWindowLocator.rootViewController() else {
             return nil
         }
         var topVC = rootVC

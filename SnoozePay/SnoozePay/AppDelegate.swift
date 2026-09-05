@@ -306,12 +306,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             // Cold-start: permission callback may fire before SceneDelegate attaches
             // the window. Defer until a scene becomes active rather than dropping silently.
-            guard
-                let windowScene = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .first,
-                let rootVC = windowScene.windows.first?.rootViewController
-            else {
+            guard let rootVC = ActiveWindowLocator.rootViewController() else {
                 AppLogger.appDelegate.info("no rootVC yet, deferring notifications-disabled alert")
                 self?.deferNotificationsDisabledAlertUntilSceneActive()
                 return
@@ -681,12 +676,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             message = "Будильник прозвенел, но его данные не удалось загрузить. Откройте приложение и проверьте список будильников."
         }
         DispatchQueue.main.async {
-            guard
-                let windowScene = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .first,
-                let rootVC = windowScene.windows.first?.rootViewController
-            else {
+            guard let rootVC = ActiveWindowLocator.rootViewController() else {
                 // Same shape as the other two drops, on purpose. This is the
                 // third way the alert never reaches the user, and until the
                 // second round of #752 it was the one the promised grep did not
@@ -696,7 +686,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 AppLogger.emit(
                     .appDelegate, .error,
                     AppDelegate.droppedAlertLine(
-                        reason: "no window scene to present on", message: message
+                        reason: "no window with a root view controller to present on", message: message
                     )
                 )
                 return
