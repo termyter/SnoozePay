@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import SnoozePay
 
@@ -24,6 +25,11 @@ private struct SceneCandidate {
 private struct WindowCandidate {
     let name: String
     let isKeyWindow: Bool
+    /// Whether the window carries a root view controller, i.e. whether it can
+    /// host a presentation at all. `var` with a default so the tests that only
+    /// care about the key/first choice stay written the way they were; the ones
+    /// about a key-but-rootless system window say `hasRoot: false` out loud.
+    var hasRoot: Bool = true
 }
 
 /// The selection that decides where an alert or the firing screen lands.
@@ -212,10 +218,10 @@ final class ActiveWindowLocatorTests: XCTestCase {
             "test precondition: the window whose root is under assertion has to hold key status"
         )
 
-        let picked = ActiveWindowLocator.rootViewController(among: Array(UIApplication.shared.connectedScenes))
+        let located = ActiveWindowLocator.rootViewController(among: Array(UIApplication.shared.connectedScenes))
 
         XCTAssertTrue(
-            picked === root,
+            (try? located.get()) === root,
             """
             the key window's root is what the user is looking at; returning \
             another window's root is the silent miss #795 is about
@@ -223,6 +229,233 @@ final class ActiveWindowLocatorTests: XCTestCase {
         )
 
         detach(window)
+    }
+
+    /// The regression the first revision of this PR introduced and its body
+    /// denied ("no worse than the old `.first`"): a key window WITHOUT a root.
+    ///
+    /// The keyboard's window and an alert's window attach after the app's own
+    /// and can hold key status while carrying no root controller. `.first`
+    /// practically never landed on them; `first(where: \.isKeyWindow)` aims at
+    /// them, and answering nil there is not "no alert this once" — it is
+    /// `AlarmFiringPresenter` stopping the alarm audio and never raising the
+    /// screen because the user happened to be typing.
+    func testRootViewController_whenTheKeyWindowHasNoRoot_stillFindsOneToPresentIn() {
+        previousKeyWindow = currentKeyWindow()
+        guard let scene = hostWindowScene() else { return }
+
+        let hostingWindow = makeWindow(in: scene)
+        let root = UIViewController()
+        hostingWindow.rootViewController = root
+
+        let rootlessKeyWindow = makeWindow(in: scene)
+        rootlessKeyWindow.rootViewController = nil
+        rootlessKeyWindow.makeKeyAndVisible()
+
+        let located = ActiveWindowLocator.rootViewController(among: Array(UIApplication.shared.connectedScenes))
+        let rootsOnScreen = scene.windows.compactMap { $0.rootViewController }
+
+        guard let picked = try? located.get() else {
+            XCTFail(
+                """
+                answered «nothing to present on» with \(rootsOnScreen.count) of \
+                \(scene.windows.count) windows carrying a root — a key window \
+                without one must not shadow the app window standing next to it
+                """
+            )
+            detach(hostingWindow, rootlessKeyWindow)
+            return
+        }
+
+        XCTAssertTrue(
+            rootsOnScreen.contains { $0 === picked },
+            "the answer has to be a root of a window that actually has one, not an invented controller"
+        )
+
+        detach(hostingWindow, rootlessKeyWindow)
+    }
+
+    func testRootViewController_withNoScenes_reportsThatNoSceneIsAttached() {
+        let located = ActiveWindowLocator.rootViewController(among: [])
+
+        guard case let .failure(miss) = located else {
+            return XCTFail("a process with no scenes has nothing to present on; it must not answer success")
+        }
+        XCTAssertEqual(
+            miss, .noScene,
+            """
+            cold launch has to stay its own reason: a reader who greps this line \
+            and sees «no window has a root» goes looking for rootless windows in \
+            a process that has no windows at all
+            """
+        )
+    }
+
+    // MARK: - Hosting window: the three states behind the old single nil
+
+    func testHostingWindow_prefersAWindowWithARoot_overTheKeyWindowWithoutOne() {
+        let windows = [
+            WindowCandidate(name: "app window", isKeyWindow: false, hasRoot: true),
+            WindowCandidate(name: "keyboard", isKeyWindow: true, hasRoot: false)
+        ]
+
+        let located = ActiveWindowLocator.hostingWindow(
+            among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot
+        )
+
+        guard let picked = try? located.get() else {
+            return XCTFail("a rootless key window must not turn a scene with a usable window into a miss")
+        }
+        XCTAssertEqual(
+            picked.name, "app window",
+            "the candidates are the windows that can host a presentation; «\(picked.name)» cannot"
+        )
+    }
+
+    func testHostingWindow_withNoWindows_reportsAnEmptyScene() {
+        let located = ActiveWindowLocator.hostingWindow(
+            among: [WindowCandidate](), isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot
+        )
+
+        guard case let .failure(miss) = located else {
+            return XCTFail("a scene without windows has nothing to present in")
+        }
+        XCTAssertEqual(
+            miss, .noWindows,
+            "«the scene has no windows» is fixed differently from «its windows have no roots»"
+        )
+    }
+
+    func testHostingWindow_withNoWindowCarryingARoot_reportsThatSeparately() {
+        let windows = [
+            WindowCandidate(name: "keyboard", isKeyWindow: true, hasRoot: false),
+            WindowCandidate(name: "overlay", isKeyWindow: false, hasRoot: false)
+        ]
+
+        let located = ActiveWindowLocator.hostingWindow(
+            among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot
+        )
+
+        guard case let .failure(miss) = located else {
+            return XCTFail("windows that cannot host a presentation are not a place to present")
+        }
+        XCTAssertEqual(
+            miss, .noHostingWindow,
+            "this is the state the single «no window scene» line used to hide behind two others"
+        )
+    }
+
+    /// The three reasons exist so a log reader can fix by them. Byte-equal
+    /// sentences would put the three states back into one grep, which is the
+    /// finding, not the implementation.
+    func testMiss_namesThreeDistinctStates() {
+        let reasons = [
+            ActiveWindowLocator.Miss.noScene.rawValue,
+            ActiveWindowLocator.Miss.noWindows.rawValue,
+            ActiveWindowLocator.Miss.noHostingWindow.rawValue
+        ]
+
+        XCTAssertEqual(
+            Set(reasons).count, reasons.count,
+            "two states sharing a sentence are one grep: \(reasons)"
+        )
+    }
+
+    // MARK: - The fallbacks say when they fire
+
+    func testHostingWindow_fallingBackToANonKeyWindow_leavesANotice() {
+        let windows = [
+            WindowCandidate(name: "app window", isKeyWindow: false, hasRoot: true),
+            WindowCandidate(name: "keyboard", isKeyWindow: true, hasRoot: false)
+        ]
+
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        _ = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            ActiveWindowLocator.hostingWindow(among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot)
+        })
+
+        guard let notice = lines.first(where: { $0.message.contains("no key window with a root") }) else {
+            return XCTFail(
+                """
+                ALARM-752-ALERT-SHOWN reads the same whether the alert landed in \
+                the key window or in an arbitrary one; without this line the \
+                narrowing of #795 is unobservable. The sink saw \(lines.map(\.message))
+                """
+            )
+        }
+        XCTAssertEqual(
+            notice.level, .default,
+            "a backgrounded app genuinely has no key window — expected state, notice level, not error"
+        )
+    }
+
+    func testHostingWindow_whenTheKeyWindowCanHostIt_saysNothing() {
+        let windows = [
+            WindowCandidate(name: "app window", isKeyWindow: true, hasRoot: true),
+            WindowCandidate(name: "other", isKeyWindow: false, hasRoot: true)
+        ]
+
+        var lines: [String] = []
+        _ = AppLogger.withTestSink({ lines.append($2) }, perform: {
+            ActiveWindowLocator.hostingWindow(among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot)
+        })
+
+        XCTAssertTrue(
+            lines.isEmpty,
+            "the ordinary case must stay silent, or the fallback line stops meaning anything: \(lines)"
+        )
+    }
+
+    func testHostingScene_fallingBackToAnInactiveScene_leavesANotice() {
+        let scenes = [
+            SceneCandidate(name: "backgrounded", activationState: .background),
+            SceneCandidate(name: "also backgrounded", activationState: .background)
+        ]
+
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        _ = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            ActiveWindowLocator.hostingScene(among: scenes, activationState: \.activationState)
+        })
+
+        guard let notice = lines.first(where: { $0.message.contains("no foregroundActive scene") }) else {
+            return XCTFail(
+                """
+                «presented in the active scene» and «there was no active scene, so \
+                any of three» have to be distinguishable after the fact — that is \
+                what #752/#795 were asked to answer. The sink saw \(lines.map(\.message))
+                """
+            )
+        }
+        XCTAssertTrue(
+            notice.message.contains("\(scenes.count)"),
+            "the line has to say how many scenes were on the table; it reads «\(notice.message)»"
+        )
+        XCTAssertEqual(notice.level, .default, "notification delivery from the background is not a failure")
+    }
+
+    func testHostingScene_withAnActiveScene_saysNothing() {
+        let scenes = [
+            SceneCandidate(name: "background", activationState: .background),
+            SceneCandidate(name: "active", activationState: .foregroundActive)
+        ]
+
+        var lines: [String] = []
+        _ = AppLogger.withTestSink({ lines.append($2) }, perform: {
+            ActiveWindowLocator.hostingScene(among: scenes, activationState: \.activationState)
+        })
+
+        XCTAssertTrue(lines.isEmpty, "nothing fell back, so there is nothing to report: \(lines)")
+    }
+
+    func testHostingScene_withNoScenes_reportsThatNoSceneIsAttached() {
+        let located = ActiveWindowLocator.hostingScene(
+            among: [SceneCandidate](), activationState: \.activationState
+        )
+
+        guard case let .failure(miss) = located else {
+            return XCTFail("no scene attached is the cold-launch race the callers defer on")
+        }
+        XCTAssertEqual(miss, .noScene, "the reason the caller logs has to be the one that happened")
     }
 
     // MARK: - Helpers

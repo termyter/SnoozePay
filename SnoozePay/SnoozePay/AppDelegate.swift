@@ -306,7 +306,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             // Cold-start: permission callback may fire before SceneDelegate attaches
             // the window. Defer until a scene becomes active rather than dropping silently.
-            guard let rootVC = ActiveWindowLocator.rootViewController() else {
+            guard case let .success(rootVC) = ActiveWindowLocator.rootViewController() else {
                 AppLogger.appDelegate.info("no rootVC yet, deferring notifications-disabled alert")
                 self?.deferNotificationsDisabledAlertUntilSceneActive()
                 return
@@ -676,18 +676,27 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             message = "Будильник прозвенел, но его данные не удалось загрузить. Откройте приложение и проверьте список будильников."
         }
         DispatchQueue.main.async {
-            guard let rootVC = ActiveWindowLocator.rootViewController() else {
+            let rootVC: UIViewController
+            switch ActiveWindowLocator.rootViewController() {
+            case let .success(located):
+                rootVC = located
+            case let .failure(miss):
                 // Same shape as the other two drops, on purpose. This is the
                 // third way the alert never reaches the user, and until the
                 // second round of #752 it was the one the promised grep did not
                 // find: the line existed but carried neither
                 // ``alertDroppedErrorID`` nor the message. A reader who greps
                 // the handle and finds nothing concludes «the alert was shown».
+                //
+                // The reason is the locator's rather than a sentence spelled
+                // here: one «no window to present on» would fold cold launch
+                // (no scene at all), a scene without windows, and windows
+                // without a root into a single line, and a reader who fixes by
+                // the reason would go hunting rootless windows in a process
+                // that has no windows at all.
                 AppLogger.emit(
                     .appDelegate, .error,
-                    AppDelegate.droppedAlertLine(
-                        reason: "no window with a root view controller to present on", message: message
-                    )
+                    AppDelegate.droppedAlertLine(reason: miss.rawValue, message: message)
                 )
                 return
             }
