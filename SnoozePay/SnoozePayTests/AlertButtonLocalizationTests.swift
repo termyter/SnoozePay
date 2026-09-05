@@ -1,20 +1,26 @@
 import XCTest
 @testable import SnoozePay
 
-/// Guards acknowledge buttons against a hardcoded title *in the sources*.
+/// Guards acknowledge buttons from both sides: no hardcoded title *in the
+/// sources*, and no second spelling *in the catalogue*.
 ///
-/// Not "every `UIAlertController`" — the scan reads source lines, so it sees
-/// exactly the defects that are visible there. Its three blind spots are listed
-/// below, and one of them is currently occupied.
+/// The two halves are here because neither can see the other's defect. A source
+/// scan is blind to a call site that correctly reads a key whose *value* is
+/// wrong; a catalogue scan is blind to a call site that never opens the
+/// catalogue at all. #650 shipped only the second and #664 only the first, and
+/// each was believed at the time to close the class.
 ///
-/// # Why this scans sources instead of the catalogue
+/// # Why the source scan exists at all
 ///
 /// #650 swept `Localizable.xcstrings` with a regex, found no Latin
 /// acknowledgement left in it, and declared the class closed. Seven call sites
 /// were nevertheless still passing a bare `"OK"` straight to `UIAlertAction`
 /// (#664) — they never appear in the catalogue precisely *because* they bypass
 /// it, so a catalogue-shaped check is structurally blind to them. The only
-/// place the defect is visible is the source line, so that is what this reads.
+/// place that defect is visible is the source line, so that is what the first
+/// test reads. The second one, added by #751, reads the catalogue — see
+/// `testCatalogueSpellsAcknowledgementInExactlyOnePlace` for the symmetric
+/// argument.
 ///
 /// # What counts as a violation
 ///
@@ -28,25 +34,27 @@ import XCTest
 /// and flagging them here would make this test fail for a reason it cannot
 /// describe.
 ///
-/// # What it cannot see
+/// # What it still cannot see
 ///
-/// Three things, and naming them is the point — #650 failed by being trusted
-/// wider than its reach, and this test can fail the same way.
+/// Naming the remainder is the point — #650 failed by being trusted wider than
+/// its reach, and this file can fail the same way.
 ///
 /// 1. **A title routed through a local variable** (`let ok = "OK"; …title: ok`)
 ///    reads as an identifier at the call site. Accepted: the shape this file
 ///    exists to stop is the copy-pasted one-liner, which is how all seven
 ///    arrived.
-/// 2. **A catalogue key whose own value is Latin.** There is a live one:
-///    `referral.applied.confirm` renders `"OK"`, so the app reads «Ок»
-///    everywhere `common.button.ok` is used and «OK» in that one alert. The
-///    call site is
-///    `Localized.text(…)`, i.e. not a literal, so this scan is *structurally*
-///    blind to it. Tracked in #751.
-/// 3. **`UIAlertController(title:)`.** The pattern matches `UIAlertAction`
+/// 2. **`UIAlertController(title:)`.** The pattern matches `UIAlertAction`
 ///    only, so an alert's own title stays invisible here — including the two
 ///    literal ones left in `AppDelegate`: «Уведомления выключены» is tracked in
 ///    #752, «Будильник» belongs to the wider literal migration.
+///
+/// The third entry this list carried until #751 — a catalogue key whose own
+/// value is Latin — is no longer a blind spot of the *file*, only of the source
+/// scan: `testCatalogueSpellsAcknowledgementInExactlyOnePlace` reads the
+/// catalogue itself. The live case it was written for was
+/// `referral.applied.confirm`, which rendered `"OK"` in the referral «Код
+/// применён» alert while every other acknowledge button read «Ок»; #751 deleted
+/// the key and pointed that call site at `common.button.ok`.
 final class AlertButtonLocalizationTests: XCTestCase {
 
     /// The catalogue key every acknowledge button has to go through.
@@ -105,7 +113,70 @@ final class AlertButtonLocalizationTests: XCTestCase {
         XCTAssertEqual(copy, "Ок", "The catalogue comment pins this spelling — «Ок», not «ОК» or «OK»")
     }
 
+    /// The catalogue half, and the reason #751 exists.
+    ///
+    /// The scan above reads call sites, so a call site that properly goes
+    /// through `Localized.text(…)` is clean *by construction*, whatever the key
+    /// on the other end holds. `referral.applied.confirm` was exactly that: a
+    /// second acknowledge key whose ru value was Latin `"OK"`, sitting through
+    /// #664's green run while the app rendered «Ок» everywhere else and `"OK"`
+    /// there. So this one reads the copy rather than the call sites.
+    ///
+    /// The expectation is written out as a literal rather than derived from the
+    /// catalogue: a set built by filtering the file under test and compared
+    /// against itself agrees with every possible version of that file,
+    /// including one that has grown a tenth spelling. A new key whose Russian
+    /// value reads as an acknowledgement therefore goes red naming that key —
+    /// and the fix is to delete it and send its call site to
+    /// `common.button.ok`, not to widen this expectation.
+    func testCatalogueSpellsAcknowledgementInExactlyOnePlace() throws {
+        let acknowledgements = try Self.shippedRussianCopy().filter { Self.readsAsAcknowledgement($0.value) }
+
+        XCTAssertEqual(
+            acknowledgements, [Self.acknowledgeKey: "Ок"],
+            """
+            An acknowledge button lives in the catalogue outside \(Self.acknowledgeKey). \
+            Two keys are two spellings on screen: delete the extra entry and point \
+            its call site at \(Self.acknowledgeKey).
+            """
+        )
+    }
+
     // MARK: - Helpers
+
+    /// Every ru key/value pair the built app ships as a plain string, read out
+    /// of the compiled `ru.lproj/Localizable.strings`.
+    ///
+    /// «Plain string» is the limit, and it is narrower than «everything»: plural
+    /// and variation entries compile into `Localizable.stringsdict` instead and
+    /// are not seen here — 462 of the catalogue's 464 keys reach this table. An
+    /// acknowledge button is never a plural, so the guard above is unaffected;
+    /// a future check that needs the other two has to read the other file.
+    ///
+    /// Only `ru` is read, which is the whole catalogue today
+    /// (`sourceLanguage: ru`, one localization). Whoever adds the second
+    /// language under #569 has to widen this — the guard does not follow them
+    /// on its own, and it will not say so.
+    ///
+    /// The compiled side rather than the source `.xcstrings`, for two reasons:
+    /// it is what the app renders — an entry that never reached the build is
+    /// not a spelling anyone can see — and it needs no path into the checkout,
+    /// which on the simulator exists only through `#filePath`.
+    ///
+    /// `LocalizableCatalogTests` already pins that this URL resolves; the
+    /// unwrap here is so a missing table reads as *this* failure rather than as
+    /// an empty scan quietly agreeing with itself.
+    private static func shippedRussianCopy() throws -> [String: String] {
+        let url = try XCTUnwrap(
+            Bundle.main.url(forResource: "Localizable", withExtension: "strings", subdirectory: "ru.lproj"),
+            "ru.lproj/Localizable.strings is missing from the app bundle"
+        )
+        let data = try Data(contentsOf: url)
+        // `xcstringstool` emits an XML plist here, not the old-style text
+        // format, so this parses rather than needing a `.strings` reader.
+        let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        return try XCTUnwrap(plist as? [String: String], "ru.lproj/Localizable.strings is not a string table")
+    }
 
     /// `Ок`/`ОК`/`OK`/`ok`… all collapse onto the same two letters. Cyrillic
     /// `О`/`К` are folded onto their Latin twins because the screen cannot tell
