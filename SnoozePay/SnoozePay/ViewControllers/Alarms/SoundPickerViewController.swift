@@ -263,11 +263,19 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
         // «Готово» quiet-sm — the only way out beyond the back chevron now that
         // selection doesn't auto-pop.
+        //
+        // Wrapped so the iOS 26 shared glass capsule stays off it (#666): the
+        // canon header at
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313`
+        // is a bare quiet pill, and the
+        // capsule would draw a second ring around a control that already
+        // carries its own `--sp-white-06` fill. Same call the alarm form makes
+        // — see `AppNavigationBarStyle.barItem(for:)`.
         let doneButton = SPButton(
             title: Localized.text("common.button.done"), variant: .quiet, size: .sm
         )
         doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneButton)
+        navigationItem.rightBarButtonItem = AppNavigationBarStyle.barItem(for: doneButton)
     }
 
     private func setupContent() {
