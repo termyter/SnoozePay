@@ -597,6 +597,16 @@ final class AudioServiceTests: XCTestCase {
             traces.first?.message.contains("vanished_sound") == true,
             "the line must name the soundID that was not found; it reads «\(traces.first?.message ?? "")»"
         )
+        // Literal, not `alarmSoundExtensions.joined(...)`: an expectation read
+        // off the constant under test follows it wherever it goes and pins
+        // nothing (#762). The docblock on that constant calls this substring
+        // load-bearing — it is what separates "no such file" from "the file is
+        // there under an extension this list does not know" — so it needs an
+        // assertion of its own, or it is one deletion away from gone.
+        XCTAssertTrue(
+            traces.first?.message.contains("caf,m4a,wav,mp3") == true,
+            "the line must say which extensions were tried; it reads «\(traces.first?.message ?? "")»"
+        )
     }
 
     /// The branch the real bundle cannot reach — the app ships
@@ -631,6 +641,70 @@ final class AudioServiceTests: XCTestCase {
             lines.allSatisfy { !$0.message.contains(AudioService.missingSoundErrorID) },
             "the downgrade ID belongs to the branch where a real sound still rings; emitting both "
             + "here would make a support grep count one incident twice"
+        )
+        XCTAssertTrue(
+            traces.first?.message.contains("caf,m4a,wav,mp3") == true,
+            "the line must say which extensions were tried; it reads «\(traces.first?.message ?? "")»"
+        )
+    }
+
+    /// The one behaviour this PR changes, and the only thing holding it.
+    ///
+    /// Before #765 the requested sound was looked up across all four
+    /// extensions while the fallback tried `caf`/`m4a` only; both now walk
+    /// ``AudioService/alarmSoundExtensions``. Nothing shipped depends on the
+    /// widening — the bundle carries `default_alarm.caf`, which the first probe
+    /// finds — so narrowing the list back to `["caf"]` leaves every other case
+    /// in this file green while a default shipped as `.m4a` downgrades to the
+    /// synthetic tone: the silent state #765 exists to make visible.
+    ///
+    /// The list is written out rather than read off the constant, for the same
+    /// reason as the `caf,m4a,wav,mp3` assertions above.
+    ///
+    /// The injected URLs are deliberately unopenable: which branch was taken is
+    /// decided before `AVAudioPlayer` is handed anything, and it is the branch —
+    /// the emitted line — that is under test here, not the player.
+    func testResolveAlarmPlayer_fallbackTriesEveryExtension_cafFirst() {
+        for ext in ["caf", "m4a", "wav", "mp3"] {
+            var lines: [LoggedLine] = []
+            _ = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+                AudioService.shared.resolveAlarmPlayer(soundID: "vanished_sound") { name, probed in
+                    name == AudioService.fallbackSoundID && probed == ext
+                        ? URL(fileURLWithPath: "/var/empty/\(name).\(ext)")
+                        : nil
+                }
+            })
+
+            let downgrades = lines.filter { $0.message.contains(AudioService.missingSoundErrorID) }
+            XCTAssertEqual(
+                downgrades.count, 1,
+                "a fallback shipped as .\(ext) has to be found; the sink saw \(lines.map(\.message))"
+            )
+            XCTAssertTrue(
+                downgrades.first?.message.contains("default_alarm.\(ext)") == true,
+                "the line must name the file the alarm falls back to; it reads "
+                + "«\(downgrades.first?.message ?? "")»"
+            )
+            XCTAssertTrue(
+                lines.allSatisfy { !$0.message.contains(AudioService.missingFallbackSoundErrorID) },
+                "reporting «no default sound at all» for a default that IS there under .\(ext) "
+                + "sends whoever greps it to rebuild a bundle that is fine"
+            )
+        }
+
+        // Membership is not order. A lookup that answers for every extension
+        // returns whichever one the loop reached first, and the line names it.
+        var lines: [LoggedLine] = []
+        _ = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            AudioService.shared.resolveAlarmPlayer(soundID: "vanished_sound") { name, ext in
+                name == AudioService.fallbackSoundID
+                    ? URL(fileURLWithPath: "/var/empty/\(name).\(ext)")
+                    : nil
+            }
+        })
+        XCTAssertTrue(
+            lines.first?.message.contains("default_alarm.caf") == true,
+            "caf is probed first — the format the app actually ships; it reads «\(lines.first?.message ?? "")»"
         )
     }
 

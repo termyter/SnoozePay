@@ -368,11 +368,17 @@ final class AudioService {
     ///
     /// ⚠️ Reached from `startAlarmSoundLocked`, i.e. inside `queue.sync`, so
     /// unlike every other `AppLogger.emit` call site this one is not
-    /// main-thread. `sync` orders it against the calling thread rather than
-    /// running it concurrently, which is what `emit`'s unguarded test sink
-    /// needs; a test that wants to observe these lines should call this method
-    /// directly, as `AudioServiceTests` does, instead of installing a sink and
-    /// driving `startAlarmSound` from another thread.
+    /// GUARANTEED to be on the main thread. `sync` runs the block on whichever
+    /// thread called it: both production callers are main
+    /// (`AlarmFiringViewController.viewDidAppear`, the notification-centre
+    /// delegate in `AppDelegate`), but the suite drives `startAlarmSound` from
+    /// background threads too.
+    ///
+    /// `queue.sync` buys `emit`'s unguarded `testSink` nothing: it serialises
+    /// audio work against other audio work, not against a test installing or
+    /// removing the sink on its own thread. A test that wants to observe these
+    /// lines calls this method directly, as `AudioServiceTests` does, and takes
+    /// the ordering from its own thread rather than from the queue.
     func resolveAlarmPlayer(
         soundID: String,
         resourceURL: (String, String) -> URL? = { name, ext in
@@ -417,8 +423,9 @@ final class AudioService {
                 .audio, .fault,
                 """
                 [\(Self.missingFallbackSoundErrorID)] resolveAlarmPlayer: bundle has neither \
-                '\(soundID)' nor '\(Self.fallbackSoundID)' (tried \(tried)); the alarm rings the \
-                synthetic tone instead of any real sound
+                '\(soundID)' nor '\(Self.fallbackSoundID)' (tried \(tried)); nothing bundled is \
+                left to play, so the alarm falls through to the synthetic tone — and to \
+                vibration alone if that cannot be built either
                 """
             )
             return nil
@@ -428,7 +435,7 @@ final class AudioService {
             .audio, .error,
             """
             [\(Self.missingSoundErrorID)] resolveAlarmPlayer: no bundled file for soundID \
-            '\(soundID)' (tried \(tried)); the alarm will ring \(fallback.lastPathComponent) \
+            '\(soundID)' (tried \(tried)); falling back to \(fallback.lastPathComponent) \
             instead of the chosen sound
             """
         )
