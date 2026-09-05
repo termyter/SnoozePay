@@ -187,9 +187,11 @@ final class ActiveWindowLocatorTests: XCTestCase {
             "test precondition: the window under assertion has to actually hold key status"
         )
 
-        // A closure rather than `\.isKeyWindow`: forming a key path to a
-        // main-actor-isolated UIKit property is a concurrency diagnostic, and
-        // the stub tests above already cover the key-path form on a plain type.
+        // A closure rather than `\.isKeyWindow`, matching the stub tests above.
+        // An earlier revision justified this with a concurrency diagnostic that
+        // does not exist: `\.isKeyWindow` typechecks clean under this target's
+        // flags (`-swift-version 5 -default-isolation MainActor`). Either form
+        // compiles; the closure is here for consistency, nothing more.
         let picked = ActiveWindowLocator.preferredWindow(
             among: [plainWindow, keyWindow], isKeyWindow: { $0.isKeyWindow }
         )
