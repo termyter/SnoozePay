@@ -363,10 +363,21 @@ final class AlarmEditorCopyTests: XCTestCase {
 
         // Recipe form. Safe only because `create_alarm.penalty.caps` is stored
         // sentence-case and `PenaltyCell` upper-cases it: drop that call and the
-        // sides disagree, red. Where a key is stored capped the same form is a
-        // tautology, which is why both preview captions are literals — see
-        // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` and
-        // `testThemePickerRendersItsTitleAndPreviewCaption` (#665; unification #793).
+        // sides disagree, red.
+        //
+        // Both preview captions are literals instead, and for two DIFFERENT
+        // reasons — one rule would not have covered them.
+        // `theme_picker.preview_caps` is stored already capped, so this form
+        // reads the same string on both sides and cannot fail:
+        // `testThemePickerRendersItsTitleAndPreviewCaption`.
+        // `sound_picker.preview_caps` is stored sentence-case exactly like this
+        // key, so the recipe form is NOT blind there — dropping the
+        // `.uppercased()` at `SoundPickerViewController:86` reds it either way.
+        // Its literal buys independence from the WORD, not from the caps:
+        // retyping the entry to «Прослушать» leaves the recipe form green and
+        // the literal red. Measured, not reasoned —
+        // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` carries the
+        // run. (#665; unification #793.)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.caps").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.hint")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.minimum")))
