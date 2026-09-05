@@ -62,18 +62,23 @@ import XCTest
 ///     checks below it go red as well: `XCTAssertEqual` is not fatal, so the
 ///     run is still measured and comes back widened to `0..<5`.
 ///   * **the placement widened from the specifier to the whole template** —
-///     same test, at the phrase equality: `valueText(7)` returns «7». The next
-///     assertion then reads a font at index 1 of a one-character string and
-///     throws `NSRangeException`; XCTest catches that and reds the test rather
-///     than taking the process down, unlike the `assertionFailure` below.
+///     same test, first red at the phrase equality: `valueText(7)` returns «7».
+///     The length equality reds next; three assertions further on, the font
+///     read at index 1 of a one-character string throws `NSRangeException`,
+///     which XCTest catches and reds rather than taking the process down —
+///     unlike the `assertionFailure` below.
 ///   * **the insertion collapsed to one uniform face** —
-///     `testInsertionKeepsItsOwnRunsWhenTheyDiffer`: the font at index 1 is
-///     the first face rather than the second.
+///     `testInsertionKeepsItsOwnRunsWhenTheyDiffer`, first red at the run
+///     measurement: the collapsed run spans `0..<2`, not `0..<1`. The font at
+///     index 1 then reads the first face rather than the second.
 ///   * **`MoneyFormatter`'s narrow space refonted to the digits face** —
 ///     `testMoneyRunSurvivesPlacementWithAllThreeOfItsFaces`, at index 26.
 ///   * **`Localized.attributed` reverted to render-then-`range(of:)`** —
-///     `testRunLandsOnTheSpecifierRatherThanOnTheFirstMatchingText`: the
-///     inserted run starts at 3 instead of 22.
+///     `testRunLandsOnTheSpecifierRatherThanOnTheFirstMatchingText`: the run
+///     lands on the earlier «эту» at 3 instead of the specifier at 22. First
+///     red is the font equality at index 22, which by then sits in the
+///     surrounding run — so the measurement below it reports that run, not the
+///     inserted one.
 ///
 /// One mutation is listed apart, because its consequence is not «a red test»
 /// and putting it in the list above would read as though it were: dropping
