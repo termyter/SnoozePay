@@ -53,8 +53,8 @@ import XCTest
 /// scan: `testCatalogueSpellsAcknowledgementInExactlyOnePlace` reads the
 /// catalogue itself. The live case it was written for was
 /// `referral.applied.confirm`, which rendered `"OK"` in the referral «Код
-/// применён» alert while the other eight read «Ок»; #751 deleted the key and
-/// pointed that call site at `common.button.ok`.
+/// применён» alert while every other acknowledge button read «Ок»; #751 deleted
+/// the key and pointed that call site at `common.button.ok`.
 final class AlertButtonLocalizationTests: XCTestCase {
 
     /// The catalogue key every acknowledge button has to go through.
@@ -119,8 +119,8 @@ final class AlertButtonLocalizationTests: XCTestCase {
     /// through `Localized.text(…)` is clean *by construction*, whatever the key
     /// on the other end holds. `referral.applied.confirm` was exactly that: a
     /// second acknowledge key whose ru value was Latin `"OK"`, sitting through
-    /// #664's green run while the app rendered eight «Ок» and one «OK». So this
-    /// one reads the copy rather than the call sites.
+    /// #664's green run while the app rendered «Ок» everywhere else and `"OK"`
+    /// there. So this one reads the copy rather than the call sites.
     ///
     /// The expectation is written out as a literal rather than derived from the
     /// catalogue: a set built by filtering the file under test and compared
@@ -144,8 +144,19 @@ final class AlertButtonLocalizationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Every ru key/value pair the built app actually ships, read out of the
-    /// compiled `ru.lproj/Localizable.strings`.
+    /// Every ru key/value pair the built app ships as a plain string, read out
+    /// of the compiled `ru.lproj/Localizable.strings`.
+    ///
+    /// «Plain string» is the limit, and it is narrower than «everything»: plural
+    /// and variation entries compile into `Localizable.stringsdict` instead and
+    /// are not seen here — 462 of the catalogue's 464 keys reach this table. An
+    /// acknowledge button is never a plural, so the guard above is unaffected;
+    /// a future check that needs the other two has to read the other file.
+    ///
+    /// Only `ru` is read, which is the whole catalogue today
+    /// (`sourceLanguage: ru`, one localization). Whoever adds the second
+    /// language under #569 has to widen this — the guard does not follow them
+    /// on its own, and it will not say so.
     ///
     /// The compiled side rather than the source `.xcstrings`, for two reasons:
     /// it is what the app renders — an entry that never reached the build is

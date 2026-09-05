@@ -42,7 +42,7 @@ final class ReferralOnboardingCopyTests: XCTestCase {
     ///
     /// One key #600 introduced is deliberately absent: `referral.applied.confirm`
     /// held the dismiss button of the «Код применён» alert and spelled it Latin
-    /// «OK» while the app's other eight acknowledge buttons read «Ок» through
+    /// «OK» while the app's other acknowledge buttons read «Ок» through
     /// `common.button.ok`. #751 deleted it and sent the call site to the shared
     /// key, so the button is now pinned by `AlertButtonLocalizationTests` — the
     /// domain list here would only reintroduce it.
