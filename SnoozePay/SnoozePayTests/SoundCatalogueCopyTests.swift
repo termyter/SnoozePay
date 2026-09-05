@@ -105,19 +105,26 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// move both sides of that comparison together and stay green while every
     /// picker row read another sound's word.
     ///
-    /// Until this table existed, the only thing in the target that reddened on
-    /// that mutation lived in **another file**: `namesBeforeTheCollapse` in
-    /// `AlarmsListSoundNameTests`. That is a real anchor — it is id-keyed and
-    /// driven through the second production reader — but nothing said so except
-    /// a comment, so deleting or narrowing that suite unpinned the names here
-    /// in silence, which is the shape #720 already executed once on the
-    /// subtitles.
+    /// Until this table existed, every assertion that reddened on that mutation
+    /// lived in **another file**, `AlarmsListSoundNameTests` — `namesBeforeTheCollapse`
+    /// and a bare literal at `testOutOfRangeIndexYieldsNoName`, two anchors that
+    /// do not depend on each other. Both are real: id-keyed and driven through
+    /// the second production reader. But nothing said so except a comment, so
+    /// deleting or narrowing that suite unpinned the names here in silence,
+    /// which is the shape #720 already executed once on the subtitles.
     ///
-    /// Both tables stay, and the duplication is deliberate: that one protects
-    /// the alarms-list reader, this one protects the picker's, and each is
-    /// compared against the catalogue on its own terms. Neither file's
-    /// expectations are computed from the other's, so a typo in either is red
-    /// where it was made.
+    /// The claim is about the FILE, not about a single table. Written the other
+    /// way it would be false, and the false version is the tempting one to
+    /// write.
+    ///
+    /// Both tables stay, and the duplication is deliberate. The zones overlap
+    /// rather than divide: the alarms-list reader is pinned to literals from
+    /// here too, transitively, because
+    /// `testAlarmsListStillRendersTheSameWordsAsTheCatalogue` compares it
+    /// against `SoundCatalogue.entries` and this table pins those. What stays
+    /// uniquely with the other file is copy drift at its own reader and the
+    /// fallback for an uncatalogued id. Neither file's expectations are
+    /// computed from the other's, so a typo in either is red where it was made.
     ///
     /// Transcribed from `Localizable.xcstrings`, where #598 left the
     /// pre-migration literals.
@@ -168,9 +175,10 @@ final class SoundCatalogueCopyTests: XCTestCase {
     ]
 
     /// The ten ids **in catalogue order**, written out rather than read from
-    /// `SoundCatalogue.ids`. This is the third table for the same reason as the
-    /// second: an expectation drawn from the value under test agrees with any
-    /// mistake in it.
+    /// `SoundCatalogue.ids`. Written out for the same reason as the id-keyed
+    /// tables above: an expectation drawn from the value under test agrees with
+    /// any mistake in it. (Counted rather than named, this sentence went stale
+    /// the moment #763 inserted a table between them — hence no ordinals.)
     ///
     /// The order is a product decision, not an implementation detail — it is
     /// the row order of the sound picker, and `SoundCatalogue` says so in prose
@@ -346,9 +354,9 @@ final class SoundCatalogueCopyTests: XCTestCase {
             // Keyed by id and never routed through `nameKey(for:)`, so a
             // builder that points each id at another sound's key fails here
             // instead of moving both sides of the comparison together (#763).
-            // It used to read `copy[nameKey(for: entry.id)]`, and the only
-            // thing that reddened on that mutation was `namesBeforeTheCollapse`
-            // in `AlarmsListSoundNameTests` — an anchor in someone else's file.
+            // It used to read `copy[nameKey(for: entry.id)]`, and everything
+            // that reddened on that mutation sat in `AlarmsListSoundNameTests`
+            // — someone else's file, two anchors inside it.
             XCTAssertEqual(
                 entry.name, Self.namesBySoundID[entry.id],
                 "'\(entry.id)' reads the name of another sound — nameKey is wired to the wrong id"

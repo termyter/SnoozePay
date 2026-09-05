@@ -51,8 +51,10 @@ import XCTest
 /// model against `SoundCatalogue.entries`, i.e. catalogue against catalogue.
 /// After the collapse both sides read one key, so that comparison can no longer
 /// fail on a wrong word; it now only proves the two call sites agree. The
-/// hardcoded Russian below is what still fails when the *copy* moves, and it
-/// belongs with the reader it protects.
+/// hardcoded Russian below is what still fails when the *copy* moves at this
+/// reader, and it belongs with the reader it protects. It is no longer the only
+/// place copy drift reddens: since #763 `SoundCatalogueCopyTests` holds its own
+/// id-keyed literals, so a moved word reds there as well.
 ///
 /// What that suite no longer does is *depend* on the table below. Until #763
 /// its own name expectation was looked up through `SoundCatalogue.nameKey(for:)`
@@ -88,10 +90,17 @@ final class AlarmsListSoundNameTests: XCTestCase {
     /// Transcribed from the pre-#599 literals.
     ///
     /// `SoundCatalogueCopyTests.namesBySoundID` holds the same ten words for
-    /// the picker's reader. Duplicated rather than shared on purpose (#763): a
-    /// single table imported by both suites would make either one's deletion
-    /// silently weaken the other, which is exactly the coupling that change
-    /// removed.
+    /// the picker's reader. Duplicated rather than shared on purpose (#763),
+    /// and the reason is the coupling that change removed, not a sharing
+    /// mechanism: before it, `SoundCatalogueCopyTests` had no id-keyed table at
+    /// all and leaned on this one across a file boundary, so narrowing this
+    /// suite unpinned the picker in silence. A shared table would not reproduce
+    /// that — hoisted into a helper, deleting either suite leaves it untouched;
+    /// left here and made non-private, deleting this file is a compile error,
+    /// which is the loudest signal there is. What a shared table would cost is
+    /// the independence: one transcription, so a typo in it agrees with itself
+    /// in both suites. That is what the duplication buys, and it is the whole
+    /// price of keeping ten Russian words in two places.
     private static let namesBeforeTheCollapse: [String: String] = [
         "dawn": "Рассвет",
         "radar": "Радар",
