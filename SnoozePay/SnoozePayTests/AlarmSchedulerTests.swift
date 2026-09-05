@@ -19,12 +19,12 @@ final class AlarmSchedulerTests: XCTestCase {
 
     /// Both lookups in `alarmSoundFileName(for:)` are searches over
     /// ``AlarmScheduler/alarmSoundExtensions``, not `.caf` special cases.
-    /// Every other case in this file resolves on the first extension, so
+    /// No other case in this file exercises an extension past `caf`, so
     /// collapsing either loop to a single `caf` probe would leave them green
     /// while a sound shipped as `.m4a` downgraded to `default_alarm` — the
     /// state #749 exists to report.
     ///
-    /// Unconditional, one assertion per extension, on purpose. The version
+    /// Unconditional, two assertions per extension — one per lookup — on purpose. The version
     /// this replaces (`testAlarmSoundFileName_checksMultipleExtensions`)
     /// asserted `validExtensions.contains(ext)` under `if let`, so `nil` —
     /// the single answer that means the search found nothing — passed having
