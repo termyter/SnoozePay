@@ -131,8 +131,9 @@ enum Localized {
         return String(format: template, locale: AppLocale.display, arguments: arguments)
     }
 
-    /// `key`'s copy with its **first** `%@` replaced by `replacement`, each
-    /// side keeping its own attributes.
+    /// `key`'s copy with its **first** `specifier` — `%@` unless said
+    /// otherwise — replaced by `replacement`, each side keeping its own
+    /// attributes.
     ///
     /// Exists so a sentence containing a differently-styled run — a mono
     /// pain-tinted amount, a tinted weekday name — can stay **one** catalogue
@@ -146,35 +147,56 @@ enum Localized {
     /// substituted run would arrive flattened to the surrounding font.
     ///
     /// One specifier, by construction: there is a single `replacement` to
-    /// spend, so a template holding two `%@` renders the second one literally.
-    /// The per-slice localization tests assert the *count* and not merely the
-    /// presence, so a translation that grows a second specifier goes red
-    /// instead of printing a stray `%@` on screen.
+    /// spend, so a template holding two of them renders the second one
+    /// literally. The per-slice localization tests assert the *count* and not
+    /// merely the presence, so a translation that grows a second specifier
+    /// goes red instead of printing a stray `%@` on screen.
     ///
-    /// # Not the only idiom for this, and deliberately so
+    /// # `specifier` — the placeholder the template actually holds
     ///
-    /// `SnoozeSliderCell.valueText(_:)` solves the same sentence-shaped
-    /// problem from the other end: it renders the whole phrase through
-    /// ``format(_:_:)``, then *locates* the substituted fragment with
-    /// `range(of:)` and restyles it in place. That idiom is older than this
-    /// one and is not superseded by it — the two are not interchangeable:
+    /// Defaults to `%@`, the shape a substituted run naturally lands in. It is
+    /// a parameter because a template whose value is a number was spelled
+    /// `%lld` long before anything wanted to restyle it —
+    /// `create_alarm.snooze.minutes` is «%lld мин» — and respelling it in the
+    /// catalogue would put every translator through a re-translation for a
+    /// call site's convenience.
     ///
-    ///   * locate-and-restyle lays one **uniform** attribute set over the
-    ///     range it found. `alarm_off.body` substitutes
-    ///     `MoneyFormatter.attributed(_:)`, whose attributes are internally
-    ///     *non*-uniform — digits in mono, the narrow space refonted, the ₽
-    ///     sign its own run — which a single `addAttributes` cannot express;
-    ///   * searching rendered text can find the wrong occurrence. «3» in
-    ///     «3 мин» is unambiguous; an amount that also appears in the
-    ///     surrounding copy is not.
+    /// The caller renders the value into `replacement` itself, so this method
+    /// never formats anything: it places a run that is already finished, and
+    /// `specifier` only says where. A call site substituting a number keeps
+    /// whatever formatter it used before, ``AppLocale/display`` included.
     ///
-    /// Where the insertion *is* uniform and its rendered form unique, the
-    /// slider's idiom is the cheaper one — it needs no second lookup. Whether
-    /// the two should converge is #722, not a decision made here.
+    /// # The single idiom for this, since #722
+    ///
+    /// `SnoozeSliderCell.valueText(_:)` used to answer the same
+    /// sentence-shaped question from the other end: render the whole phrase
+    /// through ``format(_:_:)``, then *locate* the substituted fragment with
+    /// `range(of:)` and restyle it in place. Two idioms for one job, arrived
+    /// at independently, neither doc comment aware of the other and both
+    /// arguing the same motive as though it were theirs alone.
+    ///
+    /// This one won because locate-and-restyle is strictly weaker in two ways
+    /// it cannot be repaired out of:
+    ///
+    ///   * it lays one **uniform** attribute set over the range it found.
+    ///     `alarm_off.body` substitutes `MoneyFormatter.attributed(_:)`, whose
+    ///     attributes are internally *non*-uniform — digits in mono, the
+    ///     narrow space refonted, the ₽ sign its own run — which a single
+    ///     `addAttributes` cannot express;
+    ///   * searching rendered text can find the wrong occurrence. «7» in
+    ///     «7 мин» is unambiguous; an amount that also occurs in the
+    ///     surrounding copy is not, and the search restyles whichever came
+    ///     first without saying so.
+    ///
+    /// What the retired idiom bought — no second lookup over a phrase at most
+    /// a line long — is not worth two answers to one question.
+    /// `AttributedSubstitutionTests` pins the runs of both call sites, so an
+    /// insertion arriving flattened to the surrounding font is a red test
+    /// rather than a slightly paler screen.
     ///
     /// # When the template has no specifier
     ///
-    /// A missing or renamed entry, or a translation that dropped its `%@`,
+    /// A missing or renamed entry, or a translation that dropped its specifier,
     /// reaches ``appendingUnplaceable(template:attributes:replacement:)``:
     /// `replacement` is **appended** rather than dropped, because a sentence
     /// with the amount in an odd place is still readable whereas one silently
@@ -192,21 +214,23 @@ enum Localized {
     static func attributed(
         _ key: String,
         attributes: [NSAttributedString.Key: Any],
-        replacing replacement: NSAttributedString
+        replacing replacement: NSAttributedString,
+        specifier: String = "%@"
     ) -> NSMutableAttributedString {
         let template = optionalText(key) ?? key
-        guard let placeholder = template.range(of: "%@") else {
+        guard let placeholder = template.range(of: specifier) else {
             AppLogger.ui.error(
                 """
                 Localized.attributed: key \(key, privacy: .public) resolved to a template with \
-                no specifier — appending the substituted run to the end of the sentence.
+                no \(specifier, privacy: .public) — appending the substituted run to the end of \
+                the sentence.
                 """
             )
             assertionFailure(
                 """
-                Localized.attributed("\(key)") got a template with no %@. Either the catalogue \
-                entry is missing or renamed, or a translation dropped the specifier. Release \
-                appends the run rather than losing it; fix the entry.
+                Localized.attributed("\(key)") got a template with no \(specifier). Either the \
+                catalogue entry is missing or renamed, or a translation dropped the specifier. \
+                Release appends the run rather than losing it; fix the entry.
                 """
             )
             return appendingUnplaceable(

@@ -208,28 +208,41 @@ final class SnoozeSliderCell: UITableViewCell {
     /// «{N} мин» with the unit dimmed to `fg3` per the V2 slider recipe
     /// (SPScreensV2.jsx:733-751) so the number reads as the headline.
     ///
-    /// The whole phrase is one catalogue string and the number is located in
-    /// the rendered result, rather than the two being concatenated here: a
-    /// language that puts its unit first would otherwise be unable to say so.
+    /// The whole phrase is one catalogue string with the number substituted
+    /// into it, rather than the two being concatenated here: a language that
+    /// puts its unit first would otherwise be unable to say so. That argument
+    /// is not this method's own — it belongs to
+    /// ``Localized/attributed(_:attributes:replacing:specifier:)``, which is
+    /// where every styled substitution in the app now goes.
+    ///
+    /// Until #722 this method made the same argument in its own words and its
+    /// own way: render the phrase through ``Localized/format(_:_:)``, then
+    /// find the number again with `range(of:)` and restyle it in place. Two
+    /// mechanisms for one job, neither citing the other. The one that survived
+    /// is the one that can also place an insertion whose own attributes are
+    /// non-uniform, and that cannot restyle the wrong occurrence.
+    ///
+    /// `specifier` is `%lld` because that is what the entry has held since
+    /// before anything wanted to restyle it; respelling the catalogue for this
+    /// call site's convenience would cost a re-translation. The number is
+    /// rendered through the same locale-aware path it had while the whole
+    /// phrase went through `String(format:locale:)`.
     private static func valueText(_ minutes: Int) -> NSAttributedString {
-        let phrase = Localized.format("create_alarm.snooze.minutes", minutes)
-        let text = NSMutableAttributedString(
-            string: phrase,
+        Localized.attributed(
+            "create_alarm.snooze.minutes",
             attributes: [
                 .font: AppTypography.h4,
                 .foregroundColor: AppColors.fg3
-            ]
-        )
-        if let digits = phrase.range(of: "\(minutes)") {
-            text.addAttributes(
-                [
+            ],
+            replacing: NSAttributedString(
+                string: String(format: "%lld", locale: AppLocale.display, arguments: [minutes]),
+                attributes: [
                     .font: AppTypography.moneyMd,
                     .foregroundColor: AppColors.fg1
-                ],
-                range: NSRange(digits, in: phrase)
-            )
-        }
-        return text
+                ]
+            ),
+            specifier: "%lld"
+        )
     }
 }
 
