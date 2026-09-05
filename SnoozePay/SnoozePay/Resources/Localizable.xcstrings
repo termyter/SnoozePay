@@ -830,7 +830,7 @@
       }
     },
     "common.button.ok" : {
-      "comment" : "Sole action of an informational UIAlertController. Acknowledges, never confirms — no alert using it destroys anything. Spelled «Ок», not «ОК» or «OK» — that is how it reads on screen today.",
+      "comment" : "Sole action of an informational UIAlertController — every one of them, including the referral «Код применён» alert, whose own referral.applied.confirm read Latin «OK» until #751 folded it in here. Acknowledges, never confirms — no alert using it destroys anything. Spelled «Ок», not «ОК» or «OK»: that is how it reads on screen today, and AlertButtonLocalizationTests holds both the spelling and the fact that no second key may carry another one.",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {
@@ -3393,18 +3393,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "откладывания"
-          }
-        }
-      }
-    },
-    "referral.applied.confirm" : {
-      "comment" : "Dismiss button of the referral confirmation alert. Latin «OK» in Russian too, but a translator may need it spelled out, so it goes through the catalogue. Kept in the referral domain rather than common.* because this is the only alert that uses it today (#600).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
           }
         }
       }

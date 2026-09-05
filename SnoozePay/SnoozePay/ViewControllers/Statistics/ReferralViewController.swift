@@ -399,7 +399,7 @@ final class ReferralViewController: UIViewController {
             message: Localized.text("referral.applied.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: Localized.text("referral.applied.confirm"), style: .default))
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
 
