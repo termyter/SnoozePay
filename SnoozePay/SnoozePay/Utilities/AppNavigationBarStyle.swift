@@ -91,6 +91,41 @@ enum AppNavigationBarStyle {
         return navigationController
     }
 
+    // MARK: - Brand controls in the bar (#649, #666)
+
+    /// Wrap a brand control as a bar-button item the bar does not re-decorate.
+    ///
+    /// iOS 26 paints its shared glass capsule OVER a custom view, sampling
+    /// what is behind it. On a control that already draws its own filled
+    /// background that is a translucent copy of our own fill laid over our own
+    /// ink: it lifted the create screen's «Готово» from 7.05:1 to **2.41:1**,
+    /// under WCAG's 3:1 floor, on the terminal action of the screen (#649).
+    /// The `.money` variant itself is fine — the same button measures 6.76:1
+    /// in the wallet header; only the ones inside a navigation bar were
+    /// washed out.
+    ///
+    /// The `.quiet` items opt out for the second reason rather than contrast:
+    /// that pill measures 14.46:1 either way, but the capsule draws a second
+    /// ring around chrome that already has its own fill. The canon has no such
+    /// ring — `SPMore.jsx:313` and `SPMore2.jsx:340` put a bare
+    /// `SPButton variant="quiet" size="sm"` in the picker headers, exactly as
+    /// `SPScreensV2.jsx:525` does on the alarm form.
+    ///
+    /// Lives here rather than on any one screen because three of them build
+    /// such items — the alarm form plus the sound and theme pickers (#666) —
+    /// and a fourth would otherwise copy the recipe again. A `static func` on
+    /// the enum that already owns this app's bar chrome, not a `UIBarButtonItem`
+    /// extension: the call sites are all inside this app, so widening the type
+    /// buys nothing.
+    ///
+    /// `CreateAlarmBarButtonGlassTests` and `AlarmPickerBarButtonGlassTests`
+    /// pin this, and carry the numbers.
+    static func barItem(for control: UIView) -> UIBarButtonItem {
+        let item = UIBarButtonItem(customView: control)
+        item.hidesSharedBackground = true
+        return item
+    }
+
     // MARK: - Bar-less roots (#517)
 
     /// Hide the bar for a tab root that draws its own in-screen header

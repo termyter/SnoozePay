@@ -131,12 +131,18 @@ final class AlarmThemePickerViewController: UIViewController {
         titleLabel.accessibilityLabel = Localized.text("create_alarm.theme_picker.title")
         navigationItem.titleView = titleLabel
 
-        // «Готово» quiet-sm — V3 exit affordance (matches SPMore2.jsx:411).
+        // «Готово» quiet-sm — V3 exit affordance (matches SPMore2.jsx:340).
+        //
+        // Wrapped so the iOS 26 shared glass capsule stays off it (#666): the
+        // canon header is a bare quiet pill, and the capsule would draw a
+        // second ring around a control that already carries its own
+        // `--sp-white-06` fill. Same call the alarm form and the sound picker
+        // make — see `AppNavigationBarStyle.barItem(for:)`.
         let doneButton = SPButton(
             title: Localized.text("common.button.done"), variant: .quiet, size: .sm
         )
         doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneButton)
+        navigationItem.rightBarButtonItem = AppNavigationBarStyle.barItem(for: doneButton)
 
         setupCollectionView()
     }
