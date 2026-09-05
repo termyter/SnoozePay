@@ -105,26 +105,16 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// move both sides of that comparison together and stay green while every
     /// picker row read another sound's word.
     ///
-    /// Until this table existed, every assertion that reddened on that mutation
-    /// lived in **another file**, `AlarmsListSoundNameTests` — `namesBeforeTheCollapse`
-    /// and a bare literal at `testOutOfRangeIndexYieldsNoName`, two anchors that
-    /// do not depend on each other. Both are real: id-keyed and driven through
-    /// the second production reader. But nothing said so except a comment, so
-    /// deleting or narrowing that suite unpinned the names here in silence,
-    /// which is the shape #720 already executed once on the subtitles.
+    /// Until this table existed, everything that reddened on that mutation sat
+    /// in `AlarmsListSoundNameTests` — the file, not one table in it. So
+    /// narrowing that suite unpinned the names here in silence, which is the
+    /// shape #720 already executed once on the subtitles.
     ///
-    /// The claim is about the FILE, not about a single table. Written the other
-    /// way it would be false, and the false version is the tempting one to
-    /// write.
-    ///
-    /// Both tables stay, and the duplication is deliberate. The zones overlap
-    /// rather than divide: the alarms-list reader is pinned to literals from
-    /// here too, transitively, because
-    /// `testAlarmsListStillRendersTheSameWordsAsTheCatalogue` compares it
-    /// against `SoundCatalogue.entries` and this table pins those. What stays
-    /// uniquely with the other file is copy drift at its own reader and the
-    /// fallback for an uncatalogued id. Neither file's expectations are
-    /// computed from the other's, so a typo in either is red where it was made.
+    /// Both tables stay, and the duplication is deliberate: neither file's
+    /// expectations are computed from the other's, so a typo in either is red
+    /// where it was made. Behaviour that lives only in that file — the
+    /// uncatalogued-id fallback and the out-of-range `nil` — stays there;
+    /// `alarmSoundName` has no other caller in the target.
     ///
     /// Transcribed from `Localizable.xcstrings`, where #598 left the
     /// pre-migration literals.
@@ -177,8 +167,9 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// The ten ids **in catalogue order**, written out rather than read from
     /// `SoundCatalogue.ids`. Written out for the same reason as the id-keyed
     /// tables above: an expectation drawn from the value under test agrees with
-    /// any mistake in it. (Counted rather than named, this sentence went stale
-    /// the moment #763 inserted a table between them — hence no ordinals.)
+    /// any mistake in it. Named rather than counted, because a table inserted
+    /// anywhere above shifts every ordinal below it — which is how the earlier
+    /// wording here went stale.
     ///
     /// The order is a product decision, not an implementation detail — it is
     /// the row order of the sound picker, and `SoundCatalogue` says so in prose
