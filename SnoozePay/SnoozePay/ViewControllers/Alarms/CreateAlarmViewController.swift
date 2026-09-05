@@ -121,11 +121,11 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Setup
 
-    /// Both bar items are wrapped by `AppNavigationBarStyle.barItem(for:)`,
-    /// which opts them out of the iOS 26 shared glass capsule. The recipe used
-    /// to live here as a private helper; #666 moved it next to the rest of this
-    /// app's bar chrome once the sound and theme pickers needed the same thing.
-    /// The contrast numbers that motivate it are in that doc comment.
+    /// Builds this screen's two bar items, both through
+    /// `AppNavigationBarStyle.barItem(for:)`, which opts them out of the iOS 26
+    /// shared glass capsule. The contrast numbers that motivate the opt-out —
+    /// and why the recipe lives there rather than here since #666 — are in that
+    /// function's doc comment.
     private func setupNavigationBar() {
         // V2 nav bar. Two modes differ by design (SPMore2.jsx `AlarmEdit`
         // artboard 10 vs `SPScreensV2.jsx` lines 496-502):

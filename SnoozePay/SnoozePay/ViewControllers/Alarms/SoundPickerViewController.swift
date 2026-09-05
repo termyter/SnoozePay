@@ -265,7 +265,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         // selection doesn't auto-pop.
         //
         // Wrapped so the iOS 26 shared glass capsule stays off it (#666): the
-        // canon header at `SPMore.jsx:313` is a bare quiet pill, and the
+        // canon header at
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313`
+        // is a bare quiet pill, and the
         // capsule would draw a second ring around a control that already
         // carries its own `--sp-white-06` fill. Same call the alarm form makes
         // — see `AppNavigationBarStyle.barItem(for:)`.

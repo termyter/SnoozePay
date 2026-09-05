@@ -131,7 +131,11 @@ final class AlarmThemePickerViewController: UIViewController {
         titleLabel.accessibilityLabel = Localized.text("create_alarm.theme_picker.title")
         navigationItem.titleView = titleLabel
 
-        // «Готово» quiet-sm — V3 exit affordance (matches SPMore2.jsx:340).
+        // «Готово» quiet-sm — V3 exit affordance, matching the canon header at
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340`.
+        // The path matters: a second copy of that file under
+        // `docs/design/v2-handoff/` is numbered differently, and the reference
+        // this replaces was reading it.
         //
         // Wrapped so the iOS 26 shared glass capsule stays off it (#666): the
         // canon header is a bare quiet pill, and the capsule would draw a

@@ -107,9 +107,20 @@ enum AppNavigationBarStyle {
     /// The `.quiet` items opt out for the second reason rather than contrast:
     /// that pill measures 14.46:1 either way, but the capsule draws a second
     /// ring around chrome that already has its own fill. The canon has no such
-    /// ring — `SPMore.jsx:313` and `SPMore2.jsx:340` put a bare
-    /// `SPButton variant="quiet" size="sm"` in the picker headers, exactly as
-    /// `SPScreensV2.jsx:525` does on the alarm form.
+    /// ring on any of the three: `SPMore.jsx:313` and `SPMore2.jsx:340` put a
+    /// bare `SPButton variant="quiet" size="sm"` in the picker headers, and
+    /// `SPScreensV2.jsx:525` puts an equally bare pill on the alarm form — in
+    /// the `money` variant, not `quiet`. What the three share is the absence of
+    /// a ring over the button's own fill, NOT the variant: the form's «Готово»
+    /// is the screen's terminal money CTA (`CreateAlarmViewController:170`
+    /// builds it `.money`) and levelling it to `.quiet` would be a regression,
+    /// not consistency.
+    ///
+    /// Line numbers above are into the canon copy,
+    /// `docs/design/snoozepay-2026-04-27/project/components/`. A second,
+    /// differently numbered copy of `SPMore2.jsx` lives under
+    /// `docs/design/v2-handoff/` — naming only the file is how the reference
+    /// this commit corrected came to point at the wrong artboard.
     ///
     /// Lives here rather than on any one screen because three of them build
     /// such items — the alarm form plus the sound and theme pickers (#666) —

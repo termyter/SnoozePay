@@ -9,10 +9,14 @@ import XCTest
 /// button of #649 their contrast is not at stake: the quiet pill measures
 /// 14.46:1 against `bg0` with the capsule and without it. What the capsule
 /// costs here is the shape — it draws a second, wider ring around a control
-/// that already carries its own `--sp-white-06` fill, so two buttons that the
-/// canon draws identically (`SPMore.jsx:313`, `SPMore2.jsx:340`,
-/// `SPScreensV2.jsx:525`) rendered differently depending on which screen you
-/// were on.
+/// that already carries its own `--sp-white-06` fill, so two buttons the canon
+/// draws identically (`SPMore.jsx:313`, `SPMore2.jsx:340`, both
+/// `variant="quiet"`) rendered differently depending on which screen you were
+/// on. The form's «Готово» (`SPScreensV2.jsx:525`) is bare in the canon too,
+/// but it is `variant="money"` — what the three headers share is the absence of
+/// a ring, not the variant. Paths are into
+/// `docs/design/snoozepay-2026-04-27/project/components/`; the copy of
+/// `SPMore2.jsx` under `docs/design/v2-handoff/` is numbered differently.
 ///
 /// Like `CreateAlarmBarButtonGlassTests`, these assertions are structural
 /// rather than photometric on purpose: the extra ring is painted by the
@@ -42,11 +46,24 @@ final class AlarmPickerBarButtonGlassTests: XCTestCase {
     // MARK: - Sound picker
 
     func testSoundPickerDoneButtonOptsOutOfTheSharedGlass() {
-        let item = loaded(makeSoundPicker()).navigationItem.rightBarButtonItem
+        let picker = loaded(makeSoundPicker())
+        let item = picker.navigationItem.rightBarButtonItem
         XCTAssertNotNil(item?.customView, "«Готово» should be a custom-view item")
         XCTAssertTrue(
             item?.hidesSharedBackground == true,
             "The capsule draws a second ring around the quiet pill's own fill"
+        )
+        XCTAssertLessThanOrEqual(
+            picker.navigationItem.rightBarButtonItems?.count ?? 1, 1,
+            """
+            hidesSharedBackground is documented as IGNORED once the item shares \
+            a UIBarButtonItemGroup with another — UIBarButtonItem.h, iOS 26.5 \
+            SDK. A second right item silently brings the capsule back and the \
+            flag assertion above still passes. Written as an upper bound, not \
+            `== 1`: whether setting the singular property leaves the plural one \
+            nil or `[item]` is an implementation detail the SDK header does not \
+            promise, and only the second item is the defect.
+            """
         )
     }
 
@@ -54,19 +71,34 @@ final class AlarmPickerBarButtonGlassTests: XCTestCase {
 
     func testThemePickerDoneButtonOptsOutOfTheSharedGlass() {
         let picker = AlarmThemePickerViewController(currentTheme: .dawn, onSelect: { _ in })
-        let item = loaded(picker).navigationItem.rightBarButtonItem
+        let loadedPicker = loaded(picker)
+        let item = loadedPicker.navigationItem.rightBarButtonItem
         XCTAssertNotNil(item?.customView, "«Готово» should be a custom-view item")
         XCTAssertTrue(
             item?.hidesSharedBackground == true,
             "The capsule draws a second ring around the quiet pill's own fill"
+        )
+        XCTAssertLessThanOrEqual(
+            loadedPicker.navigationItem.rightBarButtonItems?.count ?? 1, 1,
+            """
+            hidesSharedBackground is documented as IGNORED once the item shares \
+            a UIBarButtonItemGroup with another — UIBarButtonItem.h, iOS 26.5 \
+            SDK. A second right item silently brings the capsule back and the \
+            flag assertion above still passes. Written as an upper bound, not \
+            `== 1`: whether setting the singular property leaves the plural one \
+            nil or `[item]` is an implementation detail the SDK header does not \
+            promise, and only the second item is the defect.
+            """
         )
     }
 
     // MARK: - The shared helper
 
     /// The three screens now share one wrapper rather than three copies of it,
-    /// which is what keeps a fourth screen from re-introducing the defect by
-    /// reaching for `UIBarButtonItem(customView:)` directly.
+    /// so there is one place left to get this right. That is all it buys:
+    /// nothing stops a fourth screen from calling `UIBarButtonItem(customView:)`
+    /// directly, and no assertion here would go red if one did. Closing that
+    /// off needs a lint rule, the way `hardcoded_color` closes off raw colours.
     func testSharedHelperOptsTheItemOutAndKeepsTheControl() {
         let control = SPButton(title: "Готово", variant: .quiet, size: .sm)
         let item = AppNavigationBarStyle.barItem(for: control)
