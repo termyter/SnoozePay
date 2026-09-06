@@ -136,12 +136,25 @@ final class SnoozeSliderCell: UITableViewCell {
         contentView.addSubview(minBoundLabel)
         contentView.addSubview(maxBoundLabel)
 
+        // Spans the caps caption and the meta hint so the value can be
+        // centred against the pair rather than against either line.
+        let captionBlock = UILayoutGuide()
+        contentView.addLayoutGuide(captionBlock)
+
         NSLayoutConstraint.activate([
+            captionBlock.topAnchor.constraint(equalTo: captionLabel.topAnchor),
+            captionBlock.bottomAnchor.constraint(equalTo: hintLabel.bottomAnchor),
+
             captionLabel.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor,
                 constant: AppSpacing.cardHorizontalPadding
             ),
-            captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sm),
+            // Card padding 20pt top and bottom — the canon's `SPCard`
+            // default (`SPComponents.jsx` L38, and `padding={20}` explicitly
+            // on this card in `SPScreensV2.jsx`). Was `sm`/`md` (8/12), which
+            // put the caps caption hard against the card's own top edge while
+            // the neighbouring progressive card sat at a roomy 20.
+            captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
 
             hintLabel.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor,
@@ -154,7 +167,12 @@ final class SnoozeSliderCell: UITableViewCell {
                 equalTo: contentView.trailingAnchor,
                 constant: -AppSpacing.cardHorizontalPadding
             ),
-            valueLabel.firstBaselineAnchor.constraint(equalTo: captionLabel.firstBaselineAnchor),
+            // Centred on the caption block, not baseline-locked to its
+            // first line. The canon's `alignItems: baseline` pairs a 12pt
+            // caps line with a 20pt mono readout, so the number's cap
+            // height overshot the caps line and the value read as stuck to
+            // the card's ceiling while the two-line label hung below it.
+            valueLabel.centerYAnchor.constraint(equalTo: captionBlock.centerYAnchor),
             // Reserve a fixed minimum so «1 мин» / «15 мин» don't reflow.
             valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
 
@@ -173,7 +191,7 @@ final class SnoozeSliderCell: UITableViewCell {
             minBoundLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: AppSpacing.sm),
             maxBoundLabel.trailingAnchor.constraint(equalTo: slider.trailingAnchor),
             maxBoundLabel.firstBaselineAnchor.constraint(equalTo: minBoundLabel.firstBaselineAnchor),
-            minBoundLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.md)
+            minBoundLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp5)
         ])
     }
 

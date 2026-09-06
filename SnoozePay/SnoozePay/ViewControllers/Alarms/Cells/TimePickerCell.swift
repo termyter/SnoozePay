@@ -98,7 +98,7 @@ final class TimePickerCell: UITableViewCell {
 
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
-            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp4),
+            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp5),
             stack.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor,
                 constant: AppSpacing.cardHorizontalPadding

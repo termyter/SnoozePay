@@ -21,7 +21,11 @@ final class WalletViewController: UIViewController {
 
     // MARK: - Subviews
 
-    private let scrollView = UIScrollView()
+    private let scrollView: UIScrollView = {
+        let view = UIScrollView()
+        view.showsVerticalScrollIndicator = false
+        return view
+    }()
     private let contentStack = UIStackView()
     private let balanceCard: SPBalanceCard
     private let weeklyChart = WalletWeeklyChartView()

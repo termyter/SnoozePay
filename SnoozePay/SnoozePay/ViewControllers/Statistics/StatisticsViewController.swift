@@ -45,7 +45,11 @@ final class StatisticsViewController: UIViewController {
 
     // MARK: - Layout containers
 
-    let scrollView = UIScrollView()
+    let scrollView: UIScrollView = {
+        let view = UIScrollView()
+        view.showsVerticalScrollIndicator = false
+        return view
+    }()
     let contentStack = UIStackView()
 
     /// Fixed page-title header (#319) — same chrome as Будильники / Кошелёк.
