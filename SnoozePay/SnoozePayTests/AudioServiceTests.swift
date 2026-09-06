@@ -759,6 +759,141 @@ final class AudioServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - Playback volume (#766)
+
+    // Before these, the word `volume` did not appear in this file at all: the
+    // clamp inside `configurePlayerVolume` could have been replaced by
+    // `player.volume = volume` with the whole suite still green. It is the
+    // costliest of the `Alarm.clampedVolume` call sites, because it is the only
+    // one on the playback path — a divergence there changes how loudly a real
+    // alarm rings, not how a number is drawn.
+    //
+    // The fade-in branch is pinned too, which an earlier revision of this file
+    // said was impossible: it claimed `player.volume` reports the ramp's target
+    // only once the ramp completes, so a unit test could not tell a clamped
+    // target from a raw one without waiting 30 seconds. Review disproved it by
+    // running AVFoundation — `volume` answers with the target immediately —
+    // and `testFadeInTargetIsClampedBeforeItReachesThePlayer` below is the
+    // consequence. That test is also what keeps the claim honest: if the
+    // platform ever behaves the way the old comment described, it goes red.
+
+    /// The plain case: an in-range volume must arrive on the player unchanged.
+    /// Pins the wiring rather than the clamp — `startAlarmSound` has to reach
+    /// `configurePlayerVolume` at all — and `0.4` is far enough from both the
+    /// `1.0` default and the `0` a fade-in starts at that neither can fake it.
+    func testStartAlarmSound_putsAnInRangeVolumeOnThePlayerUnchanged() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+
+        service.startAlarmSound(soundID: "nonexistent_test_sound", volume: 0.4)
+
+        XCTAssertEqual(
+            service.state, .playing,
+            "the volume assertion below only means something once a player is owned"
+        )
+        XCTAssertEqual(
+            service.currentPlayerVolume, 0.4,
+            "the requested volume never reached the player"
+        )
+
+        service.stopAlarmSound()
+    }
+
+    /// The branch the clamp exists for. A corrupt persisted `volume` must reach
+    /// the speaker as *full* volume — never as silence, and never as the raw
+    /// non-finite value, which is not a level any audio engine can honour. The
+    /// one failure this app cannot have is an alarm nobody hears.
+    ///
+    /// Expectations are literals on purpose, not `Alarm.clampedVolume(seed)`:
+    /// an oracle computed by the code under test agrees with any clamp,
+    /// including no clamp at all.
+    func testStartAlarmSound_clampsACorruptVolumeBeforeItReachesThePlayer() {
+        let service = AudioService.shared
+
+        for (seed, expected) in [(Float.nan, Float(1.0)), (Float(1.4), Float(1.0)), (Float(-0.2), Float(0.0))] {
+            service.stopAlarmSound()
+            service.startAlarmSound(soundID: "nonexistent_test_sound", volume: seed)
+
+            XCTAssertEqual(service.state, .playing, "no player was owned for seed \(seed)")
+            XCTAssertEqual(
+                service.currentPlayerVolume, expected,
+                "seed \(seed) reached the player as "
+                + "\(String(describing: service.currentPlayerVolume)) instead of \(expected)"
+            )
+        }
+
+        service.stopAlarmSound()
+    }
+
+    /// The fade-in branch of `configurePlayerVolume`, which seeds the player at
+    /// `0` and hands the target to `setVolume(_:fadeDuration:)`.
+    ///
+    /// Reachable synchronously because `AVAudioPlayer.volume` reports the ramp's
+    /// TARGET as soon as the ramp is scheduled — waiting out the 30 seconds is
+    /// not required, and believing otherwise is what left this branch unpinned
+    /// until review ran the platform instead of reasoning about it.
+    ///
+    /// `1.4` is the seed: clamped it reads `1.0`, unclamped it reads `1.4`, and
+    /// the two are exactly what a dropped clamp changes.
+    func testFadeInTargetIsClampedBeforeItReachesThePlayer() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+
+        service.startAlarmSound(soundID: "nonexistent_test_sound", volume: 1.4, fadeIn: true)
+
+        XCTAssertEqual(
+            service.currentPlayerVolume, 1.0,
+            """
+            the fade-in ramp reads \
+            \(String(describing: service.currentPlayerVolume)). 1.4 means the \
+            clamp was dropped — the alarm lands on the wrong ceiling half a \
+            minute in. 0.0 means iOS reports the ramp's CURRENT value rather \
+            than its target. It did not in run 33971777034, where this passed \
+            in 0.038 s, so 0.0 is a platform regression to investigate, not a \
+            test to delete.
+            """
+        )
+
+        service.stopAlarmSound()
+    }
+
+    /// Pins the assumption the two out-of-range rows above rest on.
+    ///
+    /// `AVAudioPlayer.volume` documents the same `0.0…1.0` range `UISlider`
+    /// has, and the seed test for the picker exists precisely because
+    /// `UISlider` clamps an out-of-range assignment itself — reading a control
+    /// that clamps is a green oracle for a screen that does not. Nothing says
+    /// `AVAudioPlayer` behaves differently; it just happens not to today.
+    ///
+    /// If that changes, `1.4` and `-0.2` read back as `1.0` and `0.0` no
+    /// matter what `startAlarmSound` did with them, the killer above collapses
+    /// to the single `.nan` case, and nothing goes red to say so. This test is
+    /// what goes red instead.
+    func testAVAudioPlayerDoesNotClampVolumeItself() throws {
+        let player = try XCTUnwrap(AudioService.generateAlarmTone())
+
+        player.volume = 1.4
+
+        XCTAssertEqual(
+            player.volume, 1.4,
+            """
+            AVAudioPlayer now clamps its own volume, so the 1.4 and -0.2 rows \
+            in testStartAlarmSound_clampsACorruptVolumeBeforeItReachesThePlayer \
+            no longer distinguish a dropped clamp from a working one.
+            """
+        )
+    }
+
+    /// Nothing owned → nothing to report. Keeps the accessor from answering
+    /// `0` for "stopped", which would leave every assertion above ambiguous
+    /// between "clamped to zero" and "no player at all".
+    func testCurrentPlayerVolume_isNilWhileStopped() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+
+        XCTAssertNil(service.currentPlayerVolume)
+    }
+
     /// The IDs are what a support ticket is grepped by, so telling the two
     /// states apart depends on them staying different strings.
     func testAlarmPlayerErrorIDs_areDistinct() {

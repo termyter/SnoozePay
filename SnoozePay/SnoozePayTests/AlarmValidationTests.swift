@@ -107,9 +107,10 @@ final class AlarmValidationTests: XCTestCase {
     func testClampedVolume_isWhatTheValidatingInitApplies() throws {
         // Ties the shared helper to the CONSTRUCTION boundary — `init(validating:)`,
         // not `init(from: Decoder)`. Both call `clampedVolume`, but only this one is
-        // exercised here, and the name used to promise the decode path. Nothing in
-        // the suite currently runs a non-finite or out-of-range `volume` through
-        // `JSONDecoder`; #766 covers that.
+        // exercised here, and the name used to promise the decode path. The
+        // out-of-range half of the decode path is covered below, by
+        // `testDecode_clampsAnOutOfRangeVolumeInsteadOfStoringIt` (#766); the
+        // non-finite half is unreachable through `JSONDecoder`, see there.
         //
         // Both sides call the same function, so this is tautological under a changed
         // clamp and only fires when construction stops routing through the helper —
@@ -213,6 +214,74 @@ final class AlarmValidationTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    // MARK: - The decode path's volume clamp (#766)
+
+    // `init(from: Decoder)` and `init(validating:)` both route through
+    // `Alarm.clampedVolume`, but until now only the second was driven with a
+    // bad value; the decode side was exercised with `0.5`, `0.4` and a missing
+    // key, none of which the clamp touches. Replacing `Self.clampedVolume(raw)`
+    // in the decoder with `raw` left the suite green.
+    //
+    // What JSON can and cannot deliver bounds these tests. There is no NaN
+    // literal in JSON, and `JSONDecoder.nonConformingFloatDecodingStrategy`
+    // defaults to `.throw`, so a stored `"volume"` reaches `clampedVolume`
+    // finite or not at all — the reachable half of the clamp on this path is
+    // the range clamp, and that is what the tests below pin.
+
+    func testDecode_clampsAnOutOfRangeVolumeInsteadOfStoringIt() throws {
+        // Expectations are literals, not `Alarm.clampedVolume(raw)`: an oracle
+        // that calls the code under test stays green under any clamp, including
+        // none. Below/above/absurd, so neither bound can be dropped quietly.
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "-5").volume, 0.0)
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "5").volume, 1.0)
+        // Still inside `Float` (max is about 3.4e38), so the scanner hands it
+        // over and the clamp — not the decoder — is what stops it.
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "1e38").volume, 1.0)
+    }
+
+    func testDecode_leavesAnInRangeVolumeAlone() throws {
+        // The clamp must not "fix" healthy data on the way in: an alarm set to
+        // 40% has to come back off disk at 40%, not at the 1.0 default.
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "0.4").volume, 0.4)
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "0").volume, 0.0)
+        XCTAssertEqual(try decodeLegacyAlarm(volumeJSON: "1").volume, 1.0)
+    }
+
+    func testDecode_missingVolumeKeyRingsAtFullVolume() throws {
+        // Pre-#150 alarms carry no `volume` at all — they must keep ringing at
+        // full volume rather than decoding to silence.
+        XCTAssertEqual(try decodeLegacyAlarm().volume, 1.0)
+    }
+
+    /// The clamp's *non-finite* branch is unreachable through `JSONDecoder`, and
+    /// this is the assertion that says so out loud.
+    ///
+    /// JSON has no NaN or Infinity literal, and the only remaining route — a
+    /// number too large for `Float` — never arrives either: Foundation rejects
+    /// what it cannot represent rather than handing an infinity to
+    /// `init(from:)`, and the default `nonConformingFloatDecodingStrategy` is
+    /// `.throw`. So decode throws, always.
+    ///
+    /// An earlier revision hedged here («whether the payload dies in the scanner
+    /// or survives to be clamped is Foundation's call») and asserted the
+    /// invariant under both branches. That reads as coverage and is not: the
+    /// decode never succeeds, so the interesting branch of the expectation was
+    /// never evaluated and the test could not fail under any mutation. Asserting
+    /// the throw is smaller and true.
+    ///
+    /// The bounded cases above are what kill a dropped decode clamp. This one
+    /// only goes red if Foundation starts delivering non-finite floats — at
+    /// which point the clamp's other branch stops being dead code and wants a
+    /// test of its own.
+    func testDecode_refusesAVolumeTooLargeForFloatRatherThanClampingIt() {
+        XCTAssertThrowsError(try decodeLegacyAlarm(volumeJSON: "1e40")) { error in
+            XCTAssertTrue(
+                error is DecodingError,
+                "expected the decoder to refuse 1e40; it failed with \(error)"
+            )
+        }
+    }
+
     // MARK: - Helper
 
     /// Hand-rolled pre-validation alarm JSON mimicking corrupt legacy storage
@@ -220,8 +289,13 @@ final class AlarmValidationTests: XCTestCase {
     private func decodeLegacyAlarm(
         repeatDaysJSON: String = "[]",
         snoozeMinutesJSON: String = "9",
-        penaltyAmountJSON: String = "50.0"
+        penaltyAmountJSON: String = "50.0",
+        volumeJSON: String? = nil
     ) throws -> Alarm {
+        // `volume` is read with `decodeIfPresent`, and the absent-key fallback
+        // is its own case (`testDecode_missingVolumeKeyRingsAtFullVolume`), so
+        // the key is written only when a caller states a value for it.
+        let volumeEntry = volumeJSON.map { "\"volume\":\($0)," } ?? ""
         let json = """
         {
             "id":"\(UUID().uuidString)",
@@ -233,6 +307,7 @@ final class AlarmValidationTests: XCTestCase {
             "snoozeMinutes":\(snoozeMinutesJSON),
             "penaltyAmount":\(penaltyAmountJSON),
             "progressiveScale":false,
+            \(volumeEntry)
             "enabled":true
         }
         """.data(using: .utf8)!
