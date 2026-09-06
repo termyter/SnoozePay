@@ -306,13 +306,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             // Cold-start: permission callback may fire before SceneDelegate attaches
             // the window. Defer until a scene becomes active rather than dropping silently.
-            guard case let .success(rootVC) = ActiveWindowLocator.rootViewController() else {
-                AppLogger.appDelegate.info("no rootVC yet, deferring notifications-disabled alert")
+            let rootVC: UIViewController
+            switch ActiveWindowLocator.rootViewController() {
+            case let .success(located):
+                rootVC = located
+            case let .failure(miss):
+                // The locator's own sentence rather than "no rootVC yet": only
+                // one of its three states is the cold-launch race the retry
+                // below waits out, and the old line read the same under all
+                // three (#797).
+                AppLogger.appDelegate.info(
+                    "deferring notifications-disabled alert — \(miss.rawValue, privacy: .public)"
+                )
                 self?.deferNotificationsDisabledAlertUntilSceneActive()
                 return
             }
 
-            self?.showNotificationsDisabledAlert(on: rootVC)
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
+            // `AppDelegate.` rather than `Self.`, as at the corrupt-data call
+            // site: `Self` inside an instance method would capture `self`.
+            AppDelegate.showNotificationsDisabledAlert(on: topVC)
         }
     }
 
@@ -339,29 +355,55 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    private func showNotificationsDisabledAlert(on rootVC: UIViewController) {
-        // ⚠️ The `present` at the bottom is still the bare one #752 replaced for
-        // the corrupt-data alert: no drop guard, no completion, no read-back —
-        // so a refusal here leaves neither an alert nor a line. Same defect
-        // class, heavier consequence (this is the warning that alarms will not
-        // fire at all) and a likelier trigger (cold start, from the permission
-        // callback). Tracked in #789, deliberately not fixed here: #752 is
-        // scoped to the corrupt-data alert and its own grep handles.
-        //
-        // Catalogue copy since #752. These two button titles were the last
-        // literal `UIAlertAction` titles in the app: #664 swept the ones that
-        // read as acknowledgements, and «Отмена»/«Настройки» are neither, so
-        // its scan passed over them by design rather than by oversight.
-        //
-        // ⚠️ The title's words are load-bearing outside this file:
-        // `CreateAlarmUITests` finds this alert as `app.alerts["Уведомления
-        // выключены"]`, and E2E only runs behind the `ui-test` label — so a
-        // reworded value would go red on some later PR instead of the one that
-        // changed it. `AppDelegateAlertTests` pins the words in the unit suite,
-        // which always runs.
+    /// Grep handle for the line written once the notifications-disabled alert
+    /// is on screen; ``notificationsAlertDroppedErrorID`` is its pair.
+    ///
+    /// Its own number rather than #752's: that incident is the corrupt-data
+    /// alert, and one handle covering both would answer "was the user warned"
+    /// with lines about a different alert.
+    static let notificationsAlertShownErrorID = "ALARM-789-ALERT-SHOWN"
+
+    /// Grep handle for the line written when the warning never reached anyone.
+    static let notificationsAlertDroppedErrorID = "ALARM-789-ALERT-DROPPED"
+
+    /// Puts the notifications-disabled alert on `topVC`, or writes down that
+    /// the user was never warned (#789).
+    ///
+    /// Static and taking its presenter, like
+    /// ``showAlarmDataCorruptedAlert(on:message:)``: the caller resolves the
+    /// presenter through `UIApplication.shared.connectedScenes`, which a unit
+    /// test cannot stage, and everything worth asserting happens after that.
+    ///
+    /// The drop is decided twice, the shape #752 arrived at: once before
+    /// `present`, where the reason can be named, and once after it by reading
+    /// `presentedViewController` back, which names no reason but misses no
+    /// refusal. This alert says alarms will not fire at all, so a refusal that
+    /// leaves neither an alert nor a line is the worse of the two silences.
+    ///
+    /// ⚠️ The title's words are load-bearing outside this file:
+    /// `CreateAlarmUITests` finds this alert as `app.alerts["Уведомления
+    /// выключены"]`, and E2E only runs behind the `ui-test` label — so a
+    /// reworded value would go red on some later PR instead of the one that
+    /// changed it. `AppDelegateAlertTests` pins the words in the unit suite,
+    /// which always runs.
+    ///
+    /// Catalogue copy since #752. These two button titles were the last
+    /// literal `UIAlertAction` titles in the app at that point: #664 swept the
+    /// ones that read as acknowledgements, and «Отмена»/«Настройки» are
+    /// neither, so its scan passed over them by design rather than by oversight.
+    static func showNotificationsDisabledAlert(on topVC: UIViewController) {
+        let message = Localized.text("permissions.alert.notifications_disabled.message")
+        if let reason = presentationRefusalReason(presenter: topVC) {
+            AppLogger.emit(
+                .appDelegate, .error,
+                notificationsDisabledDroppedLine(reason: reason, message: message)
+            )
+            return
+        }
+
         let alert = UIAlertController(
             title: Localized.text("permissions.alert.notifications_disabled.title"),
-            message: Localized.text("permissions.alert.notifications_disabled.message"),
+            message: message,
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
@@ -371,11 +413,47 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
         })
 
-        var topVC = rootVC
-        while let presented = topVC.presentedViewController {
-            topVC = presented
+        // From the completion, not before the call: UIKit answers a
+        // presentation it cannot perform by doing nothing, so a line written
+        // ahead of `present` claims a warning the user may never have seen.
+        topVC.present(alert, animated: true) {
+            AppLogger.emit(
+                .appDelegate, .error,
+                """
+                [\(AppDelegate.notificationsAlertShownErrorID)] Notifications-disabled alert \
+                shown to the user: \(message)
+                """
+            )
         }
-        topVC.present(alert, animated: true)
+
+        // The guard above names three refusals; UIKit has more and does not
+        // publish them, and for those `present` returns having called no
+        // completion — no alert, no line. Read back rather than timed:
+        // `presentedViewController` is assigned inside `present`, before the
+        // completion runs, so this needs no run loop.
+        guard topVC.presentedViewController === alert else {
+            AppLogger.emit(
+                .appDelegate, .error,
+                notificationsDisabledDroppedLine(
+                    reason: "\(type(of: topVC)) did not put the alert up",
+                    message: message
+                )
+            )
+            return
+        }
+    }
+
+    /// The line to log when the notifications-disabled warning never reached
+    /// the user: the grep handle, why, and the warning that was lost.
+    ///
+    /// Both drop sites go through it for the reason
+    /// ``droppedAlertLine(reason:message:)`` exists on the other alert — the
+    /// drops are found by one grep or by none.
+    static func notificationsDisabledDroppedLine(reason: String, message: String) -> String {
+        """
+        [\(AppDelegate.notificationsAlertDroppedErrorID)] Notifications-disabled alert dropped — \(reason). \
+        Unshown warning: \(message)
+        """
     }
 }
 
@@ -828,17 +906,27 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     static func droppedAlertDiagnostic(
         presenter topVC: UIViewController, message: String
     ) -> String? {
-        let reason: String
-        if topVC.viewIfLoaded?.window == nil {
-            reason = "\(type(of: topVC)) is not in the window hierarchy"
-        } else if topVC.isBeingDismissed {
-            reason = "\(type(of: topVC)) is being dismissed"
-        } else if topVC.isBeingPresented {
-            reason = "\(type(of: topVC)) is itself still being presented"
-        } else {
-            return nil
-        }
+        guard let reason = presentationRefusalReason(presenter: topVC) else { return nil }
         return droppedAlertLine(reason: reason, message: message)
+    }
+
+    /// Why `topVC` would refuse to present, or `nil` when it is free to.
+    ///
+    /// Shared by both alerts rather than listed twice: a fourth state added to
+    /// one copy and not to the other is a state one alert reports and the other
+    /// drops silently. Only the wrapping line differs, so only that is
+    /// duplicated.
+    static func presentationRefusalReason(presenter topVC: UIViewController) -> String? {
+        if topVC.viewIfLoaded?.window == nil {
+            return "\(type(of: topVC)) is not in the window hierarchy"
+        }
+        if topVC.isBeingDismissed {
+            return "\(type(of: topVC)) is being dismissed"
+        }
+        if topVC.isBeingPresented {
+            return "\(type(of: topVC)) is itself still being presented"
+        }
+        return nil
     }
 
     /// The single shape every "the user never saw it" line takes: the grep
