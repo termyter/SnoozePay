@@ -62,8 +62,22 @@ final class AlarmFiringPresenter {
         AlarmFiringPresenter.locatedTopViewController()
     }
 
-    /// Mounts the firing screen for `alarmID`, returning `false` only when there
-    /// was no window to present on (the retry signal). Seam so the pending /
+    /// Takes the stale firing screen down before the replacement goes up:
+    /// `dismiss(animated:completion:)` in production.
+    ///
+    /// A seam for the same reason ``locateHost`` is one, one step further out.
+    /// The swap's second half runs in a completion UIKit calls, so from a test
+    /// the whole branch is one call with no return value: what it does after
+    /// the dismissal — whether it re-resolves a host at all, and what it does
+    /// when there is none (#798) — is unreachable. Holding the completion as a
+    /// value makes both of its outcomes reachable, and running it is the test's
+    /// stand-in for "the dismissal finished".
+    var dismissStaleScreen: (UIViewController, @escaping () -> Void) -> Void = { staleScreen, completion in
+        staleScreen.dismiss(animated: false, completion: completion)
+    }
+
+    /// Mounts the firing screen for `alarmID`, returning `false` when the screen
+    /// is not up by the time it returns (the retry signal). Seam so the pending /
     /// flush logic is unit-testable without standing up the VC hierarchy;
     /// production points at the real `present(alarmID:snoozeCount:)`.
     lazy var mount: (UUID, Int) -> Bool = { [weak self] alarmID, snoozeCount in
@@ -140,8 +154,9 @@ final class AlarmFiringPresenter {
     ///
     /// Returns `true` when a firing screen was mounted (or the alarm was
     /// resolved-but-missing, a terminal outcome that must not be retried), and
-    /// `false` only when there was no window to present on — the single signal
-    /// the pending-present retry (#382) keys off.
+    /// `false` when it was not up by the time this returned — the signal the
+    /// pending-present retry (#382) keys off. See `present(alarm:snoozeCount:)`
+    /// for the two states behind that `false`.
     @discardableResult
     func present(alarmID: UUID, snoozeCount: Int = 0) -> Bool {
         let alarm: Alarm?
@@ -170,11 +185,15 @@ final class AlarmFiringPresenter {
     /// source shares the "dismiss any stale firing screen first, then present
     /// full-screen on the topmost VC" behaviour.
     ///
-    /// Returns `false` when nothing can host the presentation yet — no scene,
-    /// no windows, or no window carrying a root (the cold-launch race) — so the
-    /// AlarmKit pending-present (#382) knows to retry on scene-active; `true`
-    /// once the present has been issued. Which of the three it was goes to the
-    /// log, because they are not fixed the same way.
+    /// Returns `true` only when the present has been issued by the time it
+    /// returns. `false` covers both ways that can fail to happen: nothing can
+    /// host the presentation yet — no scene, no windows, or no window carrying
+    /// a root (the cold-launch race), which of the three goes to the log
+    /// because they are not fixed the same way — and the re-entry swap below,
+    /// which cannot finish before its dismissal completion runs. Both leave the
+    /// alarm pending for the AlarmKit retry (#382); the swap clears it from the
+    /// completion once the screen is actually up, so the retry is left armed
+    /// exactly for the case where it never was (#798).
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
         let topVC: UIViewController
@@ -208,15 +227,63 @@ final class AlarmFiringPresenter {
         // If an alarm firing screen is already showing, swap it for this one so
         // a stacking alarm (or a re-entry from a different trigger source for
         // the same firing) doesn't trip "already presenting".
+        //
+        // The swap finishes in a completion whose timing is UIKit's, so "not
+        // mounted yet" is the only answer this function can stand behind; the
+        // completion clears the pending id itself once the present has actually
+        // been issued. Answering `true` reported a screen that had not gone up,
+        // and when the completion then found no host it never went up at all:
+        // `attemptPendingPresentation` had already dropped `pendingAlarmID` on
+        // the strength of that `true`, so nothing retried and the alarm went
+        // unanswered with no line anywhere (#798).
         if let presentedFiring = Self.presentedFiringScreen(from: topVC) {
-            presentedFiring.dismiss(animated: false) {
-                Self.topViewController()?.present(firingVC, animated: false)
+            dismissStaleScreen(presentedFiring) { [weak self] in
+                self?.mountAfterDismissal(firingVC, alarmID: alarm.id)
             }
-            return true
+            return false
         }
 
         topVC.present(firingVC, animated: false)
         return true
+    }
+
+    /// Second half of the swap above: put `firingVC` up now that the stale
+    /// firing screen has gone.
+    ///
+    /// Re-resolves the host rather than reusing the one `present` found: when
+    /// UIKit calls this is UIKit's business, and the window the host came from
+    /// can be gone by then — the scene backgrounded, the window detached. That
+    /// case is the whole of #798. The old code re-resolved too, through
+    /// `Self.topViewController()?`, but an optional chain that evaluates to
+    /// nothing leaves no screen, no line and — since `present` had already
+    /// answered `true` — no retry either.
+    ///
+    /// Through ``locateHost`` rather than the static walk so this path answers
+    /// to the same seam the branch above does — it was the one place in the
+    /// class that went around it.
+    private func mountAfterDismissal(_ firingVC: UIViewController, alarmID: UUID) {
+        switch locateHost() {
+        case let .success(top):
+            top.present(firingVC, animated: false)
+            // Only this alarm's deferral: a direct `present(alarm:)` from the
+            // notification path can land while a different alarm sits pending
+            // from AlarmKit, and clearing that one would drop the screen this
+            // fix exists to keep.
+            if pendingAlarmID == alarmID {
+                pendingAlarmID = nil
+            }
+        case let .failure(miss):
+            AppLogger.emit(
+                .appDelegate, .error,
+                "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending"
+            )
+            // Arm the scene-active retry (#382) instead of stopping the audio
+            // the way the give-up branch above does. That branch is terminal;
+            // this one is not — the screen can still go up on the next
+            // activation, and silencing an alarm that may yet be answered takes
+            // away the only cue the user has left.
+            pendingAlarmID = alarmID
+        }
     }
 
     // MARK: - Hierarchy walk
@@ -250,14 +317,6 @@ final class AlarmFiringPresenter {
             }
             return .success(topVC)
         }
-    }
-
-    /// ``locatedTopViewController()`` for the caller that re-resolves the top
-    /// VC inside a dismissal completion and has nothing to say about why it
-    /// might be gone. Kept as its own one-liner so the reason-carrying form
-    /// stays the one used where the miss is logged.
-    private static func topViewController() -> UIViewController? {
-        try? locatedTopViewController().get()
     }
 
     /// Returns the currently-presented `AlarmFiringViewController` anywhere up
