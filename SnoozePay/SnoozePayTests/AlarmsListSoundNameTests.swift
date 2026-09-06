@@ -51,8 +51,19 @@ import XCTest
 /// model against `SoundCatalogue.entries`, i.e. catalogue against catalogue.
 /// After the collapse both sides read one key, so that comparison can no longer
 /// fail on a wrong word; it now only proves the two call sites agree. The
-/// hardcoded Russian below is what still fails when the *copy* moves, and it
-/// belongs with the reader it protects.
+/// hardcoded Russian below is what still fails when the *copy* moves at this
+/// reader, and it belongs with the reader it protects. It has never been the
+/// only place a moved word reddens — `SoundCatalogueCopyTests` pins key → word
+/// in its `copy` table. What #763 added there is the id → word half for the
+/// names; the subtitles have had one since #755.
+///
+/// What that suite no longer does is *depend* on the table below. Until #763
+/// its own name expectation was looked up through `SoundCatalogue.nameKey(for:)`
+/// — the builder it was checking — so this file was the only place a permuted
+/// builder reddened, and deleting this suite would have unpinned the names
+/// project-wide without a single red run. It now carries its own id-keyed
+/// `namesBySoundID`. The two transcriptions are independent by design: each is
+/// checked against the catalogue, neither is derived from the other.
 ///
 /// # The fallback is behaviour, not a detail
 ///
@@ -78,6 +89,12 @@ final class AlarmsListSoundNameTests: XCTestCase {
 
     /// The ten words the deleted lookup table held, keyed by sound id.
     /// Transcribed from the pre-#599 literals.
+    ///
+    /// `SoundCatalogueCopyTests.namesBySoundID` holds the same ten words for
+    /// the picker's reader. Duplicated rather than shared on purpose (#763):
+    /// one shared table would live in one file, and narrowing that file would
+    /// unpin the other reader in silence — the shape #720 executed once on the
+    /// subtitles.
     private static let namesBeforeTheCollapse: [String: String] = [
         "dawn": "Рассвет",
         "radar": "Радар",

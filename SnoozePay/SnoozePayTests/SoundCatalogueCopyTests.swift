@@ -18,7 +18,8 @@ import XCTest
 ///     read back out of the file under test. A list derived from the catalogue
 ///     would agree with any mistake in it. Keys, though, are not ids: this
 ///     layer says the words exist under the right key, not that the right
-///     sound reaches them. ``subtitlesBySoundID`` is the second half.
+///     sound reaches them. ``namesBySoundID`` and ``subtitlesBySoundID`` are
+///     the second half, one per column.
 ///  3. **Call-site layer** — the production accessors are invoked and what
 ///     they return is compared against the catalogue. Layers 1 and 2 are blind
 ///     to a typo in the *key* at the call site, because there the catalogue
@@ -93,6 +94,43 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "create_alarm.sound.subtitle.custom": "Скоро"
     ]
 
+    /// The ten display names keyed by **sound id** rather than by catalogue
+    /// key. That difference is the whole reason the table exists (#763), and it
+    /// is the same argument ``subtitlesBySoundID`` makes below for the other
+    /// column.
+    ///
+    /// ``copy`` above pins *key → words*, so a name expectation drawn from it
+    /// has to be looked up through `nameKey(for:)` — the very builder layer 3
+    /// checks. A `nameKey(for:)` that handed each id another sound's key would
+    /// move both sides of that comparison together and stay green while every
+    /// picker row read another sound's word.
+    ///
+    /// Until this table existed, everything that reddened on that mutation sat
+    /// in `AlarmsListSoundNameTests` — the file, not one table in it. So
+    /// narrowing that suite unpinned the names here in silence, which is the
+    /// shape #720 already executed once on the subtitles.
+    ///
+    /// Both id → name tables stay — this one and `namesBeforeTheCollapse`
+    /// there. Neither is derived from the other, so deleting either suite
+    /// leaves the names pinned by the one that remains. Behaviour that lives
+    /// only in that file — the uncatalogued-id fallback and the out-of-range
+    /// `nil` — stays there.
+    ///
+    /// Transcribed from `Localizable.xcstrings`, where #598 left the
+    /// pre-migration literals.
+    private static let namesBySoundID: [String: String] = [
+        "dawn": "Рассвет",
+        "radar": "Радар",
+        "drops": "Капли",
+        "piano": "Пиано",
+        "guitar": "Гитара",
+        "bell": "Колокольчик",
+        "waves": "Волны",
+        "birds": "Птицы",
+        "classic": "Классика",
+        "jazz": "Джаз"
+    ]
+
     /// The ten descriptive subtitles keyed by **sound id** rather than by
     /// catalogue key. That difference is the whole reason the table exists.
     ///
@@ -108,12 +146,11 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// This table is the outside view. It states which words belong to which
     /// id, and nothing in `SoundCatalogue` can move it.
     ///
-    /// The name column already has one — `namesBeforeTheCollapse` in
-    /// `AlarmsListSoundNameTests`, keyed by id and driven through the
-    /// alarms-list reader — so a permuted `nameKey(for:)` reddens there. The
-    /// subtitle column had none anywhere: #720 deleted the last id → words
-    /// pinning along with `subtitle(for:)`. Transcribed from
-    /// `Localizable.xcstrings`, where #598 left the pre-migration literals.
+    /// The name column has ``namesBySoundID`` above for the same reason; when
+    /// #755 wrote this table the subtitle column had no id → words pinning
+    /// anywhere, because #720 had deleted the last one along with
+    /// `subtitle(for:)`. Transcribed from `Localizable.xcstrings`, where #598
+    /// left the pre-migration literals.
     private static let subtitlesBySoundID: [String: String] = [
         "dawn": "Тёплый рассвет с птицами",
         "radar": "Нарастающий сигнал тревоги",
@@ -128,9 +165,11 @@ final class SoundCatalogueCopyTests: XCTestCase {
     ]
 
     /// The ten ids **in catalogue order**, written out rather than read from
-    /// `SoundCatalogue.ids`. This is the third table for the same reason as the
-    /// second: an expectation drawn from the value under test agrees with any
-    /// mistake in it.
+    /// `SoundCatalogue.ids`. Written out for the same reason as the id-keyed
+    /// tables above: an expectation drawn from the value under test agrees with
+    /// any mistake in it. Not counted: a table inserted anywhere above shifts
+    /// every ordinal below it, which is how the earlier wording here went
+    /// stale.
     ///
     /// The order is a product decision, not an implementation detail — it is
     /// the row order of the sound picker, and `SoundCatalogue` says so in prose
@@ -203,6 +242,20 @@ final class SoundCatalogueCopyTests: XCTestCase {
         XCTAssertEqual(
             Set(Self.subtitlesBySoundID.values).count, Self.subtitlesBySoundID.count,
             "two sounds are pinned to the same subtitle — a swap between them would pass"
+        )
+    }
+
+    /// The same two properties for the name oracle. An id it quietly stops
+    /// covering is an id it stops failing for, and two ids pinned to one word
+    /// would let a `nameKey(for:)` that swaps those two pass.
+    func testEverySoundIDIsPinnedToItsOwnName() {
+        XCTAssertEqual(
+            Set(SoundCatalogue.ids), Set(Self.namesBySoundID.keys),
+            "the id → name table no longer covers exactly the catalogue"
+        )
+        XCTAssertEqual(
+            Set(Self.namesBySoundID.values).count, Self.namesBySoundID.count,
+            "two sounds are pinned to the same name — a swap between them would pass"
         )
     }
 
@@ -282,20 +335,23 @@ final class SoundCatalogueCopyTests: XCTestCase {
 
     // MARK: - Layer 3: what SoundCatalogue hands back
 
-    func testEntriesReadAsCopyRatherThanAsKeys() throws {
+    func testEntriesReadAsCopyRatherThanAsKeys() {
         let entries = SoundCatalogue.entries
         // Against the literal lineup, not against `SoundCatalogue.ids`: this
         // line used to read `ids` on both sides and so asserted nothing about
         // the order it appears to be checking (#762).
         XCTAssertEqual(entries.map { $0.id }, Self.idsInCatalogueOrder)
         for entry in entries {
-            // Looked up BY the key builder it checks, so it is blind to a
-            // `nameKey(for:)` that points each id at another sound's key: both
-            // sides move together. What reddens on that is the id-keyed
-            // `namesBeforeTheCollapse` in `AlarmsListSoundNameTests`, driving
-            // the other production reader of these ten keys.
-            let name = try XCTUnwrap(Self.copy[SoundCatalogue.nameKey(for: entry.id)])
-            XCTAssertEqual(entry.name, name)
+            // Keyed by id and never routed through `nameKey(for:)`, so a
+            // builder that points each id at another sound's key fails here
+            // instead of moving both sides of the comparison together (#763).
+            // It used to read `copy[nameKey(for: entry.id)]`, and everything
+            // that reddened on that mutation sat in `AlarmsListSoundNameTests`
+            // — someone else's file, two anchors inside it.
+            XCTAssertEqual(
+                entry.name, Self.namesBySoundID[entry.id],
+                "'\(entry.id)' reads the name of another sound — nameKey is wired to the wrong id"
+            )
             // The subtitle expectation is keyed by id and never touches
             // `subtitleKey(for:)`, so a permuted builder fails here rather than
             // agreeing with itself.
@@ -337,6 +393,10 @@ final class SoundCatalogueCopyTests: XCTestCase {
         for sound in viewModel.availableSounds {
             XCTAssertNotEqual(sound.name, SoundCatalogue.nameKey(for: sound.id))
             XCTAssertNotEqual(sound.subtitle, SoundCatalogue.subtitleKey(for: sound.id))
+            XCTAssertEqual(
+                sound.name, Self.namesBySoundID[sound.id],
+                "the picker would render another sound's name under '\(sound.id)'"
+            )
             XCTAssertEqual(
                 sound.subtitle, Self.subtitlesBySoundID[sound.id],
                 "the picker would render another sound's description under '\(sound.id)'"
