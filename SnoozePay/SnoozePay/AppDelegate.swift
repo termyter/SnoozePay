@@ -376,9 +376,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ///
     /// The drop is decided twice, the shape #752 arrived at: once before
     /// `present`, where the reason can be named, and once after it by reading
-    /// `presentedViewController` back, which names no reason but misses no
-    /// refusal. This alert says alarms will not fire at all, so a refusal that
-    /// leaves neither an alert nor a line is the worse of the two silences.
+    /// `presentedViewController` back, which names no reason but covers every
+    /// refusal `present` declines outright. One remainder survives both, here
+    /// as in #752: a presentation that starts and is then torn down before the
+    /// completion runs leaves neither line. This alert says alarms will not
+    /// fire at all, so a refusal that leaves neither an alert nor a line is the
+    /// worse of the two silences.
     ///
     /// ⚠️ The title's words are load-bearing outside this file:
     /// `CreateAlarmUITests` finds this alert as `app.alerts["Уведомления
