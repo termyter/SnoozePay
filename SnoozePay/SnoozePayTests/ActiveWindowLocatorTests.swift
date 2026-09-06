@@ -25,11 +25,13 @@ private struct SceneCandidate {
 private struct WindowCandidate {
     let name: String
     let isKeyWindow: Bool
-    /// Whether the window carries a root view controller, i.e. whether it can
-    /// host a presentation at all. `var` with a default so the tests that only
-    /// care about the key/first choice stay written the way they were; the ones
-    /// about a key-but-rootless system window say `hasRoot: false` out loud.
-    var hasRoot: Bool = true
+    /// Whether this window is a place the app may mount a full-screen
+    /// controller: live that means a root view controller AND `windowLevel ==
+    /// .normal` (see ``ActiveWindowLocator``). `var` with a default so the
+    /// tests that only care about the key/first choice stay written the way
+    /// they were; the ones about a key system window say `canHost: false` out
+    /// loud.
+    var canHost: Bool = true
 }
 
 /// The selection that decides where an alert or the firing screen lands.
@@ -277,6 +279,78 @@ final class ActiveWindowLocatorTests: XCTestCase {
         detach(hostingWindow, rootlessKeyWindow)
     }
 
+    /// The half a root check cannot cover: a key system window that DOES carry
+    /// a root.
+    ///
+    /// Filtering candidates by "has a root" keeps out the rootless system
+    /// windows and nothing else — a window above `.normal` that carries a root
+    /// passes the filter and then wins on key status, which is exactly what
+    /// `first(where: \.isKeyWindow)` aims at and the old `.first` practically
+    /// never reached. Whether any particular system window carries a root is
+    /// not asserted here and does not matter: the app declares
+    /// `UIApplicationSupportsMultipleScenes = false` and creates one window
+    /// (`SceneDelegate.swift:20`), so every other window in the scene is
+    /// UIKit's, and `.normal` is the right filter in both directions.
+    ///
+    /// Landing above `.normal` is not merely cosmetic. `AlarmFiringPresenter`
+    /// would mount the firing screen over a system surface, and
+    /// `isLaunchRootReady()` would read the #382 "not over the splash" gate off
+    /// a root that is not the app's — answering `true` for a window that never
+    /// had a splash — while `ALARM-752-ALERT-SHOWN` reports SHOWN either way.
+    ///
+    /// Staged on live `UIWindow`s rather than stand-ins because the property
+    /// under test is the one `rootViewController(among:)` passes to `canHost`,
+    /// and a stand-in would supply it instead of reading it.
+    func testRootViewController_whenAnAboveNormalWindowIsKey_staysAtTheAppsOwnLevel() {
+        previousKeyWindow = currentKeyWindow()
+        guard let scene = hostWindowScene() else { return }
+
+        let appWindow = makeWindow(in: scene)
+        let systemWindow = makeWindow(in: scene)
+        systemWindow.windowLevel = .alert
+        systemWindow.makeKeyAndVisible()
+
+        XCTAssertTrue(
+            systemWindow.isKeyWindow,
+            "test precondition: the above-normal window has to actually hold key status"
+        )
+        XCTAssertNotNil(
+            systemWindow.rootViewController,
+            "test precondition: this case is about a system window that DOES carry a root"
+        )
+
+        let located = ActiveWindowLocator.rootViewController(among: Array(UIApplication.shared.connectedScenes))
+        let attached = scene.windows.count
+        let atNormalLevel = scene.windows.filter { $0.windowLevel == UIWindow.Level.normal }.count
+
+        guard let picked = try? located.get() else {
+            XCTFail(
+                """
+                answered «nothing to present on» while \(attached) windows were \
+                attached and \(atNormalLevel) of them sit at level .normal — \
+                filtering out UIKit's overlays must not empty the candidate list
+                """
+            )
+            detach(appWindow, systemWindow)
+            return
+        }
+
+        let owner = scene.windows.first { $0.rootViewController === picked }
+        let landedIn = owner.map { "a window at level \($0.windowLevel.rawValue)" } ?? "no window of this scene"
+        XCTAssertEqual(
+            owner?.windowLevel, UIWindow.Level.normal,
+            """
+            the presentation has to land at level .normal, the app's own; it \
+            landed in \(landedIn). On this branch that means the key-window \
+            preference reached an overlay UIKit owns: the firing screen would \
+            mount over a system surface and isLaunchRootReady() would read the \
+            #382 splash gate off somebody else's root
+            """
+        )
+
+        detach(appWindow, systemWindow)
+    }
+
     func testRootViewController_withNoScenes_reportsThatNoSceneIsAttached() {
         let located = ActiveWindowLocator.rootViewController(among: [])
 
@@ -295,14 +369,14 @@ final class ActiveWindowLocatorTests: XCTestCase {
 
     // MARK: - Hosting window: the three states behind the old single nil
 
-    func testHostingWindow_prefersAWindowWithARoot_overTheKeyWindowWithoutOne() {
+    func testHostingWindow_prefersAWindowThatCanHostIt_overTheKeyWindowThatCannot() {
         let windows = [
-            WindowCandidate(name: "app window", isKeyWindow: false, hasRoot: true),
-            WindowCandidate(name: "keyboard", isKeyWindow: true, hasRoot: false)
+            WindowCandidate(name: "app window", isKeyWindow: false, canHost: true),
+            WindowCandidate(name: "keyboard", isKeyWindow: true, canHost: false)
         ]
 
         let located = ActiveWindowLocator.hostingWindow(
-            among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot
+            among: windows, isKeyWindow: \.isKeyWindow, canHost: \.canHost
         )
 
         guard let picked = try? located.get() else {
@@ -316,7 +390,7 @@ final class ActiveWindowLocatorTests: XCTestCase {
 
     func testHostingWindow_withNoWindows_reportsAnEmptyScene() {
         let located = ActiveWindowLocator.hostingWindow(
-            among: [WindowCandidate](), isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot
+            among: [WindowCandidate](), isKeyWindow: \.isKeyWindow, canHost: \.canHost
         )
 
         guard case let .failure(miss) = located else {
@@ -328,14 +402,14 @@ final class ActiveWindowLocatorTests: XCTestCase {
         )
     }
 
-    func testHostingWindow_withNoWindowCarryingARoot_reportsThatSeparately() {
+    func testHostingWindow_withNoWindowAbleToHostIt_reportsThatSeparately() {
         let windows = [
-            WindowCandidate(name: "keyboard", isKeyWindow: true, hasRoot: false),
-            WindowCandidate(name: "overlay", isKeyWindow: false, hasRoot: false)
+            WindowCandidate(name: "keyboard", isKeyWindow: true, canHost: false),
+            WindowCandidate(name: "overlay", isKeyWindow: false, canHost: false)
         ]
 
         let located = ActiveWindowLocator.hostingWindow(
-            among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot
+            among: windows, isKeyWindow: \.isKeyWindow, canHost: \.canHost
         )
 
         guard case let .failure(miss) = located else {
@@ -367,16 +441,16 @@ final class ActiveWindowLocatorTests: XCTestCase {
 
     func testHostingWindow_fallingBackToANonKeyWindow_leavesANotice() {
         let windows = [
-            WindowCandidate(name: "app window", isKeyWindow: false, hasRoot: true),
-            WindowCandidate(name: "keyboard", isKeyWindow: true, hasRoot: false)
+            WindowCandidate(name: "app window", isKeyWindow: false, canHost: true),
+            WindowCandidate(name: "keyboard", isKeyWindow: true, canHost: false)
         ]
 
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
         _ = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
-            ActiveWindowLocator.hostingWindow(among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot)
+            ActiveWindowLocator.hostingWindow(among: windows, isKeyWindow: \.isKeyWindow, canHost: \.canHost)
         })
 
-        guard let notice = lines.first(where: { $0.message.contains("no key window with a root") }) else {
+        guard let notice = lines.first(where: { $0.message.contains("no key window that can host it") }) else {
             return XCTFail(
                 """
                 ALARM-752-ALERT-SHOWN reads the same whether the alert landed in \
@@ -393,13 +467,13 @@ final class ActiveWindowLocatorTests: XCTestCase {
 
     func testHostingWindow_whenTheKeyWindowCanHostIt_saysNothing() {
         let windows = [
-            WindowCandidate(name: "app window", isKeyWindow: true, hasRoot: true),
-            WindowCandidate(name: "other", isKeyWindow: false, hasRoot: true)
+            WindowCandidate(name: "app window", isKeyWindow: true, canHost: true),
+            WindowCandidate(name: "other", isKeyWindow: false, canHost: true)
         ]
 
         var lines: [String] = []
         _ = AppLogger.withTestSink({ lines.append($2) }, perform: {
-            ActiveWindowLocator.hostingWindow(among: windows, isKeyWindow: \.isKeyWindow, hasRoot: \.hasRoot)
+            ActiveWindowLocator.hostingWindow(among: windows, isKeyWindow: \.isKeyWindow, canHost: \.canHost)
         })
 
         XCTAssertTrue(

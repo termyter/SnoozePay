@@ -10,28 +10,50 @@ import os
 /// `connectedScenes.compactMap { $0 as? UIWindowScene }.first` and then
 /// `windowScene.windows.first`. Neither collection promises an order, so both
 /// `.first` calls picked an arbitrary member — an arbitrary scene, then an
-/// arbitrary window of it. On a one-window iPhone that is indistinguishable
-/// from the right answer, which is why it survived every run; with a second
-/// window (Stage Manager, an iPad side-by-side scene, a transient system
-/// window) it silently aims the presentation somewhere nobody is looking, and
-/// the #752 read-back then reports the alert as SHOWN because it genuinely was
-/// — in a window off screen.
+/// arbitrary window of it. While the scene holds a single window that is
+/// indistinguishable from the right answer, which is why it survived every
+/// run; with a second window it silently aims the presentation somewhere
+/// nobody is looking, and the #752 read-back then reports the alert as SHOWN
+/// because it genuinely was — in a window off screen.
 ///
-/// # Why only windows that already carry a root are candidates
+/// The second window is never one of ours. `Info.plist` declares
+/// `UIApplicationSupportsMultipleScenes = false`, so the process gets one
+/// `UIWindowScene`, and the app calls `UIWindow(` in exactly one place
+/// (`SceneDelegate.swift:20`). Everything else in `scene.windows` is UIKit's
+/// own — the keyboard's, an alert's, some system overlay. So the whole
+/// selection comes down to one question: present in a system window, or in
+/// ours.
+///
+/// # Why the candidates are the windows that can HOST a presentation
 ///
 /// Preferring the key window is not a free strictening, and the first revision
 /// of this file claimed it was ("no worse than the old `.first`"). It is worse
-/// on exactly one state, and that state is ordinary: the app's own window is
-/// created first, while transient system windows — the keyboard's, an alert's —
-/// attach later and can hold key status while carrying NO root view controller.
-/// The old `.first` practically never landed on those; `first(where:
-/// \.isKeyWindow)` aims straight at them. Reading a nil root off the winner
-/// would then drop the presentation with a perfectly good sibling window
-/// standing next to it: the firing screen never rises, `AlarmFiringPresenter`
-/// stops the audio, and an alarm goes silent because a keyboard was up.
+/// on one ordinary state: the app's own window is created first, while UIKit's
+/// windows attach later and can hold key status. The old `.first` practically
+/// never landed on those; `first(where: \.isKeyWindow)` aims straight at them.
 ///
-/// So the preference runs over the windows that can actually host a
-/// presentation, and "the key one, else the first" picks among those.
+/// So the candidates are filtered by whether the app may mount a full-screen
+/// controller in that window at all, and that takes two properties, not one:
+///
+///   * **a root view controller.** Reading a nil root off the winner drops the
+///     presentation with a perfectly good sibling window standing next to it:
+///     the firing screen never rises, `AlarmFiringPresenter` stops the audio,
+///     and an alarm goes silent because a keyboard was up.
+///   * **`windowLevel == .normal`.** A window above `.normal` is UIKit's
+///     overlay ON the app, not the app. Presenting into one puts the firing
+///     screen over a system surface, and — louder — hands
+///     `AlarmFiringPresenter.isLaunchRootReady()` a root that is not ours to
+///     read the #382 "do not mount over the splash" gate off: it answers
+///     `true` for a window that never had a splash to begin with, and
+///     `ALARM-752-ALERT-SHOWN` reports SHOWN either way.
+///
+/// The root check alone does not cover the second: a system window that DOES
+/// carry a root passes it and then wins on key status. Whether any particular
+/// system window carries one is not measured here and does not need to be —
+/// `.normal` is the right filter in both directions, since a window this app
+/// never created is not a place this app presents regardless of its root.
+///
+/// "The key one, else the first" then picks among what is left.
 ///
 /// # Why both fallbacks are non-negotiable, and why they now say so
 ///
@@ -55,11 +77,19 @@ import os
 /// ``preferredScene(among:activationState:)`` and
 /// ``preferredWindow(among:isKeyWindow:)`` are the choice and nothing else.
 /// ``hostingScene(among:activationState:)`` and
-/// ``hostingWindow(among:isKeyWindow:hasRoot:)`` wrap them with the two things
+/// ``hostingWindow(among:isKeyWindow:canHost:)`` wrap them with the two things
 /// nobody downstream can reconstruct: WHICH empty state was hit, and whether a
-/// fallback fired. The logging sits there rather than in
-/// ``rootViewController(among:)`` because that one needs live UIKit, and a
-/// notice only a device can provoke is a notice no test pins.
+/// fallback fired.
+///
+/// The logging sits in that middle layer rather than in
+/// ``rootViewController(among:)`` because the middle layer takes its
+/// candidates as parameters: every branch — no scenes, a scene with no
+/// windows, a key window that cannot host — is staged in one line and read
+/// back through `AppLogger.withTestSink`. Through ``rootViewController(among:)``
+/// only the states live UIKit can be talked into are reachable. That is not
+/// none — `testRootViewController_whenTheKeyWindowHasNoRoot_stillFindsOneToPresentIn`
+/// provokes this very notice on real `UIWindow`s — but it is a subset, and it
+/// costs attaching windows to the host scene to get there.
 ///
 /// # Why the selection takes its candidates as a parameter
 ///
@@ -78,14 +108,14 @@ enum ActiveWindowLocator {
     ///
     /// Three states, not one. A single `nil` folded "no scene attached yet"
     /// (cold launch), "the selected scene has no windows" and "no window of it
-    /// carries a root" into one log line, and a reader who fixes by the reason
+    /// can host a presentation" into one log line, and a reader who fixes by the reason
     /// would go hunting rootless windows in a process that has no windows at
     /// all. The raw value is the sentence that reaches the log, so the three
     /// states stay three greps.
     enum Miss: String, Error {
         case noScene = "no window scene attached yet"
         case noWindows = "the selected window scene has no windows"
-        case noHostingWindow = "no window in the selected scene has a root view controller"
+        case noHostingWindow = "no normal-level window in the selected scene has a root view controller"
     }
 
     /// The scene to present on: the foreground-active one, else the first
@@ -134,21 +164,21 @@ enum ActiveWindowLocator {
     }
 
     /// The window that can take the presentation: the key one among those
-    /// carrying a root, else the first of them.
+    /// `canHost` accepts, else the first of them.
     ///
     /// Separates the two empty states nothing downstream can tell apart — a
-    /// scene with no windows at all, and a scene whose windows are all rootless
-    /// — and leaves a `notice` when the key-window preference had to fall back,
-    /// which is what a key-but-rootless system window produces.
+    /// scene with no windows at all, and a scene where none of the windows can
+    /// host a presentation — and leaves a `notice` when the key-window
+    /// preference had to fall back, which is what a key system window produces.
     static func hostingWindow<Window>(
         among windows: [Window],
         isKeyWindow: (Window) -> Bool,
-        hasRoot: (Window) -> Bool
+        canHost: (Window) -> Bool
     ) -> Result<Window, Miss> {
         guard !windows.isEmpty else {
             return .failure(.noWindows)
         }
-        let hosting = windows.filter(hasRoot)
+        let hosting = windows.filter(canHost)
         guard let window = preferredWindow(among: hosting, isKeyWindow: isKeyWindow) else {
             return .failure(.noHostingWindow)
         }
@@ -156,8 +186,8 @@ enum ActiveWindowLocator {
             AppLogger.emit(
                 .appDelegate, .default,
                 """
-                window-selection: no key window with a root among \(windows.count) \
-                in the selected scene — presenting in the first that has one
+                window-selection: no key window that can host it among \(windows.count) \
+                in the selected scene — presenting in the first that can
                 """
             )
         }
@@ -181,7 +211,7 @@ enum ActiveWindowLocator {
         switch hostingWindow(
             among: scene.windows,
             isKeyWindow: { $0.isKeyWindow },
-            hasRoot: { $0.rootViewController != nil }
+            canHost: { $0.rootViewController != nil && $0.windowLevel == .normal }
         ) {
         case let .failure(miss):
             return .failure(miss)
@@ -189,7 +219,7 @@ enum ActiveWindowLocator {
             window = found
         }
 
-        // `hostingWindow` only returns a window that passed `hasRoot`, so this
+        // `hostingWindow` only returns a window that passed `canHost`, so this
         // cannot fire; spelled out rather than force-unwrapped because a crash
         // on the alarm-firing path is the one outcome worse than a logged miss.
         guard let root = window.rootViewController else {
