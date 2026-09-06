@@ -847,12 +847,10 @@ final class AudioServiceTests: XCTestCase {
             the fade-in ramp reads \
             \(String(describing: service.currentPlayerVolume)). 1.4 means the \
             clamp was dropped — the alarm lands on the wrong ceiling half a \
-            minute in. 0.0 means something else: that iOS reports the ramp's \
-            CURRENT value rather than its target, the platform behaviour the \
-            comment above says was disproved. It was disproved on macOS \
-            AVFoundation, not here, so this assertion is what settles it — \
-            0.0 means delete this test and restore the note that the fade-in \
-            branch cannot be pinned synchronously.
+            minute in. 0.0 means iOS reports the ramp's CURRENT value rather \
+            than its target. It did not in run 33971777034, where this passed \
+            in 0.038 s, so 0.0 is a platform regression to investigate, not a \
+            test to delete.
             """
         )
 
