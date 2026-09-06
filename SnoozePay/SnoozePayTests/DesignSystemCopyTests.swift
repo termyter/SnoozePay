@@ -86,7 +86,7 @@ final class DesignSystemCopyTests: XCTestCase {
         header.layoutIfNeeded()
 
         let rendered = Self.strings(in: header)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in ["alarms.title", "common.caps.balance", "common.button.top_up"] {
             XCTAssertTrue(
                 rendered.contains(Localized.text(key)),
@@ -100,7 +100,7 @@ final class DesignSystemCopyTests: XCTestCase {
         empty.layoutIfNeeded()
 
         let rendered = Self.strings(in: empty)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in ["alarms.empty.title", "alarms.empty.body", "alarms.empty.button"] {
             XCTAssertTrue(
                 rendered.contains(Localized.text(key)),
@@ -118,7 +118,7 @@ final class DesignSystemCopyTests: XCTestCase {
         wake.layoutIfNeeded()
 
         let rendered = Self.strings(in: week) + Self.strings(in: wake)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in [
             "statistics.week.caps", "statistics.week.empty", "statistics.week.legend",
             "statistics.week.saved", "statistics.week.spent", "statistics.week.net",
@@ -157,7 +157,7 @@ final class DesignSystemCopyTests: XCTestCase {
             rendered.contains(Localized.text("statistics.empty.title")),
             "setStreak did not restore the empty-state headline"
         )
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
     }
 
     /// The streak chip is the one two-argument string in this slice, so a
@@ -194,7 +194,7 @@ final class DesignSystemCopyTests: XCTestCase {
         row.layoutIfNeeded()
 
         let rendered = Self.strings(in: row)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("firing.ticker.caps")))
     }
 
@@ -220,7 +220,7 @@ final class DesignSystemCopyTests: XCTestCase {
         preset.layoutIfNeeded()
 
         let rendered = Self.strings(in: preset)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("deposit.preset.popular")))
         XCTAssertEqual(SPSwitch().accessibilityLabel, Localized.text("common.switch.accessibility"))
     }
@@ -239,16 +239,5 @@ final class DesignSystemCopyTests: XCTestCase {
             found.append(label)
         }
         return found + view.subviews.flatMap { strings(in: $0) }
-    }
-
-    /// A key that reached the screen looks like `statistics.week.caps`.
-    private static func assertNoKeysLeaked(
-        in rendered: [String],
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        for key in allKeys where rendered.contains(key) {
-            XCTFail("«\(key)» rendered as its own key — the catalogue lookup missed", file: file, line: line)
-        }
     }
 }

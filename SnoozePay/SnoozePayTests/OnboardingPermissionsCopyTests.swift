@@ -113,7 +113,7 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
         let controller = mount(OnboardingViewController())
 
         let rendered = controller.pageViews.flatMap { strings(in: $0) }
-        assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         for expected in [
             Localized.text("onboarding.page3.option1_title"),
@@ -147,7 +147,7 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
         controller.loadViewIfNeeded()
 
         let rendered = strings(in: controller.view)
-        assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         for expected in [
             Localized.text("onboarding.permissions.caps"),
@@ -196,7 +196,7 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
         controller.loadViewIfNeeded()
 
         let rendered = strings(in: controller.view)
-        assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(
             rendered.contains(Localized.text("onboarding.splash.subtitle")),
             "the splash never renders its tagline"
@@ -224,12 +224,5 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
             found.append(contentsOf: [label.text, label.attributedText?.string].compactMap { $0 })
         }
         return found + view.subviews.flatMap { strings(in: $0) }
-    }
-
-    /// A key that reached the screen looks like `onboarding.permissions.title`.
-    private func assertNoKeysLeaked(in rendered: [String], file: StaticString = #filePath, line: UInt = #line) {
-        for key in Self.allKeys where rendered.contains(key) {
-            XCTFail("«\(key)» rendered as its own key — the catalogue lookup missed", file: file, line: line)
-        }
     }
 }

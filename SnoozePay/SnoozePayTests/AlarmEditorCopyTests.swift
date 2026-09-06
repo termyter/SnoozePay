@@ -341,7 +341,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         let vibration = VibrationCell(style: .default, reuseIdentifier: nil)
 
         let rendered = [sound, theme, vibration].flatMap { Self.strings(in: $0.contentView) }
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         // «Громкость» is not a row of this card: #263 moved it under the sound
         // screen, so `create_alarm.volume.title` is pinned by
         // `testVolumeScreenRendersItsTitleAndFadeRow` instead.
@@ -359,7 +359,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     func testPenaltyCardRendersItsCaptionHintAndHelper() {
         let cell = PenaltyCell(style: .default, reuseIdentifier: nil)
         let rendered = Self.strings(in: cell.contentView)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         // Recipe form. Safe only because `create_alarm.penalty.caps` is stored
         // sentence-case and `PenaltyCell` upper-cases it: drop that call and the
@@ -383,7 +383,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     func testProgressiveCardRendersItsTitleAndRationale() {
         let cell = ProgressiveScaleCell(style: .default, reuseIdentifier: nil)
         let rendered = Self.strings(in: cell.contentView)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.progressive.title")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.progressive.subtitle")))
     }
@@ -402,7 +402,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         cell.configure(mode: .weekly, hint: "")
 
         let rendered = Self.strings(in: cell.contentView)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.repeat.caps")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.repeat.never")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.repeat.weekly")))
@@ -554,7 +554,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         // `allKeys` — but this was the one caps call site never handed to the
         // guard, so a leak here stayed outside it however many spellings the
         // guard learned.
-        Self.assertNoKeysLeaked(in: Self.strings(in: cell.contentView))
+        assertNoKeysLeaked(Self.allKeys, in: Self.strings(in: cell.contentView))
     }
 
     // MARK: - Layer 3: the alarms list
@@ -651,7 +651,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         banner.layoutIfNeeded()
 
         let rendered = Self.strings(in: banner)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         let caps = try XCTUnwrap(
             rendered.first { $0.contains("БЕЗ ОТКЛАДЫВАНИЙ") },
@@ -671,7 +671,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         sheet.loadViewIfNeeded()
 
         let rendered = Self.strings(in: sheet.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("alarms.delete.title")))
         XCTAssertTrue(rendered.contains(Localized.text("alarms.button.delete")))
         XCTAssertTrue(rendered.contains(Localized.text("common.button.cancel")))
@@ -685,7 +685,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         creating.loadViewIfNeeded()
         XCTAssertEqual(creating.title, Localized.text("create_alarm.title.new"))
         var rendered = Self.strings(in: creating.view) + Self.titleViewStrings(of: creating)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.title.new").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("common.button.done")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.close.accessibility")))
@@ -694,7 +694,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         editing.loadViewIfNeeded()
         XCTAssertEqual(editing.title, Localized.text("create_alarm.title.edit"))
         rendered = Self.strings(in: editing.view) + Self.titleViewStrings(of: editing)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.title.edit").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.button.save")))
         XCTAssertTrue(rendered.contains(Localized.text("common.button.cancel")))
@@ -706,7 +706,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         picker.loadViewIfNeeded()
 
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.volume.title").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.volume_picker.fade_title")))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.volume_picker.fade_subtitle")))
@@ -729,7 +729,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         picker.loadViewIfNeeded()
 
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound.title").uppercased()))
         // Pinned as a literal, on purpose — but not because the old form was
         // blind to lost caps: this key holds «Превью», `SoundPickerViewController`
@@ -772,7 +772,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         picker.loadViewIfNeeded()
 
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.title").uppercased()))
         // The literal, for the reason in
         // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` — and this is
@@ -786,101 +786,6 @@ final class AlarmEditorCopyTests: XCTestCase {
             rendered.contains("ПРЕВЬЮ ЭКРАНА ЗВОНКА"),
             "the theme preview lost its caps caption: \(rendered)"
         )
-    }
-
-    // MARK: - The guard itself
-
-    /// The guard is only as strong as the spellings it recognises, and nothing
-    /// else asserts on it: every other test here would stay green if it stopped
-    /// matching. A caps section label renders `Localized.text(key).uppercased()`,
-    /// so a missed lookup reaches the screen as `CREATE_ALARM.VOLUME.TITLE` —
-    /// both spellings have to be a failure.
-    func testKeyLeakGuardCatchesLowerAndUpperCasedKeys() {
-        let key = "create_alarm.volume.title"
-        for leaked in [key, key.uppercased()] {
-            // `strict` is already the default, but it is the whole contract
-            // here: with it off, a guard that stopped matching would record
-            // nothing and this test would pass. Written out so nobody turns it
-            // off by habit. The matcher is the other half: without it the
-            // expectation swallows ANY recorded failure, so the test would
-            // prove only that the guard went red, not that it named the
-            // spelling that reached the screen. The two arrive as `strict:` +
-            // trailing `issueMatcher:` because no overload takes `options:` and
-            // a trailing `issueMatcher:` together — a matcher can still ride
-            // inside the options, which is what the next test does.
-            XCTExpectFailure("the guard has to name «\(leaked)»", strict: true) {
-                Self.assertNoKeysLeaked(in: ["Громкость", leaked])
-            } issueMatcher: { issue in
-                issue.compactDescription.contains("«\(leaked)»")
-            }
-        }
-    }
-
-    /// The guard reports EVERY spelling that reached the screen, not just the
-    /// first one it matches: a key that leaks into a plain label *and* a caps
-    /// one is two call sites, and naming half of them sends the fixer to half
-    /// the job. Nothing noticed when that was the case — going back to
-    /// `spellings.first(where:)` still leaves the guard red, only with half the
-    /// picture, so the test above and every other test here stay green (#757).
-    /// Counting the reports is what tells the two loops apart.
-    func testKeyLeakGuardReportsEverySpellingThatReachedTheScreen() {
-        let key = "create_alarm.volume.title"
-
-        let both = Self.issuesRecordedByGuard(over: ["Громкость", key, key.uppercased()])
-        XCTAssertEqual(
-            both.count, 2,
-            "one key leaked in two spellings and the guard filed \(both.count) "
-                + "report(s): \(Self.descriptions(of: both))"
-        )
-        for leaked in [key, key.uppercased()] {
-            XCTAssertTrue(
-                both.contains { $0.compactDescription.contains("«\(leaked)»") },
-                "no report names «\(leaked)»: \(Self.descriptions(of: both))"
-            )
-        }
-
-        // The other half of the contract, and the reason the count above is an
-        // equality and not a `>= 2`: one spelling on screen stays one report.
-        // A guard that reported both spellings of anything it matched would
-        // satisfy the assertions above and be wrong about every real leak.
-        for leaked in [key, key.uppercased()] {
-            let single = Self.issuesRecordedByGuard(over: ["Громкость", leaked])
-            XCTAssertEqual(
-                single.count, 1,
-                "«\(leaked)» leaked once and the guard filed \(single.count) "
-                    + "report(s): \(Self.descriptions(of: single))"
-            )
-        }
-    }
-
-    /// Runs the guard over `rendered` and hands back the issues it recorded,
-    /// absorbing them so the self-test itself stays green.
-    ///
-    /// Counting needs a matcher that accumulates instead of one that answers a
-    /// single yes/no, so this is the second of the two shapes XCTest offers:
-    /// the matcher goes inside `XCTExpectedFailure.Options`. The other shape —
-    /// `strict:` plus a trailing `issueMatcher:`, used by the test above —
-    /// cannot be combined with `options:`; that overload does not exist
-    /// (`XCTest.swiftmodule/arm64-apple-ios-simulator.swiftinterface:100-118`),
-    /// and reaching for it is what broke the whole test target's build once.
-    private static func issuesRecordedByGuard(over rendered: [String]) -> [XCTIssue] {
-        var recorded: [XCTIssue] = []
-        let options = XCTExpectedFailure.Options()
-        // Strict, as above: a guard that recorded nothing has to be a failure
-        // rather than a quiet zero-count pass.
-        options.isStrict = true
-        options.issueMatcher = { issue in
-            recorded.append(issue)
-            return true
-        }
-        XCTExpectFailure("the guard has to report the leaked key", options: options) {
-            assertNoKeysLeaked(in: rendered)
-        }
-        return recorded
-    }
-
-    private static func descriptions(of issues: [XCTIssue]) -> String {
-        issues.isEmpty ? "nothing" : issues.map(\.compactDescription).joined(separator: " | ")
     }
 
     // MARK: - Helpers
@@ -935,32 +840,6 @@ final class AlarmEditorCopyTests: XCTestCase {
     private static func textFields(in view: UIView) -> [UITextField] {
         let own = (view as? UITextField).map { [$0] } ?? []
         return own + view.subviews.flatMap { textFields(in: $0) }
-    }
-
-    /// A key that reached the screen looks like `create_alarm.volume.title` —
-    /// or `CREATE_ALARM.VOLUME.TITLE`, because the caps section labels
-    /// upper-case whatever `Localized.text` hands back, the key included when
-    /// the lookup missed. Matching the lower-case spelling alone let every caps
-    /// call site walk a leaked key past the guard (#713). Deliberately not
-    /// counting the call sites: #713 said four, and any number written here
-    /// goes stale on the next caps label.
-    private static func assertNoKeysLeaked(
-        in rendered: [String],
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        for key in allKeys {
-            // Both spellings are reported, not just the first match: a key that
-            // leaks into a plain label AND a caps one is two call sites to fix,
-            // and naming only the lower-case half sends the fixer to one of them.
-            let spellings = key == key.uppercased() ? [key] : [key, key.uppercased()]
-            for leaked in spellings where rendered.contains(leaked) {
-                XCTFail(
-                    "«\(leaked)» rendered as its own key — the catalogue lookup missed",
-                    file: file, line: line
-                )
-            }
-        }
     }
 
     // MARK: - Helpers: the table against the sources
