@@ -43,6 +43,25 @@ final class AlarmFiringPresenter {
     /// is unit-testable without a UIKit window; production reads the live scene.
     var isRootReady: () -> Bool = { AlarmFiringPresenter.isLaunchRootReady() }
 
+    /// Where the firing screen gets mounted: the topmost controller of the
+    /// window ``ActiveWindowLocator`` picked, or the ``ActiveWindowLocator/Miss``
+    /// saying why there is none.
+    ///
+    /// Seam for the same reason ``isRootReady`` is one — the real walk reads
+    /// `UIApplication.shared.connectedScenes`, which a unit test cannot stage.
+    /// What it buys is the loudest branch this class has: audio silenced and no
+    /// screen raised, whose only evidence is one log line. Before #795 nothing
+    /// in the suite reached it, so deleting the line, the `stopAlarmSound()` or
+    /// the `return false` left the target green.
+    ///
+    /// The default closure is the residue: with a test seam installed nothing
+    /// evaluates it, so it is one unobservable line instead of an unobservable
+    /// branch — the same trade ``AppLogger/emit(_:_:_:)`` documents one level
+    /// down.
+    var locateHost: () -> Result<UIViewController, ActiveWindowLocator.Miss> = {
+        AlarmFiringPresenter.locatedTopViewController()
+    }
+
     /// Mounts the firing screen for `alarmID`, returning `false` only when there
     /// was no window to present on (the retry signal). Seam so the pending /
     /// flush logic is unit-testable without standing up the VC hierarchy;
@@ -151,13 +170,34 @@ final class AlarmFiringPresenter {
     /// source shares the "dismiss any stale firing screen first, then present
     /// full-screen on the topmost VC" behaviour.
     ///
-    /// Returns `false` when no foreground window exists yet (cold-launch race)
-    /// so the AlarmKit pending-present (#382) knows to retry on scene-active;
-    /// `true` once the present has been issued.
+    /// Returns `false` when nothing can host the presentation yet — no scene,
+    /// no windows, or no window carrying a root (the cold-launch race) — so the
+    /// AlarmKit pending-present (#382) knows to retry on scene-active; `true`
+    /// once the present has been issued. Which of the three it was goes to the
+    /// log, because they are not fixed the same way.
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
-        guard let topVC = Self.topViewController() else {
-            AppLogger.appDelegate.error("firing-present: no window scene, stopping audio")
+        let topVC: UIViewController
+        switch locateHost() {
+        case let .success(located):
+            topVC = located
+        case let .failure(miss):
+            // The reason is the locator's: "no window scene" was true of only
+            // one of the three states this returns on, and the loudest one —
+            // audio stopped, screen never raised — is the state where a scene
+            // and windows exist but none of them can host a presentation.
+            //
+            // Through `AppLogger.emit` rather than `AppLogger.appDelegate`
+            // because this line IS the outcome: nothing else records that an
+            // alarm was silenced without a screen. A line only unified logging
+            // can see is a line no test reads, and #795 found this one
+            // unreferenced by the whole suite. `miss.rawValue` is a fixed
+            // sentence, so `emit`'s implicit `.public` is the marker it already
+            // carried.
+            AppLogger.emit(
+                .appDelegate, .error,
+                "firing-present: \(miss.rawValue) — stopping audio"
+            )
             AudioService.shared.stopAlarmSound()
             return false
         }
@@ -188,33 +228,36 @@ final class AlarmFiringPresenter {
     /// when no scene/window is attached yet (cold-launch race) or the splash is
     /// still showing.
     private static func isLaunchRootReady() -> Bool {
-        guard
-            let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first,
-            let rootVC = windowScene.windows.first?.rootViewController
-        else {
+        guard case let .success(rootVC) = ActiveWindowLocator.rootViewController() else {
             return false
         }
         return !(rootVC is SplashViewController)
     }
 
-    /// Topmost presented VC of the active foreground window scene, or `nil`
-    /// when no scene/window is attached yet (cold-launch race).
+    /// Topmost presented VC of the window the locator picked, or the
+    /// ``ActiveWindowLocator/Miss`` saying which of the three "nothing to
+    /// present on" states was hit — so `present` can name the one it stopped
+    /// the audio for instead of blaming the scene for all three. Reached by
+    /// `present(alarm:snoozeCount:)` through ``locateHost``.
+    private static func locatedTopViewController() -> Result<UIViewController, ActiveWindowLocator.Miss> {
+        switch ActiveWindowLocator.rootViewController() {
+        case let .failure(miss):
+            return .failure(miss)
+        case let .success(rootVC):
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
+            return .success(topVC)
+        }
+    }
+
+    /// ``locatedTopViewController()`` for the caller that re-resolves the top
+    /// VC inside a dismissal completion and has nothing to say about why it
+    /// might be gone. Kept as its own one-liner so the reason-carrying form
+    /// stays the one used where the miss is logged.
     private static func topViewController() -> UIViewController? {
-        guard
-            let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first,
-            let rootVC = windowScene.windows.first?.rootViewController
-        else {
-            return nil
-        }
-        var topVC = rootVC
-        while let presented = topVC.presentedViewController {
-            topVC = presented
-        }
-        return topVC
+        try? locatedTopViewController().get()
     }
 
     /// Returns the currently-presented `AlarmFiringViewController` anywhere up
