@@ -110,11 +110,11 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// narrowing that suite unpinned the names here in silence, which is the
     /// shape #720 already executed once on the subtitles.
     ///
-    /// Both tables stay, and the duplication is deliberate: neither file's
-    /// expectations are computed from the other's, so a typo in either is red
-    /// where it was made. Behaviour that lives only in that file — the
-    /// uncatalogued-id fallback and the out-of-range `nil` — stays there;
-    /// `alarmSoundName` has no other caller in the target.
+    /// Both id → name tables stay — this one and `namesBeforeTheCollapse`
+    /// there. Neither is derived from the other, so deleting either suite
+    /// leaves the names pinned by the one that remains. Behaviour that lives
+    /// only in that file — the uncatalogued-id fallback and the out-of-range
+    /// `nil` — stays there.
     ///
     /// Transcribed from `Localizable.xcstrings`, where #598 left the
     /// pre-migration literals.
@@ -167,9 +167,9 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// The ten ids **in catalogue order**, written out rather than read from
     /// `SoundCatalogue.ids`. Written out for the same reason as the id-keyed
     /// tables above: an expectation drawn from the value under test agrees with
-    /// any mistake in it. Named rather than counted, because a table inserted
-    /// anywhere above shifts every ordinal below it — which is how the earlier
-    /// wording here went stale.
+    /// any mistake in it. Not counted: a table inserted anywhere above shifts
+    /// every ordinal below it, which is how the earlier wording here went
+    /// stale.
     ///
     /// The order is a product decision, not an implementation detail — it is
     /// the row order of the sound picker, and `SoundCatalogue` says so in prose

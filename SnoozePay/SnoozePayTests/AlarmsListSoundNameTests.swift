@@ -54,7 +54,8 @@ import XCTest
 /// hardcoded Russian below is what still fails when the *copy* moves at this
 /// reader, and it belongs with the reader it protects. It has never been the
 /// only place a moved word reddens — `SoundCatalogueCopyTests` pins key → word
-/// in its `copy` table. What #763 added there is the id → word half.
+/// in its `copy` table. What #763 added there is the id → word half for the
+/// names; the subtitles have had one since #755.
 ///
 /// What that suite no longer does is *depend* on the table below. Until #763
 /// its own name expectation was looked up through `SoundCatalogue.nameKey(for:)`
@@ -91,9 +92,9 @@ final class AlarmsListSoundNameTests: XCTestCase {
     ///
     /// `SoundCatalogueCopyTests.namesBySoundID` holds the same ten words for
     /// the picker's reader. Duplicated rather than shared on purpose (#763):
-    /// two transcriptions each checked against the catalogue disagree when one
-    /// of them is wrong. One shared transcription would agree with itself in
-    /// both suites, which is the whole thing being bought here.
+    /// one shared table would live in one file, and narrowing that file would
+    /// unpin the other reader in silence — the shape #720 executed once on the
+    /// subtitles.
     private static let namesBeforeTheCollapse: [String: String] = [
         "dawn": "Рассвет",
         "radar": "Радар",
