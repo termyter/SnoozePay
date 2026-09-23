@@ -112,7 +112,7 @@ final class ReferralOnboardingCopyTests: XCTestCase {
         let controller = mount(ReferralViewController())
 
         let rendered = strings(in: controller.view) + [controller.title ?? ""]
-        assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         for expected in [
             Localized.text("referral.hero.caps"),
@@ -157,7 +157,7 @@ final class ReferralOnboardingCopyTests: XCTestCase {
         let controller = mount(OnboardingViewController())
 
         let rendered = controller.pageViews.flatMap { strings(in: $0) }
-        assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         for expected in [
             Localized.text("onboarding.page1.title"),
@@ -232,12 +232,5 @@ final class ReferralOnboardingCopyTests: XCTestCase {
             found.append(contentsOf: [field.text, field.placeholder].compactMap { $0 })
         }
         return found + view.subviews.flatMap { strings(in: $0) }
-    }
-
-    /// A key that reached the screen looks like `referral.section.friends`.
-    private func assertNoKeysLeaked(in rendered: [String], file: StaticString = #filePath, line: UInt = #line) {
-        for key in Self.allKeys where rendered.contains(key) {
-            XCTFail("«\(key)» rendered as its own key — the catalogue lookup missed", file: file, line: line)
-        }
     }
 }

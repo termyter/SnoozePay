@@ -100,7 +100,7 @@ final class WalletCopyTests: XCTestCase {
         wallet.loadViewIfNeeded()
 
         let rendered = Self.strings(in: wallet.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in [
             "wallet.title", "common.button.top_up", "wallet.chart.caps",
             "wallet.history.caps", "wallet.history.link_all", "wallet.footer.disclaimer"
@@ -153,7 +153,7 @@ final class WalletCopyTests: XCTestCase {
         sheet.loadViewIfNeeded()
 
         let rendered = Self.strings(in: sheet.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in [
             "deposit.title", "deposit.disclaimer", "deposit.button.restore",
             "deposit.success.caption", "common.button.top_up"
@@ -186,7 +186,7 @@ final class WalletCopyTests: XCTestCase {
         picker.loadViewIfNeeded()
 
         let rendered = Self.strings(in: picker.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in [
             "wallet.period.title", "wallet.period.button.reset",
             "wallet.period.button.apply", "wallet.period.empty"
@@ -207,7 +207,7 @@ final class WalletCopyTests: XCTestCase {
         XCTAssertEqual(history.title, Localized.text("wallet.history.title"))
 
         let rendered = Self.strings(in: history.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in [
             "wallet.history.summary.spent", "wallet.history.summary.topups",
             "wallet.history.summary.snoozes"
@@ -323,16 +323,5 @@ final class WalletCopyTests: XCTestCase {
             found.append(label)
         }
         return found + view.subviews.flatMap { strings(in: $0) }
-    }
-
-    /// A key that reached the screen looks like `wallet.footer.disclaimer`.
-    private static func assertNoKeysLeaked(
-        in rendered: [String],
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        for key in allKeys where rendered.contains(key) {
-            XCTFail("«\(key)» rendered as its own key — the catalogue lookup missed", file: file, line: line)
-        }
     }
 }

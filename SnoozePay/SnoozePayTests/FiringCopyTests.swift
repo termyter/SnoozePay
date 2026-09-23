@@ -116,7 +116,7 @@ final class FiringCopyTests: XCTestCase {
     func testFiringScreenRendersCopyRatherThanKeys() {
         let firing = hostedFiring(balance: 1000)
         let rendered = Self.strings(in: firing.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         XCTAssertTrue(
             rendered.contains(Localized.text("firing.button.dismiss")),
@@ -138,7 +138,7 @@ final class FiringCopyTests: XCTestCase {
     func testFiringNoBalanceStateRendersCopyRatherThanKeys() {
         let firing = hostedFiring(balance: 0)
         let rendered = Self.strings(in: firing.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
 
         for key in [
             "firing.no_balance.pill",
@@ -171,7 +171,7 @@ final class FiringCopyTests: XCTestCase {
         summary.view.layoutIfNeeded()
 
         let rendered = Self.strings(in: summary.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for expected in [
             WokeMorningContent.eyebrow,
             content.headline,
@@ -194,7 +194,7 @@ final class FiringCopyTests: XCTestCase {
         sheet.view.layoutIfNeeded()
 
         let rendered = Self.strings(in: sheet.view)
-        Self.assertNoKeysLeaked(in: rendered)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         for key in ["firing.top_up.title", "firing.top_up.footer", "firing.top_up.success"] {
             XCTAssertTrue(
                 rendered.contains(Localized.text(key)),
@@ -359,17 +359,6 @@ final class FiringCopyTests: XCTestCase {
             found.append(label)
         }
         return found + view.subviews.flatMap { strings(in: $0) }
-    }
-
-    /// A key that reached the screen looks like `firing.no_balance.body`.
-    private static func assertNoKeysLeaked(
-        in rendered: [String],
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        for key in allKeys where rendered.contains(key) {
-            XCTFail("«\(key)» rendered as its own key — the catalogue lookup missed", file: file, line: line)
-        }
     }
 }
 
