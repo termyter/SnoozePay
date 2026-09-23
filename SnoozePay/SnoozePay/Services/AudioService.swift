@@ -366,6 +366,10 @@ final class AudioService {
     /// `.error`, for the same reason.
     static var missingFallbackSoundErrorID: String { "AUDIO-765-DEFAULT-SOUND-MISSING" }
 
+    /// Log identifier for a sound file that was found but `AVAudioPlayer`
+    /// refused to open, so playback falls through to the synthetic tone.
+    static var playerInitFailedErrorID: String { "AUDIO-775-PLAYER-INIT-FAILED" }
+
     /// Locate the bundled alarm sound (caf/m4a/wav/mp3 — in that order, with a
     /// ``fallbackSoundID`` fallback) and try to wrap it in `AVAudioPlayer`. If
     /// the bundle hit fails or AVAudioPlayer rejects the file we fall back to
@@ -414,10 +418,16 @@ final class AudioService {
         do {
             return try AVAudioPlayer(contentsOf: soundURL)
         } catch {
-            let name = soundURL.lastPathComponent
-            let desc = error.localizedDescription
-            AppLogger.audio.error(
-                "AVAudioPlayer init failed for \(name, privacy: .public): \(desc, privacy: .public)"
+            // Through `emit` like the two lookup failures, so a test can see
+            // this branch (#775). The file name and error text were already
+            // logged `.public` before the move.
+            AppLogger.emit(
+                .audio, .error,
+                """
+                [\(Self.playerInitFailedErrorID)] resolveAlarmPlayer: AVAudioPlayer init failed \
+                for \(soundURL.lastPathComponent): \(error.localizedDescription); falling back \
+                to the synthetic tone
+                """
             )
             return Self.generateAlarmTone()
         }
