@@ -230,6 +230,13 @@ final class StatisticsViewController: UIViewController {
         viewModel.loadData()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // The error `loadData()` raised in `viewWillAppear` is shown here, now
+        // that this view is in the window (#825).
+        showPendingLoadError()
+    }
+
     // MARK: - Setup
 
     private func setupLayout() {
@@ -320,11 +327,30 @@ final class StatisticsViewController: UIViewController {
         }
     }
 
-    private func presentRepositoryError(_ error: LocalizedError) {
-        let message = error.errorDescription
-            ?? Localized.text("statistics.error.message")
-        Self.showLoadErrorAlert(on: self, message: message)
-    }
+    /// A load error that reached this screen while its view had no window,
+    /// held until `viewDidAppear` (#825).
+    ///
+    /// `loadData()` runs in `viewWillAppear`, before UIKit puts the view in the
+    /// window. Presenting from there does put the alert up (UIKit goes through
+    /// the tab bar above), but UIKit also logs "Presenting view controller …
+    /// from detached view controller … will become a hard exception". So an
+    /// error that arrives off-window is held here and shown once the view is
+    /// in the window.
+    ///
+    /// One message, and the FIRST one wins. A second error while one is
+    /// waiting is logged as dropped, the same way a second error is handled
+    /// while the first alert is on screen. So the later error is always the
+    /// dropped one, whether or not the view reached the window in between.
+    ///
+    /// Only a shown alert clears this. If the view leaves before
+    /// `viewDidAppear` (a cancelled transition), the message waits for the
+    /// next appearance. The failure itself is logged by the view model
+    /// whether or not the alert is ever shown (`handleLedgerLoadFailure`), so
+    /// a held message that never appears still leaves that line.
+    ///
+    /// The code that sets and clears it is in the extension at the end of
+    /// this file, to keep the type body under SwiftLint's `type_body_length`.
+    private(set) var pendingLoadErrorMessage: String?
 
     /// Puts the load-error alert up on `presenter`, or logs why it did not.
     ///
@@ -340,14 +366,16 @@ final class StatisticsViewController: UIViewController {
     /// left to UIKit and reported after `present` returns (#790), with
     /// ``refusalReason(presenter:)`` naming why.
     ///
-    /// ⚠️ Not decided up front on purpose. The production caller is
-    /// `viewWillAppear` of a tab's child controller, whose own view has no
-    /// window yet while the tab bar above it does — and UIKit PRESENTS through
-    /// that ancestor (`testChildOfAMountedTabBar_…`, first run on CI
-    /// 35859208153). A "not in the window hierarchy" pre-check, which the
-    /// first draft of #790 had, would have dropped that alert on every visit
-    /// to the tab. The code does not rely on the answer either way: the
-    /// read-back below reports whatever UIKit did.
+    /// ⚠️ Not decided up front on purpose. Since #825 the screen calls this
+    /// only when its view is in the window: an error from `viewWillAppear` is
+    /// held in `pendingLoadErrorMessage` and shown from `viewDidAppear`. That
+    /// decision is the CALLER's. This function still leaves the window
+    /// refusal to UIKit, because a child whose own view is off-window can be
+    /// presented through an on-screen ancestor. UIKit did exactly that for the
+    /// old `viewWillAppear` call (CI 35859208153), and logged it as a detached
+    /// presentation. A "not in the window hierarchy" pre-check here would
+    /// refuse that case too. The code does not rely on the answer either way:
+    /// the read-back below reports whatever UIKit did.
     ///
     /// A presentation that starts and is then cut short before its completion
     /// leaves no line — the same gap `AppDelegate` documents for its alerts.
@@ -580,4 +608,45 @@ final class StatisticsViewController: UIViewController {
         present(vc, animated: true)
     }
     #endif
+}
+
+// MARK: - Load error held until the view is in the window (#825)
+
+extension StatisticsViewController {
+
+    /// The reason in the DROPPED line for an error that arrives while an
+    /// earlier one is still waiting in ``pendingLoadErrorMessage``.
+    static let pendingAlertReason = "an earlier load error is still waiting for the screen to appear"
+
+    fileprivate func presentRepositoryError(_ error: LocalizedError) {
+        let message = error.errorDescription
+            ?? Localized.text("statistics.error.message")
+        if pendingLoadErrorMessage != nil {
+            AppLogger.emit(.ui, .error, Self.droppedAlertLine(reason: Self.pendingAlertReason, message: message))
+            return
+        }
+        // Held rather than presented: see `pendingLoadErrorMessage`. An error
+        // that arrives while the view is already in the window is shown now,
+        // exactly as before #825.
+        guard viewIfLoaded?.window != nil else {
+            pendingLoadErrorMessage = message
+            return
+        }
+        Self.showLoadErrorAlert(on: self, message: message)
+    }
+
+    /// Shows the held error once the view is in the window.
+    ///
+    /// Checks the window again instead of assuming `viewDidAppear` means
+    /// on screen: a caller that runs the callback by hand on an off-window
+    /// controller (the tests do this) would otherwise get the same
+    /// detached presentation this code is here to avoid.
+    fileprivate func showPendingLoadError() {
+        guard let message = pendingLoadErrorMessage, viewIfLoaded?.window != nil else { return }
+        // Cleared before the call. `showLoadErrorAlert` logs a refusal itself,
+        // and a message that stayed held would be shown a second time on
+        // the next appearance.
+        pendingLoadErrorMessage = nil
+        Self.showLoadErrorAlert(on: self, message: message)
+    }
 }
