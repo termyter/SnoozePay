@@ -359,8 +359,8 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             controller.viewModel.onLoadError?(decodeFailure())
             // Before the wait: the post-present read-back runs synchronously
             // inside the call, so a DROPPED line for this alert — the symptom
-            // of UIKit no longer assigning `presentedViewController` inside
-            // `present` — would already be here (#790).
+            // of UIKit no longer wiring the alert's `presentingViewController`
+            // inside `present` — would already be here (#790).
             XCTAssertTrue(
                 lines.allSatisfy { !$0.message.contains(StatisticsViewModel.alertDroppedErrorID) },
                 "the read-back after present must see the alert UIKit just put up; the sink saw \(lines.map(\.message))"
@@ -543,12 +543,18 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
 
     /// The production shape, which the test above is not: `viewWillAppear` of
     /// the Statistics tab runs while the tab bar is in the window and the
-    /// screen's own view is not yet. Whether UIKit then presents through the
-    /// tab bar is UIKit's call, so this pins the one thing the code promises
-    /// either way — the log agrees with the screen. On its first CI run
-    /// (35859208153) UIKit PRESENTED, so the window pre-check the first draft
-    /// of #790 had would have dropped a real alert here on every tab visit.
-    func testChildOfAMountedTabBar_logAgreesWithWhatReachedTheScreen() {
+    /// screen's own view is not yet — and UIKit presents through the tab bar
+    /// (first seen on CI 35859208153). Pinned, not merely logged: the window
+    /// pre-check the first draft of #790 had would refuse here, the alert
+    /// would never go up, and a test that only asked "does the log agree with
+    /// the screen" would agree with that too.
+    ///
+    /// Waits for ALERT-SHOWN inside the sink, as
+    /// `testFirstLoadError_logsThatTheUserActuallySawIt` does. Returning before
+    /// the completion let this test's SHOWN line land in whichever test ran
+    /// next (#742 §2a) — alphabetically, that same sibling, which counts
+    /// exactly those lines.
+    func testChildOfAMountedTabBar_alertGoesUpThroughTheTabBarAndLogsOnlyThat() {
         let stats = StatisticsViewController()
         let tabBar = UITabBarController()
         tabBar.viewControllers = [UIViewController(), UINavigationController(rootViewController: stats)]
@@ -560,21 +566,43 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         XCTAssertNotNil(tabBar.viewIfLoaded?.window, "test precondition: its tab bar must be on screen")
         XCTAssertNil(tabBar.presentedViewController, "test precondition: nothing on screen yet")
 
+        let shown = expectation(description: "the ALERT-SHOWN line reached the seam")
         var lines: [String] = []
-        AppLogger.withTestSink({ lines.append($2) }, perform: {
+        var fulfilled = false
+        drainMainQueue()
+        AppLogger.withTestSink({ _, _, message in
+            lines.append(message)
+            if !fulfilled, message.contains(StatisticsViewModel.alertShownErrorID) {
+                fulfilled = true
+                shown.fulfill()
+            }
+        }, perform: {
             stats.viewModel.onLoadError?(decodeFailure())
+            XCTAssertTrue(
+                tabBar.presentedViewController is UIAlertController,
+                """
+                UIKit presented a detached child's alert through the tab bar on \
+                CI 35859208153. Red means either a window check came back in \
+                front of `present` — the #790 round-1 regression — or UIKit \
+                changed, and the doc on `showLoadErrorAlert` is stale. \
+                Presented: \(String(describing: tabBar.presentedViewController)), \
+                the sink saw \(lines)
+                """
+            )
+            // Only waited for when the alert is up: a refused one never runs
+            // its completion, and the assertion above has already said so.
+            if tabBar.presentedViewController is UIAlertController {
+                wait(for: [shown], timeout: 25)
+            }
         })
 
-        let alertIsUp = tabBar.presentedViewController is UIAlertController
-            || stats.presentedViewController is UIAlertController
-        let dropLines = lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) }
-        // Which way UIKit went is written to the test log, so the premise
-        // #729 wrote down without running it is now on record either way.
-        print("#790 characterization: UIKit \(alertIsUp ? "PRESENTED" : "REFUSED") through the tab bar")
         XCTAssertEqual(
-            dropLines.count, alertIsUp ? 0 : 1,
-            "an alert on screen must leave no DROPPED line, and a refused one exactly one; "
-            + "alert up: \(alertIsUp), the sink saw \(lines)"
+            lines.filter { $0.contains(StatisticsViewModel.alertShownErrorID) }.count, 1,
+            "one alert on screen, one SHOWN line; the sink saw \(lines)"
+        )
+        XCTAssertEqual(
+            lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) }.count, 0,
+            "an alert on screen must not also be reported as dropped; the sink saw \(lines)"
         )
     }
 
