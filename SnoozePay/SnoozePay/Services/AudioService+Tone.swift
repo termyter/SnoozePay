@@ -7,24 +7,21 @@ import os
 // Extracted from `AudioService.swift` (#182) so the host file stays under
 // SwiftLint's `file_length` cap. The tone generator is the in-memory
 // fallback played when the bundled alarm file is missing or AVAudioPlayer
-// rejects it. Behaviour is verbatim — only the physical location moved.
+// rejects it. The #182 move itself was verbatim; the envelope changed in #792.
 
 extension AudioService {
 
     /// Generate the synthetic alarm tone as in-memory WAV data: a 1.5 s mono
     /// 16-bit PCM buffer at 44.1 kHz carrying two summed sine partials
     /// (880 Hz, plus 660 Hz at 0.6 amplitude), gated by a 0.3s-on/0.2s-off
-    /// pulse between a 20 ms opening and closing ramp.
+    /// pulse and multiplied by a 20 ms ramp at each buffer edge.
     ///
-    /// "Between" is literal, and it is the one thing worth reading twice: the
-    /// ramps **replace** the pulse rather than shaping it. At 1.5 s the pulse
-    /// leaves 1.3–1.5 s silent, so the closing ramp lands inside an off phase
-    /// and brings the tone back to full scale after 180 ms of nothing — the
-    /// raw envelope there peaks at 1.012, which then clips. Looped
-    /// (`numberOfLoops = -1`, `AudioService.configurePlayerVolume`) that seam
-    /// repeats every cycle, which is the opposite of what a fade is usually
-    /// for. Filed as #792 against `renderToneSamples`; described here so the
-    /// next reader is not told it is the design.
+    /// The buffer loops (`numberOfLoops = -1`,
+    /// `AudioService.configurePlayerVolume`), so its two edges meet at a seam
+    /// every 1.5 s. At this length the pulse is already off over 1.3–1.5 s,
+    /// so the tail reaches the seam silent. Until #792 the closing ramp
+    /// replaced the pulse instead of scaling it, and brought the tone back to
+    /// full scale in that off phase right before the seam.
     ///
     /// Returns an AVAudioPlayer over that buffer — looping is the caller's to
     /// set via `numberOfLoops` — or nil if AVAudioPlayer rejects the data,
@@ -55,14 +52,13 @@ extension AudioService {
     }
 
     /// Build the single-channel 16-bit PCM samples: the caller's carrier
-    /// frequency plus a fixed 660 Hz partial at 0.6 amplitude, under a 20 ms
-    /// linear ramp at each buffer edge and a 0.3s-on/0.2s-off pulse in
-    /// between. The three are branches of one `if`, not layers — see the
-    /// seam described on `generateAlarmTone()`.
+    /// frequency plus a fixed 660 Hz partial at 0.6 amplitude, under a
+    /// 0.3s-on/0.2s-off pulse multiplied by a 20 ms linear ramp at each
+    /// buffer edge — see the seam described on `generateAlarmTone()`.
     ///
     /// The summed partials peak at 1.566 (880 and 660 are 4:3, so the crests
     /// never coincide), which the 0.7 scale below leaves at 1.096. That means
-    /// `Int16(clamping:)` clips 2818 of the 66150 samples — 4.3% — and the
+    /// `Int16(clamping:)` clips 2816 of the 66150 samples — 4.3% — and the
     /// distortion is part of the "recognizable alarm character", not an
     /// accident. Anyone raising 0.6 or 0.7 should know the headroom is
     /// already negative.
@@ -80,20 +76,19 @@ extension AudioService {
             // the headroom they leave are in the docstring above.
             let wave = sin(2.0 * .pi * frequency * timeSeconds)
                 + 0.6 * sin(2.0 * .pi * 660.0 * timeSeconds)
-            // Amplitude envelope. The ramps avoid a click at the head; at
-            // the tail they cause one, because this `else if` overrides the
-            // off phase the pulse would have been in (#792).
-            let envelope: Double
-            let fadeFrames = Int(sampleRate * 0.02)
-            if sampleIndex < fadeFrames {
-                envelope = Double(sampleIndex) / Double(fadeFrames)
-            } else if sampleIndex > totalSamples - fadeFrames {
-                envelope = Double(totalSamples - sampleIndex) / Double(fadeFrames)
-            } else {
-                // Pulse pattern: 0.3s on, 0.2s off
-                let cyclePos = timeSeconds.truncatingRemainder(dividingBy: 0.5)
-                envelope = cyclePos < 0.3 ? 1.0 : 0.0
-            }
+            // Pulse pattern: 0.3s on, 0.2s off.
+            let cyclePos = timeSeconds.truncatingRemainder(dividingBy: 0.5)
+            let pulse = cyclePos < 0.3 ? 1.0 : 0.0
+            // Edge ramps scale the pulse, never replace it, so an off phase
+            // stays silent at the loop seam (#792). Only the buffer edges are
+            // ramped; the pulse's own on/off steps are not.
+            let fadeFrames = Double(Int(sampleRate * 0.02))
+            let edgeRamp = min(
+                1.0,
+                Double(sampleIndex) / fadeFrames,
+                Double(totalSamples - sampleIndex) / fadeFrames
+            )
+            let envelope = pulse * edgeRamp
             let amplitude = wave * envelope * 0.7
             let sample = Int16(clamping: Int(amplitude * Double(Int16.max)))
             samples.append(sample)
