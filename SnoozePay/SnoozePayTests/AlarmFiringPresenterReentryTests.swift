@@ -322,4 +322,45 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         )
         XCTAssertFalse(line.message.contains("dropped"), "the pending alarm is this one: «\(line.message)»")
     }
+
+    /// The notification path hands `present(alarm:)` a snooze count, and when
+    /// the swap finds no host the retry it arms is the only thing that will
+    /// raise that screen again. The screen prices the next snooze as
+    /// `penalty(forSnoozeCount: snoozeCount + 1)`, so a retry rebuilt at `0`
+    /// bills a third snooze at the first step's price (#808).
+    func testReentry_whenTheHostIsGoneOnceTheDismissalFinishes_retriesAtTheSnoozeCountItWasGiven() throws {
+        let alarm = Alarm()
+        let stale = RecordingFiringScreen(alarm: alarm)
+        let presenter = makePresenter(host: stale)
+        presenter.isRootReady = { true }
+        // Stands in for the repository fetch only, as in the pending-path test
+        // above: the snooze count the retry passes is what reaches the screen.
+        presenter.mount = { [weak presenter] _, snoozeCount in
+            presenter?.present(alarm: alarm, snoozeCount: snoozeCount) ?? false
+        }
+
+        _ = presenter.present(alarm: alarm, snoozeCount: 2)
+        presenter.locateHost = { .failure(.noHostingWindow) }
+        try XCTUnwrap(dismissal.completion)()
+
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 2),
+            "the retry has to be armed with the snooze count the screen was built with, not just its alarm"
+        )
+
+        let newHost = RecordingHost()
+        presenter.locateHost = { .success(newHost) }
+        presenter.flushPendingPresentation()
+
+        let mounted = try XCTUnwrap(
+            newHost.presentedScreens.first as? AlarmFiringViewController,
+            "test precondition: the retry has to raise the firing screen; the host got \(newHost.presentedScreens)"
+        )
+        XCTAssertEqual(
+            mounted.viewModel.snoozeCount, 2,
+            "the retried screen restarted the snooze ladder — the next snooze is priced from the first step (#808)"
+        )
+        XCTAssertNil(presenter.pendingAlarmID, "the screen is up, so nothing is left to retry")
+    }
 }

@@ -160,6 +160,29 @@ final class AlarmKitFiringRoutingTests: XCTestCase {
         XCTAssertNil(presenter.pendingAlarmID, "Pending must clear after a successful mount")
     }
 
+    /// A deferred request keeps the snooze count it was made with: the flush
+    /// rebuilds the screen from the pending record alone, and it used to
+    /// rebuild it at `0` (#808).
+    func testPresenter_flushAfterWindowReady_mountsAtTheRequestedSnoozeCount() {
+        var rootReady = false
+        var mountCalls: [(alarmID: UUID, snoozeCount: Int)] = []
+        let presenter = AlarmFiringPresenter(alarmRepository: .shared)
+        presenter.isRootReady = { rootReady }
+        presenter.mount = { alarmID, snoozeCount in
+            mountCalls.append((alarmID, snoozeCount)); return true
+        }
+        let id = UUID()
+
+        presenter.requestPresentation(alarmID: id, snoozeCount: 3) // deferred (no root)
+        XCTAssertTrue(mountCalls.isEmpty, "test precondition: the request has to have been deferred")
+        rootReady = true
+        presenter.flushPendingPresentation()
+
+        XCTAssertEqual(mountCalls.map(\.alarmID), [id], "Flush must mount the deferred alarm once")
+        XCTAssertEqual(mountCalls.map(\.snoozeCount), [3],
+                       "The retry must mount at the requested snooze count, not a fresh 0")
+    }
+
     /// A flush that still finds no window keeps the alarm pending so a later
     /// activation re-attempts — it must not silently drop the firing screen.
     func testPresenter_flushWhileStillNotReady_keepsPending() {
