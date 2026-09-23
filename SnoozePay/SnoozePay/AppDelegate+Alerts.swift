@@ -262,7 +262,10 @@ extension AppDelegate {
     ///
     /// The three refusals it names are states where `present` is a no-op anyway, so
     /// declining costs no alert that would otherwise have appeared; it only
-    /// leaves a record where UIKit leaves none. The guard `Statistics` needs —
+    /// leaves a record where UIKit leaves none. That holds because `topVC` is
+    /// the TOPMOST controller: for a child whose ancestor is on screen, UIKit
+    /// may present through the ancestor, which is why `Statistics` asks these
+    /// questions only after `present` has refused (#790). The guard `Statistics` needs —
     /// "something is already presented" — is deliberately absent: the caller
     /// walks to the topmost controller first, so `presentedViewController` is
     /// nil by construction and this alert stacks on top of whatever is up
@@ -274,14 +277,11 @@ extension AppDelegate {
     /// every other reason at once. This one still earns its place: it names WHY,
     /// and it is the half a test can drive without a live transition.
     ///
-    /// ⚠️ The label is `presenter:`, not `presenting:`. The other function of
-    /// this name in the app — ``StatisticsViewController/droppedAlertDiagnostic(presenting:message:)``
-    /// — takes the controller that BLOCKS the presentation
-    /// (`presentedViewController`); this one takes the controller that WOULD
-    /// perform it. The types are compatible, so copying a call from one file to
-    /// the other compiles and answers the opposite question. The differing
-    /// label is what makes that copy fail to build instead. (#790 tracks
-    /// bringing the `Statistics` one up to this shape.)
+    /// ⚠️ Same name and label as
+    /// ``StatisticsViewController/droppedAlertDiagnostic(presenter:message:)``,
+    /// and the same argument — the controller that WOULD present — but not the
+    /// same question: that one reports only a stacked alert, because its
+    /// caller must not decide the window refusals up front (#790).
     static func droppedAlertDiagnostic(
         presenter topVC: UIViewController, message: String
     ) -> String? {
@@ -291,8 +291,9 @@ extension AppDelegate {
 
     /// Why `topVC` would refuse to present, or `nil` when it is free to.
     ///
-    /// Shared by both alerts rather than listed twice: a fourth state added to
-    /// one copy and not to the other is a state one alert reports and the other
+    /// Shared by both alerts here and by `StatisticsViewController`'s
+    /// post-refusal line rather than listed three times: a fourth state added
+    /// to one copy and not to another is a state one alert reports and another
     /// drops silently. Only the wrapping line differs, so only that is
     /// duplicated.
     static func presentationRefusalReason(presenter topVC: UIViewController) -> String? {

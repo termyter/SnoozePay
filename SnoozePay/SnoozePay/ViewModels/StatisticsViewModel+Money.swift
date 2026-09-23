@@ -61,8 +61,9 @@ extension StatisticsViewModel {
     static var ledgerUnreadableErrorID: String { "STATS-721-LEDGER-UNREADABLE" }
     /// Log identifier for the load-failure alert actually reaching the user.
     static var alertShownErrorID: String { "STATS-721-ALERT-SHOWN" }
-    /// Log identifier for a load-failure alert the screen could not show
-    /// because something else was already presented. Distinct from
+    /// Log identifier for a load-failure alert the screen could not show —
+    /// something else was already presented, or the screen could not present
+    /// at all (#790). Distinct from
     /// `alertShownErrorID` so "the user was warned" and "the warning was
     /// dropped" can be told apart in a sysdiagnose (#721).
     static var alertDroppedErrorID: String { "STATS-721-ALERT-DROPPED" }
