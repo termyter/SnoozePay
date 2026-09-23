@@ -39,9 +39,10 @@ private final class SwallowingHost: UIViewController {
     }
 }
 
-/// The two alerts `AppDelegate` puts up itself: the corrupt-alarm-data one it
-/// used to present without a trace, and the notifications-disabled one whose
-/// copy used to live in Swift literals (#752).
+/// The two alerts `AppDelegate` puts up itself, both of which used to be
+/// presented without a trace: the corrupt-alarm-data one (#752) and the
+/// notifications-disabled one (#789), whose copy also used to live in Swift
+/// literals.
 ///
 /// # Why the corrupt-data half is driven through a static seam
 ///
@@ -426,6 +427,220 @@ final class AppDelegateAlertTests: XCTestCase {
         XCTAssertEqual(
             Localized.text("common.button.cancel"), "Отмена",
             "the alert's cancel action reuses the shared key rather than adding a second spelling"
+        )
+    }
+
+    // MARK: - The notifications-disabled warning reaches the user, or says it did not
+
+    /// The #752 pair, now for the alert that warns alarms will not fire at all.
+    /// Before #789 this presentation had no completion and no read-back, so
+    /// "the user was warned" and "UIKit declined silently" looked identical
+    /// from outside.
+    func testNotificationsDisabledAlert_onAMountedPresenter_logsThatTheUserSawIt() {
+        let host = makeMountedHost()
+        XCTAssertNil(
+            AppDelegate.presentationRefusalReason(presenter: host),
+            "test precondition: a mounted, settled presenter must not read as one that cannot present"
+        )
+
+        // Drained immediately before the sink goes in: a sink that waits also
+        // catches whatever deferred work a neighbour left queued (#742).
+        drainMainQueue()
+
+        let shown = expectation(description: "the ALARM-789 ALERT-SHOWN line reached the seam")
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        var fulfilled = false
+
+        AppLogger.withTestSink({ category, level, text in
+            lines.append((category: category, level: level, message: text))
+            if !fulfilled, text.contains(AppDelegate.notificationsAlertShownErrorID) {
+                fulfilled = true
+                shown.fulfill()
+            }
+        }, perform: {
+            AppDelegate.showNotificationsDisabledAlert(on: host)
+
+            // Read BEFORE the wait, which is where the two implementations
+            // differ: a line emitted ahead of `present` lands in the sink
+            // synchronously, so every assertion after the wait passes for it too.
+            XCTAssertTrue(
+                lines.allSatisfy { !$0.message.contains(AppDelegate.notificationsAlertShownErrorID) },
+                """
+                ALERT-SHOWN must come from present's completion, not from before the call; \
+                the sink already saw \(lines.map(\.message))
+                """
+            )
+            XCTAssertTrue(
+                lines.allSatisfy { !$0.message.contains(AppDelegate.notificationsAlertDroppedErrorID) },
+                """
+                red here means `presentedViewController` is not assigned inside `present`, \
+                so the read-back would report every alert the user did see as dropped; \
+                the sink saw \(lines.map(\.message))
+                """
+            )
+
+            // 25 s to match the sibling suites: on a saturated three-core
+            // runner a tight deadline answers "the runner was busy".
+            wait(for: [shown], timeout: 25)
+        })
+
+        let shownLines = lines.filter { $0.message.contains(AppDelegate.notificationsAlertShownErrorID) }
+        XCTAssertEqual(
+            shownLines.count, 1,
+            "one shown alert must leave exactly one line; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(shownLines.first?.category, .appDelegate, "the rest of this trail is filed there")
+        XCTAssertEqual(
+            shownLines.first?.level, .error,
+            """
+            the SHOWN and DROPPED halves must sit at one level, or a reader who \
+            greps the pair at .error sees only the failures and reads the alert as \
+            never shown (#787).
+            """
+        )
+        XCTAssertTrue(
+            shownLines.first?.message.contains("Без разрешения на уведомления будильники не сработают.") == true,
+            """
+            the line must carry the warning the user read; a missing catalogue key \
+            would put the key itself here instead. It reads «\(shownLines.first?.message ?? "")»
+            """
+        )
+        XCTAssertTrue(
+            lines.allSatisfy { !$0.message.contains(AppDelegate.notificationsAlertDroppedErrorID) },
+            "an alert that was shown must not also be reported as dropped"
+        )
+
+        let alert = host.presentedViewController as? UIAlertController
+        XCTAssertNotNil(
+            alert,
+            """
+            the line claims an alert was shown, so one has to be on screen. \
+            \(presentationDiagnostics(rootedAt: window.rootViewController))
+            """
+        )
+        XCTAssertEqual(
+            alert?.title, "Уведомления выключены",
+            "CreateAlarmUITests matches this alert by these exact words"
+        )
+        XCTAssertEqual(alert?.actions.count, 2, "the guard must not have cost the alert its actions")
+        XCTAssertEqual(alert?.actions.first?.title, "Отмена")
+        XCTAssertEqual(alert?.actions.last?.title, "Настройки", "this is the action that opens Settings")
+    }
+
+    /// The branch #789 exists for. A presenter off the window hierarchy is the
+    /// state UIKit answers by doing nothing; before this, the user got no
+    /// warning that alarms would not fire and the log said nothing either.
+    func testNotificationsDisabledAlert_onAnUnmountedPresenter_leavesTheLineInstead() {
+        let offscreen = UIViewController()
+        offscreen.loadViewIfNeeded()
+        XCTAssertNil(
+            offscreen.viewIfLoaded?.window,
+            "test precondition: the presenter must be off the window hierarchy"
+        )
+
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append((category: $0, level: $1, message: $2)) }, perform: {
+            AppDelegate.showNotificationsDisabledAlert(on: offscreen)
+        })
+
+        let dropLines = lines.filter { $0.message.contains(AppDelegate.notificationsAlertDroppedErrorID) }
+        XCTAssertEqual(
+            dropLines.count, 1,
+            """
+            red here is #789 verbatim: no alert on screen and no line saying so. \
+            The sink saw \(lines.map(\.message))
+            """
+        )
+        XCTAssertEqual(dropLines.first?.category, .appDelegate)
+        XCTAssertEqual(
+            dropLines.first?.level, .error,
+            "a warning about alarms that will not fire, never delivered, is not a notice"
+        )
+        XCTAssertNil(offscreen.presentedViewController, "the guard must not have presented anything")
+        XCTAssertTrue(
+            dropLines.first?.message
+                .contains("UIViewController is not in the window hierarchy") == true,
+            """
+            the line must name WHY: «UIViewController» alone is the stub's type name \
+            and reads the same under all three refusals. It reads \
+            «\(dropLines.first?.message ?? "")»
+            """
+        )
+        XCTAssertTrue(
+            dropLines.first?.message.contains("Без разрешения на уведомления будильники не сработают.") == true,
+            """
+            the unshown warning is the part worth recovering; it reads \
+            «\(dropLines.first?.message ?? "")»
+            """
+        )
+        XCTAssertTrue(
+            lines.allSatisfy { !$0.message.contains(AppDelegate.notificationsAlertShownErrorID) },
+            "nothing reached the screen, so nothing may claim it did"
+        )
+    }
+
+    /// The refusals the guard cannot name. UIKit declines for reasons it does
+    /// not publish and answers by returning without calling the completion — so
+    /// the completion alone would leave those producing no alert and no line,
+    /// which is the half of #752 that had to be added twice.
+    ///
+    /// UIKit's own refusal is not stageable; what the read-back reads is:
+    /// `present` returned and `presentedViewController` is not the alert.
+    func testNotificationsDisabledAlert_whenThePresenterSwallowsTheCall_stillLeavesALine() {
+        let host = SwallowingHost()
+        attachToWindow(host)
+        XCTAssertNil(
+            AppDelegate.presentationRefusalReason(presenter: host),
+            "test precondition: the guard must PASS here, so the line can only come from the read-back"
+        )
+
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append((category: $0, level: $1, message: $2)) }, perform: {
+            AppDelegate.showNotificationsDisabledAlert(on: host)
+        })
+
+        XCTAssertTrue(host.wasAskedToPresent, "test precondition: the call has to have reached `present`")
+        let dropLines = lines.filter { $0.message.contains(AppDelegate.notificationsAlertDroppedErrorID) }
+        XCTAssertEqual(
+            dropLines.count, 1,
+            """
+            a refusal the guard cannot name must still leave one line — red here means \
+            the read-back after `present` is gone. The sink saw \(lines.map(\.message))
+            """
+        )
+        XCTAssertEqual(dropLines.first?.category, .appDelegate)
+        XCTAssertEqual(dropLines.first?.level, .error)
+        XCTAssertTrue(
+            dropLines.first?.message.contains("SwallowingHost did not put the alert up") == true,
+            "the line must name who refused; it reads «\(dropLines.first?.message ?? "")»"
+        )
+        XCTAssertTrue(
+            dropLines.first?.message.contains("Без разрешения на уведомления будильники не сработают.") == true,
+            """
+            the unshown warning is the part worth recovering; it reads \
+            «\(dropLines.first?.message ?? "")»
+            """
+        )
+        XCTAssertTrue(
+            lines.allSatisfy { !$0.message.contains(AppDelegate.notificationsAlertShownErrorID) },
+            "nothing reached the screen, so nothing may claim it did"
+        )
+    }
+
+    /// The handles are what makes either incident greppable, and they are only
+    /// useful while they stay apart: one pair covering both alerts answers
+    /// "was the user warned about notifications" with lines about corrupt alarm
+    /// data.
+    func testNotificationsDisabledAlertUsesItsOwnGrepHandles() {
+        XCTAssertEqual(AppDelegate.notificationsAlertShownErrorID, "ALARM-789-ALERT-SHOWN")
+        XCTAssertEqual(AppDelegate.notificationsAlertDroppedErrorID, "ALARM-789-ALERT-DROPPED")
+        XCTAssertNotEqual(
+            AppDelegate.notificationsAlertShownErrorID, AppDelegate.alertShownErrorID,
+            "the two alerts are two incidents and must stay two greps"
+        )
+        XCTAssertNotEqual(
+            AppDelegate.notificationsAlertDroppedErrorID, AppDelegate.alertDroppedErrorID,
+            "the two alerts are two incidents and must stay two greps"
         )
     }
 
