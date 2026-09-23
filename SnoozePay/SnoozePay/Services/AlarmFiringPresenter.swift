@@ -31,12 +31,32 @@ final class AlarmFiringPresenter {
     /// present but which we couldn't mount yet because no foreground window/root
     /// existed: the system runs the intent before the scene is active, and on a
     /// cold launch the splash → tab-bar root only mounts ~200 ms later. Recorded
-    /// by `requestPresentation(alarmID:)` and flushed by
+    /// by `requestPresentation(alarmID:snoozeCount:)`, and by the no-host
+    /// branch of `mountAfterDismissal` — a notification-path swap whose old
+    /// screen left no host behind (#804). Flushed by
     /// `flushPendingPresentation()` once the scene becomes active, so the firing
     /// screen survives both a warm-foreground race and a cold start (#382).
-    /// `private(set)` so tests can assert the deferred id without poking the
-    /// internals through reflection.
-    private(set) var pendingAlarmID: UUID?
+    ///
+    /// The snooze count travels with the id because the retry rebuilds the
+    /// screen from this record alone, and the penalty is priced from it
+    /// (`penalty(forSnoozeCount: snoozeCount + 1)`). Held as one value rather
+    /// than two optionals so the pair cannot come apart: the retry used to
+    /// mount with `0`, which put a deferred third snooze back on the first
+    /// step's price (#808).
+    ///
+    /// `private(set)` so tests can assert the deferred screen without poking
+    /// the internals through reflection.
+    private(set) var pendingPresentation: PendingPresentation?
+
+    /// Which alarm is deferred, for the call sites that only ask that.
+    var pendingAlarmID: UUID? { pendingPresentation?.alarmID }
+
+    /// Everything the retry needs to rebuild the firing screen it could not
+    /// mount the first time.
+    struct PendingPresentation: Equatable {
+        let alarmID: UUID
+        let snoozeCount: Int
+    }
 
     /// `true` when the real app root (not the launch splash) is mounted and the
     /// firing screen can be presented. Seam so the pending-present retry (#382)
@@ -103,22 +123,22 @@ final class AlarmFiringPresenter {
     /// Request the firing screen for `alarmID` from a context that may run
     /// before any foreground window exists — the AlarmKit alert buttons
     /// (`AlarmKitActionRouter`, whose intents set `openAppWhenRun`) and the
-    /// alerting observer. Records the id as pending and attempts an immediate
-    /// present; if no scene/root is attached yet (cold launch, or the foreground
-    /// transition hasn't completed) the present is a no-op and the recorded id
-    /// is flushed later by `flushPendingPresentation()` from
+    /// alerting observer. Records the id and snooze count as pending and
+    /// attempts an immediate present; if no scene/root is attached yet (cold
+    /// launch, or the foreground transition hasn't completed) the present is a
+    /// no-op and the record is flushed later by `flushPendingPresentation()` from
     /// `SceneDelegate.sceneDidBecomeActive`. This is what makes tapping an
     /// AlarmKit alarm actually open the app *and* land on our screen (#382) —
     /// presenting directly in the intent's `perform()` lost the race and the
     /// screen never appeared.
     func requestPresentation(alarmID: UUID, snoozeCount: Int = 0) {
-        pendingAlarmID = alarmID
-        attemptPendingPresentation(snoozeCount: snoozeCount)
+        pendingPresentation = PendingPresentation(alarmID: alarmID, snoozeCount: snoozeCount)
+        attemptPendingPresentation()
     }
 
     /// Mount any deferred firing screen now that the scene is active. Called
     /// from `SceneDelegate.sceneDidBecomeActive` (and after the splash → root
-    /// transition completes). Clears the pending id only once the present
+    /// transition completes). Clears the pending record only once the present
     /// actually lands so a still-too-early flush keeps retrying on the next
     /// activation. No-op when nothing is pending.
     func flushPendingPresentation() {
@@ -130,17 +150,19 @@ final class AlarmFiringPresenter {
     /// over the splash would have the screen torn down the instant the splash
     /// swaps the window's root, so we keep the id pending until the launch
     /// transition completes and re-attempt then. Clears the pending id only
-    /// after a successful present (#382).
-    private func attemptPendingPresentation(snoozeCount: Int = 0) {
-        guard let alarmID = pendingAlarmID else { return }
+    /// after a successful present (#382). The snooze count comes from the
+    /// pending record, never a default: a retry is the same screen, not a
+    /// fresh one (#808).
+    private func attemptPendingPresentation() {
+        guard let pending = pendingPresentation else { return }
         guard isRootReady() else {
             AppLogger.appDelegate.notice(
-                "firing-present: launch root not ready — deferring alarm \(alarmID, privacy: .private)"
+                "firing-present: launch root not ready — deferring alarm \(pending.alarmID, privacy: .private)"
             )
             return
         }
-        if mount(alarmID, snoozeCount) {
-            pendingAlarmID = nil
+        if mount(pending.alarmID, pending.snoozeCount) {
+            pendingPresentation = nil
         }
     }
 
@@ -238,7 +260,10 @@ final class AlarmFiringPresenter {
         // unanswered with no line anywhere (#798).
         if let presentedFiring = Self.presentedFiringScreen(from: topVC) {
             dismissStaleScreen(presentedFiring) { [weak self] in
-                self?.mountAfterDismissal(firingVC, alarmID: alarm.id)
+                self?.mountAfterDismissal(
+                    firingVC,
+                    retry: PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)
+                )
             }
             return false
         }
@@ -261,7 +286,11 @@ final class AlarmFiringPresenter {
     /// Through ``locateHost`` rather than the static walk so this path answers
     /// to the same seam the branch above does — it was the one place in the
     /// class that went around it.
-    private func mountAfterDismissal(_ firingVC: UIViewController, alarmID: UUID) {
+    ///
+    /// `retry` is what gets armed when no host is left: the snooze count
+    /// `firingVC` was built with as well as its alarm, or the retry prices
+    /// the next snooze from the first step (#808).
+    private func mountAfterDismissal(_ firingVC: UIViewController, retry: PendingPresentation) {
         switch locateHost() {
         case let .success(top):
             top.present(firingVC, animated: false)
@@ -269,13 +298,19 @@ final class AlarmFiringPresenter {
             // notification path can land while a different alarm sits pending
             // from AlarmKit, and clearing that one would drop the screen this
             // fix exists to keep.
-            if pendingAlarmID == alarmID {
-                pendingAlarmID = nil
+            //
+            // By id, not by the whole record: the same alarm deferred by
+            // AlarmKit at count 0 and then shown here at 2 is shown, and
+            // keeping the `(id, 0)` record would re-mount it at 0 on the next
+            // activation — the reset #808 closes. Pinned by
+            // `testReentry_forTheAlarmAlreadyPendingAtAnotherCount_clearsIt`.
+            if pendingAlarmID == retry.alarmID {
+                pendingPresentation = nil
             }
         case let .failure(miss):
             // The pending slot holds one alarm. Taking it from another one
             // drops that alarm's retry, so the line says so.
-            let displaced = pendingAlarmID.map { $0 != alarmID } ?? false
+            let displaced = pendingAlarmID.map { $0 != retry.alarmID } ?? false
             AppLogger.emit(
                 .appDelegate, .error,
                 "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending"
@@ -283,7 +318,7 @@ final class AlarmFiringPresenter {
             )
             // Not terminal, unlike the give-up branch above: the retry can
             // still raise the screen, so this branch leaves the audio alone.
-            pendingAlarmID = alarmID
+            pendingPresentation = retry
         }
     }
 
