@@ -14,6 +14,41 @@ import XCTest
 /// - `CreateAlarmViewModel` seeding + persistence of the new field.
 final class AlarmRepeatModeTests: XCTestCase {
 
+    /// The alarm and wake-day stores the dismiss and save tests write through,
+    /// in a per-test suite dropped in `tearDown` (#814). They used to save into
+    /// `AlarmRepository(defaults: .standard)` and delete afterwards — which on
+    /// a clean host still leaves an encoded empty `stored_alarms` behind — and
+    /// the dismiss tests recorded today's wake into `WakeEventStore.shared`,
+    /// i.e. `wake_days` / `wake_times` in the host's real `UserDefaults.standard`.
+    /// CI run 35861930577 could not see either: earlier tests had already put
+    /// all three keys there, and re-saving the same day changes nothing.
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.repeatMode.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)!
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
+    private func makeFiringViewModel(_ alarm: Alarm, repo: AlarmRepository) -> AlarmFiringViewModel {
+        AlarmFiringViewModel(
+            alarm: alarm,
+            snoozeCount: 0,
+            balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter()),
+            alarmRepository: repo,
+            wakeStore: WakeEventStore(defaults: defaults),
+            ledger: TransactionRepository(defaults: defaults)
+        )
+    }
+
     // MARK: - Model defaults + with(...)
 
     func testDefaultInit_repeatModeIsWeekly() {
@@ -112,12 +147,11 @@ final class AlarmRepeatModeTests: XCTestCase {
     // MARK: - Dismiss semantics (one-shot auto-disable)
 
     func testDismiss_oneShotAlarmWithDays_isDisabled() {
-        let repo = AlarmRepository(defaults: .standard)
+        let repo = AlarmRepository(defaults: defaults)
         let alarm = Alarm(repeatDays: [0, 1, 2, 3, 4], enabled: true, repeatMode: .never)
         repo.save(alarm)
-        defer { repo.delete(id: alarm.id) }
 
-        let viewModel = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
+        let viewModel = makeFiringViewModel(alarm, repo: repo)
         viewModel.dismiss()
 
         XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.enabled, false,
@@ -125,12 +159,11 @@ final class AlarmRepeatModeTests: XCTestCase {
     }
 
     func testDismiss_weeklyAlarmWithDays_staysEnabled() {
-        let repo = AlarmRepository(defaults: .standard)
+        let repo = AlarmRepository(defaults: defaults)
         let alarm = Alarm(repeatDays: [0, 1, 2, 3, 4], enabled: true, repeatMode: .weekly)
         repo.save(alarm)
-        defer { repo.delete(id: alarm.id) }
 
-        let viewModel = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo)
+        let viewModel = makeFiringViewModel(alarm, repo: repo)
         viewModel.dismiss()
 
         XCTAssertEqual(repo.fetchOrFail(id: alarm.id)?.enabled, true,
@@ -155,7 +188,7 @@ final class AlarmRepeatModeTests: XCTestCase {
     }
 
     func testCreateVM_save_persistsRepeatMode() {
-        let repo = AlarmRepository(defaults: .standard)
+        let repo = AlarmRepository(defaults: defaults)
         let viewModel = CreateAlarmViewModel(repository: repo)
         viewModel.repeatDays = [0, 2]
         viewModel.repeatMode = .never
@@ -164,7 +197,6 @@ final class AlarmRepeatModeTests: XCTestCase {
 
         let saved = repo.fetchAllOrFail().first { $0.repeatDays == [0, 2] && $0.repeatMode == .never }
         XCTAssertNotNil(saved, "Saved alarm must carry the one-shot mode")
-        if let saved { repo.delete(id: saved.id) }
     }
 
     func testCreateVM_hintMatchesMode() {

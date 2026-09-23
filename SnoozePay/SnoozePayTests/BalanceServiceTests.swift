@@ -619,6 +619,30 @@ final class BalanceServiceTests: XCTestCase {
 /// Tests for AlarmFiringViewModel — snooze/balance deduction edge cases.
 final class AlarmFiringViewModelTests: XCTestCase {
 
+    /// The wallet these tests fund or drain, in a per-test suite dropped in
+    /// `tearDown` (#814). Until #814 they topped up and drained
+    /// `BalanceService.shared`, which CI run 35861930577 measured rewriting
+    /// `user_balance` and `stored_transactions` in the host's real
+    /// `UserDefaults.standard`.
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+    private var wallet: BalanceService!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.firing.vm.edge.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)!
+        wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        wallet = nil
+        defaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
     // MARK: - Helpers
 
     private func alarm(penalty: Double, progressive: Bool = false) -> Alarm {
@@ -631,20 +655,14 @@ final class AlarmFiringViewModelTests: XCTestCase {
     // MARK: - canSnooze tests
 
     func testCanSnoozeWhenBalanceExact() {
-        // Balance = exactly penalty amount → should succeed, balance becomes 0
-        let balanceService = BalanceService.shared
-        let startBalance = balanceService.balance
-
+        // Balance = exactly the penalty amount → the snooze is affordable.
+        // The wallet starts empty in a fresh suite, so one top-up sets it.
         let alarm = alarm(penalty: 50)
-        // Set balance to exactly the penalty
-        balanceService.topUp(amount: 50 - startBalance + startBalance) // Reset to known state
+        XCTAssertTrue(wallet.topUp(amount: 50))
 
-        // Test the pure logic: canAfford(50) when balance = 50
-        // This is tested in the ViewModel indirectly via canSnooze
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0)
-        // The actual canSnooze depends on live balance — test the calculation path
-        let penalty = alarm.penalty(forSnoozeCount: 1)
-        XCTAssertEqual(penalty, 50)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, balanceService: wallet)
+        XCTAssertEqual(alarm.penalty(forSnoozeCount: 1), 50)
+        XCTAssertTrue(vm.canSnooze, "a balance equal to the penalty must afford the snooze")
     }
 
     func testPenaltyForFirstSnooze() {
@@ -668,15 +686,9 @@ final class AlarmFiringViewModelTests: XCTestCase {
     }
 
     func testSnoozeButtonTitleWhenEmpty() {
-        let balanceService = BalanceService.shared
-        // Drain balance
-        let currentBalance = balanceService.balance
-        if currentBalance > 0 {
-            balanceService.charge(amount: currentBalance, alarmID: nil)
-        }
-
+        // A fresh suite's wallet is already empty — nothing to drain.
         let alarm = alarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, balanceService: balanceService)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, balanceService: wallet)
 
         XCTAssertFalse(vm.canSnooze)
         XCTAssertEqual(vm.snoozeButtonTitle, "Баланс пуст")
@@ -735,8 +747,37 @@ final class StatisticsViewModelTests: XCTestCase {
 /// Tests for CreateAlarmViewModel — progressive scale preview and day toggle.
 final class CreateAlarmViewModelTests: XCTestCase {
 
+    /// The alarm store and the global alarm defaults, both in a per-test suite
+    /// dropped in `tearDown` (#814). Until #814 the view model fell back to
+    /// `AlarmRepository.shared`, so the two `save()` tests below rewrote
+    /// `stored_alarms` in the host's real `UserDefaults.standard` (CI run
+    /// 35861930577), and `testEmptyNameDefaultsToPlaceholder` read back
+    /// `.last` of whatever alarms earlier tests had left there.
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.createAlarm.vm.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)!
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
+    private func makeViewModel() -> CreateAlarmViewModel {
+        CreateAlarmViewModel(
+            repository: AlarmRepository(defaults: defaults),
+            defaults: AlarmDefaults(defaults: defaults)
+        )
+    }
+
     func testProgressiveScalePreview() {
-        let vm = CreateAlarmViewModel()
+        let vm = makeViewModel()
         vm.penaltyAmount = 50
         // Expected: "1-е: 50 ₽ → 2-е: 100 ₽ → 3-е: 200 ₽ → 4-е: 400 ₽"
         // (fmtRub narrow no-break space before ₽)
@@ -748,7 +789,7 @@ final class CreateAlarmViewModelTests: XCTestCase {
     }
 
     func testDayToggleAddsAndRemoves() {
-        let vm = CreateAlarmViewModel()
+        let vm = makeViewModel()
         XCTAssertTrue(vm.repeatDays.isEmpty)
 
         vm.toggleDay(0) // Add Monday
@@ -762,7 +803,7 @@ final class CreateAlarmViewModelTests: XCTestCase {
     }
 
     func testDayToggleSortedOrder() {
-        let vm = CreateAlarmViewModel()
+        let vm = makeViewModel()
         vm.toggleDay(6)
         vm.toggleDay(0)
         vm.toggleDay(3)
@@ -770,7 +811,7 @@ final class CreateAlarmViewModelTests: XCTestCase {
     }
 
     func testSaveCreatesNewAlarmWithCorrectValues() {
-        let vm = CreateAlarmViewModel()
+        let vm = makeViewModel()
         vm.name = "Тест"
         vm.penaltyAmount = 100
         vm.progressiveScale = true
@@ -783,11 +824,11 @@ final class CreateAlarmViewModelTests: XCTestCase {
     }
 
     func testEmptyNameDefaultsToPlaceholder() {
-        let vm = CreateAlarmViewModel()
+        let vm = makeViewModel()
         vm.name = ""
         vm.save()
         // Verify the alarm was saved with default name
-        let saved = AlarmRepository(defaults: .standard).fetchAllOrFail().last
+        let saved = AlarmRepository(defaults: defaults).fetchAllOrFail().last
         XCTAssertEqual(saved?.name, "Будильник")
     }
 }
