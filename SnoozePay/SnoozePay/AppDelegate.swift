@@ -461,8 +461,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     /// The presenter the retry gets: the topmost controller over the located
-    /// root, or `nil` — after logging the locator's own reason, since the drop
-    /// line that follows can only name the original presenter's (#797).
+    /// root, or `nil` — after logging the locator's own reason, since a drop
+    /// line that may follow can only name the original presenter's (#797).
     static func notificationsAlertRetryPresenter(
         from located: Result<UIViewController, ActiveWindowLocator.Miss>
     ) -> UIViewController? {

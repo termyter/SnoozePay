@@ -39,8 +39,8 @@ private final class DecliningHost: UIViewController {
 
 /// Reports a fixed controller as presented, to build a chain without UIKit.
 private final class ChainHost: UIViewController {
-    var next: UIViewController?
-    override var presentedViewController: UIViewController? { next }
+    var stubPresented: UIViewController?
+    override var presentedViewController: UIViewController? { stubPresented }
 }
 
 /// The retry a transient refusal of the notifications-disabled alert earns
@@ -114,6 +114,30 @@ final class NotificationsAlertRetryTests: XCTestCase {
         )
     }
 
+    /// The drop names the retry's refusal, not the first one's.
+    func testRetryRefusedForAnotherReason_dropsWithTheRetrysReason() {
+        let offscreen = UIViewController()
+        offscreen.loadViewIfNeeded()
+        let dismissing = MidDismissalHost()
+        attachToWindow(dismissing)
+
+        capture {
+            AppDelegate.showNotificationsDisabledAlert(on: offscreen)
+            pending.first?(dismissing)
+        }
+
+        let drop = dropLines.first?.message ?? ""
+        XCTAssertEqual(dropLines.count, 1, "the refused retry must drop with one line; the sink saw \(lines)")
+        XCTAssertTrue(
+            drop.contains("MidDismissalHost is being dismissed after one retry"),
+            "the drop must name the retry's refusal; it reads «\(drop)»"
+        )
+        XCTAssertFalse(
+            drop.contains("not in the window hierarchy"),
+            "the first refusal's reason is stale by now; it reads «\(drop)»"
+        )
+    }
+
     /// The read-back's refusal has no known cause, so it drops at once.
     func testUnnamedRefusal_dropsWithoutARetry() {
         let host = DecliningHost()
@@ -150,9 +174,9 @@ final class NotificationsAlertRetryTests: XCTestCase {
     func testRetryPresenter_isTheTopOfTheLocatedChain() {
         let leaf = UIViewController()
         let middle = ChainHost()
-        middle.next = leaf
+        middle.stubPresented = leaf
         let root = ChainHost()
-        root.next = middle
+        root.stubPresented = middle
 
         let found = capturing { AppDelegate.notificationsAlertRetryPresenter(from: .success(root)) }
 
@@ -182,7 +206,8 @@ final class NotificationsAlertRetryTests: XCTestCase {
         let presenting = MidPresentationHost()
         attachToWindow(presenting)
 
-        for presenter in [offscreen, dismissing, presenting] {
+        let presenters: [UIViewController] = [offscreen, dismissing, presenting]
+        for presenter in presenters {
             pending = []
             lines = []
             capture { AppDelegate.showNotificationsDisabledAlert(on: presenter) }
