@@ -15,7 +15,7 @@ import XCTest
 /// `queue.sync`, which returns only once the body has run, and `withTestSink`
 /// keeps its sink installed for the whole synchronous call.
 ///
-/// Its own file rather than a 29th case in `AudioServiceTests`, which is
+/// Its own file rather than another case in `AudioServiceTests`, which is
 /// already past 900 lines.
 final class AudioServiceStartWiringTests: XCTestCase {
 
