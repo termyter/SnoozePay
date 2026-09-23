@@ -54,6 +54,44 @@ import os
 ///    language, not of the layout, and a concatenation freezes Russian order
 ///    into every future translation.
 ///
+/// # `_caps` keys: the catalogue stores the word, the call site shouts it
+///
+/// A key whose last segment ends in `_caps` names copy that is *drawn* in
+/// capitals. The entry still holds the word in ordinary sentence case —
+/// «Превью», not «ПРЕВЬЮ» — and the call site renders it through
+/// `.uppercased(with: AppLocale.display)`:
+///
+///     Localized.text("create_alarm.sound_picker.preview_caps")
+///         .uppercased(with: AppLocale.display)
+///
+/// Why this side and not the catalogue (#793):
+///
+/// - Capitals are presentation, like the caps font and kerning set right next
+///   to them. The shared caps components already treat them so —
+///   `SectionHeaderView`, `SPInput` and `PermissionCardView.capsLabel`
+///   upper-case whatever they are handed. They do it with a bare
+///   `.uppercased()`, though, not with the locale below: `capsLabel`, which
+///   renders `grant_caps` and `unavailable_caps`, is tracked in #821.
+/// - A translator sees an ordinary word and needs no rule about the suffix; in
+///   a language where capitals carry meaning, shouting it in the catalogue
+///   loses that information for good.
+/// - `.uppercased()` without a locale uses the device's rules, which differ
+///   from the copy's language exactly where it matters (Turkish `i` → `İ`), so
+///   the locale is explicit and comes from ``AppLocale/display``.
+///
+/// A test pinning such a caption asserts the on-screen **literal**
+/// («ПРЕВЬЮ»), not `Localized.text(key).uppercased()`: the latter re-reads
+/// whatever the label read and cannot tell when the capitals are lost (#665).
+///
+/// Scope, stated so nobody infers more: this covers the `_caps` *suffix* only.
+/// Keys with a `.caps` *segment* (`statistics.week.caps`, `wallet.chart.caps`,
+/// …) are a separate family that mostly stores capitals in the catalogue —
+/// 18 of 22 at the time of #793, with `create_alarm.penalty.caps`,
+/// `create_alarm.snooze.caps`, `firing.snooze.caps` and
+/// `wallet.history.summary.caps` the sentence-case exceptions. Whether that
+/// family follows this rule is undecided. Known `_caps` exception:
+/// `onboarding.deposit_option.popular_caps`, still stored capped (#821).
+///
 /// # Plurals
 ///
 /// Nouns that follow a count live under `plural.<noun>.<category>` and are read

@@ -94,7 +94,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         "create_alarm.theme.title": "Тема",
         "create_alarm.theme_picker.error.message": "Попробуйте выбрать другое изображение.",
         "create_alarm.theme_picker.error.title": "Не удалось сохранить фото",
-        "create_alarm.theme_picker.preview_caps": "ПРЕВЬЮ ЭКРАНА ЗВОНКА",
+        "create_alarm.theme_picker.preview_caps": "Превью экрана звонка",
         "create_alarm.theme_picker.section_presets": "Готовые темы",
         "create_alarm.theme_picker.title": "Тема будильника",
         "create_alarm.title.edit": "Будильник",
@@ -363,13 +363,14 @@ final class AlarmEditorCopyTests: XCTestCase {
 
         // Recipe form. Safe only because `create_alarm.penalty.caps` is stored
         // sentence-case and `PenaltyCell` upper-cases it: drop that call and the
-        // sides disagree, red. Both preview captions are literals instead, for
-        // two different reasons — `theme_picker.preview_caps` is stored already
-        // capped, so this form reads one string on both sides and cannot catch a
-        // caps change; `sound_picker.preview_caps` is stored sentence-case like
-        // this key, so the form is NOT blind there, and its literal buys
-        // independence from the WORD. Reasoned from the stored values, not
-        // measured. See `testThemePickerRendersItsTitleAndPreviewCaption` and
+        // sides disagree, red. Both preview captions are literals instead. Since
+        // #793 both are stored sentence-case like this key, so the recipe form
+        // would no longer be blind to lost caps there either; the literal is
+        // kept because it pins the screen independently of the stored WORD and
+        // of the storage rule itself — were a caption ever stored capped again,
+        // as `theme_picker.preview_caps` was before #793, the recipe form would
+        // read one string on both sides and go blind. See
+        // `testThemePickerRendersItsTitleAndPreviewCaption` and
         // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` (#665; #793).
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.caps").uppercased()))
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.penalty.hint")))
@@ -731,15 +732,15 @@ final class AlarmEditorCopyTests: XCTestCase {
         let rendered = Self.strings(in: picker.view) + Self.titleViewStrings(of: picker)
         assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound.title").uppercased()))
-        // Pinned as a literal, on purpose — but not because the old form was
+        // Pinned as a literal, on purpose — but not because the recipe form is
         // blind to lost caps: this key holds «Превью», `SoundPickerViewController`
-        // upper-cases it at line 86, and removing that call would have failed
+        // upper-cases it, and removing that call would fail
         // `Localized.text(key).uppercased()` too. What the literal buys is
         // independence from the *word*: re-type the entry as «Прослушать» and the
-        // old form still agrees with the screen, so only the word table above
+        // recipe form still agrees with the screen, so only the word table above
         // (layer 2) goes red, naming the catalogue row and not this screen. The
-        // theme caption below is the other case, where the recipe form really was
-        // blind (#665; unification in #793).
+        // theme caption below was the case where the recipe form really was
+        // blind, until #793 moved its caps to the call site too (#665).
         XCTAssertTrue(
             rendered.contains("ПРЕВЬЮ"),
             "the sound preview card lost its caps caption: \(rendered)"
@@ -747,8 +748,9 @@ final class AlarmEditorCopyTests: XCTestCase {
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.volume_row")))
         // The key's other live call site. `VolumePickerViewController:118` is
         // pinned by `testVolumeScreenRendersItsTitleAndFadeRow`; this caps
-        // caption above the volume card (`SoundPickerViewController:588`) was
-        // read by nothing, so swapping its key there stayed green (#704).
+        // caption above the volume card (the `create_alarm.volume.title` read
+        // in `SoundPickerViewController`) was read by nothing, so swapping its
+        // key there stayed green (#704).
         XCTAssertTrue(
             rendered.contains(Localized.text("create_alarm.volume.title").uppercased()),
             "the volume block lost its caps caption: \(rendered)"
@@ -775,13 +777,15 @@ final class AlarmEditorCopyTests: XCTestCase {
         assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.theme_picker.title").uppercased()))
         // The literal, for the reason in
-        // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt` — and this is
-        // the assertion that *was* blind: the key is stored already capped and
-        // `AlarmThemePickerViewController:84` upper-cases nothing, so the old
-        // right-hand side re-read the entry the label did and matched a screen
-        // that had dropped its caps. The *suite* was not blind: the word table
-        // above pins the exact value (the mutation had to change it too) and
-        // catches a re-typed caption — keep that row (#665; unification #793).
+        // `testSoundPickerFramesTheCatalogueSlotWithoutRenamingIt`. This is the
+        // assertion that *was* blind: until #793 the key was stored already
+        // capped and the controller upper-cased nothing, so the old right-hand
+        // side re-read the entry the label did and matched a screen that had
+        // dropped its caps (#665). Since #793 the entry holds «Превью экрана
+        // звонка» and `AlarmThemePickerViewController` upper-cases it with
+        // `AppLocale.display`; drop that call and the label reads the
+        // sentence-case entry, which this literal does not match — red. The
+        // word table above pins the stored value — keep that row too.
         XCTAssertTrue(
             rendered.contains("ПРЕВЬЮ ЭКРАНА ЗВОНКА"),
             "the theme preview lost its caps caption: \(rendered)"
