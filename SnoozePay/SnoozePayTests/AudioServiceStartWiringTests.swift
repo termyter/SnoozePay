@@ -88,9 +88,9 @@ final class AudioServiceStartWiringTests: XCTestCase {
 
     /// Starts `soundID` on the shared service, bracketed by `stopAlarmSound()`
     /// like the case above, and returns the file name of the player it kept.
-    /// `.playing` is asserted first: `startAlarmSoundLocked` drops the player
-    /// on every other branch, and a nil name would then say nothing about
-    /// which player was chosen.
+    /// `.playing` is asserted first: on every other outcome this call ends
+    /// without a player of its own, and a nil name would then say nothing
+    /// about which player was chosen.
     private func playingFileName(
         afterStarting soundID: String,
         file: StaticString = #filePath,
