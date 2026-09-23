@@ -81,7 +81,10 @@ final class AlarmThemePickerViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.attributedText = NSAttributedString(
-            string: Localized.text("create_alarm.theme_picker.preview_caps"),
+            // Stored sentence-case; the caps face is presentation (see `Localized`,
+            // «`_caps` keys»).
+            string: Localized.text("create_alarm.theme_picker.preview_caps")
+                .uppercased(with: AppLocale.display),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
