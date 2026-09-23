@@ -389,17 +389,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// ones that read as acknowledgements, and «Отмена»/«Настройки» are
     /// neither, so its scan passed over them by design rather than by oversight.
     ///
-    /// All three refusals the guard names are transitions or a not-yet-mounted
-    /// view, so each earns one retry (#805); the read-back below drops at once,
-    /// because its cause is unknown and nothing says waiting would help.
+    /// The guard's three refusals are transient, so each earns one retry (#805);
+    /// the read-back drops at once, as its cause is unknown.
     static func showNotificationsDisabledAlert(on topVC: UIViewController, retriesLeft: Int = 1) {
         let message = Localized.text("permissions.alert.notifications_disabled.message")
+        // No caller passes 0: 0 means this call IS the retry.
+        let retried = retriesLeft == 0 ? " after one retry" : ""
         if let reason = presentationRefusalReason(presenter: topVC) {
             if retriesLeft > 0 {
-                AppLogger.emit(
-                    .appDelegate, .info,
-                    "Notifications-disabled alert deferred — \(reason); retrying"
-                )
+                AppLogger.emit(.appDelegate, .info, "Notifications-disabled alert deferred — \(reason); retrying")
                 scheduleNotificationsAlertRetry { relocated in
                     showNotificationsDisabledAlert(on: relocated ?? topVC, retriesLeft: retriesLeft - 1)
                 }
@@ -407,7 +405,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
             AppLogger.emit(
                 .appDelegate, .error,
-                notificationsDisabledDroppedLine(reason: reason, message: message)
+                notificationsDisabledDroppedLine(reason: reason + retried, message: message)
             )
             return
         }
@@ -446,7 +444,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             AppLogger.emit(
                 .appDelegate, .error,
                 notificationsDisabledDroppedLine(
-                    reason: "\(type(of: topVC)) did not put the alert up",
+                    reason: "\(type(of: topVC)) did not put the alert up\(retried)",
                     message: message
                 )
             )
@@ -454,19 +452,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    /// Runs the retry a transient refusal earns (#805), handing it the topmost
-    /// controller of the active window found again, or `nil` if there is none.
-    ///
-    /// A timer rather than `UIScene.didActivateNotification`: that one does not
-    /// come if the scene is already active, and then neither the alert nor the
-    /// drop line would be written. A seam so tests run the retry synchronously.
+    /// Runs the retry (#805) on a timer: `UIScene.didActivateNotification` does
+    /// not come if the scene is already active. A seam so tests run it by hand.
     static var scheduleNotificationsAlertRetry: (@escaping (UIViewController?) -> Void) -> Void = { retry in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            guard case let .success(root) = ActiveWindowLocator.rootViewController() else {
-                retry(nil)
-                return
-            }
-            retry(AppDelegate.topmostPresenter(from: root))
+            retry(AppDelegate.notificationsAlertRetryPresenter(from: ActiveWindowLocator.rootViewController()))
+        }
+    }
+
+    /// The presenter the retry gets: the topmost controller over the located
+    /// root, or `nil` — after logging the locator's own reason, since the drop
+    /// line that follows can only name the original presenter's (#797).
+    static func notificationsAlertRetryPresenter(
+        from located: Result<UIViewController, ActiveWindowLocator.Miss>
+    ) -> UIViewController? {
+        switch located {
+        case let .success(root):
+            return topmostPresenter(from: root)
+        case let .failure(miss):
+            AppLogger.emit(.appDelegate, .info, "Notifications-disabled retry: \(miss.rawValue); reusing the presenter")
+            return nil
         }
     }
 
