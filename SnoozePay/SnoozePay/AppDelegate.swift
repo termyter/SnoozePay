@@ -377,11 +377,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// The drop is decided twice, the shape #752 arrived at: once before
     /// `present`, where the reason can be named, and once after it by reading
     /// `presentedViewController` back, which names no reason but covers every
-    /// refusal `present` declines outright. One remainder survives both, here
-    /// as in #752: a presentation that starts and is then torn down before the
-    /// completion runs leaves neither line. This alert says alarms will not
-    /// fire at all, so a refusal that leaves neither an alert nor a line is the
-    /// worse of the two silences.
+    /// refusal `present` declines outright. Neither sees a presentation that
+    /// starts and does not finish — torn down or stalled — which leaves no
+    /// line for as long as the completion has not run, here as in #752.
     ///
     /// ⚠️ The title's words are load-bearing outside this file:
     /// `CreateAlarmUITests` finds this alert as `app.alerts["Уведомления
@@ -821,9 +819,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// The drop is decided TWICE: once before `present` by
     /// ``droppedAlertDiagnostic(presenter:message:)``, which can say why, and
     /// once after it by reading `presentedViewController` back, which cannot
-    /// say why but misses nothing. Only the pair closes #752 — the first alone
-    /// left every refusal outside its list of three producing no alert and no
-    /// line, which is the complaint verbatim.
+    /// say why but covers every refusal `present` declines outright. The first
+    /// alone left every refusal outside its list of three producing no alert
+    /// and no line, which is the complaint of #752 verbatim. Neither sees a
+    /// presentation that starts and does not finish — torn down or stalled.
     static func showAlarmDataCorruptedAlert(on topVC: UIViewController, message: String) {
         if let diagnostic = droppedAlertDiagnostic(presenter: topVC, message: message) {
             AppLogger.emit(.appDelegate, .error, diagnostic)
