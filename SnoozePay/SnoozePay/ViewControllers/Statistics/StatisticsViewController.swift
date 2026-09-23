@@ -335,12 +335,20 @@ final class StatisticsViewController: UIViewController {
     /// Every line goes through `AppLogger.emit` so a test can read it back. A
     /// drop leaves nothing on screen, so the line is the only evidence (#731).
     ///
-    /// The drop is decided twice (#790): before `present` by
-    /// ``droppedAlertDiagnostic(presenter:message:)``, which can say why, and
-    /// after it by reading `presentedViewController` back, which cannot say
-    /// why but covers refusals UIKit does not publish. The production caller
-    /// is `viewWillAppear`, where UIKit refuses with "whose view is not in the
-    /// window hierarchy"; before #790 that drop left no line at all.
+    /// Only a stacked alert is refused up front, by
+    /// ``droppedAlertDiagnostic(presenter:message:)``. Every other refusal is
+    /// left to UIKit and reported after `present` returns (#790), with
+    /// ``refusalReason(presenter:)`` naming why.
+    ///
+    /// ⚠️ Not decided up front on purpose. The production caller is
+    /// `viewWillAppear` of a tab's child controller, whose own view has no
+    /// window yet while the tab bar above it does. Whether UIKit presents
+    /// through that ancestor is not something this code gets to guess: a
+    /// "not in the window hierarchy" pre-check would drop an alert UIKit might
+    /// have shown. `testChildOfAMountedTabBar_…` records which it is.
+    ///
+    /// A presentation that starts and is then cut short before its completion
+    /// leaves no line — the same gap `AppDelegate` documents for its alerts.
     static func showLoadErrorAlert(on presenter: UIViewController, message: String) {
         if let diagnostic = droppedAlertDiagnostic(presenter: presenter, message: message) {
             AppLogger.emit(.ui, .error, diagnostic)
@@ -366,30 +374,28 @@ final class StatisticsViewController: UIViewController {
             )
         }
 
-        // Read back, not timed: UIKit assigns `presentedViewController` inside
-        // `present`, before the completion runs, so no run loop is needed.
-        // `testFirstLoadError_logsThatTheUserActuallySawIt` reds if that stops
-        // holding. No retry: this alert explains a failed load, nothing more.
-        if presenter.presentedViewController !== alert {
+        // Read back, not timed: UIKit wires the alert to whoever presents it
+        // inside `present`, before the completion runs, so no run loop is
+        // needed. `testFirstLoadError_logsThatTheUserActuallySawIt` reds if
+        // that stops holding. Asked of the ALERT rather than of `presenter`:
+        // if UIKit presents from an ancestor, the alert still knows it is up,
+        // whatever the child answers for `presentedViewController`.
+        // No retry: this alert explains a failed load, nothing more.
+        if alert.presentingViewController == nil {
             AppLogger.emit(
                 .ui, .error,
-                droppedAlertLine(
-                    reason: "\(type(of: presenter)) did not put the alert up",
-                    message: message
-                )
+                droppedAlertLine(reason: refusalReason(presenter: presenter), message: message)
             )
         }
     }
 
-    /// The line to log when `presenter` cannot show the load-error alert, or
-    /// `nil` when it is free to.
+    /// The line to log when the alert must not go up because one already is,
+    /// or `nil` when `presenter` is free to try.
     ///
-    /// "Already presenting" is this screen's own check — the alert must not
-    /// stack on the one it put up for the previous error — and it names the
-    /// blocking controller, because "the ledger alert is already up" and "a
-    /// top-up sheet is up" read differently in a log. The remaining refusals
-    /// are `AppDelegate.presentationRefusalReason(presenter:)`, called rather
-    /// than copied, so a refusal added there is reported here too.
+    /// This screen's own check — the alert must not stack on the one it put
+    /// up for the previous error — and it names the blocking controller,
+    /// because "the ledger alert is already up" and "a top-up sheet is up"
+    /// read differently in a log.
     ///
     /// ⚠️ Until #790 the label was `presenting:` and the argument was the
     /// BLOCKING controller (`presentedViewController`). It is now the
@@ -398,9 +404,20 @@ final class StatisticsViewController: UIViewController {
     static func droppedAlertDiagnostic(
         presenter: UIViewController, message: String
     ) -> String? {
-        let reason = presenter.presentedViewController.map { "\(type(of: $0)) is already presented" }
-            ?? AppDelegate.presentationRefusalReason(presenter: presenter)
-        return reason.map { droppedAlertLine(reason: $0, message: message) }
+        presenter.presentedViewController.map {
+            droppedAlertLine(reason: "\(type(of: $0)) is already presented", message: message)
+        }
+    }
+
+    /// Why `presenter` did not put the alert up, asked only AFTER it did not.
+    ///
+    /// `AppDelegate.presentationRefusalReason(presenter:)` is called rather
+    /// than copied, so a reason added there is reported here too. When none
+    /// of its states hold, UIKit refused without saying why, and the line
+    /// says only who was asked.
+    static func refusalReason(presenter: UIViewController) -> String {
+        AppDelegate.presentationRefusalReason(presenter: presenter)
+            ?? "\(type(of: presenter)) did not put the alert up"
     }
 
     /// The one shape of every "the user never saw it" line on this screen, so

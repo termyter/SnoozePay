@@ -195,20 +195,9 @@ final class StatisticsLoadFailureTraceTests: XCTestCase {
     }
 }
 
-/// Presenters answering `isBeingDismissed` / `isBeingPresented` with a
-/// constant, the idiom `AppDelegateAlertTests` uses: a live transition would
-/// put UIKit's flag timing under assertion instead of the branch.
-private final class StatsDismissingHost: UIViewController {
-    override var isBeingDismissed: Bool { true }
-}
-
-private final class StatsPresentingHost: UIViewController {
-    override var isBeingPresented: Bool { true }
-}
-
 /// Returns from `present` having done nothing — which is all a caller ever
 /// sees of a refusal UIKit does not publish.
-private final class StatsSwallowingHost: UIViewController {
+private class StatsSwallowingHost: UIViewController {
     private(set) var wasAskedToPresent = false
 
     override func present(
@@ -218,6 +207,19 @@ private final class StatsSwallowingHost: UIViewController {
     ) {
         wasAskedToPresent = true
     }
+}
+
+/// Presenters answering `isBeingDismissed` / `isBeingPresented` with a
+/// constant, the idiom `AppDelegateAlertTests` uses: a live transition would
+/// put UIKit's flag timing under assertion instead of the branch. They also
+/// swallow `present`, because the reason is asked for only after a refusal,
+/// and a constant flag does not make UIKit refuse.
+private final class StatsDismissingHost: StatsSwallowingHost {
+    override var isBeingDismissed: Bool { true }
+}
+
+private final class StatsPresentingHost: StatsSwallowingHost {
+    override var isBeingPresented: Bool { true }
 }
 
 /// The VC half: the alert the user actually gets, and the second one they
@@ -495,15 +497,18 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         )
     }
 
-    // MARK: - Refusals the "already presented" guard could not see (#790)
+    // MARK: - Refusals the "already presented" guard does not decide (#790)
 
-    /// The drop the issue names: an off-window screen, which UIKit refuses
-    /// with "not in the window hierarchy" — until #790 no alert AND no line. Driven through `onLoadError`, so the wiring
-    /// from the VM to the log is under assertion, not just the pure function.
+    /// The drop the issue names: an off-window screen with no parent, which
+    /// UIKit refuses with "not in the window hierarchy" — until #790 no alert
+    /// AND no line. The screen is asked to present, and the reason is named
+    /// only once it has not. Driven through `onLoadError`, so the wiring from
+    /// the VM to the log is under assertion, not just the pure function.
     func testUnmountedScreen_loadErrorLeavesALineNamingTheWindow() {
         let controller = StatisticsViewController()
         controller.loadViewIfNeeded()
         XCTAssertNil(controller.viewIfLoaded?.window, "test precondition: the screen must be off-window")
+        XCTAssertNil(controller.parent, "test precondition: no ancestor UIKit could present through")
 
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
         AppLogger.withTestSink({ lines.append((category: $0, level: $1, message: $2)) }, perform: {
@@ -527,12 +532,50 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         )
         XCTAssertEqual(
             dropLines.first?.message,
-            StatisticsViewController.droppedAlertDiagnostic(
-                presenter: controller, message: Localized.text("wallet.error.load_failed")
+            StatisticsViewController.droppedAlertLine(
+                reason: StatisticsViewController.refusalReason(presenter: controller),
+                message: Localized.text("wallet.error.load_failed")
             ),
-            "the emitted line must BE the diagnostic, not merely carry its handle"
+            "the emitted line must BE the refusal line, not merely carry its handle"
         )
-        XCTAssertNil(controller.presentedViewController, "the guard must not have presented anything")
+        XCTAssertNil(controller.presentedViewController, "UIKit must have refused, or the line above lies")
+    }
+
+    /// The production shape, which the test above is not: `viewWillAppear` of
+    /// the Statistics tab runs while the tab bar is in the window and the
+    /// screen's own view is not yet. Whether UIKit then presents through the
+    /// tab bar is UIKit's call, so this pins the one thing the code promises
+    /// either way — the log agrees with the screen. Before review, a window
+    /// pre-check answered this case itself and would have dropped an alert
+    /// UIKit might have shown.
+    func testChildOfAMountedTabBar_logAgreesWithWhatReachedTheScreen() {
+        let stats = StatisticsViewController()
+        let tabBar = UITabBarController()
+        tabBar.viewControllers = [UIViewController(), UINavigationController(rootViewController: stats)]
+        tabBar.selectedIndex = 0
+        window.rootViewController = tabBar
+        window.makeKeyAndVisible()
+        stats.loadViewIfNeeded()
+        XCTAssertNil(stats.viewIfLoaded?.window, "test precondition: the screen itself must be off-window")
+        XCTAssertNotNil(tabBar.viewIfLoaded?.window, "test precondition: its tab bar must be on screen")
+        XCTAssertNil(tabBar.presentedViewController, "test precondition: nothing on screen yet")
+
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            stats.viewModel.onLoadError?(decodeFailure())
+        })
+
+        let alertIsUp = tabBar.presentedViewController is UIAlertController
+            || stats.presentedViewController is UIAlertController
+        let dropLines = lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) }
+        // Which way UIKit went is written to the test log, so the premise
+        // #729 wrote down without running it is now on record either way.
+        print("#790 characterization: UIKit \(alertIsUp ? "PRESENTED" : "REFUSED") through the tab bar")
+        XCTAssertEqual(
+            dropLines.count, alertIsUp ? 0 : 1,
+            "an alert on screen must leave no DROPPED line, and a refused one exactly one; "
+            + "alert up: \(alertIsUp), the sink saw \(lines)"
+        )
     }
 
     /// Read by its words: with the refusal reasons swapped or made identical,
@@ -543,12 +586,12 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
 
         let dropLines = dropLinesFromShowing(on: host)
 
+        XCTAssertTrue(host.wasAskedToPresent, "the reason is named after a refusal, not instead of asking")
         XCTAssertEqual(dropLines.count, 1, "a presenter mid-dismissal must leave one line")
         XCTAssertTrue(
             dropLines.first?.contains("StatsDismissingHost is being dismissed") == true,
             "the line must name the transition; it reads «\(dropLines.first ?? "")»"
         )
-        XCTAssertNil(host.presentedViewController, "the guard must not have presented anything")
     }
 
     func testPresenterStillBeingPresented_saysWhichTransition() {
@@ -557,16 +600,16 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
 
         let dropLines = dropLinesFromShowing(on: host)
 
+        XCTAssertTrue(host.wasAskedToPresent, "the reason is named after a refusal, not instead of asking")
         XCTAssertEqual(dropLines.count, 1, "a presenter mid-presentation must leave one line")
         XCTAssertTrue(
             dropLines.first?.contains("StatsPresentingHost is itself still being presented") == true,
             "the line must name the transition; it reads «\(dropLines.first ?? "")»"
         )
-        XCTAssertNil(host.presentedViewController, "the guard must not have presented anything")
     }
 
-    /// The refusal no guard can name: `present` returns and the alert is not
-    /// up. Only the read-back after `present` can report it.
+    /// The refusal nothing can name: `present` returns and the alert is not
+    /// up, with the presenter in a window and in no transition.
     func testPresenterSwallowsTheCall_readBackStillLeavesALine() {
         let host = StatsSwallowingHost()
         attachToWindow(host)
