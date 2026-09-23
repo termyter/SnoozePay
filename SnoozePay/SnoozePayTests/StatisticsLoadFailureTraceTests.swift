@@ -195,6 +195,31 @@ final class StatisticsLoadFailureTraceTests: XCTestCase {
     }
 }
 
+/// Presenters answering `isBeingDismissed` / `isBeingPresented` with a
+/// constant, the idiom `AppDelegateAlertTests` uses: a live transition would
+/// put UIKit's flag timing under assertion instead of the branch.
+private final class StatsDismissingHost: UIViewController {
+    override var isBeingDismissed: Bool { true }
+}
+
+private final class StatsPresentingHost: UIViewController {
+    override var isBeingPresented: Bool { true }
+}
+
+/// Returns from `present` having done nothing — which is all a caller ever
+/// sees of a refusal UIKit does not publish.
+private final class StatsSwallowingHost: UIViewController {
+    private(set) var wasAskedToPresent = false
+
+    override func present(
+        _ viewControllerToPresent: UIViewController,
+        animated flag: Bool,
+        completion: (() -> Void)? = nil
+    ) {
+        wasAskedToPresent = true
+    }
+}
+
 /// The VC half: the alert the user actually gets, and the second one they
 /// don't.
 ///
@@ -330,6 +355,14 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             }
         }, perform: {
             controller.viewModel.onLoadError?(decodeFailure())
+            // Before the wait: the post-present read-back runs synchronously
+            // inside the call, so a DROPPED line for this alert — the symptom
+            // of UIKit no longer assigning `presentedViewController` inside
+            // `present` — would already be here (#790).
+            XCTAssertTrue(
+                lines.allSatisfy { !$0.message.contains(StatisticsViewModel.alertDroppedErrorID) },
+                "the read-back after present must see the alert UIKit just put up; the sink saw \(lines.map(\.message))"
+            )
             // 25 s to match `waitForAlert`: on a saturated three-core runner a
             // tight deadline answers "the runner was busy", not "it never logged".
             wait(for: [shown], timeout: 25)
@@ -425,7 +458,7 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         // pins that this is the message the alert carries.
         let unshownMessage = Localized.text("wallet.error.load_failed")
         let diagnostic = StatisticsViewController.droppedAlertDiagnostic(
-            presenting: firstAlert, message: unshownMessage
+            presenter: controller, message: unshownMessage
         )
         XCTAssertNotNil(diagnostic, "a dropped alert with no log line is the defect #721 is about")
         XCTAssertTrue(
@@ -454,9 +487,125 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
     /// to report, and the alert goes up. Without this the previous test would
     /// pass against a controller that logs on every error and never presents.
     func testNothingPresented_producesNoDropDiagnostic() {
+        let host = UIViewController()
+        attachToWindow(host)
         XCTAssertNil(
-            StatisticsViewController.droppedAlertDiagnostic(presenting: nil, message: "any"),
+            StatisticsViewController.droppedAlertDiagnostic(presenter: host, message: "any"),
             "a free screen must present the alert, not log about dropping it"
+        )
+    }
+
+    // MARK: - Refusals the "already presented" guard could not see (#790)
+
+    /// The drop the issue names: an off-window screen, which UIKit refuses
+    /// with "not in the window hierarchy" — until #790 no alert AND no line. Driven through `onLoadError`, so the wiring
+    /// from the VM to the log is under assertion, not just the pure function.
+    func testUnmountedScreen_loadErrorLeavesALineNamingTheWindow() {
+        let controller = StatisticsViewController()
+        controller.loadViewIfNeeded()
+        XCTAssertNil(controller.viewIfLoaded?.window, "test precondition: the screen must be off-window")
+
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append((category: $0, level: $1, message: $2)) }, perform: {
+            controller.viewModel.onLoadError?(decodeFailure())
+        })
+
+        let dropLines = lines.filter { $0.message.contains(StatisticsViewModel.alertDroppedErrorID) }
+        XCTAssertEqual(
+            dropLines.count, 1,
+            "an off-window screen must leave exactly one ALERT-DROPPED line; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertEqual(dropLines.first?.category, .ui)
+        XCTAssertEqual(dropLines.first?.level, .error)
+        XCTAssertTrue(
+            dropLines.first?.message.contains("StatisticsViewController is not in the window hierarchy") == true,
+            "the line must name WHY; it reads «\(dropLines.first?.message ?? "")»"
+        )
+        XCTAssertTrue(
+            dropLines.first?.message.contains(Localized.text("wallet.error.load_failed")) == true,
+            "the unshown message is the part worth recovering; it reads «\(dropLines.first?.message ?? "")»"
+        )
+        XCTAssertEqual(
+            dropLines.first?.message,
+            StatisticsViewController.droppedAlertDiagnostic(
+                presenter: controller, message: Localized.text("wallet.error.load_failed")
+            ),
+            "the emitted line must BE the diagnostic, not merely carry its handle"
+        )
+        XCTAssertNil(controller.presentedViewController, "the guard must not have presented anything")
+    }
+
+    /// Read by its words: with the refusal reasons swapped or made identical,
+    /// a test that only counted lines stays green.
+    func testPresenterBeingDismissed_saysWhichTransition() {
+        let host = StatsDismissingHost()
+        attachToWindow(host)
+
+        let dropLines = dropLinesFromShowing(on: host)
+
+        XCTAssertEqual(dropLines.count, 1, "a presenter mid-dismissal must leave one line")
+        XCTAssertTrue(
+            dropLines.first?.contains("StatsDismissingHost is being dismissed") == true,
+            "the line must name the transition; it reads «\(dropLines.first ?? "")»"
+        )
+        XCTAssertNil(host.presentedViewController, "the guard must not have presented anything")
+    }
+
+    func testPresenterStillBeingPresented_saysWhichTransition() {
+        let host = StatsPresentingHost()
+        attachToWindow(host)
+
+        let dropLines = dropLinesFromShowing(on: host)
+
+        XCTAssertEqual(dropLines.count, 1, "a presenter mid-presentation must leave one line")
+        XCTAssertTrue(
+            dropLines.first?.contains("StatsPresentingHost is itself still being presented") == true,
+            "the line must name the transition; it reads «\(dropLines.first ?? "")»"
+        )
+        XCTAssertNil(host.presentedViewController, "the guard must not have presented anything")
+    }
+
+    /// The refusal no guard can name: `present` returns and the alert is not
+    /// up. Only the read-back after `present` can report it.
+    func testPresenterSwallowsTheCall_readBackStillLeavesALine() {
+        let host = StatsSwallowingHost()
+        attachToWindow(host)
+        XCTAssertNil(
+            StatisticsViewController.droppedAlertDiagnostic(presenter: host, message: "any"),
+            "test precondition: the guard must PASS, so a line can only come from the read-back"
+        )
+
+        let dropLines = dropLinesFromShowing(on: host)
+
+        XCTAssertTrue(host.wasAskedToPresent, "test precondition: the call has to have reached `present`")
+        XCTAssertEqual(dropLines.count, 1, "a refusal the guard cannot name must still leave one line")
+        XCTAssertTrue(
+            dropLines.first?.contains("StatsSwallowingHost did not put the alert up") == true,
+            "the line must name who refused; it reads «\(dropLines.first ?? "")»"
+        )
+    }
+
+    // MARK: - Helpers
+
+    /// Synchronous: every refusal path returns inside the call, so the sink
+    /// needs no run loop.
+    private func dropLinesFromShowing(on host: UIViewController) -> [String] {
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            StatisticsViewController.showLoadErrorAlert(on: host, message: "unshown")
+        })
+        XCTAssertTrue(
+            lines.allSatisfy { !$0.contains(StatisticsViewModel.alertShownErrorID) },
+            "nothing reached the screen, so nothing may claim it did; the sink saw \(lines)"
+        )
+        return lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) && $0.contains("unshown") }
+    }
+
+    private func attachToWindow(_ host: UIViewController) {
+        window.addSubview(host.view)
+        XCTAssertNotNil(
+            host.viewIfLoaded?.window,
+            "test precondition: the presenter must be IN a window, or the window check answers first"
         )
     }
 }

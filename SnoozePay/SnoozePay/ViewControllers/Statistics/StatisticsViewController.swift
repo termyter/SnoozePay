@@ -323,18 +323,26 @@ final class StatisticsViewController: UIViewController {
     private func presentRepositoryError(_ error: LocalizedError) {
         let message = error.errorDescription
             ?? Localized.text("statistics.error.message")
+        Self.showLoadErrorAlert(on: self, message: message)
+    }
 
-        // The guard is right — stacking a second alert over the first throws a
-        // UIKit exception — but until #721 it was also the end of the story:
-        // every error after the first vanished here, and a screen showing one
-        // alert while swallowing three was indistinguishable in the logs from
-        // a screen that failed once.
-        if let diagnostic = Self.droppedAlertDiagnostic(
-            presenting: presentedViewController, message: message
-        ) {
-            // `emit`, so a test can read the line back — the drop is invisible
-            // in the UI by construction (nothing new appears), which makes the
-            // line the only evidence the branch ran at all (#731).
+    /// Puts the load-error alert up on `presenter`, or logs why it did not.
+    ///
+    /// Static and taking the presenter as an argument — the shape of
+    /// `AppDelegate.showAlarmDataCorruptedAlert(on:message:)` — so a test can
+    /// drive it with a stub presenter: this class is `final`.
+    ///
+    /// Every line goes through `AppLogger.emit` so a test can read it back. A
+    /// drop leaves nothing on screen, so the line is the only evidence (#731).
+    ///
+    /// The drop is decided twice (#790): before `present` by
+    /// ``droppedAlertDiagnostic(presenter:message:)``, which can say why, and
+    /// after it by reading `presentedViewController` back, which cannot say
+    /// why but covers refusals UIKit does not publish. The production caller
+    /// is `viewWillAppear`, where UIKit refuses with "whose view is not in the
+    /// window hierarchy"; before #790 that drop left no line at all.
+    static func showLoadErrorAlert(on presenter: UIViewController, message: String) {
+        if let diagnostic = droppedAlertDiagnostic(presenter: presenter, message: message) {
             AppLogger.emit(.ui, .error, diagnostic)
             return
         }
@@ -345,14 +353,10 @@ final class StatisticsViewController: UIViewController {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        // Logged from the completion, not before the call. The production
-        // caller is `viewWillAppear`, where UIKit answers a `present` with
-        // "whose view is not in the window hierarchy" and does nothing —
-        // leaving `presentedViewController` nil, so the drop guard above stays
-        // silent too. A line written ahead of the call would then assert an
-        // alert that never appeared, which is the same defect class #721
-        // exists to close, only pointing the other way.
-        present(alert, animated: true) {
+        // From the completion, not before the call: UIKit answers a
+        // presentation it cannot perform by doing nothing, so a line written
+        // ahead of `present` would claim an alert the user never saw (#721).
+        presenter.present(alert, animated: true) {
             AppLogger.emit(
                 .ui, .error,
                 """
@@ -361,26 +365,51 @@ final class StatisticsViewController: UIViewController {
                 """
             )
         }
+
+        // Read back, not timed: UIKit assigns `presentedViewController` inside
+        // `present`, before the completion runs, so no run loop is needed.
+        // `testFirstLoadError_logsThatTheUserActuallySawIt` reds if that stops
+        // holding. No retry: this alert explains a failed load, nothing more.
+        if presenter.presentedViewController !== alert {
+            AppLogger.emit(
+                .ui, .error,
+                droppedAlertLine(
+                    reason: "\(type(of: presenter)) did not put the alert up",
+                    message: message
+                )
+            )
+        }
     }
 
-    /// The line to log when an incoming load-error alert cannot be shown, or
-    /// `nil` when the screen is free to show it.
+    /// The line to log when `presenter` cannot show the load-error alert, or
+    /// `nil` when it is free to.
     ///
-    /// A pure function rather than an inline `guard` body so the message —
-    /// which is the entire remedy for the dropped alert — can be asserted in a
-    /// test without staging a live presentation (#721). The class name of the
-    /// blocking controller is in it because "the ledger alert is already up"
-    /// and "a top-up sheet is up" are different situations for whoever reads
-    /// the log.
+    /// "Already presenting" is this screen's own check — the alert must not
+    /// stack on the one it put up for the previous error — and it names the
+    /// blocking controller, because "the ledger alert is already up" and "a
+    /// top-up sheet is up" read differently in a log. The remaining refusals
+    /// are `AppDelegate.presentationRefusalReason(presenter:)`, called rather
+    /// than copied, so a refusal added there is reported here too.
+    ///
+    /// ⚠️ Until #790 the label was `presenting:` and the argument was the
+    /// BLOCKING controller (`presentedViewController`). It is now the
+    /// controller that WOULD present, as in `AppDelegate`; the rename is what
+    /// makes a call written for the old meaning fail to compile.
     static func droppedAlertDiagnostic(
-        presenting presented: UIViewController?, message: String
+        presenter: UIViewController, message: String
     ) -> String? {
-        guard let presented else { return nil }
-        return """
-            [\(StatisticsViewModel.alertDroppedErrorID)] Statistics load error alert \
-            dropped — \(type(of: presented)) is already presented. Unshown message: \
-            \(message)
-            """
+        let reason = presenter.presentedViewController.map { "\(type(of: $0)) is already presented" }
+            ?? AppDelegate.presentationRefusalReason(presenter: presenter)
+        return reason.map { droppedAlertLine(reason: $0, message: message) }
+    }
+
+    /// The one shape of every "the user never saw it" line on this screen, so
+    /// a single grep for the handle finds all of them.
+    static func droppedAlertLine(reason: String, message: String) -> String {
+        """
+        [\(StatisticsViewModel.alertDroppedErrorID)] Statistics load error alert \
+        dropped — \(reason). Unshown message: \(message)
+        """
     }
 
     private func refresh() {
