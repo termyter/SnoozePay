@@ -322,13 +322,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 return
             }
 
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController {
-                topVC = presented
-            }
             // `AppDelegate.` rather than `Self.`, as at the corrupt-data call
             // site: `Self` inside an instance method would capture `self`.
-            AppDelegate.showNotificationsDisabledAlert(on: topVC)
+            AppDelegate.showNotificationsDisabledAlert(on: AppDelegate.topmostPresenter(from: rootVC))
         }
     }
 
@@ -392,9 +388,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// literal `UIAlertAction` titles in the app at that point: #664 swept the
     /// ones that read as acknowledgements, and «Отмена»/«Настройки» are
     /// neither, so its scan passed over them by design rather than by oversight.
-    static func showNotificationsDisabledAlert(on topVC: UIViewController) {
+    ///
+    /// All three refusals the guard names are transitions or a not-yet-mounted
+    /// view, so each earns one retry (#805); the read-back below drops at once,
+    /// because its cause is unknown and nothing says waiting would help.
+    static func showNotificationsDisabledAlert(on topVC: UIViewController, retriesLeft: Int = 1) {
         let message = Localized.text("permissions.alert.notifications_disabled.message")
         if let reason = presentationRefusalReason(presenter: topVC) {
+            if retriesLeft > 0 {
+                AppLogger.emit(
+                    .appDelegate, .info,
+                    "Notifications-disabled alert deferred — \(reason); retrying"
+                )
+                scheduleNotificationsAlertRetry { relocated in
+                    showNotificationsDisabledAlert(on: relocated ?? topVC, retriesLeft: retriesLeft - 1)
+                }
+                return
+            }
             AppLogger.emit(
                 .appDelegate, .error,
                 notificationsDisabledDroppedLine(reason: reason, message: message)
@@ -442,6 +452,31 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             )
             return
         }
+    }
+
+    /// Runs the retry a transient refusal earns (#805), handing it the topmost
+    /// controller of the active window found again, or `nil` if there is none.
+    ///
+    /// A timer rather than `UIScene.didActivateNotification`: that one does not
+    /// come if the scene is already active, and then neither the alert nor the
+    /// drop line would be written. A seam so tests run the retry synchronously.
+    static var scheduleNotificationsAlertRetry: (@escaping (UIViewController?) -> Void) -> Void = { retry in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard case let .success(root) = ActiveWindowLocator.rootViewController() else {
+                retry(nil)
+                return
+            }
+            retry(AppDelegate.topmostPresenter(from: root))
+        }
+    }
+
+    /// `root`, or the last controller in its chain of presentations.
+    static func topmostPresenter(from root: UIViewController) -> UIViewController {
+        var topVC = root
+        while let presented = topVC.presentedViewController {
+            topVC = presented
+        }
+        return topVC
     }
 
     /// The line to log when the notifications-disabled warning never reached
