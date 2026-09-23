@@ -119,7 +119,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// rendered whatever theme the machine happened to be in.
     ///
     /// «Every store it reads through» is now the literal truth rather than an
-    /// approximation, and the whole-domain assertion in the write-side test is
+    /// approximation, and the app-domain assertion in the write-side test is
     /// what keeps it that way. The screen does still force three singletons —
     /// `AlarmRepository.shared`, `TransactionRepository.shared` and, as the
     /// latter's default, `WakeEventStore.shared` — through `isRecoveryVisible`.
@@ -131,7 +131,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// `AlarmManager.shared` (`AppDelegate` forces the same one at launch, so
     /// the first touch is normally long before this window), so
     /// «cannot move a key» is NOT claimed for the whole closure: the
-    /// whole-domain diff below is what actually holds that line, and it names
+    /// app-domain diff below is what actually holds that line, and it names
     /// the key if one ever moves. A seam for the three would buy nothing here
     /// and would hide that fact behind an injection.
     ///
@@ -198,7 +198,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
 
     // MARK: - The write side
 
-    /// Keys that differ between two `dictionaryRepresentation()` snapshots,
+    /// Keys that differ between two defaults-domain snapshots,
     /// including keys that appeared or disappeared. Values are compared with
     /// `isEqual` rather than `==`: the dictionary is `[String: Any]`, and
     /// every property-list type it can hold is an `NSObject`.
@@ -215,47 +215,30 @@ final class SettingsReferralIsolationTests: XCTestCase {
         }.sorted()
     }
 
-    /// #779 measurement: prints what `persistentDomain(forName:)` returns for
-    /// the host bundle, so the decision is taken from a CI log rather than
-    /// from reasoning. Temporary.
-    private static func logAppDomain(_ phase: String, wholeDomainCount: Int) {
-        let bundleID = Bundle.main.bundleIdentifier
-        let domain = bundleID.flatMap { UserDefaults.standard.persistentDomain(forName: $0) }
-        let keys = domain.map { "\($0.keys.sorted())" } ?? "nil"
-        print(
-            "[779-MEASURE] phase=\(phase) bundleIdentifier=\(bundleID ?? "nil") " +
-            "appDomainCount=\(domain.map { "\($0.count)" } ?? "nil") " +
-            "dictionaryRepresentationCount=\(wholeDomainCount) appDomainKeys=\(keys)"
-        )
-    }
-
-    /// Laying the screen out must not move ANY key in `UserDefaults.standard`,
-    /// which is what this test's name has always said and what it now
-    /// measures: the whole of `dictionaryRepresentation()`, before and after.
+    /// Laying the screen out must not move ANY key in the app's persistent
+    /// domain — the plist `UserDefaults.standard` writes to, where
+    /// `stored_alarms`, `user_balance`, `preferred_theme` and any key this
+    /// file has never heard of would land. It used to watch only the two
+    /// referral keys #690 had stopped leaking (#700).
     ///
-    /// It used to watch two keys, `referral_my_code` and
-    /// `referral_applied_code` — the pair #690 had just stopped leaking. That
-    /// is a narrower promise than the name, and the gap was not theoretical:
-    /// the theme row read `preferred_theme` straight out of the real defaults
-    /// for as long as this file has existed (#700), and a future write to
-    /// `stored_alarms` or `user_balance` from this screen would have gone
-    /// through green as well.
-    ///
-    /// The snapshot spans more than the keys SnoozePay owns — the app domain
-    /// plus the global and registration domains the process can see. That is
-    /// the point: a key this file has never heard of is exactly what it is
-    /// hunting. The cost is that a system-owned key moving inside the window
-    /// would fail it too. The failure names the key, and if one ever shows up
-    /// the fix is to narrow the measurement AND this test's name in the same
-    /// commit — narrowing only the measurement is how it got here.
-    func testLayingOutTheReferralSectionLeavesStandardDefaultsUntouched() throws {
+    /// Rejected wider measurement (#779): `dictionaryRepresentation()`. It
+    /// also merges NSGlobalDomain and the registration domain, which the app
+    /// does not own, so a system key moving inside the window would fail this
+    /// test for a reason outside the repository.
+    func testLayingOutTheReferralSectionLeavesTheAppDefaultsDomainUntouched() throws {
         let standard = UserDefaults.standard
-        let before = standard.dictionaryRepresentation()
-        // #779 measurement step, removed by the commit that decides: what the
-        // narrowed app-domain snapshot would see on the CI runner. Key names
-        // only, never values. `nil` and `[:]` are printed apart on purpose —
-        // both would make the narrowed diff silently green.
-        Self.logAppDomain("before", wholeDomainCount: before.count)
+        let domain = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        let before = standard.persistentDomain(forName: domain) ?? [:]
+        // CI run 35838744096 measured 7 keys here (`stored_alarms`,
+        // `user_balance`, …). Which earlier writer puts them there is not
+        // pinned, so a lone run of this class may trip this guard.
+        XCTAssertFalse(
+            before.isEmpty,
+            """
+            the app's defaults domain `\(domain)` is empty before the act, so the diff below \
+            would compare [:] with [:] and pass whatever the screen writes
+            """
+        )
 
         let defaults = makeSuite("write")
         let sut = laidOutSettings(defaults: defaults).sut
@@ -266,8 +249,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
         // the method, so the assertion this test is NAMED for would be skipped
         // and the run would report a different failure than the one that
         // matters. Nothing but the act sits between the two snapshots.
-        let after = standard.dictionaryRepresentation()
-        Self.logAppDomain("after", wholeDomainCount: after.count)
+        let after = standard.persistentDomain(forName: domain) ?? [:]
         let moved = Self.changedKeys(from: before, to: after)
         XCTAssertTrue(
             moved.isEmpty,
