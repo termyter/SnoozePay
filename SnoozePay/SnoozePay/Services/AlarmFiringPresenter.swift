@@ -190,10 +190,10 @@ final class AlarmFiringPresenter {
     /// host the presentation yet — no scene, no windows, or no window carrying
     /// a root (the cold-launch race), which of the three goes to the log
     /// because they are not fixed the same way — and the re-entry swap below,
-    /// which cannot finish before its dismissal completion runs. Both leave the
-    /// alarm pending for the AlarmKit retry (#382); the swap clears it from the
-    /// completion once the screen is actually up, so the retry is left armed
-    /// exactly for the case where it never was (#798).
+    /// which cannot finish before its dismissal completion runs. `false` is
+    /// what the AlarmKit retry (#382) keeps an alarm pending on; the swap
+    /// clears that pending id from the completion once it has issued the
+    /// present, and arms it when it found no host to issue it on (#798).
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
         let topVC: UIViewController
@@ -273,15 +273,16 @@ final class AlarmFiringPresenter {
                 pendingAlarmID = nil
             }
         case let .failure(miss):
+            // The pending slot holds one alarm. Taking it from another one
+            // drops that alarm's retry, so the line says so.
+            let displaced = pendingAlarmID.map { $0 != alarmID } ?? false
             AppLogger.emit(
                 .appDelegate, .error,
                 "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending"
+                    + (displaced ? "; another alarm's pending screen is dropped" : "")
             )
-            // Arm the scene-active retry (#382) instead of stopping the audio
-            // the way the give-up branch above does. That branch is terminal;
-            // this one is not — the screen can still go up on the next
-            // activation, and silencing an alarm that may yet be answered takes
-            // away the only cue the user has left.
+            // Not terminal, unlike the give-up branch above: the retry can
+            // still raise the screen, so this branch leaves the audio alone.
             pendingAlarmID = alarmID
         }
     }

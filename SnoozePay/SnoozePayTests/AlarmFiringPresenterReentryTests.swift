@@ -118,7 +118,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
 
     /// End to end through the path that reads the answer: request → swap → the
     /// screen actually goes up → only then is the alarm no longer pending.
-    func testReentry_throughThePendingPath_keepsTheAlarmPendingUntilTheScreenIsUp() {
+    func testReentry_throughThePendingPath_keepsTheAlarmPendingUntilTheScreenIsUp() throws {
         let alarm = Alarm()
         let stale = RecordingFiringScreen(alarm: alarm)
         let presenter = makePresenter(host: stale)
@@ -144,7 +144,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
 
         let newHost = RecordingHost()
         presenter.locateHost = { .success(newHost) }
-        dismissal.completion?()
+        try XCTUnwrap(dismissal.completion)()
 
         XCTAssertEqual(
             newHost.presentedScreens.count, 1,
@@ -168,7 +168,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     /// The state the bug lives in: by the time the dismissal finishes there is
     /// nowhere to present. The old screen is already gone, so this is a user
     /// with a ringing alarm and nothing on screen.
-    func testReentry_whenTheHostIsGoneOnceTheDismissalFinishes_leavesALineAndArmsTheRetry() {
+    func testReentry_whenTheHostIsGoneOnceTheDismissalFinishes_leavesALineAndArmsTheRetry() throws {
         let alarm = Alarm()
         let stale = RecordingFiringScreen(alarm: alarm)
         let presenter = makePresenter(host: stale)
@@ -184,9 +184,10 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         _ = presenter.present(alarm: alarm)
         presenter.locateHost = { .failure(.noHostingWindow) }
 
+        let finishDismissal = try XCTUnwrap(dismissal.completion)
         var lines: [Line] = []
         AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
-            dismissal.completion?()
+            finishDismissal()
         })
 
         XCTAssertTrue(
@@ -205,8 +206,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             AudioService.shared.isPlaying,
             """
             unlike the give-up branch, this one is not terminal — the retry is \
-            armed, and silencing an alarm that can still be answered takes away \
-            the last cue the user has
+            armed, so it must not stop the audio the give-up branch stops
             """
         )
 
@@ -225,13 +225,14 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         )
         XCTAssertEqual(line.level, .error, "an alarm with no screen is a failure, not a notice")
         XCTAssertEqual(line.category, .appDelegate, "the category a support grep for the firing path filters by")
+        XCTAssertFalse(line.message.contains("dropped"), "nothing else was pending: «\(line.message)»")
     }
 
     /// A swap for one alarm must not answer for another. The notification path
     /// calls `present(alarm:)` directly, and it can land while a different
     /// alarm sits pending from AlarmKit (#382) — clearing that one would drop
     /// the very screen this fix exists to keep.
-    func testReentry_forADifferentAlarmThanThePendingOne_leavesThatDeferralAlone() {
+    func testReentry_forADifferentAlarmThanThePendingOne_leavesThatDeferralAlone() throws {
         let deferred = UUID()
         let arriving = Alarm()
         let stale = RecordingFiringScreen(alarm: arriving)
@@ -246,7 +247,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         _ = presenter.present(alarm: arriving)
         let newHost = RecordingHost()
         presenter.locateHost = { .success(newHost) }
-        dismissal.completion?()
+        try XCTUnwrap(dismissal.completion)()
 
         XCTAssertEqual(
             newHost.presentedScreens.count, 1,
@@ -255,6 +256,38 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         XCTAssertEqual(
             presenter.pendingAlarmID, deferred,
             "mounting one alarm's screen must not cancel another alarm's deferred one"
+        )
+    }
+
+    /// The branch above takes the pending slot, which holds one alarm. When a
+    /// different alarm was waiting in it, that alarm's retry is gone, and the
+    /// line has to say so rather than read like the plain miss.
+    func testReentry_whenTheHostIsGoneWhileAnotherAlarmWasPending_saysThatDeferralIsDropped() throws {
+        let deferred = UUID()
+        let arriving = Alarm()
+        let stale = RecordingFiringScreen(alarm: arriving)
+        let presenter = makePresenter(host: stale)
+        presenter.isRootReady = { true }
+        presenter.mount = { _, _ in false }
+
+        presenter.requestPresentation(alarmID: deferred)
+        XCTAssertEqual(presenter.pendingAlarmID, deferred, "test precondition: the other alarm is pending")
+
+        _ = presenter.present(alarm: arriving)
+        presenter.locateHost = { .failure(.noHostingWindow) }
+        let finishDismissal = try XCTUnwrap(dismissal.completion)
+        var lines: [Line] = []
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            finishDismissal()
+        })
+
+        let line = try XCTUnwrap(
+            lines.first { $0.message.contains("firing-present") },
+            "the drop left no line; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertTrue(
+            line.message.contains("another alarm's pending screen is dropped"),
+            "the other alarm lost its retry and the line does not say so: «\(line.message)»"
         )
     }
 }
