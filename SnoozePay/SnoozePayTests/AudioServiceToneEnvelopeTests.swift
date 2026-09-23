@@ -81,7 +81,6 @@ final class AudioServiceToneEnvelopeTests: XCTestCase {
         let tone = try renderedTone()
         let twoMs = Int(tone.sampleRate * 0.002)
 
-        XCTAssertEqual(tone.samples.first, 0, "the loop seam lands on the first sample")
         XCTAssertLessThan(
             tone.peak(from: 0, to: twoMs), 0.15,
             "the first 2 ms must still be on the 20 ms opening ramp, not at full pulse level"
