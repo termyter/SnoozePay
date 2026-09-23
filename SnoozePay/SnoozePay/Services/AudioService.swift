@@ -155,6 +155,11 @@ final class AudioService {
     /// reading to the platform.
     var currentPlayerVolume: Float? { queue.sync { audioPlayer?.volume } }
 
+    /// File the owned player was opened from, or `nil` for no player or the
+    /// synthetic tone (built from data). Read by tests, same shape as
+    /// `currentPlayerVolume` (#806).
+    var currentPlayerURL: URL? { queue.sync { audioPlayer?.url } }
+
     private init() {
         // Resume the alarm after a phone call / Siri interruption — for an
         // alarm a permanent silence is a failed wake, so we re-activate and
