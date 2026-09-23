@@ -215,6 +215,20 @@ final class SettingsReferralIsolationTests: XCTestCase {
         }.sorted()
     }
 
+    /// #779 measurement: prints what `persistentDomain(forName:)` returns for
+    /// the host bundle, so the decision is taken from a CI log rather than
+    /// from reasoning. Temporary.
+    private static func logAppDomain(_ phase: String, wholeDomainCount: Int) {
+        let bundleID = Bundle.main.bundleIdentifier
+        let domain = bundleID.flatMap { UserDefaults.standard.persistentDomain(forName: $0) }
+        let keys = domain.map { "\($0.keys.sorted())" } ?? "nil"
+        print(
+            "[779-MEASURE] phase=\(phase) bundleIdentifier=\(bundleID ?? "nil") " +
+            "appDomainCount=\(domain.map { "\($0.count)" } ?? "nil") " +
+            "dictionaryRepresentationCount=\(wholeDomainCount) appDomainKeys=\(keys)"
+        )
+    }
+
     /// Laying the screen out must not move ANY key in `UserDefaults.standard`,
     /// which is what this test's name has always said and what it now
     /// measures: the whole of `dictionaryRepresentation()`, before and after.
@@ -237,6 +251,11 @@ final class SettingsReferralIsolationTests: XCTestCase {
     func testLayingOutTheReferralSectionLeavesStandardDefaultsUntouched() throws {
         let standard = UserDefaults.standard
         let before = standard.dictionaryRepresentation()
+        // #779 measurement step, removed by the commit that decides: what the
+        // narrowed app-domain snapshot would see on the CI runner. Key names
+        // only, never values. `nil` and `[:]` are printed apart on purpose —
+        // both would make the narrowed diff silently green.
+        Self.logAppDomain("before", wholeDomainCount: before.count)
 
         let defaults = makeSuite("write")
         let sut = laidOutSettings(defaults: defaults).sut
@@ -248,6 +267,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
         // and the run would report a different failure than the one that
         // matters. Nothing but the act sits between the two snapshots.
         let after = standard.dictionaryRepresentation()
+        Self.logAppDomain("after", wholeDomainCount: after.count)
         let moved = Self.changedKeys(from: before, to: after)
         XCTAssertTrue(
             moved.isEmpty,
