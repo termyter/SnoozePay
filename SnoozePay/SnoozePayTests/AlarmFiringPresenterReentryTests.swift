@@ -259,6 +259,40 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         )
     }
 
+    /// The same alarm, deferred by AlarmKit at count 0 and then shown by the
+    /// notification path at 2: the screen that went up is the pending one, so
+    /// the record has to go. Clearing only on an exact `(id, count)` match —
+    /// the refactor `Equatable` invites — would keep `(id, 0)` and re-mount it
+    /// at 0 on the next activation, the price reset #808 closes.
+    func testReentry_forTheAlarmAlreadyPendingAtAnotherCount_clearsIt() throws {
+        let alarm = Alarm()
+        let stale = RecordingFiringScreen(alarm: alarm)
+        let presenter = makePresenter(host: stale)
+        presenter.isRootReady = { true }
+        presenter.mount = { _, _ in false }
+
+        presenter.requestPresentation(alarmID: alarm.id)
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 0),
+            "test precondition: AlarmKit's deferral, at the count AlarmKit passes"
+        )
+
+        _ = presenter.present(alarm: alarm, snoozeCount: 2)
+        let newHost = RecordingHost()
+        presenter.locateHost = { .success(newHost) }
+        try XCTUnwrap(dismissal.completion)()
+
+        XCTAssertEqual(
+            newHost.presentedScreens.count, 1,
+            "test precondition: the count-2 screen has to have gone up, or there is nothing to clear on"
+        )
+        XCTAssertNil(
+            presenter.pendingPresentation,
+            "this alarm's screen is up; a leftover (id, 0) re-mounts it at the first step's price"
+        )
+    }
+
     /// The failure branch of `mountAfterDismissal` takes the pending slot,
     /// which holds one alarm. When a different alarm was waiting in it, that
     /// alarm's retry is gone, and the line has to say so rather than read like

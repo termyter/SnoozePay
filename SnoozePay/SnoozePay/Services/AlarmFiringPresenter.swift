@@ -31,7 +31,9 @@ final class AlarmFiringPresenter {
     /// present but which we couldn't mount yet because no foreground window/root
     /// existed: the system runs the intent before the scene is active, and on a
     /// cold launch the splash → tab-bar root only mounts ~200 ms later. Recorded
-    /// by `requestPresentation(alarmID:)` and flushed by
+    /// by `requestPresentation(alarmID:snoozeCount:)`, and by the no-host
+    /// branch of `mountAfterDismissal` — a notification-path swap whose old
+    /// screen left no host behind (#804). Flushed by
     /// `flushPendingPresentation()` once the scene becomes active, so the firing
     /// screen survives both a warm-foreground race and a cold start (#382).
     ///
@@ -121,10 +123,10 @@ final class AlarmFiringPresenter {
     /// Request the firing screen for `alarmID` from a context that may run
     /// before any foreground window exists — the AlarmKit alert buttons
     /// (`AlarmKitActionRouter`, whose intents set `openAppWhenRun`) and the
-    /// alerting observer. Records the id as pending and attempts an immediate
-    /// present; if no scene/root is attached yet (cold launch, or the foreground
-    /// transition hasn't completed) the present is a no-op and the recorded id
-    /// is flushed later by `flushPendingPresentation()` from
+    /// alerting observer. Records the id and snooze count as pending and
+    /// attempts an immediate present; if no scene/root is attached yet (cold
+    /// launch, or the foreground transition hasn't completed) the present is a
+    /// no-op and the record is flushed later by `flushPendingPresentation()` from
     /// `SceneDelegate.sceneDidBecomeActive`. This is what makes tapping an
     /// AlarmKit alarm actually open the app *and* land on our screen (#382) —
     /// presenting directly in the intent's `perform()` lost the race and the
@@ -136,7 +138,7 @@ final class AlarmFiringPresenter {
 
     /// Mount any deferred firing screen now that the scene is active. Called
     /// from `SceneDelegate.sceneDidBecomeActive` (and after the splash → root
-    /// transition completes). Clears the pending id only once the present
+    /// transition completes). Clears the pending record only once the present
     /// actually lands so a still-too-early flush keeps retrying on the next
     /// activation. No-op when nothing is pending.
     func flushPendingPresentation() {
@@ -296,6 +298,12 @@ final class AlarmFiringPresenter {
             // notification path can land while a different alarm sits pending
             // from AlarmKit, and clearing that one would drop the screen this
             // fix exists to keep.
+            //
+            // By id, not by the whole record: the same alarm deferred by
+            // AlarmKit at count 0 and then shown here at 2 is shown, and
+            // keeping the `(id, 0)` record would re-mount it at 0 on the next
+            // activation — the reset #808 closes. Pinned by
+            // `testReentry_forTheAlarmAlreadyPendingAtAnotherCount_clearsIt`.
             if pendingAlarmID == retry.alarmID {
                 pendingPresentation = nil
             }
