@@ -23,7 +23,28 @@ final class StatisticsViewController: UIViewController {
 
     // MARK: - ViewModel
 
-    let viewModel = StatisticsViewModel()
+    let viewModel: StatisticsViewModel
+
+    /// `viewModel` is injectable so a test can give the screen a ledger it
+    /// controls, and make the load inside a real `viewWillAppear` fail
+    /// (#825). Production passes nothing and gets the shared stores.
+    init(viewModel: StatisticsViewModel = StatisticsViewModel()) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Isolated, because it reads `pendingLoadErrorMessage` and logs through
+    /// the main-actor `AppLogger`. A held message that dies with the screen
+    /// still leaves its DROPPED line (#825).
+    isolated deinit {
+        if let message = pendingLoadErrorMessage {
+            AppLogger.emit(.ui, .error, Self.droppedAlertLine(reason: Self.releasedAlertReason, message: message))
+        }
+    }
 
     // MARK: - Feature flags
 
@@ -227,6 +248,9 @@ final class StatisticsViewController: UIViewController {
         // Restored by `pushRestoringBar` before any child push; this callback
         // is what re-hides it on the way back (#517).
         AppNavigationBarStyle.hideBar(on: self, animated: animated)
+        // Before the load, not after: this appearance re-reads the ledger, so
+        // an error held from an earlier one may no longer be true (#825).
+        supersedePendingLoadError()
         viewModel.loadData()
     }
 
@@ -337,16 +361,27 @@ final class StatisticsViewController: UIViewController {
     /// error that arrives off-window is held here and shown once the view is
     /// in the window.
     ///
-    /// One message, and the FIRST one wins. A second error while one is
-    /// waiting is logged as dropped, the same way a second error is handled
-    /// while the first alert is on screen. So the later error is always the
-    /// dropped one, whether or not the view reached the window in between.
+    /// Every way out of here leaves exactly one line, SHOWN or DROPPED:
+    ///   - `viewDidAppear` with the view in the window clears it and hands it
+    ///     to `showLoadErrorAlert`, which logs SHOWN or DROPPED itself.
+    ///   - The next `viewWillAppear` clears it with a DROPPED line
+    ///     (``supersededAlertReason``) before it reloads. That appearance
+    ///     re-reads the ledger: if the ledger is still broken, the reload
+    ///     holds a fresh error, and if it is not, the old message would
+    ///     describe data that is now on screen. This is the case of a
+    ///     cancelled transition, where `viewDidAppear` never came.
+    ///   - `deinit` logs DROPPED (``releasedAlertReason``) for a screen
+    ///     released before it appeared.
     ///
-    /// Only a shown alert clears this. If the view leaves before
-    /// `viewDidAppear` (a cancelled transition), the message waits for the
-    /// next appearance. The failure itself is logged by the view model
-    /// whether or not the alert is ever shown (`handleLedgerLoadFailure`), so
-    /// a held message that never appears still leaves that line.
+    /// `viewDidAppear` with the view still off-window writes nothing and
+    /// keeps the message. No real appearance does that. A hand-called one
+    /// does, and one of the two exits above still ends it with a line.
+    ///
+    /// One message, and the FIRST one wins. A second error while one is
+    /// waiting is logged as dropped, as a second error is while the first
+    /// alert is on screen. Since every appearance clears the held message
+    /// before it loads, this only happens with two errors inside one
+    /// appearance, which `loadData()` cannot produce today.
     ///
     /// The code that sets and clears it is in the extension at the end of
     /// this file, to keep the type body under SwiftLint's `type_body_length`.
@@ -372,7 +407,7 @@ final class StatisticsViewController: UIViewController {
     /// decision is the CALLER's. This function still leaves the window
     /// refusal to UIKit, because a child whose own view is off-window can be
     /// presented through an on-screen ancestor. UIKit did exactly that for the
-    /// old `viewWillAppear` call (CI 35859208153), and logged it as a detached
+    /// old `viewWillAppear` call (asserted on CI 35860887608), and logged it as a detached
     /// presentation. A "not in the window hierarchy" pre-check here would
     /// refuse that case too. The code does not rely on the answer either way:
     /// the read-back below reports whatever UIKit did.
@@ -417,46 +452,6 @@ final class StatisticsViewController: UIViewController {
                 droppedAlertLine(reason: refusalReason(presenter: presenter), message: message)
             )
         }
-    }
-
-    /// The line to log when the alert must not go up because one already is,
-    /// or `nil` when `presenter` is free to try.
-    ///
-    /// This screen's own check — the alert must not stack on the one it put
-    /// up for the previous error — and it names the blocking controller,
-    /// because "the ledger alert is already up" and "a top-up sheet is up"
-    /// read differently in a log.
-    ///
-    /// ⚠️ Until #790 the label was `presenting:` and the argument was the
-    /// BLOCKING controller (`presentedViewController`). It is now the
-    /// controller that WOULD present, as in `AppDelegate`; the rename is what
-    /// makes a call written for the old meaning fail to compile.
-    static func droppedAlertDiagnostic(
-        presenter: UIViewController, message: String
-    ) -> String? {
-        presenter.presentedViewController.map {
-            droppedAlertLine(reason: "\(type(of: $0)) is already presented", message: message)
-        }
-    }
-
-    /// Why `presenter` did not put the alert up, asked only AFTER it did not.
-    ///
-    /// `AppDelegate.presentationRefusalReason(presenter:)` is called rather
-    /// than copied, so a reason added there is reported here too. When none
-    /// of its states hold, UIKit refused without saying why, and the line
-    /// says only who was asked.
-    static func refusalReason(presenter: UIViewController) -> String {
-        AppDelegate.presentationRefusalReason(presenter: presenter)
-            ?? "\(type(of: presenter)) did not put the alert up"
-    }
-
-    /// The one shape of every "the user never saw it" line on this screen, so
-    /// a single grep for the handle finds all of them.
-    static func droppedAlertLine(reason: String, message: String) -> String {
-        """
-        [\(StatisticsViewModel.alertDroppedErrorID)] Statistics load error alert \
-        dropped — \(reason). Unshown message: \(message)
-        """
     }
 
     private func refresh() {
@@ -618,6 +613,23 @@ extension StatisticsViewController {
     /// earlier one is still waiting in ``pendingLoadErrorMessage``.
     static let pendingAlertReason = "an earlier load error is still waiting for the screen to appear"
 
+    /// The reason in the DROPPED line for a held message that a new
+    /// appearance throws away before reloading the ledger.
+    static let supersededAlertReason = "superseded by the reload on this appearance"
+
+    /// The reason in the DROPPED line for a held message whose screen is
+    /// released before it ever appeared.
+    static let releasedAlertReason = "the screen was released before it appeared"
+
+    /// Throws away a held message, with a DROPPED line, before this
+    /// appearance reloads the ledger. See `pendingLoadErrorMessage` for why
+    /// the old message is not shown here.
+    fileprivate func supersedePendingLoadError() {
+        guard let message = pendingLoadErrorMessage else { return }
+        pendingLoadErrorMessage = nil
+        AppLogger.emit(.ui, .error, Self.droppedAlertLine(reason: Self.supersededAlertReason, message: message))
+    }
+
     fileprivate func presentRepositoryError(_ error: LocalizedError) {
         let message = error.errorDescription
             ?? Localized.text("statistics.error.message")
@@ -640,13 +652,61 @@ extension StatisticsViewController {
     /// Checks the window again instead of assuming `viewDidAppear` means
     /// on screen: a caller that runs the callback by hand on an off-window
     /// controller (the tests do this) would otherwise get the same
-    /// detached presentation this code is here to avoid.
+    /// detached presentation this code is here to avoid. Nothing is logged
+    /// then, and the message stays held (see `pendingLoadErrorMessage`).
     fileprivate func showPendingLoadError() {
         guard let message = pendingLoadErrorMessage, viewIfLoaded?.window != nil else { return }
-        // Cleared before the call. `showLoadErrorAlert` logs a refusal itself,
-        // and a message that stayed held would be shown a second time on
-        // the next appearance.
+        // Cleared before the call, whatever the call does: `showLoadErrorAlert`
+        // logs SHOWN or DROPPED itself, and a message still held after that
+        // would get a second line at the next appearance.
         pendingLoadErrorMessage = nil
         Self.showLoadErrorAlert(on: self, message: message)
+    }
+}
+
+// MARK: - Load-error log lines
+
+/// Out of the class body only to keep it under SwiftLint's
+/// `type_body_length` (#825). Unchanged since #790.
+extension StatisticsViewController {
+
+    /// The line to log when the alert must not go up because one already is,
+    /// or `nil` when `presenter` is free to try.
+    ///
+    /// This screen's own check — the alert must not stack on the one it put
+    /// up for the previous error — and it names the blocking controller,
+    /// because "the ledger alert is already up" and "a top-up sheet is up"
+    /// read differently in a log.
+    ///
+    /// ⚠️ Until #790 the label was `presenting:` and the argument was the
+    /// BLOCKING controller (`presentedViewController`). It is now the
+    /// controller that WOULD present, as in `AppDelegate`; the rename is what
+    /// makes a call written for the old meaning fail to compile.
+    static func droppedAlertDiagnostic(
+        presenter: UIViewController, message: String
+    ) -> String? {
+        presenter.presentedViewController.map {
+            droppedAlertLine(reason: "\(type(of: $0)) is already presented", message: message)
+        }
+    }
+
+    /// Why `presenter` did not put the alert up, asked only AFTER it did not.
+    ///
+    /// `AppDelegate.presentationRefusalReason(presenter:)` is called rather
+    /// than copied, so a reason added there is reported here too. When none
+    /// of its states hold, UIKit refused without saying why, and the line
+    /// says only who was asked.
+    static func refusalReason(presenter: UIViewController) -> String {
+        AppDelegate.presentationRefusalReason(presenter: presenter)
+            ?? "\(type(of: presenter)) did not put the alert up"
+    }
+
+    /// The one shape of every "the user never saw it" line on this screen, so
+    /// a single grep for the handle finds all of them.
+    static func droppedAlertLine(reason: String, message: String) -> String {
+        """
+        [\(StatisticsViewModel.alertDroppedErrorID)] Statistics load error alert \
+        dropped — \(reason). Unshown message: \(message)
+        """
     }
 }
