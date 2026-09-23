@@ -322,13 +322,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 return
             }
 
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController {
-                topVC = presented
-            }
             // `AppDelegate.` rather than `Self.`, as at the corrupt-data call
             // site: `Self` inside an instance method would capture `self`.
-            AppDelegate.showNotificationsDisabledAlert(on: topVC)
+            AppDelegate.showNotificationsDisabledAlert(on: AppDelegate.topmostPresenter(from: rootVC))
         }
     }
 
@@ -392,12 +388,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// literal `UIAlertAction` titles in the app at that point: #664 swept the
     /// ones that read as acknowledgements, and «Отмена»/«Настройки» are
     /// neither, so its scan passed over them by design rather than by oversight.
-    static func showNotificationsDisabledAlert(on topVC: UIViewController) {
+    ///
+    /// The guard's three refusals are transient, so each earns one retry (#805);
+    /// the read-back drops at once, as its cause is unknown.
+    static func showNotificationsDisabledAlert(on topVC: UIViewController, retriesLeft: Int = 1) {
         let message = Localized.text("permissions.alert.notifications_disabled.message")
+        // No caller passes 0: 0 means this call IS the retry.
+        let retried = retriesLeft == 0 ? " after one retry" : ""
         if let reason = presentationRefusalReason(presenter: topVC) {
+            if retriesLeft > 0 {
+                AppLogger.emit(.appDelegate, .info, "Notifications-disabled alert deferred — \(reason); retrying")
+                scheduleNotificationsAlertRetry { relocated in
+                    showNotificationsDisabledAlert(on: relocated ?? topVC, retriesLeft: retriesLeft - 1)
+                }
+                return
+            }
             AppLogger.emit(
                 .appDelegate, .error,
-                notificationsDisabledDroppedLine(reason: reason, message: message)
+                notificationsDisabledDroppedLine(reason: reason + retried, message: message)
             )
             return
         }
@@ -436,12 +444,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             AppLogger.emit(
                 .appDelegate, .error,
                 notificationsDisabledDroppedLine(
-                    reason: "\(type(of: topVC)) did not put the alert up",
+                    reason: "\(type(of: topVC)) did not put the alert up\(retried)",
                     message: message
                 )
             )
             return
         }
+    }
+
+    /// Runs the retry (#805) on a timer: `UIScene.didActivateNotification` does
+    /// not come if the scene is already active. A seam so tests run it by hand.
+    static var scheduleNotificationsAlertRetry: (@escaping (UIViewController?) -> Void) -> Void = { retry in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            retry(AppDelegate.notificationsAlertRetryPresenter(from: ActiveWindowLocator.rootViewController()))
+        }
+    }
+
+    /// The presenter the retry gets: the topmost controller over the located
+    /// root, or `nil` — after logging the locator's own reason, since a drop
+    /// line that may follow can only name the original presenter's (#797).
+    static func notificationsAlertRetryPresenter(
+        from located: Result<UIViewController, ActiveWindowLocator.Miss>
+    ) -> UIViewController? {
+        switch located {
+        case let .success(root):
+            return topmostPresenter(from: root)
+        case let .failure(miss):
+            AppLogger.emit(.appDelegate, .info, "Notifications-disabled retry: \(miss.rawValue); reusing the presenter")
+            return nil
+        }
+    }
+
+    /// `root`, or the last controller in its chain of presentations.
+    static func topmostPresenter(from root: UIViewController) -> UIViewController {
+        var topVC = root
+        while let presented = topVC.presentedViewController {
+            topVC = presented
+        }
+        return topVC
     }
 
     /// The line to log when the notifications-disabled warning never reached

@@ -100,9 +100,15 @@ final class AppDelegateAlertTests: XCTestCase {
     private var previousKeyWindow: UIWindow?
 
     private let message = "Тестовое сообщение о повреждённых данных будильника"
+    private var savedRetry: ((@escaping (UIViewController?) -> Void) -> Void)!
 
     override func setUp() {
         super.setUp()
+        // The retry runs at once on the same presenter, so a refusal here ends
+        // in its drop line synchronously instead of a timer firing mid-suite
+        // (#805). `NotificationsAlertRetryTests` covers the retry itself.
+        savedRetry = AppDelegate.scheduleNotificationsAlertRetry
+        AppDelegate.scheduleNotificationsAlertRetry = { $0(nil) }
         // This suite spins the main run loop to wait for a presentation, so it
         // would otherwise spend the backlog the preceding synchronous tests
         // left queued inside its own wait (#618, #693).
@@ -121,6 +127,7 @@ final class AppDelegateAlertTests: XCTestCase {
         window = nil
         previousKeyWindow?.makeKeyAndVisible()
         previousKeyWindow = nil
+        AppDelegate.scheduleNotificationsAlertRetry = savedRetry
         super.tearDown()
     }
 
