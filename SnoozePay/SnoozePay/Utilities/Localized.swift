@@ -69,7 +69,9 @@ import os
 /// - Capitals are presentation, like the caps font and kerning set right next
 ///   to them. The shared caps components already treat them so —
 ///   `SectionHeaderView`, `SPInput` and `PermissionCardView.capsLabel`
-///   upper-case whatever they are handed.
+///   upper-case whatever they are handed. They do it with a bare
+///   `.uppercased()`, though, not with the locale below: `capsLabel`, which
+///   renders `grant_caps` and `unavailable_caps`, is tracked in #821.
 /// - A translator sees an ordinary word and needs no rule about the suffix; in
 ///   a language where capitals carry meaning, shouting it in the catalogue
 ///   loses that information for good.

@@ -748,8 +748,9 @@ final class AlarmEditorCopyTests: XCTestCase {
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.volume_row")))
         // The key's other live call site. `VolumePickerViewController:118` is
         // pinned by `testVolumeScreenRendersItsTitleAndFadeRow`; this caps
-        // caption above the volume card (`SoundPickerViewController:588`) was
-        // read by nothing, so swapping its key there stayed green (#704).
+        // caption above the volume card (the `create_alarm.volume.title` read
+        // in `SoundPickerViewController`) was read by nothing, so swapping its
+        // key there stayed green (#704).
         XCTAssertTrue(
             rendered.contains(Localized.text("create_alarm.volume.title").uppercased()),
             "the volume block lost its caps caption: \(rendered)"
