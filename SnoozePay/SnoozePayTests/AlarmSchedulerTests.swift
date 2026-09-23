@@ -207,6 +207,14 @@ final class AlarmSchedulerTests: XCTestCase {
             traces.first?.message.contains("vanished_sound") == true,
             "the line must name the soundID that was not found; it reads «\(traces.first?.message ?? "")»"
         )
+        // Literal, not `alarmSoundExtensions.joined(...)`: an expectation read
+        // off the constant under test follows it wherever it goes (#762, #773).
+        // The constant's docblock says this substring is what tells a missing
+        // file from one under an unknown extension (#780).
+        XCTAssertTrue(
+            traces.first?.message.contains("caf,m4a,wav,mp3") == true,
+            "the line must say which extensions were tried; it reads «\(traces.first?.message ?? "")»"
+        )
     }
 
     /// The branch the real bundle cannot reach — the app ships
@@ -232,6 +240,11 @@ final class AlarmSchedulerTests: XCTestCase {
         XCTAssertTrue(
             traces.first?.message.contains("vanished_sound") == true,
             "the line must name the soundID that was not found; it reads «\(traces.first?.message ?? "")»"
+        )
+        // Literal for the same reason as in the downgrade case above (#780).
+        XCTAssertTrue(
+            traces.first?.message.contains("caf,m4a,wav,mp3") == true,
+            "the line must say which extensions were tried; it reads «\(traces.first?.message ?? "")»"
         )
         XCTAssertTrue(
             lines.allSatisfy { !$0.message.contains(AlarmScheduler.missingSoundErrorID) },
