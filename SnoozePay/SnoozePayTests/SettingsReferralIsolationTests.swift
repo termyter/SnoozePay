@@ -224,18 +224,23 @@ final class SettingsReferralIsolationTests: XCTestCase {
     /// Rejected wider measurement (#779): `dictionaryRepresentation()`. It
     /// also merges NSGlobalDomain and the registration domain, which the app
     /// does not own, so a system key moving inside the window would fail this
-    /// test for a reason outside the repository.
+    /// test for a reason outside the repository. The narrowing was measured,
+    /// not assumed: CI run 35838744096 saw the app domain non-empty here.
     func testLayingOutTheReferralSectionLeavesTheAppDefaultsDomainUntouched() throws {
         let standard = UserDefaults.standard
         let domain = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        // A test-owned sentinel makes the domain non-empty by construction,
+        // not by what earlier tests left behind. It sits in both snapshots,
+        // so it cannot hide a change the layout makes.
+        let sentinelKey = "test.779.sentinel"
+        standard.set("sentinel", forKey: sentinelKey)
+        defer { standard.removeObject(forKey: sentinelKey) }
         let before = standard.persistentDomain(forName: domain) ?? [:]
-        // CI run 35838744096 measured 7 keys here (`stored_alarms`,
-        // `user_balance`, …). Which earlier writer puts them there is not
-        // pinned, so a lone run of this class may trip this guard.
-        XCTAssertFalse(
-            before.isEmpty,
+        XCTAssertNotNil(
+            before[sentinelKey],
             """
-            the app's defaults domain `\(domain)` is empty before the act, so the diff below \
+            a key written to UserDefaults.standard is missing from persistentDomain(forName: `\(domain)`) \
+            — the snapshot is not reading the domain `.standard` writes to, and the diff below \
             would compare [:] with [:] and pass whatever the screen writes
             """
         )
