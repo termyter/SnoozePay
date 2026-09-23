@@ -58,4 +58,54 @@ final class AudioServiceStartWiringTests: XCTestCase {
             + "lookup; it reads «\(traces.first?.message ?? "")»"
         )
     }
+
+    // MARK: - Which player ends up playing (#806)
+    //
+    // The trace above proves `resolveAlarmPlayer` ran, not that its player is
+    // the one kept: `_ = resolveAlarmPlayer(...)` followed by
+    // `Self.generateAlarmTone()` still logs the line and still reaches
+    // `.playing`. The file name of the owned player is what tells them apart —
+    // the tone is built from data, so its URL is nil.
+
+    func testStartAlarmSound_withASoundTheBundleLacks_playsTheBundledFallbackFile() {
+        XCTAssertEqual(
+            playingFileName(afterStarting: "vanished_sound"), "default_alarm.caf",
+            "a missing sound must ring the bundled fallback file, not the synthetic tone "
+            + "and not some other sound"
+        )
+    }
+
+    func testStartAlarmSound_withABundledSound_playsThatFile() throws {
+        _ = try XCTUnwrap(
+            Bundle.main.url(forResource: "radar", withExtension: "caf"),
+            "precondition: the app bundle ships radar.caf"
+        )
+        XCTAssertEqual(
+            playingFileName(afterStarting: "radar"), "radar.caf",
+            "the player kept must be the one resolved for the soundID the caller asked for"
+        )
+    }
+
+    /// Starts `soundID` on the shared service, bracketed by `stopAlarmSound()`
+    /// like the case above, and returns the file name of the player it kept.
+    /// `.playing` is asserted first: `startAlarmSoundLocked` drops the player
+    /// on every other branch, and a nil name would then say nothing about
+    /// which player was chosen.
+    private func playingFileName(
+        afterStarting soundID: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> String? {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        defer { service.stopAlarmSound() }
+
+        service.startAlarmSound(soundID: soundID, alarmID: UUID(), volume: 1, fadeIn: false)
+        XCTAssertEqual(
+            service.state, .playing,
+            "start did not reach .playing, so no player is owned to inspect",
+            file: file, line: line
+        )
+        return service.currentPlayerURL?.lastPathComponent
+    }
 }
