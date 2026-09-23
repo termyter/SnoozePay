@@ -545,9 +545,9 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
     /// the Statistics tab runs while the tab bar is in the window and the
     /// screen's own view is not yet. Whether UIKit then presents through the
     /// tab bar is UIKit's call, so this pins the one thing the code promises
-    /// either way — the log agrees with the screen. Before review, a window
-    /// pre-check answered this case itself and would have dropped an alert
-    /// UIKit might have shown.
+    /// either way — the log agrees with the screen. On its first CI run
+    /// (35859208153) UIKit PRESENTED, so the window pre-check the first draft
+    /// of #790 had would have dropped a real alert here on every tab visit.
     func testChildOfAMountedTabBar_logAgreesWithWhatReachedTheScreen() {
         let stats = StatisticsViewController()
         let tabBar = UITabBarController()

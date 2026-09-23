@@ -342,10 +342,12 @@ final class StatisticsViewController: UIViewController {
     ///
     /// ⚠️ Not decided up front on purpose. The production caller is
     /// `viewWillAppear` of a tab's child controller, whose own view has no
-    /// window yet while the tab bar above it does. Whether UIKit presents
-    /// through that ancestor is not something this code gets to guess: a
-    /// "not in the window hierarchy" pre-check would drop an alert UIKit might
-    /// have shown. `testChildOfAMountedTabBar_…` records which it is.
+    /// window yet while the tab bar above it does — and UIKit PRESENTS through
+    /// that ancestor (`testChildOfAMountedTabBar_…`, first run on CI
+    /// 35859208153). A "not in the window hierarchy" pre-check, which the
+    /// first draft of #790 had, would have dropped that alert on every visit
+    /// to the tab. The code does not rely on the answer either way: the
+    /// read-back below reports whatever UIKit did.
     ///
     /// A presentation that starts and is then cut short before its completion
     /// leaves no line — the same gap `AppDelegate` documents for its alerts.
