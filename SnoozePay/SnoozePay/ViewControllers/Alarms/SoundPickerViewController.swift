@@ -85,8 +85,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         label.attributedText = NSAttributedString(
             // Stored sentence-case; the caps face is presentation (see `Localized`,
             // «`_caps` keys»).
-            string: Localized.text("create_alarm.sound_picker.preview_caps")
-                .uppercased(with: AppLocale.display),
+            string: Localized.text("create_alarm.sound_picker.preview_caps"),
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
