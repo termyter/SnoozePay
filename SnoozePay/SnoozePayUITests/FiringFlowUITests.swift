@@ -74,10 +74,35 @@ final class FiringFlowUITests: XCTestCase {
         // refused (#472) and the screen says so before anything else can be
         // tapped — clear that alert here, deliberately, rather than leaving it
         // to XCUITest (see `dismissAppAlert`).
-        snooze.tap()
+        //
+        // Tapped in a bounded loop, same as the authorized test below: a
+        // dropped synthesized tap (#523, #626, #647) and a refusal that never
+        // shows look identical after one attempt (#800). The alert and the
+        // countdown come from the same snooze call, so a countdown without the
+        // alert means the tap landed and the refusal went missing.
+        let countdown = app.staticTexts["firing.countdown"]
+        var taps = 0
+        var refused = false
+        while taps < 2, !refused {
+            snooze.tap()
+            taps += 1
+            refused = dismissAppAlert(in: app, titled: Self.refusalAlertTitle, timeout: 10)
+            guard !refused else { break }
+
+            XCTAssertFalse(
+                countdown.exists,
+                """
+                The firing screen entered the snoozed state without «\(Self.refusalAlertTitle)» — \
+                the snooze was taken, but the refusal the denied backend owes the user never showed
+                """
+            )
+            XCTAssertTrue(snooze.exists,
+                          "The snooze CTA disappeared without the refusal alert")
+        }
+
         XCTAssertTrue(
-            dismissAppAlert(in: app, titled: Self.refusalAlertTitle, timeout: 10),
-            "A snooze refused by an unauthorized backend should explain itself"
+            refused,
+            "A snooze refused by an unauthorized backend should explain itself (\(taps) tap(s))"
         )
 
         // ⚠️ This assertion pins behaviour that is KNOWN TO BE WRONG — see #641.
@@ -93,7 +118,6 @@ final class FiringFlowUITests: XCTestCase {
         // EXPECTED — it is not a sign the fix is wrong. Replace the assertion
         // with one on the active firing UI (or delete the snoozed-state tests
         // outright, if PM decides foreground snooze goes away with it).
-        let countdown = app.staticTexts["firing.countdown"]
         XCTAssertTrue(countdown.waitForExistence(timeout: 5),
                       "Snoozed-state countdown should appear after «Поспать ещё» (see #641)")
 
@@ -220,10 +244,13 @@ final class AlarmKitSnoozeHandoffUITests: XCTestCase {
             )
         }
 
-        XCTAssertTrue(
-            closed,
-            "«Поспать ещё» on an authorized backend should close the firing screen (\(taps) tap(s))"
-        )
+        // Run 35834373944 failed here with both taps delivered and neither state
+        // above showing, and its log could not say what WAS on screen (#800).
+        // The hierarchy goes into the failure message, so it lands in the job log.
+        if !closed {
+            XCTFail("«Поспать ещё» on an authorized backend should close the firing screen "
+                    + "(\(taps) tap(s)). On screen:\n\(app.debugDescription)")
+        }
 
         // 3. What is underneath is the app the user came from — the screen was
         // dismissed, not merely re-rendered without its CTA.
