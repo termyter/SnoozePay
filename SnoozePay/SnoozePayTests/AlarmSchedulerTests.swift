@@ -209,8 +209,8 @@ final class AlarmSchedulerTests: XCTestCase {
         )
         // Literal, not `alarmSoundExtensions.joined(...)`: an expectation read
         // off the constant under test follows it wherever it goes (#762, #773).
-        // The constant's docblock calls this substring load-bearing, so it
-        // needs an assertion of its own (#780).
+        // The constant's docblock says this substring is what tells a missing
+        // file from one under an unknown extension (#780).
         XCTAssertTrue(
             traces.first?.message.contains("caf,m4a,wav,mp3") == true,
             "the line must say which extensions were tried; it reads «\(traces.first?.message ?? "")»"
