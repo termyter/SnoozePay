@@ -259,9 +259,10 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         )
     }
 
-    /// The branch above takes the pending slot, which holds one alarm. When a
-    /// different alarm was waiting in it, that alarm's retry is gone, and the
-    /// line has to say so rather than read like the plain miss.
+    /// The failure branch of `mountAfterDismissal` takes the pending slot,
+    /// which holds one alarm. When a different alarm was waiting in it, that
+    /// alarm's retry is gone, and the line has to say so rather than read like
+    /// the plain miss.
     func testReentry_whenTheHostIsGoneWhileAnotherAlarmWasPending_saysThatDeferralIsDropped() throws {
         let deferred = UUID()
         let arriving = Alarm()
@@ -289,5 +290,36 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             line.message.contains("another alarm's pending screen is dropped"),
             "the other alarm lost its retry and the line does not say so: «\(line.message)»"
         )
+    }
+
+    /// The #798 path itself: AlarmKit defers the alarm, the swap runs, and no
+    /// host is left. The alarm in the slot is the one being re-armed, so
+    /// nothing was dropped — a line claiming otherwise sends support after an
+    /// alarm that does not exist.
+    func testReentry_whenTheHostIsGoneForThePendingAlarmItself_dropsNothing() throws {
+        let alarm = Alarm()
+        let stale = RecordingFiringScreen(alarm: alarm)
+        let presenter = makePresenter(host: stale)
+        presenter.isRootReady = { true }
+        presenter.mount = { [weak presenter] _, snoozeCount in
+            presenter?.present(alarm: alarm, snoozeCount: snoozeCount) ?? false
+        }
+
+        presenter.requestPresentation(alarmID: alarm.id)
+        XCTAssertEqual(presenter.pendingAlarmID, alarm.id, "test precondition: this alarm is the pending one")
+
+        presenter.locateHost = { .failure(.noHostingWindow) }
+        let finishDismissal = try XCTUnwrap(dismissal.completion)
+        var lines: [Line] = []
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            finishDismissal()
+        })
+
+        XCTAssertEqual(presenter.pendingAlarmID, alarm.id, "the retry has to stay armed for this alarm")
+        let line = try XCTUnwrap(
+            lines.first { $0.message.contains("firing-present") },
+            "the drop left no line; the sink saw \(lines.map(\.message))"
+        )
+        XCTAssertFalse(line.message.contains("dropped"), "the pending alarm is this one: «\(line.message)»")
     }
 }
