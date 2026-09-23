@@ -84,6 +84,12 @@ final class FiringFlowUITests: XCTestCase {
         var taps = 0
         var refused = false
         while taps < 2, !refused {
+            // A refusal that turned up after the last wait still answers that
+            // tap; tapping again would run a second snooze.
+            if taps > 0, app.alerts[Self.refusalAlertTitle].exists {
+                refused = dismissAppAlert(in: app, titled: Self.refusalAlertTitle, timeout: 1)
+                break
+            }
             snooze.tap()
             taps += 1
             refused = dismissAppAlert(in: app, titled: Self.refusalAlertTitle, timeout: 10)
@@ -93,7 +99,7 @@ final class FiringFlowUITests: XCTestCase {
                 countdown.exists,
                 """
                 The firing screen entered the snoozed state without «\(Self.refusalAlertTitle)» — \
-                the snooze was taken, but the refusal the denied backend owes the user never showed
+                the snooze was taken, but the refusal the denied backend owes the user did not show within 10 s
                 """
             )
             XCTAssertTrue(snooze.exists,
