@@ -26,8 +26,10 @@ import XCTest
 final class AppDelegateCopyKeysTests: XCTestCase {
 
     /// Relative to the app's source root. Both halves of `AppDelegate`: the
-    /// alert builders moved to the extension in #813, and the host file is
-    /// where the instance entry points — and any copy migrated next — live.
+    /// alert builders — and every catalogue read — moved to the extension in
+    /// #813. The host file reads no key today; it is listed because it holds
+    /// the instance entry points, and the corrupt-data message literals there
+    /// are copy a later migration may move onto the catalogue.
     private static let sources = ["AppDelegate.swift", "AppDelegate+Alerts.swift"]
 
     /// The keys those sources read, transcribed rather than derived: a list
@@ -91,22 +93,30 @@ final class AppDelegateCopyKeysTests: XCTestCase {
     }
 
     /// The mutant #791 describes, run on every CI pass rather than once in a PR
-    /// nobody re-runs: the real `AppDelegate+Alerts.swift` with one letter of
-    /// the title key swapped, pushed through the same scanner and the same two
-    /// comparisons as the checks above.
+    /// nobody re-runs: the real `AppDelegate+Alerts.swift` with two letters of
+    /// the title key transposed, every other file of `sources` as it is, pushed
+    /// through the same scanner and the same two comparisons as the checks
+    /// above.
     func testATypoInTheAlertTitleKeyGoesRed() throws {
         let root = Self.appSourceDirectory()
         let correct = "\"permissions.alert.notifications_disabled.title\""
         let typo = "\"permissions.alert.notifications_disabled.titel\""
-        let alerts = try String(contentsOf: root.appendingPathComponent("AppDelegate+Alerts.swift"), encoding: .utf8)
-        let host = try String(contentsOf: root.appendingPathComponent("AppDelegate.swift"), encoding: .utf8)
+        // Over `sources`, not a hand-picked pair: a file added there with keys
+        // of its own must not turn this red for a reason it does not name.
+        var mutated: Set<String> = []
+        var mutatedAFile = false
+        for name in Self.sources {
+            var text = try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8)
+            if name == "AppDelegate+Alerts.swift" {
+                mutatedAFile = text.contains(correct)
+                text = text.replacingOccurrences(of: correct, with: typo)
+            }
+            mutated.formUnion(CatalogueKeyScanner.keys(in: text))
+        }
         XCTAssertTrue(
-            alerts.contains(correct),
+            mutatedAFile,
             "test precondition: the title key is no longer spelled at its call site, so there is nothing to mutate"
         )
-
-        let mutated = CatalogueKeyScanner.keys(in: alerts.replacingOccurrences(of: correct, with: typo))
-            .union(CatalogueKeyScanner.keys(in: host))
 
         XCTAssertEqual(
             Self.missingFromCatalogue(mutated), ["permissions.alert.notifications_disabled.titel"]
