@@ -182,6 +182,7 @@ final class SettingsScreenCopyTests: XCTestCase {
         let section = sut.sectionIndex(of: .finance)
         let header = try XCTUnwrap(sut.tableView(sut.tableView, viewForHeaderInSection: section))
         let rendered = Self.strings(in: header)
+        assertNoKeysLeaked(["settings.section.finance"], in: rendered)
 
         XCTAssertTrue(
             rendered.contains(Localized.text("settings.section.finance").uppercased()),
@@ -218,6 +219,7 @@ final class SettingsScreenCopyTests: XCTestCase {
         // that reads «Код друга». The rendered form is what to assert on
         // (#719); asserting the entry verbatim fails on copy that is correct.
         let field = Self.strings(in: retained(sut.cell(at: IndexPath(row: 1, section: section))))
+        assertNoKeysLeaked(["referral.row.friend_code_label"], in: field)
         XCTAssertTrue(
             field.contains(Localized.text("referral.row.friend_code_label").uppercased()),
             "the friend-code field renders \(field) — not the copy of referral.row.friend_code_label"

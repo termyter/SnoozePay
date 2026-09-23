@@ -16,6 +16,12 @@ import XCTest
 /// lower-case spelling is then the last thing that could have gone red, and it
 /// does not, because the screen holds `CREATE_ALARM.VOLUME.TITLE` (#713).
 ///
+/// # Why inside, not equal
+///
+/// A line can carry more than its words: `SPSnoozePrice` puts a clock glyph
+/// and two spaces ahead of its caps text. Compared whole, that line never
+/// equals a key, leaked or not.
+///
 /// # Why one implementation
 ///
 /// This was six private copies across the copy suites, of which #713 taught
@@ -34,7 +40,7 @@ func assertNoKeysLeaked(
         // leaks into a plain label AND a caps one is two call sites to fix,
         // and naming only the lower-case half sends the fixer to one of them.
         let spellings = key == key.uppercased() ? [key] : [key, key.uppercased()]
-        for leaked in spellings where rendered.contains(leaked) {
+        for leaked in spellings where rendered.contains(where: { $0.contains(leaked) }) {
             XCTFail(
                 "«\(leaked)» rendered as its own key — the catalogue lookup missed",
                 file: file, line: line

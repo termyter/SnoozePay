@@ -37,6 +37,18 @@ final class CopyTestSupportTests: XCTestCase {
         }
     }
 
+    /// A leaked key is a failure wherever it sits in a line, not only when it
+    /// is the whole line — the snooze price renders `U+FFFC`, two spaces,
+    /// then the caps words.
+    func testKeyLeakGuardCatchesAKeyInsideALongerLine() {
+        let leaked = Self.volumeKey.uppercased()
+        XCTExpectFailure("the guard has to name «\(leaked)»", strict: true) {
+            assertNoKeysLeaked([Self.volumeKey], in: ["\u{FFFC}  " + leaked])
+        } issueMatcher: { issue in
+            issue.compactDescription.contains("«\(leaked)»")
+        }
+    }
+
     /// The guard reports EVERY spelling that reached the screen, not just the
     /// first one it matches: a key that leaks into a plain label *and* a caps
     /// one is two call sites, and naming half of them sends the fixer to half

@@ -177,14 +177,18 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
         let card = PermissionCardView(kind: .notifications)
 
         card.apply(status: .actionable)
+        let actionable = strings(in: card)
+        assertNoKeysLeaked(Self.allKeys, in: actionable)
         XCTAssertTrue(
-            strings(in: card).contains(Localized.text("onboarding.permissions.grant_caps").uppercased()),
+            actionable.contains(Localized.text("onboarding.permissions.grant_caps").uppercased()),
             "an ungranted card lost its explicit grant affordance"
         )
 
         card.apply(status: .unavailable)
+        let unavailable = strings(in: card)
+        assertNoKeysLeaked(Self.allKeys, in: unavailable)
         XCTAssertTrue(
-            strings(in: card).contains(Localized.text("onboarding.permissions.unavailable_caps").uppercased()),
+            unavailable.contains(Localized.text("onboarding.permissions.unavailable_caps").uppercased()),
             "a card the user cannot act on lost its state caption"
         )
     }

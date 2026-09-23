@@ -183,9 +183,11 @@ final class DesignSystemCopyTests: XCTestCase {
         // glyph carried as an `NSTextAttachment`, so `attributedText.string`
         // is `U+FFFC` + two spaces + the words.
         let caps = Localized.format("firing.snooze.caps", 7).uppercased()
+        let rendered = Self.strings(in: control)
+        assertNoKeysLeaked(Self.allKeys, in: rendered)
         XCTAssertTrue(
-            Self.strings(in: control).contains(where: { $0.hasSuffix(caps) }),
-            "the caps line lost its minutes: \(Self.strings(in: control))"
+            rendered.contains(where: { $0.hasSuffix(caps) }),
+            "the caps line lost its minutes: \(rendered)"
         )
     }
 
