@@ -395,9 +395,12 @@ final class AudioService {
     ///
     /// `queue.sync` buys `emit`'s unguarded `testSink` nothing: it serialises
     /// audio work against other audio work, not against a test installing or
-    /// removing the sink on its own thread. A test that wants to observe these
-    /// lines calls this method directly, as `AudioServiceTests` does, and takes
-    /// the ordering from its own thread rather than from the queue.
+    /// removing the sink on its own thread. What a test can lean on instead is
+    /// that `startAlarmSound` returns only once the queued body has run, so a
+    /// sink installed around that call is still installed when this line is
+    /// emitted — `AudioServiceStartWiringTests` reads it that way, and that is
+    /// what keeps `startAlarmSoundLocked` calling this method at all (#774).
+    /// The `AudioServiceTests` cases call it directly instead.
     func resolveAlarmPlayer(
         soundID: String,
         resourceURL: (String, String) -> URL? = { name, ext in
