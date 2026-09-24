@@ -241,10 +241,8 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     /// alarm sits pending from AlarmKit (#382) — clearing that one would drop
     /// the very screen this fix exists to keep.
     ///
-    /// Since #835 the swap parks its own request before dismissing, and a
-    /// deferral already in the slot loses to it (newest wins). So the other
-    /// alarm is deferred while the swap is in flight: AlarmKit's request
-    /// landing on a dismissal the notification path started.
+    /// Since #835 the swap parks its own request before dismissing, but not
+    /// over another alarm's record: that one is what this pins.
     func testReentry_forADifferentAlarmThanThePendingOne_leavesThatDeferralAlone() throws {
         let deferred = UUID()
         let arriving = Alarm()
@@ -253,11 +251,12 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         presenter.isRootReady = { true }
         presenter.mount = { _, _ in false }
 
-        _ = presenter.present(alarm: arriving)
         presenter.requestPresentation(alarmID: deferred)
         XCTAssertEqual(presenter.pendingAlarmID, deferred, "test precondition: the other alarm is pending")
         XCTAssertNotEqual(deferred, arriving.id, "test precondition: the two alarms have to differ")
 
+        _ = presenter.present(alarm: arriving)
+        XCTAssertEqual(presenter.pendingAlarmID, deferred, "the swap parked its request over the deferral")
         let newHost = RecordingHost()
         presenter.locateHost = { .success(newHost) }
         try XCTUnwrap(dismissal.completion)()
@@ -306,11 +305,11 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         )
     }
 
-    /// The pending slot holds one alarm. When a different alarm was waiting in
-    /// it, the swap takes the slot and that alarm's retry is gone: the line has
-    /// to say so, once, naming it. Since #835 that is the swap's own line,
-    /// written as it parks before dismissing; the host miss after it re-arms
-    /// the same record and drops nothing more.
+    /// The failure branch of `mountAfterDismissal` takes the pending slot,
+    /// which holds one alarm. When a different alarm was waiting in it, that
+    /// alarm's retry is gone: the line has to say so, once, naming it. The
+    /// swap's start leaves that record alone (#835), so the drop is the
+    /// completion's.
     func testReentry_whenTheHostIsGoneWhileAnotherAlarmWasPending_saysThatDeferralIsDropped() throws {
         let deferred = UUID()
         let arriving = Alarm()

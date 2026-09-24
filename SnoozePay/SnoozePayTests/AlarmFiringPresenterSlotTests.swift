@@ -14,7 +14,7 @@ import XCTest
 ///
 /// No test here loads a view: `dismissTapped` is called on a screen whose
 /// view never loads, so no audio observer outlives the test (#846's teardown
-/// lesson).
+/// lesson). Its Stop writes only to this suite's defaults.
 @MainActor
 final class AlarmFiringPresenterSlotTests: XCTestCase {
 
@@ -30,22 +30,26 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         }
     }
 
+    private static let suite = "AlarmFiringPresenterSlotTests"
     private var top: UIViewController?
     private var rootReady = true
     private var dismissed: [UIViewController] = []
+    /// Outstanding dismissal completions; none runs unless a test runs it.
+    private var completions: [() -> Void] = []
     private var lines: [Line] = []
-    private let defaults = UserDefaults(suiteName: "AlarmFiringPresenterSlotTests") ?? .standard
+    private let defaults = UserDefaults(suiteName: suite) ?? .standard
 
     override func tearDown() {
         AudioService.shared.stopAlarmSound()
-        defaults.removePersistentDomain(forName: "AlarmFiringPresenterSlotTests")
+        defaults.removePersistentDomain(forName: Self.suite)
         top = nil
+        completions = []
         super.tearDown()
     }
 
-    /// A dismissal here never reports back and never reads `isBeingDismissed`:
-    /// UIKit dropping it, the case the swap's early park is for.
-    private func makePresenter(alarms: [Alarm]) -> AlarmFiringPresenter {
+    /// `confirmsDismissal == false` is UIKit dropping the dismissal: the
+    /// screen never reads `isBeingDismissed`, the case the swap's park is for.
+    private func makePresenter(alarms: [Alarm], confirmsDismissal: Bool = false) -> AlarmFiringPresenter {
         let byID = Dictionary(uniqueKeysWithValues: alarms.map { ($0.id, $0) })
         let presenter = AlarmFiringPresenter(alarmRepository: .shared)
         presenter.locateHost = { [self] in
@@ -58,18 +62,56 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
             guard let alarm = byID[alarmID] else { return false }
             return presenter?.present(alarm: alarm, snoozeCount: count) ?? false
         }
-        presenter.dismissStaleScreen = { [self] screen, _ in self.dismissed.append(screen) }
+        presenter.dismissStaleScreen = { [self] screen, completion in
+            self.dismissed.append(screen)
+            let doubled = screen as? ReadBackFiringScreen
+            if confirmsDismissal { doubled?.dismissalInFlight = true }
+            self.completions.append {
+                doubled?.dismissalInFlight = false
+                completion()
+            }
+        }
         return presenter
     }
 
-    /// A screen whose Stop touches nothing shared: no AlarmKit, no system
-    /// notifications, and its wake day goes to this suite's defaults.
-    private func makeScreen(_ alarm: Alarm, snoozeCount: Int = 0) -> ReadBackFiringScreen {
-        ReadBackFiringScreen(viewModel: AlarmFiringViewModel(
+    /// A screen whose Stop touches nothing shared: wallet, ledger, alarm store
+    /// and wake day live in this suite's defaults, and the scheduler has no
+    /// system notifications. `alarmKit` picks the path: with it the system
+    /// owns the sound, without it the screen does.
+    private func makeScreen(
+        _ alarm: Alarm, snoozeCount: Int = 0, alarmKit: Bool = false, startedAt: Date = Date()
+    ) -> ReadBackFiringScreen {
+        let scheduler = AlarmScheduler(
+            notificationCenter: InertNotificationCenter(), alarmKit: alarmKit ? TestAlarmKitBackend() : nil
+        )
+        return ReadBackFiringScreen(viewModel: AlarmFiringViewModel(
             alarm: alarm, snoozeCount: snoozeCount,
-            scheduler: AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: nil),
-            wakeStore: WakeEventStore(defaults: defaults)
+            balanceService: BalanceService(defaults: defaults),
+            alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler),
+            scheduler: scheduler,
+            wakeStore: WakeEventStore(defaults: defaults),
+            ledger: TransactionRepository(defaults: defaults, wakeStore: WakeEventStore(defaults: defaults)),
+            firingStartedAt: startedAt
         ))
+    }
+
+    /// The notification path's sound, owned by `alarm`: what a ringing screen
+    /// on that path has behind it.
+    private func ring(_ alarm: Alarm) {
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
+        XCTAssertTrue(AudioService.shared.isPlaying, "test precondition: the alarm has to be audible")
+    }
+
+    private func finishDismissal() {
+        XCTAssertFalse(completions.isEmpty, "test precondition: a dismissal has to be outstanding")
+        guard !completions.isEmpty else { return }
+        recording(completions.removeFirst())
+    }
+
+    private func runOneMainQueueTurn() {
+        let turn = expectation(description: "one main-queue turn")
+        DispatchQueue.main.async { turn.fulfill() }
+        wait(for: [turn], timeout: 10)
     }
 
     private func recording(_ body: () -> Void) {
@@ -182,47 +224,136 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         XCTAssertTrue(dismissed.last === stale)
     }
 
-    // MARK: - P4: this alarm's screen already up
-
-    /// A record parked while this alarm's screen is up and ringing (a present
-    /// UIKit deferred, a second trigger source). The flush used to swap the
-    /// screen for a copy of itself, stopping its sound on the way down.
-    func testFlush_whileThisAlarmsScreenIsUpAndRinging_clearsTheRecordInsteadOfSwapping() throws {
-        let alarm = Alarm()
-        let presenter = makePresenter(alarms: [alarm])
+    /// Another alarm is parked when a swap B → A starts. Parking A over it
+    /// would drop it, so the swap leaves it: A goes up, and the parked alarm
+    /// is raised after, as on main. The line names B, whose sound stops with
+    /// its screen.
+    func testSwap_withAnotherAlarmParked_leavesItAndRaisesItAfterTheSwap() throws {
+        let arriving = Alarm()
+        let parked = Alarm()
+        let ringing = Alarm()
+        let presenter = makePresenter(alarms: [arriving, parked])
         rootReady = false
-        presenter.requestPresentation(alarmID: alarm.id)
-        XCTAssertEqual(presenter.pendingPresentation, pending(alarm, 0), "test precondition: the record is parked")
-        top = makeScreen(alarm, snoozeCount: 1)
+        presenter.requestPresentation(alarmID: parked.id)
         rootReady = true
+        top = makeScreen(ringing)
 
-        recording { presenter.flushPendingPresentation() }
+        recording { _ = presenter.present(alarm: arriving) }
 
-        XCTAssertTrue(dismissed.isEmpty, "this alarm's ringing screen was swapped for a copy: \(dismissed)")
-        XCTAssertNil(presenter.pendingPresentation, "the record outlived the screen it asked for")
-        let line = try XCTUnwrap(lines.first { $0.message.contains("up and ringing") }, "\(lines.map(\.message))")
-        XCTAssertEqual(line.level, .default)
-        XCTAssertTrue(line.message.contains("\(handle(alarm)) at snooze 1"), "«\(line.message)»")
+        XCTAssertEqual(presenter.pendingPresentation, pending(parked, 0), "the swap dropped the parked alarm")
+        let line = try XCTUnwrap(lines.first { $0.message.contains("swapping out") }, "\(lines.map(\.message))")
+        XCTAssertTrue(line.message.contains("screen of alarm \(handle(ringing))"), "B is not named: «\(line.message)»")
+        XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
+
+        let host = Host()
+        top = host
+        finishDismissal()
+        let arrivingScreen = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
+        XCTAssertEqual(arrivingScreen.viewModel.alarm.id, arriving.id)
+        XCTAssertEqual(presenter.pendingPresentation, pending(parked, 0))
+        top = arrivingScreen
+        runOneMainQueueTurn()
+
+        XCTAssertTrue(dismissed.last === arrivingScreen, "the parked alarm was never raised after the swap")
     }
 
-    /// The same alarm's screen, snoozed or stopped: a request for it is its
-    /// next ring, and has to get a fresh screen, not the countdown or the
-    /// morning summary left up.
-    func testPresent_overThisAlarmsSnoozedOrStoppedScreen_stillSwaps() {
-        for state in ["snoozed", "stopped"] {
+    /// B's screen is going down for A's swap, and B asks again at its count.
+    /// No second dismiss, and B waits in the slot. A leaves the slot, but its
+    /// completion still puts it up, so the line must not call A dropped.
+    func testReentry_forTheAlarmBeingSwappedOut_parksWithoutCallingTheSwapDropped() throws {
+        let arriving = Alarm()
+        let leaving = Alarm()
+        let presenter = makePresenter(alarms: [arriving, leaving], confirmsDismissal: true)
+        top = makeScreen(leaving, snoozeCount: 1)
+        _ = presenter.present(alarm: arriving)
+        XCTAssertEqual(presenter.pendingPresentation, pending(arriving, 0), "test precondition: the swap parked")
+
+        var answer = true
+        recording { answer = presenter.present(alarm: leaving, snoozeCount: 1) }
+
+        XCTAssertFalse(answer)
+        XCTAssertEqual(dismissed.count, 1, "the leaving screen was dismissed twice")
+        XCTAssertEqual(presenter.pendingPresentation, pending(leaving, 1))
+        let line = try XCTUnwrap(lines.first { $0.message.contains("still being dismissed") }, "\(lines.map(\.message))")
+        XCTAssertEqual(line.level, .default, "«\(line.message)»")
+        XCTAssertTrue(
+            line.message.contains("\(handle(arriving)) at snooze 0 leaves the slot but is still being swapped in"),
+            "«\(line.message)»"
+        )
+        XCTAssertFalse(line.message.contains("dropped"), "«\(line.message)»")
+    }
+
+    // MARK: - P4: this ring's screen already up
+
+    /// The production case is EQUAL counts: a second trigger for the ring on
+    /// screen carries the count the screen was built with. Through AlarmKit's
+    /// request and the direct present, at 0 and at 2, on both paths. Every one
+    /// swaps if `>=` is weakened to `>`.
+    func testSettle_forThisRingAtTheSameCount_keepsTheScreenAndEmptiesTheSlot() {
+        for alarmKit in [true, false] {
+            for (count, viaRequest) in [(0, true), (0, false), (2, false)] {
+                let label = "alarmKit=\(alarmKit) count=\(count) viaRequest=\(viaRequest)"
+                dismissed = []
+                lines = []
+                let alarm = Alarm()
+                let presenter = makePresenter(alarms: [alarm])
+                top = makeScreen(alarm, snoozeCount: count, alarmKit: alarmKit)
+                if !alarmKit { ring(alarm) }
+
+                var answer = true
+                recording {
+                    if viaRequest {
+                        presenter.requestPresentation(alarmID: alarm.id)
+                    } else {
+                        answer = presenter.present(alarm: alarm, snoozeCount: count)
+                    }
+                }
+
+                XCTAssertTrue(dismissed.isEmpty, "\(label): this ring's screen was swapped for a copy")
+                XCTAssertTrue(answer, label)
+                XCTAssertNil(presenter.pendingPresentation, label)
+                let settled = lines.first { $0.message.contains("up and ringing") }
+                XCTAssertTrue(
+                    settled?.message.contains("\(handle(alarm)) at snooze \(count)") ?? false,
+                    "\(label): \(lines.map(\.message))"
+                )
+                AudioService.shared.stopAlarmSound()
+            }
+        }
+    }
+
+    /// Anything that does not prove "this ring, still ringing" takes the swap,
+    /// as on main: a screen older than the window (yesterday's, with its
+    /// billing window), a notification-path screen with no sound or another
+    /// alarm's, and a snoozed or stopped one, whose alarm's request is its
+    /// next ring.
+    func testSettle_onAScreenNotProvablyThisRing_swapsIt() {
+        let older = Date().addingTimeInterval(-AlarmFiringPresenter.currentFiringWindow - 60)
+        for state in ["older", "silent", "other alarm's sound", "snoozed", "stopped"] {
             dismissed = []
             let alarm = Alarm()
             let presenter = makePresenter(alarms: [alarm])
-            let screen = makeScreen(alarm, snoozeCount: 1)
-            if state == "snoozed" { screen.isSnoozedStateActive = true } else { screen.dismissTapped() }
+            let onAlarmKit = state != "silent" && state != "other alarm's sound"
+            let screen = makeScreen(
+                alarm, snoozeCount: 1, alarmKit: onAlarmKit, startedAt: state == "older" ? older : Date()
+            )
+            switch state {
+            case "other alarm's sound": ring(Alarm())
+            case "snoozed": screen.isSnoozedStateActive = true
+            case "stopped": screen.dismissTapped()
+            default: break
+            }
             top = screen
 
             XCTAssertFalse(presenter.present(alarm: alarm, snoozeCount: 1), state)
 
-            XCTAssertEqual(dismissed.count, 1, "\(state): the next ring was answered with the old screen")
+            XCTAssertEqual(dismissed.count, 1, "\(state): answered with a screen that is not this ring's")
             XCTAssertEqual(presenter.pendingPresentation, pending(alarm, 1), state)
+            AudioService.shared.stopAlarmSound()
         }
     }
+
+    // MARK: - Stop
 
     /// The ghost from #839's review: a record parked while the screen was up
     /// outlives Stop, and the next activation raises a firing screen for an
@@ -249,5 +380,29 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         presenter.flushPendingPresentation()
         XCTAssertTrue(dismissed.isEmpty, "the stopped alarm's screen came back: \(dismissed)")
         XCTAssertEqual(host.presentedScreens.count, 1)
+    }
+
+    /// Stop drops only what its screen covers. Another alarm's record, or this
+    /// alarm's at a higher count (a later ring), stays, and no line claims a
+    /// drop.
+    func testStop_leavesAnotherAlarmsRecordAndAHigherCount() throws {
+        let alarm = Alarm()
+        let other = Alarm()
+        for (kept, label) in [(pending(other, 0), "another alarm"), (pending(alarm, 2), "a higher count")] {
+            lines = []
+            rootReady = true
+            let presenter = makePresenter(alarms: [alarm, other])
+            let host = Host()
+            top = host
+            XCTAssertTrue(presenter.present(alarm: alarm), "\(label): test precondition: the screen went up")
+            let screen = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
+            rootReady = false
+            presenter.requestPresentation(alarmID: kept.alarmID, snoozeCount: kept.snoozeCount)
+
+            recording { screen.dismissTapped() }
+
+            XCTAssertEqual(presenter.pendingPresentation, kept, "\(label): Stop dropped a record it does not cover")
+            XCTAssertFalse(lines.contains { $0.message.contains("stopped on its screen") }, label)
+        }
     }
 }
