@@ -390,7 +390,8 @@ final class AlarmFiringViewModel {
     }
 
     /// "Будни · 07:00" hero title above the big clock — alarm name plus its
-    /// scheduled time (V3 themed firing, `SPThemedFiring.jsx` line 152).
+    /// scheduled time (V3 themed firing, handoff only — the canon has none),
+    /// `docs/design/v2-handoff/components/SPThemedFiring.jsx:152` contains "Будни · 07:00".
     /// A blank / whitespace-only name degrades to just the time so the row
     /// never renders a dangling "·" separator.
     var heroTitle: String {

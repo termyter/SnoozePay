@@ -1,7 +1,7 @@
 import UIKit
 
 /// First-launch onboarding — V2 redesign
-/// (`docs/design/v2-handoff/components/SPMore.jsx` lines 9-149).
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:9-149` contains "function Onboarding1").
 ///
 /// Three full-screen pages on a horizontally-paged `UIScrollView`:
 /// 1. Concept — giant clock "07:00" with a warn "−50 ₽" pill and a hero h1.

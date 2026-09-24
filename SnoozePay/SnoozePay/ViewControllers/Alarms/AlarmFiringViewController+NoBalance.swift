@@ -4,12 +4,15 @@ import os
 
 /// No-balance («Баланса не осталось») state for the firing screen — V2 spec.
 ///
-/// V2 (`SPScreensV2.jsx` lines 228–276, `FiringNoBalanceV2`):
+/// V2, `FiringNoBalanceV2`:
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:228-276` contains "function FiringNoBalanceV2".
+///
 /// - Background tone flips to "drained" (handled by the host VC's
 ///   `updateAtmosphereTone`).
 /// - Top-right balance pill switches to pain (also host-handled).
 /// - Center adds a pain-tinted shield pill «БАЛАНСА НЕ ОСТАЛОСЬ» plus the
-///   body «Откладывать больше не получится. Только встать.» (lines 239–251).
+///   body «Откладывать больше не получится. Только встать.»,
+///   `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:239-251` contains "Только встать".
 /// - Bottom CTAs:
 ///   1. Disabled `SPSnoozePrice` (hint «Недостаточно средств») — visual
 ///      continuity so the user sees what they wanted to tap.

@@ -1,8 +1,11 @@
 import UIKit
 
 /// Single source of truth for rendering rouble amounts — the Swift port of
-/// the design system's `fmtRub` helper (`docs/design/v2-handoff/components/
-/// SPComponents.jsx` L12-24).
+/// the design system's `fmtRub` helper. The narrow-space form below exists
+/// only in the handoff copy,
+/// `docs/design/v2-handoff/components/SPComponents.jsx:12-24` contains "const fmtRub = (n) => (";
+/// the canon's `fmtRub` is still a plain string with a full space,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPComponents.jsx:9` contains "const fmtRub".
 ///
 /// The fmtRub rule (design v3, 2026-06-05 handoff):
 /// - Digits are grouped with the ru-RU thousands separator ("1 234").

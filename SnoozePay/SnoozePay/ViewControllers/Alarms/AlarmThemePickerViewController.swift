@@ -39,7 +39,7 @@ final class AlarmThemePickerViewController: UIViewController {
     /// V2 firing-screen preview block — sits above the grid and tracks the
     /// currently-selected theme so the user sees a 180pt-tall stamp of what
     /// the alarm-firing screen will look like before they pick. Matches
-    /// `SPMore2.jsx` lines 274-285.
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:344-355` contains "height: 180".
     private let previewContainer: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -121,7 +121,8 @@ final class AlarmThemePickerViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
-        // V2 caps title — matches `SPMore2.jsx` lines 269 recipe.
+        // V2 caps title — matches
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:339` contains "Тема будильника".
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
             string: Localized.text("create_alarm.theme_picker.title").uppercased(),

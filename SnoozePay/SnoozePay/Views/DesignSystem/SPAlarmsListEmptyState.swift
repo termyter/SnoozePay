@@ -2,8 +2,8 @@ import UIKit
 
 /// Empty-state column for the alarms list (V3 design).
 ///
-/// Reference: `docs/design/v2-handoff/components/SPMore.jsx` L415-445
-/// (`EmptyAlarms`).
+/// Reference (`EmptyAlarms`):
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:379-409` contains "function EmptyAlarms".
 ///
 /// Visual:
 /// ```
@@ -30,8 +30,10 @@ final class SPAlarmsListEmptyState: UIView {
     // MARK: - Subviews
 
     /// 84×84 whiteOverlay06 tile (radius 24, whiteOverlay08 hairline) hosting
-    /// the bell glyph — a quiet neutral tile, not the warn-gradient hero the
-    /// V2 layout used (SPMore.jsx L424-430, #280).
+    /// the bell glyph,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:388-394` contains "IconBell size={40}".
+    /// A quiet neutral tile, not the warn-gradient hero the V2 layout used
+    /// (#280).
     private let iconHost: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -47,7 +49,8 @@ final class SPAlarmsListEmptyState: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentMode = .scaleAspectFit
         view.tintColor = AppColors.fg3
-        // Code-drawn outline bell at fg3 — SPMore.jsx L429.
+        // Code-drawn outline bell at fg3,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:393` contains "IconBell size={40}".
         view.image = SPIcons.bell(size: 40)
         return view
     }()
@@ -55,7 +58,8 @@ final class SPAlarmsListEmptyState: UIView {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        // h2 24pt bold with −0.01em tracking per SPMore.jsx L431.
+        // h2 24pt bold with −0.01em tracking per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:395-396` contains "Ни одного будильника".
         label.attributedText = NSAttributedString(
             string: Localized.text("alarms.empty.title"),
             attributes: [
@@ -72,7 +76,8 @@ final class SPAlarmsListEmptyState: UIView {
     private let bodyLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        // Drops the previously banned «снуз» word — copy per SPMore.jsx L435.
+        // Drops the previously banned «снуз» word — copy per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:399` contains "Создайте первый".
         label.text = Localized.text("alarms.empty.body")
         label.font = AppTypography.bodyLg
         label.textColor = AppColors.fg2
@@ -81,8 +86,9 @@ final class SPAlarmsListEmptyState: UIView {
         return label
     }()
 
-    /// Intrinsic-width money CTA — NOT full-width (SPMore.jsx L437-439 wraps
-    /// the button in a plain `<div>` so it hugs its label).
+    /// Intrinsic-width money CTA — NOT full-width: the design wraps the button
+    /// in a plain `<div>` so it hugs its label,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:401-403` contains "Создать будильник".
     private let addButton: SPButton = {
         let button = SPButton(
             title: Localized.text("alarms.empty.button"),
@@ -134,7 +140,8 @@ final class SPAlarmsListEmptyState: UIView {
         let textStack = UIStackView(arrangedSubviews: [titleLabel, bodyLabel])
         textStack.axis = .vertical
         textStack.alignment = .center
-        // h2 → body-lg gap of 10pt per SPMore.jsx L434 (`marginTop: 10`).
+        // h2 → body-lg gap of 10pt (`marginTop: 10`) per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:398-399` contains "Создайте первый".
         textStack.spacing = 10
         textStack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(textStack)

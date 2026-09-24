@@ -301,11 +301,13 @@ enum AppColors {
     //
     // Same class as `heroDeep*`: a *filled* panel, not a surface, so it does
     // NOT flip with the theme. The canon calls it «чёрная карточка а-ля iOS
-    // Wallet» (`SPMore3.jsx` L549) and iOS Wallet keeps a dark instrument dark
-    // on a white page — flipping this fill to `bg1` in light would turn a
-    // payment card into an app card and lose the metaphor the screen is built
-    // on. Measured against the page: 1.09:1 on dark `bg0` (the canon leans on
-    // the rim, not the fill) and 16.83:1 on light `bg0`.
+    // Wallet»,
+    // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:246` contains "Чёрная карточка",
+    // and iOS Wallet keeps a dark instrument dark on a white page — flipping
+    // this fill to `bg1` in light would turn a payment card into an app card
+    // and lose the metaphor the screen is built on. Measured against the
+    // page: 1.09:1 on dark `bg0` (the canon leans on the rim, not the fill)
+    // and 16.83:1 on light `bg0`.
     /// Apple Pay card fill — `#15151A` in BOTH themes.
     static let paymentCard = UIColor(hex: 0x15151A)
     /// Glassy rim of `paymentCard`. Deliberately NOT `stroke1`: that token is

@@ -2,8 +2,9 @@ import UIKit
 
 /// Atmospheric "Dawn" background view used by the V2 firing screen.
 ///
-/// Spec — `docs/design/v2-handoff/components/SPScreensV2.jsx` lines 37–276 and
-/// `SPDawnV3.jsx` (DawnAtmosphere). Three layers stacked under the content:
+/// Spec —
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:37-276` contains "function FiringDawn("
+/// and `SPDawnV3.jsx` (DawnAtmosphere). Three layers stacked under the content:
 /// 1. **Base** — vertical linear gradient. The default Dawn recipe is
 ///    `#0A0E1A → #0E1320 → #1A1410` (cool night to warm horizon); the
 ///    no-balance "drained" variant collapses to `#0E1320 → #160B0B` so the
@@ -204,8 +205,8 @@ final class SPDawnBackgroundView: UIView {
     }
 
     private func applyDrainedTone() {
-        // Base: cold blue-grey gradient, #0E1320 → #160B0B
-        // (matches FiringNoBalanceV2 spec line 230)
+        // Base: cold blue-grey gradient, #0E1320 → #160B0B, matching
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:230` contains "#160B0B".
         baseLayer.colors = [
             UIColor(dawnRGB: 0x0E1320).cgColor,
             UIColor(dawnRGB: 0x160B0B).cgColor

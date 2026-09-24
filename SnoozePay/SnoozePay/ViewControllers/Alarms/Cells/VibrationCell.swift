@@ -2,7 +2,7 @@ import UIKit
 
 /// V2 «Вибрация» toggle row. Uses the brand `SPSwitch` so the on-state reads
 /// money-tinted instead of the platform green, matching the V2 settings group
-/// in `SPScreensV2.jsx` lines 585-590.
+/// in `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:622-627` contains "Вибрация".
 final class VibrationCell: UITableViewCell {
 
     static let reuseID = "VibrationCell"

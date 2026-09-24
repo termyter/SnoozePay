@@ -1,7 +1,11 @@
 import UIKit
 
-/// Code-drawn design-system icons — the Swift port of the `Ico` SVG set in
-/// `docs/design/v2-handoff/components/SPComponents.jsx` (L345+).
+/// Code-drawn design-system icons — the Swift port of the `Ico` SVG set. The
+/// wrapper recipe is the canon's,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPComponents.jsx:261-268` contains "ICONS (24×24";
+/// the coin-off, ruble-coin, trend-up, banknote and snooze glyphs exist only
+/// in the handoff,
+/// `docs/design/v2-handoff/components/SPComponents.jsx:374-441` contains "const IconRubleCoin".
 ///
 /// Recipe (matches the JSX wrapper): 24×24 viewBox, 1.75 stroke, round caps
 /// and joins, no fill, `currentColor` ink. Here that maps to a stroked

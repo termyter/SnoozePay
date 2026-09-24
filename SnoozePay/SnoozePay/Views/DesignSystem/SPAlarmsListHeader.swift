@@ -47,7 +47,8 @@ final class SPAlarmsListHeader: UIView {
     /// Triggered when the user taps the 40×40 gear button. The settings
     /// affordance now lives inside the header title row (left of the money
     /// "+"), so the host controller can hide the system nav bar entirely on
-    /// this tab (SPScreensV2.jsx L316-333).
+    /// this tab. Handoff only — the canon header has the "+" alone:
+    /// `docs/design/v2-handoff/components/SPScreensV2.jsx:316-333` contains "Settings — opens screen 23".
     var onSettingsTap: (() -> Void)?
 
     /// Kept for binary-compatibility with the legacy header — the V2
@@ -69,9 +70,11 @@ final class SPAlarmsListHeader: UIView {
         currentBalance = balance
         hasBalance = true
         // The amount's ink is part of the tone (0 ₽ renders in the pain wash
-        // ink per SPScreensV2.jsx L369), so `applyTone` re-renders the text —
-        // that is also what makes the value follow a light/dark flip, since
-        // `refreshDynamicColors` goes through the same call.
+        // ink; the zero-balance pill is handoff only,
+        // `docs/design/v2-handoff/components/SPScreensV2.jsx:366-369` contains "fmtRub(840)}"),
+        // so `applyTone` re-renders the text — that is also what makes the
+        // value follow a light/dark flip, since `refreshDynamicColors` goes
+        // through the same call.
         applyTone(Self.tone(for: balance))
         if let hint = hint, !hint.isEmpty {
             balanceHintLabel.text = hint
@@ -130,9 +133,10 @@ final class SPAlarmsListHeader: UIView {
             string: Localized.text("alarms.title"),
             attributes: [
                 .font: AppTypography.h1,
-                // Full `letterSpacing: -.02em` per SPScreensV2.jsx L315 — the
-                // earlier value was halved (#280). `kern(em:size:)` resolves the
-                // em tracking to points for the 32pt h1.
+                // Full `letterSpacing: -.02em` per
+                // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:296` contains "Будильники</div>"
+                // — the earlier value was halved (#280). `kern(em:size:)`
+                // resolves the em tracking to points for the 32pt h1.
                 .kern: AppTypography.kern(em: -0.02, size: 32),
                 .foregroundColor: AppColors.fg1
             ]
@@ -141,8 +145,9 @@ final class SPAlarmsListHeader: UIView {
     }()
 
     /// 40×40 whiteOverlay06 circle hosting the gear glyph — the in-header
-    /// Settings entry point (SPScreensV2.jsx L318-324). Sits left of the
-    /// money "+"; tapping it routes through `onSettingsTap`.
+    /// Settings entry point, handoff only,
+    /// `docs/design/v2-handoff/components/SPScreensV2.jsx:318-324` contains "IconSettings size={18}".
+    /// Sits left of the money "+"; tapping it routes through `onSettingsTap`.
     private let settingsButton: UIControl = {
         let view = UIControl()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -221,9 +226,10 @@ final class SPAlarmsListHeader: UIView {
     }()
 
     /// Reddish wash behind the pill content in the zero-balance state —
-    /// `linear-gradient(135deg, pain@.10 → pain@.02)` per SPScreensV2.jsx
-    /// L346-347. Hidden in the neutral / warn tones, where the flat
-    /// `backgroundColor` carries the surface instead.
+    /// `linear-gradient(135deg, pain@.10 → pain@.02)`, handoff only,
+    /// `docs/design/v2-handoff/components/SPScreensV2.jsx:346-347` contains "rgba(244,82,63,.10)".
+    /// Hidden in the neutral / warn tones, where the flat `backgroundColor`
+    /// carries the surface instead.
     private let zeroTintGradient: SPGradientView = {
         // Stops are (re)applied per trait in `applyTone` — see `zeroWashColors`.
         let view = SPGradientView(colors: [], locations: [0.0, 1.0])
@@ -255,8 +261,10 @@ final class SPAlarmsListHeader: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentMode = .scaleAspectFit
         view.tintColor = AppColors.fgOnMoney
-        // Code-drawn wallet glyph (SPScreensV2.jsx L359) — replaces the
-        // SF `creditcard.fill` so the pill matches the V3 icon set (#280).
+        // Code-drawn wallet glyph,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:320` contains "IconWallet size={18}",
+        // replaces the SF `creditcard.fill` so the pill matches the V3 icon
+        // set (#280).
         view.image = SPIcons.wallet(size: 18)
         return view
     }()
@@ -275,11 +283,14 @@ final class SPAlarmsListHeader: UIView {
         return label
     }()
 
-    /// 14pt mono bold balance amount. The design uses `700 14px/18px mono`
-    /// with `letter-spacing: 0` (SPScreensV2.jsx L364-369) — a compact inline
-    /// value, NOT the 20pt `moneyMd` hero number the pill carried before
-    /// (#280). Built in `pillValueFont` so `setBalance` and this declaration
-    /// agree on one source.
+    /// 14pt mono bold balance amount. The handoff uses `700 14px/18px mono`
+    /// with `letter-spacing: 0` — a compact inline value, NOT the 20pt
+    /// `moneyMd` hero number the pill carried before (#280):
+    /// `docs/design/v2-handoff/components/SPScreensV2.jsx:364-369` contains "700 14px/18px".
+    /// The canon pill still uses `--sp-t-money-md`,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:325` contains "840 ₽</span>".
+    /// Built in `pillValueFont` so `setBalance` and this declaration agree on
+    /// one source.
     private static let pillValueFont = AppFonts.mono(.bold, 14)
 
     private let balanceValueLabel: UILabel = {
@@ -439,7 +450,8 @@ final class SPAlarmsListHeader: UIView {
             ),
 
             // Gear — 40×40 circle left of the money "+", 10pt gap between the
-            // two (SPScreensV2.jsx L316).
+            // two (handoff only),
+            // `docs/design/v2-handoff/components/SPScreensV2.jsx:316` contains "gap: 10".
             settingsButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             settingsButton.trailingAnchor.constraint(equalTo: addButton.leadingAnchor, constant: -10),
             settingsButton.widthAnchor.constraint(equalToConstant: 40),

@@ -1,7 +1,7 @@
 import UIKit
 
-/// "Alarm off / disable warning" sheet — V2 design (`docs/design/v2-handoff/`
-/// `components/SPMore4.jsx` lines 325-395, `AlarmOffWarning()`).
+/// "Alarm off / disable warning" sheet — V2 design (`AlarmOffWarning()`,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:332-401` contains "function AlarmOffWarning").
 ///
 /// Triggered when the user has slept through three mornings in a row. The
 /// V2 spec asks for a pain-tinted full-screen modal (or large sheet) with:

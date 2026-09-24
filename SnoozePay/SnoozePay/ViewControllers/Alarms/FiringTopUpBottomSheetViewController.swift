@@ -5,13 +5,14 @@ import os
 /// Bottom-sheet presented over `AlarmFiringViewController` when the user wants
 /// to top up the wallet mid-alarm so they can keep snoozing.
 ///
-/// V2 spec: `docs/design/v2-handoff/components/SPTopUp.jsx`
-/// `FiringTopUpPresets` (lines 103–197). Three vertical preset rows feed a
-/// single Apple Pay primary CTA; each row's amount is the catalogue amount of
-/// its mapped SKU (#275/#297) so display == charge == credit. Visuals match the
-/// V2 design system — bg1 surface, 28pt top corners, a pulsing warn dot + caps
-/// «Будильник на паузе · MM:SS» + h2 «Пополнить баланс» header, full-width
-/// preset rows, money-toned Apple Pay button, footer meta.
+/// V2 spec: `FiringTopUpPresets`,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:103-197` contains "function FiringTopUpPresets".
+/// Three vertical preset rows feed a single Apple Pay primary CTA; each row's
+/// amount is the catalogue amount of its mapped SKU (#275/#297) so display ==
+/// charge == credit. Visuals match the V2 design system — bg1 surface, 28pt
+/// top corners, a pulsing warn dot + caps «Будильник на паузе · MM:SS» + h2
+/// «Пополнить баланс» header, full-width preset rows, money-toned Apple Pay
+/// button, footer meta.
 ///
 /// Side effects beyond pixel layout:
 /// - On `viewWillAppear` the alarm audio + escalation timer are paused via

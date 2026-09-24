@@ -51,8 +51,8 @@ final class SnoozeSliderCell: UITableViewCell {
         view.minimumValue = Float(SnoozeSliderCell.minMinutes)
         view.maximumValue = Float(SnoozeSliderCell.maxMinutes)
         // V2: tint the track amber so the snooze-duration slider reads as
-        // "amber affordance" matching the JSX recipe in `SPScreensV2.jsx`
-        // line 563.
+        // "amber affordance" matching the JSX recipe in
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:600` contains "var(--sp-warn-500) 0%".
         //
         // `warnFill500`, not `warn500` (#520). The ink tone measured 1.00:1
         // against the `money500` thumb in light — isoluminant, so the filled

@@ -4,7 +4,8 @@ import UIKit
 /// `LaunchScreen.storyboard` (signing-bound) and the real root SceneDelegate
 /// installs (Onboarding / Permissions / TabBar).
 ///
-/// Visual (V2, `docs/design/v2-handoff/components/SPMore2.jsx` lines 6-23):
+/// Visual (V2,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:6-23` contains "Будильник со ставкой"):
 /// dark `bg0` background, soft radial warm glow at centre, 96×96 rounded-rect
 /// (radius 28) painted with the warn gradient and overlaid by a bell icon
 /// (`bell.fill` tinted `fgOnWarn`), «SnoozePay» h1 white below, «Будильник со

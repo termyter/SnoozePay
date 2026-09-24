@@ -21,7 +21,8 @@ struct YearMonth: Equatable, Hashable, Comparable {
     }
 
     /// Linear month index — months become comparable / subtractable across
-    /// year boundaries (mirrors `idx()` in `SPMore3.jsx` L214).
+    /// year boundaries. Mirrors `idx()` of the handoff-only period picker,
+    /// `docs/design/v2-handoff/components/SPMore3.jsx:214` contains "const idx = (p)".
     var linearIndex: Int { year * 12 + (month - 1) }
 
     static func < (lhs: YearMonth, rhs: YearMonth) -> Bool {
@@ -164,8 +165,10 @@ struct TxHistoryPeriod: Equatable {
 }
 
 /// Transaction-type filter for the chip row under the summary card
-/// (issue #282, `SPMore3.jsx` L142-152). Composes *after* the period
-/// filter — period narrows by date, this narrows by direction.
+/// (issue #282),
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:56-66` contains "Поступления".
+/// Composes *after* the period filter — period narrows by date, this narrows
+/// by direction.
 enum TxHistoryTypeFilter: CaseIterable {
     /// «Все» — no type restriction.
     case all

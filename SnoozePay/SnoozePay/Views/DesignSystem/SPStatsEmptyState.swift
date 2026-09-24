@@ -2,8 +2,9 @@ import UIKit
 
 /// State column for the behavioural statistics screen (V3 design).
 ///
-/// Reference: `docs/design/v2-handoff/components/SPMore.jsx` L447-480
-/// (`EmptyStats`). It has two modes: it is shown when the user has no charges
+/// Reference (`EmptyStats`):
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:411-444` contains "function EmptyStats".
+/// It has two modes: it is shown when the user has no charges
 /// and no recorded wake events (there is nothing to aggregate yet, #289), or
 /// when the ledger is unreadable / only partially readable (#459). The latter
 /// withholds the whole ledger-derived screen rather than drawing a false clean

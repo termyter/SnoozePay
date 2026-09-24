@@ -341,7 +341,9 @@ final class WalletTransactionHistoryViewController: UIViewController {
         let title = Self.title(for: transaction)
         // Charge rows carry the owning alarm's context as the subtitle —
         // «Будни · 07:00» — falling back to the bare time when the alarm was
-        // deleted/edited away (issue #282, SPScreensV2.jsx L467).
+        // deleted/edited away (issue #282). The canon history row carries it
+        // in the title,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:10` contains "Поспать ещё · Будни 7:00".
         let subtitle = Self.subtitle(for: transaction)
         let leading = Self.makeIcon(for: transaction)
         let trailing = Self.makeAmountLabel(for: transaction)
@@ -534,7 +536,8 @@ final class WalletTransactionHistoryViewController: UIViewController {
     }
 }
 
-// MARK: - Type filter chips (issue #282, SPMore3.jsx L142-152)
+// MARK: - Type filter chips (issue #282)
+// `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:56-66` contains "Поступления"
 
 extension WalletTransactionHistoryViewController {
 
