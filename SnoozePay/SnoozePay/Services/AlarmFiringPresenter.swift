@@ -115,10 +115,10 @@ final class AlarmFiringPresenter {
     /// pending, so a `sceneDidBecomeActive` flush or a second trigger source
     /// re-enters `present(alarm:)`, finds this same screen and would dismiss it
     /// a second time. Matched by identity against the screen the hierarchy
-    /// walk finds rather than held as a flag: a flag set here and cleared only
-    /// in a completion UIKit may never call would refuse every later alarm,
-    /// while a screen that has left the hierarchy stops matching on its own.
-    /// Weak for the same reason.
+    /// walk finds rather than held as a flag, and honoured only while UIKit
+    /// still reports that screen `isBeingDismissed`: a marker cleared only in
+    /// a completion UIKit may never call would otherwise refuse every later
+    /// alarm. Weak for the same reason.
     private weak var screenBeingDismissed: AlarmFiringViewController?
 
     /// Mounts the firing screen for `alarmID`, returning `false` when the screen
@@ -289,8 +289,13 @@ final class AlarmFiringPresenter {
             // a second `dismiss` on it is not ours to issue, and the screen the
             // first swap mounts is the one the user gets. This request waits in
             // the pending slot — cleared by that mount when it is the same
-            // alarm, flushed on the next activation when it is not.
-            if presentedFiring === screenBeingDismissed {
+            // alarm, re-attempted right after it when it is not.
+            //
+            // Only while UIKit confirms the dismissal: if it dropped it and
+            // will never run the completion, the screen stays up and not
+            // being dismissed, and a fresh `dismiss` is the way out. A
+            // duplicate completion cannot stack, `mountAfterDismissal` checks.
+            if presentedFiring === screenBeingDismissed, presentedFiring.isBeingDismissed {
                 armRetry(
                     request, level: .default,
                     "firing-present: the previous screen is still being dismissed — keeping this one pending"
@@ -362,8 +367,20 @@ final class AlarmFiringPresenter {
 
         if let alreadyUp = Self.presentedFiringScreen(from: top) {
             if alreadyUp.viewModel.alarm.id == retry.alarmID {
-                // This alarm's screen is what the user sees; nothing to retry.
-                clearPending(for: retry.alarmID)
+                // This alarm's screen is up — but a screen built at a lower
+                // snooze count prices the next snooze from an earlier step
+                // (#808): AlarmKit's requests always carry 0. A higher count
+                // on screen is the truer one and is kept, since swapping down
+                // to `retry`'s would be that same reset.
+                if alreadyUp.viewModel.snoozeCount < retry.snoozeCount {
+                    armRetry(
+                        retry, level: .default,
+                        "firing-present: this alarm is up at a lower snooze count — swapping it for the right one"
+                    )
+                } else {
+                    clearPending(for: retry.alarmID)
+                }
+                attemptParkedPresentationSoon()
             } else {
                 armRetry(
                     retry,
@@ -385,6 +402,24 @@ final class AlarmFiringPresenter {
             return
         }
         clearPending(for: retry.alarmID)
+        attemptParkedPresentationSoon()
+    }
+
+    /// Re-attempts a request the swap parked — another alarm that arrived
+    /// while the dismissal was outstanding — once this swap's screen is up.
+    ///
+    /// Waiting for "the next activation" was no retry at all: while the app
+    /// stays foreground `sceneDidBecomeActive` does not fire again, and on a
+    /// background scene the activation can land before this completion and
+    /// be parked itself. On the next main-queue turn, not inline, so the
+    /// follow-up swap never dismisses a screen that is still being presented.
+    /// Called only from branches where a screen is up; the failure branches
+    /// leave the retry to the activation, so this cannot spin.
+    private func attemptParkedPresentationSoon() {
+        guard pendingPresentation != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.attemptPendingPresentation()
+        }
     }
 
     /// Drops the deferral once `alarmID`'s screen is up.
@@ -407,11 +442,12 @@ final class AlarmFiringPresenter {
     ///
     /// The slot holds one alarm, so taking it from another one drops that
     /// alarm's retry — and the line says so rather than reading like a plain
-    /// deferral.
+    /// deferral, at `.error` whatever `level` the caller asked for: a lost
+    /// alarm is not a notice.
     private func armRetry(_ retry: PendingPresentation, level: OSLogType = .error, _ line: String) {
         let displaced = pendingAlarmID.map { $0 != retry.alarmID } ?? false
         AppLogger.emit(
-            .appDelegate, level,
+            .appDelegate, displaced ? .error : level,
             line + (displaced ? "; another alarm's pending screen is dropped" : "")
         )
         pendingPresentation = retry
