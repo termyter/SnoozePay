@@ -13,7 +13,9 @@ import XCTest
 /// Item 9: a swap in the queue's chain whose dismissal leaves no host. The swap
 /// already took the old screen down, so nothing is up until the next
 /// activation, which a foreground app does not get. The presenter retries on
-/// the next turn, a bounded number of times.
+/// the next turn, a bounded number of times. So does a host miss in `present`,
+/// under the same budget: in the foreground the notification path shows no
+/// banner for a ringing alarm, so nothing else raises it.
 ///
 /// Every presenter reads a repository on this suite's own defaults, no screen
 /// loads its view, and `tearDown` stops the audio and drains the main queue
@@ -144,7 +146,10 @@ final class AlarmFiringPresenterMissRuleTests: XCTestCase {
                 lines.first { $0.message.contains("keeping it pending") }, "\(path): \(lines.map(\.message))"
             )
             XCTAssertEqual(miss.level, .error, "\(path): an alarm with no screen is a failure")
-            XCTAssertTrue(miss.message.contains("keeping it pending; the in-app sound is on"), "«\(miss.message)»")
+            XCTAssertTrue(
+                miss.message.contains("keeping it pending; the in-app sound of \(handle(alarm)) is on"),
+                "«\(miss.message)»"
+            )
         }
     }
 
@@ -244,6 +249,88 @@ final class AlarmFiringPresenterMissRuleTests: XCTestCase {
         XCTAssertTrue(
             lines.contains { $0.message.contains("; retrying on the next turn [") },
             "a screen going up did not refill the budget: \(lines.map(\.message))"
+        )
+    }
+
+    // MARK: - The host miss in `present` re-arms too
+
+    /// Misses the host in `present` and runs one turn more than the budget
+    /// needs, so a retry past it would show.
+    private func spendHostMissBudget(_ presenter: AlarmFiringPresenter, on alarm: Alarm, count: Int) {
+        top = nil
+        recording {
+            XCTAssertFalse(presenter.present(alarm: alarm, snoozeCount: count), "test precondition: a host miss")
+            for _ in 0...AlarmFiringPresenter.hostGoneRetryLimit { runOneMainQueueTurn() }
+        }
+    }
+
+    /// The legacy notification path in the foreground: `willPresent` shows no
+    /// banner for a ringing alarm, so a host miss in `present` had no screen
+    /// and no retry until the next activation. It re-arms under the swap's
+    /// budget: `retry, retry, wait`, and the record keeps its count.
+    func testHostMissInPresent_retriesUpToTheLimitThenWaitsForTheActivation() throws {
+        let alarm = Alarm()
+        let (presenter, _) = makePresenter(alarms: [alarm])
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
+        defer {
+            AudioService.shared.stopAlarmSound()
+            drainMainQueue()
+        }
+
+        spendHostMissBudget(presenter, on: alarm, count: 1)
+
+        let misses = lines.filter { $0.message.contains("keeping it pending") }
+        let decisions = misses.map {
+            $0.message.contains("; retrying on the next turn [") ? "retry"
+                : $0.message.contains("; waiting for the next activation [") ? "wait" : $0.message
+        }
+        XCTAssertEqual(decisions, Array(repeating: "retry", count: AlarmFiringPresenter.hostGoneRetryLimit) + ["wait"])
+        XCTAssertEqual(
+            misses.first?.message,
+            "firing-present: \(Self.noHost) — keeping it pending; the in-app sound of \(handle(alarm)) is on;"
+                + " retrying on the next turn [alarm \(handle(alarm)) at snooze 1]"
+        )
+        XCTAssertTrue(misses.allSatisfy { $0.level == .error }, "an alarm with no screen is a failure")
+        XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 1)], "the record has to wait, not go")
+        XCTAssertEqual(AudioService.shared.soundingAlarmID, alarm.id, "a miss that keeps the record stopped its sound")
+
+        let host = Host()
+        top = host
+        presenter.flushPendingPresentation()
+        let landed = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen, "the flush raised nothing")
+        XCTAssertEqual(landed.viewModel.snoozeCount, 1, "the retry restarted the snooze ladder (#808)")
+    }
+
+    /// The swap's completion finding this alarm's screen already up and
+    /// ringing refills the budget, as a screen going up does. Without the
+    /// reset there, the next host miss waits for the activation at once.
+    func testThisAlarmsScreenAlreadyUpAfterASwap_refillsTheHostMissBudget() throws {
+        let alarm = Alarm()
+        let (presenter, completions) = makePresenter(alarms: [alarm])
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
+        defer {
+            AudioService.shared.stopAlarmSound()
+            drainMainQueue()
+        }
+        spendHostMissBudget(presenter, on: alarm, count: 0)
+        XCTAssertTrue(lines.last?.message.contains("; waiting for the next activation [") ?? false, "precondition")
+
+        top = makeScreen(Alarm())
+        XCTAssertFalse(presenter.present(alarm: alarm), "test precondition: the swap started")
+        top = makeScreen(alarm)
+        lines = []
+        let finish = try XCTUnwrap(completions().last, "test precondition: no swap is outstanding")
+        recording { finish() }
+        XCTAssertTrue(
+            lines.contains { $0.message.contains("already up — not stacking") }, "precondition: \(lines.map(\.message))"
+        )
+
+        top = nil
+        lines = []
+        recording { _ = presenter.present(alarm: alarm, snoozeCount: 1) }
+        XCTAssertTrue(
+            lines.contains { $0.message.contains("; retrying on the next turn [") },
+            "the already-up branch did not refill the budget: \(lines.map(\.message))"
         )
     }
 }

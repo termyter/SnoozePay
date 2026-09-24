@@ -38,8 +38,8 @@ import os
 ///
 ///   * **a root view controller.** Reading a nil root off the winner drops the
 ///     presentation with a perfectly good sibling window standing next to it:
-///     the firing screen never rises, `AlarmFiringPresenter` stops the audio,
-///     and an alarm goes silent because a keyboard was up.
+///     the firing screen never rises, and an alarm is left ringing with
+///     nothing on screen to answer it because a keyboard was up.
 ///   * **`windowLevel == .normal`.** A window above `.normal` is UIKit's
 ///     overlay ON the app, not the app. Presenting into one puts the firing
 ///     screen over a system surface, and — louder — hands
