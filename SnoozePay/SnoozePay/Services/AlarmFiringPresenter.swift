@@ -430,19 +430,19 @@ final class AlarmFiringPresenter {
         )
     }
 
-    /// How recently the ring on an AlarmKit screen must have started for a
-    /// request to count as that same ring (`ringMismatch`). Measured from
-    /// `AlarmFiringViewModel.lastRingStartedAt`, the re-ring after the last
-    /// snooze or the mount before any: from the mount alone, one snooze of 11
-    /// to 15 minutes put a second trigger for the ring outside it (#855). The
-    /// requests it absorbs arrive within seconds to a minute of the ring. Ten
-    /// minutes covers those with room, and stays far below the day between
-    /// two mornings: a screen left up since yesterday must be swapped (#835
-    /// review).
+    /// How long after `AlarmFiringViewModel.lastRingStartedAt` (the last
+    /// re-ring, else the mount; #855) a screen without its own `AudioService`
+    /// sound (AlarmKit) still counts as the request's ring. Second triggers
+    /// arrive within a minute; yesterday's screen must be swapped (#835).
     static let currentFiringWindow: TimeInterval = 10 * 60
 
-    /// Why a screen of `request`'s alarm is not the ring the request is for.
-    /// Printed in the swap lines next to the screen's handle.
+    /// The same bound while the alarm owns `AudioService`. That sound proves
+    /// the request, not the screen: `AppDelegate.startForegroundAlarm` takes
+    /// it before `present`. Two firings of one alarm are 24 h apart unless it
+    /// is edited, so 3 h keeps a long ring and swaps any earlier firing.
+    static let currentRingSoundingLimit: TimeInterval = 3 * 60 * 60
+
+    /// Why a screen is not the request's ring; printed in the swap lines.
     enum RingMismatch: String {
         case otherAlarm = "another alarm"
         case olderCount = "a lower snooze count"
@@ -450,19 +450,16 @@ final class AlarmFiringPresenter {
         case stopped = "stopped by the user"
         case snoozed = "snoozed"
         case outsideWindow = "rang too long ago"
+        case previousFiring = "from an earlier firing"
         case silent = "its sound is not on"
     }
 
-    /// `nil` when `screen` is `request`'s alarm at the request's count or
-    /// above, still ringing its current ring, so the request is the screen
-    /// already there. The one test both the swap (`present(alarm:)`) and its
-    /// completion (`mountAfterDismissal`) apply (#855).
-    ///
-    /// Ringing: this alarm owns `AudioService` in any state but `.stopped`
-    /// (a swap would kill a vibration-only ring), read once as a pair. That
-    /// proves the ring with no window, so a long ring keeps its fade-in.
-    /// Without it only AlarmKit, whose sound is the system's, can be ringing,
-    /// and only inside `currentFiringWindow`: the flags alone prove nothing.
+    /// `nil` when `screen` is `request`'s alarm at its count or above, still
+    /// ringing its current ring: the one test of the swap and its completion
+    /// (#855). Ringing: this alarm owns `AudioService` in any state but
+    /// `.stopped` (a swap kills a vibration-only ring) and its ring started
+    /// within `currentRingSoundingLimit`; without that sound, only AlarmKit
+    /// can be ringing, inside `currentFiringWindow`.
     private static func ringMismatch(
         _ screen: AlarmFiringViewController, for request: PendingPresentation
     ) -> RingMismatch? {
@@ -472,14 +469,15 @@ final class AlarmFiringPresenter {
         if screen.isBeingDismissed { return .dismissing }
         if screen.isStoppedByUser { return .stopped }
         if screen.isSnoozedStateActive { return .snoozed }
-        if AudioService.shared.soundingAlarmID == model.alarm.id { return nil }
+        let sinceRing = Date().timeIntervalSince(model.lastRingStartedAt)
+        if AudioService.shared.soundingAlarmID == model.alarm.id {
+            return sinceRing <= currentRingSoundingLimit ? nil : .previousFiring
+        }
         if !model.usesAlarmKit { return .silent }
-        return Date().timeIntervalSince(model.lastRingStartedAt) <= currentFiringWindow ? nil : .outsideWindow
+        return sinceRing <= currentFiringWindow ? nil : .outsideWindow
     }
 
-    /// Settles the request on `screen`, the ringing screen the swap would
-    /// otherwise take down: swapping rebuilt it and stopped its sound on the
-    /// way down (#835).
+    /// Settles on the ringing screen a swap would rebuild and silence (#835).
     private func settleOnRingingScreen(_ screen: AlarmFiringViewController) {
         let shown = PendingPresentation(on: screen)
         AppLogger.emit(
@@ -531,9 +529,8 @@ final class AlarmFiringPresenter {
         case let .success(located):
             top = located
         case let .failure(miss):
-            // Not stopped here, unlike the miss in `present`, but a dismissed
-            // screen that owned the sound stopped it in `viewDidDisappear`:
-            // the line says whether any is left until the retry lands.
+            // Not stopped here, unlike in `present`, but a dismissed owner stops
+            // it in `viewDidDisappear`: the line says whether any sound is left.
             let audio = AudioService.shared.state == .stopped ? "no in-app sound is on" : "the in-app sound is on"
             armRetry(
                 retry,

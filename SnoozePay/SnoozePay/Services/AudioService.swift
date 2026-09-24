@@ -164,11 +164,9 @@ final class AudioService {
         }
     }
 
-    /// The alarm that owns the pipeline while it is not `.stopped` (playing,
-    /// vibration only, or a refused session), or `nil`. Owner and state are
-    /// taken in ONE `queue.sync`, so the pair is from one moment (#855).
-    /// Safe from main: nothing inside `queue` waits on main, since posts
-    /// leave through `postOnMain`'s `main.async` (#848).
+    /// The owner while the pipeline is not `.stopped`, else `nil`: owner and
+    /// state in ONE `queue.sync` (#855). Safe from main: nothing inside
+    /// `queue` waits on main; posts leave via `postOnMain`'s `main.async`.
     var soundingAlarmID: UUID? { queue.sync { _state != .stopped ? _currentAlarmID : nil } }
 
     /// Backwards-compatible boolean. `true` only when actually playing real audio.

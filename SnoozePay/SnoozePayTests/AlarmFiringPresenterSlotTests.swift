@@ -377,11 +377,9 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         }
     }
 
-    /// #855: the current ring is not measured from the mount. The screen went
-    /// up 20 minutes ago. On AlarmKit the window counts from the re-ring the
-    /// last snooze armed, 4 minutes ago or a second from now. On the
-    /// notification path this alarm's own sound proves the ring, so an
-    /// unsnoozed alarm ringing for 20 minutes is not torn down and restarted.
+    /// #855: mounted 20 minutes ago. On AlarmKit the window counts from the
+    /// last re-ring (4 min ago, or 1 s ahead); with its own sound, the bound
+    /// is `currentRingSoundingLimit`, so a 20-minute ring is not torn down.
     func testSettle_onTheCurrentRing_settlesWhenTheMountIsOutsideTheWindow() {
         let startedAt = Date().addingTimeInterval(-20 * 60)
         let snoozeLength: TimeInterval = 15 * 60
@@ -409,14 +407,39 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         }
     }
 
+    /// The new firing's sound is taken before `present`. An earlier firing's
+    /// screen at count 3 must still be swapped past the limit, or the next
+    /// snooze is charged at step 3; just inside it, a long ring settles.
+    func testSettle_whileThisAlarmSounds_swapsAnEarlierFiringsScreen() {
+        let limit = AlarmFiringPresenter.currentRingSoundingLimit
+        let cases = [("2h59m", limit - 60, false), ("3h01m", limit + 60, true), ("a day", 86_400, true)]
+        for (label, age, swaps) in cases {
+            dismissed = []
+            lines = []
+            let alarm = Alarm()
+            let presenter = makePresenter(alarms: [alarm])
+            top = makeScreen(alarm, snoozeCount: 3, startedAt: Date().addingTimeInterval(-age))
+            ring(alarm)
+
+            var answer = swaps
+            recording { answer = presenter.present(alarm: alarm, snoozeCount: 0) }
+
+            XCTAssertEqual(answer, !swaps, label)
+            XCTAssertEqual(dismissed.count, swaps ? 1 : 0, "\(label): \(lines.map(\.message))")
+            if swaps {
+                let line = lines.first { $0.message.contains("swapping out") }?.message ?? ""
+                let reason = AlarmFiringPresenter.RingMismatch.previousFiring.rawValue
+                XCTAssertTrue(line.contains("at snooze 3 (\(reason))"), "\(label): «\(line)»")
+            }
+            AudioService.shared.stopAlarmSound()
+        }
+    }
+
     // MARK: - The swap's completion finds this alarm up (#855)
 
-    /// A screen of this alarm, Y, went up while the swap's dismissal was out.
-    /// The completion settled on it whatever it was. Stale or silent, Y is now
-    /// swapped at the higher of the two counts, so the ladder never steps
-    /// down (#808), and the swap goes through to a mounted screen. Stopped or
-    /// snoozed at the request's count, Y's Stop or paid snooze answered the
-    /// older request: swapping would ring a stopped alarm again.
+    /// This alarm's screen Y went up during the swap's dismissal. Stale or
+    /// silent, Y is swapped at the higher count (#808) through to a mounted
+    /// screen; stopped or snoozed, the user answered the older request.
     func testCompletion_whenThisAlarmsScreenIsUpButNotRinging_swapsOnlyWhatTheUserDidNotAnswer() {
         let older = Date().addingTimeInterval(-AlarmFiringPresenter.currentFiringWindow - 60)
         /// `rebuilt`: the count the swap mounts at; `nil`, no swap.
