@@ -62,9 +62,18 @@ final class AlarmFiringViewModel {
     /// Moment this firing session was mounted. Anchors the ledger window the
     /// billed-charge summary looks back over (`wakeWindow`), so charges from
     /// yesterday's wake of the SAME alarm can never leak into today's total.
-    /// Read by `AlarmFiringPresenter` to tell this ring's screen from an older
-    /// one (#835).
+    /// Not the start of the ring on screen once the user has snoozed: that is
+    /// `lastRingStartedAt`.
     let firingStartedAt: Date
+
+    /// When the ring on screen started: the re-ring the last snooze armed
+    /// (`nextRingDate()`, tap + `snoozeMinutes`, the instant the scheduler
+    /// fires), or `firingStartedAt` before any snooze. `AlarmFiringPresenter`
+    /// tells the current ring's screen from an older one by it (#835). It read
+    /// `firingStartedAt`, which never moves, so after one snooze longer than
+    /// its window a second trigger for the ring on screen was taken for a
+    /// stale screen and swapped (#855).
+    var lastRingStartedAt: Date { nextRingDate() ?? firingStartedAt }
 
     // MARK: - Callbacks
 

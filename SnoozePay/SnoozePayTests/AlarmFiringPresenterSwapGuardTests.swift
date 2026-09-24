@@ -130,6 +130,14 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         super.tearDown()
     }
 
+    /// The notification path's sound, owned by `alarm`. A screen of this alarm
+    /// the swap's completion finds up is kept only while it rings (#855), and
+    /// on that path the screen started the sound when it went up.
+    private func ring(_ alarm: Alarm) {
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
+        XCTAssertEqual(AudioService.shared.playingAlarmID, alarm.id, "test precondition: the alarm has to be audible")
+    }
+
     // MARK: - Re-entry while the dismissal is outstanding
 
     func testReentry_whileTheDismissalIsOutstanding_neitherDismissesAgainNorStacks() throws {
@@ -311,6 +319,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertNil(presenter.pendingPresentation, "the direct mount left the swap's request pending")
         let upAlready = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
         top = upAlready
+        ring(alarm)
         try finishDismissal()
 
         XCTAssertTrue(upAlready.presentedScreens.isEmpty, "a second firing screen went up on the first")
@@ -485,6 +494,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         top = host
         _ = presenter.present(alarm: alarm, snoozeCount: 2)
         top = try XCTUnwrap(host.presentedScreens.first)
+        ring(alarm)
         try finishDismissal()
         runOneMainQueueTurn()
 
@@ -951,6 +961,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
             "test precondition: the deferred request, between the swap's count and the screen's"
         )
         top = upAtTwo
+        ring(alarm)
         try finishDismissal()
 
         XCTAssertTrue(upAtTwo.presentedScreens.isEmpty, "a second firing screen went up on the first")
@@ -979,6 +990,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
                     self.top = upAlready
                     completion()
                 }
+                ring(alarm)
                 lines = []
                 AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
                     presenter.flushPendingPresentation()

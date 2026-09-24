@@ -177,6 +177,41 @@ final class AudioServiceTests: XCTestCase {
         XCTAssertNil(service.currentAlarmID)
     }
 
+    /// `playingAlarmID` is the owner and the state read as one pair (#855):
+    /// the owner while it plays, `nil` once stopped, and `nil` for a sound
+    /// no alarm owns. Read from main, as `AlarmFiringPresenter` reads it,
+    /// while another thread starts and stops: it must answer, not hang.
+    func testPlayingAlarmID_namesTheOwnerOnlyWhileItPlays() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        defer { service.stopAlarmSound() }
+        XCTAssertNil(service.playingAlarmID)
+
+        let alarmID = UUID()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmID)
+        XCTAssertEqual(service.state, .playing, "test precondition: the fallback tone plays")
+        XCTAssertEqual(service.playingAlarmID, alarmID)
+
+        service.stopAlarmSound()
+        XCTAssertNil(service.playingAlarmID)
+
+        service.startAlarmSound(soundID: "nonexistent_test_sound")
+        XCTAssertNil(service.playingAlarmID, "a sound no alarm owns was attributed to one")
+        service.stopAlarmSound()
+
+        let churned = expectation(description: "start/stop churn on another thread")
+        DispatchQueue.global().async {
+            for _ in 0..<20 {
+                service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: UUID())
+                service.stopAlarmSound()
+            }
+            churned.fulfill()
+        }
+        for _ in 0..<20 { _ = service.playingAlarmID }
+        wait(for: [churned], timeout: 10)
+        XCTAssertNil(service.playingAlarmID, "the last stop has to win")
+    }
+
     /// IOS-116 — alarm-stacking race regression guard.
     ///
     /// Sequence:

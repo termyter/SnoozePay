@@ -164,6 +164,18 @@ final class AudioService {
         }
     }
 
+    /// The alarm whose sound is playing, or `nil` when nothing plays or the
+    /// sound has no owner: `state == .playing` and `currentAlarmID` taken in
+    /// ONE `queue.sync`, so the pair is from one moment (#855). Reading the
+    /// two one after the other let a start or a stop on another thread land
+    /// in between, and answer with one alarm's owner and another's state.
+    ///
+    /// Safe from main, like every other read here: nothing that runs inside
+    /// `queue` waits on main. Notifications leave through `postOnMain`, which
+    /// is `DispatchQueue.main.async`, and the vibration timer is invalidated
+    /// with an async hop when the queue is off main (#848).
+    var playingAlarmID: UUID? { queue.sync { _state == .playing ? _currentAlarmID : nil } }
+
     /// Backwards-compatible boolean. `true` only when actually playing real audio.
     /// Retained so existing callers (AppDelegate guards, tests) keep working.
     /// Note: stays `true` across a pause/interruption (the session is still

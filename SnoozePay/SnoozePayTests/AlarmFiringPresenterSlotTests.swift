@@ -77,15 +77,17 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
     /// A screen whose Stop touches nothing shared: wallet, ledger, alarm store
     /// and wake day live in this suite's defaults, and the scheduler has no
     /// system notifications. `alarmKit` picks the path: with it the system
-    /// owns the sound, without it the screen does.
+    /// owns the sound, without it the screen does. `snoozedAt` is the last
+    /// snooze tap; the ring on screen then started `snoozeMinutes` after it.
     private func makeScreen(
-        _ alarm: Alarm, snoozeCount: Int = 0, alarmKit: Bool = false, startedAt: Date = Date()
+        _ alarm: Alarm, snoozeCount: Int = 0, alarmKit: Bool = false, startedAt: Date = Date(),
+        snoozedAt: Date? = nil
     ) -> ReadBackFiringScreen {
         let scheduler = AlarmScheduler(
             notificationCenter: InertNotificationCenter(), alarmKit: alarmKit ? TestAlarmKitBackend() : nil
         )
         return ReadBackFiringScreen(viewModel: AlarmFiringViewModel(
-            alarm: alarm, snoozeCount: snoozeCount,
+            alarm: alarm, snoozeCount: snoozeCount, snoozeAnchor: snoozedAt,
             balanceService: BalanceService(defaults: defaults),
             alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler),
             scheduler: scheduler,
@@ -324,18 +326,24 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
 
     /// Anything that does not prove "this ring, still ringing" takes the swap,
     /// as on main: a screen older than the window (yesterday's, with its
-    /// billing window), a notification-path screen with no sound or another
-    /// alarm's, and a snoozed or stopped one, whose alarm's request is its
-    /// next ring.
+    /// billing window), one whose last re-ring is older than the window too,
+    /// a notification-path screen with no sound or another alarm's, and a
+    /// snoozed or stopped one, whose alarm's request is its next ring.
     func testSettle_onAScreenNotProvablyThisRing_swapsIt() {
         let older = Date().addingTimeInterval(-AlarmFiringPresenter.currentFiringWindow - 60)
-        for state in ["older", "silent", "other alarm's sound", "snoozed", "stopped"] {
+        for state in ["older", "re-rang long ago", "silent", "other alarm's sound", "snoozed", "stopped"] {
             dismissed = []
             let alarm = Alarm()
             let presenter = makePresenter(alarms: [alarm])
             let onAlarmKit = state != "silent" && state != "other alarm's sound"
+            // Re-rang long ago: snoozed a minute into the first ring, so the
+            // re-ring started at `older`.
+            let reRang = state == "re-rang long ago"
+            let snoozedAt: Date? = reRang ? older.addingTimeInterval(-TimeInterval(alarm.snoozeMinutes * 60)) : nil
+            var startedAt = state == "older" ? older : Date()
+            if let snoozedAt { startedAt = snoozedAt.addingTimeInterval(-60) }
             let screen = makeScreen(
-                alarm, snoozeCount: 1, alarmKit: onAlarmKit, startedAt: state == "older" ? older : Date()
+                alarm, snoozeCount: 1, alarmKit: onAlarmKit, startedAt: startedAt, snoozedAt: snoozedAt
             )
             switch state {
             case "other alarm's sound": ring(Alarm())
@@ -350,6 +358,77 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
             XCTAssertEqual(dismissed.count, 1, "\(state): answered with a screen that is not this ring's")
             XCTAssertEqual(presenter.pendingPresentation, pending(alarm, 1), state)
             AudioService.shared.stopAlarmSound()
+        }
+    }
+
+    /// #855: the window counts from the ring on screen, not from the mount.
+    /// Snoozed 15 minutes at the first ring, the screen went up 20 minutes
+    /// ago and re-rang 4 minutes ago. A second trigger for that re-ring is
+    /// the screen already there; counted from the mount it was swapped, and
+    /// the swap cut the sound on the way down.
+    func testSettle_afterASnoozeLongerThanTheWindow_countsFromTheLastRing() {
+        let startedAt = Date().addingTimeInterval(-20 * 60)
+        XCTAssertGreaterThan(
+            Date().timeIntervalSince(startedAt), AlarmFiringPresenter.currentFiringWindow,
+            "test precondition: the mount alone is outside the window"
+        )
+        for alarmKit in [true, false] {
+            dismissed = []
+            lines = []
+            let alarm = Alarm(snoozeMinutes: 15)
+            let presenter = makePresenter(alarms: [alarm])
+            let screen = makeScreen(
+                alarm, snoozeCount: 1, alarmKit: alarmKit, startedAt: startedAt,
+                snoozedAt: startedAt.addingTimeInterval(60)
+            )
+            top = screen
+            if !alarmKit { ring(alarm) }
+
+            var answer = false
+            recording { answer = presenter.present(alarm: alarm, snoozeCount: 1) }
+
+            XCTAssertTrue(dismissed.isEmpty, "alarmKit=\(alarmKit): the re-ring on screen was swapped for a copy")
+            XCTAssertTrue(answer, "alarmKit=\(alarmKit)")
+            XCTAssertNil(presenter.pendingPresentation, "alarmKit=\(alarmKit)")
+            XCTAssertTrue(lines.contains { $0.message.contains("up and ringing") }, "\(lines.map(\.message))")
+            AudioService.shared.stopAlarmSound()
+        }
+    }
+
+    // MARK: - The swap's completion finds this alarm up (#855)
+
+    /// A screen of this alarm went up while the swap's dismissal was out. The
+    /// completion settled on it whatever it was, so a screen that is not the
+    /// current ring cleared the request with the ring nowhere on screen. It
+    /// now applies the swap's own test, and swaps that screen on the next
+    /// turn.
+    func testCompletion_whenThisAlarmsScreenUpIsNotItsCurrentRing_swapsIt() {
+        let older = Date().addingTimeInterval(-AlarmFiringPresenter.currentFiringWindow - 60)
+        for state in ["older", "silent"] {
+            dismissed = []
+            completions = []
+            lines = []
+            let alarm = Alarm()
+            let presenter = makePresenter(alarms: [alarm])
+            top = makeScreen(Alarm())
+            _ = presenter.present(alarm: alarm, snoozeCount: 1)
+            XCTAssertEqual(dismissed.count, 1, "\(state): test precondition: the swap started")
+            // On AlarmKit when older, so the window is the only thing it fails.
+            let upAlready = makeScreen(
+                alarm, snoozeCount: 1, alarmKit: state == "older", startedAt: state == "older" ? older : Date()
+            )
+            top = upAlready
+
+            finishDismissal()
+
+            XCTAssertEqual(presenter.pendingPresentation, pending(alarm, 1), "\(state): settled on a stale screen")
+            XCTAssertFalse(lines.contains { $0.message.contains("not stacking") }, "\(state): \(lines.map(\.message))")
+            let line = lines.first { $0.message.contains("not ringing its current ring") }
+            XCTAssertTrue(line?.message.contains("\(handle(alarm)) at snooze 1") ?? false, "\(lines.map(\.message))")
+
+            runOneMainQueueTurn()
+
+            XCTAssertTrue(dismissed.last === upAlready, "\(state): the screen up was never swapped for this ring's")
         }
     }
 

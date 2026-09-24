@@ -424,39 +424,54 @@ final class AlarmFiringPresenter {
         )
     }
 
-    /// How recently a screen must have gone up to count as this ring's
-    /// (`settleOnRingingScreen`). The requests it absorbs, a second trigger
-    /// source for the same ring or a record parked for it and flushed on the
-    /// next activation, arrive within seconds to a minute of the screen. Ten
-    /// minutes covers those with room, and stays far below the day between
-    /// two mornings: a screen left up since yesterday carries yesterday's
-    /// `firingStartedAt` and billed-snooze window, and must be swapped
-    /// (#835 review).
+    /// How recently the ring on a screen must have started for a request to
+    /// count as that same ring (`isRingingItsCurrentRing`). Measured from
+    /// `AlarmFiringViewModel.lastRingStartedAt`: the re-ring after the last
+    /// snooze, or the mount before any. From the mount alone, one snooze of
+    /// 11 to 15 minutes, or two of 5, put a second trigger for the ring on
+    /// screen outside the window, and the swap cut its sound (#855). The
+    /// requests it absorbs, a second trigger source for the same ring or a
+    /// record parked for it and flushed on the next activation, arrive within
+    /// seconds to a minute of the ring. Ten minutes covers those with room,
+    /// and stays far below the day between two mornings: a screen left up
+    /// since yesterday carries yesterday's ring and billed-snooze window, and
+    /// must be swapped (#835 review).
     static let currentFiringWindow: TimeInterval = 10 * 60
 
-    /// `true` when `screen`, the firing screen the swap would take down,
-    /// belongs to `request`'s current ring at the request's count or above.
-    /// The request is then the screen already there: a second trigger
-    /// source, or a record parked by a present UIKit deferred. Swapping
-    /// rebuilt it and stopped its sound on the way down (#835); instead the
-    /// record is settled as shown.
+    /// `true` when `screen` is `request`'s alarm at the request's count or
+    /// above and still ringing its current ring: the request is then the
+    /// screen already there, a second trigger source or a record parked by a
+    /// present UIKit deferred. The one test both places that find this
+    /// alarm's screen up apply, the swap (`settleOnRingingScreen`) and its
+    /// completion (`mountAfterDismissal`), so the two cannot disagree about
+    /// which screen is the ring (#855).
     ///
-    /// Anything that does not prove "this ring, still ringing" takes the swap,
-    /// as on main: a snoozed or stopped screen (the request is its next
-    /// ring), one on its way out (not up, the rule `mountAfterDismissal`
-    /// reads), one older than `currentFiringWindow`, and on the notification
-    /// path one whose alarm is not the one `AudioService` is playing. There
-    /// the screen is the sound source, and the snooze ticker clears
-    /// `isSnoozedStateActive` at zero without restarting it, so a silent
-    /// screen reads as ringing by its flags alone.
-    private func settleOnRingingScreen(_ screen: AlarmFiringViewController, for request: PendingPresentation) -> Bool {
+    /// Anything that does not prove "this ring, still ringing" fails: a
+    /// snoozed or stopped screen (the request is its next ring), one on its
+    /// way out, one whose ring started more than `currentFiringWindow` ago,
+    /// and on the notification path one whose alarm is not the one
+    /// `AudioService` is playing. There the screen is the sound source, and
+    /// the snooze ticker clears `isSnoozedStateActive` at zero without
+    /// restarting it, so a silent screen reads as ringing by its flags alone.
+    /// The sound is read once, as a pair (`AudioService.playingAlarmID`): two
+    /// reads let a start or a stop on another thread land between them.
+    private static func isRingingItsCurrentRing(
+        _ screen: AlarmFiringViewController, for request: PendingPresentation
+    ) -> Bool {
         let model = screen.viewModel
-        guard model.alarm.id == request.alarmID, model.snoozeCount >= request.snoozeCount,
-              !screen.isSnoozedStateActive, !screen.isStoppedByUser, !screen.isBeingDismissed,
-              Date().timeIntervalSince(model.firingStartedAt) <= Self.currentFiringWindow,
-              model.usesAlarmKit
-                || (AudioService.shared.currentAlarmID == model.alarm.id && AudioService.shared.isPlaying)
-        else { return false }
+        return model.alarm.id == request.alarmID && model.snoozeCount >= request.snoozeCount
+            && !screen.isSnoozedStateActive && !screen.isStoppedByUser && !screen.isBeingDismissed
+            && Date().timeIntervalSince(model.lastRingStartedAt) <= currentFiringWindow
+            && (model.usesAlarmKit || AudioService.shared.playingAlarmID == model.alarm.id)
+    }
+
+    /// Settles `request` on `screen`, the firing screen the swap would take
+    /// down, when it is `request`'s current ring (`isRingingItsCurrentRing`).
+    /// Swapping rebuilt it and stopped its sound on the way down (#835);
+    /// instead the record is settled as shown. Anything else takes the swap,
+    /// as on main.
+    private func settleOnRingingScreen(_ screen: AlarmFiringViewController, for request: PendingPresentation) -> Bool {
+        guard Self.isRingingItsCurrentRing(screen, for: request) else { return false }
         let shown = PendingPresentation(on: screen)
         AppLogger.emit(
             .appDelegate, .default,
@@ -532,25 +547,32 @@ final class AlarmFiringPresenter {
                     attemptParkedPresentationSoon()
                 }
             } else if alreadyUp.viewModel.alarm.id == retry.alarmID {
-                // This alarm's screen is up — but a screen built at a lower
-                // snooze count prices the next snooze from an earlier step
-                // (#808): AlarmKit's requests always carry 0. A higher count
-                // on screen is the truer one and is kept, since swapping down
-                // to `retry`'s would be that same reset.
-                if alreadyUp.viewModel.snoozeCount < retry.snoozeCount {
-                    armRetry(
-                        retry, level: .default,
-                        "firing-present: this alarm is up at a lower snooze count — swapping it for the right one"
-                    )
-                } else {
-                    let upCount = alreadyUp.viewModel.snoozeCount
-                    let shown = PendingPresentation(alarmID: retry.alarmID, snoozeCount: upCount)
+                // This alarm's screen is up. Kept only when it is the ring
+                // `retry` is for, by the test the swap itself applies (#855):
+                // settling on any screen of this alarm cleared the request
+                // over a stale, silent or stopped one. A higher count on
+                // screen is the truer one and is kept, since swapping down to
+                // `retry`'s would reset the ladder; a lower one prices the
+                // next snooze from an earlier step (#808): AlarmKit's
+                // requests always carry 0.
+                if Self.isRingingItsCurrentRing(alreadyUp, for: retry) {
+                    let shown = PendingPresentation(on: alreadyUp)
                     AppLogger.emit(
                         .appDelegate, .default,
                         "firing-present: this alarm's screen is already up — not stacking another [\(shown.logHandle)]"
                     )
                     clearPending(shownAs: shown)
                     staleSurvivalRetries = 0
+                } else if alreadyUp.viewModel.snoozeCount < retry.snoozeCount {
+                    armRetry(
+                        retry, level: .default,
+                        "firing-present: this alarm is up at a lower snooze count — swapping it for the right one"
+                    )
+                } else {
+                    armRetry(
+                        retry, level: .default,
+                        "firing-present: this alarm's screen is up but not ringing its current ring — swapping it"
+                    )
                 }
                 attemptParkedPresentationSoon()
             } else {
