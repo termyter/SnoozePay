@@ -83,7 +83,7 @@ final class AudioServiceOwnerGatedStopTests: XCTestCase {
         }
         defer { NotificationCenter.default.removeObserver(token) }
 
-        service.stopAlarmSound(ifOwnedBy: ownerID)
+        _ = service.stopAlarmSound(ifOwnedBy: ownerID)
         drainMainQueue()
 
         XCTAssertEqual(notes.count, 1, "expected exactly one transition, got \(notes)")

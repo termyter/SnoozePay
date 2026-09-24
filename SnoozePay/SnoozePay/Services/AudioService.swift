@@ -89,12 +89,12 @@ final class AudioService {
     /// Identifier of the alarm that currently owns the audio session.
     ///
     /// Set in `startAlarmSound(soundID:alarmID:)` and cleared in `stopAlarmSound()`.
-    /// Callers that present a per-alarm UI (e.g. `AlarmFiringViewController`) check
-    /// this value before calling `stopAlarmSound()` from `viewDidDisappear` so a
-    /// dismissed firing screen does not silence audio that has already been
-    /// claimed by the *next* alarm during a stacking-replace race (#116).
-    /// A caller that only needs "stop if this alarm owns it" should use
-    /// `stopAlarmSound(ifOwnedBy:)`, which checks and stops in one step (#878).
+    /// A dismissed firing screen must not silence audio that has already been
+    /// claimed by the *next* alarm during a stacking-replace race (#116), so
+    /// `AlarmFiringViewController` stops through `stopAlarmSound(ifOwnedBy:)`,
+    /// which checks and stops in one step (#878, #880). Do not read this and
+    /// then call `stopAlarmSound()`: that is two trips through the queue, and a
+    /// start landing between them hands the stop another alarm's sound.
     var currentAlarmID: UUID? { queue.sync { _currentAlarmID } }
 
     /// Queue-confined backing storage for `currentAlarmID`.
@@ -677,8 +677,9 @@ final class AudioService {
     ///
     /// - Returns: `stopped` when the sound was `alarmID`'s and is now stopped,
     ///   and `owner`, the alarm that owned the sound at the check, so a caller
-    ///   can name it in its log line without a second read.
-    @discardableResult
+    ///   can name it in its log line without a second read. Not
+    ///   `@discardableResult` (#880): every caller logs the decision, so one
+    ///   that drops it gets a warning rather than a silent skip.
     func stopAlarmSound(ifOwnedBy alarmID: UUID) -> (stopped: Bool, owner: UUID?) {
         queue.sync {
             let owner = _currentAlarmID

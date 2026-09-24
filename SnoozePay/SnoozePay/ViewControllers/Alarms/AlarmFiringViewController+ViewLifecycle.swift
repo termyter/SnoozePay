@@ -133,9 +133,20 @@ extension AlarmFiringViewController {
     /// mirroring `viewDidDisappear`; a no-op on this path since we never started
     /// it) and dismiss. `viewDidDisappear` re-runs the same guarded stop, so the
     /// audio teardown is idempotent.
-    private func dismissAfterAlarmKitSnooze() {
-        if AudioService.shared.currentAlarmID == viewModel.alarm.id {
-            AudioService.shared.stopAlarmSound()
+    ///
+    /// The owner check and the stop are one step (#880), and a skipped stop
+    /// leaves a line naming both alarms, like `viewDidDisappear`'s. Internal,
+    /// not private, so `AlarmFiringAlarmKitSnoozeStopTests` can reach it.
+    func dismissAfterAlarmKitSnooze() {
+        let ours = viewModel.alarm.id
+        let (stopped, owner) = AudioService.shared.stopAlarmSound(ifOwnedBy: ours)
+        if !stopped {
+            // `OSLogType` has no `.notice`; `.default` is the same level.
+            AppLogger.emit(
+                .audio, .default,
+                "dismissAfterAlarmKitSnooze: skip stop — owner=\(AppDelegate.logHandle(owner)),"
+                    + " ours=\(AppDelegate.logHandle(ours))"
+            )
         }
         if let presenter = presentingViewController {
             presenter.dismiss(animated: true)
