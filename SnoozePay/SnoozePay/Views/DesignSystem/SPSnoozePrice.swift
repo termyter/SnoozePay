@@ -25,10 +25,9 @@ final class SPSnoozePrice: UIControl {
         /// Progressive escalation. Historically interpolated the warn → pain
         /// gradient by `intensity`; per
         /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:153-155` contains "золотой"
-        /// the CTA must
-        /// stay gold across all steps, so this now renders the warn surface
-        /// regardless of `intensity`. The case is retained so the firing flow
-        /// can keep passing it without a call-site rewrite.
+        /// the CTA must stay gold across all steps, so this now renders the
+        /// warn surface regardless of `intensity`. The case is retained so the
+        /// firing flow can keep passing it without a call-site rewrite.
         case progressive(intensity: Double)
     }
 

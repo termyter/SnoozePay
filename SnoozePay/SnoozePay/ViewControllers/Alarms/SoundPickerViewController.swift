@@ -291,7 +291,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         // inset is drawn per-row by `SoundPickerRowCell` instead. That inset is
         // 16 and it IS canon: the sound buttons carry `padding: "14px 16px"`
         // (`docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:323` contains "14px 16px"),
-        // the rule `SoundPickerRowCell.swift:125` cites.
+        // the rule `SoundPickerRowCell`'s `hInset` cites.
         //
         // There is no `4px 20px` row rule in the prototype, and an earlier
         // version of this comment claimed one. As a standalone padding value

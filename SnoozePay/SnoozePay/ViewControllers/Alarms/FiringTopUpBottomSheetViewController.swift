@@ -143,8 +143,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return label
     }()
 
-    /// Pulsing 8pt warn dot to the left of the pause caps
+    /// 8pt warn dot to the left of the pause caps
     /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:136` contains "width: 8, height: 8").
+    /// Static in the design; the pulse is ours (`startPauseDotPulse()`).
     private let pauseDot: UIView = {
         let view = UIView()
         view.backgroundColor = AppColors.warn400
@@ -373,9 +374,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private func setupUI() {
         // Header column
         // (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:135-142` contains "Пополнить баланс"):
-        // a pulsing warn dot + caps
-        // pause countdown on top, then the h2 «Пополнить баланс». Close X sits
-        // top-right of the row.
+        // a warn dot + caps pause countdown on top, then the h2 «Пополнить
+        // баланс». Close X sits top-right of the row. The dot is static in
+        // the design; the app pulses it (`startPauseDotPulse()`).
 
         // Subtitle derived from the live snooze price (#548). It used to read
         // «Минимум — 149 ₽ на следующее откладывание», naming the cheapest SKU

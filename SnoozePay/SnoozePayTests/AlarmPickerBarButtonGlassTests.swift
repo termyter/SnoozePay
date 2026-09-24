@@ -15,7 +15,7 @@ import XCTest
 /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet" —
 /// rendered differently depending on which screen you were on. The form's
 /// «Готово» is bare in the canon too, but it is `variant="money"` —
-/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "money" —
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "Готово</SPButton>" —
 /// and what the three headers share is the absence of a ring, not the
 /// variant. The copy of `SPMore2.jsx` under `docs/design/v2-handoff/` is
 /// numbered differently.

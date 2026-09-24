@@ -76,8 +76,8 @@ extension AlarmFiringViewController {
     /// Indicator pill copy «Прогрессив · {n}-й поспать ещё» where
     /// n = snoozeCount + 1
     /// (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:219-221` contains "Прогрессив").
-    /// Pure function so the copy
-    /// is unit-testable without loading the view hierarchy.
+    /// Pure function so the copy is unit-testable without loading the view
+    /// hierarchy.
     static func progressivePillText(snoozeCount: Int) -> String {
         Localized.format("firing.progressive.pill", snoozeCount + 1)
     }

@@ -112,11 +112,12 @@ enum AppNavigationBarStyle {
     /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313` contains "quiet" and
     /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet" —
     /// and the alarm form puts an equally bare pill,
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "money",
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "Готово</SPButton>",
     /// in the `money` variant, not `quiet`. What the three share is the absence of
     /// a ring over the button's own fill, NOT the variant: the form's «Готово»
-    /// is the screen's terminal money CTA (`CreateAlarmViewController:170`
-    /// builds it `.money`) and levelling it to `.quiet` would be a regression,
+    /// is the screen's terminal money CTA
+    /// (`CreateAlarmViewController.setupNavigationBar()` builds it `.money`)
+    /// and levelling it to `.quiet` would be a regression,
     /// not consistency.
     ///
     /// Line numbers above are into the canon copy,

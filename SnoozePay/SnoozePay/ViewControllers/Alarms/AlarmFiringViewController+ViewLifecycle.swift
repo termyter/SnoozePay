@@ -56,10 +56,9 @@ extension AlarmFiringViewController {
 
     /// 8s ease-in-out autoreverse opacity pulse on the Dawn background's sun
     /// layer (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:3` contains "медленно дышит (8s").
-    /// Driven via
-    /// CABasicAnimation because the sun is a CAGradientLayer (not a view). V2
-    /// spec retains the "breathing" character from V1 — the warm radial just
-    /// lives inside `SPDawnBackgroundView.sunLayer` now.
+    /// Driven via CABasicAnimation because the sun is a CAGradientLayer (not
+    /// a view). V2 spec retains the "breathing" character from V1 — the warm
+    /// radial just lives inside `SPDawnBackgroundView.sunLayer` now.
     func startGlowBreathing() {
         let animation = CABasicAnimation(keyPath: "opacity")
         animation.fromValue = 0.55

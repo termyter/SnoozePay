@@ -129,9 +129,9 @@ final class CreateAlarmViewController: UIViewController {
     private func setupNavigationBar() {
         // V2 nav bar. Two modes differ by design:
         //   • create — left X close chip, right `Готово` money button,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:520-526` contains "Новый будильник"
+        //     `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:520-526` contains "Новый будильник"
         //   • edit   — left `Отмена` quiet button, right `Сохранить` money button,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:138-142` contains "Сохранить"
+        //     `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:138-142` contains "Сохранить"
         // The UIKit navigation bar still owns layout (we keep `title` set on
         // viewDidLoad for accessibility), but the left/right items are custom
         // views so the brand styling sticks.

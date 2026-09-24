@@ -2,7 +2,7 @@ import UIKit
 
 /// One full-width top-up preset row in the firing top-up sheet.
 ///
-/// Spec — `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:148-170` contains "16px 20px":
+/// Spec — `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:148-170` contains "setSel(p.v)":
 /// a 16×20-padded, 16pt-radius row with a title
 /// (h4) + hint (meta) on the left and the rouble amount (money-md) + a 22pt
 /// warn-gradient check chip on the right. Title and hint are computed by

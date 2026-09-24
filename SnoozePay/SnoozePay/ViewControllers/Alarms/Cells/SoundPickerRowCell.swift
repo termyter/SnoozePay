@@ -3,7 +3,7 @@ import UIKit
 /// Single-sound row used by `SoundPickerViewController` (V3 — #285).
 ///
 /// Layout per
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:318-346` contains "width: 36, height: 36":
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:318-346` contains "sounds.map":
 /// a 36×36 leading icon tile (money-gradient
 /// when the row is selected, faint overlay otherwise) → title (h4) + subtitle
 /// (meta) stack → trailing 20pt money checkmark on the selected row. Rows sit
