@@ -494,6 +494,54 @@ final class BalanceServiceTests: XCTestCase {
                        "Latched raw value must stay queryable for late observers (#206)")
     }
 
+    /// Corruption latched by a read on main is posted after the read returns,
+    /// on main, so an observer can read the service back (#851).
+    ///
+    /// Before the fix the main-thread branch posted inside `queue.sync`, and
+    /// an observer calling `balance` there re-entered `queue.sync` on the
+    /// queue its own thread held: a libdispatch trap, not a red assertion.
+    /// So the observer reads back only when it is NOT inside the latching
+    /// read, and records which case it was in. A regression turns this red
+    /// instead of crashing the run, and the wait has a timeout.
+    func testCorruptionLatchedOnMain_isPostedOutsideTheQueue_soObserversCanReadBack() {
+        let center = NotificationCenter()
+        let service = makeService(balance: 10, notificationCenter: center)
+        XCTAssertFalse(service.balanceCorrupted, "test precondition: the store starts healthy")
+
+        var insideLatchingRead = false
+        var deliveredInsideRead: Bool?
+        var deliveredOnMain: Bool?
+        var readBack: (balance: Double, corrupted: Bool)?
+        let delivered = expectation(description: "corruption notification delivered")
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: service,
+            queue: nil
+        ) { _ in
+            deliveredOnMain = Thread.isMainThread
+            deliveredInsideRead = insideLatchingRead
+            if !insideLatchingRead {
+                readBack = (service.balance, service.balanceCorrupted)
+            }
+            delivered.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        testDefaults.set(-5.0, forKey: "user_balance")
+        insideLatchingRead = true
+        XCTAssertEqual(service.balance, 0, "test precondition: this read has to latch the corruption")
+        insideLatchingRead = false
+
+        wait(for: [delivered], timeout: 2)
+        XCTAssertEqual(
+            deliveredInsideRead, false,
+            "posted inside the read that latched it, i.e. inside queue.sync: reading back would trap"
+        )
+        XCTAssertEqual(deliveredOnMain, true, "the corruption notification must be delivered on main")
+        XCTAssertEqual(readBack?.balance, 0, "the observer must be able to read the clamped balance back")
+        XCTAssertEqual(readBack?.corrupted, true, "the observer must see the latched flag")
+    }
+
     /// Under corruption, `charge` must refuse and return `false` — mirrors the
     /// locked-ledger gate from #72 so we don't silently mutate a corrupt store.
     func testCharge_refusedUnderCorruption() {

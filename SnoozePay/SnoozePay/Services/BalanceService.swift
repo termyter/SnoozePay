@@ -29,6 +29,8 @@ final class BalanceService {
     /// issue #119). UI surfaces an alert and offers the user to wipe the
     /// corrupt value via `acknowledgeCorruption()` (future Settings entry,
     /// see #102). Mirrors the locked-ledger pattern from #72.
+    /// Delivered asynchronously on main, outside the serial queue, whatever
+    /// thread latched it (see `notifyBalanceCorrupted`, #851).
     static let balanceCorruptedNotification = Notification.Name("snoozepay.balance.corrupted")
     /// Carries the raw negative `Double` that was read from storage so the
     /// UI / support tooling can display what was found.
@@ -593,13 +595,21 @@ final class BalanceService {
         return 0
     }
 
+    /// Post from the main queue, after `queue` is released (#851). The same
+    /// shape as `AudioService.postOnMain`.
+    ///
+    /// Reached only from `latchCorruption`, i.e. inside `queue.sync`. The
+    /// main-thread branch used to post right there, so an observer that read
+    /// the service back (`balance`, `balanceCorrupted`) re-entered `queue.sync`
+    /// on the queue its own thread held: a libdispatch trap. It also made the
+    /// main-thread post synchronous and the background one asynchronous, so
+    /// the two had no order. Always async on main keeps them FIFO.
+    ///
+    /// `self` is captured strongly so the post is not lost when the last owner
+    /// lets go before main runs it; the extra lifetime is one main-queue turn.
     private func notifyBalanceCorrupted(rawValue: Double) {
-        if Thread.isMainThread {
-            postBalanceCorrupted(rawValue: rawValue)
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.postBalanceCorrupted(rawValue: rawValue)
-            }
+        DispatchQueue.main.async {
+            self.postBalanceCorrupted(rawValue: rawValue)
         }
     }
 
