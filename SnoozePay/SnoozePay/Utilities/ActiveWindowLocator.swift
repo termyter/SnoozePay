@@ -19,8 +19,9 @@ import os
 /// The second window is never one of ours. `Info.plist` declares
 /// `UIApplicationSupportsMultipleScenes = false`, so the process gets one
 /// `UIWindowScene`, and the app calls `UIWindow(` in exactly one place
-/// (`SceneDelegate.swift:20`). Everything else in `scene.windows` is UIKit's
-/// own — the keyboard's, an alert's, some system overlay. So the whole
+/// (`SceneDelegate.scene(_:willConnectTo:options:)`). Everything else in
+/// `scene.windows` is UIKit's own — the keyboard's, an alert's, some system
+/// overlay. So the whole
 /// selection comes down to one question: present in a system window, or in
 /// ours.
 ///

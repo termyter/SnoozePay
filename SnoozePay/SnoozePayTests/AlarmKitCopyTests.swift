@@ -55,8 +55,9 @@ import XCTest
 final class AlarmKitCopyTests: XCTestCase {
 
     /// Transcribed from the literals as they stood on `origin/main` —
-    /// `AlarmKitIntents:54`, `AlarmKitIntents:84` and the interpolated one at
-    /// `AlarmKitScheduler:469`.
+    /// `StopAlarmIntent.title`, `SnoozeAlarmIntent.title` and the snooze
+    /// button title `AlarmKitScheduler.makePresentation(for:)` used to
+    /// interpolate (now `AlarmKitCopy.pricedSnoozeTitle(penalty:)`).
     private static let copy: [String: String] = [
         "alarm_kit.action.stop": "Выключить будильник",
         "alarm_kit.action.snooze": "Поспать ещё",

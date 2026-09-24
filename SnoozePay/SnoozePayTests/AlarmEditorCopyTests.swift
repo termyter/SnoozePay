@@ -746,7 +746,8 @@ final class AlarmEditorCopyTests: XCTestCase {
             "the sound preview card lost its caps caption: \(rendered)"
         )
         XCTAssertTrue(rendered.contains(Localized.text("create_alarm.sound_picker.volume_row")))
-        // The key's other live call site. `VolumePickerViewController:118` is
+        // The key's other live call site. The caps title
+        // `VolumePickerViewController.viewDidLoad` sets as its `titleView` is
         // pinned by `testVolumeScreenRendersItsTitleAndFadeRow`; this caps
         // caption above the volume card (the `create_alarm.volume.title` read
         // in `SoundPickerViewController`) was read by nothing, so swapping its

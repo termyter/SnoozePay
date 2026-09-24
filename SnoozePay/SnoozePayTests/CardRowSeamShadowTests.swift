@@ -137,10 +137,11 @@ final class CardRowSeamShadowTests: XCTestCase {
     /// moves the rendered seam by 0/255 in both themes, and the reason is NOT
     /// the ambient mask: that mask lives on a sublayer and cannot clip the
     /// host layer's own shadow, and in dark the ambient layer is not installed
-    /// at all (`AppShadow.swift:118-123`, held by
-    /// `CardRowBandingTests.testDarkRows_carryNoAmbientStop`). The reason is
-    /// the one written at `UIView+CardStyle.swift:255` — the corners this fixes
-    /// sit where the two rows' own opaque fills already cover the difference.
+    /// at all (the `guard isLight` in `AppShadow.installAmbientShadow1Layer`,
+    /// held by `CardRowBandingTests.testDarkRows_carryNoAmbientStop`). The
+    /// reason is the one written above the `shadowPath` assignment in
+    /// `CardRowBackgroundView.layoutSubviews` — the corners this fixes sit
+    /// where the two rows' own opaque fills already cover the difference.
     ///
     /// It is kept because the key stop should not describe a silhouette the
     /// layer does not have: the moment a row's fill stops covering that
@@ -413,9 +414,11 @@ final class CardRowSeamShadowTests: XCTestCase {
     /// Those probes take their coordinates from the ambient layer's own
     /// silhouette (`ambient.path`), which nothing else in this suite reads. An
     /// oracle free to move with the thing it measures proves nothing: shrink
-    /// the silhouette alone — `AppShadow.swift:145`, the line the mask does NOT
-    /// share, since `installHaloMask` recomputes the hole from `cardRect` — and
-    /// probe and control slide inside the real hole together. The test stays
+    /// the silhouette alone — the `cardPath(cardRect, …)` that
+    /// `AppShadow.installAmbientShadow1Layer` assigns to `ambient.path`, the
+    /// line the mask does NOT share, since `installHaloMask` recomputes the
+    /// hole from `cardRect` — and probe and control slide inside the real hole
+    /// together. The test stays
     /// green while the halo creeps in under the card.
     ///
     /// So the silhouette is held to two things it must be whatever `corners`

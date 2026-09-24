@@ -305,8 +305,9 @@ extension StatisticsViewController {
 
         if referralShortcutEnabled {
             // English like every other button in this row. The row is built
-            // only under `#if DEBUG` (`StatisticsViewController:247`), so this
-            // string never ships and spending a catalogue key on it would put
+            // only under `#if DEBUG` (the `makeDebugButtonsRow()` call in
+            // `StatisticsViewController.setupLayout`), so this string never
+            // ships and spending a catalogue key on it would put
             // a developer shortcut in front of translators. #600's acceptance
             // — no Cyrillic literals left in this layer — is met either way;
             // matching the siblings is the cheaper of the two.

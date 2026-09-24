@@ -4,7 +4,7 @@ import XCTest
 /// name.
 ///
 /// `Localized.text(_:)` answers a missing entry with the key itself
-/// (`Localized.swift:102-103`), so a dropped entry surfaces on screen as
+/// (its `optionalText(key) ?? key` fallback), so a dropped entry surfaces on screen as
 /// `create_alarm.volume.title` where the words should be.
 ///
 /// # Why both spellings

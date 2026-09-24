@@ -289,8 +289,9 @@ final class ActiveWindowLocatorTests: XCTestCase {
     /// never reached. Whether any particular system window carries a root is
     /// not asserted here and does not matter: the app declares
     /// `UIApplicationSupportsMultipleScenes = false` and creates one window
-    /// (`SceneDelegate.swift:20`), so every other window in the scene is
-    /// UIKit's, and `.normal` is the right filter in both directions.
+    /// (`SceneDelegate.scene(_:willConnectTo:options:)`), so every other
+    /// window in the scene is UIKit's, and `.normal` is the right filter in
+    /// both directions.
     ///
     /// Landing above `.normal` is not merely cosmetic. `AlarmFiringPresenter`
     /// would mount the firing screen over a system surface, and
