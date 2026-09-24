@@ -340,4 +340,24 @@ extension AppDelegate {
         Unshown message: \(message)
         """
     }
+
+    /// What `AlarmFiringPresenter.reportDataCorrupted` does by default: hand
+    /// the error to the application's `AppDelegate`, which puts the alert up.
+    ///
+    /// A delegate of any other type cannot, and until #872 that was a silent
+    /// `?.`: the alert never went up and nothing said so. Unreachable in
+    /// production, where the delegate is always `AppDelegate`; it takes the
+    /// delegate as a parameter so a test can reach the other branch.
+    static func forwardAlarmDataCorrupted(_ error: Error, to delegate: UIApplicationDelegate?) {
+        guard let appDelegate = delegate as? AppDelegate else {
+            let found = delegate.map { String(describing: type(of: $0)) } ?? "nil"
+            AppLogger.emit(
+                .appDelegate, .error,
+                "[\(AppDelegate.alertDroppedErrorID)] Alarm data-corrupted alert dropped — "
+                    + "application delegate is \(found), not AppDelegate. Error: \(String(describing: error))"
+            )
+            return
+        }
+        appDelegate.reportAlarmDataCorrupted(error)
+    }
 }

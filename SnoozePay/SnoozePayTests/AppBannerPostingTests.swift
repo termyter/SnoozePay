@@ -82,7 +82,35 @@ final class AppBannerPostingTests: XCTestCase {
         }
 
         XCTAssertEqual(outcome.requests.count, 1, "precondition: the banner reached the poster")
-        XCTAssertEqual(outcome.faults, ["snooze fallback banner failed: Notifications are not allowed"])
+        XCTAssertEqual(
+            outcome.faults,
+            ["SNOOZE-BANNER-POST-FAILED: snooze fallback banner failed for alarm unknown — "
+                + "Notifications are not allowed"]
+        )
+    }
+
+    /// The line names the alarm that lost its snooze by its 8-character handle,
+    /// on both ways in: the load-failure overload and the delegate's outcome
+    /// handler, which threads the payload's id through (#872).
+    func testSnoozeScheduleFailedBanner_refusedAdd_namesTheAlarm() {
+        let alarmID = UUID()
+        let handle = String(alarmID.uuidString.prefix(8))
+        let expected = "\(AppDelegate.snoozeBannerPostFailedErrorID): snooze fallback banner failed for alarm "
+            + "\(handle) — Notifications are not allowed"
+
+        let direct = run(addError: Self.refusal) {
+            AppDelegate.postSnoozeScheduleFailedBanner(
+                detail: "unreadable", refundLanded: true, alarmID: alarmID, poster: $0
+            )
+        }
+        let viaOutcome = run(addError: Self.refusal) {
+            AppDelegate().handleSnoozeOutcome(
+                .scheduleFailed(error: .system(message: "limit")), alarmID: alarmID, poster: $0
+            )
+        }
+
+        XCTAssertEqual(direct.faults, [expected])
+        XCTAssertEqual(viaOutcome.faults, [expected])
     }
 
     // MARK: - Each builder posts under its own case

@@ -108,9 +108,9 @@ final class AlarmFiringPresenter {
     /// A seam for the same reason ``locateHost`` is one: the default reaches
     /// the live application, and a test replaces it so no alert mounts on the
     /// test host's window. With no `AppDelegate` behind the application the
-    /// default does nothing.
+    /// default logs the dropped alert instead (#872).
     var reportDataCorrupted: (Error) -> Void = { error in
-        (UIApplication.shared.delegate as? AppDelegate)?.reportAlarmDataCorrupted(error)
+        AppDelegate.forwardAlarmDataCorrupted(error, to: UIApplication.shared.delegate)
     }
 
     /// Takes the stale firing screen down before the replacement goes up:
