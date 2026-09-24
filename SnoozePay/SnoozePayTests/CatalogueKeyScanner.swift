@@ -43,7 +43,7 @@ import Foundation
 /// Two shapes in these sources defeat a line-based match, and both are live:
 /// `Localized.format(` with its key on the next line
 /// (the title in `AlarmsStreakBannerView.configure`), and a ternary putting two keys inside one
-/// call (`CreateAlarmViewController:96`). A per-line scan reports the keys it
+/// call (`CreateAlarmViewController.screenTitle`). A per-line scan reports the keys it
 /// cannot see as unused entries — noise that would be "fixed" by deleting the
 /// entries, i.e. by the very shrinkage this exists to stop. (`grep -rn` has the
 /// same shape of problem from the other end: it defeats the `^` anchor of a
@@ -108,7 +108,7 @@ enum CatalogueKeyScanner {
     /// the walk is anchored on `Localized.` in the first place. Anchoring and
     /// then reading through a nested call gives that back. Measured on this
     /// checkout: the same 62 keys with and without the depth guard, and the
-    /// ternary at `CreateAlarmViewController:96` and the next-line key in
+    /// ternary in `CreateAlarmViewController.screenTitle` and the next-line key in
     /// `AlarmsStreakBannerView.configure` both sit at depth 1.
     private static func collect(
         from chars: [Character], openParenAt index: Int, into found: inout Set<String>

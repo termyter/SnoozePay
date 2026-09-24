@@ -208,7 +208,8 @@ final class AppDelegateAlertTests: XCTestCase {
             shownLines.first?.level, .error,
             """
             one trail, one level: the DROPPED half is .error by the #721/#731 \
-            precedent (StatisticsViewController:361), and a SHOWN line filed a \
+            precedent (StatisticsViewController.showLoadErrorAlert, whose \
+            SHOWN line is .error too), and a SHOWN line filed a \
             level below would fall out of the same log filter — leaving a reader \
             who greps the pair seeing only the failures.
             """
