@@ -451,9 +451,9 @@ class AlarmFiringViewController: UIViewController {
 
     /// Build the eyebrow caps copy below the clock — «пора вставать» normally,
     /// dropping to «только встать» when the wallet can't cover a snooze.
-    /// Mirrors `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:212` contains "только встать"
-    /// and the handoff-only themed firing,
-    /// `docs/design/v2-handoff/components/SPThemedFiring.jsx:172` contains "пора вставать".
+    /// Mirrors `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:212` contains "пора вставать"
+    /// and the handoff-only themed firing's eyebrow block,
+    /// `docs/design/v2-handoff/components/SPThemedFiring.jsx:167-173` contains "opacity: .85,".
     func wakeUpCapsText() -> String {
         Localized.text(viewModel.canSnooze
             ? "firing.eyebrow.wake_up"
@@ -541,10 +541,10 @@ class AlarmFiringViewController: UIViewController {
 
         // Eyebrow colour flips with the tone — theme accent at 85% normally
         // (`.custom` photos keep the neutral white), handoff only:
-        // `docs/design/v2-handoff/components/SPThemedFiring.jsx:167-168` contains "opacity: .85".
+        // `docs/design/v2-handoff/components/SPThemedFiring.jsx:167-168` contains "opacity: .85,".
         // pain300 when drained is the app's own: the canon keeps the eyebrow
         // at white .45 and only swaps the copy,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:211-212` contains "только встать".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:211-212` contains "пора вставать".
         // Tracking is the wider .18em used by the firing eyebrow, not the
         // stock caps .12em.
         let normalColor = firingPalette?.accent.withAlphaComponent(0.85)

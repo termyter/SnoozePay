@@ -227,7 +227,7 @@ final class SPAlarmsListHeader: UIView {
 
     /// Reddish wash behind the pill content in the zero-balance state —
     /// `linear-gradient(135deg, pain@.10 → pain@.02)`, handoff only,
-    /// `docs/design/v2-handoff/components/SPScreensV2.jsx:346-347` contains "rgba(244,82,63,.10)".
+    /// `docs/design/v2-handoff/components/SPScreensV2.jsx:347` contains "rgba(244,82,63,.10) 0%, rgba(244,82,63,.02)".
     /// Hidden in the neutral / warn tones, where the flat `backgroundColor`
     /// carries the surface instead.
     private let zeroTintGradient: SPGradientView = {
@@ -451,7 +451,7 @@ final class SPAlarmsListHeader: UIView {
 
             // Gear — 40×40 circle left of the money "+", 10pt gap between the
             // two (handoff only),
-            // `docs/design/v2-handoff/components/SPScreensV2.jsx:316` contains "gap: 10".
+            // `docs/design/v2-handoff/components/SPScreensV2.jsx:316-317` contains "Settings — opens screen 23".
             settingsButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             settingsButton.trailingAnchor.constraint(equalTo: addButton.leadingAnchor, constant: -10),
             settingsButton.widthAnchor.constraint(equalToConstant: 40),
