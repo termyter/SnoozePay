@@ -548,6 +548,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         // share them verbatim. Keep the hop to the main queue here: the
         // notification delegate already runs on main, but `willPresent` may
         // race a not-yet-attached window on cold launch.
+        //
+        // The answer is discarded on purpose: when the screen does not go up —
+        // no host yet, the launch splash still the root, UIKit declining — the
+        // presenter parks the alarm in its pending slot itself, and the next
+        // flush raises it (#834).
         DispatchQueue.main.async {
             AlarmFiringPresenter.shared.present(alarm: alarm, snoozeCount: payload.snoozeCount)
         }
