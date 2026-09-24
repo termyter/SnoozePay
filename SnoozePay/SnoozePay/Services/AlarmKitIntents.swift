@@ -200,12 +200,12 @@ final class AlarmKitActionRouter {
     private init() {}
     #endif
 
-    /// Stop button on the system alert. Silence audio, dismiss the system alarm
-    /// UI, then open our firing screen so the user confirms the wake in-app
-    /// (the in-app dismiss records the wake day, mirroring the notification
-    /// `DISMISS_ACTION` semantics). The screen is the single owner of the wake
-    /// event so a Stop that the user then changes their mind on (snoozes
-    /// in-app) isn't double-counted.
+    /// Stop button on the system alert. Silence the in-app audio if this alarm
+    /// owns it, dismiss the system alarm UI, then open our firing screen so the
+    /// user confirms the wake in-app (the in-app dismiss records the wake day,
+    /// mirroring the notification `DISMISS_ACTION` semantics). The screen is
+    /// the single owner of the wake event so a Stop that the user then changes
+    /// their mind on (snoozes in-app) isn't double-counted.
     func handleStop(alarmIDString: String) {
         guard let alarmID = UUID(uuidString: alarmIDString) else {
             AppLogger.scheduler.error(
@@ -214,18 +214,19 @@ final class AlarmKitActionRouter {
             return
         }
         AppLogger.scheduler.notice("AlarmKit stop alarm=\(alarmID, privacy: .private)")
-        AudioService.shared.stopAlarmSound()
+        stopAudioIfOwned(by: alarmID, action: "AlarmKit stop")
         // Stop the AlarmKit alert itself so the system stops the alarm UI.
         AlarmScheduler.shared.stopSystemAlarm(alarmID)
         present(alarmID)
     }
 
-    /// Snooze button on the system alert. Silence the system alarm UI, then
-    /// open our firing screen so the *paid* snooze (−X ₽, progressive penalty,
-    /// Apple-Pay top-up on insufficient balance) runs through the in-app flow
-    /// — the same path the notification banner takes. The charge therefore
-    /// happens exactly once, in the screen, never from the lock-screen button
-    /// (which can't surface a balance error or a top-up sheet).
+    /// Snooze button on the system alert. Silence the in-app audio if this
+    /// alarm owns it, silence the system alarm UI, then open our firing screen
+    /// so the *paid* snooze (−X ₽, progressive penalty, Apple-Pay top-up on
+    /// insufficient balance) runs through the in-app flow — the same path the
+    /// notification banner takes. The charge therefore happens exactly once,
+    /// in the screen, never from the lock-screen button (which can't surface a
+    /// balance error or a top-up sheet).
     func handleSnooze(alarmIDString: String) async {
         guard let alarmID = UUID(uuidString: alarmIDString) else {
             AppLogger.scheduler.error(
@@ -234,10 +235,37 @@ final class AlarmKitActionRouter {
             return
         }
         AppLogger.scheduler.notice("AlarmKit snooze alarm=\(alarmID, privacy: .private)")
-        AudioService.shared.stopAlarmSound()
+        stopAudioIfOwned(by: alarmID, action: "AlarmKit snooze")
         AlarmScheduler.shared.stopSystemAlarm(alarmID)
         postSnoozeFailedBannerIfUnloadable(alarmID)
         present(alarmID)
+    }
+
+    /// Stop the in-app ring only when `alarmID` owns it (#869), the gate
+    /// `AppDelegate.stopAlarmSoundIfOwner(of:action:)` and
+    /// `AlarmFiringPresenter.stopAudio(ifOwnedBy:_:)` already apply.
+    ///
+    /// Both buttons used to stop `AudioService` unconditionally: a Stop or
+    /// Snooze on the system alert of a stale or deleted alarm B silenced the
+    /// in-app ring of alarm A, and A's screen was left up with no sound (the
+    /// #854 class). The system alarm and the presentation stay unconditional;
+    /// only the app's own audio is gated.
+    ///
+    /// One line either way, naming both alarms by their 8-hex handle, so a
+    /// release log shows whose sound it was and what was done with it.
+    private func stopAudioIfOwned(by alarmID: UUID, action: String) {
+        let owner = AudioService.shared.currentAlarmID
+        let ownsSound = owner == alarmID
+        let decision = ownsSound
+            ? "stopping the audio it owns"
+            : "leaving the audio of \(AppDelegate.logHandle(owner)) alone"
+        // `OSLogType` has no `.notice`; `.default` is the same level.
+        AppLogger.emit(
+            .scheduler, .default,
+            "\(action): audio owner \(AppDelegate.logHandle(owner)),"
+                + " alarm \(AppDelegate.logHandle(alarmID)) — \(decision)"
+        )
+        if ownsSound { AudioService.shared.stopAlarmSound() }
     }
 
     /// The snooze runs in the firing screen, and a screen needs the alarm. When
