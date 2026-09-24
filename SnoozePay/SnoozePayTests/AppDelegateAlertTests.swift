@@ -361,6 +361,27 @@ final class AppDelegateAlertTests: XCTestCase {
         XCTAssertNil(host.presentedViewController, "the guard must not have presented anything")
     }
 
+    /// A tap on the #860 banner resolves the same corrupt store again, and the
+    /// caller's walk ends on the alert already up. A second copy on top says
+    /// nothing new (#864); a different message still goes through.
+    func testCorruptDataAlert_whenTheSameAlertIsAlreadyUp_isNotStackedOnIt() {
+        let shown = UIAlertController(title: "Будильник", message: message, preferredStyle: .alert)
+
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            AppDelegate.showAlarmDataCorruptedAlert(on: shown, message: message)
+        })
+        XCTAssertEqual(lines.filter { $0.contains(AppDelegate.alertAlreadyShownErrorID) }.count, 1, "\(lines)")
+        XCTAssertFalse(lines.contains { $0.contains(AppDelegate.alertDroppedErrorID) }, "\(lines)")
+        XCTAssertNil(shown.presentedViewController, "a second copy was stacked on the first")
+
+        lines = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            AppDelegate.showAlarmDataCorruptedAlert(on: shown, message: message + " (другая)")
+        })
+        XCTAssertFalse(lines.contains { $0.contains(AppDelegate.alertAlreadyShownErrorID) }, "\(lines)")
+    }
+
     // MARK: - …and when UIKit refuses for a reason the guard does not list
 
     /// The remainder #752 was closed without.

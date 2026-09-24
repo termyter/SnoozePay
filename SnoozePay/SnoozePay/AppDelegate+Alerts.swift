@@ -177,6 +177,9 @@ extension AppDelegate {
     /// Grep handle for the line written when the alert could not be shown.
     static let alertDroppedErrorID = "ALARM-752-ALERT-DROPPED"
 
+    /// Grep handle for the line written when the same alert is already up.
+    static let alertAlreadyShownErrorID = "ALARM-864-ALERT-ALREADY-SHOWN"
+
     /// Puts the corrupt-data alert on `topVC`, or — when `topVC` cannot present
     /// it — writes down which message the user never got (#752).
     ///
@@ -201,6 +204,18 @@ extension AppDelegate {
     /// and no line, which is the complaint of #752 verbatim. Neither sees a
     /// presentation that starts and does not finish — torn down or stalled.
     static func showAlarmDataCorruptedAlert(on topVC: UIViewController, message: String) {
+        // The caller walks to the topmost controller, so an identical alert
+        // still on screen is `topVC` itself. A tap on the #860 banner resolves
+        // the same corrupt store again; a second alert says nothing new (#864).
+        // One on its way out does not count: the user is about to lose it.
+        // `.default` is notice level, which sysdiagnose keeps and `.info` is not.
+        if let shown = topVC as? UIAlertController, shown.message == message, !shown.isBeingDismissed {
+            AppLogger.emit(
+                .appDelegate, .default,
+                "[\(alertAlreadyShownErrorID)] Alarm data-corrupted alert already on screen"
+            )
+            return
+        }
         if let diagnostic = droppedAlertDiagnostic(presenter: topVC, message: message) {
             AppLogger.emit(.appDelegate, .error, diagnostic)
             return

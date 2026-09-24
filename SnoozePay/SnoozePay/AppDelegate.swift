@@ -402,7 +402,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// stale banner. An alarm that does not resolve now never touches the sound.
     ///
     /// Reports how the start went, so `willPresent` can hand the sound to the
-    /// system when the app could not ring (#860).
+    /// system when the app could not ring (#860) — including when the alarm
+    /// resolved but plays no sound: a failed session or vibration only (#864).
+    /// The state is read after the start: an alarm that takes over a session
+    /// already in one of those states is just as silent as one that got there
+    /// itself.
     ///
     /// Internal rather than private so a test can drive it through
     /// `foregroundPresentationOptions(for:startAlarm:)`, as `willPresent` does.
@@ -430,7 +434,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         )
 
         presentFiringScreen(for: alarm, snoozeCount: payload.snoozeCount)
-        return .ringing
+        return AppDelegate.foregroundStart(afterStartingIn: AudioService.shared.state)
     }
 
     // Called when user taps a notification action
@@ -495,15 +499,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 25, execute: watchdog)
             AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo) { [weak self] outcome in
                 watchdog.cancel()
-                self?.logSnoozeOutcome(outcome)
-                switch outcome {
-                case let .scheduleFailed(error):
-                    AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: true)
-                case let .scheduleFailedAndRefundFailed(error):
-                    AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: false)
-                default:
-                    break
-                }
+                self?.handleSnoozeOutcome(outcome)
                 resolveOnce()
             }
             return // async path + watchdog own `completionHandler` from here on
@@ -635,6 +631,38 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         }
     }
 
+    /// What `SNOOZE_ACTION` does with the coordinator's answer: log it, then
+    /// tell the user about a failure.
+    ///
+    /// A load failure posts the snooze-failed banner too (#864): the snooze is
+    /// lost exactly as when the schedule fails, and a system banner survives a
+    /// cold launch, where an alert over the splash is torn down with it. Its
+    /// "refunded" copy is the right one — nothing was charged. The
+    /// data-corrupted alert still goes up for the cause; the alert dedup keeps
+    /// it from stacking on the one `willPresent` already raised.
+    ///
+    /// Internal so a test can hand it an outcome and a poster; `didReceive`
+    /// cannot be driven.
+    func handleSnoozeOutcome(
+        _ outcome: AlarmFiringCoordinator.SnoozeOutcome,
+        poster: LocalNotificationPosting = UNUserNotificationCenter.current()
+    ) {
+        logSnoozeOutcome(outcome)
+        switch outcome {
+        case let .scheduleFailed(error):
+            AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: true, poster: poster)
+        case let .scheduleFailedAndRefundFailed(error):
+            AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: false, poster: poster)
+        case let .alarmLoadFailed(error):
+            AppDelegate.postSnoozeScheduleFailedBanner(
+                detail: error.localizedDescription, refundLanded: true, poster: poster
+            )
+            reportAlarmDataCorrupted(error)
+        default:
+            break
+        }
+    }
+
     /// Centralised logging for every `SnoozeOutcome` branch — extracted from
     /// the `didReceive` switch so that path stays under cyclomatic-complexity
     /// limits and the logging vocabulary lives next to the fallback-banner
@@ -645,6 +673,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             AppLogger.appDelegate.error("SNOOZE_ACTION: invalid payload, snooze skipped")
         case .alarmNotFound:
             AppLogger.appDelegate.notice("SNOOZE_ACTION: alarm not found, snooze skipped")
+        case .alarmLoadFailed:
+            // The coordinator wrote the cause with its error id and handle.
+            AppLogger.appDelegate.error("SNOOZE_ACTION: alarm failed to load, snooze skipped — posting fallback banner")
         case .insufficientFunds:
             AppLogger.appDelegate.notice(
                 "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
@@ -685,7 +716,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         refundLanded: Bool,
         poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
-        let detail = error.errorDescription ?? error.localizedDescription
+        postSnoozeScheduleFailedBanner(
+            detail: error.errorDescription ?? error.localizedDescription,
+            refundLanded: refundLanded,
+            poster: poster
+        )
+    }
+
+    /// The same banner with its detail line already spelled: a snooze lost to
+    /// a load failure has no `SchedulingError` to describe (#864).
+    static func postSnoozeScheduleFailedBanner(
+        detail: String,
+        refundLanded: Bool,
+        poster: LocalNotificationPosting = UNUserNotificationCenter.current()
+    ) {
         let content = UNMutableNotificationContent()
         content.title = "Откладывание не запланировано"
         if refundLanded {

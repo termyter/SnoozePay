@@ -153,26 +153,10 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         XCTAssertEqual(try repository.fetchChecked(id: alarm.id)?.id, alarm.id, "test precondition")
 
         let presenter = AlarmFiringPresenter.shared
-        let originalLocateHost = presenter.locateHost
-        let originalIsRootReady = presenter.isRootReady
-        let originalMakeFiringScreen = presenter.makeFiringScreen
-        var host: RecordingHost? = RecordingHost()
-        presenter.locateHost = { [weak host] in
-            guard let host else { return .failure(.noHostingWindow) }
-            return .success(host)
-        }
-        presenter.isRootReady = { true }
-        presenter.makeFiringScreen = { ReadBackFiringScreen(alarm: $0, snoozeCount: $1) }
-        // The shared presenter outlives this test: restore every seam, and
-        // take down anything it put up the way #846 does, before the next one.
+        let recording = installRecordingHost()
+        let host: RecordingHost? = recording.host
         defer {
-            presenter.locateHost = originalLocateHost
-            presenter.isRootReady = originalIsRootReady
-            presenter.makeFiringScreen = originalMakeFiringScreen
-            for screen in host?.presentedScreens ?? [] where screen.isViewLoaded {
-                screen.viewDidDisappear(false)
-            }
-            host = nil
+            recording.restore()
             repository.delete(id: alarm.id)
             AudioService.shared.stopAlarmSound()
             drainMainQueue()
@@ -238,7 +222,107 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         )
     }
 
+    /// The alarm resolves, but the audio session refuses to activate (another
+    /// app holds it, e.g. a call). The service goes `.silentBecauseConfigFailed`
+    /// and skips vibration on purpose, yet `willPresent` used to report
+    /// `.ringing` and return `[]`: no app sound, no vibration and no system
+    /// sound (#864).
+    func testWillPresent_whenTheAudioSessionFails_letsTheSystemPlayTheSound() throws {
+        let alarm = Alarm(soundID: Self.toneSoundID, enabled: false)
+        XCTAssertTrue(repository.save(alarm), "test precondition: the alarm has to be in the repository")
+        // `NSError`, not a local `Error` struct: under the target's default
+        // isolation a struct's initializer is main-actor, and the activator
+        // runs on the audio queue.
+        AudioService.shared.overrideSessionActivation {
+            throw NSError(domain: "MissingAlarmNotificationAudioTests.sessionRefused", code: 1)
+        }
+        let recording = installRecordingHost()
+        defer {
+            recording.restore()
+            AudioService.shared.overrideSessionActivation(nil)
+            repository.delete(id: alarm.id)
+            AudioService.shared.stopAlarmSound()
+            drainMainQueue()
+        }
+
+        var start: AppDelegate.ForegroundAlarmStart?
+        let options = AppDelegate.foregroundPresentationOptions(for: request(forAlarm: alarm.id)) {
+            let outcome = self.delegate.startForegroundAlarm($0)
+            start = outcome
+            return outcome
+        }
+        drainMainQueue()
+
+        XCTAssertEqual(AudioService.shared.state, .silentBecauseConfigFailed, "test precondition: the seam must fail")
+        XCTAssertEqual(start, .silent)
+        XCTAssertEqual(options, [.banner, .sound, .list], "the app rings nothing, so the system has to")
+        XCTAssertEqual(
+            recording.host.presentedScreens.count, 1,
+            "the firing screen is still asked for: it carries the session-failed banner"
+        )
+    }
+
+    /// SNOOZE_ACTION on an alarm whose stored alarms fail to decode used to
+    /// come back `.alarmNotFound`: logged as a deleted alarm, and the user
+    /// heard nothing. It now keeps the load failure: the delegate posts the
+    /// snooze-failed banner, which survives a cold launch and no alert dedup
+    /// swallows, and puts up the data-corrupted alert for the cause (#864).
+    func testSnoozeAction_whenStoredAlarmsFailToDecode_postsTheSnoozeFailedBanner() throws {
+        defaults.set(Data("{ not a list of alarms".utf8), forKey: "stored_alarms")
+        var reported: [Error] = []
+        delegate.reportAlarmDataCorrupted = { reported.append($0) }
+        let coordinator = AlarmFiringCoordinator(
+            alarmRepository: repository,
+            balanceService: BalanceService(defaults: defaults),
+            scheduler: AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: nil)
+        )
+
+        var outcome: AlarmFiringCoordinator.SnoozeOutcome?
+        coordinator.handleSnooze(userInfo: request(forAlarm: UUID()).content.userInfo) { outcome = $0 }
+        guard case .alarmLoadFailed? = outcome else {
+            return XCTFail("a load failure must not read as a deleted alarm; got \(String(describing: outcome))")
+        }
+        let poster = LocalNotificationPosterSpy()
+        delegate.handleSnoozeOutcome(try XCTUnwrap(outcome), poster: poster)
+
+        XCTAssertEqual(poster.requests.count, 1, "the user must be told the snooze was not scheduled")
+        let banner = try XCTUnwrap(poster.requests.first)
+        XCTAssertEqual(AppBannerNotification(identifier: banner.identifier), .snoozeScheduleFailed)
+        XCTAssertEqual(banner.content.title, "Откладывание не запланировано")
+        XCTAssertTrue(banner.content.body.hasPrefix("Установите запасной — "), banner.content.body)
+        XCTAssertEqual(banner.content.interruptionLevel, .timeSensitive)
+        XCTAssertEqual(reported.count, 1, "the user must be told the alarm data is corrupted")
+        guard case .decodeFailure? = reported.first as? AlarmRepository.RepositoryError else {
+            return XCTFail("the alert must get the decode error, for its detail line; got \(reported)")
+        }
+    }
+
     // MARK: - Helpers
+
+    /// Points the shared presenter at a `RecordingHost`. The shared presenter
+    /// outlives the test, so call `restore` from a `defer`: it puts every seam
+    /// back and takes down anything that went up, the way #846 does.
+    private func installRecordingHost() -> (host: RecordingHost, restore: () -> Void) {
+        let presenter = AlarmFiringPresenter.shared
+        let originalLocateHost = presenter.locateHost
+        let originalIsRootReady = presenter.isRootReady
+        let originalMakeFiringScreen = presenter.makeFiringScreen
+        let host = RecordingHost()
+        presenter.locateHost = { [weak host] in
+            guard let host else { return .failure(.noHostingWindow) }
+            return .success(host)
+        }
+        presenter.isRootReady = { true }
+        presenter.makeFiringScreen = { ReadBackFiringScreen(alarm: $0, snoozeCount: $1) }
+        return (host, {
+            presenter.locateHost = originalLocateHost
+            presenter.isRootReady = originalIsRootReady
+            presenter.makeFiringScreen = originalMakeFiringScreen
+            for screen in host.presentedScreens where screen.isViewLoaded {
+                screen.viewDidDisappear(false)
+            }
+        })
+    }
 
     private func assertAbsentFromRepository(
         _ alarmID: UUID, file: StaticString = #filePath, line: UInt = #line
