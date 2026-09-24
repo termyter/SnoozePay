@@ -36,7 +36,8 @@ final class AlarmFiringPresenter {
     /// `mountAfterDismissal` whenever the swap's screen did not go up: no host
     /// left (#804), UIKit declined the `present`, the stale screen still up, or
     /// a firing screen already there that is another alarm's or this alarm's
-    /// at a lower snooze count (#807). Flushed by
+    /// at a lower snooze count (#807). And by the direct present, when UIKit
+    /// declines it (#833). Flushed by
     /// `flushPendingPresentation()` once the scene becomes active, and right
     /// after a swap lands, so the firing
     /// screen survives both a warm-foreground race and a cold start (#382).
@@ -252,15 +253,16 @@ final class AlarmFiringPresenter {
     /// source shares the "dismiss any stale firing screen first, then present
     /// full-screen on the topmost VC" behaviour.
     ///
-    /// Returns `true` only when the present has been issued by the time it
-    /// returns. `false` covers both ways that can fail to happen: nothing can
+    /// Returns `true` only when the screen reads back as up by the time it
+    /// returns. `false` covers three ways that can fail to happen: nothing can
     /// host the presentation yet — no scene, no windows, or no window carrying
     /// a root (the cold-launch race), which of the three goes to the log
-    /// because they are not fixed the same way — and the re-entry swap below,
-    /// which cannot finish before its dismissal completion runs. `false` is
-    /// what the AlarmKit retry (#382) keeps an alarm pending on; the swap
-    /// clears that pending id from the completion once the screen reads back
-    /// as up (#807), and arms it when it could not raise it (#798).
+    /// because they are not fixed the same way — the re-entry swap below,
+    /// which cannot finish before its dismissal completion runs, and UIKit
+    /// declining the direct `present` (#833), which arms the retry itself.
+    /// `false` is what the AlarmKit retry (#382) keeps an alarm pending on;
+    /// the swap clears that pending id from the completion once the screen
+    /// reads back as up (#807), and arms it when it could not raise it (#798).
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
         let topVC: UIViewController
@@ -337,8 +339,12 @@ final class AlarmFiringPresenter {
             return false
         }
 
-        topVC.present(firingVC, animated: false)
-        return true
+        // The common path — usually no firing screen is up. It answered `true`
+        // without looking, and `attemptPendingPresentation` dropped the alarm on
+        // that answer: a present UIKit declined (the top still being dismissed
+        // or presented, a detached host) lost it with only UIKit's console
+        // warning behind (#833). Same read-back as the swap's completion.
+        return presentReadingBack(firingVC, on: topVC, request: request, context: "", raiseParked: false)
     }
 
     /// Second half of the swap above: put `firingVC` up now that the stale
@@ -366,11 +372,8 @@ final class AlarmFiringPresenter {
     ///     hierarchy before UIKit runs this completion, and a re-entry in that
     ///     gap finds nothing to swap and presents directly. Presenting again
     ///     would stack a second firing screen on it.
-    ///   * UIKit declines the `present` — it answers a presentation it cannot
-    ///     perform by doing nothing. Read back from the screen, as
-    ///     `StatisticsViewController.showLoadErrorAlert` does (#752/#789):
-    ///     UIKit wires `presentingViewController` inside `present`, before any
-    ///     completion, so the answer is there on the next line.
+    ///   * UIKit declines the `present` — read back in
+    ///     `presentReadingBack`, which the direct path shares (#833).
     ///
     /// `staleScreen` is the screen this swap dismissed. Found on top again, or
     /// still `isBeingDismissed`, it is not "up": it survived its own dismissal
@@ -438,19 +441,54 @@ final class AlarmFiringPresenter {
             return
         }
 
-        top.present(firingVC, animated: false)
+        presentReadingBack(
+            firingVC, on: top, request: retry, context: " after dismissing the previous screen", raiseParked: true
+        )
+    }
+
+    /// Presents `firingVC` on `host` and answers whether it is up, settling the
+    /// pending slot either way. Shared by the direct present and the swap's
+    /// completion, so the two cannot drift apart again: the direct one kept
+    /// answering without a read-back after the completion got one (#833).
+    ///
+    /// UIKit declines a presentation it cannot perform by doing nothing. Read
+    /// back from the screen, as `StatisticsViewController.showLoadErrorAlert`
+    /// does (#752/#789): UIKit wires `presentingViewController` inside
+    /// `present`, before any completion, so the answer is there on the next
+    /// line. A refusal is kept pending rather than given up, like a missing
+    /// host after a swap: it is about this moment's hierarchy, and the next
+    /// activation asks again. The audio is left alone for the same reason.
+    ///
+    /// Up: `request`'s pending record goes (by `clearPending(shownAs:)`'s
+    /// rules, not only on an exact match — #808). What is left in the slot is
+    /// re-attempted on the next main-queue turn when it is this alarm at a
+    /// higher count, or when `raiseParked` says the slot is newer than this
+    /// screen. That holds for the swap, whose completion runs after a request
+    /// parked during its dismissal. It does not for the direct path: nothing
+    /// was mid-swap, so the slot holds an alarm older than the one that just
+    /// went up, and raising it would swap the fresh screen out — its sound
+    /// stopped on the way down — for the older one: oldest wins, against
+    /// `armRetry`'s newest wins. That record waits for the next activation.
+    ///
+    /// `context` is spliced into the refusal line to say which path declined.
+    @discardableResult
+    private func presentReadingBack(
+        _ firingVC: UIViewController, on host: UIViewController, request: PendingPresentation,
+        context: String, raiseParked: Bool
+    ) -> Bool {
+        host.present(firingVC, animated: false)
         guard firingVC.presentingViewController != nil else {
-            // Kept pending rather than given up, like the no-host branch: the
-            // refusal is about this moment's hierarchy, and the next
-            // activation asks again.
-            let reason = AppDelegate.presentationRefusalReason(presenter: top)
-                ?? "\(type(of: top)) did not put it up"
-            armRetry(retry, "firing-present: \(reason) after dismissing the previous screen — keeping it pending")
-            return
+            let reason = AppDelegate.presentationRefusalReason(presenter: host)
+                ?? "\(type(of: host)) did not put it up"
+            armRetry(request, "firing-present: \(reason)\(context) — keeping it pending")
+            return false
         }
-        clearPending(shownAs: retry)
+        clearPending(shownAs: request)
         staleSurvivalRetries = 0
-        attemptParkedPresentationSoon()
+        if raiseParked || pendingAlarmID == request.alarmID {
+            attemptParkedPresentationSoon()
+        }
+        return true
     }
 
     /// Re-attempts a request the swap parked — another alarm that arrived
@@ -461,7 +499,8 @@ final class AlarmFiringPresenter {
     /// background scene the activation can land before this completion and
     /// be parked itself. On the next main-queue turn, not inline, so the
     /// follow-up swap never dismisses a screen that is still being presented.
-    /// Called from the branches where a screen is up, and from the one failure
+    /// Called from the branches where a screen is up (on the direct path only
+    /// for this alarm at a higher count, #833), and from the one failure
     /// branch that can still settle on its own — a stale screen that outlived
     /// its dismissal — which counts its calls against
     /// `staleSurvivalRetryLimit`, so it cannot spin. The other failure
