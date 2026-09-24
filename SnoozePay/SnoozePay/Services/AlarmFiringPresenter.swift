@@ -262,11 +262,13 @@ final class AlarmFiringPresenter {
     /// because they are not fixed the same way — the root still being the
     /// launch splash, the re-entry swap below, which cannot finish before its
     /// dismissal completion runs, and UIKit declining the direct `present`
-    /// (#833). Every one of them leaves the request in the pending slot
-    /// itself, so a caller that discards the answer — the notification path —
-    /// still gets the retry (#834). The swap clears that pending id from the
-    /// completion once the screen reads back as up (#807), and arms it when
-    /// it could not raise it (#798).
+    /// (#833). Each of them leaves the request in the pending slot itself, so
+    /// a caller that discards the answer — the notification path — still gets
+    /// the retry (#834). Except the swap this call starts: it returns without
+    /// arming, and only its completion (`mountAfterDismissal`) clears the
+    /// pending id once the screen reads back as up (#807) or arms it when it
+    /// could not raise it (#798). A dismissal UIKit never completes therefore
+    /// leaves a notification-path request neither shown nor parked (#835).
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
         let request = PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)

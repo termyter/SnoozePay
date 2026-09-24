@@ -2,11 +2,15 @@ import os
 import XCTest
 @testable import SnoozePay
 
-/// The branch where `AlarmFiringPresenter` gives up: nothing in the scene can
-/// host the firing screen, so the audio is silenced and no screen goes up.
+/// The branch where `AlarmFiringPresenter` finds no host: nothing in the scene
+/// can host the firing screen, so the audio is silenced, no screen goes up, and
+/// the alarm is parked for the next flush. It used to stop there, without
+/// parking anything; since #834 it arms the retry itself (pinned in
+/// `AlarmFiringPresenterSwapGuardTests`, section "The notification path").
 ///
 /// It is the loudest outcome this class has — the user is left with an alarm
-/// that has stopped ringing and nothing to look at — and until #795 its only
+/// that has stopped ringing and nothing to look at until the retry lands — and
+/// until #795 its only
 /// evidence was one `os.Logger` line that no test in the target read
 /// (`grep -rn "firing-present" SnoozePayTests/` found nothing). A line only
 /// unified logging can see is a line nobody can assert on, so deleting it, the

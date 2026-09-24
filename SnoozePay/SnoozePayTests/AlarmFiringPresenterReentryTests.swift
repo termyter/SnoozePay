@@ -211,8 +211,9 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         XCTAssertTrue(
             AudioService.shared.isPlaying,
             """
-            unlike the give-up branch, this one is not terminal — the retry is \
-            armed, so it must not stop the audio the give-up branch stops
+            the retry is armed and nothing is torn down, so this branch leaves \
+            the audio alone — unlike the direct host miss in `present`, which \
+            arms the same retry but stops the audio
             """
         )
 
