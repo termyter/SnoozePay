@@ -1,5 +1,5 @@
 import Foundation
-import AudioToolbox
+import AVFoundation
 import os
 
 /// ViewModel for create/edit alarm screen.
@@ -319,7 +319,7 @@ final class CreateAlarmViewModel {
             .joined(separator: " → ")
     }
 
-    // MARK: - Available sounds (10 sounds matching Figma design)
+    // MARK: - Available sounds
 
     /// Sound catalogue surfaced to `SoundPickerViewController`. Each entry now
     /// carries a short Russian `subtitle` describing the timbre (V3 card list —
@@ -329,35 +329,58 @@ final class CreateAlarmViewModel {
     /// owned by #278 — this list only adds descriptive copy.
     let availableSounds: [SoundCatalogue.Entry] = SoundCatalogue.entries
 
-    // MARK: - System sound mapping (placeholder until custom audio files are bundled)
+    // MARK: - Sound preview (#850)
 
-    /// Maps sound IDs to AudioToolbox system sound IDs for preview playback
-    private static let systemSoundMap: [String: SystemSoundID] = [
-        "dawn": 1005,
-        "radar": 1033,
-        "drops": 1006,
-        "piano": 1013,
-        "guitar": 1014,
-        "bell": 1016,
-        "waves": 1020,
-        "birds": 1023,
-        "classic": 1025,
-        "jazz": 1026
-    ]
+    /// Player for the picker preview. Its own `AVAudioPlayer`, not
+    /// `AudioService`'s ring path: that one loops forever, switches the session
+    /// to `.playback` and drives vibration, none of which a preview wants.
+    /// Held so the sound outlives the call and ``stopPreviewSound()`` has
+    /// something to stop.
+    private var previewPlayer: AVAudioPlayer?
 
-    /// Play a preview of the given sound using system sounds.
-    /// - Returns: `false` when `soundID` has no entry in `systemSoundMap` —
-    ///   the tap is a no-op, which previously happened silently (#210). The
-    ///   result is discardable for UI callers but lets tests pin the map
-    ///   against `availableSounds` so they can't drift apart.
+    /// Play the bundled file of `soundID` once — the file the alarm rings
+    /// with, resolved through `SoundCatalogue.fileURL(for:resourceURL:)`. A
+    /// preview already playing is stopped first, so quick taps do not stack.
+    ///
+    /// Until #850 this played an AudioToolbox system sound from a hand-kept
+    /// map, so the picker never let the user hear the sound the alarm rings.
+    ///
+    /// - Returns: `false` when the bundle has no file for `soundID` or the
+    ///   player refuses to open it; the tap is then a logged no-op (#210).
+    ///   `true` once the file is open and handed to `play()` — whether a
+    ///   device then makes it audible (output route, mute switch) is not this
+    ///   method's answer, and a simulator with no output would make a test
+    ///   pinned to it flaky. Discardable for UI callers.
     @discardableResult
     func previewSound(_ soundID: String) -> Bool {
-        guard let systemID = Self.systemSoundMap[soundID] else {
-            AppLogger.audio.error("previewSound: unknown soundID \(soundID, privacy: .public)")
+        stopPreviewSound()
+        guard let url = SoundCatalogue.fileURL(for: soundID) else {
+            AppLogger.audio.error("previewSound: no bundled file for soundID \(soundID, privacy: .public)")
             return false
         }
-        AudioServicesPlaySystemSound(systemID)
-        return true
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            previewPlayer = player
+            if !player.play() {
+                AppLogger.audio.error("previewSound: play() refused \(url.lastPathComponent, privacy: .public)")
+            }
+            return true
+        } catch {
+            let file = url.lastPathComponent
+            let reason = error.localizedDescription
+            AppLogger.audio.error(
+                "previewSound: cannot open \(file, privacy: .public): \(reason, privacy: .public)"
+            )
+            return false
+        }
+    }
+
+    /// Stop the preview, if one is playing. The picker calls it on its second
+    /// tap and when it leaves the screen, so a 25-second `spaceship` does not
+    /// outlive the rail that shows it.
+    func stopPreviewSound() {
+        previewPlayer?.stop()
+        previewPlayer = nil
     }
 
     // MARK: - Alarm theme (#151)

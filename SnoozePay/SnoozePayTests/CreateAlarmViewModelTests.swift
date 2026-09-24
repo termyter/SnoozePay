@@ -7,6 +7,10 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     private var testDefaults: UserDefaults!
     private var suiteName: String!
     private var repo: AlarmRepository!
+    /// A view model whose preview may be playing a real file (#850). Held so
+    /// tearDown can silence it — a 25 s `spaceship` must not bleed into the
+    /// next test.
+    private var previewingVM: CreateAlarmViewModel?
 
     override func setUp() {
         super.setUp()
@@ -16,6 +20,8 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     }
 
     override func tearDown() {
+        previewingVM?.stopPreviewSound()
+        previewingVM = nil
         testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
@@ -24,7 +30,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
     func testAvailableSounds_hasCorrectCount() {
         let vm = CreateAlarmViewModel(repository: repo)
-        XCTAssertEqual(vm.availableSounds.count, 10)
+        XCTAssertEqual(vm.availableSounds.count, 14)
     }
 
     func testAvailableSounds_allHaveUniqueIDs() {
@@ -41,34 +47,29 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         }
     }
 
-    // MARK: - Sound preview (should not crash)
-
-    func testPreviewSound_withValidID_doesNotCrash() {
-        let vm = CreateAlarmViewModel(repository: repo)
-        // Calling previewSound with a valid ID should not crash.
-        // AudioServicesPlaySystemSound may be a no-op in test environment.
-        XCTAssertTrue(vm.previewSound("dawn"))
-        XCTAssertTrue(vm.previewSound("radar"))
-        XCTAssertTrue(vm.previewSound("drops"))
-    }
+    // MARK: - Sound preview
 
     func testPreviewSound_withInvalidID_doesNotCrash() {
         let vm = CreateAlarmViewModel(repository: repo)
         // Unknown IDs are a no-op — previewSound reports it via the
-        // Bool result (and logs) instead of failing silently (#210).
+        // Bool result (and logs) instead of failing silently (#210). No
+        // bundled file, so nothing plays here.
         XCTAssertFalse(vm.previewSound("nonexistent_sound"))
         XCTAssertFalse(vm.previewSound(""))
         XCTAssertFalse(vm.previewSound("🎵"))
     }
 
-    /// Drift guard (#210): every sound offered in the picker must have a
-    /// preview mapping, otherwise the preview tap is dead for that row.
+    /// Drift guard (#210, #850): every sound offered in the picker must open
+    /// its own bundled file for the preview, otherwise the preview tap is dead
+    /// for that row. Each call stops the previous preview; tearDown stops the
+    /// last one.
     func testPreviewSound_coversAllAvailableSounds() {
         let vm = CreateAlarmViewModel(repository: repo)
+        previewingVM = vm
         for sound in vm.availableSounds {
             XCTAssertTrue(
                 vm.previewSound(sound.id),
-                "Sound '\(sound.id)' is listed in availableSounds but has no systemSoundMap entry"
+                "Sound '\(sound.id)' is listed in availableSounds but its preview has no bundled file"
             )
         }
     }

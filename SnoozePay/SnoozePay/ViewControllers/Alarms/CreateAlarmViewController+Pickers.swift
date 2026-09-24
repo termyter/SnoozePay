@@ -82,6 +82,9 @@ extension CreateAlarmViewController {
             previewSound: { [weak self] soundID in
                 self?.viewModel.previewSound(soundID)
             },
+            stopPreviewSound: { [weak self] in
+                self?.viewModel.stopPreviewSound()
+            },
             volume: viewModel.volume,
             fadeIn: viewModel.volumeFadeIn,
             onVolumeChange: { [weak self] volume, fadeIn in

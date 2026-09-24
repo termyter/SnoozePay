@@ -544,7 +544,13 @@ final class AudioService {
     /// A plain loop rather than `lazy.compactMap { … }.first`: the lazy
     /// sequence would store `resourceURL`, and a non-escaping parameter cannot
     /// be captured that way — the terse version does not compile.
-    private static func firstBundledURL(
+    ///
+    /// Not private since #850: `SoundCatalogue.fileURL(for:resourceURL:)`
+    /// resolves the picker preview through this same probe, so the preview
+    /// and the ring cannot pick different files for one id. No fallback there
+    /// on purpose — previewing `default_alarm` under another sound's name
+    /// would hide the missing file.
+    static func firstBundledURL(
         for name: String,
         resourceURL: (String, String) -> URL?
     ) -> URL? {

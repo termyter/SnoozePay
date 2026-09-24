@@ -1,5 +1,4 @@
 import UIKit
-import AudioToolbox
 
 /// Full-screen sound picker pushed onto the navigation stack (V3 — #285).
 ///
@@ -23,6 +22,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     private var selectedSoundID: String
     private let onSelect: (String) -> Void
     private let previewSound: (String) -> Void
+    /// Stops the sound `previewSound` started (#850): the preview is a real
+    /// file now, up to 25.8 s long, so leaving the rail must silence it too.
+    private let stopPreviewSound: () -> Void
 
     /// Per-alarm volume + fade-in, surfaced via a «Громкость» row that pushes
     /// `VolumePickerViewController` (#270 — option 2: sound + volume are
@@ -34,9 +36,8 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     /// can persist. `nil` when the host doesn't surface volume control.
     private let onVolumeChange: ((Float, Bool) -> Void)?
 
-    /// `true` while the «Превью» head is in its "playing" affordance. System
-    /// sounds are fire-and-forget, so this is a UI state reset by a timer keyed
-    /// to the typical preview length.
+    /// `true` while the «Превью» head is in its "playing" affordance. A UI
+    /// state, reset by a display link once the sound file's length has elapsed.
     private var isPreviewing = false
 
     /// The disabled custom-melody slot is appended after the catalogue rows.
@@ -123,9 +124,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     /// Progress track + fill + timecode, per
     /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:362-365` contains "0:08 / 0:24" — a 3pt
     /// white-08 rail with a money-gradient fill and a «0:08 / 0:24» meta label.
-    /// The fill is driven by a `CADisplayLink` keyed to the sound's expected
-    /// preview length (system sounds are fire-and-forget, so the bar reflects
-    /// elapsed-vs-expected rather than true decoder position).
+    /// The fill is driven by a `CADisplayLink` keyed to the sound file's length
+    /// (`SoundCatalogue.fileDuration(for:)`), so the bar reflects elapsed-vs-
+    /// length rather than the player's decoder position.
     private let progressTrack: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -179,6 +180,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     ///   - onSelect: Fired when the user picks a sound. The picker no longer
     ///     pops itself — the user leaves via «Готово» / back.
     ///   - previewSound: Plays a preview for a given sound id.
+    ///   - stopPreviewSound: Stops that preview — second tap on the play head,
+    ///     or the screen going away. Defaults to a no-op for hosts that play
+    ///     nothing.
     ///   - volume: Initial per-alarm volume in `0.0...1.0`. Drives the
     ///     «Громкость» row value; defaults to full volume.
     ///   - fadeIn: Initial fade-in flag for the «Громкость» row.
@@ -189,6 +193,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         selectedID: String,
         onSelect: @escaping (String) -> Void,
         previewSound: @escaping (String) -> Void,
+        stopPreviewSound: @escaping () -> Void = {},
         volume: Float = 1.0,
         fadeIn: Bool = false,
         onVolumeChange: ((Float, Bool) -> Void)? = nil
@@ -197,6 +202,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         self.selectedSoundID = selectedID
         self.onSelect = onSelect
         self.previewSound = previewSound
+        self.stopPreviewSound = stopPreviewSound
         // Clamp the seed so a corrupt persisted volume can't render «-12%».
         self.volume = Alarm.clampedVolume(volume)
         self.fadeIn = fadeIn
@@ -498,9 +504,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     }
 
     /// Flip the preview head to its "playing" state and start the progress
-    /// rail. System sounds are fire-and-forget, so the rail/timecode track the
-    /// expected preview length rather than a real decoder position; a second
-    /// tap stops and resets.
+    /// rail. The rail/timecode track the file's length on a display link
+    /// rather than the player's decoder position; a second tap stops and
+    /// resets.
     private func startPreviewAffordance(for soundID: String) {
         isPreviewing = true
         previewTotalDuration = Self.previewDurationSeconds(for: soundID)
@@ -518,9 +524,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     }
 
     /// Stops an in-flight preview (second tap or screen leaving) and snaps the
-    /// rail back to empty. The underlying system sound can't be cancelled, but
-    /// the affordance must reflect "not playing".
+    /// rail back to empty, silencing the sound along with it.
     private func stopPreview() {
+        stopPreviewSound()
         isPreviewing = false
         progressLink?.invalidate()
         progressLink = nil
@@ -576,16 +582,15 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         navigationController?.popViewController(animated: true)
     }
 
-    // MARK: - Preview duration metadata
+    // MARK: - Preview duration
 
-    /// Approximate preview length per sound id — drives the visual reset timer.
-    private static let previewDurations: [String: Double] = [
-        "dawn": 6, "radar": 4, "drops": 2, "piano": 3, "guitar": 3,
-        "bell": 2, "waves": 8, "birds": 6, "classic": 5, "jazz": 5
-    ]
-
+    /// Length of the sound's bundled file — the rail runs exactly as long as
+    /// the preview plays (#850; a hand-written table used to reset
+    /// `spaceship`'s 25.8 s after 3 s). The 3 s fallback only covers an id
+    /// with no readable file, which the catalogue tests rule out for every
+    /// row the picker shows.
     private static func previewDurationSeconds(for soundID: String) -> Double {
-        previewDurations[soundID] ?? 3
+        SoundCatalogue.fileDuration(for: soundID) ?? 3
     }
 }
 

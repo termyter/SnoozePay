@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Static source of truth for the alarm-sound catalogue surfaced in the V3
@@ -13,12 +14,12 @@ import Foundation
 /// the pure-logic split the issue calls for.
 ///
 /// `CreateAlarmViewModel.availableSounds` is derived from `entries`, so the
-/// 10-sound catalogue stays the single source of truth; the picker pulls the
+/// 14-sound catalogue stays the single source of truth; the picker pulls the
 /// disabled custom slot from `customSlot`.
 ///
 /// # Where the copy lives (#598)
 ///
-/// Ids are code, words are catalogue: this type stores the ten ids and reads
+/// Ids are code, words are catalogue: this type stores the ids and reads
 /// every name and subtitle out of `Localizable.xcstrings`. Two namespaces,
 /// because the two columns of a row have different reach and the convention in
 /// ``Localized`` keys on reach rather than on origin:
@@ -44,9 +45,12 @@ enum SoundCatalogue {
         let subtitle: String
     }
 
-    /// The 10 system sounds, in catalogue order. IDs match the pre-V3
-    /// `availableSounds` list (do NOT cut to 6 — design keeps the full
-    /// lineup).
+    /// The 14 bundled sounds, in catalogue order. The first ten match the
+    /// pre-V3 `availableSounds` list (do NOT cut to 6 — design keeps the full
+    /// lineup); `hawk`, `morning`, `sirena` and `spaceship` are the PM's
+    /// recordings appended by #850. Each id is also the base name of its file
+    /// in `Resources/Sounds/`, which is how both the ring and the preview
+    /// find it (``fileURL(for:resourceURL:)``).
     ///
     /// The order is the picker's row order and is pinned to a literal copy of
     /// this list in `SoundCatalogueCopyTests.idsInCatalogueOrder` (#762), so
@@ -55,7 +59,8 @@ enum SoundCatalogue {
     /// green across the target.
     static let ids: [String] = [
         "dawn", "radar", "drops", "piano", "guitar",
-        "bell", "waves", "birds", "classic", "jazz"
+        "bell", "waves", "birds", "classic", "jazz",
+        "hawk", "morning", "sirena", "spaceship"
     ]
 
     /// Id of the disabled custom-melody slot. Not one of ``ids``: it is
@@ -78,7 +83,7 @@ enum SoundCatalogue {
         "create_alarm.sound.subtitle.\(soundID)"
     }
 
-    /// The 10 system sounds, in catalogue order.
+    /// The catalogue sounds, in catalogue order.
     ///
     /// Computed rather than stored so the catalogue read stays behind
     /// ``Localized`` — the single seam #596 has to move when the app stops
@@ -96,6 +101,40 @@ enum SoundCatalogue {
                 subtitle: Localized.text(subtitleKey(for: soundID))
             )
         }
+    }
+
+    /// Bundled file behind a sound id, probed exactly as the ring probes it:
+    /// `<id>` across `AudioService.alarmSoundExtensions`, via
+    /// `AudioService.firstBundledURL(for:resourceURL:)`. `nil` when the bundle
+    /// has no such file — unlike the ring there is no `default_alarm`
+    /// fallback, because a preview of another sound under this row's name
+    /// would hide the gap instead of showing it.
+    ///
+    /// An empty id is a miss up front: `Bundle.url(forResource:withExtension:)`
+    /// reads an empty name as "any file", and would hand back the first `.caf`.
+    ///
+    /// `resourceURL` lets a test state which files the bundle holds; the
+    /// default is the real bundle, which in the test host is the app's.
+    static func fileURL(
+        for soundID: String,
+        resourceURL: (String, String) -> URL? = { name, ext in
+            Bundle.main.url(forResource: name, withExtension: ext)
+        }
+    ) -> URL? {
+        guard !soundID.isEmpty else { return nil }
+        return AudioService.firstBundledURL(for: soundID, resourceURL: resourceURL)
+    }
+
+    /// Length in seconds of the file ``fileURL(for:resourceURL:)`` finds, read
+    /// from its header — the preview rail in `SoundPickerViewController` runs
+    /// for exactly this long (#850; it used to be a hand-written table that
+    /// reset `spaceship`'s 25.8 s after 3 s). `nil` when there is no file or
+    /// it cannot be opened.
+    static func fileDuration(for soundID: String) -> TimeInterval? {
+        guard let url = fileURL(for: soundID),
+              let file = try? AVAudioFile(forReading: url),
+              file.fileFormat.sampleRate > 0 else { return nil }
+        return Double(file.length) / file.fileFormat.sampleRate
     }
 
     /// Disabled trailing slot rendered after the catalogue. Custom-melody

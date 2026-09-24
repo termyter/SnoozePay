@@ -105,7 +105,13 @@ final class AlarmsListSoundNameTests: XCTestCase {
         "waves": "Волны",
         "birds": "Птицы",
         "classic": "Классика",
-        "jazz": "Джаз"
+        "jazz": "Джаз",
+        // Not in the deleted table: #850 added these four sounds after #599.
+        // Listed so the coverage test below still equates the two sets.
+        "hawk": "Ястреб",
+        "morning": "Утро",
+        "sirena": "Сирена",
+        "spaceship": "Космолёт"
     ]
 
     private var suiteName: String!
