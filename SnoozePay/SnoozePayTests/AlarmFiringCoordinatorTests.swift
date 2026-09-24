@@ -157,12 +157,13 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
 
     // MARK: - Issue #117: corrupted store must not collapse into alarmNotFound silently
 
-    /// When the alarm store is corrupt, `handleSnooze` must still report
-    /// `.alarmNotFound` (callers can't do anything else from a notification
-    /// action), but the path must run through the throwing fetch so the
-    /// decode error gets logged and the persistence lock arms — without
-    /// this the snooze silently drops with no diagnostic trail (issue #117).
-    func testHandleSnooze_corruptedAlarmStore_returnsAlarmNotFoundAndArmsLock() {
+    /// When the alarm store is corrupt, `handleSnooze` reports
+    /// `.alarmLoadFailed` carrying the decode error, not `.alarmNotFound`: the
+    /// caller tells the user their data is corrupted (#864). The path must run
+    /// through the throwing fetch so the error gets logged and the persistence
+    /// lock arms — without this the snooze silently drops with no diagnostic
+    /// trail (issue #117).
+    func testHandleSnooze_corruptedAlarmStore_returnsAlarmLoadFailedAndArmsLock() {
         // Save an alarm so `valid UUID + missing key` isn't the failure mode,
         // then corrupt the persistence store under the coordinator's feet.
         let alarm = makeAlarm()
@@ -170,8 +171,12 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
 
         let outcome = resolveSnooze(userInfo: userInfo(for: alarm, snoozeCount: 0))
 
-        XCTAssertEqual(outcome, .alarmNotFound,
-                       "From a notification action there's no recovery UI, so collapse to alarmNotFound")
+        guard case let .alarmLoadFailed(error) = outcome else {
+            return XCTFail("a load failure must not read as a deleted alarm; got \(String(describing: outcome))")
+        }
+        guard case .decodeFailure? = (error as Error) as? AlarmRepository.RepositoryError else {
+            return XCTFail("the outcome must carry the decode error the alert names; got \(error)")
+        }
         XCTAssertTrue(alarmRepo.lastLoadFailed,
                       "The checked fetch must arm the persistence lock so a follow-up save can't clobber the corrupt blob")
     }

@@ -38,9 +38,16 @@ extension AppDelegate {
     /// is checked against ``AppBannerNotification``; anything that matches no
     /// banner keeps the pre-#842 verdict — a corrupt alarm, `.error`.
     ///
+    /// `invalidPayloadErrorID` tags the invalid-payload line, for a site that
+    /// does something about it a reader should be able to grep (#864).
+    ///
     /// Main-actor like the rest of `AppDelegate`, which is what
     /// ``AppLogger/emit(_:_:_:)`` requires.
-    static func routeNotification(_ request: UNNotificationRequest, site: String) -> NotificationRoute {
+    static func routeNotification(
+        _ request: UNNotificationRequest,
+        site: String,
+        invalidPayloadErrorID: String? = nil
+    ) -> NotificationRoute {
         let userInfo = request.content.userInfo
         if let payload = AlarmNotificationPayload(userInfo: userInfo) {
             return .alarm(payload)
@@ -53,7 +60,8 @@ extension AppDelegate {
         // carry the alarm UUID. The keys are enough to tell a schema drift
         // from a foreign notification.
         let keys = userInfo.keys.map { "\($0)" }.sorted().joined(separator: ", ")
-        AppLogger.emit(.appDelegate, .error, "\(site): invalid alarm payload, userInfo keys [\(keys)]")
+        let tag = invalidPayloadErrorID.map { "[\($0)] " } ?? ""
+        AppLogger.emit(.appDelegate, .error, "\(site): \(tag)invalid alarm payload, userInfo keys [\(keys)]")
         return .invalidAlarmPayload
     }
 
@@ -67,11 +75,23 @@ extension AppDelegate {
         /// The repository could not be read, so the alarm is real but the
         /// app cannot ring it.
         case loadFailed
+        /// The alarm resolved and its screen was asked for, but the audio
+        /// session refused to activate, so the app plays nothing and does not
+        /// vibrate either (#864).
+        case silent
     }
 
     /// Greps the line `willPresent` writes when it hands a real alarm's
     /// sound to the system because the stored alarms failed to decode.
     static let loadFailedSystemSoundErrorID = "NOTIF-860-LOAD-FAILED-SYSTEM-SOUND"
+
+    /// Greps the line `willPresent` writes when it hands a real alarm's
+    /// sound to the system because the audio session would not activate.
+    static let sessionFailedSystemSoundErrorID = "NOTIF-864-SESSION-FAILED-SYSTEM-SOUND"
+
+    /// Tags the invalid-payload line `willPresent` writes when it lets the
+    /// system play the notification sound for an undecodable alarm.
+    static let invalidPayloadSystemSoundErrorID = "NOTIF-864-INVALID-PAYLOAD-SYSTEM-SOUND"
 
     /// Everything `willPresent` decides. `startAlarm` runs for a decodable
     /// alarm, before the options are returned, and reports how it went.
@@ -82,31 +102,42 @@ extension AppDelegate {
     /// - alarm that failed to load: `[.banner, .sound, .list]` — the alarm is
     ///   real and the app cannot ring it, so the system plays the
     ///   notification sound rather than nothing at all (#860);
+    /// - alarm whose audio session failed: `[.banner, .sound, .list]`, for
+    ///   the same reason — the app is silent and does not vibrate (#864);
     /// - app banner: `[.banner, .sound, .list]` — it exists to be read;
-    /// - anything else: `[]`, as before #842. No audio either: the firing
-    ///   screen will never be presented, so nothing could stop it.
+    /// - anything else: `[.sound, .list]`. Only our own alarm notification
+    ///   with an undecodable payload lands here, so it is a real alarm. The
+    ///   app starts no audio of its own, because no firing screen will come
+    ///   to stop it; the system sound is one-shot and needs no stopping
+    ///   (#864). No banner: there is nothing to act on in it.
     static func foregroundPresentationOptions(
         for request: UNNotificationRequest,
         startAlarm: (AlarmNotificationPayload) -> ForegroundAlarmStart
     ) -> UNNotificationPresentationOptions {
-        switch routeNotification(request, site: "willPresent") {
+        let route = routeNotification(
+            request, site: "willPresent", invalidPayloadErrorID: invalidPayloadSystemSoundErrorID
+        )
+        switch route {
         case let .alarm(payload):
+            let reason: (errorID: String, cause: String)
             switch startAlarm(payload) {
             case .ringing, .notFound:
                 return []
             case .loadFailed:
-                let handle = logHandle(payload.alarmID)
-                AppLogger.emit(
-                    .appDelegate, .error,
-                    "willPresent: [\(loadFailedSystemSoundErrorID)] alarm \(handle) failed to load; "
-                        + "the system plays the notification sound instead"
-                )
-                return [.banner, .sound, .list]
+                reason = (loadFailedSystemSoundErrorID, "failed to load")
+            case .silent:
+                reason = (sessionFailedSystemSoundErrorID, "is silent: the audio session failed")
             }
+            AppLogger.emit(
+                .appDelegate, .error,
+                "willPresent: [\(reason.errorID)] alarm \(logHandle(payload.alarmID)) \(reason.cause); "
+                    + "the system plays the notification sound instead"
+            )
+            return [.banner, .sound, .list]
         case .appBanner:
             return [.banner, .sound, .list]
         case .invalidAlarmPayload:
-            return []
+            return [.sound, .list]
         }
     }
 

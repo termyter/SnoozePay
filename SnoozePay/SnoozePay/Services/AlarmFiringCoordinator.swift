@@ -26,6 +26,11 @@ final class AlarmFiringCoordinator {
         case invalidPayload
         /// Identifiers were valid but the alarm has been deleted from the repo.
         case alarmNotFound
+        /// The stored alarms could not be read, so whether the alarm exists
+        /// is unknown (#864). Not `.alarmNotFound`: the caller tells the user
+        /// their data is corrupted. `NSError` keeps the outcome `Equatable`;
+        /// `as?` still casts it back to the `RepositoryError` that was thrown.
+        case alarmLoadFailed(error: NSError)
         /// Balance was insufficient to cover the (possibly progressive) penalty.
         case insufficientFunds
         /// Charge succeeded and a new snooze notification was scheduled.
@@ -45,6 +50,10 @@ final class AlarmFiringCoordinator {
         /// don't silently lose the penalty (silent-failure-hunter HIGH on #132).
         case scheduleFailedAndRefundFailed(error: AlarmScheduler.SchedulingError)
     }
+
+    /// Greps the line written when a snooze is skipped because the stored
+    /// alarms failed to load.
+    static let snoozeLoadFailedErrorID = "SNOOZE-864-LOAD-FAILED"
 
     // MARK: - Dependencies
 
@@ -93,9 +102,9 @@ final class AlarmFiringCoordinator {
     /// which is the consistent representation for stats/auditing (mirrors the
     /// rollback pattern from StoreKitService dedup-mark in #72).
     ///
-    /// Synchronous early-exit branches (invalid payload, alarm missing,
-    /// insufficient funds) call `completion` inline before returning so the
-    /// caller sees a single resolution per invocation.
+    /// Synchronous early-exit branches (invalid payload, alarm missing or
+    /// failed to load, insufficient funds) call `completion` inline before
+    /// returning so the caller sees a single resolution per invocation.
     func handleSnooze(
         userInfo: [AnyHashable: Any],
         completion: ((SnoozeOutcome) -> Void)? = nil
@@ -114,11 +123,19 @@ final class AlarmFiringCoordinator {
             // "snooze didn't work" with no diagnostic trail (issue #117).
             alarm = try alarmRepository.fetchChecked(id: payload.alarmID)
         } catch {
+            // Its own outcome since #864: the catch used to report
+            // `.alarmNotFound`, so the caller logged a load failure as a
+            // deleted alarm and the user heard nothing about it.
             let errorDesc = String(describing: error)
+            let handle = String(payload.alarmID.uuidString.prefix(8))
+            let errorID = Self.snoozeLoadFailedErrorID
             AppLogger.coordinator.error(
-                "snooze: fetch failed for \(payload.alarmID, privacy: .private): \(errorDesc, privacy: .public)"
+                """
+                snooze: [\(errorID, privacy: .public)] alarm \(handle, privacy: .public) failed to load, \
+                snooze skipped: \(errorDesc, privacy: .public)
+                """
             )
-            completion?(.alarmNotFound)
+            completion?(.alarmLoadFailed(error: error as NSError))
             return
         }
         guard let alarm else {

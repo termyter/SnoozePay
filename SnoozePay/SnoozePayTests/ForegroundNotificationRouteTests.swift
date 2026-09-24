@@ -147,17 +147,21 @@ final class ForegroundNotificationRouteTests: XCTestCase {
 
     // MARK: - willPresent: alarms
 
-    func testMalformedAlarmPayload_isSuppressed_andLogsTheErrorLine() {
+    /// Only our own alarm notification reaches this branch, so it is a real
+    /// alarm: `[]` left it silent in the foreground. The system sound is
+    /// one-shot, so it needs no firing screen to stop it (#864).
+    func testMalformedAlarmPayload_playsTheSystemSound_andLogsTheTaggedErrorLine() {
         var userInfo = validAlarmUserInfo()
         userInfo[AlarmNotificationPayload.Key.snoozeMinutes] = 0 // out of range
 
         let result = present(request(identifier: UUID().uuidString, userInfo: userInfo))
 
-        XCTAssertEqual(result.options, [])
+        XCTAssertEqual(result.options, [.sound, .list])
         XCTAssertTrue(result.started.isEmpty, "a payload that fails to decode must not start audio")
         guard let line = result.lines.first(where: { $0.message.contains(Self.invalidPayloadMarker) }) else {
             return XCTFail("a corrupt alarm must still be reported; the sink saw \(messages(result.lines))")
         }
+        XCTAssertTrue(line.message.contains(AppDelegate.invalidPayloadSystemSoundErrorID), line.message)
         XCTAssertEqual(line.level, .error)
         XCTAssertEqual(line.category, .appDelegate)
         XCTAssertFalse(
@@ -171,7 +175,7 @@ final class ForegroundNotificationRouteTests: XCTestCase {
     func testUnrecognisedNotification_keepsTheInvalidAlarmVerdict() {
         let result = present(request(identifier: "something_else_\(UUID().uuidString)"))
 
-        XCTAssertEqual(result.options, [])
+        XCTAssertEqual(result.options, [.sound, .list])
         XCTAssertTrue(result.lines.contains { $0.level == .error && $0.message.contains(Self.invalidPayloadMarker) })
     }
 
@@ -203,22 +207,33 @@ final class ForegroundNotificationRouteTests: XCTestCase {
         XCTAssertTrue(result.lines.isEmpty, "the sink saw \(messages(result.lines))")
     }
 
-    /// The alarm is real but the stored alarms failed to decode, so the app
-    /// could not ring it. `[]` used to suppress the system sound as well, and
-    /// the alarm went off in total silence (#860).
-    func testAlarmThatFailedToLoad_isHandedToTheSystemSound_andLogsTheFallback() throws {
+    /// The alarm is real but the app could not ring it: the stored alarms
+    /// failed to decode (#860), or the audio session refused to activate
+    /// (#864). `[]` used to suppress the system sound as well, and the alarm
+    /// went off in total silence.
+    func testAlarmTheAppCannotRing_isHandedToTheSystemSound_andLogsTheFallback() throws {
+        let cases: [(AppDelegate.ForegroundAlarmStart, String)] = [
+            (.loadFailed, AppDelegate.loadFailedSystemSoundErrorID),
+            (.silent, AppDelegate.sessionFailedSystemSoundErrorID)
+        ]
+        for (start, errorID) in cases {
+            try assertHandedToTheSystemSound(start: start, errorID: errorID)
+        }
+    }
+
+    private func assertHandedToTheSystemSound(start: AppDelegate.ForegroundAlarmStart, errorID: String) throws {
         let userInfo = validAlarmUserInfo()
         let payload = try XCTUnwrap(AlarmNotificationPayload(userInfo: userInfo))
 
-        let result = present(request(identifier: UUID().uuidString, userInfo: userInfo), start: .loadFailed)
+        let result = present(request(identifier: UUID().uuidString, userInfo: userInfo), start: start)
 
-        XCTAssertEqual(result.started, [payload])
-        XCTAssertEqual(result.options, [.banner, .sound, .list])
+        XCTAssertEqual(result.started, [payload], "\(start)")
+        XCTAssertEqual(result.options, [.banner, .sound, .list], "\(start)")
         XCTAssertEqual(result.lines.count, 1, "exactly one fallback line; the sink saw \(messages(result.lines))")
         let line = try XCTUnwrap(result.lines.first)
         XCTAssertEqual(line.level, .error)
         XCTAssertEqual(line.category, .appDelegate)
-        XCTAssertTrue(line.message.contains(AppDelegate.loadFailedSystemSoundErrorID), line.message)
+        XCTAssertTrue(line.message.contains(errorID), line.message)
         XCTAssertTrue(
             line.message.contains(String(payload.alarmID.uuidString.prefix(8))),
             "the line must name the alarm by its 8-character handle: \(line.message)"
