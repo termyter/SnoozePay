@@ -7,8 +7,10 @@ import XCTest
 ///
 /// Item 3: a `present` refused by a host that is being presented or dismissed
 /// waited for the next activation, which a foreground app does not get. It is
-/// asked again when that transition ends. A refusal with no transition still
-/// waits (`AlarmFiringPresenterSwapGuardTests`, the direct-refusal test).
+/// asked again when that transition ends, one main-queue turn after it and
+/// `transitionRetryLimit` times at most, parked before the retry is scheduled.
+/// A refusal with no transition still waits
+/// (`AlarmFiringPresenterSwapGuardTests`, the direct-refusal test).
 ///
 /// Item 6 (FU-3): a swap over a firing screen still in a transition sent its
 /// `dismiss` mid-transition, which UIKit drops with its completion. It now
@@ -63,6 +65,8 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
     private var inTransition: [UIViewController] = []
     /// Closures waiting for a transition to end.
     private var held: [() -> Void] = []
+    /// Retries scheduled through the `whenTransitionEnds` seam.
+    private var scheduled = 0
     private var dismissed: [UIViewController] = []
     private var lines: [Line] = []
 
@@ -79,6 +83,7 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         hosts = []
         inTransition = []
         held = []
+        scheduled = 0
         dismissed = []
         lines = []
         super.tearDown()
@@ -101,8 +106,10 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
             guard let presenter, let alarm = byID[alarmID] else { return false }
             return presenter.present(alarm: alarm, snoozeCount: count)
         }
+        presenter.isInTransition = { [self] controller in self.inTransition.contains { $0 === controller } }
         presenter.whenTransitionEnds = { [self] controller, body in
             guard self.inTransition.contains(where: { $0 === controller }) else { return false }
+            self.scheduled += 1
             self.held.append(body)
             return true
         }
@@ -128,12 +135,18 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: body)
     }
 
-    private func endTransition() throws {
-        inTransition = []
+    /// Runs what waits for the transition, then the main-queue turn its
+    /// retry hops to. `clears == false` is UIKit still reporting a
+    /// transition when the retry arrives: a new one, or the same one.
+    private func endTransition(clears: Bool = true) throws {
+        if clears { inTransition = [] }
         let bodies = held
         held = []
         XCTAssertFalse(bodies.isEmpty, "test precondition: something has to wait for the transition")
-        recording { bodies.forEach { $0() } }
+        recording {
+            bodies.forEach { $0() }
+            drainMainQueue()
+        }
     }
 
     private func pending(_ alarm: Alarm, _ count: Int) -> AlarmFiringPresenter.PendingPresentation {
@@ -170,6 +183,101 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         XCTAssertTrue(screen.presentingViewController === host)
         XCTAssertEqual(screen.viewModel.snoozeCount, 1, "the retry keeps the count (#808)")
         XCTAssertTrue(presenter.pendingPresentations.isEmpty)
+    }
+
+    // MARK: - Item 3: the bound, and a completion UIKit runs at once
+
+    /// UIKit reports a transition on every retry: a new sheet each time, or
+    /// one that never clears. Each end schedules at most one retry, a turn
+    /// later, `transitionRetryLimit` in all. Then the record waits for the
+    /// activation, and the line says so.
+    func testDirect_whenTheTransitionNeverClears_retriesUpToTheLimitThenWaits() throws {
+        let limit = AlarmFiringPresenter.transitionRetryLimit
+        let alarm = Alarm()
+        let host = Host()
+        host.accepts = false
+        hosts = [host]
+        inTransition = [host]
+        let presenter = makePresenter(alarms: [alarm])
+
+        recording { XCTAssertFalse(presenter.present(alarm: alarm, snoozeCount: 1)) }
+        for _ in 0..<limit { try endTransition(clears: false) }
+
+        XCTAssertEqual(scheduled, limit, "one retry per refusal, up to the limit")
+        XCTAssertEqual(host.presentedScreens.count, 1 + limit, "the first ask and one per retry")
+        XCTAssertTrue(held.isEmpty, "past the limit nothing waits for the transition")
+        let refusals = lines.filter { $0.message.contains("keeping it pending") }.map(\.message)
+        XCTAssertEqual(refusals.count, 1 + limit, "\(lines.map(\.message))")
+        let retried = refusals.dropLast().allSatisfy { $0.contains("retrying once its transition ends") }
+        XCTAssertTrue(retried, "\(refusals)")
+        let last = try XCTUnwrap(refusals.last)
+        XCTAssertTrue(last.contains("waiting for the next activation"), "«\(last)»")
+        XCTAssertFalse(last.contains("retrying"), "«\(last)»")
+        XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 1)], "kept for the activation")
+
+        for _ in 0..<3 { drainMainQueue() }
+        XCTAssertEqual(host.presentedScreens.count, 1 + limit, "nothing else asks before the activation")
+        XCTAssertEqual(scheduled, limit)
+    }
+
+    /// UIKit may run the completion inside `animate(alongsideTransition:)`.
+    /// The record is parked by then and the retry comes a turn later, not
+    /// inside the call. A host that still refuses there cannot recurse: the
+    /// retries stay within the limit.
+    func testDirect_whenTheCompletionRunsInsideTheCall_theRecordIsParkedAndTheRetryWaitsATurn() throws {
+        for hostAcceptsTheRetry in [true, false] {
+            let path = hostAcceptsTheRetry ? "accepted on retry" : "refused on every retry"
+            let alarm = Alarm()
+            let host = Host()
+            host.accepts = false
+            hosts = [host]
+            inTransition = [host]
+            scheduled = 0
+            lines = []
+            let presenter = makePresenter(alarms: [alarm])
+            var parkedAtCompletion: [[AlarmFiringPresenter.PendingPresentation]] = []
+            var presentsAtCompletion: [Int] = []
+            presenter.whenTransitionEnds = { [self, weak presenter] controller, body in
+                guard self.inTransition.contains(where: { $0 === controller }) else { return false }
+                self.scheduled += 1
+                parkedAtCompletion.append(presenter?.pendingPresentations ?? [])
+                presentsAtCompletion.append(host.presentedScreens.count)
+                body()
+                XCTAssertEqual(host.presentedScreens.count, presentsAtCompletion.last, "\(path): asked inside the call")
+                return true
+            }
+            defer {
+                AudioService.shared.stopAlarmSound()
+                drainMainQueue()
+            }
+
+            recording { XCTAssertFalse(presenter.present(alarm: alarm, snoozeCount: 1), path) }
+
+            XCTAssertEqual(parkedAtCompletion, [[pending(alarm, 1)]], "\(path): parked before the retry was scheduled")
+            XCTAssertEqual(host.presentedScreens.count, 1, "\(path): no retry inside the completion")
+            let line = try XCTUnwrap(lines.first { $0.message.contains("keeping it pending") }, path)
+            XCTAssertTrue(line.message.contains("retrying once its transition ends"), "\(path): «\(line.message)»")
+
+            if hostAcceptsTheRetry {
+                host.accepts = true
+                inTransition = []
+            }
+            // One turn per retry: a drain leaves what its last turn enqueued.
+            recording { for _ in 0...AlarmFiringPresenter.transitionRetryLimit { drainMainQueue() } }
+
+            if hostAcceptsTheRetry {
+                XCTAssertEqual(host.presentedScreens.count, 2, "\(path): the retry comes on the next turn")
+                XCTAssertEqual(scheduled, 1, path)
+                XCTAssertTrue(presenter.pendingPresentations.isEmpty, path)
+            } else {
+                let limit = AlarmFiringPresenter.transitionRetryLimit
+                XCTAssertEqual(scheduled, limit, "\(path): bounded even when the completion runs at once")
+                XCTAssertEqual(host.presentedScreens.count, 1 + limit, path)
+                let last = try XCTUnwrap(lines.last { $0.message.contains("keeping it pending") }, path)
+                XCTAssertTrue(last.message.contains("waiting for the next activation"), "\(path): «\(last.message)»")
+                XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 1)], path)
+            }
+        }
     }
 
     // MARK: - Item 6: a swap over a screen in a transition
@@ -259,7 +367,11 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         let line = try XCTUnwrap(
             lines.first { $0.message.contains("no longer presents the previous screen") }, "\(lines.map(\.message))"
         )
-        XCTAssertEqual(line.level, .default)
+        XCTAssertEqual(line.level, .error, "a presenter that lost its screen is a broken invariant")
+        let staleHandle = AlarmFiringPresenter.PendingPresentation(on: stale).logHandle
+        XCTAssertTrue(line.message.contains("[\(staleHandle)]"), "names the stale screen: «\(line.message)»")
+        XCTAssertTrue(line.message.contains("(it presents nothing)"), "says what it holds: «\(line.message)»")
+        XCTAssertTrue(line.message.contains("\(type(of: formerPresenter))"), "«\(line.message)»")
         let screen = try XCTUnwrap(nextHost.presentedScreens.first as? ReadBackFiringScreen, "the swap stopped")
         XCTAssertEqual(screen.viewModel.alarm.id, alarm.id)
         XCTAssertTrue(presenter.pendingPresentations.isEmpty)

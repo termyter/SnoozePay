@@ -140,16 +140,23 @@ final class AlarmFiringPresenter {
     /// With no presenter (a firing screen that is a window's root, as in the
     /// UI-tour routes) the screen itself gets it, as before: that takes down
     /// only what it presented.
+    ///
+    /// The skip is an `.error`: a screen whose presenter no longer presents it
+    /// is a broken invariant. The line names the screen's alarm and what the
+    /// presenter holds instead, the two things a report needs to place it.
     static func dismissFromItsPresenter(_ staleScreen: UIViewController, completion: @escaping () -> Void) {
         guard let presenter = staleScreen.presentingViewController else {
             staleScreen.dismiss(animated: false, completion: completion)
             return
         }
         guard presenter.presentedViewController === staleScreen else {
+            let handle = (staleScreen as? AlarmFiringViewController).map { PendingPresentation(on: $0).logHandle }
+                ?? "a \(type(of: staleScreen))"
+            let holds = presenter.presentedViewController.map { "\(type(of: $0))" } ?? "nothing"
             AppLogger.emit(
-                .appDelegate, .default,
-                "firing-present: \(type(of: presenter)) no longer presents the previous screen"
-                    + " — not sending it the dismissal"
+                .appDelegate, .error,
+                "firing-present: \(type(of: presenter)) no longer presents the previous screen [\(handle)]"
+                    + " (it presents \(holds)) — not sending it the dismissal"
             )
             completion()
             return
@@ -157,21 +164,33 @@ final class AlarmFiringPresenter {
         presenter.dismiss(animated: false, completion: completion)
     }
 
-    /// Runs its closure once the UIKit transition the controller takes part in
-    /// has ended, answering `false` without running it when none is in flight
-    /// (#875). UIKit refuses a `present` on a controller in a transition and
-    /// drops a `dismiss` issued during one without running its completion, so
-    /// the retry for either waits for the end of that transition: the next
-    /// main-queue turn is still inside it, and the activation never comes
-    /// while the app stays foreground.
+    /// Whether the controller takes part in a UIKit transition: it has a
+    /// `transitionCoordinator`, which also answers for a controller whose
+    /// presented sheet is coming or going (#875). UIKit refuses a `present`
+    /// on such a controller and drops a `dismiss` issued during one without
+    /// running its completion, so the retry for either waits for the end of
+    /// that transition: the next main-queue turn is still inside it, and the
+    /// activation never comes while the app stays foreground.
     ///
-    /// `transitionCoordinator` also answers for a controller whose presented
-    /// sheet is coming or going. A seam because a unit test cannot stage a
-    /// live transition. A stand-in holds the closure for later, as UIKit
-    /// does, and must not run it inside the call.
+    /// Read before the record is parked, so the line can say whether a retry
+    /// follows; `whenTransitionEnds` then schedules it. A seam, like that one,
+    /// because a unit test cannot stage a live transition.
+    var isInTransition: (UIViewController) -> Bool = { $0.transitionCoordinator != nil }
+
+    /// Runs its closure once the controller's UIKit transition has ended,
+    /// answering `false` without running it when there is no coordinator
+    /// (#875). Decided by the coordinator's presence, not by `animate`'s
+    /// answer: UIKit documents that the completion may run even when
+    /// `animate(alongsideTransition:completion:)` returns NO.
+    ///
+    /// The closure may run inside the call (a stand-in may do that, and so
+    /// may UIKit). The presenter parks the record before calling, and the
+    /// closure only hops one main-queue turn, so neither order loses the
+    /// retry or recurses.
     var whenTransitionEnds: (UIViewController, @escaping () -> Void) -> Bool = { controller, body in
         guard let coordinator = controller.transitionCoordinator else { return false }
-        return coordinator.animate(alongsideTransition: nil) { _ in body() }
+        _ = coordinator.animate(alongsideTransition: nil) { _ in body() }
+        return true
     }
 
     /// Builds the firing screen `present(alarm:snoozeCount:)` mounts.
@@ -220,6 +239,17 @@ final class AlarmFiringPresenter {
     /// stops at the root gate, which reads the same locator; the bound covers
     /// a firing screen found on every turn and no host after every dismissal.
     static let hostGoneRetryLimit = 2
+
+    /// Retries scheduled for the end of a UIKit transition (a present it
+    /// refused, a swap it held), since the last screen that went up (#875).
+    /// Bounds a transition UIKit keeps reporting: each retry that meets it
+    /// again would otherwise schedule the next one, every time it ends.
+    /// Internal only so `AlarmFiringPresenter+Queue.swift` can reach it (#883).
+    var transitionRetries = 0
+
+    /// A sheet animating in or out ends within the first; the second covers
+    /// a transition that begins as the first ends.
+    static let transitionRetryLimit = 2
 
     /// Mounts the firing screen for `alarmID`, returning `false` when the screen
     /// is not up by the time it returns (the retry signal). Seam so the pending /
@@ -413,14 +443,18 @@ final class AlarmFiringPresenter {
     /// Holds the swap while `screen` is still coming in or going out, or a
     /// sheet on it is (#875, FU-3): a `dismiss` sent now is dropped with its
     /// completion, and the request would wait for an activation that a
-    /// foreground app does not get. The swap is asked again at the end.
+    /// foreground app does not get. The swap is asked again at the end, within
+    /// `transitionRetryLimit`; past it the request waits for the activation.
+    /// Parked before the retry is scheduled, which may run its hop at once.
     private func deferSwapPastTransition(of screen: AlarmFiringViewController, _ request: PendingPresentation) -> Bool {
-        guard retryAfterTransition(of: screen) else { return false }
+        guard let retrying = transitionRetry(for: screen) else { return false }
         armRetry(
-            request, level: .default,
+            request, level: retrying ? .default : .error,
             "firing-present: the screen of \(PendingPresentation(on: screen).logHandle)"
-                + " is in a transition — swapping it once that ends"
+                + " is in a transition — not dismissing it; keeping this one pending; "
+                + Self.transitionRetryNote(retrying: retrying)
         )
+        if retrying { retryAfterTransition(of: screen) }
         return true
     }
 
@@ -586,6 +620,7 @@ final class AlarmFiringPresenter {
                     clearPending(shownAs: shown)
                     staleSurvivalRetries = 0
                     hostGoneRetries = 0
+                    transitionRetries = 0
                 case .olderCount?:
                     armRetry(
                         retry, level: .default,
@@ -630,7 +665,8 @@ final class AlarmFiringPresenter {
     /// activation asks again. The audio is left alone for the same reason.
     /// A host in a transition (being presented or dismissed, the refusal a
     /// foreground app meets) is asked again when that ends (#875), since in
-    /// the foreground no activation comes. Other refusals wait for it.
+    /// the foreground no activation comes, `transitionRetryLimit` times since
+    /// the last screen went up. Other refusals wait for it.
     ///
     /// Up: `request`'s pending record goes (by `clearPending(shownAs:)`'s
     /// rules, not only on an exact match — #808). What is left in the queue is
@@ -656,13 +692,18 @@ final class AlarmFiringPresenter {
         guard firingVC.presentingViewController != nil else {
             let reason = AppDelegate.presentationRefusalReason(presenter: host)
                 ?? "\(type(of: host)) did not put it up"
-            let retry = retryAfterTransition(of: host) ? "; retrying once its transition ends" : ""
-            armRetry(request, "firing-present: \(reason)\(context) — keeping it pending\(retry)")
+            // Decided and parked before the retry is scheduled: its hop may
+            // run inside the call, and the line has to be true either way.
+            let retrying = transitionRetry(for: host)
+            let note = retrying.map { "; " + Self.transitionRetryNote(retrying: $0) } ?? ""
+            armRetry(request, "firing-present: \(reason)\(context) — keeping it pending\(note)")
+            if retrying == true { retryAfterTransition(of: host) }
             return false
         }
         clearPending(shownAs: request)
         staleSurvivalRetries = 0
         hostGoneRetries = 0
+        transitionRetries = 0
         if raiseParked {
             // Raised with records still queued behind it, as the flush raises
             // one: the next swaps it out, and that loss is an `.error` (#875).
