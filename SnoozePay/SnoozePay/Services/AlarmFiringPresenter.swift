@@ -98,6 +98,21 @@ final class AlarmFiringPresenter {
         AlarmFiringPresenter.locatedTopViewController()
     }
 
+    /// What the "fetch failed" miss in `present(alarmID:snoozeCount:)` does
+    /// besides its log line: put the data-corrupted alert up, through the
+    /// same `AppDelegate.reportAlarmDataCorrupted` the notification path uses,
+    /// which keeps an identical alert from stacking (#868). Before this, an
+    /// AlarmKit alarm whose stored alarms failed to decode ended with its audio
+    /// stopped, no screen, and nothing to say why.
+    ///
+    /// A seam for the same reason ``locateHost`` is one: the default reaches
+    /// the live application, and a test replaces it so no alert mounts on the
+    /// test host's window. With no `AppDelegate` behind the application the
+    /// default does nothing.
+    var reportDataCorrupted: (Error) -> Void = { error in
+        (UIApplication.shared.delegate as? AppDelegate)?.reportAlarmDataCorrupted(error)
+    }
+
     /// Takes the stale firing screen down before the replacement goes up:
     /// `dismiss(animated:completion:)` in production.
     ///
@@ -241,7 +256,8 @@ final class AlarmFiringPresenter {
     /// resolving its model from the repository. Used by the AlarmKit paths
     /// (#379) which only carry the id, and by the pending slot's `mount`. A
     /// missing / corrupt alarm is logged, and only the sound that alarm itself
-    /// owns is stopped: see `stopAudio(ifOwnedBy:_:)`.
+    /// owns is stopped: see `stopAudio(ifOwnedBy:_:)`. A corrupt one is also
+    /// reported through ``reportDataCorrupted`` (#868).
     ///
     /// Returns `true` when a firing screen was mounted (or the alarm was
     /// resolved-but-missing, a terminal outcome that must not be retried), and
@@ -256,6 +272,7 @@ final class AlarmFiringPresenter {
             alarm = try alarmRepository.fetchChecked(id: alarmID)
         } catch {
             stopAudio(ifOwnedBy: request, "fetch failed (\(String(describing: error)))")
+            reportDataCorrupted(error)
             return true
         }
         guard let alarm else {
