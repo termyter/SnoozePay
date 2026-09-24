@@ -249,7 +249,10 @@ private struct StatsMountedAppearance {
 /// The seam needs no injection — `StatisticsViewController.viewModel` and
 /// `StatisticsViewModel.onLoadError` are both internal and `bindViewModel()`
 /// runs in `viewDidLoad`, so `loadViewIfNeeded()` plus a call through the
-/// closure drives the real presentation path.
+/// closure drives the real presentation path. The tests that need the real
+/// `viewWillAppear` load itself to fail are the exception: they inject a view
+/// model on a ledger of their own through `init(viewModel:)`
+/// (`makeStatsOnOwnLedger`, #825).
 ///
 /// The appearance cycle **does** run: `makeKeyAndVisible()` triggers it, so
 /// `viewWillAppear` fires and with it a production `loadData()` against
@@ -259,7 +262,9 @@ private struct StatsMountedAppearance {
 /// corrupt `stored_transactions` into the standard defaults. The day something
 /// does, that load would raise a *real* alert carrying this suite's expected
 /// title and body, and both tests below would go green for the wrong reason —
-/// which is what the precondition in `makeMountedController()` turns red.
+/// which is what the preconditions in `makeMountedController()` turn red. Since
+/// #825 such an error is held rather than presented, so the precondition reads
+/// the held message as well as `presentedViewController`.
 @MainActor
 final class StatisticsLoadErrorAlertTests: XCTestCase {
 
@@ -313,6 +318,10 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         XCTAssertNil(
             controller.presentedViewController,
             "mounting already presented something — the assertions below would grade the wrong alert"
+        )
+        XCTAssertNil(
+            controller.pendingLoadErrorMessage,
+            "mounting already holds a load error — the real ledger is unreadable, and the assertions below would grade it"
         )
         return controller
     }
@@ -843,6 +852,40 @@ extension StatisticsLoadErrorAlertTests {
             lines.allSatisfy { !$0.contains(StatisticsViewModel.alertShownErrorID) },
             "nothing reached the screen; the sink saw \(lines)"
         )
+    }
+
+    /// The same cancelled appearance, but the ledger is STILL broken on the
+    /// next one. Pins the order in `viewWillAppear`: the held message is
+    /// superseded before the reload, so the reload's fresh error is the one
+    /// held. Superseding after the load would drop the fresh error as
+    /// "already waiting" and then throw away the stale one, and this
+    /// appearance would show nothing about a ledger that is still unreadable.
+    func testHeldErrorThenAStillBrokenReload_replacesTheHeldMessage() {
+        let (stats, _) = makeStatsOnOwnLedger(corrupt: true)
+        stats.loadViewIfNeeded()
+
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            stats.viewModel.onLoadError?(StatsStubLoadError(errorDescription: "stale"))
+            stats.beginAppearanceTransition(true, animated: false)
+        })
+
+        XCTAssertEqual(
+            stats.pendingLoadErrorMessage, Localized.text("wallet.error.load_failed"),
+            "the reload's own error must be the one held for this appearance"
+        )
+        XCTAssertEqual(
+            lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) },
+            [
+                StatisticsViewController.droppedAlertLine(
+                    reason: StatisticsViewController.supersededAlertReason, message: "stale"
+                )
+            ],
+            "only the stale message may be dropped; the sink saw \(lines)"
+        )
+        // Balances the transition. Off-window, so `viewDidAppear` keeps the
+        // fresh message held and logs nothing.
+        stats.endAppearanceTransition()
     }
 
     /// A held message whose screen is released before it appears still leaves
