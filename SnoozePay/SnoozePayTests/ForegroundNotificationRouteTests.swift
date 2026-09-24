@@ -42,13 +42,18 @@ final class ForegroundNotificationRouteTests: XCTestCase {
         return (result, own)
     }
 
-    /// `willPresent`, with a record of whether it started the alarm.
+    /// `willPresent`, with a record of whether it started the alarm. The stub
+    /// start reports `start`, as the in-app start would (#860).
     private func present(
-        _ request: UNNotificationRequest
+        _ request: UNNotificationRequest,
+        start: AppDelegate.ForegroundAlarmStart = .ringing
     ) -> (options: UNNotificationPresentationOptions, started: [AlarmNotificationPayload], lines: [Line]) {
         var started: [AlarmNotificationPayload] = []
         let outcome = capturingLines {
-            AppDelegate.foregroundPresentationOptions(for: request) { started.append($0) }
+            AppDelegate.foregroundPresentationOptions(for: request) { payload in
+                started.append(payload)
+                return start
+            }
         }
         return (outcome.result, started, outcome.lines)
     }
@@ -183,6 +188,45 @@ final class ForegroundNotificationRouteTests: XCTestCase {
         XCTAssertEqual(result.started, [payload])
         XCTAssertEqual(result.options, [], "the firing screen is the presentation; no system banner on top")
         XCTAssertTrue(result.lines.isEmpty, "the alarm path logs nothing here: \(messages(result.lines))")
+    }
+
+    /// A stale notification for a deleted alarm stays silent: there is no
+    /// alarm to ring, and the miss is logged where the lookup happens.
+    func testAlarmNotFound_isSuppressed_withoutAFallbackLine() throws {
+        let userInfo = validAlarmUserInfo()
+        let payload = try XCTUnwrap(AlarmNotificationPayload(userInfo: userInfo))
+
+        let result = present(request(identifier: UUID().uuidString, userInfo: userInfo), start: .notFound)
+
+        XCTAssertEqual(result.started, [payload])
+        XCTAssertEqual(result.options, [], "a deleted alarm must not ring through the system either")
+        XCTAssertTrue(result.lines.isEmpty, "the sink saw \(messages(result.lines))")
+    }
+
+    /// The alarm is real but the stored alarms failed to decode, so the app
+    /// could not ring it. `[]` used to suppress the system sound as well, and
+    /// the alarm went off in total silence (#860).
+    func testAlarmThatFailedToLoad_isHandedToTheSystemSound_andLogsTheFallback() throws {
+        let userInfo = validAlarmUserInfo()
+        let payload = try XCTUnwrap(AlarmNotificationPayload(userInfo: userInfo))
+
+        let result = present(request(identifier: UUID().uuidString, userInfo: userInfo), start: .loadFailed)
+
+        XCTAssertEqual(result.started, [payload])
+        XCTAssertEqual(result.options, [.banner, .sound, .list])
+        XCTAssertEqual(result.lines.count, 1, "exactly one fallback line; the sink saw \(messages(result.lines))")
+        let line = try XCTUnwrap(result.lines.first)
+        XCTAssertEqual(line.level, .error)
+        XCTAssertEqual(line.category, .appDelegate)
+        XCTAssertTrue(line.message.contains(AppDelegate.loadFailedSystemSoundErrorID), line.message)
+        XCTAssertTrue(
+            line.message.contains(String(payload.alarmID.uuidString.prefix(8))),
+            "the line must name the alarm by its 8-character handle: \(line.message)"
+        )
+        XCTAssertFalse(
+            line.message.contains(payload.alarmID.uuidString),
+            "the line is public; it must not carry the whole alarm UUID: \(line.message)"
+        )
     }
 
     // MARK: - didReceive: default-action tap

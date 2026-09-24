@@ -41,6 +41,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// suite, so it can save an alarm without writing `.standard` (#814).
     var alarmRepository: AlarmRepository = .shared
 
+    /// What `resolveFiringAlarm(for:)` does when the repository fails to
+    /// decode: put the data-corrupted alert on screen. Production never
+    /// reassigns it; a test that drives a decode failure replaces it, so the
+    /// alert never mounts on the test host's window (#860).
+    lazy var reportAlarmDataCorrupted: (Error) -> Void = { [unowned self] error in
+        self.presentAlarmDataCorruptedAlert(error: error)
+    }
+
+    /// Where `resolveFiringAlarm(for:)` landed. A miss keeps its reason, so
+    /// `willPresent` can let the system ring for a load failure but not for a
+    /// deleted alarm (#860).
+    fileprivate enum FiringAlarmLookup {
+        case found(Alarm)
+        case notFound
+        case loadFailed
+    }
+
     /// `true` when this process was started by the DEBUG screen router
     /// (`-uitour <screen>`). Always `false` in RELEASE — the whole tour is
     /// compiled out — so the launch-time behaviour a shipped build gets is
@@ -384,10 +401,21 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// was ringing, and the stop that followed left that screen silent under a
     /// stale banner. An alarm that does not resolve now never touches the sound.
     ///
+    /// Reports how the start went, so `willPresent` can hand the sound to the
+    /// system when the app could not ring (#860).
+    ///
     /// Internal rather than private so a test can drive it through
     /// `foregroundPresentationOptions(for:startAlarm:)`, as `willPresent` does.
-    func startForegroundAlarm(_ payload: AlarmNotificationPayload) {
-        guard let alarm = resolveFiringAlarm(for: payload) else { return }
+    func startForegroundAlarm(_ payload: AlarmNotificationPayload) -> ForegroundAlarmStart {
+        let alarm: Alarm
+        switch resolveFiringAlarm(for: payload) {
+        case let .found(found):
+            alarm = found
+        case .notFound:
+            return .notFound
+        case .loadFailed:
+            return .loadFailed
+        }
 
         // Start continuous alarm sound immediately (before presenting the VC).
         // Passing `alarmID` lets AudioService track ownership so a stacking
@@ -402,6 +430,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         )
 
         presentFiringScreen(for: alarm, snoozeCount: payload.snoozeCount)
+        return .ringing
     }
 
     // Called when user taps a notification action
@@ -529,7 +558,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// logged `.public`. Enough to tell the audio owner from the payload's
     /// alarm in a release log, where a `.private` UUID reads `<private>` on
     /// both sides. The convention `PendingPresentation.logHandle` uses.
-    private static func logHandle(_ alarmID: UUID?) -> String {
+    /// Internal so the `willPresent` fallback line (#860) uses it too.
+    static func logHandle(_ alarmID: UUID?) -> String {
         alarmID.map { String($0.uuidString.prefix(8)) } ?? "nobody"
     }
 
@@ -540,11 +570,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// Internal rather than private so a test can drive it through
     /// `handleDefaultTap(on:presentAlarm:stopAlarmSound:)`, as `didReceive` does.
     func presentAlarmFiringScreen(for payload: AlarmNotificationPayload) {
-        guard let alarm = resolveFiringAlarm(for: payload) else { return }
+        guard case let .found(alarm) = resolveFiringAlarm(for: payload) else { return }
         presentFiringScreen(for: alarm, snoozeCount: payload.snoozeCount)
     }
 
-    /// The alarm `payload` names, or `nil` after logging why there is none.
+    /// The alarm `payload` names, or why there is none, after logging it.
     ///
     /// On a miss it stops only the sound `payload`'s own alarm owns (#854).
     /// That sound has no screen coming that could stop it. Another alarm's
@@ -552,7 +582,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// still ringing: an unconditional stop silenced it with no dismiss, and
     /// the screen, which applies only notes about its own alarm (#851), went
     /// on showing its last banner over the silence.
-    private func resolveFiringAlarm(for payload: AlarmNotificationPayload) -> Alarm? {
+    private func resolveFiringAlarm(for payload: AlarmNotificationPayload) -> FiringAlarmLookup {
         let alarm: Alarm?
         do {
             // Use the checked variant so a corrupt UserDefaults blob surfaces
@@ -572,8 +602,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // fires with no sound of its own, no firing screen and no diagnostic.
             // The alert is presented from the same dispatch we'd use for the
             // firing screen so it reaches whichever VC is on top.
-            presentAlarmDataCorruptedAlert(error: error)
-            return nil
+            reportAlarmDataCorrupted(error)
+            return .loadFailed
         }
         guard let alarm else {
             // Audio this alarm owns has no screen coming that could stop it,
@@ -582,9 +612,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             let handle = Self.logHandle(payload.alarmID)
             AppLogger.appDelegate.error("alarm not found (repo returned nil for \(handle, privacy: .public))")
             stopAlarmSoundIfOwner(of: payload, action: "alarm not found")
-            return nil
+            return .notFound
         }
-        return alarm
+        return .found(alarm)
     }
 
     private func presentFiringScreen(for alarm: Alarm, snoozeCount: Int) {
