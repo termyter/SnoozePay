@@ -130,6 +130,17 @@ final class AlarmFiringPresenter {
     /// alarm. Weak for the same reason.
     private weak var screenBeingDismissed: AlarmFiringViewController?
 
+    /// Re-attempts spent on a stale screen that outlived its own dismissal,
+    /// since the last screen that went up. Bounds that retry: nothing in the
+    /// hierarchy guarantees each dismissal removes a layer, and a completion
+    /// that removes nothing would otherwise re-swap on every main-queue turn —
+    /// an `.error` line and a fresh screen each time, all night (#807 review).
+    private var staleSurvivalRetries = 0
+
+    /// Enough for a stale screen with one layer on it (dismissal takes the
+    /// layer, the retry takes the screen) plus one spare.
+    static let staleSurvivalRetryLimit = 2
+
     /// Mounts the firing screen for `alarmID`, returning `false` when the screen
     /// is not up by the time it returns (the retry signal). Seam so the pending /
     /// flush logic is unit-testable without standing up the VC hierarchy;
@@ -389,7 +400,12 @@ final class AlarmFiringPresenter {
                     retry,
                     "firing-present: the previous screen is still up after its dismissal — keeping this one pending"
                 )
-                attemptParkedPresentationSoon()
+                // Past the limit the request waits for the next activation
+                // instead; the line above has already said why.
+                if staleSurvivalRetries < Self.staleSurvivalRetryLimit {
+                    staleSurvivalRetries += 1
+                    attemptParkedPresentationSoon()
+                }
             } else if alreadyUp.viewModel.alarm.id == retry.alarmID {
                 // This alarm's screen is up — but a screen built at a lower
                 // snooze count prices the next snooze from an earlier step
@@ -409,6 +425,7 @@ final class AlarmFiringPresenter {
                     clearPending(shownAs: PendingPresentation(
                         alarmID: retry.alarmID, snoozeCount: alreadyUp.viewModel.snoozeCount
                     ))
+                    staleSurvivalRetries = 0
                 }
                 attemptParkedPresentationSoon()
             } else {
@@ -432,6 +449,7 @@ final class AlarmFiringPresenter {
             return
         }
         clearPending(shownAs: retry)
+        staleSurvivalRetries = 0
         attemptParkedPresentationSoon()
     }
 
@@ -443,8 +461,11 @@ final class AlarmFiringPresenter {
     /// background scene the activation can land before this completion and
     /// be parked itself. On the next main-queue turn, not inline, so the
     /// follow-up swap never dismisses a screen that is still being presented.
-    /// Called only from branches where a screen is up; the failure branches
-    /// leave the retry to the activation, so this cannot spin.
+    /// Called from the branches where a screen is up, and from the one failure
+    /// branch that can still settle on its own — a stale screen that outlived
+    /// its dismissal — which counts its calls against
+    /// `staleSurvivalRetryLimit`, so it cannot spin. The other failure
+    /// branches leave the retry to the activation.
     private func attemptParkedPresentationSoon() {
         guard pendingPresentation != nil else { return }
         DispatchQueue.main.async { [weak self] in

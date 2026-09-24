@@ -380,6 +380,41 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertNil(presenter.pendingPresentation)
     }
 
+    /// A dismissal that reports back without removing anything must not
+    /// re-swap on every main-queue turn: the stale-survival retry is bounded,
+    /// and past the bound the request stays pending for the activation.
+    func testSwap_whenTheDismissalNeverRemovesTheStaleScreen_retriesABoundedNumberOfTimes() {
+        let alarm = Alarm()
+        let stale = ReadBackFiringScreen(alarm: alarm)
+        top = stale
+        let presenter = makePresenter(alarms: [alarm])
+        presenter.dismissStaleScreen = { [self] screen, completion in
+            self.dismissed.append(screen)
+            completion()
+        }
+
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            presenter.requestPresentation(alarmID: alarm.id)
+            for _ in 0..<10 { self.runOneMainQueueTurn() }
+        })
+
+        let limit = AlarmFiringPresenter.staleSurvivalRetryLimit
+        XCTAssertEqual(
+            dismissed.count, 1 + limit,
+            "the retry spun instead of stopping at the bound: \(dismissed.count) dismissals"
+        )
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 0),
+            "past the bound the request must stay pending for the activation, not be dropped"
+        )
+        XCTAssertTrue(stale.presentedScreens.isEmpty, "stacked on the stale screen")
+        XCTAssertEqual(
+            lines.filter { $0.message.contains("still up after its dismissal") }.count, 1 + limit,
+            "one line per attempt, and no more: \(lines.map(\.message))"
+        )
+    }
+
     /// The production dismissal goes to the stale screen's presenter, which
     /// takes the screen down together with anything it presented.
     func testSwap_sendsTheDismissalToTheStaleScreensPresenter() {
