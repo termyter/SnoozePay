@@ -152,10 +152,14 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
 
         XCTAssertEqual(presenter.pendingPresentation, pending(alarm, 3), "a lower count overwrote the parked (A, 3)")
         XCTAssertEqual(lines.count, 2, "\(lines.map(\.message))")
-        for line in lines {
+        for (line, count) in zip(lines, [0, 1]) {
             XCTAssertTrue(line.message.contains("outranks it and stays"), "«\(line.message)»")
             XCTAssertTrue(line.message.contains("\(handle(alarm)) at snooze 3"), "«\(line.message)»")
-            XCTAssertFalse(line.message.contains("dropped"), "nothing was lost: «\(line.message)»")
+            XCTAssertTrue(
+                line.message.hasSuffix("[alarm \(handle(alarm)) at snooze \(count)]"
+                    + "; the pending alarm \(handle(alarm)) at snooze 3 outranks it and stays"),
+                "nothing was lost, so keeping (A, 3) is the only outcome: «\(line.message)»"
+            )
         }
         XCTAssertEqual(lines.first?.level, .default, "the splash park is a notice, and keeping a record adds no loss")
         XCTAssertEqual(lines.last?.level, .error, "the host miss keeps its own level: the alarm is still not up")
