@@ -1,15 +1,25 @@
 import XCTest
 import UserNotifications
+import os
 @testable import SnoozePay
 
-/// Spy that captures the `UNNotificationRequest`s StoreKitService posts when no
-/// UI screen is mounted (#45). Avoids touching the real
-/// `UNUserNotificationCenter` singleton in unit tests.
+/// Spy that captures the `UNNotificationRequest`s the app's banners post —
+/// StoreKitService's purchase feedback (#45) and the `AppDelegate` builders
+/// (#844). Avoids touching the real `UNUserNotificationCenter` singleton in
+/// unit tests.
 @MainActor
 final class LocalNotificationPosterSpy: LocalNotificationPosting {
     private(set) var requests: [UNNotificationRequest] = []
-    func add(_ request: UNNotificationRequest) {
+
+    /// Handed to every completion, the way the real center reports a refused
+    /// request (revoked permission). `nil` is a successful add.
+    var addError: Error?
+
+    /// Calls `completion` synchronously, so a line the caller logs from it
+    /// lands before `add` returns.
+    func add(_ request: UNNotificationRequest, completion: @escaping @MainActor @Sendable (Error?) -> Void) {
         requests.append(request)
+        completion(addError)
     }
 }
 
@@ -220,6 +230,49 @@ final class StoreKitServiceTests: XCTestCase {
 
         XCTAssertEqual(poster.requests.count, 1)
         XCTAssertEqual(poster.requests.first?.content.body, "Покупка отменена и возвращена.")
+    }
+
+    /// The center refusing the feedback banner (revoked permission) used to
+    /// lose the feedback without a line (#844). It now leaves one `.fault` in
+    /// the StoreKit category, carrying the center's reason.
+    func testFeedbackBanner_refusedAdd_logsAFault() {
+        let poster = LocalNotificationPosterSpy()
+        poster.addError = NSError(
+            domain: "UNErrorDomain", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed"]
+        )
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        let faults = storeKitFaults { service.postPurchaseCompleted(149) }
+
+        XCTAssertEqual(poster.requests.count, 1, "precondition: the banner reached the poster")
+        XCTAssertEqual(faults, ["deferred purchase feedback banner failed: Notifications are not allowed"])
+    }
+
+    /// The other half, so the test above cannot pass on a `.fault` written
+    /// whatever the outcome.
+    func testFeedbackBanner_acceptedAdd_logsNoFault() {
+        let poster = LocalNotificationPosterSpy()
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: poster, defaults: defaults)
+
+        let faults = storeKitFaults { service.postPurchaseCompleted(149) }
+
+        XCTAssertEqual(poster.requests.count, 1, "precondition: the banner reached the poster")
+        XCTAssertEqual(faults, [])
+    }
+
+    /// The StoreKit `.fault` lines `body` writes through `AppLogger.emit`. The
+    /// spy completes synchronously, so the window needs no wait.
+    private func storeKitFaults(_ body: () -> Void) -> [String] {
+        var faults: [String] = []
+        AppLogger.withTestSink({ category, level, message in
+            if category == .storeKit, level == .fault { faults.append(message) }
+        }, perform: body)
+        return faults
     }
 
     /// begin/end subscriber tracking is balanced and clamps at zero so a stray

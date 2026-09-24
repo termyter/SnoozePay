@@ -1,19 +1,23 @@
 import Foundation
+import UserNotifications
 
 /// The local notifications this app posts that are NOT alarms: banners that
 /// carry no ``AlarmNotificationPayload`` and exist to be read (#842).
 ///
-/// The raw value is the request-identifier prefix. Each builder mints its
-/// identifier through ``makeIdentifier()``, and the notification delegate
-/// recognises a banner through ``init(identifier:)``
+/// The raw value is the request-identifier prefix. Every builder posts through
+/// `LocalNotificationPosting.postAppBanner(_:content:trigger:onFailure:)`,
+/// which mints the identifier with ``makeIdentifier()``. The notification
+/// delegate recognises a banner through ``init(identifier:)``
 /// (`AppDelegate.routeNotification(_:site:)`), so both sides read the same list.
 ///
-/// ⚠️ That is a convention, not something the compiler enforces. A new banner
-/// posted with a literal identifier still compiles, and then fails exactly the
-/// way all four did before #842: `willPresent` suppresses it in the foreground
-/// (`[]`), a tap on it stops a ringing alarm, and the only trace is an
-/// `invalid alarm payload` `.error` line pointing at the alarm path. Add the
-/// case here and build the identifier with ``makeIdentifier()``.
+/// ⚠️ The compiler does not enforce that. A new banner posted with a literal
+/// identifier still compiles, and then fails exactly the way all four did
+/// before #842: `willPresent` suppresses it in the foreground (`[]`), a tap on
+/// it stops a ringing alarm, and the only trace is an `invalid alarm payload`
+/// `.error` line pointing at the alarm path. `BannerIdentifierSourceScanTests`
+/// holds the line instead (#844): it fails on any `UNNotificationRequest` in
+/// app code whose identifier is not minted by ``makeIdentifier()``. Add the
+/// case here and post through `postAppBanner`.
 ///
 /// The strings are the ones the builders used before #842, kept verbatim: a
 /// banner scheduled by the previous build and delivered after an update still
@@ -49,5 +53,62 @@ enum AppBannerNotification: String, CaseIterable {
             return nil
         }
         self = match
+    }
+}
+
+/// Minimal seam for posting a local notification, so a test can see the
+/// request a banner builder hands over without touching the process-wide
+/// `UNUserNotificationCenter` singleton. Production uses
+/// `UNUserNotificationCenter.current()`; tests inject `LocalNotificationPosterSpy`.
+/// Introduced for the deferred-purchase fallback (#45); the `AppDelegate`
+/// banners post through it too since #844.
+@MainActor
+protocol LocalNotificationPosting {
+    /// Adds `request`, then calls `completion` on the main actor with the error
+    /// the notification center reported, or `nil`.
+    func add(_ request: UNNotificationRequest, completion: @escaping @MainActor @Sendable (Error?) -> Void)
+}
+
+extension UNUserNotificationCenter: LocalNotificationPosting {
+    /// The center calls back on a queue of its own. This hops to the main
+    /// actor, because the logger's test-visible `emit` seam is main-thread
+    /// only, and a failure line written through it is one a test can read back.
+    ///
+    /// ⚠️ Known gap: no test covers this method. Every test injects
+    /// `LocalNotificationPosterSpy`, and reaching this code would take the real
+    /// center, which a unit test cannot make refuse a request. Delete the
+    /// `Task` line, or skip `completion` on some path, and all four banners'
+    /// `.fault` lines disappear in production while the suite stays green.
+    /// Keep this body as small as it is.
+    nonisolated func add(
+        _ request: UNNotificationRequest,
+        completion: @escaping @MainActor @Sendable (Error?) -> Void
+    ) {
+        add(request, withCompletionHandler: { error in
+            Task { @MainActor in completion(error) }
+        })
+    }
+}
+
+extension LocalNotificationPosting {
+    /// The one place app code builds a `UNNotificationRequest` (#844). The
+    /// identifier is minted from `banner`, so `willPresent` shows the banner in
+    /// the foreground and a tap on it leaves a ringing alarm alone (#842).
+    /// `onFailure` runs on the main actor when the center refuses the request,
+    /// usually because notification permission was revoked.
+    func postAppBanner(
+        _ banner: AppBannerNotification,
+        content: UNNotificationContent,
+        trigger: UNNotificationTrigger?,
+        onFailure: @escaping @MainActor @Sendable (Error) -> Void
+    ) {
+        let request = UNNotificationRequest(
+            identifier: banner.makeIdentifier(),
+            content: content,
+            trigger: trigger
+        )
+        add(request) { error in
+            if let error { onFailure(error) }
+        }
     }
 }
