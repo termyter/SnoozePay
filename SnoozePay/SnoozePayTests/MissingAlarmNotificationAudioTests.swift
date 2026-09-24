@@ -14,7 +14,9 @@ import XCTest
 ///
 /// Driven through the same seams the delegate callbacks use:
 /// `foregroundPresentationOptions(for:startAlarm:)` for `willPresent` and
-/// `handleDefaultTap(on:presentAlarm:stopAlarmSound:)` for a default tap.
+/// `handleDefaultTap(on:presentAlarm:stopAlarmSound:)` for a default tap. Each
+/// test builds its own `AppDelegate` over a repository on its own defaults
+/// suite, so saving an alarm never writes `.standard` (#814).
 @MainActor
 final class MissingAlarmNotificationAudioTests: XCTestCase {
 
@@ -23,8 +25,40 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
     /// what this pins.
     private static let toneSoundID = "nonexistent_test_sound"
 
+    /// `repository.save` must never reach AlarmKit or the notification center.
+    private final class NoopScheduler: AlarmScheduling {
+        func schedule(
+            _ alarm: Alarm,
+            completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
+        ) {
+            completion?(.success(()))
+        }
+        func cancel(_ alarmID: UUID) {}
+    }
+
+    /// A host that accepts the firing screen the way UIKit does for the
+    /// presenter's read-back: by wiring the screen's `presentingViewController`.
+    private final class RecordingHost: UIViewController {
+        private(set) var presentedScreens: [UIViewController] = []
+
+        override func present(_ screen: UIViewController, animated flag: Bool, completion: (() -> Void)?) {
+            presentedScreens.append(screen)
+            (screen as? ReadBackFiringScreen)?.wiredPresenter = self
+        }
+    }
+
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+    private var repository: AlarmRepository!
+    private var delegate: AppDelegate!
+
     override func setUp() {
         super.setUp()
+        suiteName = "test.missingAlarmAudio.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+        repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
+        delegate = AppDelegate()
+        delegate.alarmRepository = repository
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
     }
@@ -32,11 +66,14 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
     override func tearDown() {
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
+        delegate = nil
+        repository = nil
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
         super.tearDown()
     }
 
     func testWillPresent_forAMissingAlarm_leavesAnotherAlarmsRingingScreenRinging() throws {
-        let appDelegate = try appDelegate()
         let ringingAlarm = Alarm(soundID: Self.toneSoundID)
         var screen: AlarmFiringViewController? = makeRingingScreen(for: ringingAlarm)
         // A loaded firing screen must not outlive the test (the #846 lesson):
@@ -52,12 +89,9 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         assertRinging(ringingAlarm, banner: banner, "test precondition")
 
         let missingID = UUID()
-        XCTAssertNil(
-            try AlarmRepository.shared.fetchChecked(id: missingID),
-            "test precondition: the notification's alarm must be missing from the repository"
-        )
+        try assertAbsentFromRepository(missingID)
         let options = AppDelegate.foregroundPresentationOptions(for: request(forAlarm: missingID)) {
-            appDelegate.startForegroundAlarm($0)
+            self.delegate.startForegroundAlarm($0)
         }
         drainMainQueue()
 
@@ -66,7 +100,6 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
     }
 
     func testDefaultTap_onAMissingAlarm_leavesAnotherAlarmsRingingScreenRinging() throws {
-        let appDelegate = try appDelegate()
         let ringingAlarm = Alarm(soundID: Self.toneSoundID)
         var screen: AlarmFiringViewController? = makeRingingScreen(for: ringingAlarm)
         defer {
@@ -78,9 +111,11 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         let banner = try XCTUnwrap(screen?.audioWarningBanner)
         assertRinging(ringingAlarm, banner: banner, "test precondition")
 
+        let missingID = UUID()
+        try assertAbsentFromRepository(missingID)
         AppDelegate.handleDefaultTap(
-            on: request(forAlarm: UUID()),
-            presentAlarm: { appDelegate.presentAlarmFiringScreen(for: $0) },
+            on: request(forAlarm: missingID),
+            presentAlarm: { self.delegate.presentAlarmFiringScreen(for: $0) },
             stopAlarmSound: { XCTFail("a decodable alarm payload took the invalid-payload branch") }
         )
         drainMainQueue()
@@ -92,15 +127,15 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
     /// it was for: sound the missing alarm itself owns has no screen coming
     /// that could ever stop it.
     func testDefaultTap_onAMissingAlarm_stillStopsTheSoundThatAlarmOwns() throws {
-        let appDelegate = try appDelegate()
         let missingID = UUID()
+        try assertAbsentFromRepository(missingID)
         AudioService.shared.startAlarmSound(soundID: Self.toneSoundID, alarmID: missingID)
         XCTAssertTrue(AudioService.shared.isPlaying, "test precondition: the missing alarm's sound has to be audible")
         XCTAssertEqual(AudioService.shared.currentAlarmID, missingID, "test precondition")
 
         AppDelegate.handleDefaultTap(
             on: request(forAlarm: missingID),
-            presentAlarm: { appDelegate.presentAlarmFiringScreen(for: $0) },
+            presentAlarm: { self.delegate.presentAlarmFiringScreen(for: $0) },
             stopAlarmSound: { XCTFail("a decodable alarm payload took the invalid-payload branch") }
         )
         drainMainQueue()
@@ -109,10 +144,70 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         XCTAssertNil(AudioService.shared.currentAlarmID)
     }
 
+    /// Every foreground alarm now resolves before its sound starts. A resolve
+    /// that failed for a real alarm would silence every alarm the app rings
+    /// in the foreground, and the three tests above would stay green.
+    func testWillPresent_forAnAlarmInTheRepository_ringsIt_andAsksForItsScreen() throws {
+        let alarm = Alarm(soundID: Self.toneSoundID, enabled: false)
+        XCTAssertTrue(repository.save(alarm), "test precondition: the alarm has to be in the repository")
+        XCTAssertEqual(try repository.fetchChecked(id: alarm.id)?.id, alarm.id, "test precondition")
+
+        let presenter = AlarmFiringPresenter.shared
+        let originalLocateHost = presenter.locateHost
+        let originalIsRootReady = presenter.isRootReady
+        let originalMakeFiringScreen = presenter.makeFiringScreen
+        var host: RecordingHost? = RecordingHost()
+        presenter.locateHost = { [weak host] in
+            guard let host else { return .failure(.noHostingWindow) }
+            return .success(host)
+        }
+        presenter.isRootReady = { true }
+        presenter.makeFiringScreen = { ReadBackFiringScreen(alarm: $0, snoozeCount: $1) }
+        // The shared presenter outlives this test: restore every seam, and
+        // take down anything it put up the way #846 does, before the next one.
+        defer {
+            presenter.locateHost = originalLocateHost
+            presenter.isRootReady = originalIsRootReady
+            presenter.makeFiringScreen = originalMakeFiringScreen
+            for screen in host?.presentedScreens ?? [] where screen.isViewLoaded {
+                screen.viewDidDisappear(false)
+            }
+            host = nil
+            repository.delete(id: alarm.id)
+            AudioService.shared.stopAlarmSound()
+            drainMainQueue()
+        }
+
+        let options = AppDelegate.foregroundPresentationOptions(for: request(forAlarm: alarm.id)) {
+            self.delegate.startForegroundAlarm($0)
+        }
+        // The present hops to main.
+        drainMainQueue()
+
+        XCTAssertEqual(options, [])
+        XCTAssertEqual(AudioService.shared.currentAlarmID, alarm.id, "the found alarm did not take the sound")
+        XCTAssertEqual(AudioService.shared.state, .playing, "the found alarm is not ringing")
+        let presented = host?.presentedScreens.compactMap { $0 as? AlarmFiringViewController } ?? []
+        XCTAssertEqual(
+            presented.map(\.viewModel.alarm.id), [alarm.id],
+            "the host was not asked for exactly one firing screen of the found alarm"
+        )
+        XCTAssertNotEqual(
+            presenter.pendingPresentation?.alarmID, alarm.id,
+            "the screen read back as up, yet the alarm is still parked for a retry"
+        )
+    }
+
     // MARK: - Helpers
 
-    private func appDelegate() throws -> AppDelegate {
-        try XCTUnwrap(UIApplication.shared.delegate as? AppDelegate, "the test host runs the app's delegate")
+    private func assertAbsentFromRepository(
+        _ alarmID: UUID, file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        XCTAssertNil(
+            try repository.fetchChecked(id: alarmID),
+            "test precondition: the notification's alarm must be missing from the repository",
+            file: file, line: line
+        )
     }
 
     /// A firing screen on the notification path: `viewDidLoad` starts
