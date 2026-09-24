@@ -2918,13 +2918,13 @@
       }
     },
     "onboarding.deposit_option.popular_caps" : {
-      "comment" : "Onboarding step 3: caps tag on the recommended deposit preset.",
+      "comment" : "Onboarding step 3: caps tag on the recommended deposit preset. Store it in sentence case: the call site upper-cases it (the _caps rule, see Localized.swift).",
       "extractionState" : "manual",
       "localizations" : {
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ПОПУЛЯРНО"
+            "value" : "Популярно"
           }
         }
       }

@@ -69,9 +69,9 @@ import os
 /// - Capitals are presentation, like the caps font and kerning set right next
 ///   to them. The shared caps components already treat them so —
 ///   `SectionHeaderView`, `SPInput` and `PermissionCardView.capsLabel`
-///   upper-case whatever they are handed. They do it with a bare
-///   `.uppercased()`, though, not with the locale below: `capsLabel`, which
-///   renders `grant_caps` and `unavailable_caps`, is tracked in #821.
+///   upper-case whatever they are handed. `capsLabel`, which renders
+///   `grant_caps` and `unavailable_caps`, uses the locale below since #821;
+///   `SectionHeaderView` and `SPInput` still call a bare `.uppercased()`.
 /// - A translator sees an ordinary word and needs no rule about the suffix; in
 ///   a language where capitals carry meaning, shouting it in the catalogue
 ///   loses that information for good.
@@ -89,8 +89,9 @@ import os
 /// 18 of 22 at the time of #793, with `create_alarm.penalty.caps`,
 /// `create_alarm.snooze.caps`, `firing.snooze.caps` and
 /// `wallet.history.summary.caps` the sentence-case exceptions. Whether that
-/// family follows this rule is undecided. Known `_caps` exception:
-/// `onboarding.deposit_option.popular_caps`, still stored capped (#821).
+/// family follows this rule is undecided. Every `_caps` key follows it since
+/// #821, which moved `onboarding.deposit_option.popular_caps` — the last one
+/// stored capped — to sentence case.
 ///
 /// # Plurals
 ///

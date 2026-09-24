@@ -36,12 +36,18 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
 
     /// `onboarding.page3.option1_body` is absent on purpose: it takes an
     /// argument and is pinned by `testFirstPresetKeepsTheAmountItInterpolates`.
+    ///
+    /// One row is not the pre-migration literal: `popular_caps` held
+    /// «ПОПУЛЯРНО» until #821 moved it to sentence case under the `_caps` rule
+    /// (see `Localized`). The screen still shows «ПОПУЛЯРНО» — that is pinned
+    /// by `testDepositPageRendersPresetCopyRatherThanKeys`; this row pins the
+    /// stored word.
     private static let copyBeforeMigration: [String: String] = [
         "common.button.done": "Готово",
         "onboarding.button.later": "Позже — попробовать без баланса",
         "onboarding.button.next": "Дальше",
         "onboarding.button.skip": "Пропустить",
-        "onboarding.deposit_option.popular_caps": "ПОПУЛЯРНО",
+        "onboarding.deposit_option.popular_caps": "Популярно",
         "onboarding.page3.option1_title": "Попробовать",
         "onboarding.page3.option2_body": "≈ 10 откладываний · хватит на 2 недели",
         "onboarding.page3.option2_title": "Серьёзно",
@@ -118,11 +124,23 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
         for expected in [
             Localized.text("onboarding.page3.option1_title"),
             Localized.text("onboarding.page3.option2_title"),
-            Localized.text("onboarding.page3.option3_title"),
-            Localized.text("onboarding.deposit_option.popular_caps")
+            Localized.text("onboarding.page3.option3_title")
         ] {
             XCTAssertTrue(rendered.contains(expected), "the deposit page never renders «\(expected)»")
         }
+        // The screen literal, not `Localized.text(key)`. Until #821 the key was
+        // stored already capped and the view upper-cased nothing, so the old
+        // right-hand side re-read the entry the label did and would have matched
+        // a tag that lost its caps (the #665 class). Since #821 the entry holds
+        // «Популярно» and `OnboardingDepositOptionView` upper-cases it with
+        // `AppLocale.display`; drop that call and the label reads the
+        // sentence-case entry, which this literal does not match — red. The
+        // literal is also independent of the stored word and of the storage rule
+        // itself; the word table above pins the stored value.
+        XCTAssertTrue(
+            rendered.contains("ПОПУЛЯРНО"),
+            "the recommended deposit preset lost its caps tag: \(rendered)"
+        )
     }
 
     /// `SnoozePayUITests/OnboardingFlowUITests` reaches these two by their
@@ -167,7 +185,8 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
     /// are applied directly instead of hoping the live screen lands on them.
     ///
     /// The expectations are upper-cased because the *view* upper-cases:
-    /// `PermissionCardView.capsLabel(text:color:)` renders `text.uppercased()`,
+    /// `PermissionCardView.capsLabel(text:color:)` renders
+    /// `text.uppercased(with: AppLocale.display)` (locale-explicit since #821),
     /// so the catalogue keeps «Дать» and the screen shows «ДАТЬ». Asserting on
     /// the catalogue value verbatim is what made this test red on the first
     /// CI run. Do not "fix" it by upper-casing the catalogue entry: the caps

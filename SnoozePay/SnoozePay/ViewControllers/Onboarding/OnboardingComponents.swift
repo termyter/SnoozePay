@@ -259,7 +259,10 @@ final class OnboardingDepositOptionView: UIControl {
         popularLabel.translatesAutoresizingMaskIntoConstraints = false
         if option.isPopular {
             popularLabel.attributedText = NSAttributedString(
-                string: Localized.text("onboarding.deposit_option.popular_caps"),
+                // Stored sentence-case; the caps face is presentation (see `Localized`,
+                // «`_caps` keys»).
+                string: Localized.text("onboarding.deposit_option.popular_caps")
+                    .uppercased(with: AppLocale.display),
                 attributes: [
                     .font: AppFonts.sans(.bold, 10),
                     .kern: 10 * 0.12,
