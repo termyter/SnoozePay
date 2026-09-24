@@ -29,9 +29,12 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     private var suiteName: String!
     private var defaults: UserDefaults!
     private var wallet: BalanceService!
+    /// Fails the test if it moved the host's real `UserDefaults.standard` (#830).
+    private var domainGuard: AppDefaultsDomainGuard!
 
     override func setUp() {
         super.setUp()
+        domainGuard = AppDefaultsDomainGuard()
         suiteName = "test.firing.vm.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)!
         wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
@@ -42,6 +45,8 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         wallet = nil
         defaults = nil
         suiteName = nil
+        domainGuard.assertUntouched()
+        domainGuard = nil
         super.tearDown()
     }
 

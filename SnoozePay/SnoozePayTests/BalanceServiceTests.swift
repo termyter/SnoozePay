@@ -627,9 +627,14 @@ final class AlarmFiringViewModelTests: XCTestCase {
     private var suiteName: String!
     private var defaults: UserDefaults!
     private var wallet: BalanceService!
+    /// Fails the test if it moved the host's real `UserDefaults.standard`
+    /// (#830). The `testPenaltyFor*` tests still build the view model on its
+    /// `.shared` defaults; they only read, and this is what keeps it so.
+    private var domainGuard: AppDefaultsDomainGuard!
 
     override func setUp() {
         super.setUp()
+        domainGuard = AppDefaultsDomainGuard()
         suiteName = "test.firing.vm.edge.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)!
         wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
@@ -640,6 +645,8 @@ final class AlarmFiringViewModelTests: XCTestCase {
         wallet = nil
         defaults = nil
         suiteName = nil
+        domainGuard.assertUntouched()
+        domainGuard = nil
         super.tearDown()
     }
 
@@ -755,9 +762,12 @@ final class CreateAlarmViewModelTests: XCTestCase {
     /// `.last` of whatever alarms earlier tests had left there.
     private var suiteName: String!
     private var defaults: UserDefaults!
+    /// Fails the test if it moved the host's real `UserDefaults.standard` (#830).
+    private var domainGuard: AppDefaultsDomainGuard!
 
     override func setUp() {
         super.setUp()
+        domainGuard = AppDefaultsDomainGuard()
         suiteName = "test.createAlarm.vm.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)!
     }
@@ -766,6 +776,8 @@ final class CreateAlarmViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         suiteName = nil
+        domainGuard.assertUntouched()
+        domainGuard = nil
         super.tearDown()
     }
 
