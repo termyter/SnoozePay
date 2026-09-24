@@ -344,7 +344,7 @@ final class AlarmFiringPresenter {
         // that answer: a present UIKit declined (the top still being dismissed
         // or presented, a detached host) lost it with only UIKit's console
         // warning behind (#833). Same read-back as the swap's completion.
-        return presentReadingBack(firingVC, on: topVC, request: request, context: "")
+        return presentReadingBack(firingVC, on: topVC, request: request, context: "", raiseParked: false)
     }
 
     /// Second half of the swap above: put `firingVC` up now that the stale
@@ -441,7 +441,9 @@ final class AlarmFiringPresenter {
             return
         }
 
-        presentReadingBack(firingVC, on: top, request: retry, context: " after dismissing the previous screen")
+        presentReadingBack(
+            firingVC, on: top, request: retry, context: " after dismissing the previous screen", raiseParked: true
+        )
     }
 
     /// Presents `firingVC` on `host` and answers whether it is up, settling the
@@ -458,13 +460,21 @@ final class AlarmFiringPresenter {
     /// activation asks again. The audio is left alone for the same reason.
     ///
     /// Up: `request`'s pending record goes (by `clearPending(shownAs:)`'s
-    /// rules, not only on an exact match — #808), and whatever else is parked
-    /// is re-attempted on the next main-queue turn.
+    /// rules, not only on an exact match — #808). What is left in the slot is
+    /// re-attempted on the next main-queue turn when it is this alarm at a
+    /// higher count, or when `raiseParked` says the slot is newer than this
+    /// screen. That holds for the swap, whose completion runs after a request
+    /// parked during its dismissal. It does not for the direct path: nothing
+    /// was mid-swap, so the slot holds an alarm older than the one that just
+    /// went up, and raising it would swap the fresh screen out — its sound
+    /// stopped on the way down — for the older one: oldest wins, against
+    /// `armRetry`'s newest wins. That record waits for the next activation.
     ///
     /// `context` is spliced into the refusal line to say which path declined.
     @discardableResult
     private func presentReadingBack(
-        _ firingVC: UIViewController, on host: UIViewController, request: PendingPresentation, context: String
+        _ firingVC: UIViewController, on host: UIViewController, request: PendingPresentation,
+        context: String, raiseParked: Bool
     ) -> Bool {
         host.present(firingVC, animated: false)
         guard firingVC.presentingViewController != nil else {
@@ -475,7 +485,9 @@ final class AlarmFiringPresenter {
         }
         clearPending(shownAs: request)
         staleSurvivalRetries = 0
-        attemptParkedPresentationSoon()
+        if raiseParked || pendingAlarmID == request.alarmID {
+            attemptParkedPresentationSoon()
+        }
         return true
     }
 
@@ -487,7 +499,8 @@ final class AlarmFiringPresenter {
     /// background scene the activation can land before this completion and
     /// be parked itself. On the next main-queue turn, not inline, so the
     /// follow-up swap never dismisses a screen that is still being presented.
-    /// Called from the branches where a screen is up, and from the one failure
+    /// Called from the branches where a screen is up (on the direct path only
+    /// for this alarm at a higher count, #833), and from the one failure
     /// branch that can still settle on its own — a stale screen that outlived
     /// its dismissal — which counts its calls against
     /// `staleSurvivalRetryLimit`, so it cannot spin. The other failure

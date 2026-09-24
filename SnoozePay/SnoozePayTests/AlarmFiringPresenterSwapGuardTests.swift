@@ -316,7 +316,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertEqual(host.presentedScreens.count, 1)
         XCTAssertNil(presenter.pendingPresentation, "this alarm's screen is up; a pending record re-raises it")
         let line = lines.first { $0.message.contains("already up — not stacking") }
-        XCTAssertEqual(line?.level, .default, "clearing the pending alarm left no line: \(lines.map(\.message))")
+        XCTAssertEqual(line?.level, .default, "declining to stack left no line: \(lines.map(\.message))")
     }
 
     /// AlarmKit's swap at 0 is in flight when the notification path asks for
@@ -534,6 +534,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
             "the line has to carry why UIKit declined: «\(line.message)»"
         )
         XCTAssertTrue(line.message.contains("keeping it pending"), "«\(line.message)»")
+        XCTAssertTrue(line.message.contains("after dismissing"), "which path declined? «\(line.message)»")
         XCTAssertEqual(line.level, .error)
         XCTAssertEqual(line.category, .appDelegate)
     }
@@ -576,6 +577,16 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertTrue(line.message.contains("keeping it pending"), "«\(line.message)»")
         XCTAssertEqual(line.level, .error)
         XCTAssertEqual(line.category, .appDelegate)
+
+        // The refusal waits for the activation; it must not re-ask on its own.
+        let linesBefore = lines.count
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            for _ in 0..<3 { self.runOneMainQueueTurn() }
+        })
+        XCTAssertEqual(refusing.presentedScreens.count, 1, "a declined present was re-attempted on its own")
+        XCTAssertEqual(
+            lines.count, linesBefore, "new lines after the refusal: \(lines.dropFirst(linesBefore).map(\.message))"
+        )
     }
 
     /// The same refusal reached through the AlarmKit retry, which drops its
@@ -654,9 +665,12 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertNil(presenter.pendingPresentation)
     }
 
-    /// Another alarm deferred by AlarmKit is neither cleared by this one going
-    /// up nor left for the next activation.
-    func testDirect_whileAnotherAlarmIsPending_leavesItPendingAndRaisesIt() throws {
+    /// Another alarm deferred by AlarmKit is older than this one, which went up
+    /// with nothing mid-swap. It is not cleared, and not raised over the fresh
+    /// screen either: that swap stops the newer alarm's sound for the older
+    /// one's screen. It waits for the next activation. (The converse — this
+    /// alarm pending at a higher count IS raised — is the test above.)
+    func testDirect_whileAnotherAlarmIsPending_leavesItParkedForTheActivation() throws {
         let deferred = Alarm()
         let arriving = Alarm()
         let host = Host()
@@ -668,15 +682,106 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         top = host
 
         XCTAssertTrue(presenter.present(alarm: arriving))
-        XCTAssertEqual(presenter.pendingAlarmID, deferred.id, "mounting one alarm cancelled another's deferral")
+        let arrivingScreen = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
+        top = arrivingScreen
+        for _ in 0..<3 { runOneMainQueueTurn() }
 
-        top = try XCTUnwrap(host.presentedScreens.first)
-        topAfterDismissal = host
-        runOneMainQueueTurn()
+        XCTAssertTrue(dismissed.isEmpty, "the older alarm was swapped in over the fresh screen: \(dismissed)")
+        XCTAssertEqual(host.presentedScreens.count, 1)
+        XCTAssertEqual(arrivingScreen.viewModel.alarm.id, arriving.id)
+        XCTAssertEqual(presenter.pendingAlarmID, deferred.id, "mounting one alarm cancelled another's deferral")
+    }
+
+    // MARK: - Review round 2
+
+    /// The already-up branch's own clear. A request for this alarm deferred
+    /// (root not ready) after its screen went up directly, at a count below
+    /// the screen's but above the swap's: only a clear by the count on screen
+    /// drops it. By the swap's count it would stay and re-mount the alarm at 1
+    /// over the screen at 2 (#808).
+    func testCompletion_whenThisAlarmIsUpAndPendingAgain_clearsByTheShownCount() throws {
+        let alarm = Alarm()
+        let host = Host()
+        var rootReady = true
+        top = ReadBackFiringScreen(alarm: Alarm())
+        let presenter = makePresenter(alarms: [alarm])
+        presenter.isRootReady = { rootReady }
+
+        _ = presenter.present(alarm: alarm, snoozeCount: 0)
+        top = host
+        XCTAssertTrue(presenter.present(alarm: alarm, snoozeCount: 2), "test precondition: mounted directly")
+        let upAtTwo = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
+        rootReady = false
+        presenter.requestPresentation(alarmID: alarm.id, snoozeCount: 1)
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 1),
+            "test precondition: the deferred request, between the swap's count and the screen's"
+        )
+        top = upAtTwo
         try finishDismissal()
 
-        let mounted = try XCTUnwrap(host.presentedScreens.last as? ReadBackFiringScreen)
-        XCTAssertEqual(mounted.viewModel.alarm.id, deferred.id, "the deferred alarm was never raised")
-        XCTAssertNil(presenter.pendingPresentation)
+        XCTAssertTrue(upAtTwo.presentedScreens.isEmpty, "a second firing screen went up on the first")
+        XCTAssertNil(
+            presenter.pendingPresentation,
+            "the (id, 1) record outlived the count-2 screen: not cleared, or cleared by the swap's count 0"
+        )
+    }
+
+    /// A screen going up refills the stale-survival budget, at both places one
+    /// can: `presentReadingBack` (reached directly here; the swap's success
+    /// shares it) and the already-up branch for this alarm. Without the reset
+    /// the next stale screen gets one attempt instead of 1 + limit.
+    func testSwap_aScreenGoingUpRefillsTheStaleSurvivalBudget() {
+        let limit = AlarmFiringPresenter.staleSurvivalRetryLimit
+        for throughAlreadyUp in [false, true] {
+            let label = throughAlreadyUp ? "already-up branch" : "direct present"
+            let alarm = Alarm()
+            let presenter = makePresenter(alarms: [alarm])
+            XCTAssertEqual(exhaustStaleSurvival(presenter, alarm: alarm), 1 + limit, "\(label): test precondition")
+
+            if throughAlreadyUp {
+                let upAlready = ReadBackFiringScreen(alarm: alarm)
+                presenter.dismissStaleScreen = { [self] screen, completion in
+                    self.dismissed.append(screen)
+                    self.top = upAlready
+                    completion()
+                }
+                lines = []
+                AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+                    presenter.flushPendingPresentation()
+                })
+                XCTAssertTrue(
+                    lines.contains { $0.message.contains("already up — not stacking") },
+                    "\(label): test precondition: \(lines.map(\.message))"
+                )
+            } else {
+                let host = Host()
+                top = host
+                presenter.flushPendingPresentation()
+                XCTAssertEqual(host.presentedScreens.count, 1, "\(label): test precondition: the screen went up")
+            }
+            XCTAssertNil(presenter.pendingPresentation, "\(label): test precondition: the screen is up")
+
+            XCTAssertEqual(
+                exhaustStaleSurvival(presenter, alarm: alarm), 1 + limit,
+                "\(label): the budget spent on the first stale screen was never refilled"
+            )
+        }
+    }
+
+    /// Stages a stale firing screen for `alarm` that no dismissal removes,
+    /// requests the alarm and drains the bounded retries. Returns how many
+    /// dismissals that took.
+    private func exhaustStaleSurvival(_ presenter: AlarmFiringPresenter, alarm: Alarm) -> Int {
+        dismissed = []
+        top = ReadBackFiringScreen(alarm: alarm)
+        presenter.dismissStaleScreen = { [self] screen, completion in
+            self.dismissed.append(screen)
+            completion()
+        }
+        presenter.requestPresentation(alarmID: alarm.id)
+        for _ in 0..<(AlarmFiringPresenter.staleSurvivalRetryLimit + 3) { runOneMainQueueTurn() }
+        return dismissed.count
     }
 }
