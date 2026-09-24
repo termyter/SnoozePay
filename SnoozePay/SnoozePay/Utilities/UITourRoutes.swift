@@ -75,7 +75,7 @@ enum UITourRoutes {
                     sounds: CreateAlarmViewModel(alarm: nil).availableSounds,
                     selectedID: "radar",
                     onSelect: { _ in },
-                    previewSound: { _ in }
+                    previewSound: { _ in false }
                 )
             }
         },

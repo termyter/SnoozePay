@@ -126,11 +126,10 @@ extension CreateAlarmViewController {
             let soundName = viewModel.availableSounds
                 .first(where: { $0.id == viewModel.soundID })?.name
                 ?? Localized.text("create_alarm.sound.fallback")
+            // No `onPreviewTapped` wiring (#850): the cell has no control
+            // that fires it, and a preview from here would have no way to be
+            // stopped. Previews live on the sound picker, which stops them.
             cell.configure(soundName: soundName)
-            cell.onPreviewTapped = { [weak self] in
-                guard let self else { return }
-                self.viewModel.previewSound(self.viewModel.soundID)
-            }
         }
         return cell
     }

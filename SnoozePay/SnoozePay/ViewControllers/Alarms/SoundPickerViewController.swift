@@ -12,8 +12,8 @@ import UIKit
 /// - a «Готово» quiet-sm header button. Selection no longer auto-pops — the
 ///   user leaves via «Готово» or the back chevron.
 ///
-/// `onSelect` / `previewSound` keep their pre-V3 signatures so the alarm form
-/// caller doesn't change.
+/// `onSelect` keeps its pre-V3 signature. `previewSound` returns whether
+/// playback started (#850), so the rail animates only over a sound that plays.
 final class SoundPickerViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
 
     // MARK: - Properties
@@ -21,7 +21,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     private let sounds: [SoundCatalogue.Entry]
     private var selectedSoundID: String
     private let onSelect: (String) -> Void
-    private let previewSound: (String) -> Void
+    private let previewSound: (String) -> Bool
     /// Stops the sound `previewSound` started (#850): the preview is a real
     /// file now, up to 25.8 s long, so leaving the rail must silence it too.
     private let stopPreviewSound: () -> Void
@@ -179,7 +179,8 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     ///   - selectedID: Currently selected sound id.
     ///   - onSelect: Fired when the user picks a sound. The picker no longer
     ///     pops itself — the user leaves via «Готово» / back.
-    ///   - previewSound: Plays a preview for a given sound id.
+    ///   - previewSound: Plays a preview for a given sound id; `false` when
+    ///     nothing started, which keeps the preview rail idle.
     ///   - stopPreviewSound: Stops that preview — second tap on the play head,
     ///     or the screen going away. Defaults to a no-op for hosts that play
     ///     nothing.
@@ -192,7 +193,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         sounds: [SoundCatalogue.Entry],
         selectedID: String,
         onSelect: @escaping (String) -> Void,
-        previewSound: @escaping (String) -> Void,
+        previewSound: @escaping (String) -> Bool,
         stopPreviewSound: @escaping () -> Void = {},
         volume: Float = 1.0,
         fadeIn: Bool = false,
@@ -479,8 +480,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         onSelect(sound.id)
         // Preview the freshly-picked sound, but DON'T pop — the user stays on
         // the screen and leaves via «Готово».
-        previewSound(sound.id)
-        startPreviewAffordance(for: sound.id)
+        playPreview(of: sound.id)
         tableView.reloadData()
         refreshPreviewLabel()
     }
@@ -499,8 +499,18 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
             stopPreview()
             return
         }
-        previewSound(selectedSoundID)
-        startPreviewAffordance(for: selectedSoundID)
+        playPreview(of: selectedSoundID)
+    }
+
+    /// Start the sound and, only if it actually started, the rail. A refused
+    /// preview resets the rail instead: the one before it has already been
+    /// silenced, so an animation left running would be over nothing.
+    private func playPreview(of soundID: String) {
+        if previewSound(soundID) {
+            startPreviewAffordance(for: soundID)
+        } else {
+            stopPreview()
+        }
     }
 
     /// Flip the preview head to its "playing" state and start the progress

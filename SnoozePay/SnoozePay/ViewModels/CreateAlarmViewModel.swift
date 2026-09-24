@@ -331,6 +331,12 @@ final class CreateAlarmViewModel {
 
     // MARK: - Sound preview (#850)
 
+    /// Log identifiers for the three ways a preview tap plays nothing. Through
+    /// `AppLogger.emit`, so a test can see each one.
+    static var previewFileMissingErrorID: String { "PREVIEW-850-FILE-MISSING" }
+    static var previewOpenFailedErrorID: String { "PREVIEW-850-OPEN-FAILED" }
+    static var previewPlayRefusedErrorID: String { "PREVIEW-850-PLAY-REFUSED" }
+
     /// Player for the picker preview. Its own `AVAudioPlayer`, not
     /// `AudioService`'s ring path: that one loops forever, switches the session
     /// to `.playback` and drives vibration, none of which a preview wants.
@@ -338,49 +344,78 @@ final class CreateAlarmViewModel {
     /// something to stop.
     private var previewPlayer: AVAudioPlayer?
 
+    /// File the preview player was opened from; `nil` when nothing is
+    /// previewing. Read-only, for tests: it is what tells "the row's own file"
+    /// apart from a system sound or the ring path, neither of which sets it.
+    var previewingURL: URL? { previewPlayer?.url }
+
+    /// Receives the player's natural end, so the session is handed back when
+    /// the file runs out and not only when the user stops it.
+    private lazy var previewFinishForwarder: PreviewFinishForwarder = {
+        let forwarder = PreviewFinishForwarder()
+        forwarder.onFinish = { [weak self] player in self?.previewDidFinish(player) }
+        return forwarder
+    }()
+
     /// Play the bundled file of `soundID` once — the file the alarm rings
-    /// with, resolved through `SoundCatalogue.fileURL(for:resourceURL:)`. A
-    /// preview already playing is stopped first, so quick taps do not stack.
+    /// with, resolved through `SoundCatalogue.fileURL(for:resourceURL:)` — in
+    /// an `.ambient` session that mixes with the user's own audio
+    /// (`AudioService.beginPreviewSession`). A preview already playing is
+    /// stopped first, so quick taps replace rather than layer.
     ///
     /// Until #850 this played an AudioToolbox system sound from a hand-kept
     /// map, so the picker never let the user hear the sound the alarm rings.
     ///
-    /// - Returns: `false` when the bundle has no file for `soundID` or the
-    ///   player refuses to open it; the tap is then a logged no-op (#210).
-    ///   `true` once the file is open and handed to `play()` — whether a
-    ///   device then makes it audible (output route, mute switch) is not this
-    ///   method's answer, and a simulator with no output would make a test
-    ///   pinned to it flaky. Discardable for UI callers.
+    /// - Returns: `true` when playback started. `false` when the bundle has no
+    ///   file for `soundID`, the file will not open, or `play()` refuses it —
+    ///   each logged under its own `PREVIEW-850-*` id, and each one the picker
+    ///   reads to leave its rail idle instead of animating over silence.
     @discardableResult
     func previewSound(_ soundID: String) -> Bool {
         stopPreviewSound()
         guard let url = SoundCatalogue.fileURL(for: soundID) else {
-            AppLogger.audio.error("previewSound: no bundled file for soundID \(soundID, privacy: .public)")
+            AppLogger.emit(.audio, .error, "[\(Self.previewFileMissingErrorID)] no bundled file for '\(soundID)'")
             return false
         }
+        let player: AVAudioPlayer
         do {
-            let player = try AVAudioPlayer(contentsOf: url)
-            previewPlayer = player
-            if !player.play() {
-                AppLogger.audio.error("previewSound: play() refused \(url.lastPathComponent, privacy: .public)")
-            }
-            return true
+            player = try AVAudioPlayer(contentsOf: url)
         } catch {
-            let file = url.lastPathComponent
-            let reason = error.localizedDescription
-            AppLogger.audio.error(
-                "previewSound: cannot open \(file, privacy: .public): \(reason, privacy: .public)"
+            AppLogger.emit(
+                .audio, .error,
+                "[\(Self.previewOpenFailedErrorID)] \(url.lastPathComponent): \(error.localizedDescription)"
             )
             return false
         }
+        player.delegate = previewFinishForwarder
+        AudioService.shared.beginPreviewSession()
+        guard player.play() else {
+            AppLogger.emit(
+                .audio, .error, "[\(Self.previewPlayRefusedErrorID)] play() refused \(url.lastPathComponent)"
+            )
+            AudioService.shared.endPreviewSession()
+            return false
+        }
+        previewPlayer = player
+        return true
     }
 
-    /// Stop the preview, if one is playing. The picker calls it on its second
-    /// tap and when it leaves the screen, so a 25-second `spaceship` does not
-    /// outlive the rail that shows it.
+    /// Stop the preview, if one is playing, and hand the audio session back.
+    /// The picker calls it on its second tap and when it leaves the screen, so
+    /// a 25-second `spaceship` does not outlive the rail that shows it.
     func stopPreviewSound() {
-        previewPlayer?.stop()
+        guard let player = previewPlayer else { return }
+        player.stop()
         previewPlayer = nil
+        AudioService.shared.endPreviewSession()
+    }
+
+    /// The file ran out. Ignored for a player that is no longer the current
+    /// preview — it was already stopped and its session already handed back.
+    private func previewDidFinish(_ player: AVAudioPlayer) {
+        guard player === previewPlayer else { return }
+        previewPlayer = nil
+        AudioService.shared.endPreviewSession()
     }
 
     // MARK: - Alarm theme (#151)
@@ -389,4 +424,18 @@ final class CreateAlarmViewModel {
     /// `ThemeRowCell` trailing label and refreshed by the controller after
     /// the picker pops back.
     var alarmThemeName: String { theme.displayName }
+}
+
+/// `AVAudioPlayerDelegate` needs an `NSObject`; the view model is not one, so
+/// this forwards the preview player's natural end to it (#850). The callback
+/// carries no thread guarantee, so it hops to the main actor the view model
+/// lives on; a late hop is harmless, `previewDidFinish` ignores stale players.
+private final class PreviewFinishForwarder: NSObject, AVAudioPlayerDelegate {
+    var onFinish: ((AVAudioPlayer) -> Void)?
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            self.onFinish?(player)
+        }
+    }
 }

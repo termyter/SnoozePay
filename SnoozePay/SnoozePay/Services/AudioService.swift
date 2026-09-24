@@ -258,6 +258,83 @@ final class AudioService {
         }
     }
 
+    // MARK: - Preview session (#850)
+
+    /// Log identifier for a preview whose `.ambient` category could not be set.
+    static var previewCategoryFailedErrorID: String { "PREVIEW-850-SESSION-CATEGORY-FAILED" }
+
+    /// Log identifier for a preview end that could not hand the session back.
+    static var previewDeactivateFailedErrorID: String { "PREVIEW-850-SESSION-DEACTIVATE-FAILED" }
+
+    /// What `beginPreviewSession` runs: `.ambient` mixes with the user's music
+    /// or podcast and obeys the silent switch — what the AudioToolbox system
+    /// sounds the picker used to play did without touching the session.
+    private static let ambientCategorySetter: () throws -> Void = {
+        try AVAudioSession.sharedInstance().setCategory(.ambient)
+    }
+
+    /// What `endPreviewSession` runs: give the session back and let the app
+    /// that was playing before resume.
+    private static let othersNotifyingDeactivator: () throws -> Void = {
+        try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    }
+
+    /// Queue-confined, like `sessionActivator`, and swapped the same way.
+    private var previewCategorySetter: () throws -> Void = AudioService.ambientCategorySetter
+    private var previewDeactivator: () throws -> Void = AudioService.othersNotifyingDeactivator
+
+    #if DEBUG
+    /// Test seam: record or fail the two preview session calls instead of
+    /// reaching `AVAudioSession`. `nil` restores the real one.
+    func overridePreviewSession(setCategory: (() throws -> Void)?, deactivate: (() throws -> Void)?) {
+        queue.sync {
+            previewCategorySetter = setCategory ?? Self.ambientCategorySetter
+            previewDeactivator = deactivate ?? Self.othersNotifyingDeactivator
+        }
+    }
+    #endif
+
+    /// Prepare the session for a sound-picker preview (#850). The preview's
+    /// `AVAudioPlayer.play()` activates whatever category is set: the default
+    /// `.soloAmbient` would stop the user's podcast, and the `.playback` +
+    /// `.duckOthers` an earlier ring leaves behind would duck it.
+    ///
+    /// A no-op while an alarm owns the session (any state but `.stopped`):
+    /// `.ambient` mid-ring would mute the alarm under the silent switch and on
+    /// the lock screen. The next `startAlarmSound` needs nothing from here —
+    /// `playbackSessionActivator` sets `.playback` on every start.
+    func beginPreviewSession() {
+        queue.sync {
+            guard _state == .stopped else { return }
+            do {
+                try previewCategorySetter()
+            } catch {
+                AppLogger.emit(
+                    .audio, .error,
+                    "[\(Self.previewCategoryFailedErrorID)] beginPreviewSession: \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
+    /// Hand the session back once the preview stopped or finished, so the app
+    /// that was playing resumes. Same no-op rule as ``beginPreviewSession()``.
+    /// A failure (`isBusy` while some other player still runs) is logged, not
+    /// fatal: the worst case is the other app resuming a little later.
+    func endPreviewSession() {
+        queue.sync {
+            guard _state == .stopped else { return }
+            do {
+                try previewDeactivator()
+            } catch {
+                AppLogger.emit(
+                    .audio, .error,
+                    "[\(Self.previewDeactivateFailedErrorID)] endPreviewSession: \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
     // MARK: - Alarm Sound
 
     /// Start playing alarm sound in a loop.

@@ -41,7 +41,7 @@ final class AlarmPickerBarButtonGlassTests: XCTestCase {
             sounds: SoundCatalogue.entries,
             selectedID: SoundCatalogue.entries.first?.id ?? "",
             onSelect: { _ in },
-            previewSound: { _ in }
+            previewSound: { _ in false }
         )
     }
 

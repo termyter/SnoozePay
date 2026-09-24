@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 /// Static source of truth for the alarm-sound catalogue surfaced in the V3
 /// sound picker (`SoundPickerViewController`, #285).
@@ -125,16 +126,28 @@ enum SoundCatalogue {
         return AudioService.firstBundledURL(for: soundID, resourceURL: resourceURL)
     }
 
+    /// Log identifier for a bundled sound file whose header cannot be read.
+    static var durationUnreadableErrorID: String { "PREVIEW-850-DURATION-UNREADABLE" }
+
     /// Length in seconds of the file ``fileURL(for:resourceURL:)`` finds, read
     /// from its header — the preview rail in `SoundPickerViewController` runs
     /// for exactly this long (#850; it used to be a hand-written table that
     /// reset `spaceship`'s 25.8 s after 3 s). `nil` when there is no file or
-    /// it cannot be opened.
+    /// it cannot be opened; the second case is logged, since a file that is
+    /// there but unreadable is a broken build, not an unknown id.
     static func fileDuration(for soundID: String) -> TimeInterval? {
-        guard let url = fileURL(for: soundID),
-              let file = try? AVAudioFile(forReading: url),
-              file.fileFormat.sampleRate > 0 else { return nil }
-        return Double(file.length) / file.fileFormat.sampleRate
+        guard let url = fileURL(for: soundID) else { return nil }
+        do {
+            let file = try AVAudioFile(forReading: url)
+            guard file.fileFormat.sampleRate > 0 else { return nil }
+            return Double(file.length) / file.fileFormat.sampleRate
+        } catch {
+            AppLogger.emit(
+                .audio, .error,
+                "[\(durationUnreadableErrorID)] \(url.lastPathComponent): \(error.localizedDescription)"
+            )
+            return nil
+        }
     }
 
     /// Disabled trailing slot rendered after the catalogue. Custom-melody
