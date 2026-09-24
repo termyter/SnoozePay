@@ -1,5 +1,6 @@
 import XCTest
 import UserNotifications
+import os
 @testable import SnoozePay
 
 /// Each `AppDelegate` banner builder posts under its OWN
@@ -15,20 +16,76 @@ import UserNotifications
 ///
 /// The copy, the time-sensitive level and the one-second trigger are pinned
 /// alongside, because #844 moved the posting and was not meant to move any of
-/// them.
+/// them. So is each builder's `.fault` line when the center refuses the
+/// request: the spy reports the error, and the line is read back through
+/// `AppLogger.withTestSink`. Only the spy path is covered. The real center's
+/// wrapper, `UNUserNotificationCenter.add(_:completion:)`, is not.
 @MainActor
 final class AppBannerPostingTests: XCTestCase {
 
-    /// The one request `post` handed to the poster.
+    private static let refusal = NSError(
+        domain: "UNErrorDomain", code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed"]
+    )
+
+    /// Runs `post` against a spy that reports `addError`. Returns the requests
+    /// it handed over and the AppDelegate `.fault` lines it wrote.
+    private func run(
+        addError: Error? = nil,
+        _ post: (LocalNotificationPosting) -> Void
+    ) -> (requests: [UNNotificationRequest], faults: [String]) {
+        let poster = LocalNotificationPosterSpy()
+        poster.addError = addError
+        var faults: [String] = []
+        AppLogger.withTestSink({ category, level, message in
+            if category == .appDelegate, level == .fault { faults.append(message) }
+        }, perform: { post(poster) })
+        return (poster.requests, faults)
+    }
+
+    /// The one request `post` handed to the poster. An accepted add writes no
+    /// `.fault`: the failure tests below would otherwise pass on a line written
+    /// whatever the outcome.
     private func postedRequest(
         _ post: (LocalNotificationPosting) -> Void,
         file: StaticString = #filePath, line: UInt = #line
     ) throws -> UNNotificationRequest {
-        let poster = LocalNotificationPosterSpy()
-        post(poster)
-        XCTAssertEqual(poster.requests.count, 1, "a builder posts exactly one request", file: file, line: line)
-        return try XCTUnwrap(poster.requests.first, file: file, line: line)
+        let outcome = run(post)
+        XCTAssertEqual(outcome.requests.count, 1, "a builder posts exactly one request", file: file, line: line)
+        XCTAssertEqual(outcome.faults, [], "an accepted add logged a fault", file: file, line: line)
+        return try XCTUnwrap(outcome.requests.first, file: file, line: line)
     }
+
+    // MARK: - A refused add leaves the builder's own .fault line
+
+    func testResumeAudioFailedBanner_refusedAdd_logsItsFault() {
+        let outcome = run(addError: Self.refusal) { AppDelegate.postResumeAudioFailedBanner(poster: $0) }
+
+        XCTAssertEqual(outcome.requests.count, 1, "precondition: the banner reached the poster")
+        XCTAssertEqual(outcome.faults, ["resume-audio-failed banner failed: Notifications are not allowed"])
+    }
+
+    func testRescheduleFailedBanner_refusedAdd_logsItsFault() {
+        let outcome = run(addError: Self.refusal) {
+            AppDelegate.postRescheduleFailedBanner(failedCount: 2, poster: $0)
+        }
+
+        XCTAssertEqual(outcome.requests.count, 1, "precondition: the banner reached the poster")
+        XCTAssertEqual(outcome.faults, ["reschedule-failed banner failed: Notifications are not allowed"])
+    }
+
+    func testSnoozeScheduleFailedBanner_refusedAdd_logsItsFault() {
+        let outcome = run(addError: Self.refusal) {
+            AppDelegate.postSnoozeScheduleFailedBanner(
+                error: .system(message: "limit"), refundLanded: true, poster: $0
+            )
+        }
+
+        XCTAssertEqual(outcome.requests.count, 1, "precondition: the banner reached the poster")
+        XCTAssertEqual(outcome.faults, ["snooze fallback banner failed: Notifications are not allowed"])
+    }
+
+    // MARK: - Each builder posts under its own case
 
     /// Time-sensitive, with a sound, delivered one second out and once — what
     /// all three builders set before #844.

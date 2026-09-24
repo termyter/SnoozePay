@@ -73,6 +73,13 @@ extension UNUserNotificationCenter: LocalNotificationPosting {
     /// The center calls back on a queue of its own. This hops to the main
     /// actor, because the logger's test-visible `emit` seam is main-thread
     /// only, and a failure line written through it is one a test can read back.
+    ///
+    /// ⚠️ Known gap: no test covers this method. Every test injects
+    /// `LocalNotificationPosterSpy`, and reaching this code would take the real
+    /// center, which a unit test cannot make refuse a request. Delete the
+    /// `Task` line, or skip `completion` on some path, and all four banners'
+    /// `.fault` lines disappear in production while the suite stays green.
+    /// Keep this body as small as it is.
     nonisolated func add(
         _ request: UNNotificationRequest,
         completion: @escaping @MainActor @Sendable (Error?) -> Void

@@ -264,9 +264,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         content.interruptionLevel = .timeSensitive
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        // Through `emit` so a test can read the line back. `onFailure` runs on
+        // the main actor, which `emit` requires, and it writes `.public` as the
+        // direct call did.
         poster.postAppBanner(.resumeAudioFailed, content: content, trigger: trigger) { error in
-            AppLogger.appDelegate.fault(
-                "resume-audio-failed banner failed: \(error.localizedDescription, privacy: .public)"
+            AppLogger.emit(
+                .appDelegate, .fault,
+                "resume-audio-failed banner failed: \(error.localizedDescription)"
             )
         }
     }
@@ -288,8 +292,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         poster.postAppBanner(.rescheduleFailed, content: content, trigger: trigger) { error in
-            AppLogger.appDelegate.fault(
-                "reschedule-failed banner failed: \(error.localizedDescription, privacy: .public)"
+            AppLogger.emit(
+                .appDelegate, .fault,
+                "reschedule-failed banner failed: \(error.localizedDescription)"
             )
         }
     }
@@ -617,8 +622,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // notification permission was revoked, which is exactly the same
             // root cause the snooze hit. Nothing left to surface from a
             // notification action context.
-            AppLogger.appDelegate.fault(
-                "snooze fallback banner failed: \(fallbackError.localizedDescription, privacy: .public)"
+            AppLogger.emit(
+                .appDelegate, .fault,
+                "snooze fallback banner failed: \(fallbackError.localizedDescription)"
             )
         }
     }
