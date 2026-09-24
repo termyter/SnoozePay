@@ -24,9 +24,15 @@ final class AlarmRepeatModeTests: XCTestCase {
     /// all three keys there, and re-saving the same day changes nothing.
     private var suiteName: String!
     private var defaults: UserDefaults!
+    /// Fails the test if it moved the host's real `UserDefaults.standard`
+    /// (#830). The three `CreateAlarmViewModel` calls built without a
+    /// repository still use the view model's `.shared` defaults; they only
+    /// read, and this is what keeps it so.
+    private var domainGuard: AppDefaultsDomainGuard!
 
     override func setUp() {
         super.setUp()
+        domainGuard = AppDefaultsDomainGuard()
         suiteName = "test.repeatMode.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)!
     }
@@ -35,6 +41,8 @@ final class AlarmRepeatModeTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         suiteName = nil
+        domainGuard.assertUntouched()
+        domainGuard = nil
         super.tearDown()
     }
 
