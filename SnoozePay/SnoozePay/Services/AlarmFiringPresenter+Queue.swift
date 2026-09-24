@@ -218,14 +218,51 @@ extension AlarmFiringPresenter {
     /// each counting its calls against its own limit so it cannot spin: a
     /// stale screen that outlived its dismissal (`staleSurvivalRetryLimit`)
     /// and a host miss, in `present` or after the dismissal
-    /// (`hostGoneRetryLimit`, #875). The other failure branches leave the
-    /// retry to the activation.
+    /// (`hostGoneRetryLimit`, #875). And from the end of a UIKit transition
+    /// that refused a present or held a swap, one turn after it, counted
+    /// against `transitionRetryLimit` (#875): `retryAfterTransition(of:)`.
+    /// The other failure branches leave the retry to the activation.
     /// Internal only so `AlarmFiringPresenter.swift` can reach it (#883).
     func attemptParkedPresentationSoon() {
         guard pendingPresentation != nil else { return }
         DispatchQueue.main.async { [weak self] in
             self?.attemptPendingPresentation()
         }
+    }
+
+    /// Whether a present refused by `controller`'s UIKit transition, or a swap
+    /// held by it, is retried at that transition's end (#875, items 3 and 6).
+    /// `nil`: the controller is in no transition. Otherwise `true` while
+    /// `transitionRetryLimit` is not spent since the last screen went up.
+    /// Asked before the record is parked, so its line says what follows.
+    /// Internal only so `AlarmFiringPresenter.swift` can reach it (#883).
+    func transitionRetry(for controller: UIViewController) -> Bool? {
+        guard isInTransition(controller) else { return nil }
+        return transitionRetries < Self.transitionRetryLimit
+    }
+
+    /// The tail of the line `transitionRetry(for:)`'s answer writes.
+    static func transitionRetryNote(retrying: Bool) -> String {
+        retrying ? "retrying once its transition ends" : "waiting for the next activation"
+    }
+
+    /// Schedules the queue for the end of `controller`'s UIKit transition,
+    /// after `transitionRetry(for:)` said yes and the record is parked: UIKit
+    /// may run the completion inside the call.
+    ///
+    /// The completion only hops a turn. Running the queue inside it, a host
+    /// UIKit still reports in the transition refuses again and schedules the
+    /// next retry from within this one, with no bound when the completion is
+    /// synchronous. Each call counts against `transitionRetryLimit`.
+    /// Internal only so `AlarmFiringPresenter.swift` can reach it (#883).
+    func retryAfterTransition(of controller: UIViewController) {
+        transitionRetries += 1
+        let scheduled = whenTransitionEnds(controller) { [weak self] in
+            self?.attemptParkedPresentationSoon()
+        }
+        // The coordinator is gone since `transitionRetry(for:)` saw it: the
+        // transition is over, so the next turn is its end.
+        if !scheduled { attemptParkedPresentationSoon() }
     }
 
     /// A host miss, in `present` or after a swap's dismissal: keeps the record
