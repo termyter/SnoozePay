@@ -1,5 +1,6 @@
 import Foundation
 import os
+import UserNotifications
 #if canImport(AppIntents)
 import AppIntents
 #endif
@@ -185,6 +186,14 @@ final class AlarmKitActionRouter {
         AlarmFiringPresenter.shared.requestPresentation(alarmID: alarmID)
     }
 
+    /// Where `handleSnooze` checks that the alarm still loads. Production
+    /// never reassigns it; a test points it at its own defaults suite (#814).
+    var alarmRepository: AlarmRepository = .shared
+
+    /// Where `handleSnooze` posts the snooze-failed banner. Tests inject
+    /// `LocalNotificationPosterSpy`.
+    var notificationPoster: LocalNotificationPosting = UNUserNotificationCenter.current()
+
     #if DEBUG
     init() {}
     #else
@@ -227,6 +236,37 @@ final class AlarmKitActionRouter {
         AppLogger.scheduler.notice("AlarmKit snooze alarm=\(alarmID, privacy: .private)")
         AudioService.shared.stopAlarmSound()
         AlarmScheduler.shared.stopSystemAlarm(alarmID)
+        postSnoozeFailedBannerIfUnloadable(alarmID)
         present(alarmID)
+    }
+
+    /// The snooze runs in the firing screen, and a screen needs the alarm. When
+    /// the stored alarms fail to decode no screen goes up, so the system alarm
+    /// just stopped is the last the user hears of it: the paid snooze became a
+    /// Stop with no word said (#868). This says it, with the same time-sensitive
+    /// banner the notification path posts for its lost snooze (#864), because a
+    /// system banner survives a cold launch where an alert over the splash does
+    /// not.
+    ///
+    /// "Refunded" copy, because nothing was charged: this button never charges,
+    /// the screen does, and it never mounted. The presenter still runs after
+    /// this and raises the data-corrupted alert for the cause.
+    ///
+    /// A missing alarm (`nil`) is not reported here: that is a deletion, and
+    /// the presenter's "not found" branch owns it.
+    private func postSnoozeFailedBannerIfUnloadable(_ alarmID: UUID) {
+        do {
+            _ = try alarmRepository.fetchChecked(id: alarmID)
+        } catch {
+            let handle = String(alarmID.uuidString.prefix(8))
+            AppLogger.emit(
+                .scheduler, .error,
+                "ALARMKIT-868-SNOOZE-LOAD-FAILED: alarm \(handle) failed to load"
+                    + " (\(String(describing: error))) — snooze not scheduled, posting fallback banner"
+            )
+            AppDelegate.postSnoozeScheduleFailedBanner(
+                detail: error.localizedDescription, refundLanded: true, poster: notificationPoster
+            )
+        }
     }
 }

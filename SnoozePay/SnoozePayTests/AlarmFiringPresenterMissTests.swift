@@ -28,6 +28,11 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
     private var presenter: AlarmFiringPresenter!
     private var lines: [Line] = []
 
+    /// What the presenter handed ``AlarmFiringPresenter/reportDataCorrupted``.
+    /// Recorded instead of reaching the app delegate, so no data-corrupted
+    /// alert mounts on the test host's window (#868).
+    private var reported: [Error] = []
+
     override func setUp() {
         super.setUp()
         suiteName = "test.presenterMiss.\(UUID().uuidString)"
@@ -40,6 +45,7 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
             return .failure(.noHostingWindow)
         }
         presenter.isRootReady = { true }
+        presenter.reportDataCorrupted = { [weak self] in self?.reported.append($0) }
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
     }
@@ -51,6 +57,7 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         lines = []
+        reported = []
         super.tearDown()
     }
 
@@ -91,6 +98,7 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
         XCTAssertEqual(lines.map(\.message), [
             "firing-present: not found [alarm \(handle(missingID)) at snooze 2] — stopping the audio it owns"
         ])
+        XCTAssertTrue(reported.isEmpty, "a deleted alarm is not corrupted data; reported \(reported)")
     }
 
     /// The same gate on the other branch: the stored alarms fail to decode.
@@ -127,6 +135,43 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
             lines.first?.message.hasSuffix("— stopping the audio it owns") == true,
             "«\(lines.first?.message ?? "")»"
         )
+    }
+
+    /// #868: an AlarmKit alarm whose stored alarms fail to decode used to end
+    /// in one log line, with no screen and no alert. The miss now reports the
+    /// corruption, once, with the decode error the alert spells its detail from.
+    func testFetchFailure_reportsTheCorruptionOnce() {
+        let missingID = UUID()
+        corruptStoredAlarms(probing: missingID)
+
+        recording { _ = presenter.present(alarmID: missingID) }
+        drainMainQueue()
+
+        XCTAssertEqual(reported.count, 1, "the user must be told the alarm data is corrupted")
+        guard case .decodeFailure? = reported.first as? AlarmRepository.RepositoryError else {
+            return XCTFail("the report must carry the decode error; got \(reported)")
+        }
+    }
+
+    /// The same report when the request waited in the pending slot, the path
+    /// an AlarmKit button takes on a cold launch: the flush misses, reports
+    /// once, and the slot is emptied so no later flush reports again.
+    func testFetchFailure_throughTheFlush_reportsOnceAndLeavesTheSlot() {
+        let missingID = UUID()
+        corruptStoredAlarms(probing: missingID)
+        presenter.isRootReady = { false }
+        presenter.requestPresentation(alarmID: missingID)
+        XCTAssertTrue(reported.isEmpty, "nothing was fetched yet, so nothing may be reported")
+
+        presenter.isRootReady = { true }
+        recording {
+            presenter.flushPendingPresentation()
+            presenter.flushPendingPresentation()
+        }
+        drainMainQueue()
+
+        XCTAssertEqual(reported.count, 1, "one miss, one report")
+        XCTAssertNil(presenter.pendingAlarmID, "a miss is terminal: the corrupt alarm must leave the slot")
     }
 
     // MARK: - Helpers
