@@ -57,22 +57,52 @@ extension AppDelegate {
         return .invalidAlarmPayload
     }
 
+    /// How the in-app start of a foreground alarm went (#860).
+    enum ForegroundAlarmStart: Equatable {
+        /// The app's sound started and the firing screen was asked for.
+        case ringing
+        /// The repository has no such alarm: a stale notification for a
+        /// deleted alarm.
+        case notFound
+        /// The repository could not be read, so the alarm is real but the
+        /// app cannot ring it.
+        case loadFailed
+    }
+
+    /// Greps the line `willPresent` writes when it hands a real alarm's
+    /// sound to the system because the stored alarms failed to decode.
+    static let loadFailedSystemSoundErrorID = "NOTIF-860-LOAD-FAILED-SYSTEM-SOUND"
+
     /// Everything `willPresent` decides. `startAlarm` runs for a decodable
-    /// alarm, before the options are returned.
+    /// alarm, before the options are returned, and reports how it went.
     ///
-    /// - alarm: `[]` — its presentation is the firing screen, and a system
-    ///   banner on top would duplicate it;
+    /// - alarm that rings: `[]` — its presentation is the firing screen, and
+    ///   a system banner on top would duplicate it;
+    /// - alarm not found: `[]` — a stale notification for a deleted alarm;
+    /// - alarm that failed to load: `[.banner, .sound, .list]` — the alarm is
+    ///   real and the app cannot ring it, so the system plays the
+    ///   notification sound rather than nothing at all (#860);
     /// - app banner: `[.banner, .sound, .list]` — it exists to be read;
     /// - anything else: `[]`, as before #842. No audio either: the firing
     ///   screen will never be presented, so nothing could stop it.
     static func foregroundPresentationOptions(
         for request: UNNotificationRequest,
-        startAlarm: (AlarmNotificationPayload) -> Void
+        startAlarm: (AlarmNotificationPayload) -> ForegroundAlarmStart
     ) -> UNNotificationPresentationOptions {
         switch routeNotification(request, site: "willPresent") {
         case let .alarm(payload):
-            startAlarm(payload)
-            return []
+            switch startAlarm(payload) {
+            case .ringing, .notFound:
+                return []
+            case .loadFailed:
+                let handle = logHandle(payload.alarmID)
+                AppLogger.emit(
+                    .appDelegate, .error,
+                    "willPresent: [\(loadFailedSystemSoundErrorID)] alarm \(handle) failed to load; "
+                        + "the system plays the notification sound instead"
+                )
+                return [.banner, .sound, .list]
+            }
         case .appBanner:
             return [.banner, .sound, .list]
         case .invalidAlarmPayload:

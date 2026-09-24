@@ -198,6 +198,46 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         )
     }
 
+    /// A real alarm fires in the foreground while the stored alarms fail to
+    /// decode. The app cannot ring it, so the system has to: `[]` used to
+    /// suppress the system sound as well, and the only trace of the alarm was
+    /// the data-corrupted alert (#860).
+    func testWillPresent_whenStoredAlarmsFailToDecode_letsTheSystemPlayTheSound() throws {
+        defaults.set(Data("{ not a list of alarms".utf8), forKey: "stored_alarms")
+        let alarmID = UUID()
+        XCTAssertThrowsError(
+            try repository.fetchChecked(id: alarmID),
+            "test precondition: the stored alarms have to fail to decode"
+        )
+        // The alert would mount on the test host's window; record it instead.
+        var reported: [Error] = []
+        delegate.reportAlarmDataCorrupted = { reported.append($0) }
+        // Nothing loads a screen on this path; stop and drain anyway, so a
+        // regression that starts the sound cannot leak it into the next test
+        // (#846). The suite goes in `tearDown`.
+        defer {
+            AudioService.shared.stopAlarmSound()
+            drainMainQueue()
+        }
+
+        var start: AppDelegate.ForegroundAlarmStart?
+        let options = AppDelegate.foregroundPresentationOptions(for: request(forAlarm: alarmID)) {
+            let outcome = self.delegate.startForegroundAlarm($0)
+            start = outcome
+            return outcome
+        }
+        drainMainQueue()
+
+        XCTAssertEqual(start, .loadFailed)
+        XCTAssertTrue(options.contains(.sound), "the system sound is suppressed, so the alarm rings nowhere")
+        XCTAssertEqual(options, [.banner, .sound, .list])
+        XCTAssertEqual(reported.count, 1, "the user must still be told the alarm data is corrupted")
+        XCTAssertNotEqual(
+            AudioService.shared.currentAlarmID, alarmID,
+            "the app started its own sound for an alarm it could not load"
+        )
+    }
+
     // MARK: - Helpers
 
     private func assertAbsentFromRepository(
