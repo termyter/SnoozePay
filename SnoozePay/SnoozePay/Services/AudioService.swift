@@ -93,6 +93,8 @@ final class AudioService {
     /// this value before calling `stopAlarmSound()` from `viewDidDisappear` so a
     /// dismissed firing screen does not silence audio that has already been
     /// claimed by the *next* alarm during a stacking-replace race (#116).
+    /// A caller that only needs "stop if this alarm owns it" should use
+    /// `stopAlarmSound(ifOwnedBy:)`, which checks and stops in one step (#878).
     var currentAlarmID: UUID? { queue.sync { _currentAlarmID } }
 
     /// Queue-confined backing storage for `currentAlarmID`.
@@ -662,20 +664,45 @@ final class AudioService {
 
     /// Stop alarm sound and vibration immediately.
     func stopAlarmSound() {
+        queue.sync { stopAlarmSoundLocked() }
+    }
+
+    /// Stop the sound only if `alarmID` owns it, checking the owner and
+    /// stopping in ONE `queue.sync` (#878).
+    ///
+    /// Reading `currentAlarmID` and then calling `stopAlarmSound()` takes the
+    /// queue twice. A start for another alarm that lands in between hands it
+    /// the sound, and the stop meant for `alarmID` silences that alarm, the
+    /// very case an owner gate is there to prevent.
+    ///
+    /// - Returns: `stopped` when the sound was `alarmID`'s and is now stopped,
+    ///   and `owner`, the alarm that owned the sound at the check, so a caller
+    ///   can name it in its log line without a second read.
+    @discardableResult
+    func stopAlarmSound(ifOwnedBy alarmID: UUID) -> (stopped: Bool, owner: UUID?) {
         queue.sync {
-            audioPlayer?.stop()
-            audioPlayer = nil
-            stopVibration()
-            deactivateAudioSession()
-            _isPaused = false
-            _interrupted = false
-            // Transition first, then clear the owner: the `.stopped` note
-            // names the alarm that lost its sound (#851). The other way round
-            // it named nobody, and a firing screen could not tell whose stop
-            // it was.
-            _state = .stopped
-            _currentAlarmID = nil
+            let owner = _currentAlarmID
+            guard owner == alarmID else { return (stopped: false, owner: owner) }
+            stopAlarmSoundLocked()
+            return (stopped: true, owner: owner)
         }
+    }
+
+    /// The stop both `stopAlarmSound()` and `stopAlarmSound(ifOwnedBy:)` make.
+    /// Must only be called from `queue`.
+    private func stopAlarmSoundLocked() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        stopVibration()
+        deactivateAudioSession()
+        _isPaused = false
+        _interrupted = false
+        // Transition first, then clear the owner: the `.stopped` note
+        // names the alarm that lost its sound (#851). The other way round
+        // it named nobody, and a firing screen could not tell whose stop
+        // it was.
+        _state = .stopped
+        _currentAlarmID = nil
     }
 
     // MARK: - Pause / Resume

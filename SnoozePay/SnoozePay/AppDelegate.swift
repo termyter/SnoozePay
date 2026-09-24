@@ -536,10 +536,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             AudioService.shared.stopAlarmSound()
             return
         }
-        let owner = AudioService.shared.currentAlarmID
+        // Check and stop in one step (#878): the line reports the decision
+        // the service made, so it is written after the stop, not before it.
+        let (stopped, owner) = AudioService.shared.stopAlarmSound(ifOwnedBy: payload.alarmID)
         let ownerHandle = Self.logHandle(owner)
         let payloadHandle = Self.logHandle(payload.alarmID)
-        guard owner == payload.alarmID else {
+        guard stopped else {
             let decision = "skipping stop — audio owned by \(ownerHandle), not by payload alarm \(payloadHandle)"
             AppLogger.appDelegate.notice("\(action, privacy: .public): \(decision, privacy: .public)")
             return
@@ -547,7 +549,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         AppLogger.appDelegate.notice(
             "\(action, privacy: .public): stopping audio — owned by payload alarm \(payloadHandle, privacy: .public)"
         )
-        AudioService.shared.stopAlarmSound()
     }
 
     /// An alarm id as it goes into these lines: its first 8 hex characters,

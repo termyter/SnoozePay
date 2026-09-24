@@ -40,8 +40,9 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
     }
 
     override func tearDown() {
-        // `handleSnooze` stops the shared audio service; stop it again and
-        // drain, so nothing it queued leaks into the next test (#846).
+        // `handleSnooze` stops the shared audio service only when the alarm
+        // owns it (#876); stop it unconditionally and drain, so neither a
+        // ring nor anything queued leaks into the next test (#846).
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
         router = nil
