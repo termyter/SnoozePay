@@ -346,8 +346,9 @@ class AlarmFiringViewController: UIViewController {
             )
         }
 
-        // Initial transition may have happened synchronously inside
-        // `startAlarmSound` before our observer is wired — sync now.
+        // The initial transition's notification is posted asynchronously on
+        // main (#848) and has not arrived yet — read the state back now so the
+        // banner is right on the first frame.
         applyAudioState(AudioService.shared.state)
 
         // Seed the clock's pre-mount state (faded, soft, sunk 8pt). The

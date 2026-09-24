@@ -125,10 +125,15 @@ final class AudioServiceTests: XCTestCase {
 
     /// Successful start path must transition state through `.stopped → .playing`
     /// and broadcast the change via `stateChangedNotification`.
+    ///
+    /// The post is asynchronous on main (#848), so each assertion on
+    /// `observedStates` follows a drain; the leading drain spends posts that
+    /// earlier tests' transitions left queued.
     func testStartAlarmSound_postsPlayingStateNotification() {
         let service = AudioService.shared
         service.stopAlarmSound()
         XCTAssertEqual(service.state, .stopped)
+        drainMainQueue()
 
         var observedStates: [AudioPlaybackState] = []
         let token = NotificationCenter.default.addObserver(
@@ -144,11 +149,13 @@ final class AudioServiceTests: XCTestCase {
 
         service.startAlarmSound(soundID: "nonexistent_test_sound")
         XCTAssertEqual(service.state, .playing)
+        drainMainQueue()
         XCTAssertTrue(observedStates.contains(.playing),
                       "Expected .playing state to be broadcast, got \(observedStates)")
 
         service.stopAlarmSound()
         XCTAssertEqual(service.state, .stopped)
+        drainMainQueue()
         XCTAssertTrue(observedStates.contains(.stopped),
                       "Expected .stopped state to be broadcast, got \(observedStates)")
     }
@@ -220,9 +227,14 @@ final class AudioServiceTests: XCTestCase {
 
     /// Restarting while already playing must not re-emit `.playing` (didSet
     /// guards on equality). This protects observers from spurious banner flicker.
+    ///
+    /// Drained around each start because the post is asynchronous on main
+    /// (#848): without the drains both counts would read 0 and the equality
+    /// below would hold even if the second start re-posted.
     func testStateNotification_notRepostedOnSameState() {
         let service = AudioService.shared
         service.stopAlarmSound()
+        drainMainQueue()
 
         var emissionCount = 0
         let token = NotificationCenter.default.addObserver(
@@ -233,11 +245,14 @@ final class AudioServiceTests: XCTestCase {
         defer { NotificationCenter.default.removeObserver(token) }
 
         service.startAlarmSound(soundID: "x") // → .playing  (1)
+        drainMainQueue()
         let afterFirstStart = emissionCount
+        XCTAssertEqual(afterFirstStart, 1, "the first start must post exactly once")
 
         // Second call hits `guard state == .stopped` and returns early — no new
         // notification should fire.
         service.startAlarmSound(soundID: "y")
+        drainMainQueue()
         XCTAssertEqual(emissionCount, afterFirstStart,
                        "Re-entrant start must not republish the same state")
 

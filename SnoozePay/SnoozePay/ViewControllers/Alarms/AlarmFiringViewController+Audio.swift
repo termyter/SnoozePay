@@ -11,8 +11,10 @@ import os
 extension AlarmFiringViewController {
 
     /// Wire `AudioService.stateChangedNotification` → `applyAudioState`.
-    /// Notification is posted on the main queue by the service, so no extra
-    /// hop is needed.
+    /// The service posts from `DispatchQueue.main.async`, outside its serial
+    /// queue (#848), so the block already runs on main; `queue: .main` only
+    /// states that. The post trails the transition, which is why `viewDidLoad`
+    /// also applies the state it reads back right after `startAlarmSound`.
     func observeAudioState() {
         audioStateObserver = NotificationCenter.default.addObserver(
             forName: AudioService.stateChangedNotification,
@@ -29,7 +31,9 @@ extension AlarmFiringViewController {
 
     /// Surface (or hide) the warning banner depending on AudioService state.
     /// Decoupled from `observeAudioState` so we can call it once after
-    /// `startAlarmSound` to catch the synchronous initial transition.
+    /// `startAlarmSound`: the banner is right before the first frame instead
+    /// of one main-queue turn later, when the notification lands. The late
+    /// notification then re-applies the same state, which is harmless.
     func applyAudioState(_ newState: AudioPlaybackState) {
         switch newState {
         case .playing, .stopped:
