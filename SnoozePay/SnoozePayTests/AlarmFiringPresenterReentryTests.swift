@@ -126,7 +126,8 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     /// screen actually goes up → only then is the alarm no longer pending.
     func testReentry_throughThePendingPath_keepsTheAlarmPendingUntilTheScreenIsUp() throws {
         let alarm = Alarm()
-        let stale = RecordingFiringScreen(alarm: alarm)
+        // Another alarm's: this alarm's ringing screen is kept, not swapped (#835).
+        let stale = RecordingFiringScreen(alarm: Alarm())
         let presenter = makePresenter(host: stale)
         presenter.isRootReady = { true }
         // Stands in for the repository fetch only: `present(alarmID:)` resolves
@@ -176,7 +177,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     /// with a ringing alarm and nothing on screen.
     func testReentry_whenTheHostIsGoneOnceTheDismissalFinishes_leavesALineAndArmsTheRetry() throws {
         let alarm = Alarm()
-        let stale = RecordingFiringScreen(alarm: alarm)
+        let stale = RecordingFiringScreen(alarm: Alarm())
         let presenter = makePresenter(host: stale)
 
         // Real audio, not a stand-in, for the reason
@@ -239,10 +240,13 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     /// calls `present(alarm:)` directly, and it can land while a different
     /// alarm sits pending from AlarmKit (#382) — clearing that one would drop
     /// the very screen this fix exists to keep.
+    ///
+    /// Since #835 the swap parks its own request before dismissing, but not
+    /// over another alarm's record: that one is what this pins.
     func testReentry_forADifferentAlarmThanThePendingOne_leavesThatDeferralAlone() throws {
         let deferred = UUID()
         let arriving = Alarm()
-        let stale = RecordingFiringScreen(alarm: arriving)
+        let stale = RecordingFiringScreen(alarm: Alarm())
         let presenter = makePresenter(host: stale)
         presenter.isRootReady = { true }
         presenter.mount = { _, _ in false }
@@ -252,6 +256,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         XCTAssertNotEqual(deferred, arriving.id, "test precondition: the two alarms have to differ")
 
         _ = presenter.present(alarm: arriving)
+        XCTAssertEqual(presenter.pendingAlarmID, deferred, "the swap parked its request over the deferral")
         let newHost = RecordingHost()
         presenter.locateHost = { .success(newHost) }
         try XCTUnwrap(dismissal.completion)()
@@ -302,12 +307,13 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
 
     /// The failure branch of `mountAfterDismissal` takes the pending slot,
     /// which holds one alarm. When a different alarm was waiting in it, that
-    /// alarm's retry is gone, and the line has to say so rather than read like
-    /// the plain miss.
+    /// alarm's retry is gone: the line has to say so, once, naming it. The
+    /// swap's start leaves that record alone (#835), so the drop is the
+    /// completion's.
     func testReentry_whenTheHostIsGoneWhileAnotherAlarmWasPending_saysThatDeferralIsDropped() throws {
         let deferred = UUID()
         let arriving = Alarm()
-        let stale = RecordingFiringScreen(alarm: arriving)
+        let stale = RecordingFiringScreen(alarm: Alarm())
         let presenter = makePresenter(host: stale)
         presenter.isRootReady = { true }
         presenter.mount = { _, _ in false }
@@ -315,22 +321,24 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         presenter.requestPresentation(alarmID: deferred)
         XCTAssertEqual(presenter.pendingAlarmID, deferred, "test precondition: the other alarm is pending")
 
-        _ = presenter.present(alarm: arriving)
+        var lines: [Line] = []
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            _ = presenter.present(alarm: arriving)
+        })
         presenter.locateHost = { .failure(.noHostingWindow) }
         let finishDismissal = try XCTUnwrap(dismissal.completion)
-        var lines: [Line] = []
         AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
             finishDismissal()
         })
 
-        let line = try XCTUnwrap(
-            lines.first { $0.message.contains("firing-present") },
-            "the drop left no line; the sink saw \(lines.map(\.message))"
-        )
+        let drops = lines.filter { $0.message.contains("another alarm's pending screen is dropped") }
+        XCTAssertEqual(drops.count, 1, "the other alarm lost its retry, said once: \(lines.map(\.message))")
+        XCTAssertEqual(drops.first?.level, .error)
         XCTAssertTrue(
-            line.message.contains("another alarm's pending screen is dropped"),
-            "the other alarm lost its retry and the line does not say so: «\(line.message)»"
+            drops.first?.message.contains(String(deferred.uuidString.prefix(8))) ?? false,
+            "the line has to name the alarm it dropped: \(lines.map(\.message))"
         )
+        XCTAssertEqual(presenter.pendingAlarmID, arriving.id, "the swap's own request is what stays parked")
     }
 
     /// The #798 path itself: AlarmKit defers the alarm, the swap runs, and no
@@ -339,7 +347,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     /// alarm that does not exist.
     func testReentry_whenTheHostIsGoneForThePendingAlarmItself_dropsNothing() throws {
         let alarm = Alarm()
-        let stale = RecordingFiringScreen(alarm: alarm)
+        let stale = RecordingFiringScreen(alarm: Alarm())
         let presenter = makePresenter(host: stale)
         presenter.isRootReady = { true }
         presenter.mount = { [weak presenter] _, snoozeCount in

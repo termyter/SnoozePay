@@ -282,6 +282,17 @@ class AlarmFiringViewController: UIViewController {
     /// `internal` so the AudioState extension in the sibling file can write it.
     var audioStateObserver: NSObjectProtocol?
 
+    /// Set by `dismissTapped` (Stop). `AlarmFiringPresenter` keeps a screen of
+    /// this alarm that is still ringing rather than swapping it, and needs to
+    /// tell it from one the user already stopped: a request then is the
+    /// alarm's next ring and gets a fresh screen (#835).
+    private(set) var isStoppedByUser = false
+
+    /// Run by `dismissTapped` after the view model's dismiss. Set by
+    /// `AlarmFiringPresenter`, which drops this alarm's pending record on it:
+    /// left parked, it raised this screen again after Stop (#835).
+    var onUserStop: (() -> Void)?
+
     // MARK: - Init
 
     convenience init(alarm: Alarm, snoozeCount: Int = 0) {
@@ -580,6 +591,8 @@ class AlarmFiringViewController: UIViewController {
         // ledger can't be read we say so rather than print a guessed total.
         let summary = wokeMorningContent()
         viewModel.dismiss()
+        isStoppedByUser = true
+        onUserStop?()
         if AudioService.shared.currentAlarmID == viewModel.alarm.id {
             AudioService.shared.stopAlarmSound()
         } else {

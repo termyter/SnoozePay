@@ -62,7 +62,9 @@ final class AlarmFiringViewModel {
     /// Moment this firing session was mounted. Anchors the ledger window the
     /// billed-charge summary looks back over (`wakeWindow`), so charges from
     /// yesterday's wake of the SAME alarm can never leak into today's total.
-    private let firingStartedAt: Date
+    /// Read by `AlarmFiringPresenter` to tell this ring's screen from an older
+    /// one (#835).
+    let firingStartedAt: Date
 
     // MARK: - Callbacks
 

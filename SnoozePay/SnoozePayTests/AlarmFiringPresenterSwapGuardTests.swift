@@ -134,7 +134,8 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
 
     func testReentry_whileTheDismissalIsOutstanding_neitherDismissesAgainNorStacks() throws {
         let alarm = Alarm()
-        let stale = ReadBackFiringScreen(alarm: alarm)
+        // Another alarm's: this alarm's ringing screen is kept, not swapped (#835).
+        let stale = ReadBackFiringScreen(alarm: Alarm())
         let host = Host()
         top = stale
         topAfterDismissal = host
@@ -356,6 +357,9 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         let alarm = Alarm()
         let host = Host()
         let stale = ReadBackFiringScreen(alarm: alarm)
+        // Snoozed, so a request for its alarm is the next ring and swaps it
+        // (#835); a ringing one would be kept.
+        stale.isSnoozedStateActive = true
         let summary = Sheet()
         summary.presentedBy = stale
         top = summary
@@ -387,7 +391,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
     /// and past the bound the request stays pending for the activation.
     func testSwap_whenTheDismissalNeverRemovesTheStaleScreen_retriesABoundedNumberOfTimes() {
         let alarm = Alarm()
-        let stale = ReadBackFiringScreen(alarm: alarm)
+        let stale = ReadBackFiringScreen(alarm: Alarm())
         top = stale
         let presenter = makePresenter(alarms: [alarm])
         presenter.dismissStaleScreen = { [self] screen, completion in
@@ -1003,7 +1007,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
     /// dismissals that took.
     private func exhaustStaleSurvival(_ presenter: AlarmFiringPresenter, alarm: Alarm) -> Int {
         dismissed = []
-        top = ReadBackFiringScreen(alarm: alarm)
+        top = ReadBackFiringScreen(alarm: Alarm())
         presenter.dismissStaleScreen = { [self] screen, completion in
             self.dismissed.append(screen)
             completion()
