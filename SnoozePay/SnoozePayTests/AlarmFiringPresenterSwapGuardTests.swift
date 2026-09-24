@@ -14,9 +14,14 @@ class ReadBackFiringScreen: AlarmFiringViewController {
     weak var wiredPresenter: UIViewController?
     var dismissalInFlight = false
     private(set) var presentedScreens: [UIViewController] = []
+    private(set) var dismissCalls = 0
 
     override var presentingViewController: UIViewController? { wiredPresenter }
     override var isBeingDismissed: Bool { dismissalInFlight }
+
+    override func dismiss(animated flag: Bool, completion: (() -> Void)?) {
+        dismissCalls += 1
+    }
 
     override func present(_ screen: UIViewController, animated flag: Bool, completion: (() -> Void)?) {
         presentedScreens.append(screen)
@@ -43,11 +48,23 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
     private final class Host: UIViewController {
         var accepts = true
         private(set) var presentedScreens: [UIViewController] = []
+        private(set) var dismissCalls = 0
 
         override func present(_ screen: UIViewController, animated flag: Bool, completion: (() -> Void)?) {
             presentedScreens.append(screen)
             if accepts { (screen as? ReadBackFiringScreen)?.wiredPresenter = self }
         }
+
+        override func dismiss(animated flag: Bool, completion: (() -> Void)?) {
+            dismissCalls += 1
+        }
+    }
+
+    /// Something the stale firing screen presented itself: the top-up sheet,
+    /// a refund alert, the WokeMorning summary left up after Stop.
+    private final class Sheet: UIViewController {
+        weak var presentedBy: UIViewController?
+        override var presentingViewController: UIViewController? { presentedBy }
     }
 
     /// The top of the hierarchy, as the real walk would find it.
@@ -296,6 +313,90 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertTrue(upAlready.presentedScreens.isEmpty, "a second firing screen went up on the first")
         XCTAssertEqual(host.presentedScreens.count, 1)
         XCTAssertNil(presenter.pendingPresentation, "this alarm's screen is up; a pending record re-raises it")
+        let line = lines.first { $0.message.contains("already up — not stacking") }
+        XCTAssertEqual(line?.level, .default, "clearing the pending alarm left no line: \(lines.map(\.message))")
+    }
+
+    /// AlarmKit's swap at 0 is in flight when the notification path asks for
+    /// the same alarm at 2, which parks. The count-0 mount must not wipe it.
+    func testSwap_whenTheSameAlarmIsParkedAtAHigherCount_endsOnThatCount() throws {
+        let alarm = Alarm()
+        let host = Host()
+        top = ReadBackFiringScreen(alarm: Alarm())
+        topAfterDismissal = host
+        let presenter = makePresenter(alarms: [alarm])
+
+        presenter.requestPresentation(alarmID: alarm.id)
+        _ = presenter.present(alarm: alarm, snoozeCount: 2)
+        try finishDismissal()
+        top = try XCTUnwrap(host.presentedScreens.last, "test precondition: the count-0 screen went up")
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 2),
+            "the count-0 mount wiped the parked count-2 request (#808 class)"
+        )
+
+        runOneMainQueueTurn()
+        try finishDismissal()
+
+        let mounted = try XCTUnwrap(host.presentedScreens.last as? ReadBackFiringScreen)
+        XCTAssertEqual(mounted.viewModel.snoozeCount, 2, "the screen left up prices the next snooze from step 1")
+        XCTAssertNil(presenter.pendingPresentation)
+    }
+
+    // MARK: - A stale screen that presented something itself
+
+    /// `dismiss` sent to the stale screen itself takes down only what it
+    /// presented. Staged here through the seam: the first dismissal pops the
+    /// summary and leaves the screen. It must not then pass for this alarm's
+    /// screen — the pending alarm would be cleared with nothing new on screen.
+    func testSwap_whenTheStaleScreenSurvivesItsDismissal_stillRaisesTheNewScreen() throws {
+        let alarm = Alarm()
+        let host = Host()
+        let stale = ReadBackFiringScreen(alarm: alarm)
+        let summary = Sheet()
+        summary.presentedBy = stale
+        top = summary
+        let presenter = makePresenter(alarms: [alarm])
+        presenter.dismissStaleScreen = { [self] screen, completion in
+            self.dismissed.append(screen)
+            self.top = self.top === summary ? screen : (host as UIViewController)
+            completion()
+        }
+
+        presenter.requestPresentation(alarmID: alarm.id)
+
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 0),
+            "the surviving stale screen was taken for this alarm's, and the request cleared with nothing new up"
+        )
+        XCTAssertTrue(stale.presentedScreens.isEmpty, "stacked on the stale screen")
+
+        runOneMainQueueTurn()
+
+        XCTAssertEqual(dismissed.count, 2, "the stale screen was not dismissed again")
+        XCTAssertEqual(host.presentedScreens.count, 1, "the new firing screen never went up")
+        XCTAssertNil(presenter.pendingPresentation)
+    }
+
+    /// The production dismissal goes to the stale screen's presenter, which
+    /// takes the screen down together with anything it presented.
+    func testSwap_sendsTheDismissalToTheStaleScreensPresenter() {
+        let host = Host()
+        let stale = ReadBackFiringScreen(alarm: Alarm())
+        stale.wiredPresenter = host
+        let summary = Sheet()
+        summary.presentedBy = stale
+        let presenter = AlarmFiringPresenter(alarmRepository: .shared)
+        presenter.locateHost = { .success(summary) }
+        presenter.makeFiringScreen = { ReadBackFiringScreen(alarm: $0, snoozeCount: $1) }
+        // `dismissStaleScreen` left at its production default.
+
+        _ = presenter.present(alarm: Alarm())
+
+        XCTAssertEqual(stale.dismissCalls, 0, "sent to the stale screen, which only takes down what it presented")
+        XCTAssertEqual(host.dismissCalls, 1, "the stale screen's presenter has to receive the dismissal")
     }
 
     /// The screen already up was built by AlarmKit's request, at 0, and the

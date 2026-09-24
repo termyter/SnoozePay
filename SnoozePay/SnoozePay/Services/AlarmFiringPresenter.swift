@@ -31,10 +31,14 @@ final class AlarmFiringPresenter {
     /// present but which we couldn't mount yet because no foreground window/root
     /// existed: the system runs the intent before the scene is active, and on a
     /// cold launch the splash → tab-bar root only mounts ~200 ms later. Recorded
-    /// by `requestPresentation(alarmID:snoozeCount:)`, and by the no-host
-    /// branch of `mountAfterDismissal` — a notification-path swap whose old
-    /// screen left no host behind (#804). Flushed by
-    /// `flushPendingPresentation()` once the scene becomes active, so the firing
+    /// by `requestPresentation(alarmID:snoozeCount:)`, by a request parked
+    /// while a swap's dismissal is outstanding (#807), and by
+    /// `mountAfterDismissal` whenever the swap's screen did not go up: no host
+    /// left (#804), UIKit declined the `present`, the stale screen still up, or
+    /// a firing screen already there that is another alarm's or this alarm's
+    /// at a lower snooze count (#807). Flushed by
+    /// `flushPendingPresentation()` once the scene becomes active, and right
+    /// after a swap lands, so the firing
     /// screen survives both a warm-foreground race and a cold start (#382).
     ///
     /// The snooze count travels with the id because the retry rebuilds the
@@ -92,8 +96,13 @@ final class AlarmFiringPresenter {
     /// when there is none (#798) — is unreachable. Holding the completion as a
     /// value makes both of its outcomes reachable, and running it is the test's
     /// stand-in for "the dismissal finished".
+    ///
+    /// Sent to the screen's presenter, not the screen: `dismiss` on a
+    /// controller that is itself presenting something — the top-up sheet, a
+    /// refund alert, the WokeMorning summary left up after Stop — takes down
+    /// only what it presented and leaves it standing (#807).
     var dismissStaleScreen: (UIViewController, @escaping () -> Void) -> Void = { staleScreen, completion in
-        staleScreen.dismiss(animated: false, completion: completion)
+        (staleScreen.presentingViewController ?? staleScreen).dismiss(animated: false, completion: completion)
     }
 
     /// Builds the firing screen `present(alarm:snoozeCount:)` mounts.
@@ -302,16 +311,17 @@ final class AlarmFiringPresenter {
                 )
                 return false
             }
-            // Set BEFORE the call: a completion UIKit runs synchronously would
-            // otherwise clear the marker before it was set, and the stale
-            // screen would read as "being dismissed" for as long as it lived.
+            // Set before the call so a completion UIKit runs synchronously
+            // clears it rather than finding nothing to clear. Leaving a stale
+            // marker behind is harmless now that the guard above also needs
+            // `isBeingDismissed`, but the marker then names a swap that is over.
             screenBeingDismissed = presentedFiring
             dismissStaleScreen(presentedFiring) { [weak self, weak presentedFiring] in
                 guard let self else { return }
                 if self.screenBeingDismissed === presentedFiring {
                     self.screenBeingDismissed = nil
                 }
-                self.mountAfterDismissal(firingVC, retry: request)
+                self.mountAfterDismissal(firingVC, replacing: presentedFiring, retry: request)
             }
             return false
         }
@@ -350,7 +360,15 @@ final class AlarmFiringPresenter {
     ///     `StatisticsViewController.showLoadErrorAlert` does (#752/#789):
     ///     UIKit wires `presentingViewController` inside `present`, before any
     ///     completion, so the answer is there on the next line.
-    private func mountAfterDismissal(_ firingVC: UIViewController, retry: PendingPresentation) {
+    ///
+    /// `staleScreen` is the screen this swap dismissed. Found on top again, or
+    /// still `isBeingDismissed`, it is not "up": it survived its own dismissal
+    /// or is going away, and taking it for this alarm's screen would clear the
+    /// alarm with nothing new on screen. Re-armed and re-attempted instead;
+    /// each round takes at least one layer off.
+    private func mountAfterDismissal(
+        _ firingVC: UIViewController, replacing staleScreen: UIViewController?, retry: PendingPresentation
+    ) {
         let top: UIViewController
         switch locateHost() {
         case let .success(located):
@@ -366,7 +384,13 @@ final class AlarmFiringPresenter {
         }
 
         if let alreadyUp = Self.presentedFiringScreen(from: top) {
-            if alreadyUp.viewModel.alarm.id == retry.alarmID {
+            if alreadyUp === staleScreen || alreadyUp.isBeingDismissed {
+                armRetry(
+                    retry,
+                    "firing-present: the previous screen is still up after its dismissal — keeping this one pending"
+                )
+                attemptParkedPresentationSoon()
+            } else if alreadyUp.viewModel.alarm.id == retry.alarmID {
                 // This alarm's screen is up — but a screen built at a lower
                 // snooze count prices the next snooze from an earlier step
                 // (#808): AlarmKit's requests always carry 0. A higher count
@@ -378,7 +402,13 @@ final class AlarmFiringPresenter {
                         "firing-present: this alarm is up at a lower snooze count — swapping it for the right one"
                     )
                 } else {
-                    clearPending(for: retry.alarmID)
+                    AppLogger.emit(
+                        .appDelegate, .default,
+                        "firing-present: this alarm's screen is already up — not stacking another"
+                    )
+                    clearPending(shownAs: PendingPresentation(
+                        alarmID: retry.alarmID, snoozeCount: alreadyUp.viewModel.snoozeCount
+                    ))
                 }
                 attemptParkedPresentationSoon()
             } else {
@@ -401,7 +431,7 @@ final class AlarmFiringPresenter {
             armRetry(retry, "firing-present: \(reason) after dismissing the previous screen — keeping it pending")
             return
         }
-        clearPending(for: retry.alarmID)
+        clearPending(shownAs: retry)
         attemptParkedPresentationSoon()
     }
 
@@ -422,17 +452,23 @@ final class AlarmFiringPresenter {
         }
     }
 
-    /// Drops the deferral once `alarmID`'s screen is up.
+    /// Drops the deferral once `shown` — an alarm at a snooze count — is on
+    /// screen.
     ///
     /// Only this alarm's: a direct `present(alarm:)` from the notification path
     /// can land while a different alarm sits pending from AlarmKit, and
-    /// clearing that one would drop the screen #798 exists to keep. By id, not
-    /// by the whole record: the same alarm deferred by AlarmKit at count 0 and
-    /// then shown at 2 is shown, and keeping `(id, 0)` would re-mount it at 0
-    /// on the next activation — the reset #808 closes. Pinned by
-    /// `testReentry_forTheAlarmAlreadyPendingAtAnotherCount_clearsIt`.
-    private func clearPending(for alarmID: UUID) {
-        if pendingAlarmID == alarmID {
+    /// clearing that one would drop the screen #798 exists to keep. Not only on
+    /// an exact match: the same alarm deferred by AlarmKit at count 0 and then
+    /// shown at 2 is shown, and keeping `(id, 0)` would re-mount it at 0 on the
+    /// next activation — the reset #808 closes (pinned by
+    /// `testReentry_forTheAlarmAlreadyPendingAtAnotherCount_clearsIt`). But a
+    /// record for this alarm at a HIGHER count than the screen stays: it was
+    /// parked while an AlarmKit swap at 0 was in flight, and dropping it leaves
+    /// the screen on the first step's price (#807). The follow-up re-attempt
+    /// swaps it in.
+    private func clearPending(shownAs shown: PendingPresentation) {
+        guard let pending = pendingPresentation, pending.alarmID == shown.alarmID else { return }
+        if pending.snoozeCount <= shown.snoozeCount {
             pendingPresentation = nil
         }
     }
