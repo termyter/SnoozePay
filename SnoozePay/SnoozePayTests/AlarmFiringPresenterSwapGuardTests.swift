@@ -305,7 +305,9 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         presenter.requestPresentation(alarmID: alarm.id)
         top = host
         XCTAssertTrue(presenter.present(alarm: alarm), "test precondition: the re-entry mounted directly")
-        XCTAssertEqual(presenter.pendingAlarmID, alarm.id, "test precondition: the swap's request is still pending")
+        // Since #833 the direct mount clears this alarm's record itself; what
+        // is left to pin here is that the completion does not stack.
+        XCTAssertNil(presenter.pendingPresentation, "the direct mount left the swap's request pending")
         let upAlready = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
         top = upAlready
         try finishDismissal()
@@ -534,5 +536,147 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertTrue(line.message.contains("keeping it pending"), "«\(line.message)»")
         XCTAssertEqual(line.level, .error)
         XCTAssertEqual(line.category, .appDelegate)
+    }
+
+    // MARK: - The direct present (#833)
+
+    /// No firing screen is up, so `present` mounts directly — the common path.
+    /// It answered `true` without a read-back, so a declined present lost the
+    /// alarm with no line of ours.
+    func testDirect_whenUIKitDeclinesThePresent_keepsTheAlarmPendingAndLeavesALine() throws {
+        let alarm = Alarm()
+        let refusing = Host()
+        refusing.accepts = false
+        top = refusing
+        let presenter = makePresenter(alarms: [alarm])
+        // Real audio: `stopAlarmSound()` is a no-op on a stopped service.
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound")
+        XCTAssertTrue(AudioService.shared.isPlaying, "test precondition: the alarm has to be audible")
+
+        var answer = true
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            answer = presenter.present(alarm: alarm, snoozeCount: 2)
+        })
+
+        XCTAssertEqual(refusing.presentedScreens.count, 1, "test precondition: the host was asked")
+        XCTAssertTrue(dismissed.isEmpty, "test precondition: this is the direct path, not the swap")
+        XCTAssertFalse(answer, "nothing is up; answering true tells the pending path to drop the alarm")
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 2),
+            "the declined screen has to wait for the next activation, at the count it was built with (#808)"
+        )
+        XCTAssertTrue(AudioService.shared.isPlaying, "the retry is armed, so this is not the give-up branch")
+        let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
+        XCTAssertTrue(
+            line.message.contains("Host is not in the window hierarchy"),
+            "the line has to carry why UIKit declined: «\(line.message)»"
+        )
+        XCTAssertFalse(line.message.contains("after dismissing"), "nothing was dismissed: «\(line.message)»")
+        XCTAssertTrue(line.message.contains("keeping it pending"), "«\(line.message)»")
+        XCTAssertEqual(line.level, .error)
+        XCTAssertEqual(line.category, .appDelegate)
+    }
+
+    /// The same refusal reached through the AlarmKit retry, which drops its
+    /// record on `true`, and the retry landing once the host accepts.
+    func testDirect_throughThePendingPath_whenDeclined_retriesOnTheNextFlush() throws {
+        let alarm = Alarm()
+        let host = Host()
+        host.accepts = false
+        top = host
+        let presenter = makePresenter(alarms: [alarm])
+
+        presenter.requestPresentation(alarmID: alarm.id, snoozeCount: 1)
+
+        XCTAssertEqual(host.presentedScreens.count, 1, "test precondition: the host was asked")
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 1),
+            "the declined alarm was dropped: nothing will raise it again"
+        )
+
+        host.accepts = true
+        presenter.flushPendingPresentation()
+
+        let mounted = try XCTUnwrap(host.presentedScreens.last as? ReadBackFiringScreen)
+        XCTAssertTrue(mounted.presentingViewController === host, "the retry has to put the screen up")
+        XCTAssertEqual(mounted.viewModel.snoozeCount, 1)
+        XCTAssertNil(presenter.pendingPresentation)
+    }
+
+    /// AlarmKit deferred the alarm at 0, the notification path then shows it
+    /// at 2 directly. The leftover `(id, 0)` would re-mount it at 0 on the
+    /// next activation (#808).
+    func testDirect_forTheAlarmPendingAtALowerCount_clearsIt() {
+        let alarm = Alarm()
+        let host = Host()
+        let presenter = makePresenter(alarms: [alarm])
+        presenter.isRootReady = { false }
+        presenter.requestPresentation(alarmID: alarm.id)
+        XCTAssertEqual(presenter.pendingAlarmID, alarm.id, "test precondition: AlarmKit's deferral at 0")
+        top = host
+
+        XCTAssertTrue(presenter.present(alarm: alarm, snoozeCount: 2))
+
+        XCTAssertNil(presenter.pendingPresentation, "the (id, 0) record survived the count-2 screen going up")
+        XCTAssertEqual(host.presentedScreens.count, 1)
+    }
+
+    /// The reverse: the record is at the HIGHER count. It stays, and is swapped
+    /// in on the next turn rather than on an activation that may be hours off.
+    func testDirect_forTheAlarmPendingAtAHigherCount_keepsItAndSwapsItIn() throws {
+        let alarm = Alarm()
+        let host = Host()
+        var rootReady = false
+        let presenter = makePresenter(alarms: [alarm])
+        presenter.isRootReady = { rootReady }
+        presenter.requestPresentation(alarmID: alarm.id, snoozeCount: 2)
+        rootReady = true
+        top = host
+
+        XCTAssertTrue(presenter.present(alarm: alarm, snoozeCount: 0))
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 2),
+            "the count-0 screen wiped the count-2 record; the next snooze is priced from step 1"
+        )
+        let atZero = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
+        top = atZero
+        topAfterDismissal = host
+
+        runOneMainQueueTurn()
+        XCTAssertTrue(dismissed.first === atZero, "the count-2 record was never re-attempted")
+        try finishDismissal()
+
+        let mounted = try XCTUnwrap(host.presentedScreens.last as? ReadBackFiringScreen)
+        XCTAssertEqual(mounted.viewModel.snoozeCount, 2)
+        XCTAssertNil(presenter.pendingPresentation)
+    }
+
+    /// Another alarm deferred by AlarmKit is neither cleared by this one going
+    /// up nor left for the next activation.
+    func testDirect_whileAnotherAlarmIsPending_leavesItPendingAndRaisesIt() throws {
+        let deferred = Alarm()
+        let arriving = Alarm()
+        let host = Host()
+        var rootReady = false
+        let presenter = makePresenter(alarms: [deferred, arriving])
+        presenter.isRootReady = { rootReady }
+        presenter.requestPresentation(alarmID: deferred.id)
+        rootReady = true
+        top = host
+
+        XCTAssertTrue(presenter.present(alarm: arriving))
+        XCTAssertEqual(presenter.pendingAlarmID, deferred.id, "mounting one alarm cancelled another's deferral")
+
+        top = try XCTUnwrap(host.presentedScreens.first)
+        topAfterDismissal = host
+        runOneMainQueueTurn()
+        try finishDismissal()
+
+        let mounted = try XCTUnwrap(host.presentedScreens.last as? ReadBackFiringScreen)
+        XCTAssertEqual(mounted.viewModel.alarm.id, deferred.id, "the deferred alarm was never raised")
+        XCTAssertNil(presenter.pendingPresentation)
     }
 }
