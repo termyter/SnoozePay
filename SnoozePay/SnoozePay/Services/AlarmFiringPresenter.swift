@@ -292,7 +292,7 @@ final class AlarmFiringPresenter {
             // this line IS the outcome and #795 found it read by no test.
             // `miss.rawValue` is a fixed sentence, so `emit`'s implicit
             // `.public` is the marker it already carried.
-            AppLogger.emit(.appDelegate, .error, "firing-present: \(miss.rawValue) — stopping audio") // MUTANT #834
+            armRetry(request, "firing-present: \(miss.rawValue) — stopping audio, keeping it pending")
             AudioService.shared.stopAlarmSound()
             return false
         }
@@ -358,7 +358,10 @@ final class AlarmFiringPresenter {
         // Parked instead, for that flush. The notification path gets here
         // over the splash on a cold launch by a banner tap; the pending path
         // never does, since it checks the same seam before mounting.
-        // MUTANT #834: isRootReady gate removed
+        guard isRootReady() else {
+            armRetry(request, level: .default, "firing-present: launch root not ready — keeping it pending")
+            return false
+        }
         return presentReadingBack(firingVC, on: topVC, request: request, context: "", raiseParked: false)
     }
 
