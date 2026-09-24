@@ -176,7 +176,7 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         recording { presenter.requestPresentation(alarmID: requested.id) }
 
         XCTAssertEqual(presenter.pendingPresentations, [pending(parked, 1), pending(requested, 0)])
-        XCTAssertFalse(lines.contains { $0.message.contains("dropped") }, "\(lines.map(\.message))")
+        XCTAssertTrue(lines.isEmpty, "joining the queue is not news: \(lines.map(\.message))")
     }
 
     /// AlarmKit's requests always carry 0. Over a parked `(A, 2)` that reset
@@ -282,7 +282,7 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         let line = try XCTUnwrap(lines.first { $0.message.contains("still being dismissed") }, "\(lines.map(\.message))")
         XCTAssertEqual(line.level, .default, "«\(line.message)»")
         XCTAssertTrue(line.message.contains("[alarm \(handle(leaving)) at snooze 1]"), "«\(line.message)»")
-        XCTAssertFalse(line.message.contains("dropped"), "«\(line.message)»")
+        XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
     }
 
     // MARK: - P4: this ring's screen already up

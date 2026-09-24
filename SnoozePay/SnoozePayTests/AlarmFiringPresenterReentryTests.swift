@@ -330,7 +330,16 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             finishDismissal()
         })
 
-        XCTAssertFalse(lines.contains { $0.message.contains("dropped") }, "\(lines.map(\.message))")
+        let rearms = lines.filter { $0.message.contains("after dismissing the previous screen — keeping it pending") }
+        XCTAssertEqual(rearms.count, 1, "the failure branch did not re-arm: \(lines.map(\.message))")
+        XCTAssertTrue(
+            rearms.first?.message.contains("[alarm \(arriving.id.uuidString.prefix(8)) at snooze 0]") ?? false,
+            "\(lines.map(\.message))"
+        )
+        XCTAssertFalse(
+            lines.contains { $0.message.contains(String(deferred.uuidString.prefix(8))) },
+            "the deferred alarm was touched: \(lines.map(\.message))"
+        )
         XCTAssertEqual(
             presenter.pendingPresentations.map(\.alarmID), [deferred, arriving.id],
             "both alarms have to stay armed, the older one first"

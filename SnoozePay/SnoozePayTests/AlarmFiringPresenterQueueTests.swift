@@ -39,10 +39,10 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         drainMainQueue()
     }
 
-    /// Every line a test here recorded is checked for a whole id: `emit`
-    /// writes `.public`, so the handle is all a line may carry (#835).
+    /// Every presenter line a test here recorded is checked for a whole id:
+    /// `emit` writes `.public`, so the handle is all a line may carry (#835).
     override func tearDown() {
-        for line in lines {
+        for line in lines where line.message.hasPrefix("firing-present") {
             let whole = line.message.range(of: Self.fullUUID, options: [.regularExpression, .caseInsensitive])
             XCTAssertNil(whole, "a presenter line carries a full UUID: «\(line.message)»")
         }
@@ -165,13 +165,40 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         top = firstScreen
         recording { runOneMainQueueTurn() }
         XCTAssertTrue(dismissed.last === firstScreen, "the newer alarm was never raised after the older one")
+        let swap = try XCTUnwrap(lines.first { $0.message.contains("swapping out") }, "\(lines.map(\.message))")
+        XCTAssertEqual(swap.level, .error, "the older alarm's screen is lost to the queue: «\(swap.message)»")
+        XCTAssertTrue(swap.message.contains("raised from the queue in this flush"), "«\(swap.message)»")
+    }
+
+    /// Stop drops the stopped alarm's record even when it is not the head,
+    /// and leaves the other alarm's record in front of it.
+    func testStop_forARecordBehindAnotherAlarm_dropsOnlyThatRecord() throws {
+        let alarm = Alarm()
+        let other = Alarm()
+        let presenter = makePresenter(alarms: [alarm, other])
+        let host = Host()
+        top = host
+        XCTAssertTrue(presenter.present(alarm: alarm), "test precondition: the screen went up")
+        let screen = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen)
+        rootReady = false
+        presenter.requestPresentation(alarmID: other.id)
+        presenter.requestPresentation(alarmID: alarm.id)
+        XCTAssertEqual(presenter.pendingPresentations, [pending(other, 0), pending(alarm, 0)], "test precondition")
+
+        recording { screen.dismissTapped() }
+
+        XCTAssertEqual(presenter.pendingPresentations, [pending(other, 0)])
+        let stops = lines.filter { $0.message.contains("stopped on its screen") }
+        XCTAssertEqual(stops.count, 1, "\(lines.map(\.message))")
+        XCTAssertTrue(stops.first?.message.contains("alarm \(handle(alarm)) at snooze 0") ?? false)
     }
 
     // MARK: - Expiry
 
     /// A record parked past `pendingRecordLifetime` is dropped on the flush,
-    /// at `.error`, naming it. A retry of the same record does not restart
-    /// its clock; a record inside the lifetime still goes up.
+    /// at `.error`, naming it, even when it is not the head: the fresh record
+    /// is first, since its count went up in place after the stale one parked.
+    /// A retry at the same count does not restart the clock.
     func testFlush_dropsARecordPastItsLifetimeAndRaisesTheRest() throws {
         let stale = Alarm()
         let fresh = Alarm()
@@ -181,37 +208,104 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         presenter.now = { clock }
         let lifetime = AlarmFiringPresenter.pendingRecordLifetime
         rootReady = false
-        recording { presenter.requestPresentation(alarmID: stale.id) }
-        clock = parkedAt.addingTimeInterval(60 * 60)
         recording {
-            presenter.requestPresentation(alarmID: stale.id)
             presenter.requestPresentation(alarmID: fresh.id)
+            clock = parkedAt.addingTimeInterval(60)
+            presenter.requestPresentation(alarmID: stale.id)
+            clock = parkedAt.addingTimeInterval(60 * 60)
+            presenter.requestPresentation(alarmID: stale.id)
+            clock = parkedAt.addingTimeInterval(2 * 60 * 60)
+            presenter.requestPresentation(alarmID: fresh.id, snoozeCount: 1)
         }
+        XCTAssertEqual(presenter.pendingPresentations, [pending(fresh, 1), pending(stale, 0)], "test precondition")
 
-        clock = parkedAt.addingTimeInterval(lifetime)
+        clock = parkedAt.addingTimeInterval(60 + lifetime)
         recording { presenter.flushPendingPresentation() }
-        XCTAssertEqual(presenter.pendingPresentations, [pending(stale, 0), pending(fresh, 0)], "dropped at the limit")
+        XCTAssertEqual(presenter.pendingPresentations.count, 2, "dropped at the limit, not past it")
 
-        clock = parkedAt.addingTimeInterval(lifetime + 60)
+        clock = parkedAt.addingTimeInterval(60 + lifetime + 60)
         let host = Host()
         top = host
         rootReady = true
         recording { presenter.flushPendingPresentation() }
 
-        let drops = lines.filter { $0.message.contains("dropping") }
+        XCTAssertTrue(presenter.pendingPresentations.isEmpty, "only the head was checked for expiry")
+        let drops = lines.filter { $0.message.contains("past the") }
         XCTAssertEqual(drops.count, 1, "\(lines.map(\.message))")
         XCTAssertEqual(drops.first?.level, .error)
         let limit = Int(lifetime / 60)
         XCTAssertEqual(
             drops.first?.message,
-            "firing-present: pending for \(limit + 1) min, past the \(limit) min limit"
-                + " — dropping [alarm \(handle(stale)) at snooze 0]",
+            "firing-present: dropped after \(limit + 1) min pending, past the \(limit) min limit"
+                + " [alarm \(handle(stale)) at snooze 0] — leaving the audio of nobody alone",
             "the retry at 1 h restarted the clock, or the line changed"
         )
         let raised = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen, "the fresh record was lost")
         XCTAssertEqual(raised.viewModel.alarm.id, fresh.id)
+        XCTAssertEqual(raised.viewModel.snoozeCount, 1)
         XCTAssertEqual(host.presentedScreens.count, 1, "the expired record went up")
-        XCTAssertTrue(presenter.pendingPresentations.isEmpty)
+    }
+
+    /// An expired record's alarm has no screen coming: the sound it owns
+    /// stops with it, and another alarm's sound is left alone.
+    func testExpiry_stopsOnlyTheSoundTheExpiredAlarmOwns() {
+        for ownsSound in [true, false] {
+            lines = []
+            let expired = Alarm()
+            let other = Alarm()
+            let presenter = makePresenter(alarms: [expired])
+            let parkedAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+            var clock = parkedAt
+            presenter.now = { clock }
+            rootReady = false
+            presenter.requestPresentation(alarmID: expired.id)
+            let owner = ownsSound ? expired : other
+            AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: owner.id)
+
+            clock = parkedAt.addingTimeInterval(AlarmFiringPresenter.pendingRecordLifetime + 60)
+            recording { presenter.flushPendingPresentation() }
+
+            let label = "owner is \(ownsSound ? "the expired alarm" : "another alarm")"
+            XCTAssertTrue(presenter.pendingPresentations.isEmpty, label)
+            XCTAssertEqual(AudioService.shared.soundingAlarmID, ownsSound ? nil : other.id, label)
+            let decision = ownsSound ? "stopping the audio it owns" : "leaving the audio of \(handle(other)) alone"
+            XCTAssertTrue(
+                lines.contains { $0.message.contains("[alarm \(handle(expired))") && $0.message.hasSuffix(decision) },
+                "\(label): \(lines.map(\.message))"
+            )
+            AudioService.shared.stopAlarmSound()
+        }
+    }
+
+    /// A request for an alarm whose record expired replaces that record
+    /// rather than merging into it: at the same count it kept the old clock,
+    /// and under yesterday's higher count it was outranked, and either way the
+    /// flush dropped it with the old record.
+    func testRequest_overItsOwnExpiredRecord_replacesItAndIsPresented() throws {
+        for oldCount in [0, 3] {
+            lines = []
+            let alarm = Alarm()
+            let presenter = makePresenter(alarms: [alarm])
+            let parkedAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+            var clock = parkedAt
+            presenter.now = { clock }
+            rootReady = false
+            presenter.requestPresentation(alarmID: alarm.id, snoozeCount: oldCount)
+
+            clock = parkedAt.addingTimeInterval(AlarmFiringPresenter.pendingRecordLifetime + 60)
+            let host = Host()
+            top = host
+            rootReady = true
+            recording { presenter.requestPresentation(alarmID: alarm.id) }
+
+            let label = "expired at snooze \(oldCount)"
+            let raised = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen, "\(label): no screen")
+            XCTAssertEqual(raised.viewModel.snoozeCount, 0, label)
+            XCTAssertTrue(presenter.pendingPresentations.isEmpty, label)
+            XCTAssertFalse(lines.contains { $0.message.contains("past the") }, "\(label): \(lines.map(\.message))")
+            let replaced = "replaces the expired alarm \(handle(alarm)) at snooze \(oldCount)"
+            XCTAssertTrue(lines.contains { $0.message.contains(replaced) }, "\(label): \(lines.map(\.message))")
+        }
     }
 
     // MARK: - Check order

@@ -272,21 +272,29 @@ final class AlarmFiringPresenter {
         }
         guard mount(pending.alarmID, pending.snoozeCount) else { return }
         pendingQueue.removeAll { $0.request == pending }
+        raisedFromQueue = pendingQueue.isEmpty ? nil : pending
         attemptParkedPresentationSoon()
     }
 
+    /// The record this flush raised while more were queued. The next record
+    /// swaps its screen out, and that loss is an `.error` (#858 review).
+    private var raisedFromQueue: PendingPresentation?
+
+    private func isExpired(_ queued: QueuedPresentation, at date: Date) -> Bool {
+        date.timeIntervalSince(queued.parkedAt) > Self.pendingRecordLifetime
+    }
+
+    /// Drops every expired record. Its alarm has no screen coming, so the
+    /// sound it owns stops too, by the rule a miss follows (#858 review).
     private func dropExpiredPending() {
         let current = now()
-        let lifetime = Self.pendingRecordLifetime
-        pendingQueue.removeAll { queued in
-            let waited = current.timeIntervalSince(queued.parkedAt)
-            guard waited > lifetime else { return false }
-            AppLogger.emit(
-                .appDelegate, .error,
-                "firing-present: pending for \(Int(waited / 60)) min, past the \(Int(lifetime / 60)) min limit"
-                    + " — dropping [\(queued.request.logHandle)]"
-            )
-            return true
+        let expired = pendingQueue.filter { isExpired($0, at: current) }
+        guard !expired.isEmpty else { return }
+        pendingQueue.removeAll { isExpired($0, at: current) }
+        let limit = Int(Self.pendingRecordLifetime / 60)
+        for queued in expired {
+            let waited = Int(current.timeIntervalSince(queued.parkedAt) / 60)
+            stopAudio(ifOwnedBy: queued.request, "dropped after \(waited) min pending, past the \(limit) min limit")
         }
     }
 
@@ -479,13 +487,18 @@ final class AlarmFiringPresenter {
     /// Parked behind another alarm's record too, since the queue drops
     /// neither (#858): that record is raised once this swap lands
     /// (`raiseParked`), and this one survives a dismissal UIKit never completes.
+    ///
+    /// `.error` when the screen going down is another alarm's that the flush
+    /// raised from the queue: that alarm is lost to the next record.
     private func parkBeforeSwap(
         _ request: PendingPresentation, replacing screen: AlarmFiringViewController, because mismatch: RingMismatch
     ) {
+        let shown = PendingPresentation(on: screen)
+        let lost = mismatch == .otherAlarm && shown == raisedFromQueue
         armRetry(
-            request, level: .default,
-            "firing-present: swapping out the screen of \(PendingPresentation(on: screen).logHandle)"
-                + " (\(mismatch.rawValue))"
+            request, level: lost ? .error : .default,
+            "firing-present: swapping out the screen of \(shown.logHandle)"
+                + " (\(mismatch.rawValue)\(lost ? ", raised from the queue in this flush" : ""))"
         )
     }
 
@@ -758,15 +771,24 @@ final class AlarmFiringPresenter {
     ///   * At a lower count, `retry` takes its place in the queue. At the same
     ///     count the record is kept as it is, with its `parkedAt`: a retry does
     ///     not restart the expiry.
+    ///   * An expired record of this alarm counts as absent: `retry` replaces
+    ///     it at the back, with a fresh `parkedAt`. Merged into it, a request
+    ///     hours later was dropped with it on the flush (#858 review).
     ///
     /// Compared by id AND count: by id alone, `(A, 0)` silently replaced a
     /// parked `(A, 3)`. `line == nil` is AlarmKit's request, which is not a
-    /// failure: it writes only when the rule kept a record over it.
+    /// failure: it writes only when the rule kept or replaced a record.
     private func armRetry(_ retry: PendingPresentation, level: OSLogType = .error, _ line: String?) {
-        let index = pendingQueue.firstIndex { $0.request.alarmID == retry.alarmID }
+        let current = now()
+        var index = pendingQueue.firstIndex { $0.request.alarmID == retry.alarmID }
+        var expired: PendingPresentation?
+        if let stale = index, isExpired(pendingQueue[stale], at: current) {
+            expired = pendingQueue.remove(at: stale).request
+            index = nil
+        }
         let parked = index.map { pendingQueue[$0].request }
         let outranked = parked.map { $0.snoozeCount > retry.snoozeCount } ?? false
-        let queued = QueuedPresentation(request: retry, parkedAt: now())
+        let queued = QueuedPresentation(request: retry, parkedAt: current)
         if let index, let parked, parked.snoozeCount < retry.snoozeCount {
             pendingQueue[index] = queued
         } else if index == nil {
@@ -776,6 +798,8 @@ final class AlarmFiringPresenter {
         let outcome: String
         if outranked, let parked {
             outcome = "; the pending \(parked.logHandle) outranks it and stays"
+        } else if let expired {
+            outcome = "; it replaces the expired \(expired.logHandle)"
         } else if line != nil {
             outcome = ""
         } else {

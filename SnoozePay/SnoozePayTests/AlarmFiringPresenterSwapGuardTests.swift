@@ -223,7 +223,8 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         })
 
         XCTAssertEqual(presenter.pendingPresentations.map(\.alarmID), [first.id, other.id, arriving.id])
-        XCTAssertFalse(lines.contains { $0.message.contains("dropped") }, "\(lines.map(\.message))")
+        XCTAssertEqual(lines.count, 1, "\(lines.map(\.message))")
+        XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
     }
 
     // MARK: - The marker's lifetime
@@ -876,7 +877,8 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         })
 
         XCTAssertEqual(presenter.pendingPresentations.map(\.alarmID), [parked.id, arriving.id])
-        XCTAssertFalse(lines.contains { $0.message.contains("dropped") }, "\(lines.map(\.message))")
+        XCTAssertEqual(lines.count, 1, "\(lines.map(\.message))")
+        XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
     }
 
     /// After a host miss the alarm is silent, and the only way its sound comes
