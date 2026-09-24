@@ -239,9 +239,9 @@ final class AlarmFiringPresenter {
 
     /// Present the firing screen for the alarm identified by `alarmID`,
     /// resolving its model from the repository. Used by the AlarmKit paths
-    /// (#379) which only carry the id. A missing / corrupt alarm is logged and
-    /// the audio is silenced so the user is never left with a sounding alarm
-    /// and no screen — mirroring `AppDelegate.presentAlarmFiringScreen`.
+    /// (#379) which only carry the id, and by the pending slot's `mount`. A
+    /// missing / corrupt alarm is logged, and only the sound that alarm itself
+    /// owns is stopped: see `stopAudio(ifOwnedBy:_:)`.
     ///
     /// Returns `true` when a firing screen was mounted (or the alarm was
     /// resolved-but-missing, a terminal outcome that must not be retried), and
@@ -250,25 +250,38 @@ final class AlarmFiringPresenter {
     /// for the two states behind that `false`.
     @discardableResult
     func present(alarmID: UUID, snoozeCount: Int = 0) -> Bool {
+        let request = PendingPresentation(alarmID: alarmID, snoozeCount: snoozeCount)
         let alarm: Alarm?
         do {
             alarm = try alarmRepository.fetchChecked(id: alarmID)
         } catch {
-            let errorDesc = String(describing: error)
-            AppLogger.appDelegate.error(
-                "firing-present: fetch failed for \(alarmID, privacy: .private): \(errorDesc, privacy: .public)"
-            )
-            AudioService.shared.stopAlarmSound()
+            stopAudio(ifOwnedBy: request, "fetch failed (\(String(describing: error)))")
             return true
         }
         guard let alarm else {
-            AppLogger.appDelegate.error(
-                "firing-present: alarm \(alarmID, privacy: .private) not found — stopping audio"
-            )
-            AudioService.shared.stopAlarmSound()
+            stopAudio(ifOwnedBy: request, "not found")
             return true
         }
         return present(alarm: alarm, snoozeCount: snoozeCount)
+    }
+
+    /// Ends a miss in `present(alarmID:snoozeCount:)`: stops the sound only
+    /// when the missing alarm owns it (#859), the gate `AppDelegate` put on its
+    /// own miss in #854. That sound has no screen coming that could stop it.
+    /// Another alarm's sound belongs to that alarm's screen, still up and
+    /// ringing: a pending slot flushed for a deleted alarm used to silence it
+    /// with no dismiss, and its banner went on claiming the last state.
+    ///
+    /// One line carries the miss, the owner and the decision, with the 8-digit
+    /// handles `logHandle` uses on both sides, so a release log can tell the
+    /// two alarms apart.
+    private func stopAudio(ifOwnedBy missing: PendingPresentation, _ miss: String) {
+        let owner = AudioService.shared.currentAlarmID
+        let ownsSound = owner == missing.alarmID
+        let ownerHandle = owner.map { String($0.uuidString.prefix(8)) } ?? "nobody"
+        let decision = ownsSound ? "stopping the audio it owns" : "leaving the audio of \(ownerHandle) alone"
+        AppLogger.emit(.appDelegate, .error, "firing-present: \(miss) [\(missing.logHandle)] — \(decision)")
+        if ownsSound { AudioService.shared.stopAlarmSound() }
     }
 
     /// Present the firing screen for an already-resolved alarm. The single
