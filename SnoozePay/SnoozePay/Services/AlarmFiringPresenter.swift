@@ -37,7 +37,8 @@ final class AlarmFiringPresenter {
     /// left (#804), UIKit declined the `present`, the stale screen still up, or
     /// a firing screen already there that is another alarm's or this alarm's
     /// at a lower snooze count (#807). And by the direct present, when UIKit
-    /// declines it (#833). Flushed by
+    /// declines it (#833), when no host is found, or when the root is still
+    /// the launch splash (#834). Flushed by
     /// `flushPendingPresentation()` once the scene becomes active, and right
     /// after a swap lands, so the firing
     /// screen survives both a warm-foreground race and a cold start (#382).
@@ -64,8 +65,9 @@ final class AlarmFiringPresenter {
     }
 
     /// `true` when the real app root (not the launch splash) is mounted and the
-    /// firing screen can be presented. Seam so the pending-present retry (#382)
-    /// is unit-testable without a UIKit window; production reads the live scene.
+    /// firing screen can be presented. Checked by the pending-present retry
+    /// (#382) and by the direct present (#834). Seam so both are unit-testable
+    /// without a UIKit window; production reads the live scene.
     var isRootReady: () -> Bool = { AlarmFiringPresenter.isLaunchRootReady() }
 
     /// Where the firing screen gets mounted: the topmost controller of the
@@ -254,17 +256,22 @@ final class AlarmFiringPresenter {
     /// full-screen on the topmost VC" behaviour.
     ///
     /// Returns `true` only when the screen reads back as up by the time it
-    /// returns. `false` covers three ways that can fail to happen: nothing can
+    /// returns. `false` covers four ways that can fail to happen: nothing can
     /// host the presentation yet — no scene, no windows, or no window carrying
     /// a root (the cold-launch race), which of the three goes to the log
-    /// because they are not fixed the same way — the re-entry swap below,
-    /// which cannot finish before its dismissal completion runs, and UIKit
-    /// declining the direct `present` (#833), which arms the retry itself.
-    /// `false` is what the AlarmKit retry (#382) keeps an alarm pending on;
-    /// the swap clears that pending id from the completion once the screen
-    /// reads back as up (#807), and arms it when it could not raise it (#798).
+    /// because they are not fixed the same way — the root still being the
+    /// launch splash, the re-entry swap below, which cannot finish before its
+    /// dismissal completion runs, and UIKit declining the direct `present`
+    /// (#833). Each of them leaves the request in the pending slot itself, so
+    /// a caller that discards the answer — the notification path — still gets
+    /// the retry (#834). Except the swap this call starts: it returns without
+    /// arming, and only its completion (`mountAfterDismissal`) clears the
+    /// pending id once the screen reads back as up (#807) or arms it when it
+    /// could not raise it (#798). A dismissal UIKit never completes therefore
+    /// leaves a notification-path request neither shown nor parked (#835).
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
+        let request = PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)
         let topVC: UIViewController
         switch locateHost() {
         case let .success(located):
@@ -275,22 +282,23 @@ final class AlarmFiringPresenter {
             // audio stopped, screen never raised — is the state where a scene
             // and windows exist but none of them can host a presentation.
             //
-            // Through `AppLogger.emit` rather than `AppLogger.appDelegate`
-            // because this line IS the outcome: nothing else records that an
-            // alarm was silenced without a screen. A line only unified logging
-            // can see is a line no test reads, and #795 found this one
-            // unreferenced by the whole suite. `miss.rawValue` is a fixed
-            // sentence, so `emit`'s implicit `.public` is the marker it already
-            // carried.
-            AppLogger.emit(
-                .appDelegate, .error,
-                "firing-present: \(miss.rawValue) — stopping audio"
-            )
+            // The retry is armed here rather than left to the caller: the
+            // pending path keeps its record on `false`, but the notification
+            // path (`AppDelegate.presentAlarmFiringScreen`) discards the
+            // answer, so a miss there lost the alarm — no sound, no screen,
+            // nothing to raise it again (#834). The audio still stops: nothing
+            // on screen could silence it until the retry lands, and the screen
+            // the retry raises starts it again itself.
+            //
+            // Through `armRetry`, which writes with `AppLogger.emit`, because
+            // this line IS the outcome and #795 found it read by no test.
+            // `miss.rawValue` is a fixed sentence, so `emit`'s implicit
+            // `.public` is the marker it already carried.
+            armRetry(request, "firing-present: \(miss.rawValue) — stopping audio, keeping it pending")
             AudioService.shared.stopAlarmSound()
             return false
         }
 
-        let request = PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)
         let firingVC = makeFiringScreen(alarm, snoozeCount)
         firingVC.modalPresentationStyle = .fullScreen
 
@@ -344,6 +352,18 @@ final class AlarmFiringPresenter {
         // that answer: a present UIKit declined (the top still being dismissed
         // or presented, a detached host) lost it with only UIKit's console
         // warning behind (#833). Same read-back as the swap's completion.
+        //
+        // Not over the launch splash — the gate `attemptPendingPresentation`
+        // applies. The splash → root swap tears such a screen down, yet the
+        // read-back passes and would clear a record AlarmKit parked for this
+        // alarm, so the flush after the swap finds nothing to raise (#834).
+        // Parked instead, for that flush. The notification path gets here
+        // over the splash on a cold launch by a banner tap; the pending path
+        // never does, since it checks the same seam before mounting.
+        guard isRootReady() else {
+            armRetry(request, level: .default, "firing-present: launch root not ready — keeping it pending")
+            return false
+        }
         return presentReadingBack(firingVC, on: topVC, request: request, context: "", raiseParked: false)
     }
 
@@ -388,8 +408,10 @@ final class AlarmFiringPresenter {
         case let .success(located):
             top = located
         case let .failure(miss):
-            // Not terminal, unlike the give-up branch in `present`: the retry
-            // can still raise the screen, so this leaves the audio alone.
+            // The retry can still raise the screen, so this leaves the audio
+            // alone. The miss in `present` arms the same retry since #834 but
+            // still stops the audio, as it did before; aligning the two is
+            // not this branch's call.
             armRetry(
                 retry,
                 "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending"

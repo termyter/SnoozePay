@@ -567,7 +567,10 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
             AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 2),
             "the declined screen has to wait for the next activation, at the count it was built with (#808)"
         )
-        XCTAssertTrue(AudioService.shared.isPlaying, "the retry is armed, so this is not the give-up branch")
+        XCTAssertTrue(
+            AudioService.shared.isPlaying,
+            "a declined present waits for the retry with the alarm still ringing; only the host miss stops it"
+        )
         let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
         XCTAssertTrue(
             line.message.contains("Host is not in the window hierarchy"),
@@ -618,14 +621,18 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
 
     /// AlarmKit deferred the alarm at 0, the notification path then shows it
     /// at 2 directly. The leftover `(id, 0)` would re-mount it at 0 on the
-    /// next activation (#808).
+    /// next activation (#808). Over a ready root: over the splash the direct
+    /// present parks instead (#834), pinned by
+    /// `testDirect_overANotReadyRoot_leavesTheAlarmKitRecordParked`.
     func testDirect_forTheAlarmPendingAtALowerCount_clearsIt() {
         let alarm = Alarm()
         let host = Host()
+        var rootReady = false
         let presenter = makePresenter(alarms: [alarm])
-        presenter.isRootReady = { false }
+        presenter.isRootReady = { rootReady }
         presenter.requestPresentation(alarmID: alarm.id)
         XCTAssertEqual(presenter.pendingAlarmID, alarm.id, "test precondition: AlarmKit's deferral at 0")
+        rootReady = true
         top = host
 
         XCTAssertTrue(presenter.present(alarm: alarm, snoozeCount: 2))
@@ -690,6 +697,224 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertEqual(host.presentedScreens.count, 1)
         XCTAssertEqual(arrivingScreen.viewModel.alarm.id, arriving.id)
         XCTAssertEqual(presenter.pendingAlarmID, deferred.id, "mounting one alarm cancelled another's deferral")
+    }
+
+    // MARK: - The notification path (#834)
+
+    /// `AppDelegate.presentAlarmFiringScreen` discards `present`'s answer, so
+    /// a `false` alone is no retry there. The miss has to park the alarm
+    /// itself, at the count the notification carried (#808).
+    func testDirect_whenNoHostIsFound_keepsTheAlarmPendingAndTheNextFlushRaisesIt() throws {
+        let alarm = Alarm()
+        let presenter = makePresenter(alarms: [alarm])
+        XCTAssertNil(top, "test precondition: nothing to host the screen, so the locator misses")
+
+        var answer = true
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            answer = presenter.present(alarm: alarm, snoozeCount: 2)
+        })
+
+        XCTAssertFalse(answer)
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 2),
+            "the miss armed no retry: on the notification path nothing will raise this alarm again"
+        )
+        let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
+        XCTAssertTrue(line.message.contains(ActiveWindowLocator.Miss.noHostingWindow.rawValue), "«\(line.message)»")
+        XCTAssertTrue(line.message.contains("keeping it pending"), "«\(line.message)»")
+        XCTAssertEqual(line.level, .error, "an alarm with no screen is a failure, not a notice")
+        XCTAssertEqual(line.category, .appDelegate)
+
+        let host = Host()
+        top = host
+        presenter.flushPendingPresentation()
+
+        let mounted = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen, "the flush raised nothing")
+        XCTAssertTrue(mounted.presentingViewController === host)
+        XCTAssertEqual(mounted.viewModel.alarm.id, alarm.id)
+        XCTAssertEqual(mounted.viewModel.snoozeCount, 2, "the retry restarted the snooze ladder (#808)")
+        XCTAssertNil(presenter.pendingPresentation)
+    }
+
+    /// Cold launch by a banner tap: the only root is the splash. A screen put
+    /// up over it is torn down by the splash → root swap, while the read-back
+    /// already called it up. It has to park, and the flush after the swap has
+    /// to raise it. The alarm keeps ringing meanwhile: the park is ~200 ms
+    /// long, and unlike a host miss nothing about it needs silencing.
+    func testDirect_beforeTheLaunchRootIsReady_parksAndTheFlushAfterTheSplashRaisesIt() throws {
+        let alarm = Alarm()
+        let splash = Host()
+        var rootReady = false
+        top = splash
+        let presenter = makePresenter(alarms: [alarm])
+        presenter.isRootReady = { rootReady }
+        // Real audio: `stopAlarmSound()` is a no-op on a stopped service.
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound")
+        XCTAssertTrue(AudioService.shared.isPlaying, "test precondition: the alarm has to be audible")
+
+        var answer = true
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            answer = presenter.present(alarm: alarm, snoozeCount: 1)
+        })
+
+        XCTAssertTrue(splash.presentedScreens.isEmpty, "presented over the splash: the root swap tears it down")
+        XCTAssertFalse(answer)
+        XCTAssertTrue(AudioService.shared.isPlaying, "the gate silenced the alarm it only parks")
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 1)
+        )
+        let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
+        XCTAssertTrue(line.message.contains("launch root not ready"), "«\(line.message)»")
+        XCTAssertEqual(line.level, .default, "a deferral the flush will settle is a notice, not a failure")
+
+        presenter.flushPendingPresentation()
+        XCTAssertTrue(splash.presentedScreens.isEmpty, "an early flush put the screen up over the splash")
+
+        let root = Host()
+        top = root
+        rootReady = true
+        presenter.flushPendingPresentation()
+
+        let mounted = try XCTUnwrap(root.presentedScreens.first as? ReadBackFiringScreen, "the flush raised nothing")
+        XCTAssertEqual(mounted.viewModel.alarm.id, alarm.id)
+        XCTAssertEqual(mounted.viewModel.snoozeCount, 1)
+        XCTAssertNil(presenter.pendingPresentation)
+    }
+
+    /// The #839 review's addendum: AlarmKit parked `(A, 0)` during the splash,
+    /// and the notification path shows A at 2 over it. The read-back passes
+    /// over the splash, so without the gate the record was cleared and the
+    /// flush after the swap had nothing to raise.
+    func testDirect_overANotReadyRoot_leavesTheAlarmKitRecordParked() throws {
+        let alarm = Alarm()
+        let splash = Host()
+        var rootReady = false
+        let presenter = makePresenter(alarms: [alarm])
+        presenter.isRootReady = { rootReady }
+        presenter.requestPresentation(alarmID: alarm.id)
+        XCTAssertEqual(presenter.pendingAlarmID, alarm.id, "test precondition: AlarmKit's deferral at 0")
+        top = splash
+
+        var answer = true
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            answer = presenter.present(alarm: alarm, snoozeCount: 2)
+        })
+
+        XCTAssertFalse(answer)
+        XCTAssertTrue(splash.presentedScreens.isEmpty, "presented over the splash: the root swap tears it down")
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 2),
+            "the record went with a screen the splash swap takes down; nothing is left for the flush to raise"
+        )
+        let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
+        XCTAssertEqual(line.level, .default, "re-parking the alarm already parked is a notice: «\(line.message)»")
+        XCTAssertFalse(line.message.contains("dropped"), "the record is this alarm's, nothing lost: «\(line.message)»")
+
+        let root = Host()
+        top = root
+        rootReady = true
+        presenter.flushPendingPresentation()
+
+        let mounted = try XCTUnwrap(root.presentedScreens.first as? ReadBackFiringScreen, "the flush raised nothing")
+        XCTAssertEqual(mounted.viewModel.snoozeCount, 2)
+        XCTAssertNil(presenter.pendingPresentation)
+    }
+
+    /// The host miss on the pending path: the flush mounts the record, the
+    /// miss re-arms it. It is the same record, so the slot keeps it and the
+    /// line must not claim another alarm was lost.
+    func testPending_whenNoHostIsFound_keepsTheSameRecordAndDropsNothing() throws {
+        let alarm = Alarm()
+        let presenter = makePresenter(alarms: [alarm])
+        XCTAssertNil(top, "test precondition: the root is ready but the locator misses")
+
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            presenter.requestPresentation(alarmID: alarm.id, snoozeCount: 1)
+        })
+
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: alarm.id, snoozeCount: 1)
+        )
+        let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
+        XCTAssertTrue(line.message.contains(ActiveWindowLocator.Miss.noHostingWindow.rawValue), "«\(line.message)»")
+        XCTAssertFalse(line.message.contains("dropped"), "the pending alarm is this one: «\(line.message)»")
+        XCTAssertEqual(line.level, .error)
+    }
+
+    /// The slot holds one alarm. AlarmKit's B is parked during the splash and
+    /// the notification path's A parks over it: A takes the slot, newest wins
+    /// as `armRetry` rules, and B's loss has to be said at `.error`. Pinned so
+    /// #835 changes it on purpose, not by accident.
+    func testDirect_overANotReadyRoot_whileAnotherAlarmIsParked_takesTheSlotAndSaysSo() {
+        let parked = Alarm()
+        let arriving = Alarm()
+        let presenter = makePresenter(alarms: [parked, arriving])
+        presenter.isRootReady = { false }
+        presenter.requestPresentation(alarmID: parked.id)
+        XCTAssertEqual(presenter.pendingAlarmID, parked.id, "test precondition: another alarm is parked")
+        top = Host()
+
+        AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
+            _ = presenter.present(alarm: arriving)
+        })
+
+        XCTAssertEqual(
+            presenter.pendingPresentation,
+            AlarmFiringPresenter.PendingPresentation(alarmID: arriving.id, snoozeCount: 0)
+        )
+        let dropped = lines.filter { $0.message.contains("another alarm's pending screen is dropped") }
+        XCTAssertEqual(dropped.count, 1, "B's retry went without exactly one line saying so: \(lines.map(\.message))")
+        XCTAssertEqual(dropped.first?.level, .error, "a lost alarm logged as a notice")
+    }
+
+    /// After a host miss the alarm is silent, and the only way its sound comes
+    /// back is the screen the retry raises: `AlarmFiringViewController`
+    /// starts it in `viewDidLoad` when AlarmKit does not own the sound.
+    func testDirect_afterAHostMiss_theScreenTheFlushRaisesRestartsTheSound() throws {
+        // The synthetic-tone fallback, as the audio precondition uses: the
+        // bundle's files are not what this pins.
+        let alarm = Alarm(soundID: "nonexistent_test_sound")
+        let presenter = makePresenter(alarms: [alarm])
+        let noAlarmKit = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: nil)
+        presenter.makeFiringScreen = { built, count in
+            ReadBackFiringScreen(
+                viewModel: AlarmFiringViewModel(alarm: built, snoozeCount: count, scheduler: noAlarmKit)
+            )
+        }
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound")
+        XCTAssertTrue(AudioService.shared.isPlaying, "test precondition: the alarm has to be audible")
+
+        XCTAssertFalse(presenter.present(alarm: alarm))
+        XCTAssertFalse(AudioService.shared.isPlaying, "test precondition: the miss silences the alarm")
+
+        let host = Host()
+        top = host
+        presenter.flushPendingPresentation()
+        let raised = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen, "the flush raised nothing")
+        XCTAssertFalse(raised.viewModel.usesAlarmKit, "test precondition: the notification path owns the sound")
+        raised.loadViewIfNeeded()
+        // A loaded screen must not outlive the test. `viewDidLoad` registers a
+        // main-queue observer for `AudioService.stateChangedNotification`,
+        // which AudioService posts synchronously on its serial queue: while
+        // the observer lives, a start/stop from a background thread waits on
+        // main, and main waits on that queue. Kept alive through `top`, it
+        // hung `AudioServiceTests.testConcurrentStartStop_doesNotCorruptState`
+        // for the rest of the run. Same teardown as `FiringCopyTests`:
+        // `viewDidDisappear` stops the sound and the ticker, and dropping the
+        // last reference lets `deinit` remove the observers.
+        defer {
+            raised.viewDidDisappear(false)
+            top = nil
+        }
+
+        XCTAssertTrue(
+            AudioService.shared.isPlaying,
+            "the raised screen stayed silent: after a host miss nothing else brings the alarm's sound back"
+        )
     }
 
     // MARK: - Review round 2
