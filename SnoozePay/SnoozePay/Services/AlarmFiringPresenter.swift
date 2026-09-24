@@ -268,9 +268,13 @@ final class AlarmFiringPresenter {
             AppLogger.appDelegate.notice(
                 "firing-present: launch root not ready — deferring \(pending.logHandle, privacy: .public)"
             )
+            raisedFromQueue = nil
             return
         }
-        guard mount(pending.alarmID, pending.snoozeCount) else { return }
+        guard mount(pending.alarmID, pending.snoozeCount) else {
+            raisedFromQueue = nil
+            return
+        }
         pendingQueue.removeAll { $0.request == pending }
         raisedFromQueue = pendingQueue.isEmpty ? nil : pending
         attemptParkedPresentationSoon()
@@ -286,6 +290,9 @@ final class AlarmFiringPresenter {
 
     /// Drops every expired record. Its alarm has no screen coming, so the
     /// sound it owns stops too, by the rule a miss follows (#858 review).
+    /// Unless that alarm's screen is up: the sound is then that screen's
+    /// ring, a later one than the record stood for, and stopping it left the
+    /// screen silent with nothing to restart it.
     private func dropExpiredPending() {
         let current = now()
         let expired = pendingQueue.filter { isExpired($0, at: current) }
@@ -294,8 +301,24 @@ final class AlarmFiringPresenter {
         let limit = Int(Self.pendingRecordLifetime / 60)
         for queued in expired {
             let waited = Int(current.timeIntervalSince(queued.parkedAt) / 60)
-            stopAudio(ifOwnedBy: queued.request, "dropped after \(waited) min pending, past the \(limit) min limit")
+            let miss = "dropped after \(waited) min pending, past the \(limit) min limit"
+            let alarmID = queued.request.alarmID
+            guard AudioService.shared.currentAlarmID == alarmID, isFiringScreenUp(for: alarmID) else {
+                stopAudio(ifOwnedBy: queued.request, miss)
+                continue
+            }
+            AppLogger.emit(
+                .appDelegate, .error,
+                "firing-present: \(miss) [\(queued.request.logHandle)] — its screen is up, leaving it the audio"
+            )
         }
+    }
+
+    /// Whether `alarmID`'s firing screen is up, by the same walk `present`
+    /// makes.
+    private func isFiringScreenUp(for alarmID: UUID) -> Bool {
+        guard case let .success(top) = locateHost() else { return false }
+        return Self.presentedFiringScreen(from: top)?.viewModel.alarm.id == alarmID
     }
 
     // MARK: - Entry points
@@ -752,8 +775,16 @@ final class AlarmFiringPresenter {
     /// parked while an AlarmKit swap at 0 was in flight, and dropping it leaves
     /// the screen on the first step's price (#807). The follow-up re-attempt
     /// swaps it in.
+    ///
+    /// Unless that record has expired: yesterday's `(A, 3)` is not a later
+    /// ring of today's `(A, 0)`, and left behind, its drop on the next flush
+    /// stopped the sound of the screen that had just gone up (#858 review).
     private func clearPending(shownAs shown: PendingPresentation) {
-        pendingQueue.removeAll { $0.request.alarmID == shown.alarmID && $0.request.snoozeCount <= shown.snoozeCount }
+        let current = now()
+        pendingQueue.removeAll {
+            $0.request.alarmID == shown.alarmID
+                && ($0.request.snoozeCount <= shown.snoozeCount || isExpired($0, at: current))
+        }
     }
 
     /// Offers `retry` to the pending queue and writes `line`, naming the alarm,

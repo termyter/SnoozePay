@@ -246,10 +246,12 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         XCTAssertEqual(host.presentedScreens.count, 1, "the expired record went up")
     }
 
-    /// An expired record's alarm has no screen coming: the sound it owns
-    /// stops with it, and another alarm's sound is left alone.
-    func testExpiry_stopsOnlyTheSoundTheExpiredAlarmOwns() {
-        for ownsSound in [true, false] {
+    /// An expired record's alarm with no screen up has no screen coming: the
+    /// sound it owns stops with it. Another alarm's sound is left alone, and
+    /// so is the expired alarm's own sound while its screen is up: that is
+    /// the screen's ring, and nothing would restart it.
+    func testExpiry_stopsOnlyTheOrphanSoundTheExpiredAlarmOwns() {
+        for state in ["orphan", "other alarm's", "screen up"] {
             lines = []
             let expired = Alarm()
             let other = Alarm()
@@ -258,23 +260,57 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
             var clock = parkedAt
             presenter.now = { clock }
             rootReady = false
+            top = state == "screen up" ? makeScreen(expired) : nil
             presenter.requestPresentation(alarmID: expired.id)
-            let owner = ownsSound ? expired : other
+            let owner = state == "other alarm's" ? other : expired
             AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: owner.id)
 
             clock = parkedAt.addingTimeInterval(AlarmFiringPresenter.pendingRecordLifetime + 60)
             recording { presenter.flushPendingPresentation() }
 
-            let label = "owner is \(ownsSound ? "the expired alarm" : "another alarm")"
-            XCTAssertTrue(presenter.pendingPresentations.isEmpty, label)
-            XCTAssertEqual(AudioService.shared.soundingAlarmID, ownsSound ? nil : other.id, label)
-            let decision = ownsSound ? "stopping the audio it owns" : "leaving the audio of \(handle(other)) alone"
+            XCTAssertTrue(presenter.pendingPresentations.isEmpty, state)
+            XCTAssertEqual(AudioService.shared.soundingAlarmID, state == "orphan" ? nil : owner.id, state)
+            let decision = [
+                "orphan": "stopping the audio it owns", "other alarm's": "leaving the audio of \(handle(other)) alone",
+                "screen up": "its screen is up, leaving it the audio"
+            ][state] ?? ""
             XCTAssertTrue(
                 lines.contains { $0.message.contains("[alarm \(handle(expired))") && $0.message.hasSuffix(decision) },
-                "\(label): \(lines.map(\.message))"
+                "\(state): \(lines.map(\.message))"
             )
             AudioService.shared.stopAlarmSound()
         }
+    }
+
+    /// Review round 2: yesterday's `(A, 3)` expired in the queue, and today A
+    /// rings and goes up directly at 0. The record outlived the screen, since
+    /// its count was higher, and its drop on the next flush stopped the new
+    /// screen's sound, as the sound's owner. Now the screen clears it.
+    func testDirectPresent_overItsOwnExpiredHigherRecord_keepsTheSound() throws {
+        let alarm = Alarm()
+        let presenter = makePresenter(alarms: [alarm])
+        let parkedAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        var clock = parkedAt
+        presenter.now = { clock }
+        rootReady = false
+        presenter.requestPresentation(alarmID: alarm.id, snoozeCount: 3)
+        clock = parkedAt.addingTimeInterval(AlarmFiringPresenter.pendingRecordLifetime + 60)
+
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
+        let host = Host()
+        top = host
+        rootReady = true
+        var wentUp = false
+        recording { wentUp = presenter.present(alarm: alarm, snoozeCount: 0) }
+        XCTAssertTrue(wentUp, "test precondition: the screen went up")
+        XCTAssertTrue(presenter.pendingPresentations.isEmpty, "the expired (A, 3) outlived A's screen")
+
+        top = host.presentedScreens.first
+        recording {
+            presenter.flushPendingPresentation()
+            runOneMainQueueTurn()
+        }
+        XCTAssertEqual(AudioService.shared.soundingAlarmID, alarm.id, "A's fresh screen went silent")
     }
 
     /// A request for an alarm whose record expired replaces that record
