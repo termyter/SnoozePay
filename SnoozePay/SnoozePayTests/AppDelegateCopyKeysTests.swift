@@ -30,7 +30,12 @@ final class AppDelegateCopyKeysTests: XCTestCase {
     /// #813. The host file reads no key today; it is listed because it holds
     /// the instance entry points, and the corrupt-data message literals there
     /// are copy a later migration may move onto the catalogue.
-    private static let sources = ["AppDelegate.swift", "AppDelegate+Alerts.swift"]
+    /// `AppDelegate+NotificationRouting.swift` (#842) reads none either and
+    /// holds no copy; it is listed because the on-disk check below wants every
+    /// `AppDelegate` source in the scan.
+    private static let sources = [
+        "AppDelegate.swift", "AppDelegate+Alerts.swift", "AppDelegate+NotificationRouting.swift"
+    ]
 
     /// The keys those sources read, transcribed rather than derived: a list
     /// computed from the reading would agree with any typo in it. The words

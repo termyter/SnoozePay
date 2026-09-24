@@ -260,7 +260,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "resume_audio_failed_\(UUID().uuidString)",
+            identifier: AppBannerNotification.resumeAudioFailed.makeIdentifier(),
             content: content,
             trigger: trigger
         )
@@ -287,7 +287,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "reschedule_failed_\(UUID().uuidString)",
+            identifier: AppBannerNotification.rescheduleFailed.makeIdentifier(),
             content: content,
             trigger: trigger
         )
@@ -362,18 +362,16 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        let userInfo = notification.request.content.userInfo
+        // The whole decision lives in `foregroundPresentationOptions(for:startAlarm:)`
+        // so a test can drive it with a real `UNNotificationRequest` (#842):
+        // `UNNotification` itself cannot be constructed.
+        completionHandler(AppDelegate.foregroundPresentationOptions(for: notification.request) { payload in
+            self.startForegroundAlarm(payload)
+        })
+    }
 
-        guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
-            // Malformed payload — surface and bail rather than playing audio we
-            // can never stop because the firing screen will never be presented.
-            AppLogger.appDelegate.error(
-                "willPresent: invalid alarm payload \(userInfo, privacy: .private(mask: .hash))"
-            )
-            completionHandler([])
-            return
-        }
-
+    /// The alarm half of `willPresent`: ring now, then show the firing screen.
+    private func startForegroundAlarm(_ payload: AlarmNotificationPayload) {
         // Start continuous alarm sound immediately (before presenting the VC).
         // Passing `alarmID` lets AudioService track ownership so a stacking
         // race between firing VCs cannot silence the wrong alarm (#116).
@@ -388,7 +386,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         // Show the alarm firing screen
         presentAlarmFiringScreen(for: payload)
-        completionHandler([])
     }
 
     // Called when user taps a notification action
@@ -414,15 +411,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped notification banner — present alarm screen
-            // AudioService will be started by AlarmFiringViewController
-            if let payload {
-                presentAlarmFiringScreen(for: payload)
-            } else {
-                AppLogger.appDelegate.error(
-                    "default action: invalid alarm payload \(userInfo, privacy: .private(mask: .hash))"
-                )
-                AudioService.shared.stopAlarmSound()
-            }
+            // AudioService will be started by AlarmFiringViewController.
+            // A tap on one of the app's own banners opens the app and nothing
+            // else: it must not silence an alarm that is ringing (#842).
+            AppDelegate.handleDefaultTap(
+                on: response.notification.request,
+                presentAlarm: { self.presentAlarmFiringScreen(for: $0) },
+                stopAlarmSound: { AudioService.shared.stopAlarmSound() }
+            )
 
         case "SNOOZE_ACTION":
             stopAlarmSoundIfOwner(of: payload, action: "SNOOZE_ACTION")
@@ -619,7 +615,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         // dropped, and is imperceptible to the user.
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "snooze_schedule_failed_\(UUID().uuidString)",
+            identifier: AppBannerNotification.snoozeScheduleFailed.makeIdentifier(),
             content: content,
             trigger: trigger
         )

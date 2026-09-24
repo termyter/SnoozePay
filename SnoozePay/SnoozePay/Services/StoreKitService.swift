@@ -137,10 +137,6 @@ final class StoreKitService {
     /// `.standard`; production uses `.standard`.
     private let defaults: UserDefaults
 
-    /// Identifier prefix for the deferred-purchase fallback notifications so
-    /// they can be inspected / cleared as a group if needed.
-    private static let feedbackNotificationIDPrefix = "snoozepay.storekit.feedback."
-
     private init() {
         self.notificationPoster = UNUserNotificationCenter.current()
         self.defaults = .standard
@@ -497,8 +493,10 @@ final class StoreKitService {
         content.title = title
         content.body = body
         content.sound = .default
+        // The prefix is what lets `AppDelegate.willPresent` show this in the
+        // foreground instead of dropping it as a bad alarm payload (#842).
         let request = UNNotificationRequest(
-            identifier: Self.feedbackNotificationIDPrefix + UUID().uuidString,
+            identifier: AppBannerNotification.purchaseFeedback.makeIdentifier(),
             content: content,
             trigger: nil
         )
