@@ -30,6 +30,10 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     /// this suite has are "which controller was asked, and when" — mounting on
     /// a real detached controller would drag a UIKit presentation into a unit
     /// test to learn nothing more.
+    ///
+    /// It does answer the one thing the swap reads back (#807): the screen it
+    /// accepted reports it as its presenter, as UIKit's would. Without that the
+    /// read-back takes every mount here for a refusal.
     private final class RecordingHost: UIViewController {
         private(set) var presentedScreens: [UIViewController] = []
 
@@ -39,6 +43,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             completion: (() -> Void)?
         ) {
             presentedScreens.append(viewControllerToPresent)
+            (viewControllerToPresent as? ReadBackFiringScreen)?.wiredPresenter = self
         }
     }
 
@@ -70,6 +75,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
     private func makePresenter(host stale: UIViewController) -> AlarmFiringPresenter {
         let presenter = AlarmFiringPresenter(alarmRepository: .shared)
         presenter.locateHost = { .success(stale) }
+        presenter.makeFiringScreen = { ReadBackFiringScreen(alarm: $0, snoozeCount: $1) }
         presenter.dismissStaleScreen = { [self] screen, completion in
             dismissal.screens.append(screen)
             dismissal.completion = completion
