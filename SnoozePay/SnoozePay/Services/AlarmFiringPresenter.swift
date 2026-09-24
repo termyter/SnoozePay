@@ -573,6 +573,8 @@ final class AlarmFiringPresenter {
     }
 
     /// Settles on the ringing screen a swap would rebuild and silence (#835).
+    /// A record of this alarm at a higher count is re-attempted on the next
+    /// turn wherever it sits in the queue, as on the direct path (#875).
     private func settleOnRingingScreen(_ screen: AlarmFiringViewController) {
         let shown = PendingPresentation(on: screen)
         AppLogger.emit(
@@ -580,7 +582,19 @@ final class AlarmFiringPresenter {
             "firing-present: this alarm's screen is up and ringing — not swapping it [\(shown.logHandle)]"
         )
         clearPending(shownAs: shown)
-        if pendingAlarmID == shown.alarmID { attemptParkedPresentationSoon() }
+        if hasQueuedRecord(for: shown.alarmID) { attemptParkedPresentationSoon() }
+    }
+
+    /// Whether `alarmID` has a record anywhere in the queue, not only at its
+    /// head. Asked right after `clearPending(shownAs:)`, where the only one it
+    /// can have left is a later ring: this alarm at a higher count.
+    ///
+    /// By the head alone (#875), such a record behind another alarm's waited
+    /// for the next activation, and the screen stayed on the lower count's
+    /// price. The retry itself still goes oldest first: the other alarm's
+    /// record goes up before it, and this alarm's, the newer, stays on screen.
+    private func hasQueuedRecord(for alarmID: UUID) -> Bool {
+        pendingQueue.contains { $0.request.alarmID == alarmID }
     }
 
     /// Second half of the swap above: put `firingVC` up now that the stale
@@ -708,15 +722,17 @@ final class AlarmFiringPresenter {
     ///
     /// Up: `request`'s pending record goes (by `clearPending(shownAs:)`'s
     /// rules, not only on an exact match — #808). What is left in the queue is
-    /// re-attempted on the next main-queue turn when its head is this alarm at
-    /// a higher count, or when `raiseParked` says the queue is newer than this
-    /// screen. That holds for the swap, whose completion runs after a request
-    /// parked during its dismissal. It does not for the direct path: nothing
-    /// was mid-swap, so the queue holds alarms older than the one that just
-    /// went up, and raising one would swap the fresh screen out — its sound
-    /// stopped on the way down — for an older one: oldest wins, against the
-    /// arrival order the flush keeps. Those records wait for the next
-    /// activation.
+    /// re-attempted on the next main-queue turn when it holds this alarm at a
+    /// higher count anywhere, not only at its head (#875), or when
+    /// `raiseParked` says the queue is newer than this screen. That holds for
+    /// the swap, whose completion runs after a request parked during its
+    /// dismissal. It does not for the direct path: nothing was mid-swap, so
+    /// the queue holds alarms older than the one that just went up, and
+    /// raising one would swap the fresh screen out — its sound stopped on the
+    /// way down — for an older one: oldest wins, against the arrival order
+    /// the flush keeps. With no record of this alarm left, those records wait
+    /// for the next activation. With one, the flush the activation would run
+    /// runs now, in the same order, and ends on this alarm's higher count.
     ///
     /// `context` is spliced into the refusal line to say which path declined.
     @discardableResult
@@ -733,7 +749,7 @@ final class AlarmFiringPresenter {
         }
         clearPending(shownAs: request)
         staleSurvivalRetries = 0
-        if raiseParked || pendingAlarmID == request.alarmID {
+        if raiseParked || hasQueuedRecord(for: request.alarmID) {
             attemptParkedPresentationSoon()
         }
         return true
@@ -748,8 +764,8 @@ final class AlarmFiringPresenter {
     /// be parked itself. On the next main-queue turn, not inline, so the
     /// follow-up swap never dismisses a screen that is still being presented.
     /// Called from the branches where a screen is up (on the direct path and
-    /// for a ringing screen the swap keeps, only for this alarm at a higher
-    /// count, #833/#835), and from the one failure
+    /// for a ringing screen the swap keeps, only while this alarm has a record
+    /// at a higher count, #833/#835/#875), and from the one failure
     /// branch that can still settle on its own — a stale screen that outlived
     /// its dismissal — which counts its calls against
     /// `staleSurvivalRetryLimit`, so it cannot spin. The other failure

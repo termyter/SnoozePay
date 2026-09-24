@@ -71,7 +71,8 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
             guard let alarm = byID[alarmID] else { return presenter.present(alarmID: alarmID, snoozeCount: count) }
             return presenter.present(alarm: alarm, snoozeCount: count)
         }
-        // Never completes: no test here needs the swap's second half.
+        // Never completes; a test that needs the swap's second half holds it
+        // with `holdingDismissals`.
         presenter.dismissStaleScreen = { [self] screen, _ in self.dismissed.append(screen) }
         return presenter
     }
@@ -191,6 +192,125 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         let stops = lines.filter { $0.message.contains("stopped on its screen") }
         XCTAssertEqual(stops.count, 1, "\(lines.map(\.message))")
         XCTAssertTrue(stops.first?.message.contains("alarm \(handle(alarm)) at snooze 0") ?? false)
+    }
+
+    // MARK: - Soon-retry (#875)
+
+    /// Starts `alarm`'s sound, so its screen reads as the ringing one.
+    private func ring(_ alarm: Alarm) {
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
+    }
+
+    /// Holds each swap's completion instead of dropping it, so a test can
+    /// finish the dismissal and see what the swap raises.
+    private func holdingDismissals(_ presenter: AlarmFiringPresenter) -> () -> [() -> Void] {
+        var held: [() -> Void] = []
+        presenter.dismissStaleScreen = { [self] screen, completion in
+            self.dismissed.append(screen)
+            held.append(completion)
+        }
+        return { held }
+    }
+
+    /// #875 item 1. B's record is the head and `(A, 3)` waits behind it when
+    /// A goes up at 1, directly or by settling on its ringing screen. The
+    /// retry looked at the head only, so nothing ran until the next
+    /// activation and A stayed on the first step's price. Now the next turn
+    /// runs the flush, oldest first: B's swap, then `(A, 3)` over B once B is
+    /// up. It ends on A at 3, the newest ring, with no activation at all.
+    func testShowingAnAlarm_withItsHigherRecordBehindAnotherAlarm_raisesItWithoutAnActivation() throws {
+        for path in ["direct", "settle"] {
+            dismissed = []
+            lines = []
+            defer { AudioService.shared.stopAlarmSound() }
+            let alarm = Alarm()
+            let other = Alarm()
+            let presenter = makePresenter(alarms: [alarm, other])
+            let completions = holdingDismissals(presenter)
+            rootReady = false
+            presenter.requestPresentation(alarmID: other.id)
+            presenter.requestPresentation(alarmID: alarm.id, snoozeCount: 3)
+            let queued = [pending(other, 0), pending(alarm, 3)]
+            XCTAssertEqual(presenter.pendingPresentations, queued, "\(path): precondition")
+
+            rootReady = true
+            let host = Host()
+            let atOne: UIViewController
+            if path == "direct" {
+                top = host
+                XCTAssertTrue(presenter.present(alarm: alarm, snoozeCount: 1), "\(path): A never went up")
+                atOne = try XCTUnwrap(host.presentedScreens.first, path)
+            } else {
+                atOne = makeScreen(alarm, snoozeCount: 1)
+                ring(alarm)
+                recording { XCTAssertTrue(presenter.present(alarm: alarm, snoozeCount: 1), path) }
+                XCTAssertTrue(lines.contains { $0.message.contains("up and ringing") }, "\(lines.map(\.message))")
+            }
+            XCTAssertEqual(presenter.pendingPresentations, queued, path)
+            XCTAssertTrue(dismissed.isEmpty, "\(path): swapped before the turn")
+
+            top = atOne
+            runOneMainQueueTurn()
+            XCTAssertEqual(dismissed.count, 1, "\(path): the queue waited for an activation")
+            XCTAssertTrue(dismissed.first === atOne, path)
+
+            top = host
+            try XCTUnwrap(completions().first, path)()
+            let otherScreen = try XCTUnwrap(host.presentedScreens.last as? ReadBackFiringScreen, path)
+            XCTAssertEqual(otherScreen.viewModel.alarm.id, other.id, "\(path): the older record goes up first")
+            XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 3)], path)
+
+            top = otherScreen
+            runOneMainQueueTurn()
+            XCTAssertEqual(dismissed.count, 2, "\(path): (A, 3) was never attempted after B went up")
+            top = host
+            try XCTUnwrap(completions().last, path)()
+            let landed = try XCTUnwrap(host.presentedScreens.last as? ReadBackFiringScreen, path)
+            XCTAssertEqual(landed.viewModel.alarm.id, alarm.id, path)
+            XCTAssertEqual(landed.viewModel.snoozeCount, 3, "\(path): A is left on the lower count's price")
+            XCTAssertTrue(presenter.pendingPresentations.isEmpty, path)
+        }
+    }
+
+    /// #875 item 7. `(A, 3)` is parked when A's ringing screen at 1 is asked
+    /// for again at 1. The settle keeps that screen and clears only the
+    /// records it covers: `(A, 3)` stays, and is swapped in after one turn.
+    func testSettle_overARingingLowerCountWithAHigherRecordParked_keepsTheRecordAndSwapsItIn() throws {
+        let alarm = Alarm()
+        let presenter = makePresenter(alarms: [alarm])
+        let completions = holdingDismissals(presenter)
+        rootReady = false
+        presenter.requestPresentation(alarmID: alarm.id, snoozeCount: 3)
+        rootReady = true
+        let ringing = makeScreen(alarm, snoozeCount: 1)
+        top = ringing
+        ring(alarm)
+        defer { AudioService.shared.stopAlarmSound() }
+
+        var answer = false
+        recording { answer = presenter.present(alarm: alarm, snoozeCount: 1) }
+        XCTAssertTrue(answer, "the ringing screen is this request's")
+        XCTAssertTrue(dismissed.isEmpty, "the settle swapped the ringing screen at once")
+        XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 3)], "the settle cleared the later ring")
+        XCTAssertTrue(
+            lines.contains { $0.message.hasSuffix("not swapping it [alarm \(handle(alarm)) at snooze 1]") },
+            "\(lines.map(\.message))"
+        )
+
+        lines = []
+        recording { runOneMainQueueTurn() }
+        XCTAssertEqual(dismissed.count, 1, "(A, 3) waited for an activation")
+        XCTAssertTrue(dismissed.first === ringing)
+        let swap = try XCTUnwrap(lines.first { $0.message.contains("swapping out") }, "\(lines.map(\.message))")
+        XCTAssertTrue(swap.message.contains("(a lower snooze count)"), "«\(swap.message)»")
+        XCTAssertTrue(swap.message.hasSuffix("[alarm \(handle(alarm)) at snooze 3]"), "«\(swap.message)»")
+
+        let host = Host()
+        top = host
+        try XCTUnwrap(completions().first)()
+        let swappedIn = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen, "(A, 3) never went up")
+        XCTAssertEqual(swappedIn.viewModel.snoozeCount, 3)
+        XCTAssertTrue(presenter.pendingPresentations.isEmpty)
     }
 
     // MARK: - Expiry

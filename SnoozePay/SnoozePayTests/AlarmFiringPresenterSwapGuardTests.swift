@@ -826,7 +826,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         )
         let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
         XCTAssertEqual(line.level, .default, "re-parking the alarm already parked is a notice: «\(line.message)»")
-        XCTAssertFalse(line.message.contains("dropped"), "the record is this alarm's, nothing lost: «\(line.message)»")
+        XCTAssertTrue(line.message.hasSuffix("[alarm \(alarm.id.uuidString.prefix(8)) at snooze 2]"), line.message)
 
         let root = Host()
         top = root
@@ -856,7 +856,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         )
         let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
         XCTAssertTrue(line.message.contains(ActiveWindowLocator.Miss.noHostingWindow.rawValue), "«\(line.message)»")
-        XCTAssertFalse(line.message.contains("dropped"), "the pending alarm is this one: «\(line.message)»")
+        XCTAssertTrue(line.message.hasSuffix("[alarm \(alarm.id.uuidString.prefix(8)) at snooze 1]"), line.message)
         XCTAssertEqual(line.level, .error)
     }
 

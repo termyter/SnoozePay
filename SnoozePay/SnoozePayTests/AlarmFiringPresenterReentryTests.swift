@@ -233,7 +233,10 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         )
         XCTAssertEqual(line.level, .error, "an alarm with no screen is a failure, not a notice")
         XCTAssertEqual(line.category, .appDelegate, "the category a support grep for the firing path filters by")
-        XCTAssertFalse(line.message.contains("dropped"), "nothing else was pending: «\(line.message)»")
+        XCTAssertTrue(
+            line.message.hasSuffix("; the in-app sound is on [alarm \(alarm.id.uuidString.prefix(8)) at snooze 0]"),
+            "nothing else was pending, so no outcome follows this alarm's handle: «\(line.message)»"
+        )
         XCTAssertTrue(line.message.contains("; the in-app sound is on"), "whether any sound is left: «\(line.message)»")
     }
 
@@ -374,7 +377,10 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             lines.first { $0.message.contains("firing-present") },
             "the drop left no line; the sink saw \(lines.map(\.message))"
         )
-        XCTAssertFalse(line.message.contains("dropped"), "the pending alarm is this one: «\(line.message)»")
+        XCTAssertTrue(
+            line.message.hasSuffix("[alarm \(alarm.id.uuidString.prefix(8)) at snooze 0]"),
+            "the pending alarm is this one, so no outcome follows its handle: «\(line.message)»"
+        )
     }
 
     /// The notification path hands `present(alarm:)` a snooze count, and when
