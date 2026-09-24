@@ -2,11 +2,13 @@ import UIKit
 
 // MARK: - No-balance centre column (#547)
 //
-// Canon: `SPScreensV2.jsx` → `FiringNoBalanceV2` (lines 227–277). The screen is
-// three vertical zones — the balance-pill row, a `flex: 1` centre column, and
-// the bottom CTA stack. The column SHARES the leftover space with its
-// neighbours, so an overlap is impossible by construction there: a flex child
-// cannot print over a sibling, it can only be squeezed by one.
+// Canon: `FiringNoBalanceV2`,
+// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:228-276` contains "function FiringNoBalanceV2".
+// The screen is three vertical zones — the balance-pill row, a `flex: 1`
+// centre column, and the bottom CTA stack. The column SHARES the leftover
+// space with its neighbours, so an overlap is impossible by construction
+// there: a flex child cannot print over a sibling, it can only be squeezed by
+// one.
 //
 // What the app had instead: the centre block was tied to the hero by a
 // `.defaultHigh` pin and to the bottom stack by a required one. Two constraints
@@ -148,7 +150,7 @@ extension AlarmFiringViewController {
 
     /// Build the center «БАЛАНСА НЕ ОСТАЛОСЬ» pill + body text — the bottom
     /// half of the centre column, under the hero's eyebrow caps. Mirrors
-    /// `SPScreensV2.jsx` lines 239–251.
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:239-251` contains "Только встать".
     func installNoBalanceCenterPill(inset: CGFloat) {
         // Pain-tinted "coin off" pill — V3 swaps the shield glyph for the
         // crossed-out-coin icon used across the zero-balance surfaces (#227).

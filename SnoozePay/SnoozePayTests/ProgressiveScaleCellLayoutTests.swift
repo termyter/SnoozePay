@@ -4,12 +4,14 @@ import XCTest
 /// Layout of the «Прогрессивный режим» card's text column.
 ///
 /// The canon puts the title, subtitle and doubling chain in a `flex: 1` column
-/// beside the switch (`SPMore2.jsx` L260). The app matched that structurally
-/// but the column never CLAIMED its width: `alignment = .leading` left every
-/// row at its intrinsic size, and for a `numberOfLines = 0` label that is the
-/// single-line width, so the column had no definite width at all. Where the
-/// subtitle broke was then decided by compression tie-breaks — it split at
-/// "в 2 / раза" while half the card sat empty (#638).
+/// beside the switch,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:260-263` contains "Прогрессивный режим".
+/// The app matched that structurally but the column never CLAIMED its width:
+/// `alignment = .leading` left every row at its intrinsic size, and for a
+/// `numberOfLines = 0` label that is the single-line width, so the column had
+/// no definite width at all. Where the subtitle broke was then decided by
+/// compression tie-breaks — it split at "в 2 / раза" while half the card sat
+/// empty (#638).
 final class ProgressiveScaleCellLayoutTests: XCTestCase {
 
     /// Card width on a 390pt screen: 390 minus the form's 16pt page gutters,

@@ -4,9 +4,10 @@ import UIKit
 //
 // Extracted from `AlarmFiringViewController.swift` so the host file stays
 // under SwiftLint's `file_length` and `type_body_length` caps. V2 spec lives
-// in `docs/design/v2-handoff/components/SPScreensV2.jsx` lines 37–103
-// (FiringDawn) and `SPDawnV3.jsx` (FiringDawnV3) — top-bar with date + balance
-// pill, centered hero (clock + caps «Подъём»), bottom CTAs.
+// in FiringDawn,
+// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:37-103` contains "function FiringDawn(",
+// and `SPDawnV3.jsx` (FiringDawnV3) — top-bar with date + balance pill,
+// centered hero (clock + caps «Подъём»), bottom CTAs.
 
 extension AlarmFiringViewController {
 
@@ -52,7 +53,9 @@ extension AlarmFiringViewController {
         view.addSubview(audioWarningBanner)
 
         let inset: CGFloat = AppSpacing.sp4      // 16pt — V2 spec uses sp4 edge padding
-        let gap: CGFloat = 10                     // 10pt CTA gap — matches SPScreensV2 line 91 ("gap: 12")
+        // 10pt CTA gap — matches canon FiringDawnV3,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:228-229` contains "{/* CTA */}".
+        let gap: CGFloat = 10
 
         // Progressive escalation chrome — only mounted for alarms with the
         // doubling-penalty toggle. The default flow stays clean. The indicator
@@ -99,10 +102,11 @@ extension AlarmFiringViewController {
     /// hide the whole row when a custom-photo theme is in effect.
     private func installTopHeader() {
         // «ПТ · 27 АПР.» — the « · » and the weekday-first order are the
-        // artboard's (`SPScreensV2.jsx` L64); what is inside each half —
-        // day before month, the abbreviation, the trailing dot — is the
-        // locale's, which is why the pattern is no longer written out here
-        // (#654).
+        // artboard's,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:64` contains "Пт · 27 апр";
+        // what is inside each half — day before month, the abbreviation, the
+        // trailing dot — is the locale's, which is why the pattern is no
+        // longer written out here (#654).
         let dateString = CalendarDateFormatter.weekdayAndDayMonthShort(from: Date())
         dateLabel.attributedText = NSAttributedString(
             string: dateString.uppercased(),

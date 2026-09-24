@@ -1,7 +1,7 @@
 import UIKit
 
-/// 7-day mini chart — `WalletV2` «Последние 7 дней» section in
-/// `docs/design/v2-handoff/components/SPScreensV2.jsx` (L450-467).
+/// 7-day mini chart — `WalletV2` «Последние 7 дней» section,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:445-465` contains "Последние 7 дней".
 ///
 /// Each column is a day. Non-zero days render the pain gradient bar; the
 /// height encodes the relative penalty total (max in window → full height),
@@ -26,7 +26,8 @@ final class WalletWeeklyChartView: UIView {
         static let barAreaHeight: CGFloat = 60
         static let barCornerRadius: CGFloat = 4
         /// Height of the stub drawn for a day with no penalties. Matches the
-        /// canon's flat 4pt track (`SPScreensV2.jsx` L456).
+        /// canon's flat 4pt track,
+        /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:453-454` contains "minHeight: 4".
         static let emptyTrackHeight: CGFloat = 4
         /// Floor for a day that DOES have penalties. Deliberately taller than
         /// `emptyTrackHeight`: a −50 ₽ day against a −650 ₽ week resolves to

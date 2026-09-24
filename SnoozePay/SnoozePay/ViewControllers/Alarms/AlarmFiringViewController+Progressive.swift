@@ -4,12 +4,15 @@ import UIKit
 /// `AlarmFiringViewController` so the main type stays under SwiftLint's
 /// `type_body_length` cap (mirrors the same pattern used by the +Audio file).
 ///
-/// V2 spec (`SPDawnV3.jsx` lines 114-136 + 216-221): the indicator pill
-/// «Прогрессив · {n}-й поспать ещё» (with a pain300 PulseDot) is hidden until
-/// the first snooze, and below it a row of coloured mini-pill tickers
-/// summarises today's charges (amber < 200 ₽ / red ≥ 200 ₽) separated by «·».
-/// The snooze CTA itself stays GOLD on every step (#288). None of this chrome
-/// is mounted for default alarms — the installer is a no-op via the call site.
+/// V2 spec:
+/// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:114-136` contains "function TickerRow",
+/// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:216-222` contains "-й поспать ещё".
+/// The indicator pill «Прогрессив · {n}-й поспать ещё» (with a pain300
+/// PulseDot) is hidden until the first snooze, and below it a row of coloured
+/// mini-pill tickers summarises today's charges (amber < 200 ₽ / red ≥ 200 ₽)
+/// separated by «·». The snooze CTA itself stays GOLD on every step (#288).
+/// None of this chrome is mounted for default alarms — the installer is a
+/// no-op via the call site.
 extension AlarmFiringViewController {
 
     /// Build the progressive-snooze indicator pill + history ticker stack and
@@ -17,11 +20,12 @@ extension AlarmFiringViewController {
     /// started here once — no need to restart on `updateUI()`. Returns the
     /// stack so `setupUI` can wire it into the centre hero layout.
     func installProgressiveStack(inset: CGFloat) -> UIStackView {
-        // Pill: pain-toned per V2 spec line 217-222. Caps text re-titled on
-        // every updateUI. The leading dot is drawn as a sibling 8pt circle
-        // view rather than via `SPPill(icon:)` because we need the dot to
-        // host its own pulse animation while the pill keeps its background
-        // / text styling untouched.
+        // Pill: pain-toned per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:217-222` contains "rgba(244,82,63,.14)".
+        // Caps text re-titled on every updateUI. The leading dot is drawn as
+        // a sibling 8pt circle view rather than via `SPPill(icon:)` because we
+        // need the dot to host its own pulse animation while the pill keeps
+        // its background / text styling untouched.
         // Seeded through the same helper `updateUI()` uses, so the initial
         // wording cannot drift from the wording of every later refresh.
         let pill = SPPill(text: Self.progressivePillText(snoozeCount: 0), tone: .pain)

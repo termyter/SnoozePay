@@ -136,8 +136,10 @@ class AlarmFiringViewController: UIViewController {
     }()
 
     /// «Будни · 07:00» h3 title between the bell tile and the clock — V3
-    /// places the alarm identity ABOVE the live time (`SPThemedFiring.jsx`
-    /// line 147). `internal` so the `+Layout` extension can pin it.
+    /// places the alarm identity ABOVE the live time. Handoff only — the canon
+    /// has no themed firing, and its `FiringDawnV3` has no name above the clock:
+    /// `docs/design/v2-handoff/components/SPThemedFiring.jsx:146-153` contains "Будни · 07:00".
+    /// `internal` so the `+Layout` extension can pin it.
     let nameLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.h3
@@ -411,7 +413,8 @@ class AlarmFiringViewController: UIViewController {
         // Refresh snooze CTA — VM may have bumped `snoozeCount` (progressive
         // scaling) since the last update, which changes `currentPenalty`.
         // The hint surfaces «следующее откладывание: N ₽» when progressive
-        // is active and not at max, mirroring `SPScreensV2.jsx` line 96.
+        // is active and not at max, mirroring
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:96` contains "Следующее откладывание".
         if let snooze = snoozeCTA {
             snooze.update(
                 price: Decimal(viewModel.currentPenalty),
@@ -446,9 +449,11 @@ class AlarmFiringViewController: UIViewController {
         refreshSnoozedChrome()
     }
 
-    /// Build the eyebrow caps copy below the clock. Mirrors `SPDawnV3.jsx`
-    /// line 212 / `SPThemedFiring.jsx` line 172 — «пора вставать» normally,
+    /// Build the eyebrow caps copy below the clock — «пора вставать» normally,
     /// dropping to «только встать» when the wallet can't cover a snooze.
+    /// Mirrors `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:212` contains "пора вставать"
+    /// and the handoff-only themed firing's eyebrow block,
+    /// `docs/design/v2-handoff/components/SPThemedFiring.jsx:167-173` contains "opacity: .85,".
     func wakeUpCapsText() -> String {
         Localized.text(viewModel.canSnooze
             ? "firing.eyebrow.wake_up"
@@ -458,7 +463,8 @@ class AlarmFiringViewController: UIViewController {
     /// Snooze CTA hint — «следующее откладывание: N ₽» (lowercase per
     /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:241` contains "следующее откладывание")
     /// when progressive is active and not at the price
-    /// ceiling. Mirrors `SPScreensV2.jsx` line 96.
+    /// ceiling. Mirrors
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:96` contains "Следующее откладывание".
     /// V1 passed nil here; V2 surfaces the escalating cost so the user can
     /// see what they're agreeing to. Once the ladder caps at `base × 8` there
     /// is no higher price to show, so we swap in the max-step copy
@@ -534,9 +540,13 @@ class AlarmFiringViewController: UIViewController {
         dawnBackgroundView.setTone(tone)
 
         // Eyebrow colour flips with the tone — theme accent at 85% normally
-        // (`SPThemedFiring.jsx` line 167; `.custom` photos keep the neutral
-        // white), pain300 when drained (SPDawnV3 spec line 212). Tracking is
-        // the wider .18em used by the firing eyebrow, not the stock caps .12em.
+        // (`.custom` photos keep the neutral white), handoff only:
+        // `docs/design/v2-handoff/components/SPThemedFiring.jsx:167-168` contains "opacity: .85,".
+        // pain300 when drained is the app's own: the canon keeps the eyebrow
+        // at white .45 and only swaps the copy,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:211-212` contains "пора вставать".
+        // Tracking is the wider .18em used by the firing eyebrow, not the
+        // stock caps .12em.
         let normalColor = firingPalette?.accent.withAlphaComponent(0.85)
             ?? UIColor.white.withAlphaComponent(0.5)
         wakeUpCapsLabel.attributedText = NSAttributedString(

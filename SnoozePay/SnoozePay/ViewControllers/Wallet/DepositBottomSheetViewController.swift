@@ -23,9 +23,10 @@ final class DepositBottomSheetViewController: UIViewController {
 
     // MARK: - Metrics
     //
-    // `SPMore3.jsx` L430 renders the drag handle as a 36x4 pill; the success
-    // check is an 80pt circle. Both radii are derived from their own size so
-    // a metric bump can't leave a stale corner behind.
+    // The design renders the drag handle as a 36x4 pill,
+    // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:133` contains "width: 36, height: 4";
+    // the success check is an 80pt circle. Both radii are derived from their
+    // own size so a metric bump can't leave a stale corner behind.
     private static let dragHandleSize = CGSize(width: 36, height: 4)
     private static let successCheckDiameter: CGFloat = 80
 

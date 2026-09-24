@@ -2,7 +2,8 @@ import UIKit
 
 /// Streak summary banner that scrolls above the alarm cards.
 ///
-/// Reference: `docs/design/v2-handoff/components/SPScreensV2.jsx` L337-355.
+/// Reference:
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:337-355` contains "5 дней без откладываний".
 ///
 /// Visual recipe — money-tinted glass:
 /// ```

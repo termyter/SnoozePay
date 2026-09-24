@@ -3,10 +3,12 @@ import UIKit
 /// 72×72 bell tile rendered above the alarm name on the V3 themed firing
 /// screen (#225).
 ///
-/// Spec — `SPThemedFiring.jsx` lines 135–144: rounded square (r22) filled
-/// with the theme's 135° `bellGrad`, a 6pt `accentSoft` ring sold via
-/// `box-shadow: 0 0 0 6px`, a `0 12px 36px rgba(0,0,0,.35)` drop shadow, and
-/// a 32pt stroked bell glyph at 70% black.
+/// Spec — handoff only, the canon has no themed firing:
+/// `docs/design/v2-handoff/components/SPThemedFiring.jsx:135-144` contains "borderRadius: 22".
+/// Rounded square (r22) filled with the theme's 135° `bellGrad`, a 6pt
+/// `accentSoft` ring sold via `box-shadow: 0 0 0 6px`, a
+/// `0 12px 36px rgba(0,0,0,.35)` drop shadow, and a 32pt stroked bell glyph
+/// at 70% black.
 ///
 /// The view itself is 84×84 (tile + 6pt ring on every side): the ring is the
 /// view's own rounded background, the gradient tile is inset 6pt inside it.

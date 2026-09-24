@@ -3,7 +3,8 @@ import UIKit
 /// V2 «Звук» row: leading sound icon + title + trailing sound name (meta) +
 /// chevron. The inline preview play button is dropped — the dedicated
 /// `SoundPickerViewController` exposes per-row previews so the form-level
-/// row stays clean. Matches `SPScreensV2.jsx` lines 574-578.
+/// row stays clean. Matches
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:611-615` contains "Soft Dawn</span>".
 final class SoundCell: UITableViewCell {
 
     static let reuseID = "SoundCell"

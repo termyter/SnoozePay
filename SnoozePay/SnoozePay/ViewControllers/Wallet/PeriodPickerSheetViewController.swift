@@ -256,7 +256,8 @@ final class PeriodPickerSheetViewController: UIViewController {
         )
 
         // 4×3 grid: zero column gap so the range fill reads as one continuous
-        // strip; 6pt row gap (SPMore3.jsx L300-307).
+        // strip; 6pt row gap. Handoff only — the canon has no period picker:
+        // `docs/design/v2-handoff/components/SPMore3.jsx:300-308` contains "rowGap: 6".
         let grid = UIStackView()
         grid.axis = .vertical
         grid.spacing = 6
@@ -408,8 +409,8 @@ private final class MonthCell: UIControl {
         // Range strip: rounded on the outer edge of the range, square towards
         // its interior so consecutive cells merge into one continuous fill.
         // The outer edges of each grid row also round (smaller radius) so the
-        // strip wraps cleanly when the range spans multiple rows
-        // (SPMore3.jsx L314-339).
+        // strip wraps cleanly when the range spans multiple rows. Handoff only,
+        // `docs/design/v2-handoff/components/SPMore3.jsx:314-339` contains "Range fill".
         switch role {
         case .none, .single:
             fillView.isHidden = true

@@ -2,8 +2,8 @@ import UIKit
 
 /// Alarm row card — V2 design.
 ///
-/// Visual recipe (matches `docs/design/v2-handoff/components/SPScreensV2.jsx`
-/// L357-404):
+/// Visual recipe (matches the three alarm cards,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:357-404` contains "Будни · Пн–Пт"):
 /// ```
 ///  ┌──────────────────────────────────────────────────────────┐
 ///  │ БУДНИ · ПН–ПТ                              [ ●   ]      │
@@ -17,10 +17,12 @@ import UIKit
 /// ```
 ///
 /// Three tonal states, all 20pt internal padding / 20pt corner radius. The
-/// card chrome follows the `SPCard` recipe (SPScreensV2.jsx L404/L421) so it
-/// reads as the same primitive as every other surface — `shadow-1`/`shadow-2`
-/// plus the documented light-mode hairline a11y deviation, instead of the old
-/// flat 1pt border with no shadow (#280):
+/// card chrome follows the `SPCard` recipe,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:357` contains "raised" and
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:374-377` contains "Выходные",
+/// so it reads as the same primitive as every other surface —
+/// `shadow-1`/`shadow-2` plus the documented light-mode hairline a11y
+/// deviation, instead of the old flat 1pt border with no shadow (#280):
 /// - **enabled**:  `SPCard(tone: .raised)` — `bgRaised` surface, `fg1` clock
 ///   + `fg3` caps.
 /// - **disabled**: `SPCard(tone: .surface)` — `bg1` surface, `fg3` clock + `fg4` caps.
@@ -263,9 +265,10 @@ final class AlarmCell: UITableViewCell {
         soundName: String?,
         enabled: Bool
     ) {
-        // −0.04em clock tracking per SPScreensV2.jsx L408 (`letterSpacing:
-        // -.04em`). The colour is applied separately by `applyEnabledTone`, so
-        // omit `.foregroundColor` here and let the label's `textColor` win.
+        // −0.04em clock tracking per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:361` contains "-.04em".
+        // The colour is applied separately by `applyEnabledTone`, so omit
+        // `.foregroundColor` here and let the label's `textColor` win.
         clockLabel.attributedText = NSAttributedString(
             string: time,
             attributes: [
@@ -373,8 +376,9 @@ final class AlarmCell: UITableViewCell {
             view.removeFromSuperview()
         }
         // Enabled cards carry their 12px pill icons; disabled cards drop the
-        // icons entirely so a dimmed row reads quieter (SPScreensV2.jsx
-        // L414-418 vs L431-434, #280).
+        // icons entirely so a dimmed row reads quieter (#280):
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:367-371` contains "×2</SPPill>"
+        // vs `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:384-387` contains "20 ₽</SPPill>".
         // Price pill — warn-tone when enabled (leading ₽-coin), neutral +
         // icon-less when disabled.
         let pricePill = SPPill(
@@ -396,7 +400,8 @@ final class AlarmCell: UITableViewCell {
         }
         if let soundName = soundName, !soundName.isEmpty {
             // Sound pill — neutral tone; the 12px speaker glyph appears only
-            // on enabled cards (SPScreensV2.jsx L417, #280).
+            // on enabled cards (#280),
+            // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:370` contains "IconSound size={12}".
             let sound = SPPill(
                 text: soundName,
                 tone: .neutral,
@@ -422,7 +427,9 @@ final class AlarmCell: UITableViewCell {
     /// `.surface` recipe (`bg1` + `shadow-1`). In light mode both add a 1pt
     /// hairline — the documented a11y deviation from `SPCard` (near-white
     /// surfaces need a stroke to read as a card). Dark mode relies on the
-    /// shadow alone, no border, per the design (SPScreensV2.jsx L404/L421).
+    /// shadow alone, no border, per the design:
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:357` contains "raised",
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:374-377` contains "Выходные".
     ///
     /// The fill is `AppColors.bgRaised`, not the raw `bg2` this used to
     /// hardcode: `bg2` is a step *up* the ramp in dark but a step *down* in

@@ -106,7 +106,7 @@ enum CalendarDateFormatter {
     }
 
     /// «Пт · 27 апр.» — the firing screen's top-bar date (artboard,
-    /// `SPScreensV2.jsx` L64).
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:64` contains "Пт · 27 апр").
     ///
     /// The two halves are resolved separately and joined by hand, and that is
     /// a deliberate trade rather than an oversight:

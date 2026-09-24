@@ -4,7 +4,8 @@ import UIKit
 /// chip — selected = `money500` flat fill + `fgOnMoney` text (the JSX uses
 /// the money gradient; we collapse to the dominant stop because `UIButton`
 /// doesn't render a gradient inline). Unselected = `whiteOverlay06` chip with
-/// `fg3` text. Matches `SPScreensV2.jsx` lines 528-541.
+/// `fg3` text. Matches
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:552-565` contains "const on = i < 5".
 final class DayPickerCell: UITableViewCell {
 
     static let reuseID = "DayPickerCell"
