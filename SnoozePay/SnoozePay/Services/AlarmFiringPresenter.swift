@@ -96,6 +96,31 @@ final class AlarmFiringPresenter {
         staleScreen.dismiss(animated: false, completion: completion)
     }
 
+    /// Builds the firing screen `present(alarm:snoozeCount:)` mounts.
+    ///
+    /// A seam for the read-back after the swap's `present` (#807): UIKit sets
+    /// the screen's `presentingViewController` only when it really presents,
+    /// which in a unit test means a window and a full UIKit presentation. With
+    /// this, a test double for the host can answer the read-back the way UIKit
+    /// does — by wiring the screen it accepted — instead of the read-back being
+    /// swapped for something a double can fake more easily.
+    var makeFiringScreen: (Alarm, Int) -> AlarmFiringViewController = { alarm, snoozeCount in
+        AlarmFiringViewController(alarm: alarm, snoozeCount: snoozeCount)
+    }
+
+    /// The stale firing screen a swap is taking down, until its dismissal
+    /// completion runs (#807).
+    ///
+    /// Between `dismissStaleScreen` and its completion the alarm is still
+    /// pending, so a `sceneDidBecomeActive` flush or a second trigger source
+    /// re-enters `present(alarm:)`, finds this same screen and would dismiss it
+    /// a second time. Matched by identity against the screen the hierarchy
+    /// walk finds rather than held as a flag: a flag set here and cleared only
+    /// in a completion UIKit may never call would refuse every later alarm,
+    /// while a screen that has left the hierarchy stops matching on its own.
+    /// Weak for the same reason.
+    private weak var screenBeingDismissed: AlarmFiringViewController?
+
     /// Mounts the firing screen for `alarmID`, returning `false` when the screen
     /// is not up by the time it returns (the retry signal). Seam so the pending /
     /// flush logic is unit-testable without standing up the VC hierarchy;
@@ -214,8 +239,8 @@ final class AlarmFiringPresenter {
     /// because they are not fixed the same way — and the re-entry swap below,
     /// which cannot finish before its dismissal completion runs. `false` is
     /// what the AlarmKit retry (#382) keeps an alarm pending on; the swap
-    /// clears that pending id from the completion once it has issued the
-    /// present, and arms it when it found no host to issue it on (#798).
+    /// clears that pending id from the completion once the screen reads back
+    /// as up (#807), and arms it when it could not raise it (#798).
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
         let topVC: UIViewController
@@ -243,7 +268,8 @@ final class AlarmFiringPresenter {
             return false
         }
 
-        let firingVC = AlarmFiringViewController(alarm: alarm, snoozeCount: snoozeCount)
+        let request = PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)
+        let firingVC = makeFiringScreen(alarm, snoozeCount)
         firingVC.modalPresentationStyle = .fullScreen
 
         // If an alarm firing screen is already showing, swap it for this one so
@@ -252,18 +278,35 @@ final class AlarmFiringPresenter {
         //
         // The swap finishes in a completion whose timing is UIKit's, so "not
         // mounted yet" is the only answer this function can stand behind; the
-        // completion clears the pending id itself once the present has actually
-        // been issued. Answering `true` reported a screen that had not gone up,
+        // completion clears the pending id itself once the screen reads back as
+        // up. Answering `true` reported a screen that had not gone up,
         // and when the completion then found no host it never went up at all:
         // `attemptPendingPresentation` had already dropped `pendingAlarmID` on
         // the strength of that `true`, so nothing retried and the alarm went
         // unanswered with no line anywhere (#798).
         if let presentedFiring = Self.presentedFiringScreen(from: topVC) {
-            dismissStaleScreen(presentedFiring) { [weak self] in
-                self?.mountAfterDismissal(
-                    firingVC,
-                    retry: PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)
+            // Re-entry while this very screen is still being taken down (#807):
+            // a second `dismiss` on it is not ours to issue, and the screen the
+            // first swap mounts is the one the user gets. This request waits in
+            // the pending slot — cleared by that mount when it is the same
+            // alarm, flushed on the next activation when it is not.
+            if presentedFiring === screenBeingDismissed {
+                armRetry(
+                    request, level: .default,
+                    "firing-present: the previous screen is still being dismissed — keeping this one pending"
                 )
+                return false
+            }
+            // Set BEFORE the call: a completion UIKit runs synchronously would
+            // otherwise clear the marker before it was set, and the stale
+            // screen would read as "being dismissed" for as long as it lived.
+            screenBeingDismissed = presentedFiring
+            dismissStaleScreen(presentedFiring) { [weak self, weak presentedFiring] in
+                guard let self else { return }
+                if self.screenBeingDismissed === presentedFiring {
+                    self.screenBeingDismissed = nil
+                }
+                self.mountAfterDismissal(firingVC, retry: request)
             }
             return false
         }
@@ -290,36 +333,88 @@ final class AlarmFiringPresenter {
     /// `retry` is what gets armed when no host is left: the snooze count
     /// `firingVC` was built with as well as its alarm, or the retry prices
     /// the next snooze from the first step (#808).
+    ///
+    /// Two more ways the screen can fail to go up here, both #807:
+    ///
+    ///   * A firing screen is already on top. The stale screen can leave the
+    ///     hierarchy before UIKit runs this completion, and a re-entry in that
+    ///     gap finds nothing to swap and presents directly. Presenting again
+    ///     would stack a second firing screen on it.
+    ///   * UIKit declines the `present` — it answers a presentation it cannot
+    ///     perform by doing nothing. Read back from the screen, as
+    ///     `StatisticsViewController.showLoadErrorAlert` does (#752/#789):
+    ///     UIKit wires `presentingViewController` inside `present`, before any
+    ///     completion, so the answer is there on the next line.
     private func mountAfterDismissal(_ firingVC: UIViewController, retry: PendingPresentation) {
+        let top: UIViewController
         switch locateHost() {
-        case let .success(top):
-            top.present(firingVC, animated: false)
-            // Only this alarm's deferral: a direct `present(alarm:)` from the
-            // notification path can land while a different alarm sits pending
-            // from AlarmKit, and clearing that one would drop the screen this
-            // fix exists to keep.
-            //
-            // By id, not by the whole record: the same alarm deferred by
-            // AlarmKit at count 0 and then shown here at 2 is shown, and
-            // keeping the `(id, 0)` record would re-mount it at 0 on the next
-            // activation — the reset #808 closes. Pinned by
-            // `testReentry_forTheAlarmAlreadyPendingAtAnotherCount_clearsIt`.
-            if pendingAlarmID == retry.alarmID {
-                pendingPresentation = nil
-            }
+        case let .success(located):
+            top = located
         case let .failure(miss):
-            // The pending slot holds one alarm. Taking it from another one
-            // drops that alarm's retry, so the line says so.
-            let displaced = pendingAlarmID.map { $0 != retry.alarmID } ?? false
-            AppLogger.emit(
-                .appDelegate, .error,
+            // Not terminal, unlike the give-up branch in `present`: the retry
+            // can still raise the screen, so this leaves the audio alone.
+            armRetry(
+                retry,
                 "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending"
-                    + (displaced ? "; another alarm's pending screen is dropped" : "")
             )
-            // Not terminal, unlike the give-up branch above: the retry can
-            // still raise the screen, so this branch leaves the audio alone.
-            pendingPresentation = retry
+            return
         }
+
+        if let alreadyUp = Self.presentedFiringScreen(from: top) {
+            if alreadyUp.viewModel.alarm.id == retry.alarmID {
+                // This alarm's screen is what the user sees; nothing to retry.
+                clearPending(for: retry.alarmID)
+            } else {
+                armRetry(
+                    retry,
+                    "firing-present: another firing screen went up while the previous one was being dismissed"
+                        + " — keeping it pending"
+                )
+            }
+            return
+        }
+
+        top.present(firingVC, animated: false)
+        guard firingVC.presentingViewController != nil else {
+            // Kept pending rather than given up, like the no-host branch: the
+            // refusal is about this moment's hierarchy, and the next
+            // activation asks again.
+            let reason = AppDelegate.presentationRefusalReason(presenter: top)
+                ?? "\(type(of: top)) did not put it up"
+            armRetry(retry, "firing-present: \(reason) after dismissing the previous screen — keeping it pending")
+            return
+        }
+        clearPending(for: retry.alarmID)
+    }
+
+    /// Drops the deferral once `alarmID`'s screen is up.
+    ///
+    /// Only this alarm's: a direct `present(alarm:)` from the notification path
+    /// can land while a different alarm sits pending from AlarmKit, and
+    /// clearing that one would drop the screen #798 exists to keep. By id, not
+    /// by the whole record: the same alarm deferred by AlarmKit at count 0 and
+    /// then shown at 2 is shown, and keeping `(id, 0)` would re-mount it at 0
+    /// on the next activation — the reset #808 closes. Pinned by
+    /// `testReentry_forTheAlarmAlreadyPendingAtAnotherCount_clearsIt`.
+    private func clearPending(for alarmID: UUID) {
+        if pendingAlarmID == alarmID {
+            pendingPresentation = nil
+        }
+    }
+
+    /// Puts `retry` in the pending slot and writes `line` where the suite can
+    /// read it.
+    ///
+    /// The slot holds one alarm, so taking it from another one drops that
+    /// alarm's retry — and the line says so rather than reading like a plain
+    /// deferral.
+    private func armRetry(_ retry: PendingPresentation, level: OSLogType = .error, _ line: String) {
+        let displaced = pendingAlarmID.map { $0 != retry.alarmID } ?? false
+        AppLogger.emit(
+            .appDelegate, level,
+            line + (displaced ? "; another alarm's pending screen is dropped" : "")
+        )
+        pendingPresentation = retry
     }
 
     // MARK: - Hierarchy walk
@@ -357,10 +452,10 @@ final class AlarmFiringPresenter {
 
     /// Returns the currently-presented `AlarmFiringViewController` anywhere up
     /// the presentation chain rooted at `topVC`, if one is on screen.
-    private static func presentedFiringScreen(from topVC: UIViewController) -> UIViewController? {
+    private static func presentedFiringScreen(from topVC: UIViewController) -> AlarmFiringViewController? {
         var vc: UIViewController? = topVC
         while let current = vc {
-            if current is AlarmFiringViewController { return current }
+            if let firing = current as? AlarmFiringViewController { return firing }
             vc = current.presentingViewController
         }
         return nil
