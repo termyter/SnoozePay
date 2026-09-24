@@ -67,12 +67,9 @@ final class AlarmFiringViewModel {
     let firingStartedAt: Date
 
     /// When the ring on screen started: the re-ring the last snooze armed
-    /// (`nextRingDate()`, tap + `snoozeMinutes`, the instant the scheduler
-    /// fires), or `firingStartedAt` before any snooze. `AlarmFiringPresenter`
-    /// tells the current ring's screen from an older one by it (#835). It read
-    /// `firingStartedAt`, which never moves, so after one snooze longer than
-    /// its window a second trigger for the ring on screen was taken for a
-    /// stale screen and swapped (#855).
+    /// (`nextRingDate()`), or `firingStartedAt` before any snooze.
+    /// `AlarmFiringPresenter` tells the current ring from an older one by it;
+    /// by `firingStartedAt`, a snooze past its window read as stale (#855).
     var lastRingStartedAt: Date { nextRingDate() ?? firingStartedAt }
 
     // MARK: - Callbacks

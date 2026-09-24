@@ -177,26 +177,37 @@ final class AudioServiceTests: XCTestCase {
         XCTAssertNil(service.currentAlarmID)
     }
 
-    /// `playingAlarmID` is the owner and the state read as one pair (#855):
-    /// the owner while it plays, `nil` once stopped, and `nil` for a sound
-    /// no alarm owns. Read from main, as `AlarmFiringPresenter` reads it,
-    /// while another thread starts and stops: it must answer, not hang.
-    func testPlayingAlarmID_namesTheOwnerOnlyWhileItPlays() {
+    /// `soundingAlarmID` is the owner and the state read as one pair (#855):
+    /// the owner in any state but `.stopped`, a refused session included (the
+    /// screen must not be swapped for silence it would restart into), `nil`
+    /// once stopped or for a sound no alarm owns. Read from main, as
+    /// `AlarmFiringPresenter` reads it, while another thread starts and
+    /// stops: it must answer, not hang.
+    func testSoundingAlarmID_namesTheOwnerUntilItsSoundStops() {
         let service = AudioService.shared
         service.stopAlarmSound()
-        defer { service.stopAlarmSound() }
-        XCTAssertNil(service.playingAlarmID)
+        defer {
+            service.overrideSessionActivation(nil)
+            service.stopAlarmSound()
+        }
+        XCTAssertNil(service.soundingAlarmID)
 
         let alarmID = UUID()
         service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmID)
         XCTAssertEqual(service.state, .playing, "test precondition: the fallback tone plays")
-        XCTAssertEqual(service.playingAlarmID, alarmID)
-
+        XCTAssertEqual(service.soundingAlarmID, alarmID)
         service.stopAlarmSound()
-        XCTAssertNil(service.playingAlarmID)
+        XCTAssertNil(service.soundingAlarmID)
+
+        service.overrideSessionActivation { throw NSError(domain: "AudioServiceTests", code: 855) }
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmID)
+        service.overrideSessionActivation(nil)
+        XCTAssertEqual(service.state, .silentBecauseConfigFailed, "test precondition: the session was refused")
+        XCTAssertEqual(service.soundingAlarmID, alarmID, "a refused session read as no sound, inviting a swap")
+        service.stopAlarmSound()
 
         service.startAlarmSound(soundID: "nonexistent_test_sound")
-        XCTAssertNil(service.playingAlarmID, "a sound no alarm owns was attributed to one")
+        XCTAssertNil(service.soundingAlarmID, "a sound no alarm owns was attributed to one")
         service.stopAlarmSound()
 
         let churned = expectation(description: "start/stop churn on another thread")
@@ -207,9 +218,10 @@ final class AudioServiceTests: XCTestCase {
             }
             churned.fulfill()
         }
-        for _ in 0..<20 { _ = service.playingAlarmID }
+        for _ in 0..<20 { _ = service.soundingAlarmID }
         wait(for: [churned], timeout: 10)
-        XCTAssertNil(service.playingAlarmID, "the last stop has to win")
+        drainMainQueue()
+        XCTAssertNil(service.soundingAlarmID, "the last stop has to win")
     }
 
     /// IOS-116 — alarm-stacking race regression guard.

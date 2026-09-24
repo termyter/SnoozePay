@@ -39,6 +39,13 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
     private var lines: [Line] = []
     private let defaults = UserDefaults(suiteName: suite) ?? .standard
 
+    /// Spends earlier suites' main-queue backlog here, not in the first
+    /// test's first turn, which paid 3.6 s of it (#618's pattern).
+    override func setUp() {
+        super.setUp()
+        drainMainQueue()
+    }
+
     override func tearDown() {
         AudioService.shared.stopAlarmSound()
         defaults.removePersistentDomain(forName: Self.suite)
@@ -329,10 +336,15 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
     /// billing window), one whose last re-ring is older than the window too,
     /// a notification-path screen with no sound or another alarm's, and a
     /// snoozed or stopped one, whose alarm's request is its next ring.
-    func testSettle_onAScreenNotProvablyThisRing_swapsIt() {
+    func testSettle_onAScreenNotProvablyThisRing_swapsItAndSaysWhy() {
         let older = Date().addingTimeInterval(-AlarmFiringPresenter.currentFiringWindow - 60)
-        for state in ["older", "re-rang long ago", "silent", "other alarm's sound", "snoozed", "stopped"] {
+        let reasons: [String: AlarmFiringPresenter.RingMismatch] = [
+            "older": .outsideWindow, "re-rang long ago": .outsideWindow, "silent": .silent,
+            "other alarm's sound": .silent, "snoozed": .snoozed, "stopped": .stopped
+        ]
+        for (state, reason) in reasons {
             dismissed = []
+            lines = []
             let alarm = Alarm()
             let presenter = makePresenter(alarms: [alarm])
             let onAlarmKit = state != "silent" && state != "other alarm's sound"
@@ -353,82 +365,106 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
             }
             top = screen
 
-            XCTAssertFalse(presenter.present(alarm: alarm, snoozeCount: 1), state)
+            var answer = true
+            recording { answer = presenter.present(alarm: alarm, snoozeCount: 1) }
 
+            XCTAssertFalse(answer, state)
             XCTAssertEqual(dismissed.count, 1, "\(state): answered with a screen that is not this ring's")
             XCTAssertEqual(presenter.pendingPresentation, pending(alarm, 1), state)
+            let line = lines.first { $0.message.contains("swapping out") }
+            XCTAssertTrue(line?.message.contains("(\(reason.rawValue))") ?? false, "\(state): \(lines.map(\.message))")
             AudioService.shared.stopAlarmSound()
         }
     }
 
-    /// #855: the window counts from the ring on screen, not from the mount.
-    /// Snoozed 15 minutes at the first ring, the screen went up 20 minutes
-    /// ago and re-rang 4 minutes ago. A second trigger for that re-ring is
-    /// the screen already there; counted from the mount it was swapped, and
-    /// the swap cut the sound on the way down.
-    func testSettle_afterASnoozeLongerThanTheWindow_countsFromTheLastRing() {
+    /// #855: the current ring is not measured from the mount. The screen went
+    /// up 20 minutes ago. On AlarmKit the window counts from the re-ring the
+    /// last snooze armed, 4 minutes ago or a second from now. On the
+    /// notification path this alarm's own sound proves the ring, so an
+    /// unsnoozed alarm ringing for 20 minutes is not torn down and restarted.
+    func testSettle_onTheCurrentRing_settlesWhenTheMountIsOutsideTheWindow() {
         let startedAt = Date().addingTimeInterval(-20 * 60)
-        XCTAssertGreaterThan(
-            Date().timeIntervalSince(startedAt), AlarmFiringPresenter.currentFiringWindow,
-            "test precondition: the mount alone is outside the window"
-        )
-        for alarmKit in [true, false] {
+        let snoozeLength: TimeInterval = 15 * 60
+        let cases: [(String, Bool, Date?)] = [
+            ("AlarmKit, re-rang 4 min ago", true, startedAt.addingTimeInterval(60)),
+            ("AlarmKit, re-ring 1 s ahead", true, Date().addingTimeInterval(1 - snoozeLength)),
+            ("notification path, ringing 20 min, never snoozed", false, nil)
+        ]
+        for (label, alarmKit, snoozedAt) in cases {
             dismissed = []
             lines = []
             let alarm = Alarm(snoozeMinutes: 15)
             let presenter = makePresenter(alarms: [alarm])
-            let screen = makeScreen(
-                alarm, snoozeCount: 1, alarmKit: alarmKit, startedAt: startedAt,
-                snoozedAt: startedAt.addingTimeInterval(60)
-            )
-            top = screen
+            top = makeScreen(alarm, snoozeCount: 1, alarmKit: alarmKit, startedAt: startedAt, snoozedAt: snoozedAt)
             if !alarmKit { ring(alarm) }
 
             var answer = false
             recording { answer = presenter.present(alarm: alarm, snoozeCount: 1) }
 
-            XCTAssertTrue(dismissed.isEmpty, "alarmKit=\(alarmKit): the re-ring on screen was swapped for a copy")
-            XCTAssertTrue(answer, "alarmKit=\(alarmKit)")
-            XCTAssertNil(presenter.pendingPresentation, "alarmKit=\(alarmKit)")
-            XCTAssertTrue(lines.contains { $0.message.contains("up and ringing") }, "\(lines.map(\.message))")
+            XCTAssertTrue(dismissed.isEmpty, "\(label): the ring on screen was swapped for a copy")
+            XCTAssertTrue(answer, label)
+            XCTAssertNil(presenter.pendingPresentation, label)
+            XCTAssertTrue(lines.contains { $0.message.contains("up and ringing") }, "\(label): \(lines.map(\.message))")
             AudioService.shared.stopAlarmSound()
         }
     }
 
     // MARK: - The swap's completion finds this alarm up (#855)
 
-    /// A screen of this alarm went up while the swap's dismissal was out. The
-    /// completion settled on it whatever it was, so a screen that is not the
-    /// current ring cleared the request with the ring nowhere on screen. It
-    /// now applies the swap's own test, and swaps that screen on the next
-    /// turn.
-    func testCompletion_whenThisAlarmsScreenUpIsNotItsCurrentRing_swapsIt() {
+    /// A screen of this alarm, Y, went up while the swap's dismissal was out.
+    /// The completion settled on it whatever it was. Stale or silent, Y is now
+    /// swapped at the higher of the two counts, so the ladder never steps
+    /// down (#808), and the swap goes through to a mounted screen. Stopped or
+    /// snoozed at the request's count, Y's Stop or paid snooze answered the
+    /// older request: swapping would ring a stopped alarm again.
+    func testCompletion_whenThisAlarmsScreenIsUpButNotRinging_swapsOnlyWhatTheUserDidNotAnswer() {
         let older = Date().addingTimeInterval(-AlarmFiringPresenter.currentFiringWindow - 60)
-        for state in ["older", "silent"] {
+        /// `rebuilt`: the count the swap mounts at; `nil`, no swap.
+        struct Case { let state: String, upCount: Int, requestCount: Int, rebuilt: Int? }
+        let cases = [
+            Case(state: "older", upCount: 1, requestCount: 1, rebuilt: 1),
+            Case(state: "silent", upCount: 1, requestCount: 1, rebuilt: 1),
+            Case(state: "older at a higher count", upCount: 2, requestCount: 0, rebuilt: 2),
+            Case(state: "stopped", upCount: 1, requestCount: 1, rebuilt: nil),
+            Case(state: "snoozed", upCount: 1, requestCount: 1, rebuilt: nil)
+        ]
+        for testCase in cases {
+            let (state, upCount, requestCount) = (testCase.state, testCase.upCount, testCase.requestCount)
             dismissed = []
             completions = []
             lines = []
             let alarm = Alarm()
             let presenter = makePresenter(alarms: [alarm])
             top = makeScreen(Alarm())
-            _ = presenter.present(alarm: alarm, snoozeCount: 1)
+            _ = presenter.present(alarm: alarm, snoozeCount: requestCount)
             XCTAssertEqual(dismissed.count, 1, "\(state): test precondition: the swap started")
-            // On AlarmKit when older, so the window is the only thing it fails.
+            // AlarmKit unless silent, so each case fails one check only.
             let upAlready = makeScreen(
-                alarm, snoozeCount: 1, alarmKit: state == "older", startedAt: state == "older" ? older : Date()
+                alarm, snoozeCount: upCount, alarmKit: state != "silent",
+                startedAt: state.hasPrefix("older") ? older : Date()
             )
+            if state == "stopped" { upAlready.dismissTapped() }
+            if state == "snoozed" { upAlready.isSnoozedStateActive = true }
             top = upAlready
 
             finishDismissal()
-
-            XCTAssertEqual(presenter.pendingPresentation, pending(alarm, 1), "\(state): settled on a stale screen")
-            XCTAssertFalse(lines.contains { $0.message.contains("not stacking") }, "\(state): \(lines.map(\.message))")
-            let line = lines.first { $0.message.contains("not ringing its current ring") }
-            XCTAssertTrue(line?.message.contains("\(handle(alarm)) at snooze 1") ?? false, "\(lines.map(\.message))")
-
             runOneMainQueueTurn()
 
+            guard let rebuiltCount = testCase.rebuilt else {
+                XCTAssertNil(presenter.pendingPresentation, "\(state): the user's answer left the request parked")
+                XCTAssertEqual(dismissed.count, 1, "\(state): the screen the user answered was swapped back in")
+                XCTAssertTrue(lines.contains { $0.message.contains("already up and") }, "\(lines.map(\.message))")
+                continue
+            }
+            let line = lines.first { $0.message.contains("swapping out") }?.message ?? ""
+            XCTAssertTrue(line.contains("\(handle(alarm)) at snooze \(upCount) ("), "\(state): «\(line)»")
             XCTAssertTrue(dismissed.last === upAlready, "\(state): the screen up was never swapped for this ring's")
+            let host = Host()
+            top = host
+            finishDismissal()
+            let mounted = host.presentedScreens.last as? ReadBackFiringScreen
+            XCTAssertEqual(mounted?.viewModel.snoozeCount, rebuiltCount, "\(state): none mounted, or stepped down")
+            XCTAssertNil(presenter.pendingPresentation, state)
         }
     }
 

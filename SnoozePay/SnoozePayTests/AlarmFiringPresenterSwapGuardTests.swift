@@ -135,7 +135,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
     /// on that path the screen started the sound when it went up.
     private func ring(_ alarm: Alarm) {
         AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
-        XCTAssertEqual(AudioService.shared.playingAlarmID, alarm.id, "test precondition: the alarm has to be audible")
+        XCTAssertEqual(AudioService.shared.soundingAlarmID, alarm.id, "test precondition: the alarm has to be audible")
     }
 
     // MARK: - Re-entry while the dismissal is outstanding
