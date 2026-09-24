@@ -271,6 +271,13 @@ extension AlarmFiringPresenter {
         if !animationQueued { DispatchQueue.main.async(execute: body) }
     }
 
+    /// `body` behind a guard: only the first call runs it, so the completion and
+    /// `runSoonUnlessQueued`'s fallback flush once (#886). Main-only, so no lock.
+    static func runningOnce(_ body: @escaping () -> Void) -> () -> Void {
+        var ran = false
+        return { if !ran { ran = true; body() } }
+    }
+
     /// A host miss, in `present` or after a swap's dismissal: keeps the record
     /// and the audio (`stopAudio(ifOwnedBy:_:)`'s rule) and re-arms on the next
     /// turn, `hostGoneRetryLimit` times since the last screen went up (#875).

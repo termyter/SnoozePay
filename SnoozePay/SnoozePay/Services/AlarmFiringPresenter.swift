@@ -64,9 +64,8 @@ final class AlarmFiringPresenter {
     /// Internal only so `AlarmFiringPresenter+Queue.swift` can reach it (#883).
     ///
     /// Emptied, it refills `transitionRetries` and `hostGoneRetries` (#886): a
-    /// record can leave with no screen going up (expiry, `discardPending`), and
-    /// the next alarm started on a spent budget. Every removal passes here. No
-    /// retry loop runs on an empty queue: each keeps its record parked.
+    /// record can leave with no screen up (expiry, `discardPending`). A retry
+    /// loop keeps its record parked, so none is reset midway.
     var pendingQueue: [QueuedPresentation] = [] {
         didSet {
             guard pendingQueue.isEmpty, !oldValue.isEmpty else { return }
@@ -195,10 +194,10 @@ final class AlarmFiringPresenter {
     /// `animate(alongsideTransition:completion:)` returns NO.
     ///
     /// Or may not: on a NO the closure also goes to the next turn
-    /// (`runSoonUnlessQueued`, #886), so the promised retry does not wait for
-    /// the activation. Running twice is harmless: the closure only calls
-    /// `attemptParkedPresentationSoon`, a no-op on an empty queue, else one
-    /// more flush in arrival order whose refusals count against the limit.
+    /// (`runSoonUnlessQueued`, #886). Only the first of the completion and that
+    /// fallback runs it (`runningOnce`): a second, early flush meets the
+    /// transition still running, spends budget and, past the limit, forces
+    /// the dismissal mid-transition. All of it runs on main, so no lock.
     ///
     /// The closure may run inside the call (a stand-in may do that, and so
     /// may UIKit). The presenter parks the record before calling, and the
@@ -206,8 +205,9 @@ final class AlarmFiringPresenter {
     /// retry or recurses.
     var whenTransitionEnds: (UIViewController, @escaping () -> Void) -> Bool = { controller, body in
         guard let coordinator = controller.transitionCoordinator else { return false }
-        let queued = coordinator.animate(alongsideTransition: nil) { _ in body() }
-        AlarmFiringPresenter.runSoonUnlessQueued(queued, body)
+        let once = AlarmFiringPresenter.runningOnce(body)
+        let queued = coordinator.animate(alongsideTransition: nil) { _ in once() }
+        AlarmFiringPresenter.runSoonUnlessQueued(queued, once)
         return true
     }
 
@@ -263,8 +263,7 @@ final class AlarmFiringPresenter {
     /// refused, a swap it held), since the last screen that went up (#875).
     /// Bounds a transition UIKit keeps reporting: each retry that meets it
     /// again would otherwise schedule the next one, every time it ends.
-    /// Refilled too when the queue empties (#886): `pendingQueue`.
-    /// Internal only so `AlarmFiringPresenter+Queue.swift` can reach it (#883).
+    /// Refilled on an empty queue (#886); internal for `AlarmFiringPresenter+Queue.swift` (#883).
     var transitionRetries = 0
 
     /// A sheet animating in or out ends within the first; the second covers
@@ -468,17 +467,18 @@ final class AlarmFiringPresenter {
     /// run its hop at once.
     ///
     /// Past the limit the swap goes ahead, with an `.error` line (#886): held,
-    /// the stale screen stayed up and the request waited all the same. A
-    /// dismiss UIKit drops costs no more: `parkBeforeSwap` parks the request
-    /// first (#835), and the re-entry guard needs `isBeingDismissed` too.
+    /// the stale screen stayed up all the same. A dismiss UIKit drops leaves
+    /// the request parked (`parkBeforeSwap`, #835) for the next flush, which
+    /// in the foreground is the activation. The line says so.
     private func deferSwapPastTransition(of screen: AlarmFiringViewController, _ request: PendingPresentation) -> Bool {
         guard let retrying = transitionRetry(for: screen) else { return false }
         let shown = PendingPresentation(on: screen).logHandle
         guard retrying else {
             AppLogger.emit(
                 .appDelegate, .error,
-                "firing-present: the screen of \(shown) is still in a transition after"
-                    + " \(Self.transitionRetryLimit) retries — sending the dismissal anyway [\(request.logHandle)]"
+                "firing-present: the screen of \(shown) is still in a transition after \(Self.transitionRetryLimit)"
+                    + " retries — sending the dismissal anyway; if UIKit drops it, this one waits for the next"
+                    + " activation [\(request.logHandle)]"
             )
             return false
         }

@@ -336,8 +336,9 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
     /// schedules one retry, `transitionRetryLimit` in all. Past it the swap
     /// goes ahead with an `.error` line instead of waiting for an activation a
     /// foreground app does not get, parked before its dismissal (#835). UIKit
-    /// drops that dismissal here, and the next flush sends a fresh one: the
-    /// re-entry guard also needs `isBeingDismissed`, so it does not wedge.
+    /// drops that dismissal here, and the next flush (in the foreground, the
+    /// activation, as the line says) sends a fresh one: the re-entry guard
+    /// also needs `isBeingDismissed`, so it does not wedge.
     func testSwap_whenTheTransitionNeverClears_retriesUpToTheLimitThenDismissesAnyway() throws {
         let limit = AlarmFiringPresenter.transitionRetryLimit
         let alarm = Alarm()
@@ -360,6 +361,10 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         )
         XCTAssertEqual(past.level, .error)
         XCTAssertTrue(past.message.contains("sending the dismissal anyway"), "«\(past.message)»")
+        XCTAssertTrue(
+            past.message.contains("if UIKit drops it, this one waits for the next activation"),
+            "the line has to say what a dropped dismissal leaves: «\(past.message)»"
+        )
         XCTAssertEqual(dismissed.count, 1, "past the limit the swap has to go ahead")
         XCTAssertTrue(dismissed.first === stale)
         XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 2)], "parked before the dismissal (#835)")
@@ -494,6 +499,22 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
             XCTAssertEqual(runs, 0, "animate answered \(queued): run inside the call")
             drainMainQueue()
             XCTAssertEqual(runs, queued ? 0 : 1, "animate answered \(queued)")
+        }
+    }
+
+    /// On a NO the completion may still come, before or after the fallback.
+    /// Either order runs the body once: a second, early flush would meet the
+    /// transition still running and spend the budget, and past the limit force
+    /// the dismissal mid-transition (#886).
+    func testRunningOnce_theCompletionAndTheFallbackRunTheBodyOnce() {
+        for completionFirst in [true, false] {
+            var runs = 0
+            let once = AlarmFiringPresenter.runningOnce { runs += 1 }
+            AlarmFiringPresenter.runSoonUnlessQueued(false, once)
+            if completionFirst { once() }
+            drainMainQueue()
+            once()
+            XCTAssertEqual(runs, 1, "completion first: \(completionFirst)")
         }
     }
 
