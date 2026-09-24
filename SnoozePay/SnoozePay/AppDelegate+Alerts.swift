@@ -207,9 +207,11 @@ extension AppDelegate {
         // The caller walks to the topmost controller, so an identical alert
         // still on screen is `topVC` itself. A tap on the #860 banner resolves
         // the same corrupt store again; a second alert says nothing new (#864).
-        if let shown = topVC as? UIAlertController, shown.message == message {
+        // One on its way out does not count: the user is about to lose it.
+        // `.default` is notice level, which sysdiagnose keeps and `.info` is not.
+        if let shown = topVC as? UIAlertController, shown.message == message, !shown.isBeingDismissed {
             AppLogger.emit(
-                .appDelegate, .info,
+                .appDelegate, .default,
                 "[\(alertAlreadyShownErrorID)] Alarm data-corrupted alert already on screen"
             )
             return

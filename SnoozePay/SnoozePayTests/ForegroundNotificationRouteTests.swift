@@ -149,14 +149,15 @@ final class ForegroundNotificationRouteTests: XCTestCase {
 
     /// Only our own alarm notification reaches this branch, so it is a real
     /// alarm: `[]` left it silent in the foreground. The system sound is
-    /// one-shot, so it needs no firing screen to stop it (#864).
+    /// one-shot, so it needs no firing screen to stop it, and the banner shows
+    /// the alarm's title so the sound is not a ding with nothing on screen (#864).
     func testMalformedAlarmPayload_playsTheSystemSound_andLogsTheTaggedErrorLine() {
         var userInfo = validAlarmUserInfo()
         userInfo[AlarmNotificationPayload.Key.snoozeMinutes] = 0 // out of range
 
         let result = present(request(identifier: UUID().uuidString, userInfo: userInfo))
 
-        XCTAssertEqual(result.options, [.sound, .list])
+        XCTAssertEqual(result.options, [.banner, .sound, .list])
         XCTAssertTrue(result.started.isEmpty, "a payload that fails to decode must not start audio")
         guard let line = result.lines.first(where: { $0.message.contains(Self.invalidPayloadMarker) }) else {
             return XCTFail("a corrupt alarm must still be reported; the sink saw \(messages(result.lines))")
@@ -175,7 +176,7 @@ final class ForegroundNotificationRouteTests: XCTestCase {
     func testUnrecognisedNotification_keepsTheInvalidAlarmVerdict() {
         let result = present(request(identifier: "something_else_\(UUID().uuidString)"))
 
-        XCTAssertEqual(result.options, [.sound, .list])
+        XCTAssertEqual(result.options, [.banner, .sound, .list])
         XCTAssertTrue(result.lines.contains { $0.level == .error && $0.message.contains(Self.invalidPayloadMarker) })
     }
 
@@ -208,16 +209,34 @@ final class ForegroundNotificationRouteTests: XCTestCase {
     }
 
     /// The alarm is real but the app could not ring it: the stored alarms
-    /// failed to decode (#860), or the audio session refused to activate
-    /// (#864). `[]` used to suppress the system sound as well, and the alarm
-    /// went off in total silence.
+    /// failed to decode (#860), the audio session refused to activate, or no
+    /// audio source played and only vibration runs (#864). `[]` used to
+    /// suppress the system sound as well, and the alarm went off in silence.
     func testAlarmTheAppCannotRing_isHandedToTheSystemSound_andLogsTheFallback() throws {
         let cases: [(AppDelegate.ForegroundAlarmStart, String)] = [
             (.loadFailed, AppDelegate.loadFailedSystemSoundErrorID),
-            (.silent, AppDelegate.sessionFailedSystemSoundErrorID)
+            (.silent, AppDelegate.sessionFailedSystemSoundErrorID),
+            (.vibrationOnly, AppDelegate.vibrationOnlySystemSoundErrorID)
         ]
         for (start, errorID) in cases {
             try assertHandedToTheSystemSound(start: start, errorID: errorID)
+        }
+    }
+
+    /// What the in-app start reports for each audio state it can leave. Pure,
+    /// because no seam forces `.vibrationOnly` through `AudioService`: a test
+    /// cannot make the synthetic tone fail after a missing file, nor `play()`
+    /// refuse. `.silentBecauseConfigFailed` is also driven end to end
+    /// through the session seam in `MissingAlarmNotificationAudioTests`.
+    func testEveryAudioStateAfterAStart_mapsToItsOutcome() {
+        let expected: [(AudioPlaybackState, AppDelegate.ForegroundAlarmStart)] = [
+            (.playing, .ringing),
+            (.stopped, .ringing),
+            (.silentBecauseConfigFailed, .silent),
+            (.vibrationOnly, .vibrationOnly)
+        ]
+        for (state, start) in expected {
+            XCTAssertEqual(AppDelegate.foregroundStart(afterStartingIn: state), start, "\(state)")
         }
     }
 

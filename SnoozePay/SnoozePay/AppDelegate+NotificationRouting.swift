@@ -76,9 +76,28 @@ extension AppDelegate {
         /// app cannot ring it.
         case loadFailed
         /// The alarm resolved and its screen was asked for, but the audio
-        /// session refused to activate, so the app plays nothing and does not
-        /// vibrate either (#864).
+        /// session is `.silentBecauseConfigFailed`, so the app plays no sound
+        /// (#864). Whether it vibrates depends on how the session got there:
+        /// a failed start skips vibration, a failed resume keeps it.
         case silent
+        /// The alarm resolved and its screen was asked for, but no audio
+        /// source played — a missing file or a rejected `play()` — so the app
+        /// only vibrates, which a user with vibration off never feels (#864).
+        case vibrationOnly
+    }
+
+    /// What the in-app start reports for the audio state it left behind.
+    /// `.stopped` straight after a start means something stopped it in
+    /// between; that keeps the pre-#864 answer, `.ringing`.
+    static func foregroundStart(afterStartingIn state: AudioPlaybackState) -> ForegroundAlarmStart {
+        switch state {
+        case .silentBecauseConfigFailed:
+            return .silent
+        case .vibrationOnly:
+            return .vibrationOnly
+        case .playing, .stopped:
+            return .ringing
+        }
     }
 
     /// Greps the line `willPresent` writes when it hands a real alarm's
@@ -88,6 +107,10 @@ extension AppDelegate {
     /// Greps the line `willPresent` writes when it hands a real alarm's
     /// sound to the system because the audio session would not activate.
     static let sessionFailedSystemSoundErrorID = "NOTIF-864-SESSION-FAILED-SYSTEM-SOUND"
+
+    /// Greps the line `willPresent` writes when it hands a real alarm's
+    /// sound to the system because the app could only vibrate.
+    static let vibrationOnlySystemSoundErrorID = "NOTIF-864-VIBRATION-ONLY-SYSTEM-SOUND"
 
     /// Tags the invalid-payload line `willPresent` writes when it lets the
     /// system play the notification sound for an undecodable alarm.
@@ -102,14 +125,16 @@ extension AppDelegate {
     /// - alarm that failed to load: `[.banner, .sound, .list]` — the alarm is
     ///   real and the app cannot ring it, so the system plays the
     ///   notification sound rather than nothing at all (#860);
-    /// - alarm whose audio session failed: `[.banner, .sound, .list]`, for
-    ///   the same reason — the app is silent and does not vibrate (#864);
+    /// - alarm whose audio session failed, or that only vibrates:
+    ///   `[.banner, .sound, .list]`, for the same reason — the app plays no
+    ///   sound of its own (#864);
     /// - app banner: `[.banner, .sound, .list]` — it exists to be read;
-    /// - anything else: `[.sound, .list]`. Only our own alarm notification
-    ///   with an undecodable payload lands here, so it is a real alarm. The
-    ///   app starts no audio of its own, because no firing screen will come
-    ///   to stop it; the system sound is one-shot and needs no stopping
-    ///   (#864). No banner: there is nothing to act on in it.
+    /// - anything else: `[.banner, .sound, .list]`. Only our own alarm
+    ///   notification with an undecodable payload lands here, so it is a real
+    ///   alarm. The app starts no audio of its own, because no firing screen
+    ///   will come to stop it; the system sound is one-shot and needs no
+    ///   stopping. The banner shows the alarm's own title, so the sound is not
+    ///   a ding with nothing on screen (#864).
     static func foregroundPresentationOptions(
         for request: UNNotificationRequest,
         startAlarm: (AlarmNotificationPayload) -> ForegroundAlarmStart
@@ -127,6 +152,8 @@ extension AppDelegate {
                 reason = (loadFailedSystemSoundErrorID, "failed to load")
             case .silent:
                 reason = (sessionFailedSystemSoundErrorID, "is silent: the audio session failed")
+            case .vibrationOnly:
+                reason = (vibrationOnlySystemSoundErrorID, "only vibrates: no audio source played")
             }
             AppLogger.emit(
                 .appDelegate, .error,
@@ -137,7 +164,7 @@ extension AppDelegate {
         case .appBanner:
             return [.banner, .sound, .list]
         case .invalidAlarmPayload:
-            return [.sound, .list]
+            return [.banner, .sound, .list]
         }
     }
 

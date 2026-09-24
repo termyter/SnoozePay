@@ -264,9 +264,10 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
 
     /// SNOOZE_ACTION on an alarm whose stored alarms fail to decode used to
     /// come back `.alarmNotFound`: logged as a deleted alarm, and the user
-    /// heard nothing. It now keeps the load failure, and the delegate puts up
-    /// the data-corrupted alert the foreground path does (#864).
-    func testSnoozeAction_whenStoredAlarmsFailToDecode_reportsTheCorruption() throws {
+    /// heard nothing. It now keeps the load failure: the delegate posts the
+    /// snooze-failed banner, which survives a cold launch and no alert dedup
+    /// swallows, and puts up the data-corrupted alert for the cause (#864).
+    func testSnoozeAction_whenStoredAlarmsFailToDecode_postsTheSnoozeFailedBanner() throws {
         defaults.set(Data("{ not a list of alarms".utf8), forKey: "stored_alarms")
         var reported: [Error] = []
         delegate.reportAlarmDataCorrupted = { reported.append($0) }
@@ -281,8 +282,15 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         guard case .alarmLoadFailed? = outcome else {
             return XCTFail("a load failure must not read as a deleted alarm; got \(String(describing: outcome))")
         }
-        delegate.handleSnoozeOutcome(try XCTUnwrap(outcome))
+        let poster = LocalNotificationPosterSpy()
+        delegate.handleSnoozeOutcome(try XCTUnwrap(outcome), poster: poster)
 
+        XCTAssertEqual(poster.requests.count, 1, "the user must be told the snooze was not scheduled")
+        let banner = try XCTUnwrap(poster.requests.first)
+        XCTAssertEqual(AppBannerNotification(identifier: banner.identifier), .snoozeScheduleFailed)
+        XCTAssertEqual(banner.content.title, "Откладывание не запланировано")
+        XCTAssertTrue(banner.content.body.hasPrefix("Установите запасной — "), banner.content.body)
+        XCTAssertEqual(banner.content.interruptionLevel, .timeSensitive)
         XCTAssertEqual(reported.count, 1, "the user must be told the alarm data is corrupted")
         guard case .decodeFailure? = reported.first as? AlarmRepository.RepositoryError else {
             return XCTFail("the alert must get the decode error, for its detail line; got \(reported)")

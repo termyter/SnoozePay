@@ -8,7 +8,8 @@ import UserNotifications
 /// `LocalNotificationPosting.postAppBanner(_:content:trigger:onFailure:)`,
 /// which mints the identifier with ``makeIdentifier()``. The notification
 /// delegate recognises a banner through ``init(identifier:)``
-/// (`AppDelegate.routeNotification(_:site:)`), so both sides read the same list.
+/// (`AppDelegate.routeNotification(_:site:invalidPayloadErrorID:)`), so both
+/// sides read the same list.
 ///
 /// ⚠️ The compiler does not enforce that. A new banner posted with a literal
 /// identifier still compiles, and then fails exactly the way all four did
