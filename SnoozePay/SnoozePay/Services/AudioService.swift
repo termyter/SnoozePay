@@ -48,6 +48,13 @@ final class AudioService {
     static let stateChangedNotification = Notification.Name("snoozepay.audio.stateChanged")
     static let stateUserInfoKey = "state"
 
+    /// `userInfo` key for the `UUID` of the alarm the transition is about
+    /// (#851). Captured inside `queue` together with the state, so a post
+    /// that lands late still names the alarm it announced, not whoever owns
+    /// the sound by then. `.stopped` names the alarm that lost the sound.
+    /// Absent when no alarm owned the sound (a start without `alarmID`).
+    static let alarmIDUserInfoKey = "alarmID"
+
     /// Posted when a RESUME re-activates the audio session and that
     /// re-activation FAILS (`resumePlaybackLocked` → `.silentBecauseConfigFailed`).
     /// Delivered like `stateChangedNotification`: asynchronously on main.
@@ -124,7 +131,7 @@ final class AudioService {
     private var _state: AudioPlaybackState = .stopped {
         didSet {
             guard oldValue != _state else { return }
-            postOnMain(Self.stateChangedNotification, state: _state)
+            postOnMain(Self.stateChangedNotification, state: _state, alarmID: _currentAlarmID)
         }
     }
 
@@ -141,13 +148,19 @@ final class AudioService {
     ///
     /// Scheduling from inside `queue` rather than after it keeps the posts in
     /// the order of the mutations, because the main queue is FIFO. `state`
-    /// is captured now, so a late post still carries the state it announces;
-    /// `nil` posts without `userInfo`. `self` is the app-lifetime singleton,
-    /// so the strong capture costs nothing.
-    private func postOnMain(_ name: Notification.Name, state: AudioPlaybackState? = nil) {
+    /// and `alarmID` are captured now, so a late post still carries what it
+    /// announces; with neither it posts without `userInfo`. `self` is the
+    /// app-lifetime singleton, so the strong capture costs nothing.
+    private func postOnMain(
+        _ name: Notification.Name,
+        state: AudioPlaybackState? = nil,
+        alarmID: UUID? = nil
+    ) {
         DispatchQueue.main.async {
-            let userInfo: [AnyHashable: Any]? = state.map { [Self.stateUserInfoKey: $0] }
-            NotificationCenter.default.post(name: name, object: self, userInfo: userInfo)
+            var userInfo: [AnyHashable: Any] = [:]
+            if let state { userInfo[Self.stateUserInfoKey] = state }
+            if let alarmID { userInfo[Self.alarmIDUserInfoKey] = alarmID }
+            NotificationCenter.default.post(name: name, object: self, userInfo: userInfo.isEmpty ? nil : userInfo)
         }
     }
 
@@ -200,14 +213,36 @@ final class AudioService {
 
     // MARK: - Audio Session
 
-    /// Configure the audio session for alarm playback.
-    /// Uses `.playback` category so audio continues when screen is locked.
-    /// - Throws: any underlying `AVAudioSession` error so the caller can decide
-    ///   whether to fall back or surface the failure.
-    private func configureAudioSession() throws {
+    /// The real activation: `.playback` category so audio continues when the
+    /// screen is locked, then `setActive(true)`.
+    private static let playbackSessionActivator: () throws -> Void = {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, options: [.duckOthers])
         try session.setActive(true, options: [])
+    }
+
+    /// Queue-confined. What `configureAudioSession` runs: the real
+    /// `AVAudioSession` unless a test swapped it via `overrideSessionActivation`.
+    private var sessionActivator: () throws -> Void = AudioService.playbackSessionActivator
+
+    /// Test seam (#851): make session activation throw, so the
+    /// `.silentBecauseConfigFailed` branches can be reached. The simulator
+    /// hands the session over every time, so without it the resume-failed
+    /// path had no test. `nil` restores the real activation. Goes through
+    /// `queue`, like every other field the audio paths read. DEBUG-only, like
+    /// `UITourLauncher`: a release build has no caller and no way to swap it.
+    #if DEBUG
+    func overrideSessionActivation(_ activator: (() throws -> Void)?) {
+        queue.sync { sessionActivator = activator ?? Self.playbackSessionActivator }
+    }
+    #endif
+
+    /// Configure the audio session for alarm playback (see
+    /// `playbackSessionActivator`). Must only be called from `queue`.
+    /// - Throws: any underlying `AVAudioSession` error so the caller can decide
+    ///   whether to fall back or surface the failure.
+    private func configureAudioSession() throws {
+        try sessionActivator()
         // Only counted on success (a throw skips this) — see `sessionActivationCount`.
         _sessionActivationCount += 1
     }
@@ -544,10 +579,14 @@ final class AudioService {
             audioPlayer = nil
             stopVibration()
             deactivateAudioSession()
-            _currentAlarmID = nil
             _isPaused = false
             _interrupted = false
+            // Transition first, then clear the owner: the `.stopped` note
+            // names the alarm that lost its sound (#851). The other way round
+            // it named nobody, and a firing screen could not tell whose stop
+            // it was.
             _state = .stopped
+            _currentAlarmID = nil
         }
     }
 

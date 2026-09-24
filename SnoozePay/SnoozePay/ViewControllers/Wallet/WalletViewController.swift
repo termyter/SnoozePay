@@ -101,9 +101,11 @@ final class WalletViewController: UIViewController {
         // Wallet is the primary balance/top-up surface — it must surface a
         // corrupt `user_balance` (negative / NaN / infinite), which clamps to
         // `0` in `BalanceService.balance` and would otherwise render as a
-        // silent "0 ₽" with no recovery path (#419). Covers corruption that
-        // latches while this VC is alive; cold-start corruption is pulled in
-        // `viewWillAppear` since NotificationCenter doesn't retro-deliver (#206).
+        // silent "0 ₽" with no recovery path (#419). Covers corruption whose
+        // post lands while this VC is alive: since #851 `BalanceService` posts
+        // on the next main-queue pass, never from the latching read itself.
+        // A post delivered before this observer existed is not replayed, so
+        // `viewWillAppear` also pulls the latched state (#206).
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(balanceCorrupted),
@@ -121,9 +123,9 @@ final class WalletViewController: UIViewController {
         // other two bar-less tabs (#517).
         AppNavigationBarStyle.hideBar(on: self, animated: animated)
         refresh()
-        // Pull corruption latched BEFORE this VC observed it (cold start: the
-        // BalanceService init-time probe posts with no listener attached, and
-        // NotificationCenter drops it for late subscribers — #206).
+        // Pull corruption whose post was delivered BEFORE this VC observed it
+        // (e.g. the `BalanceService` init-time probe, delivered on the main
+        // pass after it latched, #851). Posts are not replayed (#206).
         surfacePendingBalanceCorruption()
     }
 

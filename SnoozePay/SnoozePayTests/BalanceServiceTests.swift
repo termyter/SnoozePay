@@ -494,6 +494,54 @@ final class BalanceServiceTests: XCTestCase {
                        "Latched raw value must stay queryable for late observers (#206)")
     }
 
+    /// Corruption latched by a read on main is posted after the read returns,
+    /// on main, so an observer can read the service back (#851).
+    ///
+    /// Before the fix the main-thread branch posted inside `queue.sync`, and
+    /// an observer calling `balance` there re-entered `queue.sync` on the
+    /// queue its own thread held: a libdispatch trap, not a red assertion.
+    /// So the observer reads back only when it is NOT inside the latching
+    /// read, and records which case it was in. A regression turns this red
+    /// instead of crashing the run, and the wait has a timeout.
+    func testCorruptionLatchedOnMain_isPostedOutsideTheQueue_soObserversCanReadBack() {
+        let center = NotificationCenter()
+        let service = makeService(balance: 10, notificationCenter: center)
+        XCTAssertFalse(service.balanceCorrupted, "test precondition: the store starts healthy")
+
+        var insideLatchingRead = false
+        var deliveredInsideRead: Bool?
+        var deliveredOnMain: Bool?
+        var readBack: (balance: Double, corrupted: Bool)?
+        let delivered = expectation(description: "corruption notification delivered")
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: service,
+            queue: nil
+        ) { _ in
+            deliveredOnMain = Thread.isMainThread
+            deliveredInsideRead = insideLatchingRead
+            if !insideLatchingRead {
+                readBack = (service.balance, service.balanceCorrupted)
+            }
+            delivered.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        testDefaults.set(-5.0, forKey: "user_balance")
+        insideLatchingRead = true
+        XCTAssertEqual(service.balance, 0, "test precondition: this read has to latch the corruption")
+        insideLatchingRead = false
+
+        wait(for: [delivered], timeout: 2)
+        XCTAssertEqual(
+            deliveredInsideRead, false,
+            "posted inside the read that latched it, i.e. inside queue.sync: reading back would trap"
+        )
+        XCTAssertEqual(deliveredOnMain, true, "the corruption notification must be delivered on main")
+        XCTAssertEqual(readBack?.balance, 0, "the observer must be able to read the clamped balance back")
+        XCTAssertEqual(readBack?.corrupted, true, "the observer must see the latched flag")
+    }
+
     /// Under corruption, `charge` must refuse and return `false` — mirrors the
     /// locked-ledger gate from #72 so we don't silently mutate a corrupt store.
     func testCharge_refusedUnderCorruption() {
@@ -577,16 +625,16 @@ final class BalanceServiceTests: XCTestCase {
 
     // MARK: - Cold-start corruption queryable by late observers (#206)
 
-    /// The init-time probe posts `balanceCorruptedNotification` BEFORE any UI
-    /// observer can exist (cold start: AppDelegate materializes the shared
-    /// instance first). NotificationCenter does not retro-deliver, so the
-    /// corruption state MUST stay queryable — `balanceCorrupted` +
-    /// `corruptedRawValue` — for the late subscriber to pull.
+    /// The init-time probe latches corruption before the first UI observer may
+    /// exist. Since #851 its `balanceCorruptedNotification` is delivered on the
+    /// next main-queue pass, and a subscriber that attaches after that pass
+    /// gets nothing replayed. So the corruption state MUST stay queryable —
+    /// `balanceCorrupted` + `corruptedRawValue` — for the late subscriber to pull.
     func testColdStartCorruption_stateQueryableByLateObserver() {
         let center = NotificationCenter()
         testDefaults.set(-77.25, forKey: "user_balance")
-        // Init probe latches corruption and posts with NO observer attached —
-        // the notification is dropped, simulating the cold-start race.
+        // Init probe latches corruption; nothing ever observes `center`, so
+        // its post finds no listener — the late-subscriber case.
         let service = BalanceService(defaults: testDefaults, notificationCenter: center)
 
         // A late observer arrives — no notification will ever replay, but the

@@ -48,6 +48,7 @@ final class AudioServiceNotificationDeliveryTests: XCTestCase {
         // block left registered would outlive the test (the PR #846 lesson).
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers = []
+        AudioService.shared.overrideSessionActivation(nil)
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
         super.tearDown()
@@ -170,6 +171,97 @@ final class AudioServiceNotificationDeliveryTests: XCTestCase {
         )
         XCTAssertEqual(deliveries.first?.onMain, true)
         XCTAssertEqual(deliveries.first?.fromService, true)
+    }
+
+    // MARK: - Which alarm a note is about (#851)
+
+    /// Each note names the alarm its transition was about, as it was when the
+    /// transition happened. All five posts are delivered after the last call,
+    /// when nobody owns the sound: an id read at delivery would be `nil` in
+    /// every note. `.stopped` names the alarm that lost the sound, which is
+    /// what lets a firing screen ignore another screen's stop.
+    func testStateNotes_nameTheAlarmTheTransitionWasAbout() {
+        let service = AudioService.shared
+        let alarmA = UUID()
+        let alarmB = UUID()
+        var named: [UUID?] = []
+        observers.append(NotificationCenter.default.addObserver(
+            forName: AudioService.stateChangedNotification,
+            object: service,
+            queue: nil
+        ) { note in
+            named.append(note.userInfo?[AudioService.alarmIDUserInfoKey] as? UUID)
+        })
+
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmA)
+        service.stopAlarmSound()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmB)
+        service.stopAlarmSound()
+        service.startAlarmSound(soundID: "nonexistent_test_sound")
+        drainMainQueue()
+
+        XCTAssertEqual(
+            named, [alarmA, alarmA, alarmB, alarmB, nil],
+            "start and stop must name their own alarm; a start without alarmID names none"
+        )
+    }
+
+    // MARK: - Resume that cannot reclaim the session (#405, #851)
+
+    /// A resume whose session activation throws lands in
+    /// `.silentBecauseConfigFailed`, stays audible-by-vibration (`isPaused`
+    /// cleared) and posts `resumeAudioFailedNotification` once, on main,
+    /// after the call returned. Reached through `overrideSessionActivation`;
+    /// `tearDown` restores the real activation.
+    ///
+    /// `AppDelegate` in the test host observes the same note and schedules
+    /// its one-second lock-screen banner. That is the production reaction,
+    /// left alone on purpose; `AppBannerPostingTests` pins what it posts.
+    func testResume_whenTheSessionWillNotReactivate_failsLoudly() {
+        let service = AudioService.shared
+        let alarmID = UUID()
+        service.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarmID)
+        guard service.state == .playing else {
+            return XCTFail("test precondition: the start has to reach .playing, got \(service.state)")
+        }
+        service.pauseAlarmSound()
+        XCTAssertTrue(service.isPaused, "test precondition: the resume below has to un-pause")
+        drainMainQueue()
+
+        var failures: [Bool] = []
+        var states: [(AudioPlaybackState?, UUID?)] = []
+        observers.append(NotificationCenter.default.addObserver(
+            forName: AudioService.resumeAudioFailedNotification,
+            object: service,
+            queue: nil
+        ) { _ in
+            failures.append(Thread.isMainThread)
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: AudioService.stateChangedNotification,
+            object: service,
+            queue: nil
+        ) { note in
+            states.append((
+                note.userInfo?[AudioService.stateUserInfoKey] as? AudioPlaybackState,
+                note.userInfo?[AudioService.alarmIDUserInfoKey] as? UUID
+            ))
+        })
+        service.overrideSessionActivation {
+            throw NSError(domain: "AudioServiceNotificationDeliveryTests.sessionRefused", code: 1)
+        }
+
+        service.resumeAlarmSound()
+
+        XCTAssertEqual(service.state, .silentBecauseConfigFailed, "a refused session must not stay .playing")
+        XCTAssertFalse(service.isPaused, "the failed resume must still clear the pause")
+        XCTAssertTrue(failures.isEmpty, "the failure was posted inside resumeAlarmSound, i.e. inside the queue")
+        drainMainQueue()
+
+        XCTAssertEqual(failures, [true], "resumeAudioFailedNotification must be posted once, on main")
+        XCTAssertEqual(states.count, 1, "one state note for the one transition, got \(states)")
+        XCTAssertEqual(states.first?.0, .silentBecauseConfigFailed)
+        XCTAssertEqual(states.first?.1, alarmID, "the failure note must name the alarm that went silent")
     }
 
     // MARK: - Helpers

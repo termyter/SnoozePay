@@ -15,6 +15,9 @@ extension AlarmFiringViewController {
     /// queue (#848), so the block already runs on main; `queue: .main` only
     /// states that. The post trails the transition, which is why `viewDidLoad`
     /// also applies the state it reads back right after `startAlarmSound`.
+    ///
+    /// Only notes about this screen's alarm are applied (#851), see
+    /// `isAudioNoteAboutThisAlarm`.
     func observeAudioState() {
         audioStateObserver = NotificationCenter.default.addObserver(
             forName: AudioService.stateChangedNotification,
@@ -23,10 +26,26 @@ extension AlarmFiringViewController {
         ) { [weak self] note in
             guard
                 let self,
+                self.isAudioNoteAboutThisAlarm(note.userInfo?[AudioService.alarmIDUserInfoKey] as? UUID),
                 let newState = note.userInfo?[AudioService.stateUserInfoKey] as? AudioPlaybackState
             else { return }
             self.applyAudioState(newState)
         }
+    }
+
+    /// Whether a state note naming `alarmID` is about this screen (#851).
+    ///
+    /// The posts are asynchronous, so the `.stopped` that screen A queues on
+    /// dismiss can land on screen B after B registered, and hide B's banner
+    /// while B's sound is failing. A note about another alarm is dropped.
+    ///
+    /// A note naming no alarm is dropped too, on purpose. It means no alarm
+    /// owned the sound (a start without `alarmID`), and the banner speaks only
+    /// for this alarm's sound. This screen always starts its sound with its
+    /// own id, and on the AlarmKit path the system rings, not `AudioService`.
+    /// Dropping costs nothing: `viewDidLoad` reads the state back directly.
+    func isAudioNoteAboutThisAlarm(_ alarmID: UUID?) -> Bool {
+        alarmID == viewModel.alarm.id
     }
 
     /// Surface (or hide) the warning banner depending on AudioService state.
