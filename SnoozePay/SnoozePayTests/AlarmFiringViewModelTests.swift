@@ -17,7 +17,55 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         alarmKit: TestAlarmKitBackend()
     )
 
+    /// Every store the view model writes through — wallet, ledger, alarms,
+    /// wake days — lives in this per-test suite, dropped in `tearDown` (#814).
+    ///
+    /// Until #814 this class drove `BalanceService.shared`, the view model's
+    /// default `WakeEventStore.shared` and `AlarmRepository(defaults: .standard)`,
+    /// and CI run 35861930577 measured it as the first writer of five keys in
+    /// the host's real `UserDefaults.standard`: `user_balance`,
+    /// `stored_transactions`, `wake_days`, `wake_times`, `stored_alarms`. Every
+    /// later test that read one of them inherited whatever this class left.
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+    private var wallet: BalanceService!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.firing.vm.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)!
+        wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        wallet = nil
+        defaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
     // MARK: - Helpers
+
+    /// The view model with every store pinned to this test's suite. Only
+    /// `alarmRepository` and `wakeStore` are overridable, for the tests that
+    /// need to hold on to the same instance to assert on it.
+    private func makeViewModel(
+        _ alarm: Alarm,
+        snoozeCount: Int = 0,
+        alarmRepository: AlarmRepository? = nil,
+        wakeStore: WakeEventStore? = nil
+    ) -> AlarmFiringViewModel {
+        AlarmFiringViewModel(
+            alarm: alarm,
+            snoozeCount: snoozeCount,
+            balanceService: wallet,
+            alarmRepository: alarmRepository ?? AlarmRepository(defaults: defaults),
+            scheduler: scheduler,
+            wakeStore: wakeStore ?? WakeEventStore(defaults: defaults),
+            ledger: TransactionRepository(defaults: defaults)
+        )
+    }
 
     private func makeAlarm(
         penalty: Double = 50,
@@ -31,26 +79,12 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         )
     }
 
-    /// Set balance to an exact value for deterministic testing.
+    /// Set balance to an exact value for deterministic testing. The wallet
+    /// starts empty in a fresh suite, so a top-up is all it takes.
     private func setBalance(_ amount: Double) {
-        let service = BalanceService.shared
-        let current = service.balance
-        if current > 0 {
-            service.charge(amount: current, alarmID: nil)
-        }
         if amount > 0 {
-            service.topUp(amount: amount)
+            wallet.topUp(amount: amount)
         }
-    }
-
-    override func tearDown() {
-        // Reset balance after each test to avoid side effects
-        let service = BalanceService.shared
-        let current = service.balance
-        if current > 0 {
-            service.charge(amount: current, alarmID: nil)
-        }
-        super.tearDown()
     }
 
     // MARK: - Snooze success / failure
@@ -58,7 +92,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_whenBalanceSufficient_returnsTrue() {
         setBalance(100)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         let result = vm.snooze()
         XCTAssertTrue(result, "Snooze should succeed when balance covers the penalty")
@@ -67,7 +101,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_whenBalanceInsufficient_returnsFalse() {
         setBalance(10)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         let result = vm.snooze()
         XCTAssertFalse(result, "Snooze should fail when balance is less than penalty")
@@ -76,18 +110,18 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_whenBalanceExactlyEqualsPenalty_returnsTrue() {
         setBalance(50)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         let result = vm.snooze()
         XCTAssertTrue(result, "Snooze should succeed when balance exactly equals penalty")
-        XCTAssertEqual(BalanceService.shared.balance, 0, accuracy: 0.001,
+        XCTAssertEqual(wallet.balance, 0, accuracy: 0.001,
                        "Balance should be zero after charging exact amount")
     }
 
     func testSnooze_whenBalanceOneLessThanPenalty_returnsFalse() {
         setBalance(49)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         let result = vm.snooze()
         XCTAssertFalse(result, "Snooze should fail when balance is penalty - 1")
@@ -103,14 +137,14 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_atZeroBalance_takesNoMoneyAndDoesNotSnooze() {
         setBalance(0)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         let result = vm.snooze()
 
         XCTAssertFalse(result, "A paid snooze at 0 ₽ must not proceed")
         XCTAssertFalse(vm.canSnooze, "0 ₽ cannot afford a −50 ₽ snooze")
         XCTAssertEqual(vm.snoozeCount, 0, "snoozeCount must not advance on a refused snooze")
-        XCTAssertEqual(BalanceService.shared.balance, 0, accuracy: 0.001,
+        XCTAssertEqual(wallet.balance, 0, accuracy: 0.001,
                        "Balance must stay at 0 — never deducted, never negative")
     }
 
@@ -119,7 +153,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_incrementsSnoozeCount() {
         setBalance(500)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         XCTAssertEqual(vm.snoozeCount, 0)
 
@@ -133,7 +167,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_doesNotIncrementCountOnFailure() {
         setBalance(0)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         vm.snooze()
         XCTAssertEqual(vm.snoozeCount, 0,
@@ -145,59 +179,50 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testDismiss_doesNotChargeBalance() {
         setBalance(100)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
-        let balanceBefore = BalanceService.shared.balance
+        let balanceBefore = wallet.balance
         vm.dismiss()
-        let balanceAfter = BalanceService.shared.balance
+        let balanceAfter = wallet.balance
 
         XCTAssertEqual(balanceBefore, balanceAfter, accuracy: 0.001,
                        "Dismiss should not deduct any balance")
     }
 
     func testDismiss_disablesNonRepeatingAlarm() {
-        let repo = AlarmRepository(defaults: .standard)
+        let repo = AlarmRepository(defaults: defaults)
         let alarm = Alarm(repeatDays: [], penaltyAmount: 50, enabled: true)
         repo.save(alarm)
 
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo, scheduler: scheduler)
+        let vm = makeViewModel(alarm, alarmRepository: repo)
         vm.dismiss()
 
         let saved = repo.fetchOrFail(id: alarm.id)
         XCTAssertEqual(saved?.enabled, false,
                        "Non-repeating alarm should be disabled after dismiss")
-
-        // Cleanup
-        repo.delete(id: alarm.id)
     }
 
     func testDismiss_keepsRepeatingAlarmEnabled() {
-        let repo = AlarmRepository(defaults: .standard)
+        let repo = AlarmRepository(defaults: defaults)
         let alarm = Alarm(repeatDays: [0, 1, 2, 3, 4], penaltyAmount: 50, enabled: true) // Weekdays
         repo.save(alarm)
 
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo, scheduler: scheduler)
+        let vm = makeViewModel(alarm, alarmRepository: repo)
         vm.dismiss()
 
         let saved = repo.fetchOrFail(id: alarm.id)
         XCTAssertEqual(saved?.enabled, true,
                        "Repeating alarm should stay enabled after dismiss")
-
-        // Cleanup
-        repo.delete(id: alarm.id)
     }
 
     /// #235: dismissing a firing alarm means the user got up — the wake day
     /// must land in the injected WakeEventStore so the statistics heatmap can
     /// render the "встал сразу" cell.
     func testDismiss_recordsWakeDayInStore() {
-        let suiteName = "test.firing.wake.\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
-        defer { isolated.removePersistentDomain(forName: suiteName) }
-        let wakeStore = WakeEventStore(defaults: isolated)
+        let wakeStore = WakeEventStore(defaults: defaults)
 
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler, wakeStore: wakeStore)
+        let vm = makeViewModel(alarm, wakeStore: wakeStore)
 
         XCTAssertTrue(wakeStore.wakeDays().isEmpty, "Precondition: isolated store starts empty")
         vm.dismiss()
@@ -212,11 +237,11 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     /// must not crash and must not leak any user-facing error — the desired
     /// end-state is already achieved.
     func testDismiss_alarmAlreadyRemoved_doesNotCrash() {
-        let repo = AlarmRepository(defaults: .standard)
+        let repo = AlarmRepository(defaults: defaults)
         let alarm = Alarm(repeatDays: [], penaltyAmount: 50, enabled: true)
         // Intentionally do NOT save — simulate "already removed" repo state.
 
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, alarmRepository: repo, scheduler: scheduler)
+        let vm = makeViewModel(alarm, alarmRepository: repo)
 
         // Should complete without throwing/crashing; returned Bool is consumed inside dismiss().
         vm.dismiss()
@@ -229,7 +254,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
 
     func testCurrentPenalty_firstSnooze_returnsBase() {
         let alarm = makeAlarm(penalty: 50, progressive: true)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         // snoozeCount=0 → penalty(forSnoozeCount: 1) = 50
         XCTAssertEqual(vm.currentPenalty, 50)
@@ -238,34 +263,34 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testCurrentPenalty_withProgressiveScale_doubles() {
         let alarm = makeAlarm(penalty: 50, progressive: true)
 
-        let vm1 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 1, scheduler: scheduler)
+        let vm1 = makeViewModel(alarm, snoozeCount: 1)
         XCTAssertEqual(vm1.currentPenalty, 100, "2nd snooze: 50 * 2 = 100")
 
-        let vm2 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 2, scheduler: scheduler)
+        let vm2 = makeViewModel(alarm, snoozeCount: 2)
         XCTAssertEqual(vm2.currentPenalty, 200, "3rd snooze: 50 * 4 = 200")
 
-        let vm3 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 3, scheduler: scheduler)
+        let vm3 = makeViewModel(alarm, snoozeCount: 3)
         XCTAssertEqual(vm3.currentPenalty, 400, "4th snooze: 50 * 8 = 400 (ceiling)")
 
         // Ladder caps at base × 8 — the 5th snooze stays at 400, not 800 (#274).
-        let vm4 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 4, scheduler: scheduler)
+        let vm4 = makeViewModel(alarm, snoozeCount: 4)
         XCTAssertEqual(vm4.currentPenalty, 400, "5th snooze stays at ceiling: 50 * 8 = 400")
     }
 
     func testCurrentPenalty_withoutProgressiveScale_staysFlat() {
         let alarm = makeAlarm(penalty: 50, progressive: false)
 
-        let vm0 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm0 = makeViewModel(alarm)
         XCTAssertEqual(vm0.currentPenalty, 50)
 
-        let vm3 = AlarmFiringViewModel(alarm: alarm, snoozeCount: 3, scheduler: scheduler)
+        let vm3 = makeViewModel(alarm, snoozeCount: 3)
         XCTAssertEqual(vm3.currentPenalty, 50, "Without progressive scale, penalty is always base")
     }
 
     func testCurrentPenalty_progressiveCeilingWithHighBase() {
         // Ladder caps at base × 8: base=1000 → ceiling 8000, not 16000 (#274).
         let alarm = makeAlarm(penalty: 1000, progressive: true)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 4, scheduler: scheduler)
+        let vm = makeViewModel(alarm, snoozeCount: 4)
         XCTAssertEqual(vm.currentPenalty, 8000,
                        "5th snooze with base=1000 stays at ceiling 8000")
     }
@@ -275,7 +300,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testCanSnooze_whenBalanceZero_returnsFalse() {
         setBalance(0)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         XCTAssertFalse(vm.canSnooze, "Cannot snooze with zero balance")
     }
@@ -283,7 +308,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testCanSnooze_whenBalanceSufficient_returnsTrue() {
         setBalance(100)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         XCTAssertTrue(vm.canSnooze, "Should be able to snooze when balance covers penalty")
     }
@@ -293,7 +318,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnoozeButtonTitle_whenCanSnooze_showsPenalty() {
         setBalance(100)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         // V2 copy: "+{minutes} минут · −{penalty} ₽" (default snooze = 9 min,
         // fmtRub narrow no-break space before ₽).
@@ -303,7 +328,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnoozeButtonTitle_whenCannotSnooze_showsEmpty() {
         setBalance(0)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         XCTAssertEqual(vm.snoozeButtonTitle, "Баланс пуст")
     }
@@ -313,7 +338,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_callsOnStateChanged() {
         setBalance(200)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         var callbackCalled = false
         vm.onStateChanged = { callbackCalled = true }
@@ -325,7 +350,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     func testSnooze_doesNotCallOnStateChangedOnFailure() {
         setBalance(0)
         let alarm = makeAlarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, scheduler: scheduler)
+        let vm = makeViewModel(alarm)
 
         var callbackCalled = false
         vm.onStateChanged = { callbackCalled = true }
