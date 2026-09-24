@@ -41,8 +41,10 @@ final class AlarmFiringPresenter {
     /// the launch splash (#834). And by a swap, before its dismissal starts
     /// (#835). What a write may replace is `armRetry`'s rule. Flushed by
     /// `flushPendingPresentation()` once the scene becomes active, right after
-    /// a swap lands, and on the next turn after a host miss (#875), so the
-    /// firing screen survives both a warm-foreground race and a cold start (#382).
+    /// a swap lands, on the next turn after a host miss (#875), and when a
+    /// UIKit transition that refused a present or held a swap ends (#875), so
+    /// the firing screen survives both a warm-foreground race and a cold start
+    /// (#382).
     ///
     /// The snooze count travels with the id because the retry rebuilds the
     /// screen from this record alone, and the penalty is priced from it
@@ -119,9 +121,57 @@ final class AlarmFiringPresenter {
     /// Sent to the screen's presenter, not the screen: `dismiss` on a
     /// controller that is itself presenting something — the top-up sheet, a
     /// refund alert, the WokeMorning summary left up after Stop — takes down
-    /// only what it presented and leaves it standing (#807).
+    /// only what it presented and leaves it standing (#807). Only while that
+    /// presenter still presents it: see `dismissFromItsPresenter`.
     var dismissStaleScreen: (UIViewController, @escaping () -> Void) -> Void = { staleScreen, completion in
-        (staleScreen.presentingViewController ?? staleScreen).dismiss(animated: false, completion: completion)
+        AlarmFiringPresenter.dismissFromItsPresenter(staleScreen, completion: completion)
+    }
+
+    /// `dismissStaleScreen`'s production body (#875, FU-2).
+    ///
+    /// `dismiss` on a controller with nothing presented takes that controller
+    /// down itself. So a presenter whose `presentedViewController` is no longer
+    /// the stale screen (nil at the end of a transition, or another modal)
+    /// would lose itself or that modal: the alarm-edit sheet with its unsaved
+    /// changes. The stale screen is then off the presenter already, so no
+    /// dismissal is sent and the swap goes on. When the screen is still in
+    /// the walk, `mountAfterDismissal`'s stale-survival retry takes it.
+    ///
+    /// With no presenter (a firing screen that is a window's root, as in the
+    /// UI-tour routes) the screen itself gets it, as before: that takes down
+    /// only what it presented.
+    static func dismissFromItsPresenter(_ staleScreen: UIViewController, completion: @escaping () -> Void) {
+        guard let presenter = staleScreen.presentingViewController else {
+            staleScreen.dismiss(animated: false, completion: completion)
+            return
+        }
+        guard presenter.presentedViewController === staleScreen else {
+            AppLogger.emit(
+                .appDelegate, .default,
+                "firing-present: \(type(of: presenter)) no longer presents the previous screen"
+                    + " — not sending it the dismissal"
+            )
+            completion()
+            return
+        }
+        presenter.dismiss(animated: false, completion: completion)
+    }
+
+    /// Runs its closure once the UIKit transition the controller takes part in
+    /// has ended, answering `false` without running it when none is in flight
+    /// (#875). UIKit refuses a `present` on a controller in a transition and
+    /// drops a `dismiss` issued during one without running its completion, so
+    /// the retry for either waits for the end of that transition: the next
+    /// main-queue turn is still inside it, and the activation never comes
+    /// while the app stays foreground.
+    ///
+    /// `transitionCoordinator` also answers for a controller whose presented
+    /// sheet is coming or going. A seam because a unit test cannot stage a
+    /// live transition. A stand-in holds the closure for later, as UIKit
+    /// does, and must not run it inside the call.
+    var whenTransitionEnds: (UIViewController, @escaping () -> Void) -> Bool = { controller, body in
+        guard let coordinator = controller.transitionCoordinator else { return false }
+        return coordinator.animate(alongsideTransition: nil) { _ in body() }
     }
 
     /// Builds the firing screen `present(alarm:snoozeCount:)` mounts.
@@ -325,6 +375,7 @@ final class AlarmFiringPresenter {
                 settleOnRingingScreen(presentedFiring)
                 return true
             }
+            if deferSwapPastTransition(of: presentedFiring, request) { return false }
             parkBeforeSwap(request, replacing: presentedFiring, because: mismatch)
             // Set before the call so a completion UIKit runs synchronously
             // clears it rather than finding nothing to clear. Leaving a stale
@@ -357,6 +408,20 @@ final class AlarmFiringPresenter {
             return false
         }
         return presentReadingBack(firingVC, on: topVC, request: request, context: "", raiseParked: false)
+    }
+
+    /// Holds the swap while `screen` is still coming in or going out, or a
+    /// sheet on it is (#875, FU-3): a `dismiss` sent now is dropped with its
+    /// completion, and the request would wait for an activation that a
+    /// foreground app does not get. The swap is asked again at the end.
+    private func deferSwapPastTransition(of screen: AlarmFiringViewController, _ request: PendingPresentation) -> Bool {
+        guard retryAfterTransition(of: screen) else { return false }
+        armRetry(
+            request, level: .default,
+            "firing-present: the screen of \(PendingPresentation(on: screen).logHandle)"
+                + " is in a transition — swapping it once that ends"
+        )
+        return true
     }
 
     /// The swap's own park, before its dismissal starts, so a completion
@@ -563,6 +628,9 @@ final class AlarmFiringPresenter {
     /// line. A refusal is kept pending rather than given up, like a missing
     /// host after a swap: it is about this moment's hierarchy, and the next
     /// activation asks again. The audio is left alone for the same reason.
+    /// A host in a transition (being presented or dismissed, the refusal a
+    /// foreground app meets) is asked again when that ends (#875), since in
+    /// the foreground no activation comes. Other refusals wait for it.
     ///
     /// Up: `request`'s pending record goes (by `clearPending(shownAs:)`'s
     /// rules, not only on an exact match — #808). What is left in the queue is
@@ -588,7 +656,8 @@ final class AlarmFiringPresenter {
         guard firingVC.presentingViewController != nil else {
             let reason = AppDelegate.presentationRefusalReason(presenter: host)
                 ?? "\(type(of: host)) did not put it up"
-            armRetry(request, "firing-present: \(reason)\(context) — keeping it pending")
+            let retry = retryAfterTransition(of: host) ? "; retrying once its transition ends" : ""
+            armRetry(request, "firing-present: \(reason)\(context) — keeping it pending\(retry)")
             return false
         }
         clearPending(shownAs: request)

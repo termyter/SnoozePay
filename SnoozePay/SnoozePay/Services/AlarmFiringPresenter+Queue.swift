@@ -218,12 +218,24 @@ extension AlarmFiringPresenter {
     /// each counting its calls against its own limit so it cannot spin: a
     /// stale screen that outlived its dismissal (`staleSurvivalRetryLimit`)
     /// and a host miss, in `present` or after the dismissal
-    /// (`hostGoneRetryLimit`, #875). The other failure branches leave the
-    /// retry to the activation.
+    /// (`hostGoneRetryLimit`, #875). A refusal or a swap that meets a UIKit
+    /// transition retries at its end instead: `retryAfterTransition(of:)`.
+    /// The other failure branches leave the retry to the activation.
     /// Internal only so `AlarmFiringPresenter.swift` can reach it (#883).
     func attemptParkedPresentationSoon() {
         guard pendingPresentation != nil else { return }
         DispatchQueue.main.async { [weak self] in
+            self?.attemptPendingPresentation()
+        }
+    }
+
+    /// Runs the queue once `controller`'s UIKit transition ends, answering
+    /// `false` when it is in none (#875, items 3 and 6). No counter: each
+    /// retry needs a transition of UIKit's, and neither branch that schedules
+    /// one starts a transition itself.
+    /// Internal only so `AlarmFiringPresenter.swift` can reach it (#883).
+    func retryAfterTransition(of controller: UIViewController) -> Bool {
+        whenTransitionEnds(controller) { [weak self] in
             self?.attemptPendingPresentation()
         }
     }

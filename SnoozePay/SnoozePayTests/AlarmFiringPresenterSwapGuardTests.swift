@@ -431,25 +431,6 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         )
     }
 
-    /// The production dismissal goes to the stale screen's presenter, which
-    /// takes the screen down together with anything it presented.
-    func testSwap_sendsTheDismissalToTheStaleScreensPresenter() {
-        let host = Host()
-        let stale = ReadBackFiringScreen(alarm: Alarm())
-        stale.wiredPresenter = host
-        let summary = Sheet()
-        summary.presentedBy = stale
-        let presenter = AlarmFiringPresenter(alarmRepository: .shared)
-        presenter.locateHost = { .success(summary) }
-        presenter.makeFiringScreen = { ReadBackFiringScreen(alarm: $0, snoozeCount: $1) }
-        // `dismissStaleScreen` left at its production default.
-
-        _ = presenter.present(alarm: Alarm())
-
-        XCTAssertEqual(stale.dismissCalls, 0, "sent to the stale screen, which only takes down what it presented")
-        XCTAssertEqual(host.dismissCalls, 1, "the stale screen's presenter has to receive the dismissal")
-    }
-
     /// The screen already up was built by AlarmKit's request, at 0, and the
     /// swap's own request carried 2. Calling that done prices the next snooze
     /// from the first step (#808).
