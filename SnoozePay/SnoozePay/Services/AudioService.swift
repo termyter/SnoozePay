@@ -164,6 +164,11 @@ final class AudioService {
         }
     }
 
+    /// The owner while the pipeline is not `.stopped`, else `nil`: owner and
+    /// state in ONE `queue.sync` (#855). Safe from main: nothing inside
+    /// `queue` waits on main; posts leave via `postOnMain`'s `main.async`.
+    var soundingAlarmID: UUID? { queue.sync { _state != .stopped ? _currentAlarmID : nil } }
+
     /// Backwards-compatible boolean. `true` only when actually playing real audio.
     /// Retained so existing callers (AppDelegate guards, tests) keep working.
     /// Note: stays `true` across a pause/interruption (the session is still

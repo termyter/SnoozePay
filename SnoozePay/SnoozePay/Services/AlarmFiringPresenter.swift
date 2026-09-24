@@ -363,8 +363,11 @@ final class AlarmFiringPresenter {
                 )
                 return false
             }
-            if settleOnRingingScreen(presentedFiring, for: request) { return true }
-            parkBeforeSwap(request, replacing: presentedFiring)
+            guard let mismatch = Self.ringMismatch(presentedFiring, for: request) else {
+                settleOnRingingScreen(presentedFiring)
+                return true
+            }
+            parkBeforeSwap(request, replacing: presentedFiring, because: mismatch)
             requestBeingSwappedIn = request
             // Set before the call so a completion UIKit runs synchronously
             // clears it rather than finding nothing to clear. Leaving a stale
@@ -413,8 +416,11 @@ final class AlarmFiringPresenter {
     /// alone it is raised once this swap lands (`raiseParked`), as on main.
     /// The cost is this request on the notification path when UIKit never
     /// completes the dismissal (#835 follow-up).
-    private func parkBeforeSwap(_ request: PendingPresentation, replacing screen: AlarmFiringViewController) {
+    private func parkBeforeSwap(
+        _ request: PendingPresentation, replacing screen: AlarmFiringViewController, because mismatch: RingMismatch
+    ) {
         let line = "firing-present: swapping out the screen of \(PendingPresentation(on: screen).logHandle)"
+            + " (\(mismatch.rawValue))"
         guard let parked = pendingPresentation, parked.alarmID != request.alarmID else {
             armRetry(request, level: .default, line)
             return
@@ -424,47 +430,62 @@ final class AlarmFiringPresenter {
         )
     }
 
-    /// How recently a screen must have gone up to count as this ring's
-    /// (`settleOnRingingScreen`). The requests it absorbs, a second trigger
-    /// source for the same ring or a record parked for it and flushed on the
-    /// next activation, arrive within seconds to a minute of the screen. Ten
-    /// minutes covers those with room, and stays far below the day between
-    /// two mornings: a screen left up since yesterday carries yesterday's
-    /// `firingStartedAt` and billed-snooze window, and must be swapped
-    /// (#835 review).
+    /// How long after `AlarmFiringViewModel.lastRingStartedAt` (the last
+    /// re-ring, else the mount; #855) a screen without its own `AudioService`
+    /// sound (AlarmKit) still counts as the request's ring. Second triggers
+    /// arrive within a minute; yesterday's screen must be swapped (#835).
     static let currentFiringWindow: TimeInterval = 10 * 60
 
-    /// `true` when `screen`, the firing screen the swap would take down,
-    /// belongs to `request`'s current ring at the request's count or above.
-    /// The request is then the screen already there: a second trigger
-    /// source, or a record parked by a present UIKit deferred. Swapping
-    /// rebuilt it and stopped its sound on the way down (#835); instead the
-    /// record is settled as shown.
-    ///
-    /// Anything that does not prove "this ring, still ringing" takes the swap,
-    /// as on main: a snoozed or stopped screen (the request is its next
-    /// ring), one on its way out (not up, the rule `mountAfterDismissal`
-    /// reads), one older than `currentFiringWindow`, and on the notification
-    /// path one whose alarm is not the one `AudioService` is playing. There
-    /// the screen is the sound source, and the snooze ticker clears
-    /// `isSnoozedStateActive` at zero without restarting it, so a silent
-    /// screen reads as ringing by its flags alone.
-    private func settleOnRingingScreen(_ screen: AlarmFiringViewController, for request: PendingPresentation) -> Bool {
+    /// The same bound while the alarm owns `AudioService`. That sound proves
+    /// the request, not the screen: `AppDelegate.startForegroundAlarm` takes
+    /// it before `present`. Two firings of one alarm are 24 h apart unless it
+    /// is edited, so 3 h keeps a long ring and swaps any earlier firing.
+    static let currentRingSoundingLimit: TimeInterval = 3 * 60 * 60
+
+    /// Why a screen is not the request's ring; printed in the swap lines.
+    enum RingMismatch: String {
+        case otherAlarm = "another alarm"
+        case olderCount = "a lower snooze count"
+        case dismissing = "being dismissed"
+        case stopped = "stopped by the user"
+        case snoozed = "snoozed"
+        case outsideWindow = "rang too long ago"
+        case previousFiring = "from an earlier firing"
+        case silent = "its sound is not on"
+    }
+
+    /// `nil` when `screen` is `request`'s alarm at its count or above, still
+    /// ringing its current ring: the one test of the swap and its completion
+    /// (#855). Ringing: this alarm owns `AudioService` in any state but
+    /// `.stopped` (a swap kills a vibration-only ring) and its ring started
+    /// within `currentRingSoundingLimit`; without that sound, only AlarmKit
+    /// can be ringing, inside `currentFiringWindow`.
+    private static func ringMismatch(
+        _ screen: AlarmFiringViewController, for request: PendingPresentation
+    ) -> RingMismatch? {
         let model = screen.viewModel
-        guard model.alarm.id == request.alarmID, model.snoozeCount >= request.snoozeCount,
-              !screen.isSnoozedStateActive, !screen.isStoppedByUser, !screen.isBeingDismissed,
-              Date().timeIntervalSince(model.firingStartedAt) <= Self.currentFiringWindow,
-              model.usesAlarmKit
-                || (AudioService.shared.currentAlarmID == model.alarm.id && AudioService.shared.isPlaying)
-        else { return false }
+        if model.alarm.id != request.alarmID { return .otherAlarm }
+        if model.snoozeCount < request.snoozeCount { return .olderCount }
+        if screen.isBeingDismissed { return .dismissing }
+        if screen.isStoppedByUser { return .stopped }
+        if screen.isSnoozedStateActive { return .snoozed }
+        let sinceRing = Date().timeIntervalSince(model.lastRingStartedAt)
+        if AudioService.shared.soundingAlarmID == model.alarm.id {
+            return sinceRing <= currentRingSoundingLimit ? nil : .previousFiring
+        }
+        if !model.usesAlarmKit { return .silent }
+        return sinceRing <= currentFiringWindow ? nil : .outsideWindow
+    }
+
+    /// Settles on the ringing screen a swap would rebuild and silence (#835).
+    private func settleOnRingingScreen(_ screen: AlarmFiringViewController) {
         let shown = PendingPresentation(on: screen)
         AppLogger.emit(
             .appDelegate, .default,
             "firing-present: this alarm's screen is up and ringing — not swapping it [\(shown.logHandle)]"
         )
         clearPending(shownAs: shown)
-        if pendingAlarmID == request.alarmID { attemptParkedPresentationSoon() }
-        return true
+        if pendingAlarmID == shown.alarmID { attemptParkedPresentationSoon() }
     }
 
     /// Second half of the swap above: put `firingVC` up now that the stale
@@ -508,13 +529,12 @@ final class AlarmFiringPresenter {
         case let .success(located):
             top = located
         case let .failure(miss):
-            // The retry can still raise the screen, so this leaves the audio
-            // alone. The miss in `present` arms the same retry since #834 but
-            // still stops the audio, as it did before; aligning the two is
-            // not this branch's call.
+            // Not stopped here, unlike in `present`, but a dismissed owner stops
+            // it in `viewDidDisappear`: the line says whether any sound is left.
+            let audio = AudioService.shared.state == .stopped ? "no in-app sound is on" : "the in-app sound is on"
             armRetry(
                 retry,
-                "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending"
+                "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending; \(audio)"
             )
             return
         }
@@ -532,25 +552,35 @@ final class AlarmFiringPresenter {
                     attemptParkedPresentationSoon()
                 }
             } else if alreadyUp.viewModel.alarm.id == retry.alarmID {
-                // This alarm's screen is up — but a screen built at a lower
-                // snooze count prices the next snooze from an earlier step
-                // (#808): AlarmKit's requests always carry 0. A higher count
-                // on screen is the truer one and is kept, since swapping down
-                // to `retry`'s would be that same reset.
-                if alreadyUp.viewModel.snoozeCount < retry.snoozeCount {
+                // By the swap's own test (#855). Stopped or snoozed at
+                // `retry`'s count or above answered `retry`, which predates
+                // it (`discardPending`'s rule). A lower count is swapped
+                // (#808); stale or silent too, at the higher count.
+                let shown = PendingPresentation(on: alreadyUp)
+                let mismatch = Self.ringMismatch(alreadyUp, for: retry)
+                switch mismatch {
+                case nil, .stopped?, .snoozed?:
+                    let state = mismatch.map { " and \($0.rawValue)" } ?? ""
+                    AppLogger.emit(
+                        .appDelegate, .default,
+                        "firing-present: this alarm's screen is already up\(state) — not stacking another"
+                            + " [\(shown.logHandle)]"
+                    )
+                    clearPending(shownAs: shown)
+                    staleSurvivalRetries = 0
+                case .olderCount?:
                     armRetry(
                         retry, level: .default,
                         "firing-present: this alarm is up at a lower snooze count — swapping it for the right one"
                     )
-                } else {
-                    let upCount = alreadyUp.viewModel.snoozeCount
-                    let shown = PendingPresentation(alarmID: retry.alarmID, snoozeCount: upCount)
-                    AppLogger.emit(
-                        .appDelegate, .default,
-                        "firing-present: this alarm's screen is already up — not stacking another [\(shown.logHandle)]"
+                case let reason?:
+                    let rebuilt = PendingPresentation(
+                        alarmID: retry.alarmID, snoozeCount: max(retry.snoozeCount, shown.snoozeCount)
                     )
-                    clearPending(shownAs: shown)
-                    staleSurvivalRetries = 0
+                    armRetry(
+                        rebuilt, level: .default,
+                        "firing-present: swapping out the screen of \(shown.logHandle) (\(reason.rawValue))"
+                    )
                 }
                 attemptParkedPresentationSoon()
             } else {

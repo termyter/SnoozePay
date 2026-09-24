@@ -234,6 +234,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         XCTAssertEqual(line.level, .error, "an alarm with no screen is a failure, not a notice")
         XCTAssertEqual(line.category, .appDelegate, "the category a support grep for the firing path filters by")
         XCTAssertFalse(line.message.contains("dropped"), "nothing else was pending: «\(line.message)»")
+        XCTAssertTrue(line.message.contains("; the in-app sound is on"), "whether any sound is left: «\(line.message)»")
     }
 
     /// A swap for one alarm must not answer for another. The notification path
