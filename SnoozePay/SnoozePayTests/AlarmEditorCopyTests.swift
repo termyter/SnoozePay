@@ -514,7 +514,7 @@ final class AlarmEditorCopyTests: XCTestCase {
             sounds: SoundCatalogue.entries,
             selectedID: SoundCatalogue.entries[0].id,
             onSelect: { _ in },
-            previewSound: { _ in },
+            previewSound: { _ in false },
             volume: volume,
             fadeIn: fadeIn,
             // The volume block only mounts for a host that wired the handler.
@@ -721,7 +721,7 @@ final class AlarmEditorCopyTests: XCTestCase {
             sounds: SoundCatalogue.entries,
             selectedID: SoundCatalogue.entries[0].id,
             onSelect: { _ in },
-            previewSound: { _ in },
+            previewSound: { _ in false },
             volume: 0.8,
             fadeIn: true,
             // The volume block only mounts for a host that wired the handler.

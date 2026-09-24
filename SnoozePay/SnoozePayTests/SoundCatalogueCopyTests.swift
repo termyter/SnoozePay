@@ -3,6 +3,7 @@ import XCTest
 
 /// Pins the copy that this slice of #598 moved out of `SoundCatalogue` and
 /// into `Localizable.xcstrings`: ten sound names, ten descriptive subtitles
+/// (fourteen of each since #850 appended four sounds)
 /// and the two strings of the disabled custom-melody slot.
 ///
 /// `Localized.text` hands back the key on a miss, so a mistyped key ships as
@@ -33,7 +34,7 @@ import XCTest
 ///
 /// # What layer 3 does and does not reach
 ///
-/// It reaches **22 of the 22 keys** through this type: `entries` plus
+/// It reaches **30 of the 30 keys** through this type: `entries` plus
 /// `customSlot` cover every one, with `CreateAlarmViewModel.availableSounds`
 /// exercised on top. It used to name `subtitle(for:)` here as well; #720
 /// deleted that accessor as dead, and no key coverage moved with it because
@@ -91,6 +92,16 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "create_alarm.sound.subtitle.birds": "Только щебет, без музыки",
         "create_alarm.sound.subtitle.classic": "Старый добрый писк",
         "create_alarm.sound.subtitle.jazz": "Бодрое утреннее настроение",
+        // #850: the PM's four recordings. Subtitles picked from the names —
+        // nobody on the implementing side could listen to the files.
+        "common.sound.name.hawk": "Ястреб",
+        "common.sound.name.morning": "Утро",
+        "common.sound.name.sirena": "Сирена",
+        "common.sound.name.spaceship": "Космолёт",
+        "create_alarm.sound.subtitle.hawk": "Клич хищной птицы",
+        "create_alarm.sound.subtitle.morning": "Бодрое начало дня",
+        "create_alarm.sound.subtitle.sirena": "Сигнал тревоги",
+        "create_alarm.sound.subtitle.spaceship": "Гул космического корабля",
         "create_alarm.sound.name.custom": "Своя мелодия",
         "create_alarm.sound.subtitle.custom": "Скоро"
     ]
@@ -129,7 +140,11 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "waves": "Волны",
         "birds": "Птицы",
         "classic": "Классика",
-        "jazz": "Джаз"
+        "jazz": "Джаз",
+        "hawk": "Ястреб",
+        "morning": "Утро",
+        "sirena": "Сирена",
+        "spaceship": "Космолёт"
     ]
 
     /// The ten descriptive subtitles keyed by **sound id** rather than by
@@ -162,7 +177,11 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "waves": "Прибой и морской бриз",
         "birds": "Только щебет, без музыки",
         "classic": "Старый добрый писк",
-        "jazz": "Бодрое утреннее настроение"
+        "jazz": "Бодрое утреннее настроение",
+        "hawk": "Клич хищной птицы",
+        "morning": "Бодрое начало дня",
+        "sirena": "Сигнал тревоги",
+        "spaceship": "Гул космического корабля"
     ]
 
     /// The ten ids **in catalogue order**, written out rather than read from
@@ -192,9 +211,13 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// abbreviated six-row lineup with two ids the app never shipped
     /// («energy», «mountain»), and cutting to it is the mistake the docblock
     /// warns against.
+    ///
+    /// #850 appended `hawk`, `morning`, `sirena`, `spaceship` — the PM's
+    /// recordings, placed at the end by the issue's own defaults.
     private static let idsInCatalogueOrder: [String] = [
         "dawn", "radar", "drops", "piano", "guitar",
-        "bell", "waves", "birds", "classic", "jazz"
+        "bell", "waves", "birds", "classic", "jazz",
+        "hawk", "morning", "sirena", "spaceship"
     ]
 
     func testEveryMigratedKeyResolvesToCopy() {
@@ -270,7 +293,7 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// meant to be a red run — a new sound has a position in the picker, and
     /// picking it is a decision, so it should cost an edit here rather than be
     /// absorbed silently.
-    func testCatalogueKeepsItsTenSoundsInTheOrderTheDesignFixed() {
+    func testCatalogueKeepsItsSoundsInTheOrderTheDesignFixed() {
         XCTAssertEqual(
             SoundCatalogue.ids, Self.idsInCatalogueOrder,
             "the sound picker's row order changed — reordering the lineup is a design decision"
@@ -281,13 +304,13 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// quietly degenerates stops failing.
     ///
     /// A duplicate would mean the transcription lost a sound while keeping the
-    /// length, and «ten» is the count the docblock and
+    /// length, and «fourteen» is the count the docblock and
     /// `SoundThemePickerCatalogueTests` both name.
-    func testTheOrderOracleStillListsTenDistinctSounds() {
-        XCTAssertEqual(Self.idsInCatalogueOrder.count, 10)
+    func testTheOrderOracleStillListsFourteenDistinctSounds() {
+        XCTAssertEqual(Self.idsInCatalogueOrder.count, 14)
         XCTAssertEqual(
             Set(Self.idsInCatalogueOrder).count, Self.idsInCatalogueOrder.count,
-            "the pinned lineup repeats an id — it no longer describes ten sounds"
+            "the pinned lineup repeats an id — it no longer describes fourteen sounds"
         )
     }
 

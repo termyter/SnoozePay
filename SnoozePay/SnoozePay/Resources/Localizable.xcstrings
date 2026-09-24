@@ -1021,6 +1021,18 @@
         }
       }
     },
+    "common.sound.name.hawk" : {
+      "comment" : "Display name of the «hawk» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ястреб"
+          }
+        }
+      }
+    },
     "common.sound.name.jazz" : {
       "comment" : "Display name of the «jazz» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1029,6 +1041,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Джаз"
+          }
+        }
+      }
+    },
+    "common.sound.name.morning" : {
+      "comment" : "Display name of the «morning» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Утро"
           }
         }
       }
@@ -1053,6 +1077,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Радар"
+          }
+        }
+      }
+    },
+    "common.sound.name.sirena" : {
+      "comment" : "Display name of the «sirena» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сирена"
+          }
+        }
+      }
+    },
+    "common.sound.name.spaceship" : {
+      "comment" : "Display name of the «spaceship» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Космолёт"
           }
         }
       }
@@ -1489,6 +1537,18 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.hawk" : {
+      "comment" : "Sound picker: the descriptive line under «Ястреб». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Клич хищной птицы"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.jazz" : {
       "comment" : "Sound picker: the descriptive line under «Джаз». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -1497,6 +1557,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Бодрое утреннее настроение"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.morning" : {
+      "comment" : "Sound picker: the descriptive line under «Утро». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бодрое начало дня"
           }
         }
       }
@@ -1521,6 +1593,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Нарастающий сигнал тревоги"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.sirena" : {
+      "comment" : "Sound picker: the descriptive line under «Сирена». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сигнал тревоги"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.spaceship" : {
+      "comment" : "Sound picker: the descriptive line under «Космолёт». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Гул космического корабля"
           }
         }
       }
