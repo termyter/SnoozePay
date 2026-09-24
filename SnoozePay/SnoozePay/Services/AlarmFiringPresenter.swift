@@ -38,7 +38,8 @@ final class AlarmFiringPresenter {
     /// a firing screen already there that is another alarm's or this alarm's
     /// at a lower snooze count (#807). And by the direct present, when UIKit
     /// declines it (#833), when no host is found, or when the root is still
-    /// the launch splash (#834). Flushed by
+    /// the launch splash (#834). And by every swap, before its dismissal
+    /// starts (#835). What a write may replace is `armRetry`'s rule. Flushed by
     /// `flushPendingPresentation()` once the scene becomes active, and right
     /// after a swap lands, so the firing
     /// screen survives both a warm-foreground race and a cold start (#382).
@@ -62,6 +63,13 @@ final class AlarmFiringPresenter {
     struct PendingPresentation: Equatable {
         let alarmID: UUID
         let snoozeCount: Int
+
+        /// Names the request in a presenter line (#835): the first eight hex
+        /// digits of the id, and the count. `AppLogger.emit` writes `.public`,
+        /// and the whole id is an identifier the logger keeps private. Eight
+        /// digits are enough to tell apart the alarms in one incident and to
+        /// match one alarm's lines to each other, which #798 could not do.
+        var logHandle: String { "alarm \(alarmID.uuidString.prefix(8)) at snooze \(snoozeCount)" }
     }
 
     /// `true` when the real app root (not the launch splash) is mounted and the
@@ -179,8 +187,14 @@ final class AlarmFiringPresenter {
     /// AlarmKit alarm actually open the app *and* land on our screen (#382) —
     /// presenting directly in the intent's `perform()` lost the race and the
     /// screen never appeared.
+    ///
+    /// Recorded through `armRetry`'s rule, not written over the slot: a
+    /// record from the notification path parked since #834 was overwritten
+    /// with no line at all, and one for this alarm at a higher count was
+    /// reset to AlarmKit's 0 (#835). A request that only fills the slot says
+    /// nothing; one that drops or yields to a record does.
     func requestPresentation(alarmID: UUID, snoozeCount: Int = 0) {
-        pendingPresentation = PendingPresentation(alarmID: alarmID, snoozeCount: snoozeCount)
+        armRetry(PendingPresentation(alarmID: alarmID, snoozeCount: snoozeCount), level: .default, nil)
         attemptPendingPresentation()
     }
 
@@ -205,7 +219,7 @@ final class AlarmFiringPresenter {
         guard let pending = pendingPresentation else { return }
         guard isRootReady() else {
             AppLogger.appDelegate.notice(
-                "firing-present: launch root not ready — deferring alarm \(pending.alarmID, privacy: .private)"
+                "firing-present: launch root not ready — deferring \(pending.logHandle, privacy: .public)"
             )
             return
         }
@@ -264,11 +278,14 @@ final class AlarmFiringPresenter {
     /// dismissal completion runs, and UIKit declining the direct `present`
     /// (#833). Each of them leaves the request in the pending slot itself, so
     /// a caller that discards the answer — the notification path — still gets
-    /// the retry (#834). Except the swap this call starts: it returns without
-    /// arming, and only its completion (`mountAfterDismissal`) clears the
-    /// pending id once the screen reads back as up (#807) or arms it when it
-    /// could not raise it (#798). A dismissal UIKit never completes therefore
-    /// leaves a notification-path request neither shown nor parked (#835).
+    /// the retry (#834). The swap included: it parks the request before the
+    /// dismissal starts, and its completion (`mountAfterDismissal`) clears it
+    /// once the screen reads back as up (#807) or re-arms it when it could not
+    /// raise it (#798). A dismissal UIKit never completes leaves the request
+    /// parked for the next activation (#835).
+    ///
+    /// `true` without mounting when this alarm's screen is up and still
+    /// ringing at a count no lower than the request's: `settleOnRingingScreen`.
     @discardableResult
     func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
         let request = PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)
@@ -301,6 +318,7 @@ final class AlarmFiringPresenter {
 
         let firingVC = makeFiringScreen(alarm, snoozeCount)
         firingVC.modalPresentationStyle = .fullScreen
+        firingVC.onUserStop = { [weak self] in self?.discardPending(stoppedAlarm: alarm.id) }
 
         // If an alarm firing screen is already showing, swap it for this one so
         // a stacking alarm (or a re-entry from a different trigger source for
@@ -308,9 +326,10 @@ final class AlarmFiringPresenter {
         //
         // The swap finishes in a completion whose timing is UIKit's, so "not
         // mounted yet" is the only answer this function can stand behind; the
-        // completion clears the pending id itself once the screen reads back as
-        // up. Answering `true` reported a screen that had not gone up,
-        // and when the completion then found no host it never went up at all:
+        // request is parked before the dismissal and the completion clears it
+        // once the screen reads back as up. Answering `true` reported a screen
+        // that had not gone up, and when the completion then found no host it
+        // never went up at all:
         // `attemptPendingPresentation` had already dropped `pendingAlarmID` on
         // the strength of that `true`, so nothing retried and the alarm went
         // unanswered with no line anywhere (#798).
@@ -332,6 +351,11 @@ final class AlarmFiringPresenter {
                 )
                 return false
             }
+            if settleOnRingingScreen(presentedFiring, for: request) { return true }
+            // Parked before the dismissal starts, so a completion UIKit never
+            // runs leaves the request waiting for the next activation rather
+            // than neither shown nor parked (#835). The completion clears it.
+            armRetry(request, level: .default, "firing-present: swapping out the firing screen that is up")
             // Set before the call so a completion UIKit runs synchronously
             // clears it rather than finding nothing to clear. Leaving a stale
             // marker behind is harmless now that the guard above also needs
@@ -365,6 +389,28 @@ final class AlarmFiringPresenter {
             return false
         }
         return presentReadingBack(firingVC, on: topVC, request: request, context: "", raiseParked: false)
+    }
+
+    /// `true` when `screen` — the firing screen the swap would take down — is
+    /// `request`'s alarm, still ringing, at the request's count or above. The
+    /// request is then the screen already there: a second trigger source, or a
+    /// record parked by a present UIKit deferred. Swapping rebuilt it and
+    /// stopped its sound on the way down (#835); instead the record is
+    /// settled as shown. Not a snoozed or stopped screen: a request for that
+    /// alarm is its next ring, and it gets a fresh screen. Not one on its way
+    /// out either, which is not up (the rule `mountAfterDismissal` reads).
+    private func settleOnRingingScreen(_ screen: AlarmFiringViewController, for request: PendingPresentation) -> Bool {
+        guard screen.viewModel.alarm.id == request.alarmID,
+              screen.viewModel.snoozeCount >= request.snoozeCount,
+              !screen.isSnoozedStateActive, !screen.isStoppedByUser, !screen.isBeingDismissed else { return false }
+        let shown = PendingPresentation(alarmID: request.alarmID, snoozeCount: screen.viewModel.snoozeCount)
+        AppLogger.emit(
+            .appDelegate, .default,
+            "firing-present: this alarm's screen is up and ringing — not swapping it [\(shown.logHandle)]"
+        )
+        clearPending(shownAs: shown)
+        if pendingAlarmID == request.alarmID { attemptParkedPresentationSoon() }
+        return true
     }
 
     /// Second half of the swap above: put `firingVC` up now that the stale
@@ -443,13 +489,13 @@ final class AlarmFiringPresenter {
                         "firing-present: this alarm is up at a lower snooze count — swapping it for the right one"
                     )
                 } else {
+                    let upCount = alreadyUp.viewModel.snoozeCount
+                    let shown = PendingPresentation(alarmID: retry.alarmID, snoozeCount: upCount)
                     AppLogger.emit(
                         .appDelegate, .default,
-                        "firing-present: this alarm's screen is already up — not stacking another"
+                        "firing-present: this alarm's screen is already up — not stacking another [\(shown.logHandle)]"
                     )
-                    clearPending(shownAs: PendingPresentation(
-                        alarmID: retry.alarmID, snoozeCount: alreadyUp.viewModel.snoozeCount
-                    ))
+                    clearPending(shownAs: shown)
                     staleSurvivalRetries = 0
                 }
                 attemptParkedPresentationSoon()
@@ -521,8 +567,9 @@ final class AlarmFiringPresenter {
     /// background scene the activation can land before this completion and
     /// be parked itself. On the next main-queue turn, not inline, so the
     /// follow-up swap never dismisses a screen that is still being presented.
-    /// Called from the branches where a screen is up (on the direct path only
-    /// for this alarm at a higher count, #833), and from the one failure
+    /// Called from the branches where a screen is up (on the direct path and
+    /// for a ringing screen the swap keeps, only for this alarm at a higher
+    /// count, #833/#835), and from the one failure
     /// branch that can still settle on its own — a stale screen that outlived
     /// its dismissal — which counts its calls against
     /// `staleSurvivalRetryLimit`, so it cannot spin. The other failure
@@ -555,20 +602,58 @@ final class AlarmFiringPresenter {
         }
     }
 
-    /// Puts `retry` in the pending slot and writes `line` where the suite can
-    /// read it.
+    /// Offers `retry` to the pending slot and writes `line`, naming the alarm,
+    /// where the suite can read it.
     ///
-    /// The slot holds one alarm, so taking it from another one drops that
-    /// alarm's retry — and the line says so rather than reading like a plain
-    /// deferral, at `.error` whatever `level` the caller asked for: a lost
-    /// alarm is not a notice.
-    private func armRetry(_ retry: PendingPresentation, level: OSLogType = .error, _ line: String) {
-        let displaced = pendingAlarmID.map { $0 != retry.alarmID } ?? false
+    /// The slot holds one record, so what it keeps is a rule (#835):
+    ///
+    ///   * Another alarm's record is replaced — newest wins — and the line
+    ///     names both alarms at `.error`, whatever `level` the caller asked
+    ///     for. A lost retry is not a notice, and it may be a snooze AlarmKit
+    ///     already stopped the system alarm for.
+    ///   * This alarm's record at a HIGHER count stays, and the line says so.
+    ///     Replacing it prices the next snooze from an earlier step: the rule
+    ///     `clearPending(shownAs:)` follows for the same reason (#807/#808).
+    ///     The line keeps the caller's level: nothing is lost, but the alarm is
+    ///     still not up.
+    ///   * Otherwise `retry` takes the slot.
+    ///
+    /// Compared by id AND count: by id alone, `(A, 0)` silently replaced a
+    /// parked `(A, 3)`. `line == nil` is AlarmKit's request, which is not a
+    /// failure: it writes only when the rule dropped or kept a record.
+    private func armRetry(_ retry: PendingPresentation, level: OSLogType = .error, _ line: String?) {
+        let parked = pendingPresentation
+        let displaced = parked.map { $0.alarmID != retry.alarmID } ?? false
+        let outranked = !displaced && (parked.map { $0.snoozeCount > retry.snoozeCount } ?? false)
+        if !outranked { pendingPresentation = retry }
+
+        let outcome: String
+        if displaced, let parked {
+            outcome = "; another alarm's pending screen is dropped: \(parked.logHandle)"
+        } else if outranked, let parked {
+            outcome = "; the pending \(parked.logHandle) outranks it and stays"
+        } else if line != nil {
+            outcome = ""
+        } else {
+            return
+        }
         AppLogger.emit(
             .appDelegate, displaced ? .error : level,
-            line + (displaced ? "; another alarm's pending screen is dropped" : "")
+            "\(line ?? "firing-present: requested") [\(retry.logHandle)]\(outcome)"
         )
-        pendingPresentation = retry
+    }
+
+    /// Drops `alarmID`'s record once the user has stopped the alarm on its
+    /// screen (#835). A record for it parked while that screen was up — a
+    /// present UIKit deferred, a second trigger source — would otherwise
+    /// raise a firing screen on the next activation for an alarm the user
+    /// already stopped. Called from the screen's `onUserStop`.
+    private func discardPending(stoppedAlarm alarmID: UUID) {
+        guard let pending = pendingPresentation, pending.alarmID == alarmID else { return }
+        AppLogger.emit(
+            .appDelegate, .default, "firing-present: stopped on its screen — dropping [\(pending.logHandle)]"
+        )
+        pendingPresentation = nil
     }
 
     // MARK: - Hierarchy walk
