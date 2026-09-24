@@ -624,7 +624,7 @@ final class AlarmFiringPresenter {
     private func armRetry(_ retry: PendingPresentation, level: OSLogType = .error, _ line: String?) {
         let parked = pendingPresentation
         let displaced = parked.map { $0.alarmID != retry.alarmID } ?? false
-        let outranked = !displaced && (parked.map { $0.snoozeCount > retry.snoozeCount } ?? false)
+        let outranked = !displaced && (parked.map { _ in false } ?? false)
         if !outranked { pendingPresentation = retry }
 
         let outcome: String
