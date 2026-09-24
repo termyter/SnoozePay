@@ -5,11 +5,14 @@ import XCTest
 ///
 /// The canon does NOT build this form out of one component — an earlier
 /// version of this header said it did, and that was checkably wrong. Inside
-/// artboard `AlarmEdit` (`SPMore2.jsx:131-291`) three different rules land the
-/// content, and only two of them land it on 20: the screen gutter (`:145`,
-/// `:161`, `:196`), `SPCard padding={20}` (`:198`, `:237`, `:257`), and
-/// `SPCard padding={4}` (`:227`) for the Звук / Тема / Вибрация rows, where
-/// canon is 4 and the app deliberately holds 20. The full mapping lives on
+/// artboard `AlarmEdit`,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:131-291` contains "function AlarmEdit",
+/// three different rules land the content, and only two of them land it on
+/// 20: the screen gutter, `SPCard padding={20}`, and `SPCard padding={4}`
+/// for the Звук / Тема / Вибрация rows, where canon is 4 and the app
+/// deliberately holds 20 —
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:227` contains "SPCard padding={4}".
+/// The full mapping, with a reference per rule, lives on
 /// `AppSpacing.cardHorizontalPadding`.
 ///
 /// What this file guards is therefore the APP's rule, not the canon's: every
@@ -42,8 +45,10 @@ final class CreateAlarmCardInsetTests: XCTestCase {
     /// It is ours, not the canon's, and this name must not drift back toward
     /// "canon": `SoundCell`, `VibrationCell` and `ThemeRowCell` — three of the
     /// ten cells measured below — render the Звук / Тема / Вибрация card, which
-    /// the canon sets to `padding={4}` (`SPMore2.jsx:227`). The app holds 20
-    /// there deliberately, against the canon rather than with it.
+    /// the canon sets to `padding={4}`,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:227` contains "SPCard padding={4}".
+    /// The app holds 20 there deliberately, against the canon rather than
+    /// with it.
     ///
     /// The full per-cell mapping — including why the two groups that do land on
     /// 20 agree by coincidence of this artboard and not by one rule — lives on

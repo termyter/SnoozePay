@@ -3,7 +3,11 @@ import UIKit
 /// Fixed page-title header — an h1 title row over a 1pt hairline, with no back
 /// button. Mirrors the chrome of `SPAlarmsListHeader` (#280) minus the balance
 /// pill, for screens whose design calls for the same title block as Будильники
-/// / Кошелёк (`SPMore4.jsx:100-109`). The host controller hides the system nav
+/// / Кошелёк:
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:288-296` contains "borderBottom".
+/// The statistics artboard that carries it exists only in the handoff:
+/// `docs/design/v2-handoff/components/SPMore4.jsx:100-109` contains "Статистика".
+/// The host controller hides the system nav
 /// bar so the screen doesn't render the title twice.
 ///
 /// ```
@@ -42,7 +46,9 @@ final class SPPageHeader: UIView {
     private func configure(title: String) {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         // h1 32pt extrabold with full -0.02em tracking — same recipe as the
-        // AlarmsList header title (`SPScreensV2.jsx:315`, tokens.css L80).
+        // AlarmsList header title
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:296` contains "Будильники";
+        // tokens.css L80).
         titleLabel.attributedText = NSAttributedString(
             string: title,
             attributes: [

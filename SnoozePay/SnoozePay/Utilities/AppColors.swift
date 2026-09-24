@@ -137,9 +137,11 @@ enum AppColors {
     ///
     /// | | value | ratio |
     /// |---|---|---|
-    /// | canon amount, `--sp-warn-400` (`SPMore2.jsx:241`) | `#FFB84D` | 1.72:1 |
+    /// | canon amount, `--sp-warn-400` ¹ | `#FFB84D` | 1.72:1 |
     /// | shipped here, `--sp-warn-500` (`tokens.css:30`) | `#F59E0B` | **2.15:1** |
     /// | our light `warn400` | `#966107` | 5.24:1 |
+    ///
+    /// ¹ `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:241` contains "--sp-warn-400"
     ///
     /// So this is a THIRD value, not "the canon won": canon-literal is one ramp
     /// stop lighter and measures worse than what ships. Naming it as canon
@@ -147,11 +149,16 @@ enum AppColors {
     /// one colour without dropping to 1.72:1.
     ///
     /// And the column is one colour in OUR build, not in the prototype. Canon
-    /// deliberately uses three values — amount `--sp-warn-400` (`:241`),
-    /// slider fill `--sp-warn-500` (`:214`), selected chip `--sp-grad-warn`, a
-    /// gradient `#FFD479 → #F59E0B → #C97A06` (`:248`). Our chip and track are
-    /// both flat `warnFill500`, so here the amount rendered bronze was the one
-    /// element out of step — which is what the PM reported as "wrong colour".
+    /// deliberately uses three values:
+    /// - amount `--sp-warn-400` (¹ above);
+    /// - slider fill `--sp-warn-500`,
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:214` contains "--sp-warn-500";
+    /// - selected chip `--sp-grad-warn`, a gradient `#FFD479 → #F59E0B → #C97A06`,
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:248` contains "--sp-grad-warn".
+    ///
+    /// Our chip and track are both flat `warnFill500`, so here the amount
+    /// rendered bronze was the one element out of step — which is what the PM
+    /// reported as "wrong colour".
     ///
     /// ## The honest number
     ///
@@ -534,15 +541,23 @@ enum AppSpacing {
     ///
     /// ⚠️ The alarm form's ten cells do NOT reach 20 by one canon rule, and
     /// for three of them the canon number is not 20 at all. The artboard is
-    /// `AlarmEdit()` in `docs/design/snoozepay-2026-04-27/project/components/
-    /// SPMore2.jsx`, lines 131–291 — every reference below is inside it:
+    /// `AlarmEdit()`,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:131-291` contains "function AlarmEdit",
+    /// and every reference below is inside it:
     ///
-    /// - screen gutter `20px` (`:145`, `:161`, `:196`) → canon 20:
-    ///   `NameCell`, `TimePickerCell`, `DayPickerCell`, `RepeatModeCell`
-    /// - `SPCard padding={20}` (`:198`, `:237`, `:257`) → canon 20:
-    ///   `SnoozeSliderCell`, `PenaltyCell`, `ProgressiveScaleCell`
-    /// - `SPCard padding={4}` (`:227`) → canon **4**:
-    ///   `SoundCell`, `ThemeRowCell`, `VibrationCell`
+    /// - screen gutter `20px` → canon 20:
+    ///   `NameCell`, `TimePickerCell`, `DayPickerCell`, `RepeatModeCell`;
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:145` contains "12px 20px 0",
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:161` contains "20px 20px 0",
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:196` contains "24px 20px 0"
+    /// - `SPCard padding={20}` → canon 20:
+    ///   `SnoozeSliderCell`, `PenaltyCell`, `ProgressiveScaleCell`;
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:198` contains "SPCard padding={20}",
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:237` contains "SPCard padding={20}",
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:257` contains "SPCard padding={20}"
+    /// - `SPCard padding={4}` → canon **4**:
+    ///   `SoundCell`, `ThemeRowCell`, `VibrationCell`;
+    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:227` contains "SPCard padding={4}"
     ///
     /// The first two groups are not the same rule: a gutter insets a child of
     /// the scroll container, a card padding insets the card's own contents.
@@ -553,19 +568,25 @@ enum AppSpacing {
     /// on the wallet's rows. The comments elsewhere that used to miscite it as
     /// a `4px 20px` canon rule were corrected in #685: as a standalone padding
     /// value that shorthand occurs once in the whole prototype, as
-    /// `padding: "4px 20px 12px"` on a theme block in `SPMore4.jsx:212`, and
+    /// `padding: "4px 20px 12px"` on a theme block,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px", and
     /// it is not a row rule. A substring grep also matches four
-    /// `padding: "24px 20px 0"` section containers (`SPScreensV2.jsx:581`,
-    /// `SPMore2.jsx:196` and `:412`, `SPMore3.jsx:193`), which is probably
-    /// where the invented rule came from. This token holds 20 for all ten
-    /// deliberately — one token beats ten literals — but reading it as
-    /// "canon says 20 everywhere" is wrong twice over.
+    /// `padding: "24px 20px 0"` section containers:
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:581` contains "24px 20px 0",
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:196` contains "24px 20px 0",
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:412` contains "24px 20px 0",
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:193` contains "24px 20px 0".
+    /// One of those is probably where the invented rule came from. This
+    /// token holds 20 for all ten deliberately — one token beats ten
+    /// literals — but reading it as "canon says 20 everywhere" is wrong twice
+    /// over.
     ///
-    /// An earlier version of this table cited `:106` and `padding={16}` at
-    /// `:44`. Both are in OTHER artboards (`AlarmDetail`, `Permissions`) and
-    /// say nothing about this screen. Within `AlarmEdit` the one real
-    /// dissenter is `:285`, `padding: "0 16px 24px"` on the delete button's
-    /// footer. `AppSpacing.screenInset` is likewise still `lg` (16) against a
+    /// An earlier version of this table cited two lines that sit in OTHER
+    /// artboards (`AlarmDetail`, and `padding={16}` in `Permissions`) and say
+    /// nothing about this screen. Within `AlarmEdit` the one real dissenter
+    /// is `padding: "0 16px 24px"` on the delete button's footer,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:285` contains "0 16px 24px".
+    /// `AppSpacing.screenInset` is likewise still `lg` (16) against a
     /// canon gutter of 20 — the same disagreement one level up, not fixed here.
     static let cardHorizontalPadding: CGFloat = sp5
 }

@@ -1,7 +1,8 @@
 import Foundation
 
 /// Short Russian subtitles for the built-in alarm themes, surfaced beneath the
-/// theme name in the V3 grid tiles (`SPMore2.jsx:394-400`, #285).
+/// theme name in the V3 grid tiles (#285) —
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:323-329` contains "Тёплый янтарь".
 ///
 /// Kept as a pure id→key map (no UIKit) so the mapping can be unit-tested
 /// and so the picker tile stays a thin layout layer. The custom-photo slot

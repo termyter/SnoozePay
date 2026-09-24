@@ -17,7 +17,8 @@ final class SnoozeSliderCell: UITableViewCell {
 
     // MARK: - UI
 
-    /// In-card caps caption «Длительность откладывания» (SPMore2.jsx:268).
+    /// In-card caps caption «Длительность откладывания»
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:201` contains "Длительность откладывания").
     /// Lives inside the card so the table no longer needs a section header (#278).
     private let captionLabel: UILabel = {
         let label = UILabel()
@@ -33,7 +34,8 @@ final class SnoozeSliderCell: UITableViewCell {
         return label
     }()
 
-    /// Meta hint «На сколько минут отодвигается звонок» (SPMore2.jsx:269).
+    /// Meta hint «На сколько минут отодвигается звонок»
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:202` contains "На сколько минут").
     private let hintLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.snooze.hint")
@@ -80,8 +82,9 @@ final class SnoozeSliderCell: UITableViewCell {
         return label
     }()
 
-    /// Range bound labels under the track — «1 мин» / «15 мин» (SPScreensV2.jsx
-    /// :567-570, `fg4` meta) so the slider's extents are legible at a glance.
+    /// Range bound labels under the track — «1 мин» / «15 мин», `fg4` meta
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:604-607` contains "15 мин"),
+    /// so the slider's extents are legible at a glance.
     private static func makeBoundLabel(_ text: String, alignment: NSTextAlignment) -> UILabel {
         let label = UILabel()
         label.text = text
@@ -206,7 +209,8 @@ final class SnoozeSliderCell: UITableViewCell {
     }
 
     /// «{N} мин» with the unit dimmed to `fg3` per the V2 slider recipe
-    /// (SPScreensV2.jsx:733-751) so the number reads as the headline.
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:590-592` contains "мин</span>")
+    /// so the number reads as the headline.
     ///
     /// The whole phrase is one catalogue string with the number substituted
     /// into it, rather than the two being concatenated here: a language that

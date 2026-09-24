@@ -61,7 +61,9 @@ final class VibrationCell: UITableViewCell {
         contentView.addSubview(toggle)
 
         // 20pt horizontal insets. NOT a canon rule: canon wraps these rows in
-        // `SPCard padding={4}` (`SPMore2.jsx:227`), i.e. 4pt. The 20 is the
+        // `SPCard padding={4}`
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:227` contains "SPCard padding={4}"),
+        // i.e. 4pt. The 20 is the
         // app's own, held so all ten cells of the form share one inset — see
         // `AppSpacing.cardHorizontalPadding` (#231, #672, #685).
         NSLayoutConstraint.activate([

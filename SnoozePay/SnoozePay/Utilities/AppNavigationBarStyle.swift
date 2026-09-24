@@ -107,10 +107,13 @@ enum AppNavigationBarStyle {
     /// The `.quiet` items opt out for the second reason rather than contrast:
     /// that pill measures 14.46:1 either way, but the capsule draws a second
     /// ring around chrome that already has its own fill. The canon has no such
-    /// ring on any of the three: `SPMore.jsx:313` and `SPMore2.jsx:340` put a
-    /// bare `SPButton variant="quiet" size="sm"` in the picker headers, and
-    /// `SPScreensV2.jsx:525` puts an equally bare pill on the alarm form — in
-    /// the `money` variant, not `quiet`. What the three share is the absence of
+    /// ring on any of the three. Two put a bare
+    /// `SPButton variant="quiet" size="sm"` in the picker headers —
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313` contains "quiet" and
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet" —
+    /// and the alarm form puts an equally bare pill,
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "money",
+    /// in the `money` variant, not `quiet`. What the three share is the absence of
     /// a ring over the button's own fill, NOT the variant: the form's «Готово»
     /// is the screen's terminal money CTA (`CreateAlarmViewController:170`
     /// builds it `.money`) and levelling it to `.quiet` would be a regression,

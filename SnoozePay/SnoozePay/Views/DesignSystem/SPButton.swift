@@ -108,8 +108,9 @@ final class SPButton: UIControl {
 
     /// Optional heavier stroke for `.ghost` buttons that need to read as a
     /// stronger affordance than the default hairline (e.g. the firing
-    /// «Я встал — выключить» CTA — 1.5pt white .22 per `SPThemedFiring.jsx:
-    /// 188-203`). Nil keeps the default `1/scale` stroke2 hairline. Applied in
+    /// «Я встал — выключить» CTA — 1.5pt white .22 per
+    /// `docs/design/v2-handoff/components/SPThemedFiring.jsx:188-203` contains "rgba(255,255,255,.22)",
+    /// handoff only). Nil keeps the default `1/scale` stroke2 hairline. Applied in
     /// `applyVariant`, so it survives trait-change re-tints.
     var ghostBorderOverride: (width: CGFloat, color: UIColor)? {
         didSet { if variant == .ghost { applyVariant() } }

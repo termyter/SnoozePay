@@ -108,16 +108,22 @@ extension WalletViewController {
 
         // 20pt of horizontal inset is a PM decision (#677) that KNOWINGLY
         // diverges from the canon. Canon renders this exact card as
-        // `<SPCard padding={4} radius={16}>` (`SPScreensV2.jsx:473`) and gives
+        // `<SPCard padding={4} radius={16}>`
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:473` contains "SPCard padding={4}")
+        // and gives
         // `.sp-row` only `padding: 14px 0`, so the prototype puts the icon 4pt
         // from the card edge. There is no `4px 20px` row rule in the prototype:
         // as a standalone padding value that shorthand occurs once, on a theme
-        // block inside a settings card (`SPMore4.jsx:212`). A substring grep
-        // looks like five hits only because four screen-section containers
-        // read `padding: "24px 20px 0"` (`SPScreensV2.jsx:581`,
-        // `SPMore2.jsx:196` and `:412`, `SPMore3.jsx:193`) — one of those
-        // minus its leading `2` is the likeliest origin of the invented rule
-        // (#685). Do not cite this comment as canon.
+        // block inside a settings card,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px".
+        // A substring grep looks like five hits only because four
+        // screen-section containers read `padding: "24px 20px 0"`:
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:581` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:196` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:412` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:193` contains "24px 20px 0".
+        // One of those minus its leading `2` is the likeliest origin of the
+        // invented rule (#685). Do not cite this comment as canon.
         //
         // What the decision buys, measured off a native 3× screenshot of the
         // alarm form (1206×2622, ÷3 for pt): the `.insetGrouped` card sits
@@ -242,7 +248,9 @@ extension WalletViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         // Row sums use money-md (700 20px mono) per design — 14pt moneySm read
-        // as a secondary caption (#321; SPScreensV2.jsx:543, SPMore3.jsx:178).
+        // as a secondary caption (#321;
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:489` contains "sp-t-money-md",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:92` contains "sp-t-money-md").
         label.font = AppTypography.moneyMd
         label.textColor = WalletAmountTint.ink(for: isDebit ? .outgoing : .incoming)
         label.text = text

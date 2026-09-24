@@ -7,7 +7,12 @@ import Foundation
 /// dedicated value type keeps the two inputs injectable and the maths unit
 /// testable without touching either store's serial queue.
 ///
-/// ## Semantics (#276, design SPMore4.jsx:113-123 / SPScreensV2.jsx:861-868)
+/// ## Semantics (#276)
+///
+/// Design: the «Серия» hero card
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:30-45` contains "Последний срыв")
+/// and the streak modal
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:736` contains "Серия · 7 дней").
 ///
 /// The streak counts «дни без срыва с прорывом привычки» — days the user
 /// genuinely got up. Walking backwards from today:

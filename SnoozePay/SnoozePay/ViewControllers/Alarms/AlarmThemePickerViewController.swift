@@ -135,7 +135,7 @@ final class AlarmThemePickerViewController: UIViewController {
         navigationItem.titleView = titleLabel
 
         // «Готово» quiet-sm — V3 exit affordance, matching the canon header at
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340`.
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet".
         // The path matters: a second copy of that file under
         // `docs/design/v2-handoff/` is numbered differently, and the reference
         // this replaces was reading it.
@@ -241,8 +241,9 @@ final class AlarmThemePickerViewController: UIViewController {
         }
     }
 
-    /// Three-column compositional grid, tile aspect 1:1.2 (V3 — SPMore2.jsx:
-    /// 430-436). The 10pt inter-column gap is folded into per-item trailing
+    /// Three-column compositional grid, tile aspect 1:1.2 (V3 —
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:359-365` contains "aspectRatio").
+    /// The 10pt inter-column gap is folded into per-item trailing
     /// insets; the row group height tracks the tile aspect so tiles stay 1:1.2.
     /// A «Готовые темы» caps header sits above the grid.
     private func makeLayout() -> UICollectionViewLayout {

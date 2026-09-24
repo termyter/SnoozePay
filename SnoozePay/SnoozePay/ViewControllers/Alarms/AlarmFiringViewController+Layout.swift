@@ -43,7 +43,8 @@ extension AlarmFiringViewController {
 
         dismissButton.translatesAutoresizingMaskIntoConstraints = false
         // Heavier ghost stroke for the wake CTA: 1.5pt white at .22 alpha
-        // (`SPThemedFiring.jsx:188-203`).
+        // (`docs/design/v2-handoff/components/SPThemedFiring.jsx:188-203` contains "rgba(255,255,255,.22)";
+        // handoff only — the canon has no themed firing).
         dismissButton.ghostBorderOverride = (1.5, UIColor.white.withAlphaComponent(0.22))
         dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
         dismissButton.accessibilityIdentifier = "firing.dismissButton"
@@ -56,7 +57,9 @@ extension AlarmFiringViewController {
         // Progressive escalation chrome — only mounted for alarms with the
         // doubling-penalty toggle. The default flow stays clean. The indicator
         // pill + history ticker live in the CENTRE hero (below the eyebrow
-        // caps) per `SPDawnV3.jsx:114-136 / 216`, not above the CTA.
+        // caps), not above the CTA:
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:114-136` contains "function TickerRow",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:216` contains "snoozes > 0".
         if viewModel.isProgressiveActive {
             let stack = installProgressiveStack(inset: inset)
             NSLayoutConstraint.activate([

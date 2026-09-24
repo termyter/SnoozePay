@@ -25,7 +25,8 @@ final class AlarmFiringProgressiveChromeTests: XCTestCase {
     func testPillHidden_beforeFirstSnooze() {
         XCTAssertFalse(
             AlarmFiringViewController.progressivePillVisible(snoozeCount: 0),
-            "Indicator pill is hidden until the first snooze (SPDawnV3.jsx:216)"
+            // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:216` contains "snoozes > 0"
+            "Indicator pill is hidden until the first snooze"
         )
     }
 

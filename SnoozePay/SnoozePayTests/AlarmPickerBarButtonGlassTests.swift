@@ -10,13 +10,15 @@ import XCTest
 /// 14.46:1 against `bg0` with the capsule and without it. What the capsule
 /// costs here is the shape — it draws a second, wider ring around a control
 /// that already carries its own `--sp-white-06` fill, so two buttons the canon
-/// draws identically (`SPMore.jsx:313`, `SPMore2.jsx:340`, both
-/// `variant="quiet"`) rendered differently depending on which screen you were
-/// on. The form's «Готово» (`SPScreensV2.jsx:525`) is bare in the canon too,
-/// but it is `variant="money"` — what the three headers share is the absence of
-/// a ring, not the variant. Paths are into
-/// `docs/design/snoozepay-2026-04-27/project/components/`; the copy of
-/// `SPMore2.jsx` under `docs/design/v2-handoff/` is numbered differently.
+/// draws identically, both `variant="quiet"` —
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313` contains "quiet",
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet" —
+/// rendered differently depending on which screen you were on. The form's
+/// «Готово» is bare in the canon too, but it is `variant="money"` —
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "money" —
+/// and what the three headers share is the absence of a ring, not the
+/// variant. The copy of `SPMore2.jsx` under `docs/design/v2-handoff/` is
+/// numbered differently.
 ///
 /// Like `CreateAlarmBarButtonGlassTests`, these assertions are structural
 /// rather than photometric on purpose: the extra ring is painted by the

@@ -132,7 +132,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return view
     }()
 
-    /// h2 «Пополнить баланс» header (`SPTopUp.jsx:138`).
+    /// h2 «Пополнить баланс» header
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:139` contains "Пополнить баланс").
     private let titleH2Label: UILabel = {
         let label = UILabel()
         label.font = AppTypography.h2
@@ -142,7 +143,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return label
     }()
 
-    /// Pulsing 8pt warn dot to the left of the pause caps (`SPTopUp.jsx:136`).
+    /// Pulsing 8pt warn dot to the left of the pause caps
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:136` contains "width: 8, height: 8").
     private let pauseDot: UIView = {
         let view = UIView()
         view.backgroundColor = AppColors.warn400
@@ -151,7 +153,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return view
     }()
 
-    /// Caps pause countdown «Будильник на паузе · 00:54» (`SPTopUp.jsx:137`).
+    /// Caps pause countdown «Будильник на паузе · 00:54»
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:137` contains "Будильник на паузе").
     private let pauseLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -181,7 +184,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         return label
     }()
 
-    /// Vertical column of full-width preset rows (`SPTopUp.jsx:144-175`): each
+    /// Vertical column of full-width preset rows
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:144-175` contains "Пресеты"): each
     /// row shows the «+1 откладывание» title + hint on the left and the rouble
     /// amount + a check chip on the right when selected.
     private var presetRows: [FiringTopUpPresetRow] = []
@@ -265,7 +269,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         self.currentBalance = currentBalance
         // Pre-select the cheapest tier that actually unlocks a snooze at the
         // current price (#548). The comp pre-selected the SMALLEST tier
-        // (`SPTopUp.jsx:118`) — correct only while the cheapest SKU covered the
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:104` contains "tuS(200)") —
+        // correct only while the cheapest SKU covered the
         // price; at 200 ₽ it opened on a 149 ₽ tier that buys nothing. Falls
         // back to 0 (no invented literal) if the list is empty — #275/#297.
         self.selectedAmount = FiringTopUpCopy.recommendedAmount(
@@ -314,7 +319,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Sheet surface bg1 per `SPTopUp.jsx:135-142` (#288).
+        // Sheet surface bg1 (#288):
+        // `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:127` contains "var(--sp-bg-1)".
         view.backgroundColor = AppColors.bg1
         // Per the spec the firing screen overlay is dark; pin the sheet to
         // dark so SPAmountPreset / SPButton tokens resolve against the same
@@ -365,7 +371,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        // Header column (`SPTopUp.jsx:135-142`): a pulsing warn dot + caps
+        // Header column
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:135-142` contains "Пополнить баланс"):
+        // a pulsing warn dot + caps
         // pause countdown on top, then the h2 «Пополнить баланс». Close X sits
         // top-right of the row.
 
@@ -718,8 +726,11 @@ extension FiringTopUpBottomSheetViewController {
     }
 
     /// 0.4 → 1.0 opacity autoreverse pulse on the warn dot, 1.6s each leg —
-    /// matches the `sp-pulse` keyframe the JSX warn dot rides (`SPTopUp.jsx:
-    /// 136`). CABasicAnimation so it keeps running through UIKit interactions.
+    /// borrows the 1.6s cadence of the prototype's `PulseDot`
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:29` contains "sp-pulse 1.6s").
+    /// The top-up sheet's own dot is static in the prototype
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:136` contains "width: 8, height: 8").
+    /// CABasicAnimation so it keeps running through UIKit interactions.
     private func startPauseDotPulse() {
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 0.4
@@ -735,7 +746,8 @@ extension FiringTopUpBottomSheetViewController {
         let minutes = remainingSeconds / 60
         let seconds = remainingSeconds % 60
         let countdown = String(format: "%02d:%02d", minutes, seconds)
-        // Caps «Будильник на паузе · MM:SS» per `SPTopUp.jsx:137`.
+        // Caps «Будильник на паузе · MM:SS» per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:137` contains "Будильник на паузе".
         let attributed = NSAttributedString(
             // `.uppercased()` stays at the call site: the catalogue holds
             // the sentence, the caps face is presentation.

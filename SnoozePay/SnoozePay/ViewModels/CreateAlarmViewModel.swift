@@ -323,7 +323,7 @@ final class CreateAlarmViewModel {
 
     /// Sound catalogue surfaced to `SoundPickerViewController`. Each entry now
     /// carries a short Russian `subtitle` describing the timbre (V3 card list —
-    /// `SPMore.jsx:332-339` style, e.g. «Тёплый рассвет с птицами»). The
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:296-303` contains "Тёплый рассвет" style). The
     /// `id`/`name` members keep their existing meaning so all named-member
     /// callers (`+Sections`, list VM) compile unchanged. soundID defaults are
     /// owned by #278 — this list only adds descriptive copy.

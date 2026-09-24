@@ -6,7 +6,8 @@ import UIKit
 ///
 /// V2 (#284): the stock wheels are kept as the input mechanism (good UX on
 /// iOS), but the cell now leads with the branded readout from the artboard
-/// (`SPScreensV2.jsx:520-527`): a caps «Подъём» header above a clock-XL mono
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:545-551` contains "Подъём"):
+/// a caps «Подъём» header above a clock-XL mono
 /// readout (`HH` · `:` · `mm`) that mirrors the current wheel selection. The
 /// `:` separator is dimmed (`fg4`) and the digits use `fg1`, matching the
 /// design's tabular-numeral / tight-tracking look.

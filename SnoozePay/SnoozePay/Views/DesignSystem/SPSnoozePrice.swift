@@ -7,7 +7,8 @@ import UIKit
 /// and an optional hint meta line. Tone selects between the warn (default
 /// snooze price) and pain (progressive / expensive snooze) gradients.
 ///
-/// Per `SPDawnV3.jsx:82-85` the CTA stays GOLD (`.warn`) on every progressive
+/// Per `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:153-155` contains "золотой"
+/// the CTA stays GOLD (`.warn`) on every progressive
 /// step — escalation is signalled by the background tone crossfade + the
 /// indicator pill, never by reddening the button itself. The legacy
 /// `.progressive` tone is kept for back-compat but now resolves to the warn
@@ -22,7 +23,9 @@ final class SPSnoozePrice: UIControl {
         case warn   // Default snooze — warm amber gradient
         case pain   // Progressive / expensive — pain coral gradient
         /// Progressive escalation. Historically interpolated the warn → pain
-        /// gradient by `intensity`; per `SPDawnV3.jsx:153-155` the CTA must
+        /// gradient by `intensity`; per
+        /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:153-155` contains "золотой"
+        /// the CTA must
         /// stay gold across all steps, so this now renders the warn surface
         /// regardless of `intensity`. The case is retained so the firing flow
         /// can keep passing it without a call-site rewrite.
@@ -167,7 +170,9 @@ final class SPSnoozePrice: UIControl {
     }
 
     /// Build the caps line — a 14pt leading clock glyph followed by
-    /// «СПАТЬ ЕЩЁ N МИН» (`SPDawnV3.jsx:82-85`). The glyph rides the text
+    /// «СПАТЬ ЕЩЁ N МИН»
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:82-85` contains "Спать ещё").
+    /// The glyph rides the text
     /// baseline as an `NSTextAttachment` tinted to the current foreground.
     private func makeCapsText() -> NSAttributedString {
         let ink = foreground.withAlphaComponent(0.82)
@@ -252,8 +257,9 @@ final class SPSnoozePrice: UIControl {
         switch tone {
         case .warn: return AppColors.fgOnWarn
         case .pain: return AppColors.fgOnPain
-        // The CTA stays gold across all progressive steps (`SPDawnV3.jsx:
-        // 153-155`), so the on-fill ink is always the warn ink.
+        // The CTA stays gold across all progressive steps
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:153-155` contains "золотой"),
+        // so the on-fill ink is always the warn ink.
         case .progressive: return AppColors.fgOnWarn
         }
     }
@@ -278,7 +284,7 @@ final class SPSnoozePrice: UIControl {
     ///
     /// `.progressive` renders the warn surface on every step — the CTA stays
     /// gold and escalation is signalled by the background, per
-    /// `SPDawnV3.jsx:153-155`.
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:153-155` contains "золотой".
     private var toneGradientColors: [CGColor] {
         switch tone {
         case .pain: return SPSupport.painGradientColors(for: traitCollection)

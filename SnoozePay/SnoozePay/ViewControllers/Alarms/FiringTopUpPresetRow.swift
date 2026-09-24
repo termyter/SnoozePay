@@ -2,7 +2,8 @@ import UIKit
 
 /// One full-width top-up preset row in the firing top-up sheet.
 ///
-/// Spec — `SPTopUp.jsx:148-170`: a 16×20-padded, 16pt-radius row with a title
+/// Spec — `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:148-170` contains "16px 20px":
+/// a 16×20-padded, 16pt-radius row with a title
 /// (h4) + hint (meta) on the left and the rouble amount (money-md) + a 22pt
 /// warn-gradient check chip on the right. Title and hint are computed by
 /// `FiringTopUpCopy` from the live snooze price (#548) — the comp's literal
@@ -126,7 +127,8 @@ final class FiringTopUpPresetRow: UIControl {
     }
 
     /// 22pt warn-gradient check chip shown on the selected row
-    /// (`SPTopUp.jsx:163-169`). Split out of `configure` to keep that method
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:163-169` contains "width: 22").
+    /// Split out of `configure` to keep that method
     /// under the linter's body-length threshold once the derived copy (#548)
     /// added its own label setup.
     private func configureCheckChip() {

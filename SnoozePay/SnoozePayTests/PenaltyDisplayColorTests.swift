@@ -8,7 +8,8 @@ import XCTest
 ///
 /// It is NOT "the canon won" — an earlier version of this header said so, and
 /// that is not what happened. Canon paints the numeral `var(--sp-warn-400)`
-/// (`SPMore2.jsx:241`) on a dark surface; the app renders it on white. Three
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:241` contains "--sp-warn-400")
+/// on a dark surface; the app renders it on white. Three
 /// candidate inks, all measured against white:
 ///
 /// | ink | ratio on white |

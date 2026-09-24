@@ -23,7 +23,8 @@ extension SettingsViewController {
     /// The value is the global default penalty seeding new alarms
     /// (`AlarmDefaults.penaltyAmount`); tapping opens a price editor and the
     /// chevron signals the affordance, symmetric with the snooze-duration row
-    /// (design `SPMore4.jsx:362`). Existing alarms keep their own saved price.
+    /// (design `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:151` contains "по умолчанию").
+    /// Existing alarms keep their own saved price.
     func makeDefaultPriceRow(at indexPath: IndexPath) -> UITableViewCell {
         let cell = dequeueIconRowCell(at: indexPath)
         cell.configure(
@@ -109,8 +110,9 @@ extension SettingsViewController {
             systemName: "flame",
             iconColor: AppColors.pain400,
             title: Localized.text("settings.row.progressive_price"),
-            // Design copy (`SPMore4.jsx:381`) — the doubling ramp reads clearer
-            // than prose and won't clip (#313).
+            // Design copy — the doubling ramp reads clearer than prose and
+            // won't clip (#313):
+            // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:170` contains "50 → 100 → 200 → 400".
             subtitle: "50 → 100 → 200 → 400",
             isOn: alarmDefaults.progressiveScale,
             onChange: { [weak self] isOn in
