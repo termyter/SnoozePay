@@ -265,6 +265,12 @@ extension AlarmFiringPresenter {
         if !scheduled { attemptParkedPresentationSoon() }
     }
 
+    /// The production `whenTransitionEnds` on `animate`'s NO (#886): `body` also goes to the next
+    /// turn, never inside the call. Static so a test reaches it without a live transition.
+    static func runSoonUnlessQueued(_ animationQueued: Bool, _ body: @escaping () -> Void) {
+        if !animationQueued { DispatchQueue.main.async(execute: body) }
+    }
+
     /// A host miss, in `present` or after a swap's dismissal: keeps the record
     /// and the audio (`stopAudio(ifOwnedBy:_:)`'s rule) and re-arms on the next
     /// turn, `hostGoneRetryLimit` times since the last screen went up (#875).

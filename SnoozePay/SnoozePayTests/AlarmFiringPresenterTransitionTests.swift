@@ -16,6 +16,10 @@ import XCTest
 /// `dismiss` mid-transition, which UIKit drops with its completion. It now
 /// waits for the end of that transition and asks again.
 ///
+/// #886: past the limit the swap goes ahead instead of waiting; the swap's
+/// bound and its synchronous completion; `animate` answering NO; and an
+/// emptied queue refilling both retry budgets.
+///
 /// Item 5 (FU-2): the production dismissal went to the stale screen's presenter
 /// even when that presenter no longer presented it, and `dismiss` on a
 /// controller with nothing presented takes that controller down itself.
@@ -326,6 +330,106 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         }
     }
 
+    // MARK: - #886 items 1 and 2: the swap's bound, and what follows it
+
+    /// UIKit reports the stale screen in a transition on every retry. Each end
+    /// schedules one retry, `transitionRetryLimit` in all. Past it the swap
+    /// goes ahead with an `.error` line instead of waiting for an activation a
+    /// foreground app does not get, parked before its dismissal (#835). UIKit
+    /// drops that dismissal here, and the next flush sends a fresh one: the
+    /// re-entry guard also needs `isBeingDismissed`, so it does not wedge.
+    func testSwap_whenTheTransitionNeverClears_retriesUpToTheLimitThenDismissesAnyway() throws {
+        let limit = AlarmFiringPresenter.transitionRetryLimit
+        let alarm = Alarm()
+        let stale = makeScreen(Alarm())
+        hosts = [stale]
+        inTransition = [stale]
+        let presenter = makePresenter(alarms: [alarm])
+
+        recording { XCTAssertFalse(presenter.present(alarm: alarm, snoozeCount: 2)) }
+        for _ in 0..<limit { try endTransition(clears: false) }
+
+        XCTAssertEqual(scheduled, limit, "one retry per end, up to the limit")
+        XCTAssertTrue(held.isEmpty, "past the limit nothing waits for the transition")
+        let holds = lines.filter { $0.message.contains("is in a transition") }
+        XCTAssertEqual(holds.count, limit, "\(lines.map(\.message))")
+        XCTAssertTrue(holds.allSatisfy { $0.level == .default }, "\(holds.map(\.message))")
+        XCTAssertTrue(holds.allSatisfy { $0.message.contains("retrying once its transition ends") })
+        let past = try XCTUnwrap(
+            lines.first { $0.message.contains("still in a transition after") }, "\(lines.map(\.message))"
+        )
+        XCTAssertEqual(past.level, .error)
+        XCTAssertTrue(past.message.contains("sending the dismissal anyway"), "«\(past.message)»")
+        XCTAssertEqual(dismissed.count, 1, "past the limit the swap has to go ahead")
+        XCTAssertTrue(dismissed.first === stale)
+        XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 2)], "parked before the dismissal (#835)")
+
+        lines = []
+        recording { presenter.flushPendingPresentation() }
+        XCTAssertEqual(dismissed.count, 2, "a dismissal UIKit dropped must not hold the next one")
+        XCTAssertFalse(lines.contains { $0.message.contains("still being dismissed") }, "\(lines.map(\.message))")
+        for _ in 0..<3 { drainMainQueue() }
+        XCTAssertEqual(dismissed.count, 2, "past the limit nothing asks again before the activation")
+        XCTAssertEqual(scheduled, limit)
+    }
+
+    /// The swap's version of the synchronous completion. The record is parked
+    /// before the retry is scheduled: parked after, the hop finds an empty
+    /// queue and the retry is dropped with no line. The retry comes a turn
+    /// later, and a transition that never clears stays within the limit and
+    /// ends in the dismissal.
+    func testSwap_whenTheCompletionRunsInsideTheCall_theRecordIsParkedAndTheRetryWaitsATurn() throws {
+        let limit = AlarmFiringPresenter.transitionRetryLimit
+        for staleGoes in [true, false] {
+            let path = staleGoes ? "stale screen gone on retry" : "transition never clears"
+            let alarm = Alarm()
+            let root = Host()
+            let stale = makeScreen(Alarm())
+            hosts = [stale]
+            inTransition = [stale]
+            scheduled = 0
+            dismissed = []
+            lines = []
+            let presenter = makePresenter(alarms: [alarm])
+            var parkedAtCompletion: [[AlarmFiringPresenter.PendingPresentation]] = []
+            presenter.whenTransitionEnds = { [self, weak presenter] controller, body in
+                guard self.inTransition.contains(where: { $0 === controller }) else { return false }
+                self.scheduled += 1
+                parkedAtCompletion.append(presenter?.pendingPresentations ?? [])
+                body()
+                return true
+            }
+            defer {
+                AudioService.shared.stopAlarmSound()
+                drainMainQueue()
+            }
+
+            recording { XCTAssertFalse(presenter.present(alarm: alarm, snoozeCount: 2), path) }
+
+            XCTAssertEqual(parkedAtCompletion, [[pending(alarm, 2)]], "\(path): parked before the retry was scheduled")
+            XCTAssertTrue(dismissed.isEmpty, "\(path): no dismissal inside the completion")
+
+            if staleGoes {
+                hosts = [root]
+                inTransition = []
+            }
+            // One turn per retry: a drain leaves what its last turn enqueued.
+            recording { for _ in 0...limit { drainMainQueue() } }
+
+            if staleGoes {
+                XCTAssertEqual(scheduled, 1, path)
+                XCTAssertTrue(dismissed.isEmpty, "\(path): nothing is left to dismiss")
+                XCTAssertEqual(root.presentedScreens.count, 1, "\(path): the retry comes on the next turn")
+                XCTAssertTrue(presenter.pendingPresentations.isEmpty, path)
+            } else {
+                XCTAssertEqual(scheduled, limit, "\(path): bounded even when the completion runs at once")
+                XCTAssertEqual(parkedAtCompletion, Array(repeating: [pending(alarm, 2)], count: limit), path)
+                XCTAssertEqual(dismissed.count, 1, "\(path): past the limit the swap goes ahead")
+                XCTAssertEqual(presenter.pendingPresentations, [pending(alarm, 2)], path)
+            }
+        }
+    }
+
     // MARK: - Item 5: the production dismissal
 
     /// The dismissal goes to the stale screen's presenter, which takes the
@@ -375,5 +479,80 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         let screen = try XCTUnwrap(nextHost.presentedScreens.first as? ReadBackFiringScreen, "the swap stopped")
         XCTAssertEqual(screen.viewModel.alarm.id, alarm.id)
         XCTAssertTrue(presenter.pendingPresentations.isEmpty)
+    }
+
+    // MARK: - #886 item 3: `animate` answering NO
+
+    /// The production `whenTransitionEnds` needs a live transition; the
+    /// decision it takes on `animate`'s answer does not. On NO the body runs
+    /// on the next turn; on YES it is left to the completion. Never inside the
+    /// call, which the park-first order relies on.
+    func testRunSoonUnlessQueued_runsTheBodyOnTheNextTurnOnlyWhenAnimateDeclined() {
+        for queued in [true, false] {
+            var runs = 0
+            AlarmFiringPresenter.runSoonUnlessQueued(queued) { runs += 1 }
+            XCTAssertEqual(runs, 0, "animate answered \(queued): run inside the call")
+            drainMainQueue()
+            XCTAssertEqual(runs, queued ? 0 : 1, "animate answered \(queued)")
+        }
+    }
+
+    // MARK: - #886 item 4: an emptied queue refills the budgets
+
+    /// Both budgets spent on one alarm, whose record then leaves with no screen
+    /// up: by expiry, or stopped on its screen. The next alarm started on the
+    /// spent budgets and waited for an activation at its first miss. It gets
+    /// the full ones: a host miss retried, then every transition retry.
+    func testQueueEmptiedWithoutAScreen_refillsBothBudgetsForTheNextAlarm() throws {
+        let limit = AlarmFiringPresenter.transitionRetryLimit
+        for byExpiry in [true, false] {
+            let path = byExpiry ? "expired" : "stopped"
+            let spent = Alarm()
+            let next = Alarm()
+            let host = Host()
+            host.accepts = false
+            hosts = []
+            inTransition = []
+            scheduled = 0
+            lines = []
+            let presenter = makePresenter(alarms: [spent, next])
+            defer {
+                AudioService.shared.stopAlarmSound()
+                drainMainQueue()
+            }
+
+            recording {
+                XCTAssertFalse(presenter.present(alarm: spent, snoozeCount: 1), path)
+                for _ in 0...AlarmFiringPresenter.hostGoneRetryLimit { drainMainQueue() }
+            }
+            hosts = [host]
+            inTransition = [host]
+            recording { presenter.flushPendingPresentation() }
+            for _ in 0..<limit { try endTransition(clears: false) }
+            XCTAssertEqual(presenter.hostGoneRetries, AlarmFiringPresenter.hostGoneRetryLimit, "\(path): precondition")
+            XCTAssertEqual(presenter.transitionRetries, limit, "\(path): precondition")
+
+            if byExpiry {
+                let later = Date().addingTimeInterval(AlarmFiringPresenter.pendingRecordLifetime + 60)
+                presenter.now = { later }
+                recording { presenter.flushPendingPresentation() }
+            } else {
+                presenter.discardPending(stopped: pending(spent, 1))
+            }
+            XCTAssertTrue(presenter.pendingPresentations.isEmpty, "\(path): precondition: the queue is empty")
+
+            hosts = []
+            lines = []
+            recording { XCTAssertFalse(presenter.present(alarm: next), path) }
+            let miss = try XCTUnwrap(lines.first { $0.message.contains("keeping it pending") }, path)
+            XCTAssertTrue(miss.message.contains("retrying on the next turn"), "\(path): «\(miss.message)»")
+
+            let before = scheduled
+            hosts = [host]
+            recording { drainMainQueue() }
+            for _ in 0..<limit { try endTransition(clears: false) }
+            XCTAssertEqual(scheduled - before, limit, "\(path): the transition budget stayed spent")
+            XCTAssertEqual(presenter.pendingPresentations, [pending(next, 0)], path)
+        }
     }
 }

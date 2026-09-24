@@ -62,7 +62,18 @@ final class AlarmFiringPresenter {
     /// retry (#869). What a write keeps is still `armRetry`'s rule. The flush
     /// goes in arrival order, so the newest alarm is the one left on screen.
     /// Internal only so `AlarmFiringPresenter+Queue.swift` can reach it (#883).
-    var pendingQueue: [QueuedPresentation] = []
+    ///
+    /// Emptied, it refills `transitionRetries` and `hostGoneRetries` (#886): a
+    /// record can leave with no screen going up (expiry, `discardPending`), and
+    /// the next alarm started on a spent budget. Every removal passes here. No
+    /// retry loop runs on an empty queue: each keeps its record parked.
+    var pendingQueue: [QueuedPresentation] = [] {
+        didSet {
+            guard pendingQueue.isEmpty, !oldValue.isEmpty else { return }
+            hostGoneRetries = 0
+            transitionRetries = 0
+        }
+    }
 
     /// The clock the expiry reads. A seam so a test can age a record.
     var now: () -> Date = { Date() }
@@ -183,13 +194,20 @@ final class AlarmFiringPresenter {
     /// answer: UIKit documents that the completion may run even when
     /// `animate(alongsideTransition:completion:)` returns NO.
     ///
+    /// Or may not: on a NO the closure also goes to the next turn
+    /// (`runSoonUnlessQueued`, #886), so the promised retry does not wait for
+    /// the activation. Running twice is harmless: the closure only calls
+    /// `attemptParkedPresentationSoon`, a no-op on an empty queue, else one
+    /// more flush in arrival order whose refusals count against the limit.
+    ///
     /// The closure may run inside the call (a stand-in may do that, and so
     /// may UIKit). The presenter parks the record before calling, and the
     /// closure only hops one main-queue turn, so neither order loses the
     /// retry or recurses.
     var whenTransitionEnds: (UIViewController, @escaping () -> Void) -> Bool = { controller, body in
         guard let coordinator = controller.transitionCoordinator else { return false }
-        _ = coordinator.animate(alongsideTransition: nil) { _ in body() }
+        let queued = coordinator.animate(alongsideTransition: nil) { _ in body() }
+        AlarmFiringPresenter.runSoonUnlessQueued(queued, body)
         return true
     }
 
@@ -232,7 +250,8 @@ final class AlarmFiringPresenter {
     /// Re-attempts spent on a host miss, in `present` or after a swap's
     /// dismissal, since the last screen that went up (#875). In the foreground
     /// nothing else raises the alarm before the next activation.
-    /// Internal only so `AlarmFiringPresenter+Queue.swift` can reach it (#883).
+    /// Refilled when the queue empties too (#886). Internal only so
+    /// `AlarmFiringPresenter+Queue.swift` can reach it (#883).
     var hostGoneRetries = 0
 
     /// The host is usually back on the next turn. Gone for good, the retry
@@ -244,6 +263,7 @@ final class AlarmFiringPresenter {
     /// refused, a swap it held), since the last screen that went up (#875).
     /// Bounds a transition UIKit keeps reporting: each retry that meets it
     /// again would otherwise schedule the next one, every time it ends.
+    /// Refilled too when the queue empties (#886): `pendingQueue`.
     /// Internal only so `AlarmFiringPresenter+Queue.swift` can reach it (#883).
     var transitionRetries = 0
 
@@ -444,17 +464,30 @@ final class AlarmFiringPresenter {
     /// sheet on it is (#875, FU-3): a `dismiss` sent now is dropped with its
     /// completion, and the request would wait for an activation that a
     /// foreground app does not get. The swap is asked again at the end, within
-    /// `transitionRetryLimit`; past it the request waits for the activation.
-    /// Parked before the retry is scheduled, which may run its hop at once.
+    /// `transitionRetryLimit`. Parked before the retry is scheduled, which may
+    /// run its hop at once.
+    ///
+    /// Past the limit the swap goes ahead, with an `.error` line (#886): held,
+    /// the stale screen stayed up and the request waited all the same. A
+    /// dismiss UIKit drops costs no more: `parkBeforeSwap` parks the request
+    /// first (#835), and the re-entry guard needs `isBeingDismissed` too.
     private func deferSwapPastTransition(of screen: AlarmFiringViewController, _ request: PendingPresentation) -> Bool {
         guard let retrying = transitionRetry(for: screen) else { return false }
+        let shown = PendingPresentation(on: screen).logHandle
+        guard retrying else {
+            AppLogger.emit(
+                .appDelegate, .error,
+                "firing-present: the screen of \(shown) is still in a transition after"
+                    + " \(Self.transitionRetryLimit) retries — sending the dismissal anyway [\(request.logHandle)]"
+            )
+            return false
+        }
         armRetry(
-            request, level: retrying ? .default : .error,
-            "firing-present: the screen of \(PendingPresentation(on: screen).logHandle)"
-                + " is in a transition — not dismissing it; keeping this one pending; "
-                + Self.transitionRetryNote(retrying: retrying)
+            request, level: .default,
+            "firing-present: the screen of \(shown) is in a transition — not dismissing it; keeping this one pending; "
+                + Self.transitionRetryNote(retrying: true)
         )
-        if retrying { retryAfterTransition(of: screen) }
+        retryAfterTransition(of: screen)
         return true
     }
 
