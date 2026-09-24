@@ -11,7 +11,7 @@ final class CatalogueKeyScannerTests: XCTestCase {
 
     /// The three shapes that matter, all of them taken from live sources: the
     /// plain one-liner, `Localized.format(` with its key on the line below
-    /// (`AlarmsStreakBannerView:111`), and two keys inside one call as the arms
+    /// (the title in `AlarmsStreakBannerView.configure`), and two keys inside one call as the arms
     /// of a ternary (`CreateAlarmViewController:96`). A line-based regex sees
     /// only the first.
     func testSeesKeysBelowTheCallAndOnBothArmsOfATernary() {

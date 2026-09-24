@@ -300,8 +300,7 @@ enum AppColors {
     // MARK: - Payment instrument card (Apple Pay tile)
     //
     // Same class as `heroDeep*`: a *filled* panel, not a surface, so it does
-    // NOT flip with the theme. The canon calls it «чёрная карточка а-ля iOS
-    // Wallet»,
+    // NOT flip with the theme. The canon calls it «чёрная карточка а-ля iOS Wallet»,
     // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:246` contains "Чёрная карточка",
     // and iOS Wallet keeps a dark instrument dark on a white page — flipping
     // this fill to `bg1` in light would turn a payment card into an app card

@@ -343,7 +343,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         // «Будни · 07:00» — falling back to the bare time when the alarm was
         // deleted/edited away (issue #282). The canon history row carries it
         // in the title,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:10` contains "Поспать ещё · Будни 7:00".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:10` contains "07:05".
         let subtitle = Self.subtitle(for: transaction)
         let leading = Self.makeIcon(for: transaction)
         let trailing = Self.makeAmountLabel(for: transaction)

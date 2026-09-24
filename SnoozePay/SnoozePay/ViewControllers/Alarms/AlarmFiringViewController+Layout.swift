@@ -53,8 +53,8 @@ extension AlarmFiringViewController {
         view.addSubview(audioWarningBanner)
 
         let inset: CGFloat = AppSpacing.sp4      // 16pt — V2 spec uses sp4 edge padding
-        // 10pt CTA gap — tighter than the canon FiringDawn CTA column's 12,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:90-91` contains "gap: 12".
+        // 10pt CTA gap — matches canon FiringDawnV3,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:228-229` contains "{/* CTA */}".
         let gap: CGFloat = 10
 
         // Progressive escalation chrome — only mounted for alarms with the

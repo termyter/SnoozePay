@@ -2,7 +2,7 @@ import Foundation
 
 /// Resolves the alarm-context suffix shown on charge rows — e.g.
 /// "Будни · 07:00" — from a transaction's persisted `alarmID` (issue #282),
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:10` contains "Поспать ещё · Будни 7:00".
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:10` contains "07:05".
 ///
 /// A charge stores `alarmID` as the alarm's `UUID().uuidString`
 /// (`BalanceService.charge`). The owning alarm may have been edited or

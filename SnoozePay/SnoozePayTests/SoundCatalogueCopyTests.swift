@@ -43,8 +43,9 @@ import XCTest
 ///
 /// The names live under `common.*` because the words appear on two screens —
 /// the picker row and the alarms-list cell's sound pill
-/// (`AlarmsListViewController:546` → `AlarmCell:397-401`). Both now read the
-/// same key: #599 deleted the ten literals the cell used to carry.
+/// (`AlarmsListViewController`'s `tableView(_:cellForRowAt:)` → `AlarmCell`'s
+/// sound pill in `rebuildPills`). Both now read the same key: #599 deleted the
+/// ten literals the cell used to carry.
 ///
 /// One thing no layer here covers: `create_alarm.sound.subtitle.custom`
 /// («Скоро») reaches no screen at all. The picker substitutes
