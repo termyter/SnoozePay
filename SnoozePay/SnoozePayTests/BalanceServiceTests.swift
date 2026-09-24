@@ -665,9 +665,10 @@ final class AlarmFiringViewModelTests: XCTestCase {
         // Balance = exactly the penalty amount → the snooze is affordable.
         // The wallet starts empty in a fresh suite, so one top-up sets it.
         let alarm = alarm(penalty: 50)
-        XCTAssertTrue(wallet.topUp(amount: 50))
+        // MUTANT (#830): back on the shared wallet. The domain guard must fail this test.
+        XCTAssertTrue(BalanceService.shared.topUp(amount: 50))
 
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, balanceService: wallet)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, balanceService: BalanceService.shared)
         XCTAssertEqual(alarm.penalty(forSnoozeCount: 1), 50)
         XCTAssertTrue(vm.canSnooze, "a balance equal to the penalty must afford the snooze")
     }
