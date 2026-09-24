@@ -161,9 +161,10 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         XCTAssertEqual(lines.last?.level, .error, "the host miss keeps its own level: the alarm is still not up")
     }
 
-    /// AlarmKit's request used to write over the slot: a notification-path
-    /// record for another alarm went with no line (#835 addendum from #846).
-    func testRequestPresentation_overAnotherAlarmsRecord_dropsItAndNamesBothAlarms() {
+    /// AlarmKit's request used to write over the slot, and since #835 it
+    /// dropped the other alarm's record with an `.error` line. The queue keeps
+    /// both, in arrival order (#858).
+    func testRequestPresentation_overAnotherAlarmsRecord_queuesBehindIt() {
         let parked = Alarm()
         let requested = Alarm()
         let presenter = makePresenter(alarms: [parked, requested])
@@ -174,13 +175,8 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
 
         recording { presenter.requestPresentation(alarmID: requested.id) }
 
-        XCTAssertEqual(presenter.pendingPresentation, pending(requested, 0), "newest wins")
-        let drops = lines.filter { $0.message.contains("another alarm's pending screen is dropped") }
-        XCTAssertEqual(drops.count, 1, "the parked alarm went without a line: \(lines.map(\.message))")
-        let line = drops.first
-        XCTAssertEqual(line?.level, .error, "a lost alarm logged as a notice")
-        XCTAssertTrue(line?.message.contains("\(handle(parked)) at snooze 1") ?? false, "«\(line?.message ?? "")»")
-        XCTAssertTrue(line?.message.contains("\(handle(requested)) at snooze 0") ?? false, "«\(line?.message ?? "")»")
+        XCTAssertEqual(presenter.pendingPresentations, [pending(parked, 1), pending(requested, 0)])
+        XCTAssertFalse(lines.contains { $0.message.contains("dropped") }, "\(lines.map(\.message))")
     }
 
     /// AlarmKit's requests always carry 0. Over a parked `(A, 2)` that reset
@@ -233,10 +229,10 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         XCTAssertTrue(dismissed.last === stale)
     }
 
-    /// Another alarm is parked when a swap B → A starts. Parking A over it
-    /// would drop it, so the swap leaves it: A goes up, and the parked alarm
-    /// is raised after, as on main. The line names B, whose sound stops with
-    /// its screen.
+    /// Another alarm is parked when a swap B → A starts. A queues behind it
+    /// (#858) rather than dropping it: A goes up, and the parked alarm is
+    /// raised after, as on main. The line names B, whose sound stops with its
+    /// screen.
     func testSwap_withAnotherAlarmParked_leavesItAndRaisesItAfterTheSwap() throws {
         let arriving = Alarm()
         let parked = Alarm()
@@ -249,7 +245,7 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
 
         recording { _ = presenter.present(alarm: arriving) }
 
-        XCTAssertEqual(presenter.pendingPresentation, pending(parked, 0), "the swap dropped the parked alarm")
+        XCTAssertEqual(presenter.pendingPresentations, [pending(parked, 0), pending(arriving, 0)])
         let line = try XCTUnwrap(lines.first { $0.message.contains("swapping out") }, "\(lines.map(\.message))")
         XCTAssertTrue(line.message.contains("screen of alarm \(handle(ringing))"), "B is not named: «\(line.message)»")
         XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
@@ -267,8 +263,8 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
     }
 
     /// B's screen is going down for A's swap, and B asks again at its count.
-    /// No second dismiss, and B waits in the slot. A leaves the slot, but its
-    /// completion still puts it up, so the line must not call A dropped.
+    /// No second dismiss, and B waits in the queue behind A, which the swap's
+    /// completion puts up. Nothing is dropped, and no line says otherwise.
     func testReentry_forTheAlarmBeingSwappedOut_parksWithoutCallingTheSwapDropped() throws {
         let arriving = Alarm()
         let leaving = Alarm()
@@ -282,13 +278,10 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
 
         XCTAssertFalse(answer)
         XCTAssertEqual(dismissed.count, 1, "the leaving screen was dismissed twice")
-        XCTAssertEqual(presenter.pendingPresentation, pending(leaving, 1))
+        XCTAssertEqual(presenter.pendingPresentations, [pending(arriving, 0), pending(leaving, 1)])
         let line = try XCTUnwrap(lines.first { $0.message.contains("still being dismissed") }, "\(lines.map(\.message))")
         XCTAssertEqual(line.level, .default, "«\(line.message)»")
-        XCTAssertTrue(
-            line.message.contains("\(handle(arriving)) at snooze 0 leaves the slot but is still being swapped in"),
-            "«\(line.message)»"
-        )
+        XCTAssertTrue(line.message.contains("[\(handle(leaving)) at snooze 1]"), "«\(line.message)»")
         XCTAssertFalse(line.message.contains("dropped"), "«\(line.message)»")
     }
 
