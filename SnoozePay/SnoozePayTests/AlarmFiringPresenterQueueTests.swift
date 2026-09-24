@@ -222,6 +222,7 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         for path in ["direct", "settle"] {
             dismissed = []
             lines = []
+            top = nil
             defer { AudioService.shared.stopAlarmSound() }
             let alarm = Alarm()
             let other = Alarm()
@@ -242,6 +243,7 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
                 atOne = try XCTUnwrap(host.presentedScreens.first, path)
             } else {
                 atOne = makeScreen(alarm, snoozeCount: 1)
+                top = atOne
                 ring(alarm)
                 recording { XCTAssertTrue(presenter.present(alarm: alarm, snoozeCount: 1), path) }
                 XCTAssertTrue(lines.contains { $0.message.contains("up and ringing") }, "\(lines.map(\.message))")
