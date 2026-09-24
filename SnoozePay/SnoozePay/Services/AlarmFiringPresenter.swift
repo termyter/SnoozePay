@@ -344,7 +344,8 @@ final class AlarmFiringPresenter {
         // that answer: a present UIKit declined (the top still being dismissed
         // or presented, a detached host) lost it with only UIKit's console
         // warning behind (#833). Same read-back as the swap's completion.
-        return presentReadingBack(firingVC, on: topVC, request: request, context: "")
+        topVC.present(firingVC, animated: false) // MUTANT #833: no read-back, revert next commit
+        return true
     }
 
     /// Second half of the swap above: put `firingVC` up now that the stale
