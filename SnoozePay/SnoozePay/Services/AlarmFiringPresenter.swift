@@ -263,7 +263,11 @@ final class AlarmFiringPresenter {
     /// is dropped first, with a line (#858).
     private func attemptPendingPresentation() {
         dropExpiredPending()
-        guard let pending = pendingPresentation else { return }
+        guard let pending = pendingPresentation else {
+            // The flush is over: no record is left to swap a raised screen out.
+            raisedFromQueue = nil
+            return
+        }
         guard isRootReady() else {
             AppLogger.appDelegate.notice(
                 "firing-present: launch root not ready — deferring \(pending.logHandle, privacy: .public)"
@@ -280,8 +284,9 @@ final class AlarmFiringPresenter {
         attemptParkedPresentationSoon()
     }
 
-    /// The record this flush raised while more were queued. The next record
-    /// swaps its screen out, and that loss is an `.error` (#858 review).
+    /// The record this flush, or a swap's completion, raised while more were
+    /// queued. The next record swaps its screen out, and that loss is an
+    /// `.error` (#858 review, #875).
     private var raisedFromQueue: PendingPresentation?
 
     private func isExpired(_ queued: QueuedPresentation, at date: Date) -> Bool {
@@ -573,8 +578,9 @@ final class AlarmFiringPresenter {
     }
 
     /// Settles on the ringing screen a swap would rebuild and silence (#835).
-    /// A record of this alarm at a higher count is re-attempted on the next
-    /// turn wherever it sits in the queue, as on the direct path (#875).
+    /// While this alarm has a record at a higher count anywhere in the queue,
+    /// the next turn starts a flush from the queue's head, as on the direct
+    /// path (#875). The flush goes oldest first and ends on that higher count.
     private func settleOnRingingScreen(_ screen: AlarmFiringViewController) {
         let shown = PendingPresentation(on: screen)
         AppLogger.emit(
@@ -582,19 +588,32 @@ final class AlarmFiringPresenter {
             "firing-present: this alarm's screen is up and ringing — not swapping it [\(shown.logHandle)]"
         )
         clearPending(shownAs: shown)
-        if hasQueuedRecord(for: shown.alarmID) { attemptParkedPresentationSoon() }
+        runQueueSoonForHigherRecord(of: shown.alarmID)
     }
 
-    /// Whether `alarmID` has a record anywhere in the queue, not only at its
-    /// head. Asked right after `clearPending(shownAs:)`, where the only one it
-    /// can have left is a later ring: this alarm at a higher count.
+    /// Runs the queue on the next turn when `alarmID` has a record anywhere in
+    /// it, not only at its head. Called right after `clearPending(shownAs:)`,
+    /// where the only one it can have left is a later ring: this alarm at a
+    /// higher count.
     ///
     /// By the head alone (#875), such a record behind another alarm's waited
     /// for the next activation, and the screen stayed on the lower count's
     /// price. The retry itself still goes oldest first: the other alarm's
     /// record goes up before it, and this alarm's, the newer, stays on screen.
-    private func hasQueuedRecord(for alarmID: UUID) -> Bool {
-        pendingQueue.contains { $0.request.alarmID == alarmID }
+    ///
+    /// That order swaps a fresh screen out for an older alarm, which the
+    /// direct path otherwise never does, so it gets one line saying why. None
+    /// when this alarm's record is the head: the swap line that follows names
+    /// "a lower snooze count" and explains itself.
+    private func runQueueSoonForHigherRecord(of alarmID: UUID) {
+        guard let record = pendingQueue.first(where: { $0.request.alarmID == alarmID })?.request else { return }
+        if let head = pendingPresentation, head.alarmID != alarmID {
+            AppLogger.emit(
+                .appDelegate, .default,
+                "firing-present: [\(record.logHandle)] waits behind [\(head.logHandle)] — running the queue now"
+            )
+        }
+        attemptParkedPresentationSoon()
     }
 
     /// Second half of the swap above: put `firingVC` up now that the stale
@@ -749,8 +768,13 @@ final class AlarmFiringPresenter {
         }
         clearPending(shownAs: request)
         staleSurvivalRetries = 0
-        if raiseParked || hasQueuedRecord(for: request.alarmID) {
+        if raiseParked {
+            // Raised with records still queued behind it, as the flush raises
+            // one: the next swaps it out, and that loss is an `.error` (#875).
+            raisedFromQueue = pendingQueue.isEmpty ? nil : request
             attemptParkedPresentationSoon()
+        } else {
+            runQueueSoonForHigherRecord(of: request.alarmID)
         }
         return true
     }

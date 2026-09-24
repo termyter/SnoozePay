@@ -237,7 +237,6 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             line.message.hasSuffix("; the in-app sound is on [alarm \(alarm.id.uuidString.prefix(8)) at snooze 0]"),
             "nothing else was pending, so no outcome follows this alarm's handle: «\(line.message)»"
         )
-        XCTAssertTrue(line.message.contains("; the in-app sound is on"), "whether any sound is left: «\(line.message)»")
     }
 
     /// A swap for one alarm must not answer for another. The notification path
