@@ -294,17 +294,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    /// MUTANT (#844), reverted in the next commit: a new banner posted with a
-    /// literal identifier, which `BannerIdentifierSourceScanTests` must reject.
-    static func postPlantedLiteralBanner() {
-        let request = UNNotificationRequest(
-            identifier: "planted_banner_" + UUID().uuidString,
-            content: UNMutableNotificationContent(),
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-    }
-
     // MARK: - Permission UI
 
     private func presentNotificationsDisabledAlert() {
