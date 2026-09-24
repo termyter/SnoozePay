@@ -184,7 +184,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         // `AlarmFiringPresenterDropTests` gives: `stopAlarmSound()` is a no-op
         // on a stopped service, so "still ringing" asserted from a silent start
         // would pass with a `stopAlarmSound()` added to this branch.
-        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound")
+        AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound", alarmID: alarm.id)
         XCTAssertTrue(AudioService.shared.isPlaying, "test precondition: the alarm has to be audible")
         XCTAssertNil(presenter.pendingAlarmID, "test precondition: nothing is pending yet")
 
@@ -213,8 +213,7 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             AudioService.shared.isPlaying,
             """
             the retry is armed and nothing is torn down, so this branch leaves \
-            the audio alone — unlike the direct host miss in `present`, which \
-            arms the same retry but stops the audio
+            the audio alone, as the direct host miss in `present` does (#875)
             """
         )
 
@@ -234,7 +233,10 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         XCTAssertEqual(line.level, .error, "an alarm with no screen is a failure, not a notice")
         XCTAssertEqual(line.category, .appDelegate, "the category a support grep for the firing path filters by")
         XCTAssertTrue(
-            line.message.hasSuffix("; the in-app sound is on [alarm \(alarm.id.uuidString.prefix(8)) at snooze 0]"),
+            line.message.hasSuffix(
+                "; the in-app sound of \(alarm.id.uuidString.prefix(8)) is on; retrying on the next turn"
+                    + " [alarm \(alarm.id.uuidString.prefix(8)) at snooze 0]"
+            ),
             "nothing else was pending, so no outcome follows this alarm's handle: «\(line.message)»"
         )
     }

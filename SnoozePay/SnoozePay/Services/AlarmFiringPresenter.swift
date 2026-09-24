@@ -40,9 +40,9 @@ final class AlarmFiringPresenter {
     /// declines it (#833), when no host is found, or when the root is still
     /// the launch splash (#834). And by a swap, before its dismissal starts
     /// (#835). What a write may replace is `armRetry`'s rule. Flushed by
-    /// `flushPendingPresentation()` once the scene becomes active, and right
-    /// after a swap lands, so the firing
-    /// screen survives both a warm-foreground race and a cold start (#382).
+    /// `flushPendingPresentation()` once the scene becomes active, right after
+    /// a swap lands, and on the next turn after a host miss (#875), so the
+    /// firing screen survives both a warm-foreground race and a cold start (#382).
     ///
     /// The snooze count travels with the id because the retry rebuilds the
     /// screen from this record alone, and the penalty is priced from it
@@ -110,10 +110,10 @@ final class AlarmFiringPresenter {
     ///
     /// Seam for the same reason ``isRootReady`` is one — the real walk reads
     /// `UIApplication.shared.connectedScenes`, which a unit test cannot stage.
-    /// What it buys is the loudest branch this class has: audio silenced and no
-    /// screen raised, whose only evidence is one log line. Before #795 nothing
-    /// in the suite reached it, so deleting the line, the `stopAlarmSound()` or
-    /// the `return false` left the target green.
+    /// What it buys is the loudest branch this class has: no screen raised,
+    /// whose only evidence is one log line. Before #795 nothing in the suite
+    /// reached it, so deleting the line or the `return false` left the target
+    /// green.
     ///
     /// The default closure is the residue: with a test seam installed nothing
     /// evaluates it, so it is one unobservable line instead of an unobservable
@@ -192,6 +192,16 @@ final class AlarmFiringPresenter {
     /// Enough for a stale screen with one layer on it (dismissal takes the
     /// layer, the retry takes the screen) plus one spare.
     static let staleSurvivalRetryLimit = 2
+
+    /// Re-attempts spent on a host miss, in `present` or after a swap's
+    /// dismissal, since the last screen that went up (#875). In the foreground
+    /// nothing else raises the alarm before the next activation.
+    private var hostGoneRetries = 0
+
+    /// The host is usually back on the next turn. Gone for good, the retry
+    /// stops at the root gate, which reads the same locator; the bound covers
+    /// a firing screen found on every turn and no host after every dismissal.
+    static let hostGoneRetryLimit = 2
 
     /// Mounts the firing screen for `alarmID`, returning `false` when the screen
     /// is not up by the time it returns (the retry signal). Seam so the pending /
@@ -368,6 +378,14 @@ final class AlarmFiringPresenter {
     /// One line carries the miss, the owner and the decision, with the 8-digit
     /// handles `logHandle` uses on both sides, so a release log can tell the
     /// two alarms apart.
+    ///
+    /// The rule for every miss (#875): a miss that ends the alarm's record —
+    /// not found, fetch failed, expired — comes here, since that alarm has no
+    /// screen coming. A miss that keeps the record pending (no host, before
+    /// or after a swap; UIKit declining; the root not ready; a stale screen
+    /// still up) leaves the audio alone: its screen comes at the next retry or
+    /// activation, and restarts the sound only when `!usesAlarmKit`
+    /// (`AlarmFiringViewController.viewDidLoad`). `present` has the reasons.
     private func stopAudio(ifOwnedBy missing: PendingPresentation, _ miss: String) {
         // Check and stop in one step (#878), then log what was decided.
         let (stopped, owner) = AudioService.shared.stopAlarmSound(ifOwnedBy: missing.alarmID)
@@ -406,25 +424,25 @@ final class AlarmFiringPresenter {
         case let .success(located):
             topVC = located
         case let .failure(miss):
-            // The reason is the locator's: "no window scene" was true of only
-            // one of the three states this returns on, and the loudest one —
-            // audio stopped, screen never raised — is the state where a scene
-            // and windows exist but none of them can host a presentation.
+            // The reason is the locator's (#795): "no window scene" was true
+            // of only one of the three states this returns on.
             //
-            // The retry is armed here rather than left to the caller: the
-            // pending path keeps its record on `false`, but the notification
-            // path (`AppDelegate.presentAlarmFiringScreen`) discards the
-            // answer, so a miss there lost the alarm — no sound, no screen,
-            // nothing to raise it again (#834). The audio still stops: nothing
-            // on screen could silence it until the retry lands, and the screen
-            // the retry raises starts it again itself.
+            // Parked and re-armed here, not left to the caller: the
+            // notification path discards the answer (#834), and in the
+            // foreground `willPresent` shows no banner for a ringing alarm,
+            // so nothing else raises it before the next activation (#875).
+            // With no host the retry stops at the root gate (same locator).
             //
-            // Through `armRetry`, which writes with `AppLogger.emit`, because
-            // this line IS the outcome and #795 found it read by no test.
+            // The audio is left alone (`stopAudio(ifOwnedBy:_:)`'s rule): a
+            // silent pending alarm is a missed alarm, the worst outcome here.
+            // With its own sound on this is practically unreachable: a
+            // foreground scene has a host; the realistic miss is a cold-launch
+            // tap before the scene connects, with no in-app sound on. The old
+            // unconditional stop silenced another owner's sound (#854/#859).
+            //
             // `miss.rawValue` is a fixed sentence, so `emit`'s implicit
-            // `.public` is the marker it already carried.
-            armRetry(request, "firing-present: \(miss.rawValue) — stopping audio, keeping it pending")
-            AudioService.shared.stopAlarmSound()
+            // `.public` (through `armRetry`) is the marker it already carried.
+            retryHostMiss(request, "firing-present: \(miss.rawValue)")
             return false
         }
 
@@ -656,13 +674,8 @@ final class AlarmFiringPresenter {
         case let .success(located):
             top = located
         case let .failure(miss):
-            // Not stopped here, unlike in `present`, but a dismissed owner stops
-            // it in `viewDidDisappear`: the line says whether any sound is left.
-            let audio = AudioService.shared.state == .stopped ? "no in-app sound is on" : "the in-app sound is on"
-            armRetry(
-                retry,
-                "firing-present: \(miss.rawValue) after dismissing the previous screen — keeping it pending; \(audio)"
-            )
+            // The line says if a dismissed owner's `viewDidDisappear` left a sound on.
+            retryHostMiss(retry, "firing-present: \(miss.rawValue) after dismissing the previous screen")
             return
         }
 
@@ -695,6 +708,7 @@ final class AlarmFiringPresenter {
                     )
                     clearPending(shownAs: shown)
                     staleSurvivalRetries = 0
+                    hostGoneRetries = 0
                 case .olderCount?:
                     armRetry(
                         retry, level: .default,
@@ -767,6 +781,7 @@ final class AlarmFiringPresenter {
         }
         clearPending(shownAs: request)
         staleSurvivalRetries = 0
+        hostGoneRetries = 0
         if raiseParked {
             // Raised with records still queued behind it, as the flush raises
             // one: the next swaps it out, and that loss is an `.error` (#875).
@@ -788,16 +803,38 @@ final class AlarmFiringPresenter {
     /// follow-up swap never dismisses a screen that is still being presented.
     /// Called from the branches where a screen is up (on the direct path and
     /// for a ringing screen the swap keeps, only while this alarm has a record
-    /// at a higher count, #833/#835/#875), and from the one failure
-    /// branch that can still settle on its own — a stale screen that outlived
-    /// its dismissal — which counts its calls against
-    /// `staleSurvivalRetryLimit`, so it cannot spin. The other failure
-    /// branches leave the retry to the activation.
+    /// at a higher count, #833/#835/#875), and from two failure branches,
+    /// each counting its calls against its own limit so it cannot spin: a
+    /// stale screen that outlived its dismissal (`staleSurvivalRetryLimit`)
+    /// and a host miss, in `present` or after the dismissal
+    /// (`hostGoneRetryLimit`, #875). The other failure branches leave the
+    /// retry to the activation.
     private func attemptParkedPresentationSoon() {
         guard pendingPresentation != nil else { return }
         DispatchQueue.main.async { [weak self] in
             self?.attemptPendingPresentation()
         }
+    }
+
+    /// A host miss, in `present` or after a swap's dismissal: keeps the record
+    /// and the audio (`stopAudio(ifOwnedBy:_:)`'s rule) and re-arms on the next
+    /// turn, `hostGoneRetryLimit` times since the last screen went up (#875).
+    private func retryHostMiss(_ request: PendingPresentation, _ miss: String) {
+        let retrying = hostGoneRetries < Self.hostGoneRetryLimit
+        armRetry(
+            request, "\(miss) — keeping it pending; \(Self.inAppSoundNote); "
+                + (retrying ? "retrying on the next turn" : "waiting for the next activation")
+        )
+        guard retrying else { return }
+        hostGoneRetries += 1
+        attemptParkedPresentationSoon()
+    }
+
+    /// Whose in-app sound is on, for the line of a miss that leaves the audio
+    /// alone: the owner's 8-hex handle, by `AppDelegate.logHandle`.
+    private static var inAppSoundNote: String {
+        AudioService.shared.state == .stopped ? "no in-app sound is on"
+            : "the in-app sound of \(AppDelegate.logHandle(AudioService.shared.soundingAlarmID)) is on"
     }
 
     /// Drops the deferral once `shown` — an alarm at a snooze count — is on
@@ -911,9 +948,8 @@ final class AlarmFiringPresenter {
 
     /// Topmost presented VC of the window the locator picked, or the
     /// ``ActiveWindowLocator/Miss`` saying which of the three "nothing to
-    /// present on" states was hit — so `present` can name the one it stopped
-    /// the audio for instead of blaming the scene for all three. Reached by
-    /// `present(alarm:snoozeCount:)` through ``locateHost``.
+    /// present on" states was hit, so a miss line names it instead of blaming
+    /// the scene for all three. Reached through ``locateHost``.
     private static func locatedTopViewController() -> Result<UIViewController, ActiveWindowLocator.Miss> {
         switch ActiveWindowLocator.rootViewController() {
         case let .failure(miss):

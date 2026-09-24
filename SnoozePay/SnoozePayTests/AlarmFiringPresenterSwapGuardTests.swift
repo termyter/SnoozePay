@@ -584,7 +584,7 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         )
         XCTAssertTrue(
             AudioService.shared.isPlaying,
-            "a declined present waits for the retry with the alarm still ringing; only the host miss stops it"
+            "a declined present waits for the retry with the alarm still ringing, as the host miss does (#875)"
         )
         let line = try XCTUnwrap(lines.first { $0.message.contains("firing-present") }, "no line at all")
         XCTAssertTrue(
@@ -881,9 +881,9 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
     }
 
-    /// After a host miss the alarm is silent, and the only way its sound comes
-    /// back is the screen the retry raises: `AlarmFiringViewController`
-    /// starts it in `viewDidLoad` when AlarmKit does not own the sound.
+    /// A host miss leaves the sound on (#875), but a swapped-out owner can have
+    /// silenced it first. Then only the screen the retry raises brings it back:
+    /// `AlarmFiringViewController` starts it in `viewDidLoad` without AlarmKit.
     func testDirect_afterAHostMiss_theScreenTheFlushRaisesRestartsTheSound() throws {
         // The synthetic-tone fallback, as the audio precondition uses: the
         // bundle's files are not what this pins.
@@ -899,7 +899,8 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertTrue(AudioService.shared.isPlaying, "test precondition: the alarm has to be audible")
 
         XCTAssertFalse(presenter.present(alarm: alarm))
-        XCTAssertFalse(AudioService.shared.isPlaying, "test precondition: the miss silences the alarm")
+        XCTAssertTrue(AudioService.shared.isPlaying, "the miss silenced the alarm it keeps pending (#875)")
+        AudioService.shared.stopAlarmSound() // as a swapped-out owner's `viewDidDisappear` does
 
         let host = Host()
         top = host

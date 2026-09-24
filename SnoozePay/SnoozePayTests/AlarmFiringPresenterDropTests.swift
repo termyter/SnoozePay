@@ -3,19 +3,20 @@ import XCTest
 @testable import SnoozePay
 
 /// The branch where `AlarmFiringPresenter` finds no host: nothing in the scene
-/// can host the firing screen, so the audio is silenced, no screen goes up, and
-/// the alarm is parked for the next flush. It used to stop there, without
-/// parking anything; since #834 it arms the retry itself (pinned in
+/// can host the firing screen, so no screen goes up and the alarm is parked for
+/// the next flush. The audio is left alone since #875, as after a swap: the
+/// alarm's screen is still coming (`AlarmFiringPresenterMissRuleTests`). It
+/// used to stop there, without parking anything; since #834 it arms the retry
+/// itself (pinned in
 /// `AlarmFiringPresenterSwapGuardTests`, section "The notification path").
 ///
-/// It is the loudest outcome this class has — the user is left with an alarm
-/// that has stopped ringing and nothing to look at until the retry lands — and
-/// until #795 its only
+/// It is the loudest outcome this class has — the user is left with nothing to
+/// look at until the retry lands — and until #795 its only
 /// evidence was one `os.Logger` line that no test in the target read
 /// (`grep -rn "firing-present" SnoozePayTests/` found nothing). A line only
-/// unified logging can see is a line nobody can assert on, so deleting it, the
-/// `stopAlarmSound()` next to it, or the `return false` the pending-present
-/// retry (#382) keys off would all have left the suite green.
+/// unified logging can see is a line nobody can assert on, so deleting it or
+/// the `return false` the pending-present retry (#382) keys off would both
+/// have left the suite green.
 ///
 /// Reached through the ``AlarmFiringPresenter/locateHost`` seam, because the
 /// real walk reads `UIApplication.shared.connectedScenes` and a unit test owns
@@ -33,21 +34,20 @@ final class AlarmFiringPresenterDropTests: XCTestCase {
         super.tearDown()
     }
 
-    /// The whole outcome in one test: the line names the reason, the alarm goes
-    /// quiet, and the caller is told to retry.
-    func testPresent_whenNothingCanHostTheScreen_namesTheMissStopsTheAudioAndAsksForARetry() {
+    /// The whole outcome in one test: the line names the reason, the alarm
+    /// keeps ringing, and the caller is told to retry.
+    func testPresent_whenNothingCanHostTheScreen_namesTheMissKeepsTheSoundAndAsksForARetry() {
         let presenter = AlarmFiringPresenter(alarmRepository: .shared)
         presenter.locateHost = { .failure(.noHostingWindow) }
 
-        // Real audio, not a stand-in: `stopAlarmSound()` is a no-op on a
-        // stopped service, so asserting "stopped" from a stopped start would
-        // pass with the call deleted. A missing bundle sound falls back to the
-        // synthetic tone, which is how `AudioServiceTests` gets a playing
+        // Real audio, not a stand-in: "still ringing" asserted from a silent
+        // start would pass with a stop added back. A missing bundle sound
+        // falls back to the synthetic tone, which is how `AudioServiceTests` gets a playing
         // service without a device.
         AudioService.shared.startAlarmSound(soundID: "nonexistent_test_sound")
         XCTAssertTrue(
             AudioService.shared.isPlaying,
-            "test precondition: the alarm has to be audible, or «silenced» is not observable"
+            "test precondition: the alarm has to be audible, or «still ringing» proves nothing"
         )
 
         var lines: [Line] = []
@@ -64,11 +64,11 @@ final class AlarmFiringPresenterDropTests: XCTestCase {
             good instead of re-attempting on scene-active
             """
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             AudioService.shared.isPlaying,
             """
-            the audio has to stop when the screen cannot: an alarm that keeps \
-            ringing with no screen leaves the user no way to silence it
+            the miss keeps the alarm pending, so its sound is left alone (#875): \
+            silenced here, it waits for an activation the foreground app never gets
             """
         )
 
@@ -76,8 +76,8 @@ final class AlarmFiringPresenterDropTests: XCTestCase {
             return XCTFail(
                 """
                 the drop left no line the suite can read. This branch has no \
-                other evidence — no screen appears, and the audio stopping looks \
-                from the outside exactly like the user stopping it. The sink saw \
+                other evidence — no screen appears, and nothing else says why. \
+                The sink saw \
                 \(lines.map(\.message))
                 """
             )
@@ -92,7 +92,7 @@ final class AlarmFiringPresenterDropTests: XCTestCase {
         )
         XCTAssertEqual(
             line.level, .error,
-            "a silenced alarm with no screen is a failure, not the expected background-delivery notice"
+            "an alarm with no screen is a failure, not the expected background-delivery notice"
         )
         XCTAssertEqual(
             line.category, .appDelegate,
