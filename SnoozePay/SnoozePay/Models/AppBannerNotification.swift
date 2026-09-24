@@ -4,17 +4,22 @@ import Foundation
 /// carry no ``AlarmNotificationPayload`` and exist to be read (#842).
 ///
 /// The raw value is the request-identifier prefix. Each builder mints its
-/// identifier through ``makeIdentifier()``, and `willPresent` recognises a
-/// banner through ``init(identifier:)``, so both sides read the same list. A
-/// banner added without a case here has no identifier to build with, which is
-/// the point: before #842 the list lived only in the builders, and `willPresent`
-/// treated every one of these as a corrupt alarm — `[]` presentation options
-/// (the banner never showed while the app was in the foreground) and an
-/// `invalid alarm payload` error that sent diagnosis down the alarm path.
+/// identifier through ``makeIdentifier()``, and the notification delegate
+/// recognises a banner through ``init(identifier:)``
+/// (`AppDelegate.routeNotification(_:site:)`), so both sides read the same list.
+///
+/// ⚠️ That is a convention, not something the compiler enforces. A new banner
+/// posted with a literal identifier still compiles, and then fails exactly the
+/// way all four did before #842: `willPresent` suppresses it in the foreground
+/// (`[]`), a tap on it stops a ringing alarm, and the only trace is an
+/// `invalid alarm payload` `.error` line pointing at the alarm path. Add the
+/// case here and build the identifier with ``makeIdentifier()``.
 ///
 /// The strings are the ones the builders used before #842, kept verbatim: a
 /// banner scheduled by the previous build and delivered after an update still
-/// matches. `AppBannerNotificationTests` pins them.
+/// matches.
+/// `ForegroundNotificationRouteTests.testPreviousBuildsBannerIdentifiers_stillRouteAsBanners`
+/// pins them.
 enum AppBannerNotification: String, CaseIterable {
     /// `AppDelegate.postResumeAudioFailedBanner` — the alarm is ringing
     /// silently because the audio session could not be reclaimed (#405).
@@ -35,8 +40,10 @@ enum AppBannerNotification: String, CaseIterable {
     }
 
     /// The banner a request identifier belongs to, or `nil` for anything else
-    /// (alarms included). No prefix is a prefix of another, so at most one
-    /// case can match.
+    /// (alarms included). This takes the FIRST case that matches, so it relies
+    /// on no prefix being a prefix of another —
+    /// `ForegroundNotificationRouteTests.testNoBannerPrefixIsAPrefixOfAnother`
+    /// checks that.
     init?(identifier: String) {
         guard let match = Self.allCases.first(where: { identifier.hasPrefix($0.rawValue) }) else {
             return nil

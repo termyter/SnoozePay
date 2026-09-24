@@ -185,6 +185,12 @@ final class StoreKitServiceTests: XCTestCase {
         XCTAssertEqual(content?.body, "Баланс пополнен на 149 ₽.")
         // Immediate delivery — no trigger.
         XCTAssertNil(poster.requests.first?.trigger)
+        // Recognised as an app banner, so `willPresent` shows it in the
+        // foreground instead of dropping it as a bad alarm payload (#842).
+        XCTAssertEqual(
+            poster.requests.first.flatMap { AppBannerNotification(identifier: $0.identifier) },
+            .purchaseFeedback
+        )
     }
 
     /// With a screen mounted, the completed purchase broadcasts via
