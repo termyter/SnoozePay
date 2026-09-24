@@ -3,21 +3,6 @@ import Foundation
 import UserNotifications
 import os
 
-/// Minimal seam for posting an immediate local notification. Extracted so the
-/// deferred-purchase fallback (#45) can be unit-tested without bringing up the
-/// process-wide `UNUserNotificationCenter` singleton. Production uses
-/// `UNUserNotificationCenter.current()`; tests inject a spy.
-@MainActor
-protocol LocalNotificationPosting {
-    func add(_ request: UNNotificationRequest)
-}
-
-extension UNUserNotificationCenter: LocalNotificationPosting {
-    nonisolated func add(_ request: UNNotificationRequest) {
-        add(request, withCompletionHandler: nil)
-    }
-}
-
 /// Manages consumable In-App Purchases using StoreKit 2.
 /// Five fixed packages: 49, 149, 299, 499, 999 RUB.
 @MainActor
@@ -493,17 +478,19 @@ final class StoreKitService {
         content.title = title
         content.body = body
         content.sound = .default
-        // The prefix is what lets `AppDelegate.willPresent` show this in the
-        // foreground instead of dropping it as a bad alarm payload (#842).
-        let request = UNNotificationRequest(
-            identifier: AppBannerNotification.purchaseFeedback.makeIdentifier(),
-            content: content,
-            trigger: nil
-        )
         AppLogger.storeKit.notice(
             "deferred purchase feedback — no screen mounted, posting local notification"
         )
-        notificationPoster.add(request)
+        // The banner's prefix is what lets `AppDelegate.willPresent` show this
+        // in the foreground instead of dropping it as a bad alarm payload (#842).
+        // A refused add used to vanish without a line (#844). It goes through
+        // `emit` so `StoreKitServiceTests` can read it back.
+        notificationPoster.postAppBanner(.purchaseFeedback, content: content, trigger: nil) { error in
+            AppLogger.emit(
+                .storeKit, .fault,
+                "deferred purchase feedback banner failed: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func postPurchasePending() {

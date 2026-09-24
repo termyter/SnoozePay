@@ -250,7 +250,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// resume. Mirrors `postSnoozeScheduleFailedBanner` — a banner the system
     /// delivers is the only surface that reaches a user who isn't looking at
     /// the firing screen (#405).
-    private static func postResumeAudioFailedBanner() {
+    ///
+    /// The three banner builders are internal and take `poster` so
+    /// `AppBannerPostingTests` can see the request each one posts (#844).
+    static func postResumeAudioFailedBanner(
+        poster: LocalNotificationPosting = UNUserNotificationCenter.current()
+    ) {
         let content = UNMutableNotificationContent()
         content.title = "Будильник звучит беззвучно"
         content.body = "Не удалось включить звук — откройте приложение и выключите будильник вручную."
@@ -259,17 +264,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         content.interruptionLevel = .timeSensitive
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: AppBannerNotification.resumeAudioFailed.makeIdentifier(),
-            content: content,
-            trigger: trigger
-        )
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                AppLogger.appDelegate.fault(
-                    "resume-audio-failed banner failed: \(error.localizedDescription, privacy: .public)"
-                )
-            }
+        poster.postAppBanner(.resumeAudioFailed, content: content, trigger: trigger) { error in
+            AppLogger.appDelegate.fault(
+                "resume-audio-failed banner failed: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -277,7 +275,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// to re-arm on a clock/timezone/reboot/permission change (#442). The re-arm
     /// runs in the background (no UI on screen), so a system-delivered banner is
     /// the only surface that reaches the user.
-    private static func postRescheduleFailedBanner(failedCount: Int) {
+    static func postRescheduleFailedBanner(
+        failedCount: Int,
+        poster: LocalNotificationPosting = UNUserNotificationCenter.current()
+    ) {
         let content = UNMutableNotificationContent()
         content.title = "Будильники не перевзведены"
         content.body = "Не удалось перепланировать будильники (\(failedCount)) — "
@@ -286,17 +287,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         content.interruptionLevel = .timeSensitive
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: AppBannerNotification.rescheduleFailed.makeIdentifier(),
-            content: content,
-            trigger: trigger
-        )
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                AppLogger.appDelegate.fault(
-                    "reschedule-failed banner failed: \(error.localizedDescription, privacy: .public)"
-                )
-            }
+        poster.postAppBanner(.rescheduleFailed, content: content, trigger: trigger) { error in
+            AppLogger.appDelegate.fault(
+                "reschedule-failed banner failed: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -453,9 +447,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 self?.logSnoozeOutcome(outcome)
                 switch outcome {
                 case let .scheduleFailed(error):
-                    self?.postSnoozeScheduleFailedBanner(error: error, refundLanded: true)
+                    AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: true)
                 case let .scheduleFailedAndRefundFailed(error):
-                    self?.postSnoozeScheduleFailedBanner(error: error, refundLanded: false)
+                    AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: false)
                 default:
                     break
                 }
@@ -591,9 +585,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// a UIAlertController would never reach them — only a banner the system
     /// itself delivers will. The penalty has already been refunded by the
     /// coordinator before this is called (issue #130).
-    private func postSnoozeScheduleFailedBanner(
+    ///
+    /// `static` and internal since #844, like the other two builders, so a test
+    /// can drive it without an `AppDelegate` instance. It never read `self`.
+    static func postSnoozeScheduleFailedBanner(
         error: AlarmScheduler.SchedulingError,
-        refundLanded: Bool
+        refundLanded: Bool,
+        poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
         let detail = error.errorDescription ?? error.localizedDescription
         let content = UNMutableNotificationContent()
@@ -614,21 +612,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         // the minimum that survives the daemon's clamp without being silently
         // dropped, and is imperceptible to the user.
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: AppBannerNotification.snoozeScheduleFailed.makeIdentifier(),
-            content: content,
-            trigger: trigger
-        )
-        UNUserNotificationCenter.current().add(request) { fallbackError in
-            if let fallbackError = fallbackError {
-                // Even the fallback banner failed to register — usually
-                // because notification permission was revoked, which is
-                // exactly the same root cause the snooze hit. Nothing left
-                // to surface from a notification action context.
-                AppLogger.appDelegate.fault(
-                    "snooze fallback banner failed: \(fallbackError.localizedDescription, privacy: .public)"
-                )
-            }
+        poster.postAppBanner(.snoozeScheduleFailed, content: content, trigger: trigger) { fallbackError in
+            // Even the fallback banner failed to register — usually because
+            // notification permission was revoked, which is exactly the same
+            // root cause the snooze hit. Nothing left to surface from a
+            // notification action context.
+            AppLogger.appDelegate.fault(
+                "snooze fallback banner failed: \(fallbackError.localizedDescription, privacy: .public)"
+            )
         }
     }
 
