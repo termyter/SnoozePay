@@ -281,7 +281,7 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         XCTAssertEqual(presenter.pendingPresentations, [pending(arriving, 0), pending(leaving, 1)])
         let line = try XCTUnwrap(lines.first { $0.message.contains("still being dismissed") }, "\(lines.map(\.message))")
         XCTAssertEqual(line.level, .default, "«\(line.message)»")
-        XCTAssertTrue(line.message.contains("[\(handle(leaving)) at snooze 1]"), "«\(line.message)»")
+        XCTAssertTrue(line.message.contains("[alarm \(handle(leaving)) at snooze 1]"), "«\(line.message)»")
         XCTAssertFalse(line.message.contains("dropped"), "«\(line.message)»")
     }
 
