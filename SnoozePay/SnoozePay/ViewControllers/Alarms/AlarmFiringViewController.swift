@@ -390,14 +390,16 @@ class AlarmFiringViewController: UIViewController {
 
         // Stop alarm sound only if AudioService still belongs to *this*
         // alarm. Stacking handoff (alarm B fires while A is on-screen)
-        // could otherwise silence B.
-        if AudioService.shared.currentAlarmID == viewModel.alarm.id {
-            AudioService.shared.stopAlarmSound()
-        } else {
-            let ownerDesc = String(describing: AudioService.shared.currentAlarmID)
-            let ours = self.viewModel.alarm.id
-            AppLogger.audio.notice(
-                "viewDidDisappear: skip stop — owner=\(ownerDesc, privacy: .private), ours=\(ours, privacy: .private)"
+        // could otherwise silence B. Check and stop in one step (#880), and
+        // name the owner the decision was made on, not a second read.
+        let ours = viewModel.alarm.id
+        let (stopped, owner) = AudioService.shared.stopAlarmSound(ifOwnedBy: ours)
+        if !stopped {
+            // `OSLogType` has no `.notice`; `.default` is the same level.
+            AppLogger.emit(
+                .audio, .default,
+                "viewDidDisappear: skip stop — owner=\(AppDelegate.logHandle(owner)),"
+                    + " ours=\(AppDelegate.logHandle(ours))"
             )
         }
     }
@@ -593,16 +595,17 @@ class AlarmFiringViewController: UIViewController {
         viewModel.dismiss()
         isStoppedByUser = true
         onUserStop?()
-        if AudioService.shared.currentAlarmID == viewModel.alarm.id {
-            AudioService.shared.stopAlarmSound()
-        } else {
+        // Check and stop in one step (#880).
+        let ours = viewModel.alarm.id
+        let (stopped, owner) = AudioService.shared.stopAlarmSound(ifOwnedBy: ours)
+        if !stopped {
             // Stacking handoff (another alarm took over audio) — mirror the
             // diagnostic from `viewDidDisappear` so this primary dismiss path
             // isn't silent about skipping the stop (#199 observability).
-            let ownerDesc = String(describing: AudioService.shared.currentAlarmID)
-            let ours = viewModel.alarm.id
-            AppLogger.audio.notice(
-                "dismissTapped: skip stop — owner=\(ownerDesc, privacy: .private), ours=\(ours, privacy: .private)"
+            AppLogger.emit(
+                .audio, .default,
+                "dismissTapped: skip stop — owner=\(AppDelegate.logHandle(owner)),"
+                    + " ours=\(AppDelegate.logHandle(ours))"
             )
         }
         // `presentingViewController?.dismiss` unwinds both the firing VC and the
