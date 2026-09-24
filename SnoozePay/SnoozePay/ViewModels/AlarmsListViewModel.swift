@@ -38,9 +38,9 @@ final class AlarmsListViewModel {
     /// corrupt — negative / NaN / infinite `user_balance` (#119). Carries the
     /// raw offending value. The VC presents an alert offering to wipe the
     /// corrupt value via `acknowledgeBalanceCorruption()`. Covers BOTH the
-    /// live notification AND corruption latched at cold start before this VM
-    /// existed — `loadData()` pulls the latched state from the service, since
-    /// `NotificationCenter` does not retro-deliver to late subscribers (#206).
+    /// live notification AND corruption latched before this VM could hear it:
+    /// `loadData()` pulls the latched state from the service (#206), because
+    /// a notification that arrived before anyone listened is not replayed.
     var onBalanceCorrupted: ((Double) -> Void)?
     /// Fired on the main queue whenever the alarm-backend availability
     /// transitions (#428) — including the transition triggered by returning
@@ -73,9 +73,13 @@ final class AlarmsListViewModel {
     private var balanceObserver: NSObjectProtocol?
 
     /// Observer token for `balanceCorruptedNotification` — covers corruption
-    /// that latches while this VM is alive. Cold-start corruption (latched in
-    /// `BalanceService.init` before any observer exists) is instead pulled in
-    /// `loadData()` via `surfacePendingBalanceCorruption()` (#206).
+    /// that latches while this VM is alive. Since #851 the service posts on the
+    /// next main-queue pass, so even the `BalanceService.init` probe fired by
+    /// this VM's own `.shared` default reaches this observer, typically before
+    /// the VC has bound `onBalanceCorrupted`. `surfaceBalanceCorruption`
+    /// therefore leaves such a push unconsumed, and `loadData()` pulls it via
+    /// `surfacePendingBalanceCorruption()` (#206). A push posted and delivered
+    /// before this VM existed is not replayed; the same pull covers it.
     private var corruptionObserver: NSObjectProtocol?
 
     /// Dedupe latch so the corruption alert fires once per episode even
@@ -237,21 +241,24 @@ final class AlarmsListViewModel {
 
     // MARK: - Balance corruption (#119 / #206)
 
-    /// Pulls corruption state latched BEFORE this VM registered its observer
-    /// (cold start: AppDelegate materializes `BalanceService.shared`, whose
-    /// init-time probe posts `balanceCorruptedNotification` with no listener
-    /// attached — the event is dropped, see #206). Called from `loadData()`,
-    /// which the VC invokes after binding callbacks, so the alert is
-    /// guaranteed a live `onBalanceCorrupted` handler.
+    /// Pulls corruption state whose push this VM did not consume: latched
+    /// before its observer existed, or delivered before `onBalanceCorrupted`
+    /// was bound (see `surfaceBalanceCorruption`, #206, #851). Called from
+    /// `loadData()`, which the VC invokes after binding callbacks, so the
+    /// alert is guaranteed a live `onBalanceCorrupted` handler.
     private func surfacePendingBalanceCorruption() {
         guard balanceService.balanceCorrupted else { return }
         surfaceBalanceCorruption(rawValue: balanceService.corruptedRawValue ?? balance)
     }
 
+    /// Show the alert once per episode. With no handler bound nothing is
+    /// shown, so the dedupe latch stays open (#851): a push landing between
+    /// init and the VC's binding must not use up the episode, or the pull
+    /// in `loadData()` would be cut off by the latch and the alert never shown.
     private func surfaceBalanceCorruption(rawValue: Double) {
-        guard !hasSurfacedBalanceCorruption else { return }
+        guard !hasSurfacedBalanceCorruption, let handler = onBalanceCorrupted else { return }
         hasSurfacedBalanceCorruption = true
-        onBalanceCorrupted?(rawValue)
+        handler(rawValue)
     }
 
     /// Wipes the corrupt `user_balance` (resets to 0) after the user

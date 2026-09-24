@@ -229,10 +229,13 @@ final class AudioService {
     /// `.silentBecauseConfigFailed` branches can be reached. The simulator
     /// hands the session over every time, so without it the resume-failed
     /// path had no test. `nil` restores the real activation. Goes through
-    /// `queue`, like every other field the audio paths read.
+    /// `queue`, like every other field the audio paths read. DEBUG-only, like
+    /// `UITourLauncher`: a release build has no caller and no way to swap it.
+    #if DEBUG
     func overrideSessionActivation(_ activator: (() throws -> Void)?) {
         queue.sync { sessionActivator = activator ?? Self.playbackSessionActivator }
     }
+    #endif
 
     /// Configure the audio session for alarm playback (see
     /// `playbackSessionActivator`). Must only be called from `queue`.

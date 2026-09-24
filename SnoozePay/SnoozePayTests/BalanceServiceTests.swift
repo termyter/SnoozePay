@@ -625,16 +625,16 @@ final class BalanceServiceTests: XCTestCase {
 
     // MARK: - Cold-start corruption queryable by late observers (#206)
 
-    /// The init-time probe posts `balanceCorruptedNotification` BEFORE any UI
-    /// observer can exist (cold start: AppDelegate materializes the shared
-    /// instance first). NotificationCenter does not retro-deliver, so the
-    /// corruption state MUST stay queryable — `balanceCorrupted` +
-    /// `corruptedRawValue` — for the late subscriber to pull.
+    /// The init-time probe latches corruption before the first UI observer may
+    /// exist. Since #851 its `balanceCorruptedNotification` is delivered on the
+    /// next main-queue pass, and a subscriber that attaches after that pass
+    /// gets nothing replayed. So the corruption state MUST stay queryable —
+    /// `balanceCorrupted` + `corruptedRawValue` — for the late subscriber to pull.
     func testColdStartCorruption_stateQueryableByLateObserver() {
         let center = NotificationCenter()
         testDefaults.set(-77.25, forKey: "user_balance")
-        // Init probe latches corruption and posts with NO observer attached —
-        // the notification is dropped, simulating the cold-start race.
+        // Init probe latches corruption; nothing ever observes `center`, so
+        // its post finds no listener — the late-subscriber case.
         let service = BalanceService(defaults: testDefaults, notificationCenter: center)
 
         // A late observer arrives — no notification will ever replay, but the

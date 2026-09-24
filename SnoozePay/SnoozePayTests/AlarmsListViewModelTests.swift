@@ -649,8 +649,9 @@ final class AlarmsListViewModelCorruptionTests: XCTestCase {
         let center = NotificationCenter()
         testDefaults.set(rawBalance, forKey: "user_balance")
         // Service init runs its corruption probe HERE — before the VM (and
-        // its observer) exists. The posted notification is dropped, exactly
-        // like the cold-start AppDelegate access in #206.
+        // its observer) exists. Since #851 the post waits for the next main
+        // pass; these tests never drain main, so they see the pull alone.
+        // `testPushBeforeHandlerIsBound_isStillSurfacedByLoadData` drains.
         let service = BalanceService(defaults: testDefaults, notificationCenter: center)
         let vm = AlarmsListViewModel(
             alarmRepository: repo,
@@ -677,6 +678,42 @@ final class AlarmsListViewModelCorruptionTests: XCTestCase {
                        "Late observer must still learn about init-time corruption")
         XCTAssertEqual(vm.balance, 0,
                        "Corrupt balance must be reported as 0 to the list UI")
+    }
+
+    /// The push reaches the VM before the VC binds `onBalanceCorrupted` —
+    /// in the app, the `.shared` probe posts on the main pass after the VM's
+    /// init (#851). With no handler it must not use up the episode: binding
+    /// then `loadData()` still surfaces it, once.
+    func testPushBeforeHandlerIsBound_isStillSurfacedByLoadData() {
+        let center = NotificationCenter()
+        testDefaults.set(-42.0, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+        let vm = AlarmsListViewModel(
+            alarmRepository: repo,
+            balanceService: service,
+            transactionRepository: TransactionRepository(defaults: testDefaults),
+            notificationCenter: center
+        )
+        var pushes = 0
+        let token = center.addObserver(
+            forName: BalanceService.balanceCorruptedNotification,
+            object: service,
+            queue: nil
+        ) { _ in pushes += 1 }
+        defer { center.removeObserver(token) }
+
+        drainMainQueue()  // delivers the init-time push; no handler bound yet
+        XCTAssertEqual(pushes, 1, "test precondition: the push has to land before the handler is bound")
+
+        var received: [Double] = []
+        vm.onBalanceCorrupted = { received.append($0) }
+        vm.loadData()
+        drainMainQueue()
+
+        XCTAssertEqual(
+            received, [-42.0],
+            "the unbound push consumed the episode, so loadData's pull was cut off and no alert showed"
+        )
     }
 
     /// The alert must fire once per corruption episode — `loadData()` runs on
