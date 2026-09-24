@@ -897,6 +897,19 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         let raised = try XCTUnwrap(host.presentedScreens.first as? ReadBackFiringScreen, "the flush raised nothing")
         XCTAssertFalse(raised.viewModel.usesAlarmKit, "test precondition: the notification path owns the sound")
         raised.loadViewIfNeeded()
+        // A loaded screen must not outlive the test. `viewDidLoad` registers a
+        // main-queue observer for `AudioService.stateChangedNotification`,
+        // which AudioService posts synchronously on its serial queue: while
+        // the observer lives, a start/stop from a background thread waits on
+        // main, and main waits on that queue. Kept alive through `top`, it
+        // hung `AudioServiceTests.testConcurrentStartStop_doesNotCorruptState`
+        // for the rest of the run. Same teardown as `FiringCopyTests`:
+        // `viewDidDisappear` stops the sound and the ticker, and dropping the
+        // last reference lets `deinit` remove the observers.
+        defer {
+            raised.viewDidDisappear(false)
+            top = nil
+        }
 
         XCTAssertTrue(
             AudioService.shared.isPlaying,
