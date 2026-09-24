@@ -145,9 +145,10 @@ final class AudioService {
     /// `nil` posts without `userInfo`. `self` is the app-lifetime singleton,
     /// so the strong capture costs nothing.
     private func postOnMain(_ name: Notification.Name, state: AudioPlaybackState? = nil) {
-        // MUTATION (#848): synchronous post inside `queue`, as before the fix.
-        let userInfo: [AnyHashable: Any]? = state.map { [Self.stateUserInfoKey: $0] }
-        NotificationCenter.default.post(name: name, object: self, userInfo: userInfo)
+        DispatchQueue.main.async {
+            let userInfo: [AnyHashable: Any]? = state.map { [Self.stateUserInfoKey: $0] }
+            NotificationCenter.default.post(name: name, object: self, userInfo: userInfo)
+        }
     }
 
     /// Backwards-compatible boolean. `true` only when actually playing real audio.
