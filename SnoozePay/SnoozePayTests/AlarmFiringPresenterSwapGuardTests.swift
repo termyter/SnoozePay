@@ -206,9 +206,9 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertNil(presenter.pendingPresentation)
     }
 
-    /// Taking the pending slot from another alarm loses that alarm, so the
-    /// park line is an error then, whatever level the park itself logs at.
-    func testReentry_whenParkingDisplacesAnotherAlarm_logsAnError() {
+    /// Parking used to take the slot from another alarm and lose it. The
+    /// queue keeps every alarm, in arrival order, and no line claims a drop.
+    func testReentry_whileAnotherAlarmIsParked_queuesBehindIt() {
         let first = Alarm()
         let other = Alarm()
         let arriving = Alarm()
@@ -217,13 +217,14 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
 
         _ = presenter.present(alarm: first)
         presenter.requestPresentation(alarmID: other.id)
-        XCTAssertEqual(presenter.pendingAlarmID, other.id, "test precondition: another alarm is parked")
+        XCTAssertEqual(presenter.pendingPresentations.map(\.alarmID), [first.id, other.id], "test precondition")
         AppLogger.withTestSink({ self.lines.append(($0, $1, $2)) }, perform: {
             _ = presenter.present(alarm: arriving)
         })
 
-        let line = lines.first { $0.message.contains("dropped") }
-        XCTAssertEqual(line?.level, .error, "a lost alarm logged as a notice: \(lines.map(\.message))")
+        XCTAssertEqual(presenter.pendingPresentations.map(\.alarmID), [first.id, other.id, arriving.id])
+        XCTAssertEqual(lines.count, 1, "\(lines.map(\.message))")
+        XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
     }
 
     // MARK: - The marker's lifetime
@@ -859,11 +860,10 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
         XCTAssertEqual(line.level, .error)
     }
 
-    /// The slot holds one alarm. AlarmKit's B is parked during the splash and
-    /// the notification path's A parks over it: A takes the slot, newest wins
-    /// as `armRetry` rules, and B's loss has to be said at `.error`. Pinned so
-    /// #835 changes it on purpose, not by accident.
-    func testDirect_overANotReadyRoot_whileAnotherAlarmIsParked_takesTheSlotAndSaysSo() {
+    /// AlarmKit's B is parked during the splash and the notification path's A
+    /// parks after it. The slot let A take it and lost B; the queue keeps
+    /// both, B first (#858).
+    func testDirect_overANotReadyRoot_whileAnotherAlarmIsParked_queuesBehindIt() {
         let parked = Alarm()
         let arriving = Alarm()
         let presenter = makePresenter(alarms: [parked, arriving])
@@ -876,13 +876,9 @@ final class AlarmFiringPresenterSwapGuardTests: XCTestCase {
             _ = presenter.present(alarm: arriving)
         })
 
-        XCTAssertEqual(
-            presenter.pendingPresentation,
-            AlarmFiringPresenter.PendingPresentation(alarmID: arriving.id, snoozeCount: 0)
-        )
-        let dropped = lines.filter { $0.message.contains("another alarm's pending screen is dropped") }
-        XCTAssertEqual(dropped.count, 1, "B's retry went without exactly one line saying so: \(lines.map(\.message))")
-        XCTAssertEqual(dropped.first?.level, .error, "a lost alarm logged as a notice")
+        XCTAssertEqual(presenter.pendingPresentations.map(\.alarmID), [parked.id, arriving.id])
+        XCTAssertEqual(lines.count, 1, "\(lines.map(\.message))")
+        XCTAssertFalse(lines.contains { $0.level == .error }, "nothing was lost: \(lines.map(\.message))")
     }
 
     /// After a host miss the alarm is silent, and the only way its sound comes

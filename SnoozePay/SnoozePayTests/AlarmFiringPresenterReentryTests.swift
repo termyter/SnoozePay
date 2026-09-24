@@ -306,12 +306,10 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
         )
     }
 
-    /// The failure branch of `mountAfterDismissal` takes the pending slot,
-    /// which holds one alarm. When a different alarm was waiting in it, that
-    /// alarm's retry is gone: the line has to say so, once, naming it. The
-    /// swap's start leaves that record alone (#835), so the drop is the
-    /// completion's.
-    func testReentry_whenTheHostIsGoneWhileAnotherAlarmWasPending_saysThatDeferralIsDropped() throws {
+    /// The failure branch of `mountAfterDismissal` re-arms the swap's request.
+    /// When the pending slot held one alarm, a different alarm waiting in it
+    /// lost its retry there. The queue keeps both, in arrival order (#858).
+    func testReentry_whenTheHostIsGoneWhileAnotherAlarmWasPending_keepsThatDeferral() throws {
         let deferred = UUID()
         let arriving = Alarm()
         let stale = RecordingFiringScreen(alarm: Alarm())
@@ -332,14 +330,20 @@ final class AlarmFiringPresenterReentryTests: XCTestCase {
             finishDismissal()
         })
 
-        let drops = lines.filter { $0.message.contains("another alarm's pending screen is dropped") }
-        XCTAssertEqual(drops.count, 1, "the other alarm lost its retry, said once: \(lines.map(\.message))")
-        XCTAssertEqual(drops.first?.level, .error)
+        let rearms = lines.filter { $0.message.contains("after dismissing the previous screen — keeping it pending") }
+        XCTAssertEqual(rearms.count, 1, "the failure branch did not re-arm: \(lines.map(\.message))")
         XCTAssertTrue(
-            drops.first?.message.contains(String(deferred.uuidString.prefix(8))) ?? false,
-            "the line has to name the alarm it dropped: \(lines.map(\.message))"
+            rearms.first?.message.contains("[alarm \(arriving.id.uuidString.prefix(8)) at snooze 0]") ?? false,
+            "\(lines.map(\.message))"
         )
-        XCTAssertEqual(presenter.pendingAlarmID, arriving.id, "the swap's own request is what stays parked")
+        XCTAssertFalse(
+            lines.contains { $0.message.contains(String(deferred.uuidString.prefix(8))) },
+            "the deferred alarm was touched: \(lines.map(\.message))"
+        )
+        XCTAssertEqual(
+            presenter.pendingPresentations.map(\.alarmID), [deferred, arriving.id],
+            "both alarms have to stay armed, the older one first"
+        )
     }
 
     /// The #798 path itself: AlarmKit defers the alarm, the swap runs, and no
