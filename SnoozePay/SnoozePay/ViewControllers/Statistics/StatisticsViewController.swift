@@ -170,10 +170,12 @@ final class StatisticsViewController: UIViewController {
     /// Wraps instead of squeezing its neighbour (#519). The longest of the three
     /// headlines measures 245pt at h3, and with the arrow (18) + row gap (12) it
     /// overruns the ~330pt card interior, so the "Эта неделя" caption opposite it
-    /// used to lose its tail («Эта не…»). The canon prototype puts both in a flex
-    /// row where the headline is the side that reflows (`SPMore4.jsx:282-301`,
-    /// `min-width: 0` on the text column) — so two lines here is the designed
-    /// behaviour, not a compromise. The lowered compression resistance is what
+    /// used to lose its tail («Эта не…»). The prototype puts both in a flex
+    /// row where the headline is the side that reflows —
+    /// `docs/design/v2-handoff/components/SPMore4.jsx:282-301` contains "trendHeadline"
+    /// (handoff only: the canon `Stats()` has no trend card) — so two lines
+    /// here is the designed behaviour, not a compromise. The lowered
+    /// compression resistance is what
     /// picks this label, rather than the caption, as the one that gives way.
     let trendHeadlineLabel: UILabel = {
         // `SPWrappingLabel`, not `UILabel` — see that type for why a plain

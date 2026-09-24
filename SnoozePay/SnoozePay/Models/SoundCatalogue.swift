@@ -3,7 +3,9 @@ import Foundation
 /// Static source of truth for the alarm-sound catalogue surfaced in the V3
 /// sound picker (`SoundPickerViewController`, #285).
 ///
-/// The design (`SPMore.jsx:330-409`) renders each sound as a card row with a
+/// The design (`SoundPicker()`,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:294-374` contains "function SoundPicker")
+/// renders each sound as a card row with a
 /// descriptive Russian subtitle («Тёплый рассвет с птицами» style) plus a
 /// trailing «Своя мелодия · скоро» slot that is visually present but disabled
 /// until custom-import ships. Keeping this as a plain value type (no UIKit)

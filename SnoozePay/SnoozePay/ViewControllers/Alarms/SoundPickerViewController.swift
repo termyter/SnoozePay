@@ -3,7 +3,8 @@ import AudioToolbox
 
 /// Full-screen sound picker pushed onto the navigation stack (V3 — #285).
 ///
-/// Structure per `SPMore.jsx:330-409`:
+/// Structure per `SoundPicker()`,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:294-374` contains "function SoundPicker":
 /// - a single `SPCard` list — each row is a `SoundPickerRowCell` (36×36 icon
 ///   tile, descriptive subtitle, trailing money checkmark on the selected
 ///   row), with a disabled «Своя мелодия · скоро» slot pinned at the bottom;
@@ -119,7 +120,8 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
 
     private let previewPlayGradient = CAGradientLayer()
 
-    /// Progress track + fill + timecode, per `SPMore.jsx:358-363` — a 3pt
+    /// Progress track + fill + timecode, per
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:362-365` contains "0:08 / 0:24" — a 3pt
     /// white-08 rail with a money-gradient fill and a «0:08 / 0:24» meta label.
     /// The fill is driven by a `CADisplayLink` keyed to the sound's expected
     /// preview length (system sounds are fire-and-forget, so the bar reflects
@@ -269,7 +271,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         //
         // Wrapped so the iOS 26 shared glass capsule stays off it (#666): the
         // canon header at
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313`
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313` contains "quiet"
         // is a bare quiet pill, and the
         // capsule would draw a second ring around a control that already
         // carries its own `--sp-white-06` fill. Same call the alarm form makes
@@ -288,23 +290,29 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         // padding 0 card → pin the table to the card edges; the horizontal
         // inset is drawn per-row by `SoundPickerRowCell` instead. That inset is
         // 16 and it IS canon: the sound buttons carry `padding: "14px 16px"`
-        // (`SPMore.jsx:323`), the rule `SoundPickerRowCell.swift:125` cites.
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:323` contains "14px 16px"),
+        // the rule `SoundPickerRowCell`'s `hInset` cites.
         //
         // There is no `4px 20px` row rule in the prototype, and an earlier
         // version of this comment claimed one. As a standalone padding value
         // that shorthand occurs exactly once, and not on a row: it is
         // `padding: "4px 20px 12px"` on a theme block inside a settings card
-        // on another artboard (`SPMore4.jsx:212`). A plain substring grep for
-        // `4px 20px` looks like five hits because four screen-section
-        // containers read `padding: "24px 20px 0"` (`SPScreensV2.jsx:581`,
-        // `SPMore2.jsx:196` and `:412`, `SPMore3.jsx:193`) — one of those with
-        // its leading `2` dropped is the likeliest origin of the invented
-        // rule. None of the five is a row inset (#685).
+        // on another artboard,
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px".
+        // A plain substring grep for `4px 20px` looks like five hits because
+        // four screen-section containers read `padding: "24px 20px 0"`:
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:581` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:196` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:412` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:193` contains "24px 20px 0".
+        // One of those with its leading `2` dropped is the likeliest origin
+        // of the invented rule. None of the five is a row inset (#685).
         //
         // One real divergence remains: canon wraps the list in
-        // `<SPCard padding={4} radius={20}>` (`SPMore.jsx:317`), so the
-        // prototype lands row content at 4+16 = 20pt from the card edge, while
-        // this card's padding 0 lands it at 16pt.
+        // `<SPCard padding={4} radius={20}>`
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:317` contains "SPCard padding={4}"),
+        // so the prototype lands row content at 4+16 = 20pt from the card
+        // edge, while this card's padding 0 lands it at 16pt.
         listCard.addSubview(tableView)
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: listCard.topAnchor),
@@ -630,15 +638,19 @@ extension SoundPickerViewController {
         NSLayoutConstraint.activate([
             // 20pt here is chosen by hand, not taken from canon, and it does
             // not match the sound rows either — those sit at 16 (`sp4`, per
-            // `SPMore.jsx:323`). The earlier «padding "4px 20px"» citation was
+            // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:323` contains "14px 16px").
+            // The earlier «padding "4px 20px"» citation was
             // wrong twice over: no such row rule exists in the prototype — as
             // a standalone value that shorthand appears once, on a theme block
-            // (`SPMore4.jsx:212`); see the note in `setupContent()` for why a
+            // (`docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px");
+            // see the note in `setupContent()` for why a
             // grep makes it look like five — and the sound rows it claimed to
             // match use a different inset (#685).
             //
             // Canon for a row card of this family is `<SPCard padding={4}>`
-            // (`SPMore.jsx:266`, `SPMore2.jsx:420`) wrapping `.sp-row`, which
+            // (`docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:266` contains "SPCard padding={4}",
+            // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:420` contains "SPCard padding={4}")
+            // wrapping `.sp-row`, which
             // has `padding: 14px 0` (`components.css:86-88`) — 4pt, not 20.
             // The 20 is kept because it is the same number the rest of the app
             // settled on for row insets, each by its own route:

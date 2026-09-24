@@ -121,7 +121,8 @@ final class SPPill: UIView {
     }
 
     /// Two-tier balance variant — a muted caps label segment («Баланс») next
-    /// to a bold value segment («840 ₽»), per `SPDawnV3.jsx:97-109`
+    /// to a bold value segment («840 ₽»), per
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:97-109` contains "function BalancePill"
     /// (`dawn-bal__label` at .55 alpha + bold `dawn-bal__value`). Both segments
     /// inherit the tone foreground; only the label is dimmed. The value keeps a
     /// hair of tracking so the mono-ish digits don't crowd the glyph.

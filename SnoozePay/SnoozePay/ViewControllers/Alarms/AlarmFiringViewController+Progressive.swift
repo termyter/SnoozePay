@@ -41,8 +41,9 @@ extension AlarmFiringViewController {
         pillRow.axis = .horizontal
         pillRow.spacing = AppSpacing.sp1 + 2   // 6pt — matches SPPill's internal gap recipe
         pillRow.alignment = .center
-        // Hidden until the first snooze (`SPDawnV3.jsx:216`). `updateUI`
-        // un-hides it once `snoozeCount > 0`.
+        // Hidden until the first snooze
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:216` contains "snoozes > 0").
+        // `updateUI` un-hides it once `snoozeCount > 0`.
         pillRow.isHidden = true
         progressivePillRow = pillRow
 
@@ -73,14 +74,17 @@ extension AlarmFiringViewController {
     }
 
     /// Indicator pill copy «Прогрессив · {n}-й поспать ещё» where
-    /// n = snoozeCount + 1 (`SPDawnV3.jsx:219-221`). Pure function so the copy
-    /// is unit-testable without loading the view hierarchy.
+    /// n = snoozeCount + 1
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:219-221` contains "Прогрессив").
+    /// Pure function so the copy is unit-testable without loading the view
+    /// hierarchy.
     static func progressivePillText(snoozeCount: Int) -> String {
         Localized.format("firing.progressive.pill", snoozeCount + 1)
     }
 
     /// `true` when the indicator pill should be visible — only after the first
-    /// snooze (`SPDawnV3.jsx:216`). Pure for the same testability reason.
+    /// snooze (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:216` contains "snoozes > 0").
+    /// Pure for the same testability reason.
     static func progressivePillVisible(snoozeCount: Int) -> Bool {
         snoozeCount > 0
     }
@@ -97,7 +101,7 @@ extension AlarmFiringViewController {
 
     /// Replace the ticker chip row in place with one built from the VM's
     /// current penalty history. Coloured mini-pills with «·» separators per
-    /// `SPDawnV3.jsx:114-136`.
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:114-136` contains "function TickerRow".
     ///
     /// The chips list money actually taken (`pastPenalties` now reads the
     /// ledger, #400), while the pill above — and the `ladderSteps` rungs, which

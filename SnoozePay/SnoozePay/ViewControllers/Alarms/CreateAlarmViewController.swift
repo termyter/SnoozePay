@@ -127,10 +127,11 @@ final class CreateAlarmViewController: UIViewController {
     /// and why the recipe lives there rather than here since #666 — are in that
     /// function's doc comment.
     private func setupNavigationBar() {
-        // V2 nav bar. Two modes differ by design (SPMore2.jsx `AlarmEdit`
-        // artboard 10 vs `SPScreensV2.jsx` lines 496-502):
-        //   • create — left X close chip, right `Готово` money button
-        //   • edit   — left `Отмена` quiet button, right `Сохранить` money button
+        // V2 nav bar. Two modes differ by design:
+        //   • create — left X close chip, right `Готово` money button,
+        //     `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:520-526` contains "Новый будильник"
+        //   • edit   — left `Отмена` quiet button, right `Сохранить` money button,
+        //     `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:138-142` contains "Сохранить"
         // The UIKit navigation bar still owns layout (we keep `title` set on
         // viewDidLoad for accessibility), but the left/right items are custom
         // views so the brand styling sticks.
@@ -374,7 +375,9 @@ extension CreateAlarmViewController: UITableViewDataSource {
         switch sec {
         // The «Цена откладывания» / «Длительность откладывания» captions + hints
         // now live inside PenaltyCell / SnoozeSliderCell per the design canon
-        // (SPMore2.jsx:268-269), so these sections are header-less (#278). The
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:238-239` contains "Цена откладывания",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:201-202` contains "Длительность"),
+        // so these sections are header-less (#278). The
         // word «штраф» is gone — it never existed in the design copy.
         // Name no longer carries a header — the large in-cell placeholder
         // already reads as the field's purpose (#143). The settings and

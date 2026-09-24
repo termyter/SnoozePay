@@ -469,14 +469,18 @@ final class WalletTransactionHistoryViewController: UIViewController {
         return container
     }
 
-    /// 36×36 leading tile with an 18pt glyph — `SPMore3.jsx:83`.
+    /// 36×36 leading tile with an 18pt glyph —
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:84` contains "width: 36, height: 36".
     private static let tileSide: CGFloat = 36
     private static let glyphSide: CGFloat = 18
 
     static func makeAmountLabel(for transaction: Transaction) -> UILabel {
         let label = UILabel()
         // Row sums use money-md (700 20px mono) per design, not 14pt moneySm
-        // (#321; full history SPMore3.jsx:178, role "Row sums" SPDesignSystem.jsx:254).
+        // (#321; full history
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:92` contains "sp-t-money-md",
+        // role «Row sums»
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDesignSystem.jsx:254` contains "Row sums").
         label.font = AppTypography.moneyMd
         label.translatesAutoresizingMaskIntoConstraints = false
         let direction = WalletLedgerDirection(transaction.type)
@@ -572,7 +576,8 @@ extension WalletTransactionHistoryViewController {
                 .foregroundColor: selected ? AppColors.bg0 : AppColors.fg2
             ])
         )
-        // Canon is `padding: "8px 14px"` (`SPMore3.jsx:59`); the code had
+        // Canon is `padding: "8px 14px"`
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:60` contains "8px 14px"); the code had
         // drifted to a magic 7/12. `sp2` is 8 exactly; 14 has no token of its
         // own, so it is written as the grid step it actually is.
         configuration.contentInsets = NSDirectionalEdgeInsets(

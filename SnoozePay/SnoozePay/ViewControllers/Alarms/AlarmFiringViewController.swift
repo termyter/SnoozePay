@@ -160,8 +160,11 @@ class AlarmFiringViewController: UIViewController {
     /// swapping between the normal (balance OK) and no-balance layouts.
     /// V2 spec calls for the full «Я встал — выключить» copy, ghost variant,
     /// lg size, full-width, with a leading 18pt checkmark and a heavier 1.5pt
-    /// white .22 stroke — matches `SPThemedFiring.jsx:188-203`. The stroke
-    /// override is applied in `buildFiringLayout`.
+    /// white .22 stroke — matches
+    /// `docs/design/v2-handoff/components/SPThemedFiring.jsx:188-203` contains "rgba(255,255,255,.22)"
+    /// (handoff only: the canon has no themed firing, and its `FiringDawnV3`
+    /// wake button strokes at .18). The stroke override is applied in
+    /// `buildFiringLayout`.
     let dismissButton = SPButton(
         title: Localized.text("firing.button.dismiss"),
         variant: .ghost,
@@ -234,7 +237,8 @@ class AlarmFiringViewController: UIViewController {
     var progressivePill: SPPill?
 
     /// Dot + pill wrapper row. Hidden until the first snooze
-    /// (`SPDawnV3.jsx:216`); `updateUI()` un-hides it once `snoozeCount > 0`.
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:216` contains "snoozes > 0");
+    /// `updateUI()` un-hides it once `snoozeCount > 0`.
     var progressivePillRow: UIStackView?
 
     /// Pulsing dot rendered to the left of `progressivePill`. CABasicAnimation
@@ -452,12 +456,14 @@ class AlarmFiringViewController: UIViewController {
     }
 
     /// Snooze CTA hint — «следующее откладывание: N ₽» (lowercase per
-    /// `SPDawnV3.jsx:240`) when progressive is active and not at the price
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:241` contains "следующее откладывание")
+    /// when progressive is active and not at the price
     /// ceiling. Mirrors `SPScreensV2.jsx` line 96.
     /// V1 passed nil here; V2 surfaces the escalating cost so the user can
     /// see what they're agreeing to. Once the ladder caps at `base × 8` there
     /// is no higher price to show, so we swap in the max-step copy
-    /// «максимум — дальше только встать» (lowercase per `SPDawnV3.jsx:242`).
+    /// «максимум — дальше только встать» (lowercase per
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:242` contains "максимум").
     func snoozeHintText() -> String? {
         guard viewModel.isProgressiveActive else { return nil }
         // Probe the alarm's penalty schedule one step ahead. The double-snooze
@@ -469,7 +475,8 @@ class AlarmFiringViewController: UIViewController {
         }
         let next = viewModel.alarm.penalty(forSnoozeCount: nextCount)
         let nextInt = Int(next.rounded())
-        // Lowercase «следующее откладывание: …» per `SPDawnV3.jsx:240`.
+        // Lowercase «следующее откладывание: …» per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:241` contains "следующее откладывание".
         return Localized.format("firing.hint.next_price", MoneyFormatter.string(nextInt))
     }
 
@@ -517,8 +524,9 @@ class AlarmFiringViewController: UIViewController {
         if !viewModel.canSnooze {
             tone = .drained
         } else if viewModel.isProgressiveActive && viewModel.currentPenalty >= 200 {
-            // Tense once the live snooze price crosses 200 ₽ (`SPDawnV3.jsx:
-            // 185` — `price >= 200 ? "tense"`), not at the intensity midpoint.
+            // Tense once the live snooze price crosses 200 ₽, not at the
+            // intensity midpoint:
+            // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:185` contains "price >= 200".
             tone = .tense
         } else {
             tone = .calm

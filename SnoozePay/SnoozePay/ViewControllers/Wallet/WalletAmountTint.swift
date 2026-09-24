@@ -45,7 +45,8 @@ enum WalletLedgerDirection: Equatable {
 /// re-resolves itself.
 ///
 /// Step choice is the `400` one from the canon prototype
-/// (`SPMore3.jsx:92` — `var(--sp-pain-400)` / `var(--sp-money-400)`), which
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:92` contains "var(--sp-pain-400)" —
+/// `var(--sp-pain-400)` / `var(--sp-money-400)`), which
 /// after #489 measures on the light card surface (`bg1` = `#FFFFFF`):
 ///
 ///     money400 #0B7B56  5.27:1      pain400 #C04032  5.22:1
@@ -82,9 +83,12 @@ enum WalletAmountTint {
 /// Ink for the wallet's quiet meta copy — the footer disclaimer and the
 /// weekday initials under the 7-day chart.
 ///
-/// The canon prototype paints both `--sp-fg-4` (`SPScreensV2.jsx:474`), and
-/// in DARK they stay exactly that: 2.55:1, deliberately quiet, untouched by
-/// this issue.
+/// The canon prototype paints both `--sp-fg-4` — the footer,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:498-499` contains "Покупка не возвращается",
+/// and the weekday initials,
+/// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:459` contains "fontSize: 10" —
+/// and in DARK they stay exactly that: 2.55:1, deliberately quiet,
+/// untouched by this issue.
 ///
 /// The light block of `tokens.css` reuses the same 32% alpha over the
 /// near-black ink, which on `bg0` (`#F4F6FB`) measures **2.10:1** — below even

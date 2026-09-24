@@ -27,9 +27,11 @@ extension AlarmFiringViewController {
 
     /// Seed the clock's pre-entrance state: invisible, slightly enlarged (a
     /// soft "out-of-focus" proxy for the CA blur the design uses), and sunk
-    /// 8pt below its resting position. `SPDawnV3.jsx:48-67` fades + blurs +
-    /// rises the time on mount; CA blur on a live-ticking label is impractical,
-    /// so we approximate it with a subtle scale-down + alpha-up + 8pt rise.
+    /// 8pt below its resting position. The prototype's `DawnTime`
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:48-67` contains "function DawnTime")
+    /// fades + blurs + rises the time on mount; CA blur on a live-ticking
+    /// label is impractical, so we approximate it with a subtle scale-down +
+    /// alpha-up + 8pt rise.
     func prepareClockMountState() {
         timeLabel.alpha = 0
         timeLabel.transform = CGAffineTransform(translationX: 0, y: 8)
@@ -53,10 +55,10 @@ extension AlarmFiringViewController {
     // MARK: Glow breathing
 
     /// 8s ease-in-out autoreverse opacity pulse on the Dawn background's sun
-    /// layer (`SPDawnV3.jsx:3` — «медленно дышит (8s)»). Driven via
-    /// CABasicAnimation because the sun is a CAGradientLayer (not a view). V2
-    /// spec retains the "breathing" character from V1 — the warm radial just
-    /// lives inside `SPDawnBackgroundView.sunLayer` now.
+    /// layer (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:3` contains "медленно дышит (8s").
+    /// Driven via CABasicAnimation because the sun is a CAGradientLayer (not
+    /// a view). V2 spec retains the "breathing" character from V1 — the warm
+    /// radial just lives inside `SPDawnBackgroundView.sunLayer` now.
     func startGlowBreathing() {
         let animation = CABasicAnimation(keyPath: "opacity")
         animation.fromValue = 0.55

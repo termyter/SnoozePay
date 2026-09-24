@@ -2,7 +2,9 @@ import UIKit
 
 /// Single-sound row used by `SoundPickerViewController` (V3 — #285).
 ///
-/// Layout per `SPMore.jsx:354-382`: a 36×36 leading icon tile (money-gradient
+/// Layout per
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:318-346` contains "sounds.map":
+/// a 36×36 leading icon tile (money-gradient
 /// when the row is selected, faint overlay otherwise) → title (h4) + subtitle
 /// (meta) stack → trailing 20pt money checkmark on the selected row. Rows sit
 /// inside a single shared `SPCard` owned by the view-controller, so each cell

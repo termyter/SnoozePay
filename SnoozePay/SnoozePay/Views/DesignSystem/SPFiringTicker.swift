@@ -3,7 +3,8 @@ import UIKit
 /// History ticker for the firing screen — the row of coloured mini-pills that
 /// summarise today's snooze charges in the centred hero block.
 ///
-/// Spec — `SPDawnV3.jsx:114-136` (`TickerRow`): a caps «СЕГОДНЯ» eyebrow, then
+/// Spec — `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:114-136` contains "function TickerRow":
+/// a caps «СЕГОДНЯ» eyebrow, then
 /// one chip per charged snooze separated by a thin «·». Each chip shows the
 /// rounded rouble amount and tints amber when the charge was under 200 ₽, red
 /// when it was 200 ₽ or more. This replaces the old single-line mono text
@@ -18,7 +19,9 @@ enum SPFiringTicker {
         /// Rounded rouble amount charged for this snooze.
         let amount: Int
 
-        /// Tint threshold per `SPDawnV3.jsx:120-121`: amber below 200 ₽, red at
+        /// Tint threshold per
+        /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:124-125` contains "h.amount >= 200":
+        /// amber below 200 ₽, red at
         /// or above 200 ₽.
         var isHeavy: Bool { amount >= 200 }
 

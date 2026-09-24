@@ -453,7 +453,8 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// `50 → 100 → 200 → 400 ₽`). The exponent is clamped to `3` so the price
     /// never escalates past `base × 8`; counts 4, 5, 10, … all return the
     /// ceiling. Mirrors the design's `idx = min(count, 3)` rule
-    /// (`SPDawnV3.jsx:149-152`, `chat1.md:256`).
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:149-152` contains "Math.min(snoozes",
+    /// `chat1.md:256`).
     func penalty(forSnoozeCount count: Int) -> Double {
         guard progressiveScale, count > 1 else { return penaltyAmount }
         let exponent = min(count - 1, 3)

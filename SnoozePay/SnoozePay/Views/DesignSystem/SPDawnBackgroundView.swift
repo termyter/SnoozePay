@@ -12,7 +12,8 @@ import UIKit
 ///    blending warn-amber rgba(245,158,11,.22) → pain rgba(244,82,63,.10) →
 ///    transparent at 60%. Sells the "rising heat" cue.
 /// 3. **Sun** — 480×480pt blurred circle anchored 180pt below the bottom edge
-///    (`SPDawnV3.jsx:30-33`). Driven by either the warn or pain radial palette
+///    (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:30-33` contains "width: 480").
+///    Driven by either the warn or pain radial palette
 ///    depending on `tone`.
 ///
 /// The view owns three CAGradientLayers (base, overlay, sun) and reflows them
@@ -48,7 +49,7 @@ final class SPDawnBackgroundView: UIView {
     ]
 
     /// Stop locations paired with `calmBaseColors` — mid-stop at 55% per
-    /// `SPDawnV3.jsx:20` (`#0E1320 55%`).
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:20` contains "#0E1320 55%".
     static let calmBaseLocations: [NSNumber] = [0.0, 0.55, 1.0]
 
     /// Core colour of the calm sun radial. The picker preview reuses it as the
@@ -127,7 +128,8 @@ final class SPDawnBackgroundView: UIView {
         overlayLayer.frame = bounds
 
         // Sun: 480×480pt whose BOTTOM sits 180pt below the screen edge
-        // (`SPDawnV3.jsx:30` — `bottom: -180px`). Centered horizontally; the
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:31` contains "-180px").
+        // Centered horizontally; the
         // upper hemisphere bleeds in as the rising glow.
         let sunSize: CGFloat = 480
         let sunY = bounds.height + 180 - sunSize

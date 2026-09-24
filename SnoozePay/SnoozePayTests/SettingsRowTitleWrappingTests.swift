@@ -3,7 +3,8 @@ import XCTest
 
 /// Issue #519 — «Цена откладывания по умолчанию» is wider than a Settings row
 /// and used to render as «Цена откладывания по ум…». The copy is canon
-/// (`SPMore4.jsx:155`) and the design row wraps in the same situation
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:151` contains "по умолчанию")
+/// and the design row wraps in the same situation
 /// (`.sp-row__main { flex: 1; min-width: 0 }`, no `text-overflow`), so the row
 /// now takes a second line and the Финансы section self-sizes.
 ///
