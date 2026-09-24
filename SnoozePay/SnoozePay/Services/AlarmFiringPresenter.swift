@@ -369,12 +369,11 @@ final class AlarmFiringPresenter {
     /// handles `logHandle` uses on both sides, so a release log can tell the
     /// two alarms apart.
     private func stopAudio(ifOwnedBy missing: PendingPresentation, _ miss: String) {
-        let owner = AudioService.shared.currentAlarmID
-        let ownsSound = owner == missing.alarmID
+        // Check and stop in one step (#878), then log what was decided.
+        let (stopped, owner) = AudioService.shared.stopAlarmSound(ifOwnedBy: missing.alarmID)
         let ownerHandle = owner.map { String($0.uuidString.prefix(8)) } ?? "nobody"
-        let decision = ownsSound ? "stopping the audio it owns" : "leaving the audio of \(ownerHandle) alone"
+        let decision = stopped ? "stopping the audio it owns" : "leaving the audio of \(ownerHandle) alone"
         AppLogger.emit(.appDelegate, .error, "firing-present: \(miss) [\(missing.logHandle)] — \(decision)")
-        if ownsSound { AudioService.shared.stopAlarmSound() }
     }
 
     /// Present the firing screen for an already-resolved alarm. The single

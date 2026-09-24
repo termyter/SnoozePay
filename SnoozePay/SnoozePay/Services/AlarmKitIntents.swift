@@ -254,9 +254,9 @@ final class AlarmKitActionRouter {
     /// One line either way, naming both alarms by their 8-hex handle, so a
     /// release log shows whose sound it was and what was done with it.
     private func stopAudioIfOwned(by alarmID: UUID, action: String) {
-        let owner = AudioService.shared.currentAlarmID
-        let ownsSound = owner == alarmID
-        let decision = ownsSound
+        // Check and stop in one step (#878), then log what was decided.
+        let (stopped, owner) = AudioService.shared.stopAlarmSound(ifOwnedBy: alarmID)
+        let decision = stopped
             ? "stopping the audio it owns"
             : "leaving the audio of \(AppDelegate.logHandle(owner)) alone"
         // `OSLogType` has no `.notice`; `.default` is the same level.
@@ -265,7 +265,6 @@ final class AlarmKitActionRouter {
             "\(action): audio owner \(AppDelegate.logHandle(owner)),"
                 + " alarm \(AppDelegate.logHandle(alarmID)) — \(decision)"
         )
-        if ownsSound { AudioService.shared.stopAlarmSound() }
     }
 
     /// The snooze runs in the firing screen, and a screen needs the alarm. When
