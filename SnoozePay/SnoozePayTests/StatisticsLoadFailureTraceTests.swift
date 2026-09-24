@@ -222,13 +222,37 @@ private final class StatsPresentingHost: StatsSwallowingHost {
     override var isBeingPresented: Bool { true }
 }
 
+/// A load error with a message the test chooses, so two held errors can be
+/// told apart (#825). The repository's own errors all read the same.
+private struct StatsStubLoadError: LocalizedError {
+    let errorDescription: String?
+}
+
+/// A container that never forwards appearance to its child, so the test
+/// decides exactly when `viewWillAppear` and `viewDidAppear` run (#825).
+private final class StatsManualAppearanceHost: UIViewController {
+    override var shouldAutomaticallyForwardAppearanceMethods: Bool { false }
+}
+
+/// What `showHeldErrorThroughARealAppearance()` leaves behind for the
+/// assertions.
+private struct StatsMountedAppearance {
+    let host: StatsManualAppearanceHost
+    let stats: StatisticsViewController
+    let ledger: UserDefaults
+    let lines: [String]
+}
+
 /// The VC half: the alert the user actually gets, and the second one they
 /// don't.
 ///
 /// The seam needs no injection — `StatisticsViewController.viewModel` and
 /// `StatisticsViewModel.onLoadError` are both internal and `bindViewModel()`
 /// runs in `viewDidLoad`, so `loadViewIfNeeded()` plus a call through the
-/// closure drives the real presentation path.
+/// closure drives the real presentation path. The tests that need the real
+/// `viewWillAppear` load itself to fail are the exception: they inject a view
+/// model on a ledger of their own through `init(viewModel:)`
+/// (`makeStatsOnOwnLedger`, #825).
 ///
 /// The appearance cycle **does** run: `makeKeyAndVisible()` triggers it, so
 /// `viewWillAppear` fires and with it a production `loadData()` against
@@ -238,7 +262,9 @@ private final class StatsPresentingHost: StatsSwallowingHost {
 /// corrupt `stored_transactions` into the standard defaults. The day something
 /// does, that load would raise a *real* alert carrying this suite's expected
 /// title and body, and both tests below would go green for the wrong reason —
-/// which is what the precondition in `makeMountedController()` turns red.
+/// which is what the preconditions in `makeMountedController()` turn red. Since
+/// #825 such an error is held rather than presented, so the precondition reads
+/// the held message as well as `presentedViewController`.
 @MainActor
 final class StatisticsLoadErrorAlertTests: XCTestCase {
 
@@ -271,8 +297,15 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         window = nil
         previousKeyWindow?.makeKeyAndVisible()
         previousKeyWindow = nil
+        for name in ledgerSuiteNames {
+            UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+        }
+        ledgerSuiteNames = []
         super.tearDown()
     }
+
+    /// Suites made by `makeStatsOnOwnLedger(corrupt:)`, removed in `tearDown`.
+    private var ledgerSuiteNames: [String] = []
 
     private func makeMountedController() -> StatisticsViewController {
         let controller = StatisticsViewController()
@@ -285,6 +318,10 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         XCTAssertNil(
             controller.presentedViewController,
             "mounting already presented something — the assertions below would grade the wrong alert"
+        )
+        XCTAssertNil(
+            controller.pendingLoadErrorMessage,
+            "mounting already holds a load error — the real ledger is unreadable, and the assertions below would grade it"
         )
         return controller
     }
@@ -499,26 +536,30 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
 
     // MARK: - Refusals the "already presented" guard does not decide (#790)
 
-    /// The drop the issue names: an off-window screen with no parent, which
-    /// UIKit refuses with "not in the window hierarchy" — until #790 no alert
-    /// AND no line. The screen is asked to present, and the reason is named
-    /// only once it has not. Driven through `onLoadError`, so the wiring from
-    /// the VM to the log is under assertion, not just the pure function.
-    func testUnmountedScreen_loadErrorLeavesALineNamingTheWindow() {
+    /// The refusal the read-back exists for: `present` asked of an off-window
+    /// screen with no parent, which UIKit refuses with "not in the window
+    /// hierarchy". Until #790 that left no alert AND no line.
+    ///
+    /// Calls `showLoadErrorAlert` directly. Since #825 the screen itself no
+    /// longer presents while off-window: an error from `onLoadError` is held
+    /// (see `testLoadErrorOffWindow_…`). The function still has to report a
+    /// refusal from any presenter it is given, so this line is still pinned.
+    func testShowingOnAnUnmountedScreen_leavesALineNamingTheWindow() {
         let controller = StatisticsViewController()
         controller.loadViewIfNeeded()
         XCTAssertNil(controller.viewIfLoaded?.window, "test precondition: the screen must be off-window")
         XCTAssertNil(controller.parent, "test precondition: no ancestor UIKit could present through")
+        let message = Localized.text("wallet.error.load_failed")
 
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
         AppLogger.withTestSink({ lines.append((category: $0, level: $1, message: $2)) }, perform: {
-            controller.viewModel.onLoadError?(decodeFailure())
+            StatisticsViewController.showLoadErrorAlert(on: controller, message: message)
         })
 
         let dropLines = lines.filter { $0.message.contains(StatisticsViewModel.alertDroppedErrorID) }
         XCTAssertEqual(
             dropLines.count, 1,
-            "an off-window screen must leave exactly one ALERT-DROPPED line; the sink saw \(lines.map(\.message))"
+            "an off-window presenter must leave exactly one ALERT-DROPPED line; the sink saw \(lines.map(\.message))"
         )
         XCTAssertEqual(dropLines.first?.category, .ui)
         XCTAssertEqual(dropLines.first?.level, .error)
@@ -527,83 +568,84 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             "the line must name WHY; it reads «\(dropLines.first?.message ?? "")»"
         )
         XCTAssertTrue(
-            dropLines.first?.message.contains(Localized.text("wallet.error.load_failed")) == true,
+            dropLines.first?.message.contains(message) == true,
             "the unshown message is the part worth recovering; it reads «\(dropLines.first?.message ?? "")»"
         )
         XCTAssertEqual(
             dropLines.first?.message,
             StatisticsViewController.droppedAlertLine(
                 reason: StatisticsViewController.refusalReason(presenter: controller),
-                message: Localized.text("wallet.error.load_failed")
+                message: message
             ),
             "the emitted line must BE the refusal line, not merely carry its handle"
         )
         XCTAssertNil(controller.presentedViewController, "UIKit must have refused, or the line above lies")
     }
 
-    /// The production shape, which the test above is not: `viewWillAppear` of
-    /// the Statistics tab runs while the tab bar is in the window and the
-    /// screen's own view is not yet — and UIKit presents through the tab bar
-    /// (first seen on CI 35859208153). Pinned, not merely logged: the window
-    /// pre-check the first draft of #790 had would refuse here, the alert
-    /// would never go up, and a test that only asked "does the log agree with
-    /// the screen" would agree with that too.
-    ///
-    /// Waits for ALERT-SHOWN inside the sink, as
-    /// `testFirstLoadError_logsThatTheUserActuallySawIt` does. Returning before
-    /// the completion let this test's SHOWN line land in whichever test ran
-    /// next (#742 §2a) — alphabetically, that same sibling, which counts
-    /// exactly those lines.
-    func testChildOfAMountedTabBar_alertGoesUpThroughTheTabBarAndLogsOnlyThat() {
-        let stats = StatisticsViewController()
-        let tabBar = UITabBarController()
-        tabBar.viewControllers = [UIViewController(), UINavigationController(rootViewController: stats)]
-        tabBar.selectedIndex = 0
-        window.rootViewController = tabBar
-        window.makeKeyAndVisible()
-        stats.loadViewIfNeeded()
-        XCTAssertNil(stats.viewIfLoaded?.window, "test precondition: the screen itself must be off-window")
-        XCTAssertNotNil(tabBar.viewIfLoaded?.window, "test precondition: its tab bar must be on screen")
-        XCTAssertNil(tabBar.presentedViewController, "test precondition: nothing on screen yet")
+    // MARK: - An error that arrives before the screen is in the window (#825)
 
-        let shown = expectation(description: "the ALERT-SHOWN line reached the seam")
+    /// An error that arrives while the view has no window is held, not
+    /// presented. Presenting it would be a detached presentation, and not
+    /// logging it is correct because nothing has been refused yet.
+    ///
+    /// A `viewDidAppear` run on an off-window controller must not show it
+    /// either. The flush checks the window again rather than trusting the
+    /// callback, and this is the only test that can tell those apart: in a
+    /// real appearance the view is always in the window.
+    func testLoadErrorOffWindow_isHeldNotPresentedAndLogsNothing() {
+        let controller = StatisticsViewController()
+        controller.loadViewIfNeeded()
+        XCTAssertNil(controller.viewIfLoaded?.window, "test precondition: the screen must be off-window")
+
         var lines: [String] = []
-        var fulfilled = false
-        drainMainQueue()
-        AppLogger.withTestSink({ _, _, message in
-            lines.append(message)
-            if !fulfilled, message.contains(StatisticsViewModel.alertShownErrorID) {
-                fulfilled = true
-                shown.fulfill()
-            }
-        }, perform: {
-            stats.viewModel.onLoadError?(decodeFailure())
-            XCTAssertTrue(
-                tabBar.presentedViewController is UIAlertController,
-                """
-                UIKit presented a detached child's alert through the tab bar on \
-                CI 35859208153. Red means either a window check came back in \
-                front of `present` — the #790 round-1 regression — or UIKit \
-                changed, and the doc on `showLoadErrorAlert` is stale. \
-                Presented: \(String(describing: tabBar.presentedViewController)), \
-                the sink saw \(lines)
-                """
-            )
-            // Only waited for when the alert is up: a refused one never runs
-            // its completion, and the assertion above has already said so.
-            if tabBar.presentedViewController is UIAlertController {
-                wait(for: [shown], timeout: 25)
-            }
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            controller.viewModel.onLoadError?(decodeFailure())
+            controller.viewDidAppear(false)
         })
 
         XCTAssertEqual(
-            lines.filter { $0.contains(StatisticsViewModel.alertShownErrorID) }.count, 1,
-            "one alert on screen, one SHOWN line; the sink saw \(lines)"
+            controller.pendingLoadErrorMessage, Localized.text("wallet.error.load_failed"),
+            "the error must wait for the screen, not be presented or thrown away"
         )
+        XCTAssertNil(controller.presentedViewController, "nothing may be presented from an off-window screen")
+        XCTAssertTrue(
+            lines.allSatisfy {
+                !$0.contains(StatisticsViewModel.alertShownErrorID)
+                    && !$0.contains(StatisticsViewModel.alertDroppedErrorID)
+            },
+            "a held error is neither shown nor dropped yet; the sink saw \(lines)"
+        )
+    }
+
+    /// Two errors before the screen appears: the first is kept, and the
+    /// second is logged as dropped. That is the same order as the on-screen
+    /// case, where the first alert stays up and the second gets the line
+    /// (`testSecondLoadError_…`).
+    ///
+    /// Two different messages, so first-wins and last-wins give different
+    /// results. With identical ones either choice would pass.
+    func testSecondLoadErrorWhileHeld_keepsTheFirstAndLogsTheSecond() {
+        let controller = StatisticsViewController()
+        controller.loadViewIfNeeded()
+        XCTAssertNil(controller.viewIfLoaded?.window, "test precondition: the screen must be off-window")
+
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            controller.viewModel.onLoadError?(StatsStubLoadError(errorDescription: "first"))
+            controller.viewModel.onLoadError?(StatsStubLoadError(errorDescription: "second"))
+        })
+
+        XCTAssertEqual(controller.pendingLoadErrorMessage, "first", "the first held error must be the one shown")
+        let dropLines = lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) }
         XCTAssertEqual(
-            lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) }.count, 0,
-            "an alert on screen must not also be reported as dropped; the sink saw \(lines)"
+            dropLines, [
+                StatisticsViewController.droppedAlertLine(
+                    reason: StatisticsViewController.pendingAlertReason, message: "second"
+                )
+            ],
+            "the second error is never shown, so it must leave exactly one line naming it; the sink saw \(lines)"
         )
+        XCTAssertNil(controller.presentedViewController, "nothing may be presented from an off-window screen")
     }
 
     /// Read by its words: with the refusal reasons swapped or made identical,
@@ -678,5 +720,275 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             host.viewIfLoaded?.window,
             "test precondition: the presenter must be IN a window, or the window check answers first"
         )
+    }
+}
+
+// MARK: - Errors that arrive before the view is in the window (#825)
+
+/// An extension only to keep the class body under SwiftLint's
+/// `type_body_length`; XCTest finds test methods here the same way.
+extension StatisticsLoadErrorAlertTests {
+
+    /// The production order, with the error coming from the real load: an
+    /// injected view model on a corrupt ledger this test owns, so
+    /// `loadData()` fails inside the real `viewWillAppear`.
+    ///
+    /// ⚠️ The appearance is driven by hand, through UIKit's container
+    /// contract (`beginAppearanceTransition` before the child's view is in the
+    /// window, `endAppearanceTransition` after). Round 1 of #825 switched
+    /// `UITabBarController.selectedIndex` in this suite's scene-less window
+    /// instead. The tab bar never put the child's view in the window, and
+    /// `viewDidAppear` never ran (CI 35862589456, 6 failures). A container that
+    /// does not forward appearance on its own makes both callbacks happen
+    /// exactly when this test says.
+    ///
+    /// Waits for ALERT-SHOWN inside the sink, and drains the main queue right
+    /// before it: a SHOWN line from a completion that ran after the sink was
+    /// removed would land in whichever test ran next (#742 §2a).
+    func testErrorFromARealViewWillAppear_isShownFromViewDidAppearOnce() {
+        let mounted = showHeldErrorThroughARealAppearance()
+
+        let alert = (mounted.host.presentedViewController ?? mounted.stats.presentedViewController)
+            as? UIAlertController
+        XCTAssertNotNil(
+            alert,
+            """
+            the held error must come up once the view is in the window. \
+            \(presentationDiagnostics(rootedAt: mounted.host))
+            """
+        )
+        XCTAssertEqual(
+            alert?.message, Localized.text("wallet.error.load_failed"),
+            "the alert must carry the held message"
+        )
+        XCTAssertNil(mounted.stats.pendingLoadErrorMessage, "a shown error must not stay held")
+        XCTAssertEqual(
+            mounted.lines.filter { $0.contains(StatisticsViewModel.alertShownErrorID) }.count, 1,
+            "one alert on screen, one SHOWN line; the sink saw \(mounted.lines)"
+        )
+        XCTAssertEqual(
+            mounted.lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) }.count, 0,
+            "an alert on screen must not also be reported as dropped; the sink saw \(mounted.lines)"
+        )
+    }
+
+    /// A shown error is not shown, or dropped, a second time. After the alert
+    /// is dismissed and the ledger repaired, the screen disappears and appears
+    /// again. That produces no SHOWN, no DROPPED and no presentation.
+    ///
+    /// This covers the mutant that keeps the message after showing it. A
+    /// kept message would be caught by the next `viewWillAppear` and logged as
+    /// superseded, so the DROPPED count is what goes red.
+    func testShownError_isNotRepeatedOnTheNextAppearance() {
+        let mounted = showHeldErrorThroughARealAppearance()
+        XCTAssertNotNil(mounted.host.presentedViewController, "test precondition: the first alert must be up")
+
+        mounted.ledger.removeObject(forKey: "stored_transactions")
+        mounted.host.dismiss(animated: false)
+        let dismissed = expectation(description: "the first alert went away")
+        let deadline = Date().addingTimeInterval(20)
+        func poll() {
+            if mounted.host.presentedViewController == nil || Date() >= deadline {
+                dismissed.fulfill()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { poll() }
+        }
+        poll()
+        wait(for: [dismissed], timeout: 25)
+        XCTAssertNil(mounted.host.presentedViewController, "test precondition: the first alert must be gone")
+
+        var lines: [String] = []
+        drainMainQueue()
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            mounted.stats.beginAppearanceTransition(false, animated: false)
+            mounted.stats.endAppearanceTransition()
+            mounted.stats.beginAppearanceTransition(true, animated: false)
+            mounted.stats.endAppearanceTransition()
+        })
+
+        XCTAssertNil(mounted.host.presentedViewController, "nothing is wrong any more, so nothing may come up")
+        XCTAssertNil(
+            mounted.stats.viewModel.ledgerUnavailableReason,
+            "test precondition: the reload must have succeeded"
+        )
+        XCTAssertTrue(
+            lines.allSatisfy {
+                !$0.contains(StatisticsViewModel.alertShownErrorID)
+                    && !$0.contains(StatisticsViewModel.alertDroppedErrorID)
+            },
+            "an error already shown must leave no second line; the sink saw \(lines)"
+        )
+    }
+
+    /// The case the review found: an error is held, `viewDidAppear` never
+    /// comes (a cancelled back-swipe), and the next appearance reloads a
+    /// HEALTHY ledger. The old message would describe data that is now on
+    /// screen, so it is thrown away with a line and nothing is presented.
+    func testHeldErrorThenAHealthyReload_dropsTheStaleMessageAndShowsNothing() {
+        let (stats, _) = makeStatsOnOwnLedger(corrupt: false)
+        stats.loadViewIfNeeded()
+
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            stats.viewModel.onLoadError?(StatsStubLoadError(errorDescription: "stale"))
+            stats.beginAppearanceTransition(true, animated: false)
+            stats.endAppearanceTransition()
+        })
+
+        XCTAssertNil(stats.pendingLoadErrorMessage, "the reload replaced the held message")
+        XCTAssertNil(stats.viewModel.ledgerUnavailableReason, "test precondition: the reload must have succeeded")
+        XCTAssertNil(stats.presentedViewController, "nothing may be presented about data that loaded")
+        XCTAssertEqual(
+            lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) },
+            [
+                StatisticsViewController.droppedAlertLine(
+                    reason: StatisticsViewController.supersededAlertReason, message: "stale"
+                )
+            ],
+            "the stale message was never shown, so it must leave exactly one line; the sink saw \(lines)"
+        )
+        XCTAssertTrue(
+            lines.allSatisfy { !$0.contains(StatisticsViewModel.alertShownErrorID) },
+            "nothing reached the screen; the sink saw \(lines)"
+        )
+    }
+
+    /// The same cancelled appearance, but the ledger is STILL broken on the
+    /// next one. Pins the order in `viewWillAppear`: the held message is
+    /// superseded before the reload, so the reload's fresh error is the one
+    /// held. Superseding after the load would drop the fresh error as
+    /// "already waiting" and then throw away the stale one, and this
+    /// appearance would show nothing about a ledger that is still unreadable.
+    func testHeldErrorThenAStillBrokenReload_replacesTheHeldMessage() {
+        let (stats, _) = makeStatsOnOwnLedger(corrupt: true)
+        stats.loadViewIfNeeded()
+
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            stats.viewModel.onLoadError?(StatsStubLoadError(errorDescription: "stale"))
+            stats.beginAppearanceTransition(true, animated: false)
+        })
+
+        XCTAssertEqual(
+            stats.pendingLoadErrorMessage, Localized.text("wallet.error.load_failed"),
+            "the reload's own error must be the one held for this appearance"
+        )
+        XCTAssertEqual(
+            lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) },
+            [
+                StatisticsViewController.droppedAlertLine(
+                    reason: StatisticsViewController.supersededAlertReason, message: "stale"
+                )
+            ],
+            "only the stale message may be dropped; the sink saw \(lines)"
+        )
+        // Balances the transition. Off-window, so `viewDidAppear` keeps the
+        // fresh message held and logs nothing.
+        stats.endAppearanceTransition()
+    }
+
+    /// A held message whose screen is released before it appears still leaves
+    /// its DROPPED line, from the isolated `deinit`.
+    func testHeldErrorOfAReleasedScreen_leavesADroppedLine() {
+        var lines: [String] = []
+        weak var released: StatisticsViewController?
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            autoreleasepool {
+                let (stats, _) = makeStatsOnOwnLedger(corrupt: false)
+                stats.loadViewIfNeeded()
+                stats.viewModel.onLoadError?(StatsStubLoadError(errorDescription: "never seen"))
+                released = stats
+            }
+        })
+
+        XCTAssertNil(released, "test precondition: the screen must be released, or `deinit` never ran")
+        XCTAssertEqual(
+            lines.filter { $0.contains(StatisticsViewModel.alertDroppedErrorID) },
+            [
+                StatisticsViewController.droppedAlertLine(
+                    reason: StatisticsViewController.releasedAlertReason, message: "never seen"
+                )
+            ],
+            "a held message that dies with its screen must leave one line; the sink saw \(lines)"
+        )
+    }
+
+    /// A screen whose view model reads a ledger this test owns, not
+    /// `UserDefaults.standard`. With `corrupt`, the load inside a real
+    /// `viewWillAppear` fails the same way `corruptTheLedger()` makes it fail
+    /// in `StatisticsLoadFailureTraceTests` (#825).
+    private func makeStatsOnOwnLedger(corrupt: Bool) -> (StatisticsViewController, UserDefaults) {
+        let name = "test.statsAlertLedger.\(UUID().uuidString)"
+        ledgerSuiteNames.append(name)
+        let ledger = UserDefaults(suiteName: name)!
+        if corrupt {
+            ledger.set(Data("not json".utf8), forKey: "stored_transactions")
+        }
+        let wakeStore = WakeEventStore(defaults: ledger)
+        let viewModel = StatisticsViewModel(
+            repository: TransactionRepository(defaults: ledger, wakeStore: wakeStore),
+            wakeStore: wakeStore,
+            defaults: ledger
+        )
+        return (StatisticsViewController(viewModel: viewModel), ledger)
+    }
+
+    /// Runs the production order on a corrupt ledger and waits for SHOWN
+    /// inside the sink:
+    ///   1. `viewWillAppear` while the view is not in the window. The real
+    ///      load fails and the error is held: nothing presented, no line.
+    ///   2. The view goes into the window, then `viewDidAppear`.
+    ///
+    /// Step 1 is asserted here, so every caller checks it. An empty
+    /// `presentedViewController` is consistent with `present` not having been
+    /// called, but it does not prove it for this container. UIKit's
+    /// through-the-ancestor presentation was characterised for a tab bar,
+    /// not for this host. The direct pin is `testLoadErrorOffWindow_…`: its
+    /// screen has no parent, so a `present` there would be refused and the
+    /// read-back would write a DROPPED line.
+    private func showHeldErrorThroughARealAppearance() -> StatsMountedAppearance {
+        let (stats, ledger) = makeStatsOnOwnLedger(corrupt: true)
+        let host = StatsManualAppearanceHost()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        XCTAssertNotNil(host.viewIfLoaded?.window, "test precondition: the container must be on screen")
+        host.addChild(stats)
+        stats.loadViewIfNeeded()
+
+        let shown = expectation(description: "the ALERT-SHOWN line reached the seam")
+        var lines: [String] = []
+        var fulfilled = false
+        drainMainQueue()
+        AppLogger.withTestSink({ _, _, line in
+            lines.append(line)
+            if !fulfilled, line.contains(StatisticsViewModel.alertShownErrorID) {
+                fulfilled = true
+                shown.fulfill()
+            }
+        }, perform: {
+            stats.beginAppearanceTransition(true, animated: false)
+            XCTAssertNil(stats.viewIfLoaded?.window, "test precondition: viewWillAppear must run off-window")
+            XCTAssertEqual(
+                stats.pendingLoadErrorMessage, Localized.text("wallet.error.load_failed"),
+                "the real load must have failed and its error been held; the sink saw \(lines)"
+            )
+            XCTAssertNil(host.presentedViewController, "nothing may be presented while the view is off-window")
+            XCTAssertTrue(
+                lines.allSatisfy {
+                    !$0.contains(StatisticsViewModel.alertShownErrorID)
+                        && !$0.contains(StatisticsViewModel.alertDroppedErrorID)
+                },
+                "a held error is neither shown nor dropped yet; the sink saw \(lines)"
+            )
+
+            stats.view.frame = host.view.bounds
+            host.view.addSubview(stats.view)
+            stats.didMove(toParent: host)
+            XCTAssertNotNil(stats.viewIfLoaded?.window, "test precondition: viewDidAppear must run in the window")
+            stats.endAppearanceTransition()
+            wait(for: [shown], timeout: 25)
+        })
+        return StatsMountedAppearance(host: host, stats: stats, ledger: ledger, lines: lines)
     }
 }
