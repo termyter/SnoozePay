@@ -673,6 +673,43 @@ final class AppDelegateAlertTests: XCTestCase {
         )
     }
 
+    // MARK: - The presenter's default report never drops silently (#872)
+
+    /// An application delegate that is not `AppDelegate` cannot put the alert
+    /// up. It used to be a silent `?.`; now the drop is a line.
+    func testForwardDataCorrupted_toAnotherDelegate_logsTheDrop() {
+        final class OtherDelegate: NSObject, UIApplicationDelegate {}
+        let error = NSError(domain: "test.corrupt", code: 1)
+
+        var lines: [(level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append(($1, $2)) }, perform: {
+            AppDelegate.forwardAlarmDataCorrupted(error, to: OtherDelegate())
+            AppDelegate.forwardAlarmDataCorrupted(error, to: nil)
+        })
+
+        let drops = lines.filter { $0.message.contains(AppDelegate.alertDroppedErrorID) }
+        XCTAssertEqual(drops.count, 2, "\(lines)")
+        XCTAssertEqual(drops.map(\.level), [.error, .error])
+        XCTAssertTrue(drops.first?.message.contains("OtherDelegate, not AppDelegate") == true, "\(drops)")
+        XCTAssertTrue(drops.last?.message.contains("delegate is nil") == true, "\(drops)")
+    }
+
+    func testForwardDataCorrupted_toAppDelegate_reportsWithoutADropLine() {
+        let delegate = AppDelegate()
+        var reported: [Error] = []
+        delegate.reportAlarmDataCorrupted = { reported.append($0) }
+
+        var lines: [String] = []
+        AppLogger.withTestSink({ lines.append($2) }, perform: {
+            AppDelegate.forwardAlarmDataCorrupted(
+                NSError(domain: "test.corrupt", code: 1), to: delegate
+            )
+        })
+
+        XCTAssertEqual(reported.count, 1)
+        XCTAssertFalse(lines.contains { $0.contains(AppDelegate.alertDroppedErrorID) }, "\(lines)")
+    }
+
     // MARK: - Helpers
 
     /// Puts `host`'s view in the window without making it the root.

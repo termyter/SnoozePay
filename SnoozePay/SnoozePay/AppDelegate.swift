@@ -499,7 +499,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 25, execute: watchdog)
             AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo) { [weak self] outcome in
                 watchdog.cancel()
-                self?.handleSnoozeOutcome(outcome)
+                self?.handleSnoozeOutcome(outcome, alarmID: payload?.alarmID)
                 resolveOnce()
             }
             return // async path + watchdog own `completionHandler` from here on
@@ -642,20 +642,26 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// it from stacking on the one `willPresent` already raised.
     ///
     /// Internal so a test can hand it an outcome and a poster; `didReceive`
-    /// cannot be driven.
+    /// cannot be driven. `alarmID` is the payload's, when it decoded; it only
+    /// names the alarm in the banner's failure line (#872).
     func handleSnoozeOutcome(
         _ outcome: AlarmFiringCoordinator.SnoozeOutcome,
+        alarmID: UUID? = nil,
         poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
         logSnoozeOutcome(outcome)
         switch outcome {
         case let .scheduleFailed(error):
-            AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: true, poster: poster)
+            AppDelegate.postSnoozeScheduleFailedBanner(
+                error: error, refundLanded: true, alarmID: alarmID, poster: poster
+            )
         case let .scheduleFailedAndRefundFailed(error):
-            AppDelegate.postSnoozeScheduleFailedBanner(error: error, refundLanded: false, poster: poster)
+            AppDelegate.postSnoozeScheduleFailedBanner(
+                error: error, refundLanded: false, alarmID: alarmID, poster: poster
+            )
         case let .alarmLoadFailed(error):
             AppDelegate.postSnoozeScheduleFailedBanner(
-                detail: error.localizedDescription, refundLanded: true, poster: poster
+                detail: error.localizedDescription, refundLanded: true, alarmID: alarmID, poster: poster
             )
             reportAlarmDataCorrupted(error)
         default:
@@ -714,20 +720,32 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     static func postSnoozeScheduleFailedBanner(
         error: AlarmScheduler.SchedulingError,
         refundLanded: Bool,
+        alarmID: UUID? = nil,
         poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
         postSnoozeScheduleFailedBanner(
             detail: error.errorDescription ?? error.localizedDescription,
             refundLanded: refundLanded,
+            alarmID: alarmID,
             poster: poster
         )
     }
 
+    /// Grep handle for the line written when the snooze-failed banner itself
+    /// could not be posted (#872). Without notification permission (#871) it
+    /// is the most common end of a lost snooze.
+    static let snoozeBannerPostFailedErrorID = "SNOOZE-BANNER-POST-FAILED"
+
     /// The same banner with its detail line already spelled: a snooze lost to
     /// a load failure has no `SchedulingError` to describe (#864).
+    ///
+    /// `alarmID` only names the alarm in the failure line, as its 8-character
+    /// ``logHandle(_:)``, so that line can be tied to the one that lost the
+    /// snooze. A caller without an id gets "unknown" (#872).
     static func postSnoozeScheduleFailedBanner(
         detail: String,
         refundLanded: Bool,
+        alarmID: UUID? = nil,
         poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
         let content = UNMutableNotificationContent()
@@ -753,9 +771,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // notification permission was revoked, which is exactly the same
             // root cause the snooze hit. Nothing left to surface from a
             // notification action context.
+            let handle = alarmID.map { AppDelegate.logHandle($0) } ?? "unknown"
             AppLogger.emit(
                 .appDelegate, .fault,
-                "snooze fallback banner failed: \(fallbackError.localizedDescription)"
+                "\(AppDelegate.snoozeBannerPostFailedErrorID): snooze fallback banner failed for alarm \(handle)"
+                    + " — \(fallbackError.localizedDescription)"
             )
         }
     }

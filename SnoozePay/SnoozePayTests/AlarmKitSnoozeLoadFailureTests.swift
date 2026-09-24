@@ -81,6 +81,23 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
         )
     }
 
+    /// Without notification permission the banner is refused too. That line
+    /// names the same alarm as the load failure, so the two can be tied (#872).
+    func testSnooze_whenTheBannerIsRefused_itsFailureLineNamesTheAlarm() {
+        defaults.set(Data("{ not a list of alarms".utf8), forKey: "stored_alarms")
+        poster.addError = NSError(domain: "UNErrorDomain", code: 1)
+        let alarmID = UUID()
+
+        snooze(alarmID)
+
+        let refusals = lines.filter { $0.message.hasPrefix(AppDelegate.snoozeBannerPostFailedErrorID) }
+        XCTAssertEqual(refusals.count, 1, "\(lines)")
+        XCTAssertTrue(
+            refusals.first?.message.contains("for alarm \(alarmID.uuidString.prefix(8)) ") == true,
+            "«\(refusals.first?.message ?? "")»"
+        )
+    }
+
     /// A deleted alarm is not a lost snooze to report here: the presenter's
     /// "not found" branch owns it, and a banner blaming the schedule would lie.
     func testSnooze_whenTheAlarmIsMissing_postsNoBanner() {

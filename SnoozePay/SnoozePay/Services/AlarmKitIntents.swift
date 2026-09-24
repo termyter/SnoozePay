@@ -262,10 +262,11 @@ final class AlarmKitActionRouter {
             AppLogger.emit(
                 .scheduler, .error,
                 "ALARMKIT-868-SNOOZE-LOAD-FAILED: alarm \(handle) failed to load"
-                    + " (\(String(describing: error))) — snooze not scheduled, posting fallback banner"
+                    + " (\(String(describing: error))) — snooze not scheduled, requesting fallback banner"
             )
             AppDelegate.postSnoozeScheduleFailedBanner(
-                detail: error.localizedDescription, refundLanded: true, poster: notificationPoster
+                detail: error.localizedDescription, refundLanded: true,
+                alarmID: alarmID, poster: notificationPoster
             )
         }
     }
