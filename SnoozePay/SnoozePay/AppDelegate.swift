@@ -260,7 +260,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "resume_audio_failed_\(UUID().uuidString)",
+            identifier: AppBannerNotification.resumeAudioFailed.makeIdentifier(),
             content: content,
             trigger: trigger
         )
@@ -287,7 +287,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "reschedule_failed_\(UUID().uuidString)",
+            identifier: AppBannerNotification.rescheduleFailed.makeIdentifier(),
             content: content,
             trigger: trigger
         )
@@ -362,15 +362,16 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        let userInfo = notification.request.content.userInfo
-
-        guard let payload = AlarmNotificationPayload(userInfo: userInfo) else {
-            // Malformed payload — surface and bail rather than playing audio we
-            // can never stop because the firing screen will never be presented.
-            AppLogger.appDelegate.error(
-                "willPresent: invalid alarm payload \(userInfo, privacy: .private(mask: .hash))"
-            )
-            completionHandler([])
+        let request = notification.request
+        let route = AppDelegate.routeForegroundNotification(
+            identifier: request.identifier,
+            userInfo: request.content.userInfo
+        )
+        guard case let .alarm(payload) = route else {
+            // An app banner is shown as a banner; a malformed alarm payload
+            // gets `[]` rather than audio we could never stop, because the
+            // firing screen will never be presented.
+            completionHandler(route.presentationOptions)
             return
         }
 
@@ -388,7 +389,61 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         // Show the alarm firing screen
         presentAlarmFiringScreen(for: payload)
-        completionHandler([])
+        completionHandler(route.presentationOptions)
+    }
+
+    /// What `willPresent` does with a notification that arrives in the
+    /// foreground (#842).
+    enum ForegroundRoute: Equatable {
+        /// A decodable alarm: start audio and present the firing screen.
+        case alarm(AlarmNotificationPayload)
+        /// One of the app's own non-alarm banners.
+        case appBanner(AppBannerNotification)
+        /// Neither — treated as an alarm whose payload failed to decode.
+        case invalidAlarmPayload
+
+        var presentationOptions: UNNotificationPresentationOptions {
+            switch self {
+            // An alarm's presentation is the firing screen, so a system banner
+            // on top would duplicate it; a payload that fails to decode gets
+            // nothing, as before #842.
+            case .alarm, .invalidAlarmPayload:
+                return []
+            case .appBanner:
+                return [.banner, .sound, .list]
+            }
+        }
+    }
+
+    /// Classifies a foreground notification and writes the line that says
+    /// which way it went. Split out of `willPresent` because `UNNotification`
+    /// cannot be constructed in a test, and the log line is half of what the
+    /// test asserts.
+    ///
+    /// The alarm decode runs FIRST, so a notification carrying a valid alarm
+    /// payload is an alarm whatever its identifier. Only what fails to decode
+    /// is checked against ``AppBannerNotification``; anything that matches no
+    /// banner keeps the pre-#842 verdict — a corrupt alarm, `.error`.
+    ///
+    /// Main-actor like the rest of `AppDelegate`, which is what
+    /// ``AppLogger/emit(_:_:_:)`` requires.
+    static func routeForegroundNotification(
+        identifier: String,
+        userInfo: [AnyHashable: Any]
+    ) -> ForegroundRoute {
+        if let payload = AlarmNotificationPayload(userInfo: userInfo) {
+            return .alarm(payload)
+        }
+        if let banner = AppBannerNotification(identifier: identifier) {
+            AppLogger.emit(.appDelegate, .info, "willPresent: app banner \(banner), presenting")
+            return .appBanner(banner)
+        }
+        // Keys only, not values: this line goes out `.public`, and the values
+        // carry the alarm UUID. The keys are enough to tell a schema drift
+        // from a foreign notification.
+        let keys = userInfo.keys.map { "\($0)" }.sorted().joined(separator: ", ")
+        AppLogger.emit(.appDelegate, .error, "willPresent: invalid alarm payload, userInfo keys [\(keys)]")
+        return .invalidAlarmPayload
     }
 
     // Called when user taps a notification action
@@ -619,7 +674,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         // dropped, and is imperceptible to the user.
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "snooze_schedule_failed_\(UUID().uuidString)",
+            identifier: AppBannerNotification.snoozeScheduleFailed.makeIdentifier(),
             content: content,
             trigger: trigger
         )
