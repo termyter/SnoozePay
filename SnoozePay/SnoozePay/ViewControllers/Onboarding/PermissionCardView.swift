@@ -278,7 +278,7 @@ final class PermissionCardView: UIView {
         label.translatesAutoresizingMaskIntoConstraints = false
         label.attributedText = NSAttributedString(
             // Locale-explicit, per the `_caps` rule in `Localized` (#821).
-            string: text.uppercased(with: AppLocale.display),
+            string: text,
             attributes: [
                 .font: AppTypography.caps,
                 .kern: AppTypography.capsKerning,
