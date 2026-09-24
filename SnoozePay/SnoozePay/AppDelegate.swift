@@ -369,8 +369,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         })
     }
 
-    /// The alarm half of `willPresent`: ring now, then show the firing screen.
-    private func startForegroundAlarm(_ payload: AlarmNotificationPayload) {
+    /// The alarm half of `willPresent`: resolve the alarm, ring, then show the
+    /// firing screen.
+    ///
+    /// The alarm is resolved BEFORE the sound starts (#854). `startAlarmSound`
+    /// takes ownership of `AudioService`, so starting it for an alarm that is
+    /// not in the repository moved the sound away from whichever firing screen
+    /// was ringing, and the stop that followed left that screen silent under a
+    /// stale banner. An alarm that does not resolve now never touches the sound.
+    ///
+    /// Internal rather than private so a test can drive it through
+    /// `foregroundPresentationOptions(for:startAlarm:)`, as `willPresent` does.
+    func startForegroundAlarm(_ payload: AlarmNotificationPayload) {
+        guard let alarm = resolveFiringAlarm(for: payload) else { return }
+
         // Start continuous alarm sound immediately (before presenting the VC).
         // Passing `alarmID` lets AudioService track ownership so a stacking
         // race between firing VCs cannot silence the wrong alarm (#116).
@@ -383,8 +395,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             fadeIn: payload.volumeFadeIn ?? false
         )
 
-        // Show the alarm firing screen
-        presentAlarmFiringScreen(for: payload)
+        presentFiringScreen(for: alarm, snoozeCount: payload.snoozeCount)
     }
 
     // Called when user taps a notification action
@@ -506,7 +517,24 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
     // MARK: - Helpers
 
-    private func presentAlarmFiringScreen(for payload: AlarmNotificationPayload) {
+    /// The default-tap path: show the firing screen, which starts the sound.
+    ///
+    /// Internal rather than private so a test can drive it through
+    /// `handleDefaultTap(on:presentAlarm:stopAlarmSound:)`, as `didReceive` does.
+    func presentAlarmFiringScreen(for payload: AlarmNotificationPayload) {
+        guard let alarm = resolveFiringAlarm(for: payload) else { return }
+        presentFiringScreen(for: alarm, snoozeCount: payload.snoozeCount)
+    }
+
+    /// The alarm `payload` names, or `nil` after logging why there is none.
+    ///
+    /// On a miss it stops only the sound `payload`'s own alarm owns (#854).
+    /// That sound has no screen coming that could stop it. Another alarm's
+    /// sound belongs to that alarm's firing screen, which is still up and
+    /// still ringing: an unconditional stop silenced it with no dismiss, and
+    /// the screen, which applies only notes about its own alarm (#851), went
+    /// on showing its last banner over the silence.
+    private func resolveFiringAlarm(for payload: AlarmNotificationPayload) -> Alarm? {
         let alarm: Alarm?
         do {
             // Use the checked variant so a corrupt UserDefaults blob surfaces
@@ -520,24 +548,27 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             AppLogger.appDelegate.error(
                 "alarm fetch failed for \(payload.alarmID, privacy: .private): \(errorDesc, privacy: .public)"
             )
-            AudioService.shared.stopAlarmSound()
-            // Surface the decode failure to the user — without this they hear
-            // the alarm cut off and get no firing screen with no diagnostic.
+            stopAlarmSoundIfOwner(of: payload, action: "alarm fetch failed")
+            // Surface the decode failure to the user — without this the alarm
+            // fires with no sound of its own, no firing screen and no diagnostic.
             // The alert is presented from the same dispatch we'd use for the
             // firing screen so it reaches whichever VC is on top.
             presentAlarmDataCorruptedAlert(error: error)
-            return
+            return nil
         }
         guard let alarm else {
-            // Audio may already be playing from willPresent — stop it so the user
-            // is not stuck with a silent-screen + sounding alarm we can't dismiss.
+            // Audio this alarm owns has no screen coming that could stop it,
+            // so stop it. Another alarm's audio is left to its own screen.
             AppLogger.appDelegate.error(
-                "alarm not found (repo returned nil for \(payload.alarmID, privacy: .private)), stopping audio"
+                "alarm not found (repo returned nil for \(payload.alarmID, privacy: .private)), stopping its audio"
             )
-            AudioService.shared.stopAlarmSound()
-            return
+            stopAlarmSoundIfOwner(of: payload, action: "alarm not found")
+            return nil
         }
+        return alarm
+    }
 
+    private func presentFiringScreen(for alarm: Alarm, snoozeCount: Int) {
         // The window/VC walk + full-screen present (and the stacking-alarm
         // swap) live in `AlarmFiringPresenter` so the AlarmKit paths (#379)
         // share them verbatim. Keep the hop to the main queue here: the
@@ -551,7 +582,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         // too, before the dismissal starts, unless another alarm already holds
         // the slot (#835).
         DispatchQueue.main.async {
-            AlarmFiringPresenter.shared.present(alarm: alarm, snoozeCount: payload.snoozeCount)
+            AlarmFiringPresenter.shared.present(alarm: alarm, snoozeCount: snoozeCount)
         }
     }
 
