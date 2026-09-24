@@ -37,14 +37,20 @@ final class AudioService {
     /// `userInfo[stateUserInfoKey]` so UI (e.g. AlarmFiringViewController) can
     /// surface a banner when audio falls back to vibration or fails entirely.
     ///
-    /// Posted synchronously from the service's internal serial queue — UI
-    /// observers must subscribe with `queue: .main` (as
-    /// `AlarmFiringViewController.observeAudioState` does) before touching views.
+    /// Delivered asynchronously on the main thread, after the transition has
+    /// already landed and the service's serial queue has been released (see
+    /// `postOnMain`). Observers can therefore touch views and read the
+    /// service back without deadlocking, but the post trails the mutation:
+    /// a caller that needs the state *now* reads `state` rather than waiting
+    /// for the notification (as `AlarmFiringViewController.viewDidLoad` does
+    /// right after `startAlarmSound`). Posts keep the order of the
+    /// transitions, so the last one delivered carries the current state.
     static let stateChangedNotification = Notification.Name("snoozepay.audio.stateChanged")
     static let stateUserInfoKey = "state"
 
     /// Posted when a RESUME re-activates the audio session and that
     /// re-activation FAILS (`resumePlaybackLocked` → `.silentBecauseConfigFailed`).
+    /// Delivered like `stateChangedNotification`: asynchronously on main.
     /// Unlike `stateChangedNotification`, which only the on-screen firing VC
     /// observes, this is consumed by `AppDelegate` to post a time-sensitive
     /// local notification — so a silent failed wake is surfaced even when no
@@ -113,16 +119,35 @@ final class AudioService {
 
     /// Queue-confined backing storage for `state`. Mutating this also
     /// broadcasts a notification so callers can react to fallback paths
-    /// (config failed / vibration only). The post happens synchronously on
-    /// the serial queue — see `stateChangedNotification` docs.
+    /// (config failed / vibration only). The broadcast is only *scheduled*
+    /// here; it runs on main once the queue is free — see `postOnMain`.
     private var _state: AudioPlaybackState = .stopped {
         didSet {
             guard oldValue != _state else { return }
-            NotificationCenter.default.post(
-                name: Self.stateChangedNotification,
-                object: self,
-                userInfo: [Self.stateUserInfoKey: _state]
-            )
+            postOnMain(Self.stateChangedNotification, state: _state)
+        }
+    }
+
+    /// Post `name` from the main queue instead of from inside `queue` (#848).
+    ///
+    /// Every mutation that posts runs inside `queue.sync`, and the observers
+    /// subscribe with `queue: .main`. `NotificationCenter.post` does not
+    /// return until a block observer on an `OperationQueue` has run, so a
+    /// post made there from a background thread (the interruption handler,
+    /// a UN-delegate start) held `queue` until main ran the block. If main
+    /// was itself in any `queue.sync` at that moment (`state`, `isPlaying`,
+    /// `stopAlarmSound`, …), each side waited on the other and the app froze
+    /// on the ringing screen.
+    ///
+    /// Scheduling from inside `queue` rather than after it keeps the posts in
+    /// the order of the mutations, because the main queue is FIFO. `state`
+    /// is captured now, so a late post still carries the state it announces;
+    /// `nil` posts without `userInfo`. `self` is the app-lifetime singleton,
+    /// so the strong capture costs nothing.
+    private func postOnMain(_ name: Notification.Name, state: AudioPlaybackState? = nil) {
+        DispatchQueue.main.async {
+            let userInfo: [AnyHashable: Any]? = state.map { [Self.stateUserInfoKey: $0] }
+            NotificationCenter.default.post(name: name, object: self, userInfo: userInfo)
         }
     }
 
@@ -598,10 +623,7 @@ final class AudioService {
             // notification that `AppDelegate` turns into a time-sensitive local
             // banner the user actually sees on the lock screen.
             startVibration()
-            NotificationCenter.default.post(
-                name: Self.resumeAudioFailedNotification,
-                object: self
-            )
+            postOnMain(Self.resumeAudioFailedNotification)
             return
         }
         // `play()` returns false only if the queue refuses — which on a paused
