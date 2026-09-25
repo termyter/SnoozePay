@@ -4712,7 +4712,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Statistics unavailable"
+            "value" : "Stats unavailable"
           }
         },
         "ru" : {
@@ -4802,7 +4802,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Part of your charge history couldn’t be read — this week’s figures are hidden rather than shown too low"
+            "value" : "Part of your charge history couldn’t be read — this week’s figures are hidden rather than understated"
           }
         },
         "ru" : {
@@ -5270,7 +5270,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The comparison will show up once there’s more history"
+            "value" : "Comparison will show up once there’s more history"
           }
         },
         "ru" : {
@@ -5414,7 +5414,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "BY DAY OF THE WEEK"
+            "value" : "BY DAY OF WEEK"
           }
         },
         "ru" : {
@@ -5594,7 +5594,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saved over %1$lld %2$@"
+            "value" : "Saved in %1$lld %2$@"
           }
         },
         "ru" : {
@@ -5612,7 +5612,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saved over a week"
+            "value" : "Saved in a week"
           }
         },
         "ru" : {
@@ -6656,7 +6656,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Made it up after %1$lld %2$@"
+            "value" : "Up after %1$lld %2$@"
           }
         },
         "ru" : {
@@ -6746,7 +6746,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You were charged %1$lld ₽ today. Snoozes that didn’t go through: %2$lld — their charges were refunded."
+            "value" : "You were charged %1$lld ₽ today. Snoozes that didn’t go through: %2$lld — those charges were refunded."
           }
         },
         "ru" : {
@@ -6764,7 +6764,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No charges remain. Snoozes that didn’t go through: %lld — their charges were refunded."
+            "value" : "No charges remain. Snoozes that didn’t go through: %lld — those charges were refunded."
           }
         },
         "ru" : {
