@@ -2189,6 +2189,12 @@
       "comment" : "Body shown when the user taps «Пополнить» on a corrupt balance: the top-up gate stays locked until acknowledgeCorruption() runs, so the generic retry copy would send the user in a loop (#419).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your saved balance is invalid. Top-ups aren’t available until you reset your balance to zero."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2201,6 +2207,12 @@
       "comment" : "App Store-required restore affordance under the deposit form.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore Purchases"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2213,6 +2225,12 @@
       "comment" : "Footnote under the deposit CTA.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Money goes to your balance. It’s only charged when you snooze."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2225,6 +2243,12 @@
       "comment" : "Top-up: StoreKit reported a paid purchase but the ledger refused the credit.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t credit the purchase to your balance. Contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2237,6 +2261,12 @@
       "comment" : "Top-up: the processed-transaction table is type-drifted, so a new purchase is refused rather than risking a double credit.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t process the purchase. Restart the app or contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2249,6 +2279,12 @@
       "comment" : "Top-up: a verified purchase arrived in a currency the wallet does not hold, so it could not be credited.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The purchase was paid in a different currency than your wallet balance, so it couldn’t be credited. Contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2261,6 +2297,12 @@
       "comment" : "Top-up: Product.products(for:) threw while loading the five packages.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load top-up packs. Check your internet connection."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2273,6 +2315,12 @@
       "comment" : "Release-build failure body when the StoreKit catalogue is empty: no balance is credited without a real transaction.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load top-up packs. Try again later."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2285,6 +2333,12 @@
       "comment" : "Top-up: the transaction names a product ID this build does not know, so nothing is credited.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unknown top-up pack. Update the app."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2297,6 +2351,12 @@
       "comment" : "Top-up: StoreKit returned a PurchaseResult case this build does not handle.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t confirm the purchase. Update the app and try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2309,6 +2369,12 @@
       "comment" : "Top-up: the transaction's signature did not verify, so the purchase is left in the queue.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t verify the purchase receipt. If you were charged, contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2321,6 +2387,12 @@
       "comment" : "The single, acknowledging button on the foreign-currency alert. Nothing is offered to cancel, because nothing was started.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Got It"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2333,6 +2405,12 @@
       "comment" : "Body of the foreign-currency refusal. %1$@ is the wallet's currency name, %2$@ the storefront's. One key rather than the six concatenated fragments it replaced: clause order is a property of the language, not of the layout.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wallet’s currency is %1$@. The App Store is currently selling top-up packs in a different currency: %2$@. The app can’t convert one into the other: it has no exchange rate, and it won’t make one up for your money. Top-ups in another currency aren’t available. Your balance hasn’t gone anywhere — you can spend it as usual."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2345,6 +2423,12 @@
       "comment" : "Title of the alert that refuses a top-up priced in a currency the wallet cannot hold.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Different Currency"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2357,6 +2441,12 @@
       "comment" : "Top-up: body of the credited local notification. %lld is the amount in roubles.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your balance was topped up by %lld ₽."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2369,6 +2459,12 @@
       "comment" : "Top-up: local notification posted when a purchase is credited with no screen mounted to show the banner.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance Topped Up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2381,6 +2477,12 @@
       "comment" : "Top-up: local notification posted when a purchase failure arrives with no screen mounted; the body is the failure's own copy.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top-Up Failed"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2393,6 +2495,12 @@
       "comment" : "Badge floating above the recommended amount tile (SPAmountPreset).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Popular"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2405,6 +2513,12 @@
       "comment" : "Secondary line on an amount tile: how many snoozes the amount buys. Positional because the count and the declined noun («откладываний», from plural.snoozes) reorder in other languages; assembling this from two keys would freeze Russian word order.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ %1$lld %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2417,6 +2531,12 @@
       "comment" : "Restore purchases: StoreKitError.userCancelled.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore canceled."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2429,6 +2549,12 @@
       "comment" : "Restore purchases: fallback for an error with no typed branch. %@ is the system's own description.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@\n\nIf the problem keeps happening, contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2441,6 +2567,12 @@
       "comment" : "Restore purchases: the SKError cloud-service family.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check your internet connection and iCloud access in Settings."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2453,6 +2585,12 @@
       "comment" : "Restore purchases: advice shown for every network-shaped failure (URLError, SKError, StoreKitError.networkError).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check your internet connection and try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2465,6 +2603,12 @@
       "comment" : "Restore purchases: StoreKitError.notEntitled — no Apple ID signed in.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to your Apple Account in Settings and try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2477,6 +2621,12 @@
       "comment" : "Restore purchases: SKError.paymentNotAllowed — purchases restricted by Screen Time.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purchases are restricted on this device. Check your Screen Time settings."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2489,6 +2639,12 @@
       "comment" : "Restore purchases: StoreKitError.notAvailableInStorefront.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purchases aren’t available in your region."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2501,6 +2657,12 @@
       "comment" : "Restore purchases: title of the alert shown when AppStore.sync() fails.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Restore Purchases"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2513,6 +2675,12 @@
       "comment" : "Restore purchases: body of the alert shown after AppStore.sync() returns; crediting happens later via the transaction listener.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If any purchase is still pending, your balance will update within a few seconds."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2525,6 +2693,12 @@
       "comment" : "Restore purchases: title of the alert shown after AppStore.sync() returns.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Request Sent"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2537,6 +2711,12 @@
       "comment" : "Caption under the green check of the deposit success state.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added to your balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2549,6 +2729,12 @@
       "comment" : "Header of the deposit bottom sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top Up Balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5165,6 +5351,12 @@
       "comment" : "Week-over-week delta under the wallet balance. %1$@ is the ↑/↓ arrow glyph, %2$@ the formatted amount — positional because the two swap in languages that lead with the amount.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ in the past week"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5177,6 +5369,12 @@
       "comment" : "Body of the corruption alert as raised by the wallet tab, which reports the clamp that already happened (#419 / #206).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your saved balance was invalid and has been reset to zero. Top-ups are unavailable until you confirm the reset."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5189,6 +5387,12 @@
       "comment" : "Caps header above the 7-day mini chart. Stored uppercase: the call site only applies the caps font, it does not uppercase.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LAST 7 DAYS"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5201,6 +5405,12 @@
       "comment" : "Alert body when the stored transaction ledger cannot be decoded (TransactionRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load your stats. Contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5213,6 +5423,12 @@
       "comment" : "Alert body when writing is refused because the stored ledger is corrupt (TransactionRepository.RepositoryError.persistBlocked).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving is blocked: the data is corrupted. Recover it from the app’s settings or contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5225,6 +5441,12 @@
       "comment" : "Alert body when encoding a transaction for storage fails (TransactionRepository.RepositoryError.encodeFailure).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t save the transaction. Try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5237,6 +5459,12 @@
       "comment" : "Quiet footer of the wallet tab — one-way stake framing (#322); the word «штрафы» is deliberately absent (#278).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top-ups can’t be withdrawn · only charged when you snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5249,6 +5477,12 @@
       "comment" : "Balance-card hint at zero. Wallet-specific: the alarms list says «Откладывать не получится» (alarms.hint.zero_balance), which is the right line on a screen with no way to top up.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your balance is empty — top up to snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5261,6 +5495,12 @@
       "comment" : "Caps header above the three-row transaction preview. Stored uppercase — the call site only applies the caps font.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TRANSACTIONS"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5273,6 +5513,12 @@
       "comment" : "Day-group header for today's transactions.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5285,6 +5531,12 @@
       "comment" : "Day-group header for yesterday's transactions. Older days render a formatted date instead («12 января»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yesterday"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5297,6 +5549,12 @@
       "comment" : "Empty state of an untouched ledger — both the wallet preview card and the history screen.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top-ups, charges, and bonuses will show up here."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5309,6 +5567,12 @@
       "comment" : "Empty state when the chosen period holds no transactions at all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No transactions in the selected period."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5321,6 +5585,12 @@
       "comment" : "Empty state when the period does hold transactions but the active type chip filtered them all out.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No transactions of this type in the selected period."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5333,6 +5603,12 @@
       "comment" : "Transaction-history type-filter chip: no restriction on the direction of the row.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5345,6 +5621,12 @@
       "comment" : "Transaction-history type-filter chip: debits only (snooze charges).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charges"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5357,6 +5639,12 @@
       "comment" : "Transaction-history type-filter chip: everything that adds money — paid top-ups, referral bonuses and penalty reversals.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Credits"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5369,6 +5657,12 @@
       "comment" : "Link from the wallet preview into the full history screen. The arrow is part of the copy so a translation can move it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See All →"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5381,6 +5675,12 @@
       "comment" : "Distinct error card for a ledger that fails to decode (#419) — it must NOT read as the friendly empty state, or the user assumes their history was wiped.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load your history"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5393,6 +5693,12 @@
       "comment" : "VoiceOver label of the period chip; %@ is the caption («Январь 2026»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period: %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5405,6 +5711,12 @@
       "comment" : "Caps caption of the summary card; %@ is the period («январь 2026»). Stored in sentence case — the call site uppercases with the display locale, which is what keeps «Ё» intact.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5417,6 +5729,12 @@
       "comment" : "Summary-card column: how many snooze charges the period holds.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snoozes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5429,6 +5747,12 @@
       "comment" : "Summary-card column: total charged in the period.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spent"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5441,6 +5765,12 @@
       "comment" : "Summary-card column: total topped up in the period (bonuses excluded).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top-ups"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5453,6 +5783,12 @@
       "comment" : "Wallet preview row timestamp for a day older than yesterday. %1$@ is the date rendered by the locale's own «d MMM» template, %2$@ the 24-hour clock time. Positional, and the «·» separator is part of the string, so a translation can reorder or replace it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5465,6 +5801,12 @@
       "comment" : "Wallet preview row timestamp for today. %@ is the 24-hour clock time.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today · %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5477,6 +5819,12 @@
       "comment" : "Wallet preview row timestamp for yesterday.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yesterday · %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5489,6 +5837,12 @@
       "comment" : "Navigation title of the transaction-history screen.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "History"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5501,6 +5855,12 @@
       "comment" : "Soft warning (not the corrupt-ledger banner) when rows carry a type this build cannot classify: they render but are excluded from every total (#358).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Some transactions weren’t recognized — the totals below may be incomplete"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5513,6 +5873,12 @@
       "comment" : "Abbreviated month name (январь) for the transaction-history period chips and the month grid of the picker sheet. Copy rather than calendar data, unlike the full names: ru_RU's own shortStandaloneMonthSymbols carry trailing periods, leave four months unabbreviated («март», «май», «июнь», «июль») and range from three to five characters, where the grid on artboard 21b is a fixed set of three-letter tokens.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jan"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5525,6 +5891,12 @@
       "comment" : "Abbreviated month name (февраль). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feb"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5537,6 +5909,12 @@
       "comment" : "Abbreviated month name (март). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mar"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5549,6 +5927,12 @@
       "comment" : "Abbreviated month name (апрель). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apr"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5561,6 +5945,12 @@
       "comment" : "Abbreviated month name (май). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "May"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5573,6 +5963,12 @@
       "comment" : "Abbreviated month name (июнь). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jun"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5585,6 +5981,12 @@
       "comment" : "Abbreviated month name (июль). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jul"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5597,6 +5999,12 @@
       "comment" : "Abbreviated month name (август). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aug"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5609,6 +6017,12 @@
       "comment" : "Abbreviated month name (сентябрь). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sep"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5621,6 +6035,12 @@
       "comment" : "Abbreviated month name (октябрь). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oct"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5633,6 +6053,12 @@
       "comment" : "Abbreviated month name (ноябрь). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nov"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5645,6 +6071,12 @@
       "comment" : "Abbreviated month name (декабрь). See wallet.month.short_01 for why these are copy and the full names are not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dec"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5657,6 +6089,12 @@
       "comment" : "Confirming CTA of the period picker sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5669,6 +6107,12 @@
       "comment" : "Clears the period selection back to the current month. Separate from common.button.reset, which zeroes a corrupt balance — same Russian word, different senses.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5681,6 +6125,12 @@
       "comment" : "Summary row of the period picker while nothing is selected.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a month"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5693,6 +6143,12 @@
       "comment" : "Month counter beside the caption of the period-picker sheet. %lld is the number of months in the selected range; the Russian abbreviation does not decline (1 / 3 / 5 мес.), hence one key instead of a plural set.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld mo"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5705,6 +6161,12 @@
       "comment" : "Header of the period picker sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5717,6 +6179,12 @@
       "comment" : "Page title (h1) of the wallet tab.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5729,6 +6197,12 @@
       "comment" : "Transaction row title for a snooze charge.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5741,6 +6215,12 @@
       "comment" : "Transaction row title for a referral bonus. There is no 7-day hold today, so the copy must not claim one (#282).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Referral bonus"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5753,6 +6233,12 @@
       "comment" : "Transaction row title for a penalty returned because the snooze never armed (#358).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze refund"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5765,6 +6251,12 @@
       "comment" : "Transaction row title for a balance top-up.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance top-up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5777,6 +6269,12 @@
       "comment" : "Transaction row title for a row written by a newer build (TransactionType.unknown).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transaction"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
