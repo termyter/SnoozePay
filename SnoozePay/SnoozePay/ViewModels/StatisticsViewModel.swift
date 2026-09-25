@@ -678,13 +678,23 @@ final class StatisticsViewModel {
     static var weekdayFullNames: [String] { WeekdayNames.full }
 
     /// Value rendered above a weekday bar: whole averages drop the fraction
-    /// ("4"), fractional ones keep a single decimal with the Russian comma
-    /// ("1,5").
-    static func barValueText(_ value: Double) -> String {
+    /// ("4"), fractional ones keep a single decimal in `locale`'s separator —
+    /// "1,5" in `ru_RU`, "1.5" in `en_US` (#903). `locale` is injectable, as in
+    /// ``Plural/category(for:locale:)``, so tests can pin both.
+    ///
+    /// Rounding stays `%.1f`'s: it rounds the exact binary value, so 0.15
+    /// (stored as 0.1499…) reads "0,1". Formatting the `Double` directly would
+    /// round its shortest decimal "0.15" up to "0,2". Hence the round-trip
+    /// through a `Decimal`, the same trick as `savedDisplayAmount`. The locale
+    /// then only picks the separator. No grouping: "1234,5", as before.
+    static func barValueText(_ value: Double, locale: Locale = AppLocale.display) -> String {
         if value == value.rounded() {
             return "\(Int(value))"
         }
-        return String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
+        let rounded = Decimal(string: String(format: "%.1f", value)) ?? Decimal(value)
+        return rounded.formatted(
+            .number.precision(.fractionLength(1)).grouping(.never).locale(locale)
+        )
     }
 
     /// Tooltip status copy with the Russian declension of "откладывание".
