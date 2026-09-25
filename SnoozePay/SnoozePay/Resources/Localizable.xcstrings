@@ -3653,6 +3653,12 @@
       "comment" : "Button on the alarm notification that stops the alarm.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn Off"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3665,6 +3671,12 @@
       "comment" : "Button on the alarm notification that buys another snooze. Deliberately not shared with the wallet's identically-worded transaction label: this one is an imperative button, that one names a past event, and the two need not stay identical in another language.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3677,6 +3689,12 @@
       "comment" : "Fallback body of the failed-purchase alert, used only when StoreKit gives no message of its own.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3689,6 +3707,12 @@
       "comment" : "Alert title after a failed StoreKit purchase started from the firing screen or its top-up sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purchase Failed"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3701,6 +3725,12 @@
       "comment" : "Body of the refund-failed alert; %@ is the scheduler's own error description. Routes to support instead of implying the money came back.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ The alarm won’t ring again, and we couldn’t refund your snooze fee automatically. Contact support and we’ll refund it manually."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3713,6 +3743,12 @@
       "comment" : "Alert title for the worse case: the snooze did not schedule AND the refund failed, so the user is out of pocket.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Refund Snooze Fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3725,6 +3761,12 @@
       "comment" : "Body of the snooze-not-scheduled alert; %@ is the scheduler's own error description. One string rather than «error + our sentence» so a translator can move the explanation ahead of the cause.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ The alarm won’t ring again — set a backup alarm. Your snooze fee has been refunded to your balance."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3737,6 +3779,12 @@
       "comment" : "Alert title when the money was taken but the scheduler refused the next ring.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze Not Scheduled"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3749,6 +3797,12 @@
       "comment" : "Banner shown when the audio session could not be configured because another app holds it. Also used as the banner's accessibility label.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sound unavailable — another app is using audio. Check your sound mode."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3761,6 +3815,12 @@
       "comment" : "Banner shown when playback failed and the alarm falls back to vibration only. Also used as the banner's accessibility label.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can’t play sound — the alarm is vibrating instead."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3773,6 +3833,12 @@
       "comment" : "Full-width ghost button that ends the alarm. First person on purpose: the user asserts they are up.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I’m Up — Turn Off"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3785,6 +3851,12 @@
       "comment" : "Caps eyebrow under the firing clock once the wallet cannot pay for another snooze — getting up is the only move left.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only way is up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3797,6 +3869,12 @@
       "comment" : "Caps eyebrow under the firing clock while the wallet can still pay for a snooze.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Time to get up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3809,6 +3887,12 @@
       "comment" : "Replaces firing.hint.next_price once the progressive ladder hits its ceiling and there is no higher price to quote.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "max fee — only way left is up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3821,6 +3905,12 @@
       "comment" : "Hint under the snooze CTA on a progressive alarm, naming what the NEXT snooze will cost (%@ is a formatted sum). Lowercase per SPDawnV3.jsx:240.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "next snooze: %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3833,6 +3923,12 @@
       "comment" : "Body line under firing.no_balance.pill — states the consequence rather than repeating the balance.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more snoozing. Time to get up."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3845,6 +3941,12 @@
       "comment" : "Quiet link under the no-balance CTA; opens the top-up sheet for an amount other than the pre-selected one.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Another Amount"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3857,6 +3959,12 @@
       "comment" : "Hint on the disabled snooze card in the no-balance state, explaining why the card cannot be tapped.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3869,6 +3977,12 @@
       "comment" : "Pain pill at the centre of the firing screen once the wallet cannot cover a snooze.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No balance left"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3881,6 +3995,12 @@
       "comment" : "Muted label segment of the two-tier balance pill in the firing top bar, read as «Баланс  840 ₽». Mixed case on purpose: SPPill renders it in the caps face without transforming it, which is why this is not common.caps.balance («БАЛАНС»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3893,6 +4013,12 @@
       "comment" : "Pain-toned pill in the firing hero on a progressive alarm; %lld is the ordinal of the snooze about to be bought (snoozeCount + 1).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Progressive · snooze #%lld"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3905,6 +4031,12 @@
       "comment" : "VoiceOver label of the snooze CTA on the firing screen. %lld is the snooze length in minutes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze for %lld minutes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3917,6 +4049,12 @@
       "comment" : "Title of the firing-screen snooze button when the balance covers the charge. %1$lld is the snooze length in minutes, %2$@ the formatted price; the leading «−» is U+2212, matching the ledger.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%1$lld min · −%2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3929,6 +4067,12 @@
       "comment" : "Title of the firing-screen snooze button when the balance cannot cover the next charge, so the button states the reason instead of a price.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance Empty"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3941,6 +4085,12 @@
       "comment" : "Caps line of the snooze CTA, after a clock glyph. %lld is the snooze length in minutes. The call site uppercases the result, so the value is stored in sentence case.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze %lld min"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3953,6 +4103,12 @@
       "comment" : "Snoozed-state hero suffix naming the next ring, e.g. «Будни · отложено до 07:05». %@ is the wall-clock time. Lowercase: it follows the alarm name in the same line, and stands alone only when the alarm is unnamed. Distinct from `firing.action.snooze` on purpose — that one is an imperative button, this names an event that already happened.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "snoozed until %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3965,6 +4121,12 @@
       "comment" : "Caps eyebrow before today's snooze ticker entries (SPFiringTicker).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TODAY"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3977,6 +4139,12 @@
       "comment" : "Meta line under the purchase CTA of the firing top-up sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added to your balance instantly. You can snooze right away."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3989,6 +4157,12 @@
       "comment" : "Release-build failure when the StoreKit catalogue never loaded, so there is no product to buy.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load top-up packs. Try again later."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4001,6 +4175,12 @@
       "comment" : "Caps countdown above the sheet header; %@ is MM:SS until the alarm resumes. The call site uppercases the whole line, so the catalogue keeps it in sentence case.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm paused · %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4013,6 +4193,12 @@
       "comment" : "Tier row hint naming the exact shortfall when the tier buys no snooze; %@ is a formatted sum.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "short by %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4025,6 +4211,12 @@
       "comment" : "Tier row hint naming the price the count was divided by; %@ is a formatted sum.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "at %@ per snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4037,6 +4229,12 @@
       "comment" : "Tier row title when the snooze price is unknown or free, so no promise about snoozes can be made. Same words as firing.top_up.title but a different role — a row label, free to diverge from the sheet header.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top up your balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4049,6 +4247,12 @@
       "comment" : "Tier row title when buying this tier still leaves the user short of one snooze.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough for a snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4061,6 +4265,12 @@
       "comment" : "Tier row title naming how many snoozes the tier unlocks: %1$lld is the count, %2$@ the matching form of «откладывание» (plural.snoozes).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%1$lld %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4073,6 +4283,12 @@
       "comment" : "Sheet subtitle when not even the largest tier unlocks a snooze; %1$@ is the snooze price, %2$@ the largest tier.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A snooze costs %1$@ right now. Even %2$@ won’t cover it — you’ll need several top-ups."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4085,6 +4301,12 @@
       "comment" : "Sheet subtitle when there is no usable snooze price to reason about; %@ is the cheapest tier.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The smallest top-up is %@. You can add more so you don’t have to come back here."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4097,6 +4319,12 @@
       "comment" : "Sheet subtitle when the cheapest tier already unlocks a snooze; %1$@ is the snooze price, %2$@ the cheapest tier.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A snooze costs %1$@ right now. The smallest top-up, %2$@, is enough. You can add more so you don’t have to come back here."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4109,6 +4337,12 @@
       "comment" : "Sheet subtitle when a middle tier is the first that unlocks a snooze; %1$@ is the snooze price, %2$@ that tier.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A snooze costs %1$@ right now. You’ll need at least %2$@ — smaller top-ups won’t unlock a snooze."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4121,6 +4355,12 @@
       "comment" : "Caption of the success overlay in the firing top-up sheet, shown while the sheet auto-dismisses.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to your alarm in 2 seconds"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4133,6 +4373,12 @@
       "comment" : "h2 header of the top-up sheet opened while the alarm is ringing.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top Up Balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4145,6 +4391,12 @@
       "comment" : "Primary call to action on onboarding page 3; the selected amount is appended by the button as a suffix. Also matched by SnoozePayUITests.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top Up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4157,6 +4409,12 @@
       "comment" : "Onboarding step 3: declines the first deposit and finishes onboarding with a zero balance.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Later — Try Without a Balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4169,6 +4427,12 @@
       "comment" : "Primary call to action on onboarding pages 1-2. SnoozePayUITests matches this copy on screen, so a change here changes the E2E expectation too.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4181,6 +4445,12 @@
       "comment" : "Onboarding: the pill floating top-right on every page that leaves the flow at once.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skip"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4193,6 +4463,12 @@
       "comment" : "Onboarding step 3: caps tag on the recommended deposit preset. Store it in sentence case: the call site upper-cases it (the _caps rule, see Localized.swift).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Popular"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4205,6 +4481,12 @@
       "comment" : "Step 1 body copy under the headline.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every snooze costs money. That money’s gone. But you’ll be up."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4217,6 +4499,12 @@
       "comment" : "Step 1 headline. The line break is the design (two centred lines under the 07:00 hero clock).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The alarm\nwith stakes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4229,6 +4517,12 @@
       "comment" : "Caps caption above the step-2 headline.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HOW IT WORKS"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4241,6 +4535,12 @@
       "comment" : "Body of numbered step 1 of the mechanics.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "That’s the pool your snoozes are paid from."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4253,6 +4553,12 @@
       "comment" : "Title of numbered step 1 of the mechanics. %@ is an already-formatted amount («500 ₽»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You put in %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4265,6 +4571,12 @@
       "comment" : "Body of numbered step 2 of the mechanics.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every time you stall, the money goes."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4277,6 +4589,12 @@
       "comment" : "Title of numbered step 2. 07:00 is the sample alarm time; %@ is an already-formatted amount and carries no sign, so the minus stays in the copy.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze at 07:00 → −%@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4289,6 +4607,12 @@
       "comment" : "Body of numbered step 3 of the mechanics.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your balance stays put. Ready for tomorrow morning."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4301,6 +4625,12 @@
       "comment" : "Title of numbered step 3 of the mechanics.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up on the first ring → no charge"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4313,6 +4643,12 @@
       "comment" : "Step 2 headline; the line break is the design.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top up your balance.\nYou snooze, you lose."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4325,6 +4661,12 @@
       "comment" : "Caps caption above the step-3 deposit headline.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BALANCE · HOW MUCH TO ADD"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4337,6 +4679,12 @@
       "comment" : "Onboarding step 3, smallest deposit preset: how far it goes. %@ is the per-snooze price.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 5 snoozes at %@ each"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4349,6 +4697,12 @@
       "comment" : "Onboarding step 3: name of the smallest deposit preset.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try It"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4361,6 +4715,12 @@
       "comment" : "Onboarding step 3, middle deposit preset: how far it goes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 10 snoozes · lasts 2 weeks"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4373,6 +4733,12 @@
       "comment" : "Onboarding step 3: name of the middle (default) deposit preset.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serious"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4385,6 +4751,12 @@
       "comment" : "Onboarding step 3, largest deposit preset: how far it goes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 20 snoozes · a calm month"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4397,6 +4769,12 @@
       "comment" : "Onboarding step 3: name of the largest deposit preset.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All In"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4409,6 +4787,12 @@
       "comment" : "Step 3 headline; the line break is the design.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How much will you bet\non your discipline?"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4421,6 +4805,12 @@
       "comment" : "Permissions screen: why the two permissions below are asked for.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your alarm needs these to ring even when your phone is on silent."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4433,6 +4823,12 @@
       "comment" : "Permissions screen: caps eyebrow above the title.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LAST STEP"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4445,6 +4841,12 @@
       "comment" : "Permissions screen: caps affordance on a card whose permission is not granted yet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4457,6 +4859,12 @@
       "comment" : "Permissions screen: what the notification permission buys the user.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So your alarm can ring and show on screen"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4469,6 +4877,12 @@
       "comment" : "Permissions screen: title of the notification permission card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarms"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4481,6 +4895,12 @@
       "comment" : "Permissions screen: what the background-audio capability buys the user.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So the alarm sound keeps playing when the screen locks"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4493,6 +4913,12 @@
       "comment" : "Permissions screen: title of the background-audio card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Background Audio"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4505,6 +4931,12 @@
       "comment" : "Permissions screen: headline.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So your alarm works"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4517,6 +4949,12 @@
       "comment" : "Permissions screen: caps state on a card the user cannot act on from inside the app.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unavailable"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4529,6 +4967,12 @@
       "comment" : "Splash screen: tagline under the SnoozePay wordmark.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The alarm with stakes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
