@@ -231,6 +231,7 @@ final class AppDelegateAlertTests: XCTestCase {
             \(presentationDiagnostics(rootedAt: window.rootViewController))
             """
         )
+        XCTAssertEqual(alert?.title, "Будильник", "alarm_failure.corrupted.title, the words it shipped with (#733)")
         XCTAssertEqual(alert?.message, message)
         XCTAssertEqual(alert?.actions.count, 1, "the alert only acknowledges; it decides nothing")
         XCTAssertEqual(

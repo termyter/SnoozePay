@@ -280,8 +280,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
         let content = UNMutableNotificationContent()
-        content.title = "Будильник звучит беззвучно"
-        content.body = "Не удалось включить звук — откройте приложение и выключите будильник вручную."
+        content.title = Localized.text("alarm_failure.silent_audio.title")
+        content.body = Localized.text("alarm_failure.silent_audio.body")
         content.sound = .default
         // Time-sensitive so it pierces Focus the way the alarm itself would.
         content.interruptionLevel = .timeSensitive
@@ -307,9 +307,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
         let content = UNMutableNotificationContent()
-        content.title = "Будильники не перевзведены"
-        content.body = "Не удалось перепланировать будильники (\(failedCount)) — "
-            + "откройте приложение и проверьте разрешения на уведомления."
+        content.title = Localized.text("alarm_failure.reschedule.title")
+        content.body = Localized.format("alarm_failure.reschedule.body", failedCount)
         content.sound = .default
         content.interruptionLevel = .timeSensitive
 
@@ -750,13 +749,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         poster: LocalNotificationPosting = UNUserNotificationCenter.current()
     ) {
         let content = UNMutableNotificationContent()
-        content.title = "Откладывание не запланировано"
+        content.title = Localized.text("alarm_failure.snooze.title")
         if refundLanded {
-            content.body = "Установите запасной — \(detail)"
+            content.body = Localized.format("alarm_failure.snooze.body_refunded", detail)
         } else {
             // Penalty was charged but refund failed — surface this so the user
             // knows to reach out instead of silently absorbing the loss.
-            content.body = "Установите запасной. Списание не возвращено — обратитесь в поддержку. \(detail)"
+            content.body = Localized.format("alarm_failure.snooze.body_charged", detail)
         }
         content.sound = .default
         // Time-sensitive so it pierces Focus modes the same way the alarm
@@ -789,9 +788,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let message: String
         if let repoError = error as? AlarmRepository.RepositoryError,
            case let .decodeFailure(detail) = repoError {
-            message = "Будильник прозвенел, но его данные повреждены и экран не загрузился. Подробности: \(detail)"
+            // `detail` is an `Error`, not a `CVarArg`; `String(describing:)` is
+            // what the interpolation it replaces rendered.
+            message = Localized.format("alarm_failure.corrupted.message", String(describing: detail))
         } else {
-            message = "Будильник прозвенел, но его данные не удалось загрузить. Откройте приложение и проверьте список будильников."
+            message = Localized.text("alarm_failure.corrupted.message_fallback")
         }
         DispatchQueue.main.async {
             let rootVC: UIViewController

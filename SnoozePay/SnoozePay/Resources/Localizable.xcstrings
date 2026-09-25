@@ -1,6 +1,126 @@
 {
   "sourceLanguage" : "ru",
   "strings" : {
+    "alarm_failure.corrupted.message" : {
+      "comment" : "Message of the corrupt-alarm alert (alarm_failure.corrupted.title) when the repository reported a decode failure. %@ is the decoder's detail, printed verbatim so a support request can quote it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник прозвенел, но его данные повреждены и экран не загрузился. Подробности: %@"
+          }
+        }
+      }
+    },
+    "alarm_failure.corrupted.message_fallback" : {
+      "comment" : "Message of the corrupt-alarm alert (alarm_failure.corrupted.title) for any load error other than a decode failure, which has no detail to show.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник прозвенел, но его данные не удалось загрузить. Откройте приложение и проверьте список будильников."
+          }
+        }
+      }
+    },
+    "alarm_failure.corrupted.title" : {
+      "comment" : "Title of the alert AppDelegate presents when an alarm fired but its stored data could not be loaded (#117). Byte-identical to create_alarm.title.edit and deliberately a separate entry: that one titles the alarm editor, this one an error alert.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник"
+          }
+        }
+      }
+    },
+    "alarm_failure.reschedule.body" : {
+      "comment" : "Body of the re-arm failure banner (alarm_failure.reschedule.title). %lld is the number of alarms that failed to re-arm, a bare integer in parentheses — no plural noun follows it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось перепланировать будильники (%lld) — откройте приложение и проверьте разрешения на уведомления."
+          }
+        }
+      }
+    },
+    "alarm_failure.reschedule.title" : {
+      "comment" : "Title of the time-sensitive banner AppDelegate posts when one or more alarms failed to re-arm after a clock, timezone, reboot or permission change (#442). The re-arm runs in the background, so the banner is the only surface.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильники не перевзведены"
+          }
+        }
+      }
+    },
+    "alarm_failure.silent_audio.body" : {
+      "comment" : "Body of the silent-alarm banner (alarm_failure.silent_audio.title): tells the user to open the app and stop the alarm by hand.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось включить звук — откройте приложение и выключите будильник вручную."
+          }
+        }
+      }
+    },
+    "alarm_failure.silent_audio.title" : {
+      "comment" : "Title of the time-sensitive banner AppDelegate posts when the audio session could not be reclaimed on resume, so the alarm is ringing silently (#405). Posted by the system, so it reaches a user who is not looking at the firing screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник звучит беззвучно"
+          }
+        }
+      }
+    },
+    "alarm_failure.snooze.body_charged" : {
+      "comment" : "Body of the lost-snooze banner when the penalty was charged and the refund failed: set a backup alarm and contact support. %@ is the scheduler's error description, appended verbatim.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установите запасной. Списание не возвращено — обратитесь в поддержку. %@"
+          }
+        }
+      }
+    },
+    "alarm_failure.snooze.body_refunded" : {
+      "comment" : "Body of the lost-snooze banner when the penalty was refunded: set a backup alarm. %@ is the scheduler's error description, appended verbatim.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установите запасной — %@"
+          }
+        }
+      }
+    },
+    "alarm_failure.snooze.title" : {
+      "comment" : "Title of the time-sensitive banner AppDelegate posts when a snooze could not be scheduled from a notification action, with no firing screen on hand. Byte-identical to firing.alert.snooze_not_scheduled.title and deliberately a separate entry: that one titles an in-app alert on the firing screen, this one a system banner delivered to a user who may not be looking.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откладывание не запланировано"
+          }
+        }
+      }
+    },
     "alarm_kit.action.snooze" : {
       "comment" : "Name of SnoozeAlarmIntent, the intent wired to the AlarmKit alert's secondary action (AlarmConfiguration.secondaryIntent). Shortcuts and Siri show it. This is NOT the text of the alert's snooze button — that is alarm_kit.action.snooze.priced, set explicitly via AlarmButton(text:). Byte-identical to firing.action.snooze and still a separate entry. The reason is not that the words might diverge (they need not) but that firing.action.snooze titles the pre-#472 UNNotification category that nothing schedules any more (AlarmScheduler.registerCategories) and is expected to be deleted with it: one shared key would make that cleanup silently take a live intent name with it, and the person deleting legacy notification copy has no way to see that from where they stand. Since the words are identical either way, no user sees a difference — this is a namespace choice, not a copy one. #712's precedent points the other way (it merged byte-identical literals reached from two code paths) and is overridden here only by the pending deletion; #711 is not a precedent for this at all, having separated strings whose words differ. NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
       "extractionState" : "manual",
@@ -5001,6 +5121,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Я не откладываю будильник %1$lld %2$@ и сэкономил %3$@ — SnoozePay"
+          }
+        }
+      }
+    },
+    "tab.alarms" : {
+      "comment" : "Tab bar item for the alarms list (SceneDelegate.makeMainTabBar). Byte-identical to alarms.title and deliberately separate: that one is the screen's h1, this one a tab label, which a language may need to shorten.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильники"
+          }
+        }
+      }
+    },
+    "tab.statistics" : {
+      "comment" : "Tab bar item for statistics (SceneDelegate.makeMainTabBar). Byte-identical to statistics.title and deliberately separate: that one is the screen's title, this one a tab label, which a language may need to shorten.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Статистика"
+          }
+        }
+      }
+    },
+    "tab.wallet" : {
+      "comment" : "Tab bar item for the wallet (SceneDelegate.makeMainTabBar). Byte-identical to wallet.title and deliberately separate: that one is the screen's h1, this one a tab label, which a language may need to shorten.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кошелёк"
           }
         }
       }

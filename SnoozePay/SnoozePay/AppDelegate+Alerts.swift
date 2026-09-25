@@ -222,7 +222,7 @@ extension AppDelegate {
         }
 
         let alert = UIAlertController(
-            title: "Будильник",
+            title: Localized.text("alarm_failure.corrupted.title"),
             message: message,
             preferredStyle: .alert
         )

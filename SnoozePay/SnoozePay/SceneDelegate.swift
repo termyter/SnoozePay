@@ -130,7 +130,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let alarmsVC = AlarmsListViewController()
         let alarmsNav = AppNavigationBarStyle.makeNavigationController(rootViewController: alarmsVC)
         alarmsNav.tabBarItem = UITabBarItem(
-            title: "Будильники",
+            title: Localized.text("tab.alarms"),
             image: UIImage(systemName: "alarm"),
             selectedImage: UIImage(systemName: "alarm.fill")
         )
@@ -144,7 +144,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // states; no separate "filled" selected variant in the lucide set.
         let walletIcon = SPIcons.wallet(size: 24)
         walletNav.tabBarItem = UITabBarItem(
-            title: "Кошелёк",
+            title: Localized.text("tab.wallet"),
             image: walletIcon,
             selectedImage: walletIcon
         )
@@ -153,7 +153,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let statsVC = StatisticsViewController()
         let statsNav = AppNavigationBarStyle.makeNavigationController(rootViewController: statsVC)
         statsNav.tabBarItem = UITabBarItem(
-            title: "Статистика",
+            title: Localized.text("tab.statistics"),
             image: UIImage(systemName: "chart.bar"),
             selectedImage: UIImage(systemName: "chart.bar.fill")
         )
