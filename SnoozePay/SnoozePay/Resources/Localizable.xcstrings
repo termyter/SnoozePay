@@ -1277,6 +1277,12 @@
       "comment" : "Alert title for a corrupt stored balance (#419). Three screens raise it — alarms list, wallet and the deposit sheet — with different bodies, so only the title is shared.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance Corrupted"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1289,6 +1295,12 @@
       "comment" : "Cancelling action of an alert or action sheet; also dismisses a screen or sheet without applying the change.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1301,6 +1313,12 @@
       "comment" : "Dismisses a modal that has nothing else to decide — the WokeMorning summary, the streak modal, the alarm-off warning.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1313,6 +1331,12 @@
       "comment" : "Confirms and leaves a screen whose changes are already applied.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1325,6 +1349,12 @@
       "comment" : "Defers a prompt without acting on it — the balance-corruption alert keeps re-asking on the next appearance.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Now"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1337,6 +1367,12 @@
       "comment" : "Sole action of an informational UIAlertController — every one of them, including the referral «Код применён» alert, whose own referral.applied.confirm read Latin «OK» until #751 folded it in here. Acknowledges, never confirms — no alert using it destroys anything. Spelled «Ок», not «ОК» or «OK»: that is how it reads on screen today, and AlertButtonLocalizationTests holds both the spelling and the fact that no second key may carry another one.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1349,6 +1385,12 @@
       "comment" : "Destructive action that zeroes a corrupt balance. Separate from wallet.period.button.reset, which clears a filter and may translate differently («Clear»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1361,6 +1403,12 @@
       "comment" : "Opens the system Settings app from the notifications-disabled alert (AppDelegate). Byte-identical to settings.title and deliberately separate: that one titles this app's own Settings screen, and a language that distinguishes «the Settings app» from «settings» renders the two differently.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1373,6 +1421,12 @@
       "comment" : "Top-up verb shared by the alarms header pill, the wallet and the firing no-balance column. onboarding.button.deposit stays separate: there the amount is appended as a suffix and SnoozePayUITests matches the pair.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top Up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1385,6 +1439,12 @@
       "comment" : "Caps caption above a balance figure — alarms header and wallet card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BALANCE"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1397,6 +1457,12 @@
       "comment" : "Fallback body of the purchase-failure alert, used when StoreKit supplies no message of its own.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1409,6 +1475,12 @@
       "comment" : "Title of the purchase-failure alert — deposit sheet and both firing top-up surfaces.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purchase Failed"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1421,6 +1493,24 @@
       "comment" : "Balance hint under the wallet balance and in the alarms-list sticky header: how many snoozes the remaining balance still buys. A plural VARIATION rather than the flat plural.* nouns, because this call site owns the whole phrase - see example.days_count in this file. common.* because it appears on two screens.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Enough for ~%lld snooze"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Enough for ~%lld snoozes"
+                }
+              }
+            }
+          }
+        },
         "ru" : {
           "variations" : {
             "plural" : {
@@ -1457,6 +1547,12 @@
       "comment" : "Display name of the «bell» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bell"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1469,6 +1565,12 @@
       "comment" : "Display name of the «birds» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Birds"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1481,6 +1583,12 @@
       "comment" : "Display name of the «classic» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Classic"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1493,6 +1601,12 @@
       "comment" : "Display name of the «dawn» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*. Not the alarm theme of the same name: that is create_alarm.theme.name.dawn, a background image, and the two words part company in any other language.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dawn"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1505,6 +1619,12 @@
       "comment" : "Display name of the «drops» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drops"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1517,6 +1637,12 @@
       "comment" : "Display name of the «guitar» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guitar"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1529,6 +1655,12 @@
       "comment" : "Display name of the «hawk» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hawk"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1541,6 +1673,12 @@
       "comment" : "Display name of the «jazz» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jazz"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1553,6 +1691,12 @@
       "comment" : "Display name of the «morning» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Morning"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1565,6 +1709,12 @@
       "comment" : "Display name of the «piano» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Piano"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1577,6 +1727,12 @@
       "comment" : "Display name of the «radar» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Radar"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1589,6 +1745,12 @@
       "comment" : "Display name of the «sirena» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siren"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1601,6 +1763,12 @@
       "comment" : "Display name of the «spaceship» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spaceship"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1613,6 +1781,12 @@
       "comment" : "Display name of the «waves» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waves"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1625,6 +1799,12 @@
       "comment" : "Neutral VoiceOver label seeded by SPSwitch; call sites override it with a contextual one.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5305,6 +5485,12 @@
       "comment" : "Body of the confirmation alert after a friend's code is submitted.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’ll get the bonus once you go 7 days without snoozing."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5317,6 +5503,12 @@
       "comment" : "Title of the confirmation alert after a friend's code is submitted.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code Applied"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5329,6 +5521,12 @@
       "comment" : "Button that submits a friend's referral code.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5341,6 +5539,12 @@
       "comment" : "Button that copies the user's referral code onto the pasteboard.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5353,6 +5557,12 @@
       "comment" : "Bottom call to action opening the system share sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Code"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5365,6 +5575,12 @@
       "comment" : "Error shown when the one-shot referral bonus has already been redeemed on this device.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A referral bonus has already been claimed on this device."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5377,6 +5593,12 @@
       "comment" : "Inline error under the friend-code field in Settings when applyFriendCode throws something that is not a ReferralService.ApplyError — the catch-all branch. The typed errors have their own entries (referral.error.invalid_format, .own_code, .already_applied, .balance_locked).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t apply the code"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5389,6 +5611,12 @@
       "comment" : "Error shown when the balance store is locked by corruption and the bonus cannot be credited safely.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t add the bonus to your balance. Try again later."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5401,6 +5629,12 @@
       "comment" : "Validation error under the friend-code field in Settings.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The code must be 6 characters (letters and digits)."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5413,6 +5647,12 @@
       "comment" : "Error shown when the user enters their own referral code.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can’t apply your own code."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5425,6 +5665,12 @@
       "comment" : "Placeholder of the friend-code field. WAKEUP-7K2 is the sample code shape and stays Latin in every language.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. WAKEUP-7K2"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5437,6 +5683,12 @@
       "comment" : "Avatar initial of the first sample friend. Must stay the first letter of referral.friend_1.name in every language.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5449,6 +5701,12 @@
       "comment" : "Name of the first sample friend — placeholder data until a referral backend exists.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masha K."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5461,6 +5719,12 @@
       "comment" : "Status of the first sample friend: streak completed. Feminine to agree with «Маша».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Made it 7 days"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5473,6 +5737,12 @@
       "comment" : "Avatar initial of the second sample friend. Must stay the first letter of referral.friend_2.name.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "D"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5485,6 +5755,12 @@
       "comment" : "Name of the second sample friend — placeholder data.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dima R."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5497,6 +5773,12 @@
       "comment" : "Status of the second sample friend: mid-streak. The numbers are part of the hard-coded sample data, not substitutions.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Day 4 of 7"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5509,6 +5791,12 @@
       "comment" : "Trailing meta of the second sample friend — the bonus is close.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "soon"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5521,6 +5809,12 @@
       "comment" : "Avatar initial of the third sample friend. Must stay the first letter of referral.friend_3.name.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5533,6 +5827,12 @@
       "comment" : "Name of the third sample friend — placeholder data.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anya S."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5545,6 +5845,12 @@
       "comment" : "Status of the third sample friend: streak just started.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Day 1 of 7"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5557,6 +5863,12 @@
       "comment" : "Trailing meta of the third sample friend — streak under way.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "in progress"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5569,6 +5881,12 @@
       "comment" : "Fine print under the friend-code field.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can enter a code only once. You’ll both get the bonus when you make it 7 days."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5581,6 +5899,12 @@
       "comment" : "Explainer under the promo headline.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When your friend makes it 7 days, you both get a bonus on your balance."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5593,6 +5917,12 @@
       "comment" : "Caps caption on the deep-green promo panel. Rendered with letter spacing; uppercase is the design, not a formatting artefact, so it is spelled out here.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "REFERRAL PROGRAM"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5605,6 +5935,12 @@
       "comment" : "Promo headline. %1$@ is the same money amount twice (already formatted, e.g. «200 ₽»), hence the positional specifier. The line break is the design.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%1$@ for you\n+%1$@ for your friend"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5617,6 +5953,12 @@
       "comment" : "Inline hint under the friend-code field right after a code is accepted. %@ is the credited amount, already formatted by MoneyFormatter (e.g. «200 ₽»), so the currency stays out of the template. Separate from referral.toast.bonus_credited, which is the toast fired at the same moment and names no amount.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%@ bonus added to your balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5629,6 +5971,12 @@
       "comment" : "Hint under a frozen friend-code field in Settings: this device has already redeemed a code. Not referral.error.already_applied («Бонус по реферальному коду уже получен.») — that one is the error ReferralService raises on a second attempt. Different words, two entries (#711).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code already applied"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5641,6 +5989,12 @@
       "comment" : "Caption row closing the referral section in Settings. %@ is the per-friend bonus, already formatted by MoneyFormatter.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter a friend’s code and get +%@ on your balance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5653,6 +6007,12 @@
       "comment" : "Label of the friend-code field in the Settings referral section. SPInput paints its label in the caps role and uppercases what it is handed, so this renders «КОД ДРУГА» on screen — same words as referral.section.friend_code, still a separate entry: that one is passed to the other screen's caption already uppercased, so lowercasing it there would show through and lowercasing this one would not. The case belongs to the view here and to the string there.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Friend’s code"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5665,6 +6025,12 @@
       "comment" : "Placeholder of the friend-code field in the Settings referral section. The standalone referral screen shows a sample code instead (referral.field.friend_code_placeholder, «Например, WAKEUP-7K2»); different words, so a separate entry.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter 6 characters"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5677,6 +6043,12 @@
       "comment" : "Title of the first row of the Settings referral section, trailed by the user's own 6-character code. Not referral.section.personal_code («ВАШ КОД»), the caps caption over the same code on the standalone referral screen.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Code"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5689,6 +6061,12 @@
       "comment" : "Caps section caption above the field where a friend's code is entered.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FRIEND’S CODE"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5701,6 +6079,12 @@
       "comment" : "Caps section caption above the invited-friends list.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FRIENDS"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5713,6 +6097,12 @@
       "comment" : "Caps section caption above the user's own referral code.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YOUR CODE"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5725,6 +6115,12 @@
       "comment" : "Text handed to the system share sheet. %1$@ is the referral code, %2$@ the already-formatted bonus amount.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze less, save more. Use my code %1$@ in SnoozePay and we’ll both get +%2$@ on our balances."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5737,6 +6133,12 @@
       "comment" : "Navigation title of the referral screen.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invite Friends"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5749,6 +6151,12 @@
       "comment" : "Toast shown after a friend's code is accepted. Fired together with the inline referral.hint.bonus_credited, which names the amount; this one deliberately does not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bonus added"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5761,6 +6169,12 @@
       "comment" : "Toast shown after tapping the referral row copies the user's own code to the pasteboard.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5773,6 +6187,12 @@
       "comment" : "Placeholder body of LegalViewController until the real documents land. %@ is that screen's own title, which is itself settings.row.privacy_policy or settings.row.terms — so a translator writes those two strings once for three positions.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@\n\nThe full text of this document hasn’t been added yet."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5785,6 +6205,12 @@
       "comment" : "Body of the alert shown when no Mail client handles the mailto: URL (#316). %@ is AppConstants.supportEmail, an address and never translated.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support address %@ copied to the clipboard."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5797,6 +6223,12 @@
       "comment" : "Title of the alert shown when no Mail client handles the mailto: URL behind the «Связаться с нами» row (#316). Its sole action is common.button.ok.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mail Not Set Up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5809,6 +6241,12 @@
       "comment" : "Message shared by both Settings default pickers: the value seeds new alarms only.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Applies to new alarms"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5821,6 +6259,12 @@
       "comment" : "A snooze duration in minutes, shown both as the row's trailing value and as an option in its picker.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld min"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5833,6 +6277,12 @@
       "comment" : "Body of the confirmation alert for erasing a corrupt store; spells out that the loss is permanent.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The data that failed to load — your alarms, your transaction history, or both — will be permanently erased, and storage will be unlocked. If your transaction history is erased, your balance loses every transaction recorded in it, top-ups included. This can’t be undone."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5845,6 +6295,12 @@
       "comment" : "Title of the confirmation alert for erasing a corrupt store.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erase Corrupted Data?"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5857,6 +6313,12 @@
       "comment" : "Destructive confirm button of the recovery alert.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erase"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5869,6 +6331,12 @@
       "comment" : "Subtitle of the recovery row, explaining why it is offered.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage is corrupted and locked"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5881,6 +6349,12 @@
       "comment" : "Destructive Settings row that erases a store the app failed to load.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erase Corrupted Data"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5893,6 +6367,12 @@
       "comment" : "Settings row that opens a mail draft to support.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contact Us"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5905,6 +6385,12 @@
       "comment" : "Settings row that opens the default snooze-price picker; also the title of that picker.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Snooze Fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5917,6 +6403,12 @@
       "comment" : "Settings row that opens the privacy policy. The same words are the title of the screen it opens AND the first line of that screen's placeholder body, so they are read three times over.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy Policy"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5929,6 +6421,12 @@
       "comment" : "Settings row with a switch for the doubling snooze price of new alarms.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Progressive Fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5941,6 +6439,12 @@
       "comment" : "Settings row that opens the default snooze-duration picker; also the title of that picker.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze Length"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5953,6 +6457,12 @@
       "comment" : "Settings row that opens the terms of use. The same words are the title of the screen it opens AND the first line of that screen's placeholder body, so they are read three times over.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terms of Use"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5965,6 +6475,12 @@
       "comment" : "Settings row with a switch for the default vibration of new alarms.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibration"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5977,6 +6493,12 @@
       "comment" : "Settings row that opens the default alarm volume picker.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5989,6 +6511,12 @@
       "comment" : "Caps header over the default-price and snooze-duration rows in Settings. Uppercase is the design; SettingsSectionHeaderView also uppercases whatever it is handed, so a translation that is not shouted still renders in caps.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FINANCE"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6001,6 +6529,12 @@
       "comment" : "Caps header over the legal, contact and theme rows in Settings.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OTHER"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6013,6 +6547,12 @@
       "comment" : "Caps header of the diagnostics section in Settings. Rendered only while a repository reports a corrupt load; the row under it is settings.recovery.row_title.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RECOVERY"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6025,6 +6565,12 @@
       "comment" : "Caps header over the referral rows in Settings. The whole section is hidden behind AppFeatureFlags.referralEnabled (#676).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "INVITE A FRIEND"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6037,6 +6583,12 @@
       "comment" : "Caps header over the progressive-price rule in Settings.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RULES"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6049,6 +6601,12 @@
       "comment" : "Caps header over the volume and vibration rows in Settings.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SOUND & NOTIFICATIONS"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6061,6 +6619,12 @@
       "comment" : "Third option of the appearance segment in Settings — always dark.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dark"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6073,6 +6637,12 @@
       "comment" : "Second option of the appearance segment in Settings — always light.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6085,6 +6655,12 @@
       "comment" : "First option of the appearance segment in Settings — follow the system appearance.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6097,6 +6673,12 @@
       "comment" : "Title of the Settings row carrying the light/dark appearance segment. Byte-identical to create_alarm.theme.title and deliberately a separate entry: that one titles the picture theme of an alarm's firing screen, this one the app's appearance. #712 merges byte-identical literals; it does not apply where the same word names two unrelated things, because one shared key would force both to move together in every future language.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appearance"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6109,6 +6691,12 @@
       "comment" : "Navigation title of the Settings screen, pushed from the gear icon on Alarms and Wallet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
