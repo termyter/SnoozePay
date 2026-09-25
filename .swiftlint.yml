@@ -38,17 +38,31 @@ custom_rules:
   # перед причиной — `[ \t]`, а не `\s`: `\s` берёт перевод строки, и причиной
   # голого маркера становилось первое слово СЛЕДУЮЩЕЙ строки (поймано пробой).
   #
-  # `included` — каталоги, где на момент заведения живых литералов ноль. Корень
-  # таргета (AppDelegate, SceneDelegate, AppDelegate+Alerts) ещё в миграции
-  # (#733) и вписывается сюда, когда она смержится. Каталоги перечислены явно,
-  # а не `SnoozePay/SnoozePay/[^/]+/`: в CI путь к файлу —
+  # `included` — шесть перечисленных каталогов таргета плюс файлы его корня
+  # (AppDelegate, AppDelegate+*, SceneDelegate и любой новый корневой `.swift`).
+  # Корень вошёл после #733 (#913): замер по нему даёт ноль. НОВЫЙ, седьмой
+  # каталог таргета правило пропустит молча — впиши его в список. Каталоги
+  # перечислены явно, а не `SnoozePay/SnoozePay/[^/]+/`: в CI путь к файлу —
   # `/Users/runner/work/SnoozePay/SnoozePay/SnoozePay/SnoozePay/…`, и общий
-  # шаблон там цепляет корневые файлы, а локально — нет.
+  # шаблон там цепляет лишнее (в том числе SnoozePayTests/), а локально — нет.
+  # Корень — `[^/]+\.swift`: файл прямо под `SnoozePay/SnoozePay/`.
+  #
+  # `excluded` — ровно два файла: `SnoozePay/AlarmModelTests.swift` и
+  # `SnoozePay/BalanceServiceTests.swift`. Это сироты: лежат в контейнере
+  # проекта, не входят ни в один таргет и держат кириллицу в ожиданиях. Там,
+  # где сам репозиторий лежит в каталоге `SnoozePay` (CI, основной клон PM),
+  # их путь `…/SnoozePay/SnoozePay/X.swift` неотличим от корня таргета, и без
+  # `excluded` широкий прогон (`swiftlint lint SnoozePay`) ловил их (проба в
+  # #913). Исключены по точному имени, а не по `Tests.swift`: такой шаблон
+  # молча глотал и `Services/ABTests.swift`. Новый файл с кириллицей в
+  # контейнере в таком прогоне всплывёт предупреждением — громко, а не тихо.
+  # Удалишь сирот — удали и строку `excluded`.
   cyrillic_literal:
     name: "Кириллица в строковом литерале"
     regex: '[А-Яа-яЁё][^"\\\n]*(?![^\n]*i18n:exempt[ \t]+\S)'
     match_kinds: string
-    included: ".*/SnoozePay/SnoozePay/(Models|Services|Utilities|ViewModels|ViewControllers|Views)/.*\\.swift"
+    included: ".*/SnoozePay/SnoozePay/((Models|Services|Utilities|ViewModels|ViewControllers|Views)/.*|[^/]+)\\.swift"
+    excluded: "/SnoozePay/(AlarmModelTests|BalanceServiceTests)\\.swift$"
     message: "Строка на экране должна приходить из Localizable.xcstrings: заведи ключ и читай его через Localized.text/format. Если литерал оставлен сознательно — допиши на эту строку `// i18n:exempt <причина>`."
     severity: warning
 
