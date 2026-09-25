@@ -1262,7 +1262,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Couldn’t Schedule the Alarm"
+            "value" : "Couldn’t Schedule Alarm"
           }
         },
         "ru" : {
@@ -1460,7 +1460,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The alarm will ring once, on the next selected day, and then turn off."
+            "value" : "The alarm will ring once on the next selected day and then turn off."
           }
         },
         "ru" : {
@@ -1748,7 +1748,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The cry of a bird of prey"
+            "value" : "A bird of prey’s cry"
           }
         },
         "ru" : {
@@ -1910,7 +1910,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose a sound"
+            "value" : "Choose Sound"
           }
         },
         "ru" : {
@@ -1928,7 +1928,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ · soon"
+            "value" : "%@ · coming soon"
           }
         },
         "ru" : {
@@ -1946,7 +1946,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Custom melody import comes later"
+            "value" : "Import your own melodies — coming soon"
           }
         },
         "ru" : {
@@ -2198,7 +2198,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conifer dusk"
+            "value" : "Pine dusk"
           }
         },
         "ru" : {
@@ -2216,7 +2216,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Milky light"
+            "value" : "Pale light"
           }
         },
         "ru" : {
@@ -2306,7 +2306,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Couldn’t Save the Photo"
+            "value" : "Couldn’t Save Photo"
           }
         },
         "ru" : {

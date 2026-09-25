@@ -25,8 +25,9 @@ import XCTest
 /// `@` — because English may reorder positional arguments but must consume
 /// exactly the same ones. `%%` is a literal percent sign, not an argument.
 ///
-/// Two artefacts of `xcstringstool` shape the reading, both observed on the
-/// Xcode 27 toolchain rather than documented:
+/// Two artefacts of `xcstringstool` shape the reading. Both are observed, not
+/// documented: first with Xcode 27 locally, then confirmed on CI's Xcode 26.5
+/// (run 36112283565).
 ///
 /// - The `en` table carries an entry whose value **is its own key** for every
 ///   untranslated key whose `ru` value has a specifier, and for every plural
@@ -245,20 +246,25 @@ private extension LocalizationParityTests {
     }
 
     // MARK: - Specifier extraction
+    //
+    // The pure helpers below are `nonisolated`: the target defaults to
+    // `MainActor` isolation, and passing one as a function reference —
+    // `contains(where: Self.containsCyrillic)` — into a synchronous
+    // nonisolated closure otherwise warns on every build.
 
     /// A printf conversion as `String(format:)` reads it: optional position,
     /// flags, width, precision, then length modifier and conversion — the last
     /// two captured as the type. `%%` matches as well, so it is consumed as a
     /// pair and the letter after it is never mistaken for a conversion.
-    static let specifierPattern =
+    nonisolated static let specifierPattern =
         #"%(?:%|(?:\d+\$)?[-+ #0']*(?:\d+|\*)?(?:\.(?:\d+|\*))?((?:hh|h|ll|l|q|L|z|t|j)?[@dDiuUxXoOfFeEgGcCsSpaA]))"#
 
     /// `%#@variable@`, optionally positional, in a `.stringsdict` format key.
-    static let pluralVariablePattern = #"%(\d+\$)?#@([^@]+)@"#
+    nonisolated static let pluralVariablePattern = #"%(\d+\$)?#@([^@]+)@"#
 
     /// The argument types `text` consumes, positions stripped, sorted — so two
     /// values compare equal exactly when they consume the same arguments.
-    static func specifierTypes(in text: String) throws -> [String] {
+    nonisolated static func specifierTypes(in text: String) throws -> [String] {
         let regex = try NSRegularExpression(pattern: specifierPattern)
         let nsText = text as NSString
         return regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
@@ -270,7 +276,7 @@ private extension LocalizationParityTests {
     /// The argument types a `.stringsdict` entry consumes: its format key with
     /// every `%#@variable@` replaced by `%<value type>`. `nil` when a variable
     /// the format key names declares no type.
-    static func pluralSpecifierTypes(_ entry: [String: Any]) throws -> [String]? {
+    nonisolated static func pluralSpecifierTypes(_ entry: [String: Any]) throws -> [String]? {
         guard let format = entry["NSStringLocalizedFormatKey"] as? String else { return nil }
         let regex = try NSRegularExpression(pattern: pluralVariablePattern)
         let resolved = NSMutableString(string: format)
@@ -290,7 +296,7 @@ private extension LocalizationParityTests {
 
     /// The format key and every plural form of a `.stringsdict` entry — the
     /// `NSString…` bookkeeping values are not copy and are left out.
-    static func pluralTexts(_ entry: [String: Any]) -> [String] {
+    nonisolated static func pluralTexts(_ entry: [String: Any]) -> [String] {
         var texts: [String] = []
         for (key, value) in entry {
             if key == "NSStringLocalizedFormatKey", let text = value as? String {
@@ -304,7 +310,7 @@ private extension LocalizationParityTests {
         return texts
     }
 
-    static func containsCyrillic(_ text: String) -> Bool {
+    nonisolated static func containsCyrillic(_ text: String) -> Bool {
         text.range(of: #"\p{Script=Cyrillic}"#, options: .regularExpression) != nil
     }
 }
