@@ -330,6 +330,23 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         XCTAssertEqual(vm.snoozeButtonTitle, "+9 минут \u{00B7} −50\u{202F}₽")
     }
 
+    /// The minutes noun agrees with the count (#907). Until then every length
+    /// read «минут», so the 1…15 range an alarm allows showed «+1 минут» and
+    /// «+3 минут». 11 is the teen that must NOT take the singular.
+    func testSnoozeButtonTitle_declinesTheMinutesForTheCount() {
+        setBalance(100)
+        let expected: [(Int, String)] = [
+            (1, "+1 минуту \u{00B7} −50\u{202F}₽"),
+            (3, "+3 минуты \u{00B7} −50\u{202F}₽"),
+            (5, "+5 минут \u{00B7} −50\u{202F}₽"),
+            (11, "+11 минут \u{00B7} −50\u{202F}₽")
+        ]
+        for (minutes, title) in expected {
+            let viewModel = makeViewModel(makeAlarm(penalty: 50, snoozeMinutes: minutes))
+            XCTAssertEqual(viewModel.snoozeButtonTitle, title, "snoozeMinutes = \(minutes)")
+        }
+    }
+
     func testSnoozeButtonTitle_whenCannotSnooze_showsEmpty() {
         setBalance(0)
         let alarm = makeAlarm(penalty: 50)

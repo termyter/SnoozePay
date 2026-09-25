@@ -40,7 +40,6 @@ final class DesignSystemCopyTests: XCTestCase {
         "common.caps.balance": "БАЛАНС",
         "common.switch.accessibility": "Переключатель",
         "deposit.preset.popular": "Популярно",
-        "firing.snooze.accessibility": "Отложить на %lld минут",
         "firing.snooze.caps": "Спать ещё %lld мин",
         "firing.ticker.caps": "СЕГОДНЯ",
         "statistics.empty.body": "Статистика появится после первой недели использования.",
@@ -60,7 +59,23 @@ final class DesignSystemCopyTests: XCTestCase {
         "wallet.balance.delta_week": "%1$@ %2$@ за неделю"
     ]
 
-    private static var allKeys: [String] { copy.keys.sorted() }
+    /// Entries with a plural variation, pinned **rendered** at the counts where
+    /// Russian switches form: `Localized.text` hands back the `.stringsdict`
+    /// format key («%#@value@») for these, which is bookkeeping, not copy.
+    ///
+    /// `firing.snooze.accessibility` read «Отложить на %lld минут» until #907,
+    /// so VoiceOver said «на 1 минут», «на 3 минут».
+    private static let pluralCopy: [String: [(Int, String)]] = [
+        "firing.snooze.accessibility": [
+            (1, "Отложить на 1 минуту"),
+            (3, "Отложить на 3 минуты"),
+            (5, "Отложить на 5 минут"),
+            (11, "Отложить на 11 минут"),
+            (21, "Отложить на 21 минуту")
+        ]
+    ]
+
+    private static var allKeys: [String] { (Array(copy.keys) + Array(pluralCopy.keys)).sorted() }
 
     func testEveryMigratedKeyResolvesToCopy() {
         for key in Self.allKeys {
@@ -75,6 +90,14 @@ final class DesignSystemCopyTests: XCTestCase {
     func testMigratedCopyStillReadsTheWayItDidBefore() {
         for (key, expected) in Self.copy {
             XCTAssertEqual(Localized.text(key), expected, "copy drifted for \(key)")
+        }
+    }
+
+    func testPluralCopyAgreesWithItsCount() {
+        for (key, cases) in Self.pluralCopy {
+            for (count, expected) in cases {
+                XCTAssertEqual(Localized.format(key, count), expected, "\(key), count = \(count)")
+            }
         }
     }
 
@@ -189,6 +212,23 @@ final class DesignSystemCopyTests: XCTestCase {
             rendered.contains(where: { $0.hasSuffix(caps) }),
             "the caps line lost its minutes: \(rendered)"
         )
+    }
+
+    /// The control's own VoiceOver label, as a literal: the assertion above
+    /// compares the control against the same lookup it made, so it cannot see
+    /// the noun disagreeing with the count (#907).
+    func testSnoozePriceVoiceOverLabelAgreesWithTheMinutes() {
+        let expected: [(Int, String)] = [
+            (1, "Отложить на 1 минуту"),
+            (3, "Отложить на 3 минуты"),
+            (5, "Отложить на 5 минут"),
+            (11, "Отложить на 11 минут"),
+            (21, "Отложить на 21 минуту")
+        ]
+        for (minutes, label) in expected {
+            let control = SPSnoozePrice(price: 50, minutes: minutes)
+            XCTAssertEqual(control.accessibilityLabel, label, "minutes = \(minutes)")
+        }
     }
 
     func testFiringTickerKeepsItsEyebrow() {
