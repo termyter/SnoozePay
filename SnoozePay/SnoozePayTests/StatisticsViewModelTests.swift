@@ -481,3 +481,79 @@ final class StatisticsViewModelDataTests: XCTestCase {
         XCTAssertEqual(vm.thisWeekCount, trend.last?.count)
     }
 }
+
+/// `barValueText`, the number above each weekday bar (#903).
+///
+/// It used to be `String(format: "%.1f")` with the dot swapped for a comma by
+/// hand, so an English reader would have seen "2,5". Two things are pinned
+/// here: `ru_RU` output is byte-for-byte what the old code produced, and the
+/// separator now follows the locale. Pure static function, no defaults.
+final class StatisticsBarValueTextTests: XCTestCase {
+
+    private let russian = Locale(identifier: "ru_RU")
+    private let american = Locale(identifier: "en_US")
+
+    /// The pre-#903 implementation, kept verbatim as the byte-identity oracle.
+    private func legacyText(_ value: Double) -> String {
+        if value == value.rounded() { return "\(Int(value))" }
+        return String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
+    }
+
+    func testRussian_representativeValues_matchLegacyLiterals() {
+        let expected: [(Double, String)] = [
+            (0, "0"),
+            (3, "3"),
+            (2.5, "2,5"),
+            (0.1, "0,1"),
+            // `%.1f` rounds an exact tie half-to-even: 12.25 → "12,2".
+            (12.25, "12,2"),
+            (12.75, "12,8"),
+            // No grouping separator, as before: "1234,5", not "1 234,5".
+            (1234.5, "1234,5"),
+            (1000, "1000")
+        ]
+        for (value, text) in expected {
+            XCTAssertEqual(StatisticsViewModel.barValueText(value, locale: russian), text, "value \(value)")
+            XCTAssertEqual(legacyText(value), text, "oracle drifted at \(value)")
+        }
+    }
+
+    /// Averages are `total / 4`, so every reachable value is a quarter.
+    /// Sweep them past the grouping threshold against the legacy formula.
+    func testRussian_everyReachableQuarter_isByteIdenticalToLegacy() {
+        for quarters in 0...5_000 {
+            let value = Double(quarters) / 4
+            XCTAssertEqual(
+                StatisticsViewModel.barValueText(value, locale: russian),
+                legacyText(value),
+                "value \(value)"
+            )
+        }
+    }
+
+    /// 0.15 is stored as 0.1499…: `%.1f` reads "0,1", while a formatter fed
+    /// the `Double` directly rounds the shortest decimal "0.15" up to "0,2".
+    func testRussian_binaryNearTies_keepPrintfRounding() {
+        for value in [0.05, 0.15, 0.35, 2.45, 99.45, 99.55] {
+            XCTAssertEqual(
+                StatisticsViewModel.barValueText(value, locale: russian),
+                legacyText(value),
+                "value \(value)"
+            )
+        }
+    }
+
+    func testDefaultLocale_isAppDisplayLocale() {
+        XCTAssertEqual(
+            StatisticsViewModel.barValueText(2.5),
+            StatisticsViewModel.barValueText(2.5, locale: AppLocale.display)
+        )
+    }
+
+    func testAmerican_usesDecimalPoint() {
+        XCTAssertEqual(StatisticsViewModel.barValueText(2.5, locale: american), "2.5")
+        XCTAssertEqual(StatisticsViewModel.barValueText(12.25, locale: american), "12.2")
+        XCTAssertEqual(StatisticsViewModel.barValueText(1234.5, locale: american), "1234.5")
+        XCTAssertEqual(StatisticsViewModel.barValueText(3, locale: american), "3")
+    }
+}
