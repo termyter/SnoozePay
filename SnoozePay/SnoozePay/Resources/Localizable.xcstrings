@@ -2234,7 +2234,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The purchase wasn’t completed. Update the app and try again."
+            "value" : "Couldn’t confirm the purchase. Update the app and try again."
           }
         },
         "ru" : {
@@ -2360,7 +2360,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Top-Up Purchase"
+            "value" : "Top-Up Failed"
           }
         },
         "ru" : {
@@ -2414,7 +2414,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Action canceled."
+            "value" : "Restore canceled."
           }
         },
         "ru" : {
@@ -2504,7 +2504,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Purchases aren’t allowed on your Apple Account. Check your Screen Time settings."
+            "value" : "Purchases are restricted on this device. Check your Screen Time settings."
           }
         },
         "ru" : {
@@ -2522,7 +2522,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Purchases are temporarily unavailable in your region."
+            "value" : "Purchases aren’t available in your region."
           }
         },
         "ru" : {
@@ -2558,7 +2558,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "If you have previous purchases, your balance will update automatically within a few seconds."
+            "value" : "If any purchase is still pending, your balance will update within a few seconds."
           }
         },
         "ru" : {
@@ -5270,7 +5270,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saving is blocked: the data is corrupted. Recover it in Settings or contact support."
+            "value" : "Saving is blocked: the data is corrupted. Recover it from the app’s settings or contact support."
           }
         },
         "ru" : {
@@ -5306,7 +5306,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Top-ups are non-refundable · only charged when you snooze"
+            "value" : "Top-ups can’t be withdrawn · only charged when you snooze"
           }
         },
         "ru" : {
@@ -6044,7 +6044,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snooze"
+            "value" : "Snooze fee"
           }
         },
         "ru" : {
