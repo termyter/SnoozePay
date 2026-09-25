@@ -5402,7 +5402,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "+%1$@ for you\n+%1$@ for a friend"
+            "value" : "+%1$@ for you\n+%1$@ for your friend"
           }
         },
         "ru" : {
@@ -5582,7 +5582,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snooze less, save more. Use my code %1$@ in SnoozePay and we’ll both get %2$@ on our balances."
+            "value" : "Snooze less, save more. Use my code %1$@ in SnoozePay and we’ll both get +%2$@ on our balances."
           }
         },
         "ru" : {
@@ -5672,7 +5672,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The support address %@ has been copied to the clipboard."
+            "value" : "Support address %@ copied to the clipboard."
           }
         },
         "ru" : {
@@ -5744,7 +5744,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The data that failed to load — your alarms, your transaction history, or both — will be permanently erased, and storage will be unlocked. This can’t be undone."
+            "value" : "The data that failed to load — your alarms, your transaction history, or both — will be permanently erased, and storage will be unlocked. If your transaction history is erased, your balance loses every transaction recorded in it, top-ups included. This can’t be undone."
           }
         },
         "ru" : {
