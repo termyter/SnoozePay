@@ -1253,6 +1253,12 @@
       "comment" : "Alarm editor, VoiceOver value of an unselected weekday chip or repeat-mode segment.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "not selected"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1265,6 +1271,12 @@
       "comment" : "Alarm editor, VoiceOver value of a selected weekday chip or repeat-mode segment.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "selected"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1277,6 +1289,12 @@
       "comment" : "Alarm editor, edit mode: destructive footer button that opens the delete-confirmation sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1289,6 +1307,12 @@
       "comment" : "Alarm editor, edit mode: commits the changes to an existing alarm.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1301,6 +1325,12 @@
       "comment" : "Alarm editor, create mode: VoiceOver label of the ✕ chip that dismisses the form.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1313,6 +1343,12 @@
       "comment" : "Alarm editor: alert title when the alarm could not be written to the store.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Save"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1325,6 +1361,12 @@
       "comment" : "Alarm editor: fallback alert body when the underlying error carries no description.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1337,6 +1379,12 @@
       "comment" : "Alarm editor: alert title when the alarm was saved but no notification could be scheduled.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Schedule Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1349,6 +1397,12 @@
       "comment" : "Alarm editor: placeholder of the alarm-name field, with an example of a short recognisable name.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name · e.g. Weekdays"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1361,6 +1415,12 @@
       "comment" : "Alarm editor, VoiceOver label of the snooze-price field. Names the unit because the ₽ sign sits in a separate label the field does not expose.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze fee, rubles"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1373,6 +1433,12 @@
       "comment" : "Alarm editor: caps caption of the snooze-price card. The call site upper-cases it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1385,6 +1451,12 @@
       "comment" : "Alarm editor: meta line under the snooze-price caption.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charged each time you tap “Snooze”"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1397,6 +1469,12 @@
       "comment" : "Alarm editor: red helper shown while the typed snooze price is empty, zero or not a whole number.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimum 1 ₽"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1409,6 +1487,12 @@
       "comment" : "One rung of the progressive-penalty chain, spoken by VoiceOver as «1-е: 50 ₽». %1$lld is the 1-based step number carrying a Russian ordinal ending, %2$@ the formatted sum.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze %1$lld: %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1421,6 +1505,12 @@
       "comment" : "Alarm editor: meta line of the progressive-mode card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each snooze costs twice as much as the last."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1433,6 +1523,12 @@
       "comment" : "Alarm editor: title of the progressive-mode card; doubles as the VoiceOver label of its switch.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Progressive Fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1445,6 +1541,12 @@
       "comment" : "Alarm editor: caps caption above the repeat-mode segments.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "REPEAT"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1457,6 +1559,12 @@
       "comment" : "Alarm editor hint under the repeat pill: «Никогда» with no weekday selected.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The alarm will ring once and then turn off."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1469,6 +1577,12 @@
       "comment" : "Alarm editor hint under the repeat pill: «Никогда» with weekdays selected — it fires once on the next of them, then switches itself off.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The alarm will ring once on the next selected day and then turn off."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1481,6 +1595,12 @@
       "comment" : "Alarm editor hint under the repeat pill: «Еженедельно» with at least one weekday selected.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It will repeat every week on the selected days."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1493,6 +1613,12 @@
       "comment" : "Alarm editor: repeat-mode segment for an alarm that rings once.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Never"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1505,6 +1631,12 @@
       "comment" : "Alarm editor: repeat-mode segment for an alarm that repeats on the chosen weekdays.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekly"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1517,6 +1649,12 @@
       "comment" : "Alarm editor: caps caption of the snooze-duration card. The call site upper-cases it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze length"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1529,6 +1667,12 @@
       "comment" : "Alarm editor: meta line under the snooze-duration caption.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How many minutes the alarm is pushed back"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1541,6 +1685,12 @@
       "comment" : "Alarm editor: the snooze-duration reading and the slider's range bounds. The call site dims everything but the number, so keep the number and its unit in one string.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld min"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1553,6 +1703,12 @@
       "comment" : "Alarm editor: trailing value of the sound row when the stored sound id is not in the catalogue. The sound names themselves come from SoundCatalogue, not from here.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1565,6 +1721,12 @@
       "comment" : "Sound picker: name of the disabled custom-melody slot. Substituted into create_alarm.sound_picker.custom_slot («%@ · скоро»), so it is a bare noun phrase and carries no trailing punctuation.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Melody"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1577,6 +1739,12 @@
       "comment" : "Sound picker: the descriptive line under «Колокольчик». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A clean chime, no music"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1589,6 +1757,12 @@
       "comment" : "Sound picker: the descriptive line under «Птицы». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Just birdsong, no music"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1601,6 +1775,12 @@
       "comment" : "Sound picker: the descriptive line under «Классика». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The good old beep"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1613,6 +1793,12 @@
       "comment" : "Subtitle carried by the custom-melody slot in the model. The picker renders create_alarm.sound_picker.custom_slot_subtitle instead, so this one reaches no screen today; it is kept because the slot is an Entry like any other and a blank column would be a behaviour change.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coming soon"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1625,6 +1811,12 @@
       "comment" : "Sound picker: the descriptive line under «Рассвет». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A warm sunrise with birds"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1637,6 +1829,12 @@
       "comment" : "Sound picker: the descriptive line under «Капли». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soft water drops"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1649,6 +1847,12 @@
       "comment" : "Sound picker: the descriptive line under «Гитара». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light fingerpicked strings"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1661,6 +1865,12 @@
       "comment" : "Sound picker: the descriptive line under «Ястреб». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A bird of prey’s cry"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1673,6 +1883,12 @@
       "comment" : "Sound picker: the descriptive line under «Джаз». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An upbeat morning mood"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1685,6 +1901,12 @@
       "comment" : "Sound picker: the descriptive line under «Утро». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A lively start to the day"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1697,6 +1919,12 @@
       "comment" : "Sound picker: the descriptive line under «Пиано». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calm keys"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1709,6 +1937,12 @@
       "comment" : "Sound picker: the descriptive line under «Радар». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A rising alert signal"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1721,6 +1955,12 @@
       "comment" : "Sound picker: the descriptive line under «Сирена». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An alert signal"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1733,6 +1973,12 @@
       "comment" : "Sound picker: the descriptive line under «Космолёт». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The hum of a spaceship"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1745,6 +1991,12 @@
       "comment" : "Sound picker: the descriptive line under «Волны». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Surf and a sea breeze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1757,6 +2009,12 @@
       "comment" : "Alarm editor: title of the sound row, and the caps title of the sound picker it pushes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sound"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1769,6 +2027,12 @@
       "comment" : "Sound picker, VoiceOver label of the caps screen title.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Sound"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1781,6 +2045,12 @@
       "comment" : "Sound picker: the disabled custom-melody row. %@ is the slot's name from SoundCatalogue («Своя мелодия»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · coming soon"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1793,6 +2063,12 @@
       "comment" : "Sound picker: subtitle of the disabled custom-melody row.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import your own melodies — coming soon"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1805,6 +2081,12 @@
       "comment" : "Sound picker, VoiceOver label of the play button in the preview card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play preview"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1817,6 +2099,12 @@
       "comment" : "Sound picker: caps caption of the preview card. Store it in sentence case: the call site upper-cases it (the _caps rule, see Localized.swift).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1829,6 +2117,12 @@
       "comment" : "Sound picker: the row that pushes the volume screen; doubles as its VoiceOver label.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume and Fade-In"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1841,6 +2135,12 @@
       "comment" : "Theme picker: name of the flat-colour theme.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abstract"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1853,6 +2153,12 @@
       "comment" : "Theme picker: name of the slot that opens the photo library.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Photo"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1865,6 +2171,12 @@
       "comment" : "Theme picker: name of the amber sunrise gradient.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dawn"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1877,6 +2189,12 @@
       "comment" : "Theme picker: name of the dark conifer gradient.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forest"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1889,6 +2207,12 @@
       "comment" : "Theme picker: name of the pale mountain gradient.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mountains"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1901,6 +2225,12 @@
       "comment" : "Theme picker: name of the city-night gradient.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neon"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1913,6 +2243,12 @@
       "comment" : "Theme picker: name of the cold mint gradient.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocean"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1925,6 +2261,12 @@
       "comment" : "Theme picker: subtitle under «Абстракт».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pure color"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1937,6 +2279,12 @@
       "comment" : "Theme picker: subtitle under «Своё фото».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From Photos"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1949,6 +2297,12 @@
       "comment" : "Theme picker: subtitle under «Рассвет».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warm amber"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1961,6 +2315,12 @@
       "comment" : "Theme picker: subtitle under «Лес».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pine dusk"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1973,6 +2333,12 @@
       "comment" : "Theme picker: subtitle under «Горы».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pale light"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1985,6 +2351,12 @@
       "comment" : "Theme picker: subtitle under «Неон».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "City night"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1997,6 +2369,12 @@
       "comment" : "Theme picker: subtitle under «Океан».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cool mint"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2009,6 +2387,12 @@
       "comment" : "Alarm editor: title of the theme row.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Theme"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2021,6 +2405,12 @@
       "comment" : "Theme picker: body of the alert shown when a picked photo could not be stored.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try choosing a different image."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2033,6 +2423,12 @@
       "comment" : "Theme picker: title of the alert shown when a picked photo could not be stored.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Save Photo"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2045,6 +2441,12 @@
       "comment" : "Theme picker: caps caption above the live preview of the firing screen. Store it in sentence case: the call site upper-cases it (the _caps rule, see Localized.swift).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm screen preview"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2057,6 +2459,12 @@
       "comment" : "Theme picker: caps header above the grid of built-in themes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preset themes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2069,6 +2477,12 @@
       "comment" : "Theme picker: caps screen title; doubles as its VoiceOver label. The call site upper-cases the visible one.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm Theme"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2081,6 +2495,12 @@
       "comment" : "Alarm editor, edit mode: screen title. Unrelated to the stored default alarm name, which stays a literal because it is compared against saved records.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2093,6 +2513,12 @@
       "comment" : "Alarm editor, create mode: screen title.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2105,6 +2531,12 @@
       "comment" : "Alarm editor: why «Еженедельно» with no weekday selected cannot be saved. Rendered both as the hint under the repeat pill and as the save-blocked alert body, so the two always say the same thing.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick at least one day of the week — otherwise there’s nothing to repeat."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2117,6 +2549,12 @@
       "comment" : "Alarm editor: title of the vibration row; doubles as the VoiceOver label of its switch.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibration"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2129,6 +2567,12 @@
       "comment" : "Alarm editor: title of the volume row, and the caps title of the volume screen it pushes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2141,6 +2585,12 @@
       "comment" : "Trailing value of a volume row when fade-in is armed. %lld is the percentage; without fade-in the row shows the bare percentage and needs no copy.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%% · fade-in"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2153,6 +2603,12 @@
       "comment" : "Volume screen: subtitle of the fade-in row, stating how long the ramp takes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Over 30 seconds"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2165,6 +2621,12 @@
       "comment" : "Volume screen: title of the fade-in row; doubles as the VoiceOver label of its switch.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fade In Gradually"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2177,6 +2639,12 @@
       "comment" : "Header above the time wheel on the create-alarm sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wake-up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
