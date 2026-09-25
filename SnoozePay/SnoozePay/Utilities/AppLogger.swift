@@ -34,6 +34,19 @@ enum AppLogger {
     /// lives in this file. Internal is for the two readers outside it: the
     /// older `OSLog(subsystem:category:)` sites in `Services/` and ``Money``,
     /// and `AppLoggerSubsystemTests`.
+    ///
+    /// ⚠️ Passing a spelled-out string at any of those sites instead of this
+    /// property is caught by SwiftLint's `literal_log_subsystem` rule, not by a
+    /// test: `OSLog`/`Logger` hand back neither their subsystem nor `Equatable`
+    /// conformance, so the whole target stays green with the wrong subsystem
+    /// shipping (#750).
+    ///
+    /// What the rule does NOT cover, checked by running it rather than by
+    /// reading it: ``fallbackSubsystem`` — a bare literal with no `subsystem:`
+    /// label, which the regex cannot see — and everything under
+    /// `SnoozePayTests/`, since CI lints `SnoozePay/SnoozePay` only. The
+    /// fallback literal is held by `AppLoggerSubsystemTests` instead; see the
+    /// full list of holes in `.swiftlint.yml` above the rule.
     static let subsystem: String = {
         guard let identifier = Bundle.main.bundleIdentifier else {
             // Unreachable in all three targets this project has — see
