@@ -3,7 +3,8 @@ import XCTest
 
 /// Guards every `en` entry of `Localizable.xcstrings` against the `ru` one it
 /// translates: same printf specifiers, no Cyrillic, not empty (#888, part of
-/// #602).
+/// #602). Since the final slice (#894) it also requires that every `ru` key
+/// has an `en` entry at all.
 ///
 /// # Why this exists
 ///
@@ -31,8 +32,9 @@ import XCTest
 ///
 /// - The `en` table carries an entry whose value **is its own key** for every
 ///   untranslated key whose `ru` value has a specifier, and for every plural
-///   variation. Such an entry means "no `en` yet", not a translation, and is
-///   skipped — a real value never equals a dotted key.
+///   variation. Such an entry means "no `en` yet", not a translation: the
+///   parity sweeps skip it, and the completeness sweep counts it as missing —
+///   a real value never equals a dotted key.
 /// - A `Variations → Plural` entry compiles into `.stringsdict`, not
 ///   `.strings`, and the runtime prefers the `.stringsdict` entry. Its
 ///   arguments are fixed by `NSStringLocalizedFormatKey`, with each
@@ -44,10 +46,18 @@ import XCTest
 /// would pass every sweep below — then the `en` table is shown to exist and to
 /// hold something to compare, then the sweeps run.
 ///
+/// # Completeness
+///
+/// Every key of the `ru` table (`.strings` and `.stringsdict`) needs a real
+/// `en` entry — a key echo does not count. There is exactly one exemption
+/// rule, ``completenessExemptionPattern``: `plural.<noun>.few`. English has no
+/// «few» form, and `PluralForms` falls back from `few` to `many` when the entry
+/// is absent, so the glossary on #602 forbids an `en` for it. No key is
+/// exempted by name today. A key that genuinely must stay untranslated would
+/// be listed next to the pattern, by name, with its reason.
+///
 /// # What it deliberately does not check
 ///
-/// - **Completeness.** A key without `en` is fine here; the final slice of #602
-///   adds "no key without `en`".
 /// - **Specifiers inside individual plural forms.** English `one` may
 ///   legitimately omit the number («One day»), so forms are checked only for
 ///   Cyrillic and emptiness.
@@ -126,6 +136,35 @@ final class LocalizationParityTests: XCTestCase {
         XCTAssertTrue(Self.containsCyrillic("Snooze f\u{0435}e"))
     }
 
+    func testCompletenessCountsAKeyEchoAsMissingAndExemptsOnlyPluralFew() {
+        let missing = Self.untranslatedKeys(
+            [
+                "tab.wallet",               // translated
+                "tab.alarms",               // no en entry at all
+                "alarm_failure.body",       // key echo: xcstringstool's «no en yet»
+                "example.days_count",       // translated plural, lives in .stringsdict
+                "plural.days.few",          // the exemption
+                "plural.snoozes_after.few", // the exemption, noun with an underscore
+                "plural.days.many",         // echoed; only .few is exempt
+                "alarms.few",               // not a plural.<noun> entry
+                "plural.few"                // no noun segment
+            ],
+            strings: [
+                "tab.wallet": "Wallet",
+                "alarm_failure.body": "alarm_failure.body",
+                "plural.days.many": "plural.days.many"
+            ],
+            pluralKeys: ["example.days_count"]
+        )
+        XCTAssertEqual(
+            missing,
+            ["alarm_failure.body", "alarms.few", "plural.days.many", "plural.few", "tab.alarms"],
+            "A key echo is xcstringstool's placeholder for a missing en, not a translation."
+        )
+        XCTAssertFalse(Self.isExemptFromCompleteness("plural.days.few.caps"))
+        XCTAssertTrue(Self.isExemptFromCompleteness("plural.mornings.few"))
+    }
+
     // MARK: - Layer 1: there is an English table with something in it
 
     /// Without this, every sweep below would pass over an empty set: a catalogue
@@ -192,6 +231,24 @@ final class LocalizationParityTests: XCTestCase {
             .sorted()
         XCTAssertTrue(offenders.isEmpty, "Empty en values: \(offenders)")
     }
+
+    // MARK: - Layer 3: no Russian key without English
+
+    func testEveryRussianKeyHasAnEnglishTranslation() throws {
+        let english = try XCTUnwrap(Self.table("en"))
+        let russian = try XCTUnwrap(Self.table("ru"))
+        XCTAssertFalse(russian.keys.isEmpty, "The ru table is empty, so there is nothing to require en for.")
+        let missing = Self.untranslatedKeys(
+            russian.keys,
+            strings: english.strings,
+            pluralKeys: Set(english.plurals.keys)
+        )
+        XCTAssertTrue(
+            missing.isEmpty,
+            "\(missing.count) ru keys have no en translation (a key echo counts as none; "
+                + "only plural.<noun>.few is exempt):\n" + missing.joined(separator: "\n")
+        )
+    }
 }
 
 // MARK: - Reading the compiled tables
@@ -211,6 +268,9 @@ private extension LocalizationParityTests {
     struct Table {
         let strings: [String: String]
         let plurals: [String: [String: Any]]
+
+        /// Every key the table answers, from either file.
+        var keys: Set<String> { Set(strings.keys).union(plurals.keys) }
 
         /// The entry the runtime would read for `key`: `.stringsdict` first.
         func entry(for key: String) throws -> Entry? {
@@ -312,5 +372,29 @@ private extension LocalizationParityTests {
 
     nonisolated static func containsCyrillic(_ text: String) -> Bool {
         text.range(of: #"\p{Script=Cyrillic}"#, options: .regularExpression) != nil
+    }
+
+    // MARK: - Completeness
+
+    /// The one exemption from "every ru key has en", with its reason in the
+    /// type's doc: `PluralForms` falls back from an absent `few` to `many`.
+    nonisolated static let completenessExemptionPattern = #"^plural\.[^.]+\.few$"#
+
+    nonisolated static func isExemptFromCompleteness(_ key: String) -> Bool {
+        key.range(of: completenessExemptionPattern, options: .regularExpression) != nil
+    }
+
+    /// The keys of `sourceKeys` with no real `en` translation, sorted. A key
+    /// counts as translated when it is a `.stringsdict` entry or a `.strings`
+    /// value other than the key itself: `xcstringstool` writes that echo for
+    /// untranslated keys that carry a specifier, so it means "missing" here.
+    nonisolated static func untranslatedKeys(
+        _ sourceKeys: Set<String>,
+        strings: [String: String],
+        pluralKeys: Set<String>
+    ) -> [String] {
+        sourceKeys
+            .filter { !isExemptFromCompleteness($0) && !pluralKeys.contains($0) && (strings[$0] ?? $0) == $0 }
+            .sorted()
     }
 }

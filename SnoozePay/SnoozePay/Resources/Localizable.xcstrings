@@ -5,6 +5,12 @@
       "comment" : "Message of the corrupt-alarm alert (alarm_failure.corrupted.title) when the repository reported a decode failure. %@ is the decoder's detail, printed verbatim so a support request can quote it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your alarm rang, but its data is corrupted and the alarm screen couldn’t load. Details: %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -17,6 +23,12 @@
       "comment" : "Message of the corrupt-alarm alert (alarm_failure.corrupted.title) for any load error other than a decode failure, which has no detail to show.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your alarm rang, but its data couldn’t be loaded. Open the app and check your list of alarms."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -29,6 +41,12 @@
       "comment" : "Title of the alert AppDelegate presents when an alarm fired but its stored data could not be loaded (#117). Byte-identical to create_alarm.title.edit and deliberately a separate entry: that one titles the alarm editor, this one an error alert.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -41,6 +59,12 @@
       "comment" : "Body of the re-arm failure banner (alarm_failure.reschedule.title). %lld is the number of alarms that failed to re-arm, a bare integer in parentheses — no plural noun follows it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t reschedule alarms (%lld) — open the app and check that alarms are allowed."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -53,6 +77,12 @@
       "comment" : "Title of the time-sensitive banner AppDelegate posts when one or more alarms failed to re-arm after a clock, timezone, reboot or permission change (#442). The re-arm runs in the background, so the banner is the only surface.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarms Not Rescheduled"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -65,6 +95,12 @@
       "comment" : "Body of the silent-alarm banner (alarm_failure.silent_audio.title): tells the user to open the app and stop the alarm by hand.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t turn on the sound — open the app and turn off the alarm manually."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -77,6 +113,12 @@
       "comment" : "Title of the time-sensitive banner AppDelegate posts when the audio session could not be reclaimed on resume, so the alarm is ringing silently (#405). Posted by the system, so it reaches a user who is not looking at the firing screen.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm Has No Sound"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -89,6 +131,12 @@
       "comment" : "Body of the lost-snooze banner when the penalty was charged and the refund failed: set a backup alarm and contact support. %@ is the scheduler's error description, appended verbatim.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set a backup alarm. Your snooze fee wasn’t refunded — contact support. %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -101,6 +149,12 @@
       "comment" : "Body of the lost-snooze banner when the penalty was refunded: set a backup alarm. %@ is the scheduler's error description, appended verbatim.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set a backup alarm — %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -113,6 +167,12 @@
       "comment" : "Title of the time-sensitive banner AppDelegate posts when a snooze could not be scheduled from a notification action, with no firing screen on hand. Byte-identical to firing.alert.snooze_not_scheduled.title and deliberately a separate entry: that one titles an in-app alert on the firing screen, this one a system banner delivered to a user who may not be looking.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze Not Scheduled"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -326,7 +386,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Went to bed late — wake up at 08:00"
+            "value" : "Went to bed late — wake up at 8:00 AM"
           }
         },
         "ru" : {
@@ -434,7 +494,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The app couldn’t check whether alarms and notifications are allowed. Check them in Settings — without permission, alarms won’t go off."
+            "value" : "The app couldn’t check whether alarms and notifications are allowed. Check them in Settings — without permission, alarms won’t ring."
           }
         },
         "ru" : {
@@ -452,7 +512,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The app hasn’t asked for permission to use alarms and notifications yet. Without it, the alarms you create won’t go off."
+            "value" : "The app hasn’t asked for permission to use alarms and notifications yet. Without it, the alarms you create won’t ring."
           }
         },
         "ru" : {
@@ -470,7 +530,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Permission for alarms and notifications is turned off. Turn it on in Settings — otherwise the alarms you create won’t go off."
+            "value" : "Permission for alarms and notifications is turned off. Turn it on in Settings — otherwise the alarms you create won’t ring."
           }
         },
         "ru" : {
@@ -542,7 +602,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "An invalid balance value was found in storage (%@). Top-ups and charges are paused. Reset your balance to 0 ₽?"
+            "value" : "The stored balance can’t be read (%@). Top-ups and charges are paused. Reset your balance to 0 ₽?"
           }
         },
         "ru" : {
@@ -1190,7 +1250,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snoozing unavailable"
+            "value" : "Can’t snooze at zero"
           }
         },
         "ru" : {
@@ -4070,7 +4130,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "max fee — only way left is up"
+            "value" : "fee capped — nowhere to go but up"
           }
         },
         "ru" : {
@@ -4594,7 +4654,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A snooze costs %1$@ right now. The smallest top-up, %2$@, is enough. You can add more so you don’t have to come back here."
+            "value" : "A snooze costs %1$@ right now. The smallest top-up, %2$@, covers it. You can add more so you don’t have to come back here."
           }
         },
         "ru" : {
@@ -4810,7 +4870,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "That’s the pool your snoozes are paid from."
+            "value" : "That’s the pot your snoozes come out of."
           }
         },
         "ru" : {
@@ -4864,7 +4924,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snooze at 07:00 → −%@"
+            "value" : "Snooze at 7:00 AM → −%@"
           }
         },
         "ru" : {
@@ -4936,7 +4996,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "BALANCE · HOW MUCH TO ADD"
+            "value" : "BALANCE · HOW MUCH TO PUT IN"
           }
         },
         "ru" : {
@@ -5206,7 +5266,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "So your alarm works"
+            "value" : "So your alarm actually rings"
           }
         },
         "ru" : {
@@ -5260,7 +5320,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Without notification permission, alarms won’t go off. Turn on notifications in Settings."
+            "value" : "Without notification permission, alarms won’t ring. Turn on notifications in Settings."
           }
         },
         "ru" : {
@@ -7699,6 +7759,12 @@
       "comment" : "Tab bar item for the alarms list (SceneDelegate.makeMainTabBar). Byte-identical to alarms.title and deliberately separate: that one is the screen's h1, this one a tab label, which a language may need to shorten.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarms"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7711,6 +7777,12 @@
       "comment" : "Tab bar item for statistics (SceneDelegate.makeMainTabBar). Byte-identical to statistics.title and deliberately separate: that one is the screen's title, this one a tab label, which a language may need to shorten.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statistics"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7723,6 +7795,12 @@
       "comment" : "Tab bar item for the wallet (SceneDelegate.makeMainTabBar). Byte-identical to wallet.title and deliberately separate: that one is the screen's h1, this one a tab label, which a language may need to shorten.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
