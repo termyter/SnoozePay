@@ -125,6 +125,12 @@
       "comment" : "Name of SnoozeAlarmIntent, the intent wired to the AlarmKit alert's secondary action (AlarmConfiguration.secondaryIntent). Shortcuts and Siri show it. This is NOT the text of the alert's snooze button — that is alarm_kit.action.snooze.priced, set explicitly via AlarmButton(text:). Byte-identical to firing.action.snooze and still a separate entry. The reason is not that the words might diverge (they need not) but that firing.action.snooze titles the pre-#472 UNNotification category that nothing schedules any more (AlarmScheduler.registerCategories) and is expected to be deleted with it: one shared key would make that cleanup silently take a live intent name with it, and the person deleting legacy notification copy has no way to see that from where they stand. Since the words are identical either way, no user sees a difference — this is a namespace choice, not a copy one. #712's precedent points the other way (it merged byte-identical literals reached from two code paths) and is overridden here only by the pending deletion; #711 is not a precedent for this at all, having separated strings whose words differ. NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -137,6 +143,12 @@
       "comment" : "Secondary button on the AlarmKit alert, naming what this snooze costs (%@ is a sum already formatted by MoneyFormatter, e.g. «50 ₽»). The sign is U+2212 MINUS SIGN, not a hyphen. The one string of the three whose surface the app actually sets. Kept apart from the in-app CTA firing.snooze.button.affordable («+%1$lld минут · −%2$@»), which also names the minutes — the system button has no room for them.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze (−%@)"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -149,6 +161,12 @@
       "comment" : "Name of StopAlarmIntent, the intent wired to the AlarmKit alert's stop action (AlarmConfiguration.stopIntent). Shortcuts and Siri show it. Whether the system also paints it on the alert itself is NOT established: AlarmPresentation.Alert.stopButton is deprecated in iOS 26.1 as \"not used anymore\", and AlarmKitScheduler uses the 26.1 initializer, which has no stop button parameter — so the app sets no stop button text anywhere. Kept apart from the two other ways the app says «stop»: firing.action.dismiss («Выключить») titles the pre-#472 UNNotification category that nothing schedules any more, and firing.button.dismiss («Я встал — выключить») is the in-app firing screen's CTA. #712 merged two literals because they were byte-identical, reached through two different code paths; that criterion does not apply here, because these three say different words. Merging any pair would rewrite what a user reads somewhere — a copy decision for the PM, not part of moving a literal into the catalogue (#723). NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn Off Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -161,6 +179,12 @@
       "comment" : "Body of the alarm-off warning sheet. %@ is the week's charged total, which the call site substitutes as an attributed run in mono/pain — one entry rather than the prefix + suffix pair it replaces, so the amount's position stays a property of the language.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’ve been charged %@ this week. Something may have gone wrong. What would you like to do?"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -173,6 +197,12 @@
       "comment" : "Footer CTA of the alarm-off warning sheet — declines all three suggestions and closes it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Good, Keep Going"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -185,6 +215,12 @@
       "comment" : "Caps banner at the top of the alarm-off warning sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HEADS UP"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -197,6 +233,12 @@
       "comment" : "Subtitle of the third suggestion row on the alarm-off warning sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It’ll stay a regular alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -209,6 +251,12 @@
       "comment" : "Third suggestion row on the alarm-off warning sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn Off SnoozePay"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -221,6 +269,12 @@
       "comment" : "Headline of the alarm-off warning sheet. The «3 раза» is still the design's placeholder figure, not a computed one — the sheet has no backend wiring yet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You snoozed 3 times in a row"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -233,6 +287,12 @@
       "comment" : "Subtitle of the second suggestion row. %1$@ is the current snooze price and %2$@ the proposed lower one, both already formatted as money — positional so a translator may swap the order.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Now %1$@ → try %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -245,6 +305,12 @@
       "comment" : "Second suggestion row on the alarm-off warning sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lower Snooze Fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -257,6 +323,12 @@
       "comment" : "Subtitle of the first suggestion row on the alarm-off warning sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Went to bed late — wake up at 08:00"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -269,6 +341,12 @@
       "comment" : "First suggestion row on the alarm-off warning sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reschedule Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -281,6 +359,12 @@
       "comment" : "CTA on the AlarmKit requirement screen that deep-links into Settings, used by the states the app can no longer resolve on its own.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -293,6 +377,12 @@
       "comment" : "CTA on the AlarmKit requirement screen that raises the system permission dialog in place.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -305,6 +395,12 @@
       "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user taps «+».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Anyway"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -317,6 +413,12 @@
       "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user switches an alarm on.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn On Anyway"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -329,6 +431,12 @@
       "comment" : "AlarmKit requirement copy when the probe was inconclusive. Hedged on purpose: the app is reporting its own failure, not the user's.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The app couldn’t check whether alarms and notifications are allowed. Check them in Settings — without permission, alarms won’t go off."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -341,6 +449,12 @@
       "comment" : "AlarmKit requirement copy when the grant has never been requested — the user can still be shown the system dialog in place. One entry although the source concatenated two Swift literals: it is one sentence pair and must stay reorderable in translation.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The app hasn’t asked for permission to use alarms and notifications yet. Without it, the alarms you create won’t go off."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -353,6 +467,12 @@
       "comment" : "AlarmKit requirement copy when the grant was denied or revoked, so the only way back is Settings.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permission for alarms and notifications is turned off. Turn it on in Settings — otherwise the alarms you create won’t go off."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -365,6 +485,12 @@
       "comment" : "Heading of the AlarmKit requirement screen when the authorization probe itself failed, so the app cannot say whether alarms will ring. Deliberately weaker than the «wont ring» heading — this state does not gate alarm creation.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Check Permissions"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -377,6 +503,12 @@
       "comment" : "Heading of the AlarmKit permission requirement screen / banner, shown both when the grant was never asked for and when it is switched off. One entry for both states because the sentence is the same promise being broken; the message below it is what differs.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarms Won’t Ring"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -389,6 +521,12 @@
       "comment" : "Alarms list: dismisses the corrupt-balance alert without resetting the balance.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Now"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -401,6 +539,12 @@
       "comment" : "Alarms list: body of the corrupt-balance alert. %@ is the unreadable raw value, printed verbatim so a support request can quote it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An invalid balance value was found in storage (%@). Top-ups and charges are paused. Reset your balance to 0 ₽?"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -413,6 +557,12 @@
       "comment" : "Alarms list: destructive action of the corrupt-balance alert — zeroes the stored balance.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -425,6 +575,12 @@
       "comment" : "Alarms list: title of the alert shown when the stored balance cannot be read.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance Corrupted"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -437,6 +593,12 @@
       "comment" : "Destructive action for one alarm — the row's swipe action and the confirmation sheet's button.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -449,6 +611,12 @@
       "comment" : "Alarm card, VoiceOver: opening of the composed summary. %@ is the alarm time («07:00»); the days, price and sound are appended as comma-separated fragments.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -461,6 +629,12 @@
       "comment" : "Alarm card, VoiceOver label of the on/off switch. Unrelated to the stored default alarm name.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -473,6 +647,12 @@
       "comment" : "Alarm-card caps row: the alarm repeats on all seven weekdays.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every day"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -485,6 +665,12 @@
       "comment" : "Alarm-card caps row: a one-shot alarm with no weekday set.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Once"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -497,6 +683,12 @@
       "comment" : "Alarm-card caps row: a one-shot alarm limited to the listed weekdays (%@ is «Вт, Чт»). Kept as one string rather than assembled from parts so the separator and the word order stay translatable.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Once · %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -509,6 +701,12 @@
       "comment" : "Alarm-card caps row: Mon-Fri. The weekday abbreviations are part of the copy here — another language may want a different range notation entirely.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekdays · Mon–Fri"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -521,6 +719,12 @@
       "comment" : "Mon-Fri, without the day range. The bare form used where the row is too narrow for alarms.days.weekdays («Будни · Пн–Пт»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekdays"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -533,6 +737,12 @@
       "comment" : "Alarm-card caps row: Sat+Sun.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekends"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -545,6 +755,12 @@
       "comment" : "Sat+Sun with the day range spelled out. The range is part of the copy: another language may want a different notation entirely.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekends · Sat–Sun"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -557,6 +773,12 @@
       "comment" : "DEBUG builds only: body of the alert confirming that onboarding state was cleared. Never ships to the App Store — no translation needed.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close the app and open it again to see the welcome screen."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -569,6 +791,12 @@
       "comment" : "DEBUG builds only: title of the alert confirming that onboarding state was cleared. Never ships to the App Store — no translation needed.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onboarding Reset"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -581,6 +809,12 @@
       "comment" : "The name a new alarm carries until the user types one of their own.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -593,6 +827,12 @@
       "comment" : "Delete sheet, the full subtitle: %1$@ is the alarm's context line («Будни · Пн–Пт · 07:00»), %2$@ the reassurance sentence. One key rather than a Swift concatenation so the sentence separator stays translatable.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -605,6 +845,12 @@
       "comment" : "Delete sheet, context line of a one-shot alarm with no weekday set. %@ is the time («07:00»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Once · %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -617,6 +863,12 @@
       "comment" : "Delete sheet, context line of a one-shot alarm limited to weekdays. %1$@ is the day range («Пн–Пт»), %2$@ the time («07:00»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Once · %1$@ · %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -629,6 +881,12 @@
       "comment" : "Delete sheet, day range covering the whole week. Used for one-shot alarms, where «Единожды» already occupies the leading slot.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mon–Sun"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -641,6 +899,12 @@
       "comment" : "Delete sheet, day range covering Mon-Fri. See alarms.delete.range_all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mon–Fri"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -653,6 +917,12 @@
       "comment" : "Delete sheet, day range covering Sat+Sun. See alarms.delete.range_all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sat–Sun"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -665,6 +935,12 @@
       "comment" : "Delete sheet, the sentence that tells the user deleting an alarm does not touch their money. %@ is the formatted balance («840 ₽»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your %@ balance stays put — it isn’t tied to this alarm."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -677,6 +953,12 @@
       "comment" : "Delete sheet, context line of a repeating alarm. %1$@ is the day phrase («Будни · Пн–Пт»), %2$@ the time («07:00»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -689,6 +971,12 @@
       "comment" : "Delete-confirmation sheet: headline above the reassurance that the balance stays put.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Alarm?"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -701,6 +989,12 @@
       "comment" : "Body of the alarms-list empty state (SPAlarmsListEmptyState).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create your first one — set a time and a snooze fee, and top up your balance."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -713,6 +1007,12 @@
       "comment" : "Money CTA of the alarms-list empty state (SPAlarmsListEmptyState).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -725,6 +1025,12 @@
       "comment" : "Headline of the alarms-list empty state (SPAlarmsListEmptyState).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Alarms Yet"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -737,6 +1043,12 @@
       "comment" : "Alert body when AlarmKit authorization is missing, so nothing can be armed at all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The app isn’t allowed to set alarms, so this alarm won’t ring. Allow alarms in Settings."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -749,6 +1061,12 @@
       "comment" : "Alarms list: title of the alert shown when the alarm store cannot be read.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data Error"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -761,6 +1079,12 @@
       "comment" : "Alert body when the stored alarms JSON cannot be decoded (AlarmRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load your alarms. Contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -773,6 +1097,12 @@
       "comment" : "Alarms list: body of the load-failure alert when the error carries no description of its own. The longer «alarms.error.load_failed» is the repository's own wording and adds the support-contact line.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load your alarms."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -785,6 +1115,12 @@
       "comment" : "Alert body when enabling an alarm failed AND undoing that failure also failed (#205); only a relaunch reconciles memory with disk.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t turn on the alarm or undo the change — your data may be out of sync. Restart the app and check your list of alarms."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -797,6 +1133,12 @@
       "comment" : "Alert body when saving is refused because the stored alarms are corrupt (AlarmRepository.RepositoryError.persistBlocked).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving is blocked: the data is corrupted. Recover it from the app’s settings or contact support."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -809,6 +1151,12 @@
       "comment" : "Alert body when encoding an alarm for storage fails (AlarmRepository.RepositoryError.encodeFailure).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t save the alarm. Try again."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -821,6 +1169,12 @@
       "comment" : "Alert body when AlarmKit rejects a schedule. %@ is the system's own message, which arrives already localized by the OS.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t schedule the alarm: %@. Try again or delete some old alarms."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -833,6 +1187,12 @@
       "comment" : "Caption under a 0 ₽ balance on the alarms list. Deliberately NOT «будильники не зазвонят» — the alarm still rings, the user just cannot pay to snooze it (#232).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snoozing unavailable"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -845,6 +1205,12 @@
       "comment" : "Alarm-card penalty line; %@ is the formatted price («50 ₽»). The minus is U+2212, per the design copy.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "▲ SNOOZE: −%@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -857,6 +1223,12 @@
       "comment" : "Streak banner above the alarms list. %1$lld is the streak length, %2$@ the declined noun («день» / «дня» / «дней»). The call site upper-cases the whole line, which is why the noun arrives in lower case.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld %2$@ SNOOZE-FREE"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -869,6 +1241,12 @@
       "comment" : "Streak banner, second line: %@ is the money not spent on snoozes, already formatted with its currency.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -881,6 +1259,12 @@
       "comment" : "h1 of the alarms list, rendered by SPAlarmsListHeader.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarms"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2747,6 +3131,24 @@
       "comment" : "Worked example, not shipped copy. This is the shape a migrated call site should use once it owns the whole phrase: the number lives IN the string, so the catalogue picks the form for every language on its own. xcstringstool rejects a plural variation whose value does not reference the number, which is why the plural.* nouns below are separate top-level keys instead. Consume or delete this entry in #598-#601.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld day"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld days"
+                }
+              }
+            }
+          }
+        },
         "ru" : {
           "variations" : {
             "plural" : {
@@ -3671,6 +4073,12 @@
       "comment" : "Body of the alert shown at launch when notification permission was denied. Its actions are common.button.cancel and common.button.settings.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Without notification permission, alarms won’t go off. Turn on notifications in Settings."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3683,6 +4091,12 @@
       "comment" : "Title of the launch alert for denied notification permission. CreateAlarmUITests matches this alert by these exact words, and E2E only runs behind the ui-test label — AppDelegateAlertTests pins them in the always-on unit suite so a reword goes red on the PR that made it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications Are Off"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3707,6 +4121,12 @@
       "comment" : "Streak length, form for 0, 5-20, 11-14: «7 дней».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "days"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3719,6 +4139,12 @@
       "comment" : "Streak length, form for 1, 21, 31: «1 день».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "day"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3743,6 +4169,12 @@
       "comment" : "Mornings of collected wake-time history, form for 0, 5-20: «5 утр».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mornings"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3755,6 +4187,12 @@
       "comment" : "Mornings of collected wake-time history, form for 1, 21: «1 утро».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "morning"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3779,6 +4217,12 @@
       "comment" : "Snoozes with the numeral as subject, form for 0, 5-20: «≈ 5 откладываний». Nominative.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "snoozes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3791,6 +4235,12 @@
       "comment" : "Snoozes with the numeral as subject, form for 1, 21: «≈ 1 откладывание». Nominative.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3815,6 +4265,12 @@
       "comment" : "Genitive of plural.snoozes under «после», form for 0, 5-20: «после 5 откладываний».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "snoozes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3827,6 +4283,12 @@
       "comment" : "Genitive of plural.snoozes under «после», form for 1, 21: «после 1 откладывания».",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "snooze"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
