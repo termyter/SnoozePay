@@ -20,6 +20,11 @@ final class ThemeRowCell: UITableViewCell {
         view.layer.cornerRadius = AppRadius.xs
         view.layer.masksToBounds = true
         view.backgroundColor = AppColors.bg2
+        // The tile has to read as a tile even when the theme art behind it
+        // is nearly black — «Рассвет» resolves to a deep gradient, and its
+        // 28pt chip on a `bg1` card had no edge of its own to be seen by.
+        view.layer.borderWidth = view.hairlineWidth
+        view.layer.borderColor = AppColors.stroke2.cgColor
         return view
     }()
 
@@ -66,6 +71,10 @@ final class ThemeRowCell: UITableViewCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
+        refreshThumbnailBorder()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: ThemeRowCell, _) in
+            cell.refreshThumbnailBorder()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -75,6 +84,13 @@ final class ThemeRowCell: UITableViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         thumbnailGradient?.frame = thumbnail.bounds
+    }
+
+    /// `cgColor` does not track a dynamic `UIColor`, so the tile's edge has
+    /// to be re-resolved when the theme flips.
+    private func refreshThumbnailBorder() {
+        thumbnail.layer.borderColor = AppColors.stroke2
+            .resolvedColor(with: traitCollection).cgColor
     }
 
     // MARK: - Setup
