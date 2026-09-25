@@ -64,9 +64,16 @@ final class AlarmViewModelLocalizationTests: XCTestCase {
     /// A key present in both places but empty in the catalogue would pass the
     /// check above by accident. Requiring Cyrillic pins each entry to the
     /// language the source catalogue is written in.
+    ///
+    /// Plural entries are read rendered: their `Localized.text` is the
+    /// `.stringsdict` format key («+%1$#@minutes@ · −%2$@»), whose words live in
+    /// the plural forms rather than in the key.
     func testMigratedCopyIsTheRussianSourceText() {
         for key in Self.migratedKeys {
-            let scalars = Localized.text(key).unicodeScalars
+            let copy = key == "firing.snooze.button.affordable"
+                ? Localized.format(key, 5, "50 ₽")
+                : Localized.text(key)
+            let scalars = copy.unicodeScalars
             let isCyrillic = scalars.contains { (0x0400...0x04FF).contains($0.value) }
             XCTAssertTrue(isCyrillic, "catalogue value for \(key) carries no Russian text")
         }
@@ -88,9 +95,32 @@ final class AlarmViewModelLocalizationTests: XCTestCase {
     func testFormatKeysKeepTheirSubstitutionSpecifiers() {
         XCTAssertTrue(Localized.text("create_alarm.progressive.step").contains("%1$lld"))
         XCTAssertTrue(Localized.text("create_alarm.progressive.step").contains("%2$@"))
-        XCTAssertTrue(Localized.text("firing.snooze.button.affordable").contains("%1$lld"))
+        // A plural substitution on argument 1 since #907: the template names
+        // the minutes through `%1$#@minutes@`, and the price stays a plain `%2$@`.
+        XCTAssertTrue(Localized.text("firing.snooze.button.affordable").contains("%1$#@minutes@"))
         XCTAssertTrue(Localized.text("firing.snooze.button.affordable").contains("%2$@"))
         XCTAssertTrue(Localized.text("firing.snoozed.suffix").contains("%@"))
+    }
+
+    // MARK: - The snooze button's minutes agree with the count (#907)
+
+    /// The catalogue side, at the CLDR boundaries — 11 is not singular and 21
+    /// is. Until #907 every count read «минут»: «+1 минут», «+3 минут».
+    /// 21 is outside the 1…15 an `Alarm` accepts, so it can only be reached here.
+    func testSnoozeButtonMinutesAgreeWithTheCount() {
+        let expected: [(Int, String)] = [
+            (1, "+1 минуту · −50 ₽"),
+            (3, "+3 минуты · −50 ₽"),
+            (5, "+5 минут · −50 ₽"),
+            (11, "+11 минут · −50 ₽"),
+            (21, "+21 минуту · −50 ₽")
+        ]
+        for (minutes, title) in expected {
+            XCTAssertEqual(
+                Localized.format("firing.snooze.button.affordable", minutes, "50 ₽"), title,
+                "minutes = \(minutes)"
+            )
+        }
     }
 
     /// The snooze button's price is prefixed with U+2212 MINUS SIGN, not a

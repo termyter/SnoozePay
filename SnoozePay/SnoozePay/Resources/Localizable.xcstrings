@@ -4028,37 +4028,129 @@
       }
     },
     "firing.snooze.accessibility" : {
-      "comment" : "VoiceOver label of the snooze CTA on the firing screen. %lld is the snooze length in minutes.",
+      "comment" : "VoiceOver label of the snooze CTA on the firing screen. %lld is the snooze length in minutes; a plural variation, so the noun agrees with the count.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Snooze for %lld minutes"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Snooze for %lld minute"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Snooze for %lld minutes"
+                }
+              }
+            }
           }
         },
         "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Отложить на %lld минут"
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отложить на %lld минуты"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отложить на %lld минут"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отложить на %lld минуту"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отложить на %lld минуты"
+                }
+              }
+            }
           }
         }
       }
     },
     "firing.snooze.button.affordable" : {
-      "comment" : "Title of the firing-screen snooze button when the balance covers the charge. %1$lld is the snooze length in minutes, %2$@ the formatted price; the leading «−» is U+2212, matching the ledger.",
+      "comment" : "Title of the firing-screen snooze button when the balance covers the charge. Argument 1 is the snooze length in minutes, argument 2 the formatted price; the leading «−» is U+2212, matching the ledger. The minutes noun agrees with the count through the «minutes» substitution (a plural on argument 1 only), so the price stays outside the variation. English keeps the uninflected «min» in both forms.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "+%1$lld min · −%2$@"
+            "value" : "+%#@minutes@ · −%2$@"
+          },
+          "substitutions" : {
+            "minutes" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg min"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg min"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "+%1$lld минут · −%2$@"
+            "value" : "+%#@minutes@ · −%2$@"
+          },
+          "substitutions" : {
+            "minutes" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "few" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg минуты"
+                    }
+                  },
+                  "many" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg минут"
+                    }
+                  },
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg минуту"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg минуты"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
