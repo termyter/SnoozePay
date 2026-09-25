@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import XCTest
 @testable import SnoozePay
 
@@ -18,23 +19,68 @@ import XCTest
 ///  * the table below equals what the sources read — a key the sources stopped
 ///    reading, or started reading, is named rather than absorbed.
 ///
-/// `SceneDelegate.swift` is deliberately not scanned: it hands nothing to
-/// `Localized` today. Listing it would add a file that contributes no keys,
-/// and `testEveryAppDelegateSourceIsScanned` is what keeps the next
-/// `AppDelegate+….swift` split (the shape #813 took) inside the scan.
+/// `SceneDelegate.swift` is scanned too since #733 moved the tab bar's three
+/// labels onto the catalogue: it is the other file in the target's root, and
+/// no screen suite reads it. `testEveryAppDelegateSourceIsScanned` is what
+/// keeps the next `AppDelegate+….swift` split (the shape #813 took) inside the
+/// scan.
+///
+/// # Where the words of the #733 keys are pinned
+///
+/// `rootTargetWords` pins every one of them at the catalogue level. On top of
+/// that, most are pinned where the user reads them:
+///
+///  * the three banners — `AppBannerPostingTests`, off the posted request;
+///  * `alarm_failure.corrupted.title` — `AppDelegateAlertTests`, off the
+///    presented alert;
+///  * the three `tab.*` labels — `testTabBarItemsCarryTheShippedWords` below,
+///    off `SceneDelegate.makeMainTabBar()`.
+///
+/// Two are pinned at the catalogue level **only**, because the call site that
+/// builds them is out of reach without raising the whole app:
+/// `alarm_failure.corrupted.message` and
+/// `alarm_failure.corrupted.message_fallback`. Both are chosen inside
+/// `AppDelegate.presentAlarmDataCorruptedAlert(error:)`, a private instance
+/// method that walks the live window before presenting.
 @MainActor
 final class AppDelegateCopyKeysTests: XCTestCase {
 
-    /// Relative to the app's source root. Both halves of `AppDelegate`: the
-    /// alert builders — and every catalogue read — moved to the extension in
-    /// #813. The host file reads no key today; it is listed because it holds
-    /// the instance entry points, and the corrupt-data message literals there
-    /// are copy a later migration may move onto the catalogue.
-    /// `AppDelegate+NotificationRouting.swift` (#842) reads none either and
-    /// holds no copy; it is listed because the on-disk check below wants every
+    /// Relative to the app's source root. Both halves of `AppDelegate`, plus
+    /// `SceneDelegate.swift` (#733). The host file builds the three banners and
+    /// the corrupt-data message; the extension, since #813, builds the alerts.
+    /// `AppDelegate+NotificationRouting.swift` (#842) reads no key and holds no
+    /// copy; it is listed because the on-disk check below wants every
     /// `AppDelegate` source in the scan.
     private static let sources = [
-        "AppDelegate.swift", "AppDelegate+Alerts.swift", "AppDelegate+NotificationRouting.swift"
+        "AppDelegate.swift", "AppDelegate+Alerts.swift", "AppDelegate+NotificationRouting.swift",
+        "SceneDelegate.swift"
+    ]
+
+    /// The copy #733 moved out of the target's root files, byte for byte what
+    /// the literals it replaced read. Templates are spelled with their
+    /// specifiers: an entry edit that drops or doubles one is a red test here,
+    /// not a banner missing its number.
+    private static let rootTargetWords: [String: String] = [
+        "alarm_failure.silent_audio.title": "Будильник звучит беззвучно",
+        "alarm_failure.silent_audio.body":
+            "Не удалось включить звук — откройте приложение и выключите будильник вручную.",
+        "alarm_failure.reschedule.title": "Будильники не перевзведены",
+        "alarm_failure.reschedule.body":
+            "Не удалось перепланировать будильники (%lld) — "
+            + "откройте приложение и проверьте разрешения на уведомления.",
+        "alarm_failure.snooze.title": "Откладывание не запланировано",
+        "alarm_failure.snooze.body_refunded": "Установите запасной — %@",
+        "alarm_failure.snooze.body_charged":
+            "Установите запасной. Списание не возвращено — обратитесь в поддержку. %@",
+        "alarm_failure.corrupted.title": "Будильник",
+        "alarm_failure.corrupted.message":
+            "Будильник прозвенел, но его данные повреждены и экран не загрузился. Подробности: %@",
+        "alarm_failure.corrupted.message_fallback":
+            "Будильник прозвенел, но его данные не удалось загрузить. "
+            + "Откройте приложение и проверьте список будильников.",
+        "tab.alarms": "Будильники",
+        "tab.wallet": "Кошелёк",
+        "tab.statistics": "Статистика"
     ]
 
     /// The keys those sources read, transcribed rather than derived: a list
@@ -49,7 +95,22 @@ final class AppDelegateCopyKeysTests: XCTestCase {
         "common.button.settings",
         // Corrupt-data alert's only button — spelling owned by
         // `AlertButtonLocalizationTests`.
-        "common.button.ok"
+        "common.button.ok",
+        // #733 — words in `rootTargetWords` above; the header names which of
+        // them are also pinned at the call site.
+        "alarm_failure.silent_audio.title",
+        "alarm_failure.silent_audio.body",
+        "alarm_failure.reschedule.title",
+        "alarm_failure.reschedule.body",
+        "alarm_failure.snooze.title",
+        "alarm_failure.snooze.body_refunded",
+        "alarm_failure.snooze.body_charged",
+        "alarm_failure.corrupted.title",
+        "alarm_failure.corrupted.message",
+        "alarm_failure.corrupted.message_fallback",
+        "tab.alarms",
+        "tab.wallet",
+        "tab.statistics"
     ]
 
     private static let reading = CatalogueKeyScanner.read(sources, under: appSourceDirectory())
@@ -81,6 +142,27 @@ final class AppDelegateCopyKeysTests: XCTestCase {
         )
     }
 
+    /// The words of #733, read through the same `Localized.text` the call sites
+    /// use. The only pin `alarm_failure.corrupted.message` and its fallback
+    /// have — see the header.
+    func testRootTargetCopyResolvesToTheShippedWords() {
+        for (key, words) in Self.rootTargetWords.sorted(by: { $0.key < $1.key }) {
+            XCTAssertEqual(Localized.text(key), words, "catalogue entry \(key)")
+        }
+        XCTAssertEqual(
+            Set(Self.rootTargetWords.keys).subtracting(Self.keysTheSourcesRead), [],
+            "the words table pins keys the key table does not list"
+        )
+    }
+
+    /// The tab labels at their call site: the three items `makeMainTabBar`
+    /// builds, in the order the bar shows them.
+    func testTabBarItemsCarryTheShippedWords() throws {
+        let tabBarController = try XCTUnwrap(SceneDelegate.makeMainTabBar() as? UITabBarController)
+        let titles = try XCTUnwrap(tabBarController.viewControllers).map(\.tabBarItem.title)
+        XCTAssertEqual(titles, ["Будильники", "Кошелёк", "Статистика"])
+    }
+
     /// The assertion `sources` cannot make about itself. #813 split the alerts
     /// out into a new file; a further split holding a new key would sit in
     /// neither the reading nor the table, and both comparisons above would stay
@@ -92,7 +174,7 @@ final class AppDelegateCopyKeysTests: XCTestCase {
 
         XCTAssertFalse(onDisk.isEmpty, "no AppDelegate sources under \(root.path) — this check would be vacuous")
         XCTAssertEqual(
-            Set(onDisk), Set(Self.sources),
+            Set(onDisk), Set(Self.sources.filter { $0.hasPrefix("AppDelegate") }),
             "the AppDelegate sources on disk and the scanned list differ — add the new file to `sources`"
         )
     }
