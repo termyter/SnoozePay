@@ -6029,6 +6029,12 @@
       "comment" : "Body of the statistics empty state (SPStatsEmptyState).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your stats will show up after your first morning with an alarm."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6041,6 +6047,12 @@
       "comment" : "Streak pill of the statistics empty state. %1$lld is the day count, %2$@ its declined noun from plural.days — positional because a translator may need the noun first.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streak · %1$lld %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6053,6 +6065,12 @@
       "comment" : "Headline of the statistics empty state (SPStatsEmptyState).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing to count yet"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6065,6 +6083,12 @@
       "comment" : "Headline SPStatsEmptyState swaps in when the ledger could not be read — distinct from a genuinely new account.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stats unavailable"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6077,6 +6101,12 @@
       "comment" : "Fallback body of the statistics load-failure alert, used when the error carries no errorDescription of its own.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load your stats."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6089,6 +6119,12 @@
       "comment" : "Title of the alert shown when the statistics repository fails to load. Byte for byte the value of alarms.error.data_title, and knowingly so rather than by oversight: both alerts are title + errorDescription-or-fallback + OK, the domain lives in the message (statistics.error.message vs alarms.error.load_failed_fallback) and not in the title, so by the common.* rule in Localized.swift this is a candidate for one shared common.error.data_title. Not merged in this slice because dropping a key is precisely the case merge-xcstrings.py refuses to resolve, and the #599 lane is editing this same file in parallel. alarms.error.data_title itself came from #601, which is closed and already on main — it is not what #599 is holding. Consolidate-or-justify-forever is #724. This is not the streak.behavioral.caps situation: there the two entries have different shapes behind them, here they do not.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data Error"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6101,6 +6137,12 @@
       "comment" : "Hero meta line; %@ is a day-and-month date («8 января»).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last slip: %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6113,6 +6155,12 @@
       "comment" : "Hero meta line for a ledger with no charges at all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No slips yet"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6125,6 +6173,12 @@
       "comment" : "Statistics state column: the charge ledger decoded, but some rows carry types this build cannot classify, so the week's figures are withheld rather than understated.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Part of your charge history couldn’t be read — this week’s figures are hidden rather than understated"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6137,6 +6191,12 @@
       "comment" : "Statistics state column: the charge ledger failed to decode, so the week's figures are hidden.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t read your charge history — this week’s figures are hidden"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6149,6 +6209,12 @@
       "comment" : "Caption under the weekly totals when the alarm store cannot be read, so no snooze price is available to value a clean morning with.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t read your alarms — savings can’t be calculated"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6161,6 +6227,12 @@
       "comment" : "Caption under the weekly totals when every alarm is free — a genuine «saved 0 ₽» week rather than a broken screen.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snoozing is free on your alarms — nothing to save"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6173,6 +6245,12 @@
       "comment" : "Caption under the weekly totals when no alarm carries a snooze price yet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Savings will show up once an alarm has a snooze fee"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6185,6 +6263,12 @@
       "comment" : "Caps caption on the statistics hero card, above the big streak count. Kept separate from streak.behavioral.caps — see that entry.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "STREAK"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6197,6 +6281,12 @@
       "comment" : "Legend under the streak heatmap. Names all four cell states. The neighbouring statistics.week.legend belongs to a DIFFERENT card and describes a different pair of colours — read as this chart's caption it misleads twice over (#637).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "green — woke up right away · gold — 1⁠–⁠2 snoozes · red — 3 or more · gray — no alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6209,6 +6299,12 @@
       "comment" : "Statistics screen title, rendered by the fixed page header; the controller sets the same copy on `title` for VoiceOver while the nav bar's own title stays empty (#319).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statistics"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6221,6 +6317,12 @@
       "comment" : "Heatmap tooltip: no alarm was scheduled that day.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No alarm"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6233,6 +6335,12 @@
       "comment" : "Heatmap tooltip: alarm dismissed with zero snoozes.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Woke up right away"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6245,6 +6353,12 @@
       "comment" : "Right label under the trend chart. Lower case where statistics.trend.week_caption is capitalised: this one is an axis tick and that one a column heading, and they may well diverge in English.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "this week"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6257,6 +6371,12 @@
       "comment" : "Left label under the trend chart — the oldest of the eight weeks.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 weeks ago"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6269,6 +6389,12 @@
       "comment" : "8-week trend headline: fewer snoozes than last week.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Getting better"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6281,6 +6407,12 @@
       "comment" : "Caps caption of the 8-week trend card on Statistics.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SNOOZE TREND"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6293,6 +6425,12 @@
       "comment" : "8-week trend subtitle; %@ is the signed difference («−2», «+3») with a U+2212 minus.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vs. last week"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6305,6 +6443,12 @@
       "comment" : "8-week trend subtitle when the difference is exactly zero.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Same as last week"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6317,6 +6461,12 @@
       "comment" : "8-week trend headline: same as last week.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Holding steady"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6329,6 +6479,12 @@
       "comment" : "Caption above the current-week snooze count in the trend card's right column. Sentence case, unlike statistics.trend.axis_end which labels the chart axis below it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This week"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6341,6 +6497,12 @@
       "comment" : "8-week trend headline: more snoozes than last week.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More than last week"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6353,6 +6515,12 @@
       "comment" : "Left column caption of the wake-time card (SPWakeTimeCard).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Average"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6365,6 +6533,12 @@
       "comment" : "Middle column caption of the wake-time card — the previous window, struck through.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6377,6 +6551,12 @@
       "comment" : "Caps title of the wake-time card (SPWakeTimeCard).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WAKE-UP TIME"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6389,6 +6569,12 @@
       "comment" : "Wake-time card, third column caption: the user now gets up earlier than in the previous window. Followed by the delta value, statistics.wake_time.delta_value.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Earlier by"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6401,6 +6587,12 @@
       "comment" : "Wake-time card, third column caption: the user now gets up later than in the previous window.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Later by"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6413,6 +6605,12 @@
       "comment" : "Wake-time card, third column caption: both windows share the same median wake time.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No change"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6425,6 +6623,12 @@
       "comment" : "Wake-time card, third column value; %lld is the delta in whole minutes and is always positive — its direction is carried by the caption above it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld min"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6437,6 +6641,12 @@
       "comment" : "Shown instead of the comparison columns until a previous window's worth of wake history exists.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparison will show up once there’s more history"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6449,6 +6659,12 @@
       "comment" : "Wake-time card while the window holds fewer mornings than the minimum. %1$lld is how many are still missing, %2$@ its declined noun from plural.mornings — positional because a translator may need the noun first.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Building your history: %1$lld more %2$@ needed"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6461,6 +6677,12 @@
       "comment" : "Caps title of the weekly money card (SPWeekMoneyCard).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "THIS WEEK"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6473,6 +6695,12 @@
       "comment" : "Replaces the totals row when the week recorded nothing at all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No data for this week yet"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6485,6 +6713,12 @@
       "comment" : "Legend under the weekly money chart.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "green — saved · red — spent"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6497,6 +6731,12 @@
       "comment" : "Right totals column of the weekly money card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Net"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6509,6 +6749,12 @@
       "comment" : "Left totals column of the weekly money card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6521,6 +6767,12 @@
       "comment" : "Middle totals column of the weekly money card.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spent"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6533,6 +6785,12 @@
       "comment" : "Caps caption of the weekday-distribution card on Statistics.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BY DAY OF WEEK"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6545,6 +6803,12 @@
       "comment" : "Window caption under the weekday-distribution headline.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Over the last 4 weeks"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6557,6 +6821,12 @@
       "comment" : "Weekday-card headline when the 4-week window holds no snoozes at all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No snoozes"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6569,6 +6839,12 @@
       "comment" : "Weekday-card headline naming the worst day(s). %@ is the day name, or a ListFormatter conjunction when days tie; the call site substitutes it as an attributed run tinted pain, so this is one entry rather than the prefix it replaces.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Most snoozes on %@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6581,6 +6857,12 @@
       "comment" : "Body on the streak sheet without a money figure. One entry rather than the two concatenated halves it replaces.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This isn’t luck anymore — it’s a habit. Your body knows getting up on time is easy."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6593,6 +6875,12 @@
       "comment" : "Caps caption on the streak sheet when there is no trustworthy money figure. Separate from statistics.streak.caps although both read «СЕРИЯ»: this one is the caps member of the sheet's Copy triple, whose savings-mode sibling is a whole sentence, so coupling the two would let a change to the statistics card silently rewrite the sheet.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "STREAK"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6605,6 +6893,12 @@
       "comment" : "Streak-sheet headline without a money figure. %1$lld is the day count, %2$@ its declined noun from plural.days.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld %2$@ without snoozing"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6617,6 +6911,12 @@
       "comment" : "Share CTA on the streak sheet, shown only in savings mode.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Your Win"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6629,6 +6929,12 @@
       "comment" : "Body under the money hero. One entry rather than the two concatenated halves it replaces: a sentence split across + freezes Russian word order into every future translation.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This money stayed in your balance. Use it the next time you have a rough week."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6641,6 +6947,12 @@
       "comment" : "Caps caption above the money hero on the streak sheet. %1$lld is the streak length, %2$@ its declined noun from plural.days uppercased by the call site — positional because a translator may need the noun first.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "STREAK · %1$lld %2$@ WITHOUT SNOOZING"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6653,6 +6965,12 @@
       "comment" : "Streak-sheet headline for any streak other than 7 days. %1$lld is the day count, %2$@ its declined noun from plural.days.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved in %1$lld %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6665,6 +6983,12 @@
       "comment" : "Streak-sheet headline for the exact 7-day case, which the design artboard spells as a week rather than a day count.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved in a week"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6677,6 +7001,12 @@
       "comment" : "Text handed to UIActivityViewController by the streak sheet's share CTA; wording fixed by PM on 2026-07-30 (#347). %1$lld is the day count, %2$@ its declined noun from plural.days, %3$@ the formatted amount. One entry rather than the two concatenated halves it replaces.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I haven’t snoozed my alarm in %1$lld %2$@ and saved %3$@ — SnoozePay"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7661,6 +7991,12 @@
       "comment" : "Caps eyebrow of the wake-up summary. The one line that does not vary by scenario.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good morning"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7673,6 +8009,12 @@
       "comment" : "Summary headline when nothing was charged: the user got up on the first ring.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up on the first ring"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7685,6 +8027,12 @@
       "comment" : "Summary headline naming the billed snoozes: %1$lld is the count, %2$@ the genitive form governed by «после» (plural.snoozes_after).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up after %1$lld %2$@"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7697,6 +8045,12 @@
       "comment" : "Summary headline when the ledger could not be read — states the fact without any number behind it.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’re up"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7709,6 +8063,12 @@
       "comment" : "Summary headline for a wake the ledger billed zero times, reached without the clean path (e.g. every attempt was refunded).",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your balance didn’t change"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7721,6 +8081,12 @@
       "comment" : "Summary subtitle for a wake with no charges at all.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your balance is untouched. Keep it up."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7733,6 +8099,12 @@
       "comment" : "Summary subtitle naming what this morning cost; %lld is whole roubles.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You were charged %lld ₽ today. Let’s aim for zero tomorrow."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7745,6 +8117,12 @@
       "comment" : "Summary subtitle when some charges stuck and some were reversed; %1$lld is roubles charged, %2$lld the reversed count.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You were charged %1$lld ₽ today. Snoozes that didn’t go through: %2$lld — those charges were refunded."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7757,6 +8135,12 @@
       "comment" : "Summary subtitle when every charge was reversed; %lld is the reversed count. Kept whole rather than assembled from a lead-in plus a shared tail, so the two sentences can be reordered per language.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No charges remain. Snoozes that didn’t go through: %lld — those charges were refunded."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7769,6 +8153,12 @@
       "comment" : "Summary subtitle when the transaction ledger could not be read. Says so instead of printing a number nobody verified.",
       "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We couldn’t read your charge history, so we’re not showing this morning’s total. Your current balance is on the main screen."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
