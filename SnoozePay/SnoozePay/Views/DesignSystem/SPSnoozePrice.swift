@@ -155,9 +155,14 @@ final class SPSnoozePrice: UIControl {
         if let minutes = minutes { self.minutes = minutes }
         self.hint = hint
         capsLabel.attributedText = makeCapsText()
-        let formatted = MoneyFormatter.string(price, currency: currency)
+        var displayPrice = price
+        var formatted = MoneyFormatter.string(price, currency: currency)
+        if price > 0, formatted == MoneyFormatter.string(0.0, currency: currency) {
+            displayPrice = .nan
+            formatted = "—"
+        }
         priceLabel.attributedText = MoneyFormatter.attributed(
-            price, currency: currency, digitsFont: AppTypography.moneyLg,
+            displayPrice, currency: currency, digitsFont: AppTypography.moneyLg,
             prefix: formatted == "—" ? "" : "−"
         )
         if let hint = hint {
