@@ -1,15 +1,9 @@
 import XCTest
 @testable import SnoozePay
 
-/// #275 — the amount shown on a top-up tile / CTA MUST equal what the App Store
-/// charges (the SKU's catalogue amount) AND what the ledger credits.
-///
-/// Before this fix the firing-screen presets rendered rounded literals
-/// (200 / 500 / 1000 ₽) while resolving the 149 / 499 / 999 SKUs, so the user
-/// saw 200 ₽ but was charged + credited 149. The DEBUG fallback credited the
-/// rounded literal, diverging further. These tests pin display == catalogue ==
-/// credit for every preset and the no-balance CTA, including the debug fallback
-/// path (which credits `Double(preset.amount)`).
+/// Historical RUB catalogue and DEBUG fallback presentation invariants (#275).
+/// Verified paid credit now uses transaction metadata (#939), independently of
+/// these static display nominals; its regressions live in StoreKitVerifiedPurchaseTests.
 @MainActor
 final class TopUpDisplayAmountTests: XCTestCase {
 
@@ -107,49 +101,22 @@ final class TopUpDisplayAmountTests: XCTestCase {
 
     // MARK: - StoreKitService helpers
 
-    /// `catalogAmount(for:)` returns the credited amount for known SKUs and nil
+    /// `catalogAmount(for:)` returns the RUB nominal for known SKUs and nil
     /// for unknown ones (so callers fall back to nothing, never a literal).
-    func testCatalogAmount_matchesCreditedAmountForAllSKUs() {
+    func testCatalogAmount_matchesRubNominalForAllSKUs() {
         for (productID, amount) in StoreKitService.productAmounts {
             XCTAssertEqual(StoreKitService.catalogAmount(for: productID), Int(amount))
         }
         XCTAssertNil(StoreKitService.catalogAmount(for: "io.mobilife.snoozepay.balance.unknown"))
     }
 
-    /// #557 — replaces `testDisplayAmount_fallsBackToCatalogueWhenProductNotLoaded`,
-    /// which asserted the fallback branch of `StoreKitService.displayAmount(for:)`
-    /// while doing nothing to make `products` empty: it only passed because the
-    /// old bundle ID matched no app in App Store Connect, so StoreKit resolved
-    /// nothing. With a real bundle ID all five SKUs resolve and the helper
-    /// returned the truncated storefront price instead (0 / 1 / 2 / 5 / 9 —
-    /// CI run 33175946701). The helper is gone; this pins the property that
-    /// made removing it safe.
-    ///
-    /// The credited amount for a known SKU is a function of the SKU alone —
-    /// `creditAmount(for:fallbackPrice:)` ignores the resolved StoreKit price.
-    /// So a catalogue-derived displayed amount equals the credited amount in
-    /// every storefront, and no display path may consult `Product.price`.
-    ///
-    /// Deterministic by construction: touches only static tables, never
-    /// `StoreKitService.shared`, so the outcome cannot depend on whether the
-    /// runner reached the App Store.
-    func testCreditedAmount_ignoresStorefrontPrice_soCatalogueDisplayAlwaysMatches() {
-        // Storefront prices a real device could report: none resolved, a USD
-        // price that truncates to a different integer, and an absurd one.
-        let storefrontPrices: [Decimal?] = [nil, 0.49, 9.99, 100_000]
+    /// The static catalogue remains the RUB fallback. A verified paid price
+    /// may differ; it must never be overwritten by this nominal table (#939).
+    func testCatalogAmount_matchesOnlyTheExplicitRubMissingPriceFallback() {
         for (productID, amount) in StoreKitService.productAmounts {
-            for price in storefrontPrices {
-                XCTAssertEqual(
-                    StoreKitService.creditAmount(for: productID, fallbackPrice: price),
-                    amount,
-                    "credit for \(productID) must stay \(amount) for storefront price \(String(describing: price))"
-                )
-            }
-            XCTAssertEqual(
-                StoreKitService.catalogAmount(for: productID),
-                Int(amount),
-                "displayed (catalogue) amount for \(productID) must equal the credited amount"
-            )
+            XCTAssertEqual(StoreKitService.creditAmount(for: productID, transactionPrice: nil, currency: .rub), amount)
+            XCTAssertNil(StoreKitService.creditAmount(for: productID, transactionPrice: nil,
+                                                      currency: Currency(code: "USD")))
         }
     }
 }

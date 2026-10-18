@@ -9,7 +9,7 @@ struct WalletTransactionPreviewItem: Equatable {
     /// "12 апр. · 09:00".
     let timestampText: String
     /// Signed amount string, e.g. "−50 ₽" / "+500 ₽" (formatted via
-    /// `Decimal.formattedRubles()` — never hand-rolled).
+    /// `MoneyFormatter` with the row currency — never hand-rolled).
     let amountText: String
     /// `true` for charges (red flame), `false` for credits (green plus/gift).
     let isDebit: Bool
@@ -86,7 +86,7 @@ enum WalletTransactionPreview {
             icon = "questionmark"
             isDebit = false
         }
-        let absolute = Decimal(abs(transaction.amount))
+        let absolute = abs(transaction.amount)
         // An unrecognised row has no known direction — show the bare amount
         // rather than asserting a "+" the ledger never promised.
         let sign = transaction.type.isUnrecognized ? "" : (isDebit ? "−" : "+")
@@ -105,7 +105,7 @@ enum WalletTransactionPreview {
         return WalletTransactionPreviewItem(
             title: title,
             timestampText: subtitle,
-            amountText: "\(sign)\(absolute.formattedRubles())",
+            amountText: sign + MoneyFormatter.string(absolute, currency: transaction.currency),
             isDebit: isDebit,
             iconSystemName: icon
         )

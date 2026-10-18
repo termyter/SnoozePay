@@ -19,14 +19,24 @@ struct RestorableTopUp: Equatable {
     let productID: String
 
     /// `StoreKit.Transaction.currency`, which is optional: StoreKit does not
-    /// always report one. `nil` is carried through rather than guessed — see
-    /// `BalanceService.topUpFromPurchase(amount:currency:purchasedAt:)`.
+    /// always report one. Missing/invalid currency leaves the purchase pending.
     let currency: Currency?
+
+    /// Original verified paid price, never the current Product/storefront price.
+    let transactionPrice: Decimal?
 
     /// The original purchase date. Restored rows are stamped with it instead of
     /// "now" so a top-up from March does not show up as March revenue being
     /// earned today in Statistics.
     let purchaseDate: Date
+}
+
+extension RestorableTopUp {
+    init(transaction: StoreKit.Transaction) {
+        self.init(transactionID: transaction.id, productID: transaction.productID,
+                  currency: transaction.currency.flatMap { Currency($0) },
+                  transactionPrice: transaction.price, purchaseDate: transaction.purchaseDate)
+    }
 }
 
 /// What one restore pass did. Returned (rather than only logged) so the
@@ -49,8 +59,8 @@ struct TopUpRestoreReport: Equatable {
     /// this build has been rolled back past. Ignored, never credited.
     var unknownProduct: Int = 0
 
-    /// Verified and ours, but the ledger refused the write (locked / corrupt).
-    /// The dedup mark is rolled back for these, so a later pass can retry.
+    /// Verified and ours, but paid metadata is incomplete/invalid or the ledger
+    /// refused the write. No dedup mark is retained, so a later pass can retry.
     var notRecorded: Int = 0
 }
 
@@ -131,8 +141,15 @@ final class TopUpRestoreService {
         // other order would hand a user who moved from RUB to USD a rouble
         // wallet that refuses every purchase they can actually make.
         for candidate in candidates.sorted(by: { $0.purchaseDate > $1.purchaseDate }) {
-            guard let amount = StoreKitService.productAmounts[candidate.productID] else {
+            guard StoreKitService.productAmounts[candidate.productID] != nil else {
                 report.unknownProduct += 1
+                continue
+            }
+            guard let amount = StoreKitService.creditAmount(for: candidate.productID,
+                                                           transactionPrice: candidate.transactionPrice,
+                                                           currency: candidate.currency) else {
+                report.notRecorded += 1
+                AppLogger.storeKit.error("restore skipped invalid paid metadata — not marking processed")
                 continue
             }
             switch storeKit.markProcessed(transactionID: candidate.transactionID) {
@@ -217,14 +234,7 @@ final class TopUpRestoreService {
             guard case .verified(let transaction) = result,
                   transaction.revocationDate == nil,
                   StoreKitService.productAmounts[transaction.productID] != nil else { continue }
-            found.append(
-                RestorableTopUp(
-                    transactionID: transaction.id,
-                    productID: transaction.productID,
-                    currency: transaction.currency.flatMap { Currency($0) },
-                    purchaseDate: transaction.purchaseDate
-                )
-            )
+            found.append(RestorableTopUp(transaction: transaction))
         }
         return found
     }

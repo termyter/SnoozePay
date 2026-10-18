@@ -23,19 +23,9 @@ final class LocalNotificationPosterSpy: LocalNotificationPosting {
     }
 }
 
-/// Smoke tests for StoreKitService.
-///
-/// NOTE: Fully exercising the `Transaction.updates` listener requires mocking
-/// `StoreKit.Transaction.updates`, which is a built-in `AsyncStream` not
-/// designed for substitution without a larger DI refactor. We therefore
-/// limit coverage to:
-///   - product ID → credit amount mapping (pure logic)
-///   - shared instance reachability (smoke)
-///
-/// TODO(IOS-032+): Once StoreKit transaction handling is extracted behind a
-/// protocol, add an end-to-end test that pushes a mock verified transaction
-/// through `handle(transactionResult:)` and asserts the balance is credited
-/// and the transaction is finished.
+/// Catalogue, feedback and dedup tests. Verified money application is exercised
+/// with isolated wallets in StoreKitVerifiedPurchaseTests; Apple's purchase UI
+/// and verification streams are not substituted here.
 @MainActor
 final class StoreKitServiceTests: XCTestCase {
 
@@ -107,14 +97,6 @@ final class StoreKitServiceTests: XCTestCase {
         XCTAssertEqual(StoreKitService.messageUserInfoKey, "message")
         XCTAssertEqual(StoreKitService.productsUserInfoKey, "products")
     }
-
-    // TODO(IOS-032+): The remaining gaps from #32 — `.userCancelled` /
-    // `.pending` / `failedVerification` / double-call dedup — exercise
-    // `Product.purchase()` and `Transaction.updates`, which are StoreKit
-    // built-ins without a substitution seam. Covering them requires lifting
-    // the StoreKit boundary behind a protocol (handle(transactionResult:),
-    // purchaseProduct, transactionUpdates AsyncStream). Tracked as a
-    // follow-up so this PR stays test-only and does not modify production.
 
     // MARK: - #115: Bool-check on BalanceService.topUp
 
@@ -347,32 +329,22 @@ final class StoreKitServiceTests: XCTestCase {
         XCTAssertNil(defaults.array(forKey: "storekit.processed_tx_ids") as? [String])
     }
 
-    // MARK: - #209.2: credit-amount unknown-product logging
+    // MARK: - Verified paid amount (#939)
 
-    func testCreditAmount_knownProduct_returnsCatalogueAmount() {
+    func testCreditAmount_knownProduct_prefersVerifiedPrice() {
         XCTAssertEqual(
-            StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.299", fallbackPrice: 999),
-            299,
-            "known SKU must credit the catalogue amount, ignoring any fallback price"
+            StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.299",
+                                         transactionPrice: 2.99, currency: Currency(code: "USD")),
+            2.99
         )
     }
 
-    func testCreditAmount_unknownProductNoFallback_returnsZero() {
-        // No free/promo products exist (#209) — a zero here means misconfiguration.
-        // The caller's `amount > 0` gate then refuses to finish. (Logging side
-        // effect is asserted indirectly: the path is exercised.)
-        XCTAssertEqual(
-            StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.unknown", fallbackPrice: nil),
-            0
-        )
+    func testCreditAmount_unknownProductNoPrice_refusesCredit() {
+        XCTAssertNil(StoreKitService.creditAmount(for: "unknown", transactionPrice: nil, currency: .rub))
     }
 
-    func testCreditAmount_unknownProductWithFallback_usesFallback() {
-        XCTAssertEqual(
-            StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.unknown", fallbackPrice: 199),
-            199,
-            "an unmapped SKU with a resolved StoreKit price still credits that price"
-        )
+    func testCreditAmount_unknownForegroundProductWithValidMetadata_usesVerifiedPrice() {
+        XCTAssertEqual(StoreKitService.creditAmount(for: "unknown", transactionPrice: 199, currency: .rub), 199)
     }
 
     // MARK: - #575: forced-empty catalogue flag
