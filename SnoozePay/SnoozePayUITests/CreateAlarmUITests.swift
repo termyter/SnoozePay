@@ -61,9 +61,9 @@ final class CreateAlarmUITests: XCTestCase {
         let save = app.buttons["createAlarm.saveButton"]
         XCTAssertTrue(save.exists, "Save button should be present on the create form")
 
-        // 2. Fill the name (the form auto-focuses it on appear).
-        nameField.tap()
-        nameField.typeText("Подъём на работу")
+        // 2. The form opens without a keyboard (#317). Wait for the tap
+        // to give this field keyboard focus before synthesizing text (#919).
+        guard fillNameField(nameField, in: app) else { return }
 
         // 3. Save → success path dismisses the sheet.
         save.tap()
@@ -102,8 +102,7 @@ final class CreateAlarmUITests: XCTestCase {
             launchAlert.buttons["Отмена"].tap()
         }
 
-        nameField.tap()
-        nameField.typeText("Подъём на работу")
+        guard fillNameField(nameField, in: app) else { return }
 
         app.buttons["createAlarm.saveButton"].tap()
 
@@ -128,5 +127,41 @@ final class CreateAlarmUITests: XCTestCase {
         // instead of landing back on a list that implies success.
         XCTAssertTrue(nameField.waitForExistence(timeout: 5),
                       "Create sheet must stay up when the alarm could not be armed")
+    }
+
+    /// A synthesized tap can be dropped while the field remains hittable.
+    /// Retry only the focus tap, never typing or saving. The query uses the
+    /// same `hasKeyboardFocus` snapshot attribute as XCTest's `typeText`
+    /// dispatch check; `hasFocus` describes UI focus, not keyboard focus.
+    private func fillNameField(
+        _ nameField: XCUIElement,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> Bool {
+        let focusedNameField = app.textFields.matching(identifier: "createAlarm.nameField")
+            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        var taps = 0
+        while taps < 3, !focusedNameField.exists {
+            guard nameField.exists, nameField.isHittable else {
+                XCTFail("Create-alarm name field must be hittable before focusing", file: file, line: line)
+                return false
+            }
+            nameField.tap()
+            taps += 1
+            _ = focusedNameField.waitForExistence(timeout: 3)
+        }
+        guard focusedNameField.exists else {
+            XCTFail("Create-alarm name field did not get keyboard focus after \(taps) taps", file: file, line: line)
+            return false
+        }
+
+        let name = "Подъём на работу"
+        nameField.typeText(name)
+        guard nameField.value as? String == name else {
+            XCTFail("Create-alarm name field must contain the exact typed name before saving", file: file, line: line)
+            return false
+        }
+        return true
     }
 }
