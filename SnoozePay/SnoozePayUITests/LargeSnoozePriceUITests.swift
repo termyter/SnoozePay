@@ -18,15 +18,7 @@ final class LargeSnoozePriceUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.textFields["createAlarm.nameField"].waitForExistence(timeout: 10))
         let price = revealPrice(in: app)
-        let focusedPrice = app.textFields.matching(identifier: "createAlarm.penaltyField")
-            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-        var taps = 0
-        while taps < 3, !focusedPrice.exists {
-            price.tap()
-            taps += 1
-            _ = focusedPrice.waitForExistence(timeout: 3)
-        }
-        XCTAssertTrue(focusedPrice.exists, "The price field must receive native keyboard input")
+        focusPrice(price, in: app)
         clearPriceField(price, in: app)
         price.typeText("9223372036854775807")
         XCTAssertEqual(price.value as? String, "9223372036854775807")
@@ -39,7 +31,14 @@ final class LargeSnoozePriceUITests: XCTestCase {
         XCTAssertTrue(app.switches.firstMatch.waitForExistence(timeout: 5))
         app.tables.cells.firstMatch.tap()
         XCTAssertTrue(app.textFields["createAlarm.nameField"].waitForExistence(timeout: 5))
-        XCTAssertEqual(revealPrice(in: app).value as? String, "9223372036854775808")
+        let reopenedPrice = revealPrice(in: app)
+        XCTAssertEqual(reopenedPrice.value as? String, "9223372036854775808")
+        focusPrice(reopenedPrice, in: app)
+        makeFocusedPriceVisible(reopenedPrice, in: app)
+        XCTAssertEqual(reopenedPrice.value as? String, "9223372036854775808")
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+        XCTAssertEqual(reopenedPrice.value as? String, "9223372036854775808")
 
         let name = app.textFields["createAlarm.nameField"]
         var scrolls = 0
@@ -50,6 +49,18 @@ final class LargeSnoozePriceUITests: XCTestCase {
         XCTAssertTrue(name.isHittable, "Scroll away from the price card before returning to it")
         XCTAssertEqual(revealPrice(in: app).value as? String, "9223372036854775808")
         XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    private func focusPrice(_ price: XCUIElement, in app: XCUIApplication) {
+        let focusedPrice = app.textFields.matching(identifier: "createAlarm.penaltyField")
+            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        var taps = 0
+        while taps < 3, !focusedPrice.exists {
+            price.tap()
+            taps += 1
+            _ = focusedPrice.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(focusedPrice.exists, "The price field must receive native keyboard input")
     }
 
     private func clearPriceField(_ price: XCUIElement, in app: XCUIApplication) {
@@ -96,8 +107,8 @@ final class LargeSnoozePriceUITests: XCTestCase {
                                                    dy: visible.minY + visible.height * 0.85 - table.frame.minY))
             let end = origin.withOffset(CGVector(dx: visible.midX - table.frame.minX,
                                                  dy: visible.minY + visible.height * 0.15 - table.frame.minY))
-            // The full table extends BEHIND the keyboard. Its default swipe
-            // can start on a key; keep both ends in its actual visible viewport.
+            // Keep both ends above the keyboard, including while keyboard
+            // presentation changes the table's frame.
             start.press(forDuration: 0.05, thenDragTo: end)
             pans += 1
             XCTAssertTrue(keyboard.exists, "The upward pan must retain the keyboard")

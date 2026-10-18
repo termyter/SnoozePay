@@ -218,17 +218,25 @@ final class CreateAlarmViewController: UIViewController {
         // section only its own small top inset, which put the «Название» card
         // hard against the bar.
         tableView.contentInset.top = AppSpacing.sp4
+        // Keep the original full-height form when the keyboard is hidden.
+        view.keyboardLayoutGuide.usesBottomSafeArea = false
 
         // Pin to safe area on top so the first section's «ПОВТОР» header is
         // not clipped under the navigation bar.
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(lessThanOrEqualTo: view.keyboardLayoutGuide.topAnchor)
         ])
 
         guard viewModel.isEditing else {
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
+            let preferredBottom = tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            preferredBottom.priority = .defaultHigh
+            NSLayoutConstraint.activate([
+                tableView.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor),
+                preferredBottom
+            ])
             return
         }
 
@@ -251,8 +259,12 @@ final class CreateAlarmViewController: UIViewController {
         deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
         footer.addSubview(deleteButton)
 
+        // Keep the footer fixed while the keyboard reduces the scrollable area.
+        let preferredBottom = tableView.bottomAnchor.constraint(equalTo: footer.topAnchor)
+        preferredBottom.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            tableView.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            tableView.bottomAnchor.constraint(lessThanOrEqualTo: footer.topAnchor),
+            preferredBottom,
 
             footer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
