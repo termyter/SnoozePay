@@ -106,12 +106,19 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// state UI swap + the 2-second auto-dismiss timer.
     private var successReceipt: TopUpSuccessReceipt?
 
-    /// Auto-resume timeout timer (60s). Reset to nil whenever the sheet is
-    /// about to dismiss so a queued tick can't fire after teardown.
+    /// Original auto-resume timeout timer (60s). Cleared when the pause ends;
+    /// an attempted interactive dismissal must not replace its deadline.
     private var autoResumeTimer: Timer?
     private var autoResumeDeadlineExpired = false
     private var failureAcknowledgementPending = false
     private var pauseEnded = false
+    private var pauseStarted = false
+
+    /// The actual scheduled deadline, retained across a cancelled interactive dismissal.
+    var autoResumeFireDate: Date? { autoResumeTimer?.fireDate }
+
+    /// Tests drive real lifecycle callbacks without touching shared audio or feedback state.
+    private let pauseLifecycle: ((Bool) -> Void)?
 
     /// Visible mm:ss countdown reflected in the pause label. Decremented every
     /// 1s so the user can see how long they have left to commit.
@@ -286,7 +293,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         },
         purchaseProduct: ((String) -> Void)? = nil,
         presentPurchaseFailure: ((UIAlertController) -> Void)? = nil,
-        dismissForAutoResume: (() -> Void)? = nil
+        dismissForAutoResume: (() -> Void)? = nil,
+        pauseLifecycle: ((Bool) -> Void)? = nil
     ) {
         self.presets = presets
         self.balance = balance
@@ -295,6 +303,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         self.scheduleSuccessDismissal = scheduleSuccessDismissal
         self.presentPurchaseFailure = presentPurchaseFailure
         self.dismissForAutoResume = dismissForAutoResume
+        self.pauseLifecycle = pauseLifecycle
         self.snoozePrice = snoozePrice
         self.currentBalance = currentBalance
         // Pre-select the cheapest tier that actually unlocks a snooze at the
@@ -366,36 +375,50 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Pause audio + escalation immediately so the user isn't fighting
-        // the alarm sound while choosing a preset.
-        AudioService.shared.pauseAlarmSound()
-        AlarmFiringCoordinator.shared.pauseEscalation()
-        startAutoResumeTimer()
-        startCountdownTimer()
-        updatePauseLabel()
-        // While visible, route purchase feedback to the in-app banner rather
-        // than a fallback local notification (#45). Balanced below.
-        if !isObservingPurchaseFeedback {
-            isObservingPurchaseFeedback = true
-            StoreKitService.shared.beginObservingPurchaseFeedback()
+        guard !pauseEnded else { return }
+        // A cancelled interactive dismissal reappears on the same original pause.
+        if !pauseStarted {
+            pauseStarted = true
+            updatePauseLifecycle(active: true)
+            startAutoResumeTimer()
+            startCountdownTimer()
         }
+        updatePauseLabel()
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        // Cancelled gestures and temporary full-screen covers do not end this pause.
+        guard isBeingDismissed || isMovingFromParent || (presentingViewController == nil && parent == nil) else {
+            return
+        }
         endPauseTimers()
-        if isObservingPurchaseFeedback {
-            isObservingPurchaseFeedback = false
-            StoreKitService.shared.endObservingPurchaseFeedback()
-        }
-
-        // Resume audio + escalation unless we got here via success path —
-        // the host VC may have already torn down the firing flow on success.
-        if successReceipt == nil {
-            AudioService.shared.resumeAlarmSound()
-            AlarmFiringCoordinator.shared.resumeEscalation()
-        }
+        updatePauseLifecycle(active: false)
         onDismiss?()
+    }
+
+    private func updatePauseLifecycle(active: Bool) {
+        if let pauseLifecycle {
+            pauseLifecycle(active)
+            return
+        }
+        if active {
+            AudioService.shared.pauseAlarmSound()
+            AlarmFiringCoordinator.shared.pauseEscalation()
+            if !isObservingPurchaseFeedback {
+                isObservingPurchaseFeedback = true
+                StoreKitService.shared.beginObservingPurchaseFeedback()
+            }
+        } else {
+            if isObservingPurchaseFeedback {
+                isObservingPurchaseFeedback = false
+                StoreKitService.shared.endObservingPurchaseFeedback()
+            }
+            if successReceipt == nil {
+                AudioService.shared.resumeAlarmSound()
+                AlarmFiringCoordinator.shared.resumeEscalation()
+            }
+        }
     }
 
     // MARK: - Setup

@@ -121,6 +121,68 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         try fixture.assertWalletUnchanged()
     }
 
+    func testCancelledAndCoveredDisappearancesKeepOriginalDeadlineAndCheckout() throws {
+        let fixture = try Fixture()
+        defer { fixture.clear() }
+        let sheet = fixture.makeSheet()
+        let host = UIViewController()
+        host.addChild(sheet)
+        host.view.addSubview(sheet.view)
+        sheet.didMove(toParent: host)
+        sheet.viewWillAppear(false)
+        let originalDeadline = try XCTUnwrap(sheet.autoResumeFireDate)
+        sheet.viewWillDisappear(false)
+        sheet.viewWillAppear(false) // UIKit cancelled the interactive dismissal.
+        XCTAssertEqual(sheet.autoResumeFireDate, originalDeadline, "Do not grant a fresh 60-second pause")
+        sheet.viewWillDisappear(false)
+        sheet.viewDidDisappear(false) // A temporary cover retains the parent relationship.
+        sheet.viewWillAppear(false)
+        XCTAssertEqual(sheet.autoResumeFireDate, originalDeadline)
+        XCTAssertEqual(fixture.pauseLifecycle, [true])
+        XCTAssertEqual(fixture.dismissals, 0, "An abandoned gesture did not dismiss the sheet")
+        let button = try purchaseButton(in: sheet)
+        button.sendActions(for: .touchUpInside)
+        XCTAssertEqual(fixture.requested.count, 1, "The returned sheet must still accept checkout")
+        sheet.handleAutoResume()
+        XCTAssertEqual(fixture.resumes, 0, "The original deadline still waits for the active purchase")
+        fixture.post(StoreKitService.purchaseCancelledNotification)
+        XCTAssertEqual(fixture.resumes, 1)
+        XCTAssertTrue(try countdown(in: sheet).contains("00:00"))
+        sheet.willMove(toParent: nil)
+        sheet.view.removeFromSuperview()
+        sheet.removeFromParent()
+        sheet.viewDidDisappear(false)
+        XCTAssertEqual(fixture.pauseLifecycle, [true, false])
+        XCTAssertEqual(fixture.dismissals, 1)
+        try fixture.assertWalletUnchanged()
+    }
+
+    func testCompletedDepartureEndsPauseAndReappearanceCannotRestartIt() throws {
+        let fixture = try Fixture()
+        defer { fixture.clear() }
+        let sheet = fixture.makeSheet()
+        let host = UIViewController()
+        host.addChild(sheet)
+        host.view.addSubview(sheet.view)
+        sheet.didMove(toParent: host)
+        sheet.viewWillAppear(false)
+        sheet.viewWillDisappear(false)
+        sheet.willMove(toParent: nil)
+        sheet.view.removeFromSuperview()
+        sheet.removeFromParent()
+        sheet.viewDidDisappear(false)
+        sheet.viewWillAppear(false)
+        XCTAssertNil(sheet.autoResumeFireDate)
+        try purchaseButton(in: sheet).sendActions(for: .touchUpInside)
+        sheet.handleAutoResume()
+        fixture.post(StoreKitService.purchaseCancelledNotification)
+        XCTAssertTrue(fixture.requested.isEmpty)
+        XCTAssertEqual(fixture.resumes, 0)
+        XCTAssertEqual(fixture.pauseLifecycle, [true, false])
+        XCTAssertEqual(fixture.dismissals, 1)
+        try fixture.assertWalletUnchanged()
+    }
+
     private func purchaseButton(in sheet: FiringTopUpBottomSheetViewController) throws -> SPButton {
         sheet.loadViewIfNeeded()
         return try XCTUnwrap(descendants(in: sheet.view).compactMap { $0 as? SPButton }.first {
@@ -149,6 +211,8 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         var resumes = 0
         var alerts: [UIAlertController] = []
         var successDelays: [TimeInterval] = []
+        var pauseLifecycle: [Bool] = []
+        var dismissals = 0
 
         init() throws {
             let suite = "FiringTopUpAutoResumeTests.\(UUID())"
@@ -163,13 +227,16 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         func clear() { defaults.removePersistentDomain(forName: suite) }
 
         func makeSheet() -> FiringTopUpBottomSheetViewController {
-            FiringTopUpBottomSheetViewController(
+            let sheet = FiringTopUpBottomSheetViewController(
                 currentBalance: 0, balance: balance, notificationCenter: center,
                 scheduleSuccessDismissal: { [weak self] delay, _ in self?.successDelays.append(delay) },
                 purchaseProduct: { [weak self] in self?.requested.append($0) },
                 presentPurchaseFailure: { [weak self] in self?.alerts.append($0) },
-                dismissForAutoResume: { [weak self] in self?.resumes += 1 }
+                dismissForAutoResume: { [weak self] in self?.resumes += 1 },
+                pauseLifecycle: { [weak self] in self?.pauseLifecycle.append($0) }
             )
+            sheet.onDismiss = { [weak self] in self?.dismissals += 1 }
+            return sheet
         }
 
         func post(_ name: Notification.Name, info: [String: Any]? = nil) {
