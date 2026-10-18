@@ -41,13 +41,15 @@ final class DepositBottomSheetViewController: UIViewController {
 
     /// Set once a successful purchase resolves — guards double-delivery
     /// (foreground purchase + background `Transaction.updates` listener).
-    private var successAmount: Int?
+    private var successReceipt: TopUpSuccessReceipt?
 
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
     private var purchaseCancelledObserver: NSObjectProtocol?
     /// Optional product dispatch keeps this real form testable without an App Store catalogue.
     private let purchaseProduct: ((String) -> Void)?
+    private let notificationCenter: NotificationCenter
+    private let scheduleSuccessDismissal: TopUpSuccessDismissal
     /// True while this screen is registered as a purchase-feedback subscriber
     /// so `begin`/`end` stay balanced across appear/disappear (#45).
     private var isObservingPurchaseFeedback = false
@@ -146,6 +148,7 @@ final class DepositBottomSheetViewController: UIViewController {
 
     private let successAmountLabel: UILabel = {
         let label = UILabel()
+        label.accessibilityIdentifier = "deposit.successAmount"
         label.font = AppTypography.moneyLg
         label.textColor = AppColors.money400
         label.textAlignment = .center
@@ -165,9 +168,18 @@ final class DepositBottomSheetViewController: UIViewController {
 
     // MARK: - Init
 
-    init(balance: BalanceService = .shared, purchaseProduct: ((String) -> Void)? = nil) {
+    init(
+        balance: BalanceService = .shared,
+        notificationCenter: NotificationCenter = .default,
+        scheduleSuccessDismissal: @escaping TopUpSuccessDismissal = { delay, action in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { action() }
+        },
+        purchaseProduct: ((String) -> Void)? = nil
+    ) {
         self.balance = balance
         self.purchaseProduct = purchaseProduct
+        self.notificationCenter = notificationCenter
+        self.scheduleSuccessDismissal = scheduleSuccessDismissal
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
         if let sheet = sheetPresentationController {
@@ -190,13 +202,13 @@ final class DepositBottomSheetViewController: UIViewController {
 
     deinit {
         if let token = purchaseCompletedObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
         }
         if let token = purchaseFailedObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
         }
         if let token = purchaseCancelledObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
         }
     }
 
@@ -348,7 +360,7 @@ final class DepositBottomSheetViewController: UIViewController {
     // MARK: - Purchase
 
     private func observePurchaseNotifications() {
-        let center = NotificationCenter.default
+        let center = notificationCenter
         let amountKey = StoreKitService.amountUserInfoKey
         let messageKey = StoreKitService.messageUserInfoKey
         purchaseCompletedObserver = center.addObserver(
@@ -357,8 +369,12 @@ final class DepositBottomSheetViewController: UIViewController {
             queue: .main
         ) { [weak self] note in
             guard let self else { return }
-            let amount = note.userInfo?[amountKey] as? Double ?? 0
-            self.handlePurchaseSuccess(amount: Int(amount.rounded()))
+            guard let receipt = TopUpSuccessReceipt(eventAmount: note.userInfo?[amountKey],
+                                                    currency: self.balance.walletCurrency) else {
+                AppLogger.storeKit.error("DepositSheet: invalid credited amount event — ignoring")
+                return
+            }
+            self.handlePurchaseSuccess(receipt)
         }
         purchaseFailedObserver = center.addObserver(
             forName: StoreKitService.purchaseFailedNotification,
@@ -372,7 +388,7 @@ final class DepositBottomSheetViewController: UIViewController {
         purchaseCancelledObserver = center.addObserver(
             forName: StoreKitService.purchaseCancelledNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self, self.purchaseInFlight, self.successAmount == nil else { return }
+            guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
             self.purchaseInFlight = false
             self.depositButton.isEnabled = true
         }
@@ -417,8 +433,10 @@ final class DepositBottomSheetViewController: UIViewController {
             AppLogger.storeKit.notice(
                 "DepositSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
             )
-            if balance.topUp(amount: Double(preset.amount)) {
-                handlePurchaseSuccess(amount: preset.amount)
+            let amount = Double(preset.amount)
+            if balance.topUp(amount: amount),
+               let receipt = TopUpSuccessReceipt(amount: amount, currency: balance.walletCurrency) {
+                handlePurchaseSuccess(receipt)
             } else {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
@@ -450,12 +468,12 @@ final class DepositBottomSheetViewController: UIViewController {
 
     // MARK: - Success / failure
 
-    private func handlePurchaseSuccess(amount: Int) {
-        guard successAmount == nil else { return }
-        successAmount = amount
+    private func handlePurchaseSuccess(_ receipt: TopUpSuccessReceipt) {
+        guard successReceipt == nil else { return }
+        successReceipt = receipt
         purchaseInFlight = false
 
-        successAmountLabel.text = "+\(Decimal(amount).formattedRubles())"
+        successAmountLabel.text = "+" + MoneyFormatter.string(receipt.amount, currency: receipt.currency)
         successContainer.isHidden = false
         successContainer.alpha = 0
         UIView.animate(withDuration: SPSupport.durationBase) {
@@ -463,7 +481,7 @@ final class DepositBottomSheetViewController: UIViewController {
             self.successContainer.alpha = 1
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+        scheduleSuccessDismissal(2) { [weak self] in
             self?.dismiss(animated: true)
         }
     }
