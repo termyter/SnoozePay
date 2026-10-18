@@ -142,9 +142,12 @@ final class CriticalWarningCenterTests: XCTestCase {
         XCTAssertEqual(host.attempts, 1, "identical text for another alarm must not suppress its alert")
     }
 
-    func testUnreadableQueue_isObservableAndNeverOverwrittenByANewIncident() {
+    func testUnreadableQueue_newWarningSurvivesRelaunch_andOriginalBackupsRemainIntact() {
         let bytes = Data("unreadable warning queue".utf8)
         defaults.set(bytes, forKey: "pending_critical_warnings")
+        let olderBackupKey = "pending_critical_warnings_unreadable_existing"
+        let olderBackup = Data("different earlier corruption".utf8)
+        defaults.set(olderBackup, forKey: olderBackupKey)
         var faults: [String] = []
         AppLogger.withTestSink({ _, level, message in
             if level == .fault { faults.append(message) }
@@ -152,9 +155,14 @@ final class CriticalWarningCenterTests: XCTestCase {
             center = makeCenter()
             center.record(detail: "new failure", refundLanded: false, alarmID: nil)
         })
-        XCTAssertEqual(defaults.data(forKey: "pending_critical_warnings"), bytes)
-        XCTAssertEqual(center.pending.count, 1, "the current incident can still be shown in this process")
-        XCTAssertEqual(faults.count, 2)
+        XCTAssertEqual(makeCenter().pending, center.pending, "the new warning must survive process restart")
+        XCTAssertEqual(center.pending.count, 1)
+        XCTAssertEqual(defaults.data(forKey: olderBackupKey), olderBackup)
+        let backups = defaults.dictionaryRepresentation().filter {
+            $0.key.hasPrefix("pending_critical_warnings_unreadable_")
+        }
+        XCTAssertTrue(backups.values.contains { ($0 as? Data) == bytes }, "preserve the unreadable original")
+        XCTAssertEqual(faults.count, 1)
     }
 
     func testFiringFailure_afterVCAndItsModelOwnerDisappear_stillRefundsAndPersistsOnce() throws {

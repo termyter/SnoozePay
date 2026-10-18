@@ -22,7 +22,6 @@ final class CriticalWarningCenter {
     static let shared = CriticalWarningCenter()
     private static let key = "pending_critical_warnings"
     private let defaults: UserDefaults
-    private var storageReadable = true
     private(set) var pending: [Warning] = []
     private weak var visibleAlert: UIAlertController?
     private var retryScheduled = false
@@ -37,18 +36,15 @@ final class CriticalWarningCenter {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        guard defaults.object(forKey: Self.key) != nil else { return }
-        guard let data = defaults.data(forKey: Self.key) else {
-            storageReadable = false
-            AppLogger.emit(.appDelegate, .fault, "Critical warnings have an invalid type; preserving stored queue")
+        guard let stored = defaults.object(forKey: Self.key) else { return }
+        guard let data = stored as? Data else {
+            preserveUnreadableQueue(stored, reason: "invalid stored type")
             return
         }
         do {
             pending = try JSONDecoder().decode([Warning].self, from: data)
         } catch {
-            // Preserve unreadable bytes; a subsequent incident must not erase them.
-            storageReadable = false
-            AppLogger.emit(.appDelegate, .fault, "Critical warnings unreadable; preserving stored queue: \(error)")
+            preserveUnreadableQueue(stored, reason: String(describing: error))
         }
     }
 
@@ -79,11 +75,16 @@ final class CriticalWarningCenter {
         retryWhenActive() // Wait for UIKit to finish dismissing OK's alert.
     }
 
+    private func preserveUnreadableQueue(_ stored: Any, reason: String) {
+        var backupKey: String
+        repeat { backupKey = "\(Self.key)_unreadable_\(UUID())" }
+        while defaults.object(forKey: backupKey) != nil
+        defaults.set(stored, forKey: backupKey)
+        AppLogger.emit(.appDelegate, .fault, "Critical warnings unreadable (\(reason)); preserved as \(backupKey)")
+        // A new known warning can now replace the unreadable active queue safely.
+    }
+
     private func persist(_ warnings: [Warning]) -> Bool {
-        guard storageReadable else {
-            AppLogger.emit(.appDelegate, .fault, "Critical warning queue not saved: stored queue is unreadable")
-            return false
-        }
         do {
             defaults.set(try JSONEncoder().encode(warnings), forKey: Self.key)
             return true
