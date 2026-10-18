@@ -96,6 +96,28 @@ enum MoneyFormatter {
 
     // MARK: - Explicit currency (#559)
 
+    static func string(
+        _ amount: Double,
+        currency: Currency,
+        locale: Locale = AppLocale.display
+    ) -> String {
+        string(decimalAmount(amount), currency: currency, locale: locale)
+    }
+
+    static func attributed(
+        _ amount: Double,
+        currency: Currency,
+        digitsFont: UIFont,
+        prefix: String = "",
+        color: UIColor? = nil,
+        locale: Locale = AppLocale.display
+    ) -> NSAttributedString {
+        attributed(
+            decimalAmount(amount), currency: currency, digitsFont: digitsFont,
+            prefix: prefix, color: color, locale: locale
+        )
+    }
+
     /// Uses the row's currency, with Foundation's currency precision. The
     /// untagged overloads above remain the legacy whole-rouble API.
     static func string(
@@ -142,6 +164,18 @@ enum MoneyFormatter {
     }
 
     // MARK: - Private
+
+    /// Decimal(Double) can change even exact large integers. Keep their fixed
+    /// C-format digits; for fractions use Double's shortest round-trip text.
+    /// Unrepresentable values stay unknown instead of becoming zero.
+    private static func decimalAmount(_ amount: Double) -> Decimal {
+        guard amount.isFinite else { return .nan }
+        let text = amount.rounded(.towardZero) == amount
+            ? String(format: "%.0f", amount)
+            : String(amount)
+        return Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) ?? .nan
+    }
+
 
     /// Shared grouping formatter — `NumberFormatter` construction costs
     /// ~0.5ms; money strings rebuild on every balance tick so cache it.

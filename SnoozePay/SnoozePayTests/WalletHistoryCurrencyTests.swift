@@ -105,6 +105,8 @@ final class WalletHistoryCurrencyTests: XCTestCase {
     }
 
     func testHistoryBeyondIntAndInvalidAmountsDoNotBecomeZero() {
+        let exact = MoneyFormatter.string(amount("18446744073709551616"), currency: .rub, locale: russian)
+        XCTAssertEqual(exact.filter(\.isNumber), "18446744073709551616")
         let large = Transaction(type: .topup, amount: 18_446_744_073_709_551_616, currency: .rub)
         let label = WalletTransactionHistoryViewController.makeAmountLabel(for: large)
         let digits = (label.attributedText?.string ?? "").filter(\.isNumber)
