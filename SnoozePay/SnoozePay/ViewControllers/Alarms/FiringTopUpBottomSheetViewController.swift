@@ -83,6 +83,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// Wallet balance the purchase lands on top of. Part of the arithmetic:
     /// with 100 ₽ already banked a 149 ₽ top-up DOES unlock a 200 ₽ snooze.
     private let currentBalance: Double
+    private let balance: BalanceService
 
     /// Auto-resume timeout. Spec is 60 seconds. Stored as a constant so the
     /// controller doesn't re-read a magic literal across timer setup, label
@@ -103,7 +104,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     /// Flips when StoreKit reports a successful credit. Drives the success
     /// state UI swap + the 2-second auto-dismiss timer.
-    private var successAmount: Int?
+    private var successReceipt: TopUpSuccessReceipt?
 
     /// Auto-resume timeout timer (60s). Reset to nil whenever the sheet is
     /// about to dismiss so a queued tick can't fire after teardown.
@@ -122,6 +123,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private var purchaseCancelledObserver: NSObjectProtocol?
     /// Optional product dispatch keeps this real form testable without an App Store catalogue.
     private let purchaseProduct: ((String) -> Void)?
+    private let notificationCenter: NotificationCenter
+    private let scheduleSuccessDismissal: TopUpSuccessDismissal
     /// True while registered as a purchase-feedback subscriber so begin/end
     /// stay balanced across appear/disappear (#45).
     private var isObservingPurchaseFeedback = false
@@ -244,6 +247,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     private let successAmountLabel: UILabel = {
         let label = UILabel()
+        label.accessibilityIdentifier = "firingTopUp.successAmount"
         label.font = AppTypography.moneyXl
         label.textColor = AppColors.money400
         label.textAlignment = .center
@@ -268,10 +272,18 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         presets: [Preset] = defaultPresets,
         snoozePrice: Double = 0,
         currentBalance: Double = BalanceService.shared.balance,
+        balance: BalanceService = .shared,
+        notificationCenter: NotificationCenter = .default,
+        scheduleSuccessDismissal: @escaping TopUpSuccessDismissal = { delay, action in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { action() }
+        },
         purchaseProduct: ((String) -> Void)? = nil
     ) {
         self.presets = presets
+        self.balance = balance
         self.purchaseProduct = purchaseProduct
+        self.notificationCenter = notificationCenter
+        self.scheduleSuccessDismissal = scheduleSuccessDismissal
         self.snoozePrice = snoozePrice
         self.currentBalance = currentBalance
         // Pre-select the cheapest tier that actually unlocks a snooze at the
@@ -313,13 +325,13 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     deinit {
         if let token = purchaseCompletedObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
         }
         if let token = purchaseFailedObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
         }
         if let token = purchaseCancelledObserver {
-            NotificationCenter.default.removeObserver(token)
+            notificationCenter.removeObserver(token)
         }
         autoResumeTimer?.invalidate()
         countdownTimer?.invalidate()
@@ -371,7 +383,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
         // Resume audio + escalation unless we got here via success path —
         // the host VC may have already torn down the firing flow on success.
-        if successAmount == nil {
+        if successReceipt == nil {
             AudioService.shared.resumeAlarmSound()
             AlarmFiringCoordinator.shared.resumeEscalation()
         }
@@ -550,7 +562,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     // MARK: - StoreKit observers
 
     private func observePurchaseNotifications() {
-        let center = NotificationCenter.default
+        let center = notificationCenter
         // Capture the userInfo keys into local lets so the closure isn't
         // forced to read main-actor-isolated `StoreKitService.*UserInfoKey`
         // statics at notification-delivery time (which would emit a
@@ -563,8 +575,12 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             queue: .main
         ) { [weak self] note in
             guard let self else { return }
-            let amount = note.userInfo?[amountKey] as? Double ?? 0
-            self.handlePurchaseSuccess(amount: Int(amount.rounded()))
+            guard let receipt = TopUpSuccessReceipt(eventAmount: note.userInfo?[amountKey],
+                                                    currency: self.balance.walletCurrency) else {
+                AppLogger.storeKit.error("FiringTopUpSheet: invalid credited amount event — ignoring")
+                return
+            }
+            self.handlePurchaseSuccess(receipt)
         }
         purchaseFailedObserver = center.addObserver(
             forName: StoreKitService.purchaseFailedNotification,
@@ -578,7 +594,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         purchaseCancelledObserver = center.addObserver(
             forName: StoreKitService.purchaseCancelledNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self, self.purchaseInFlight, self.successAmount == nil else { return }
+            guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
             self.purchaseInFlight = false
             self.applePayButton.isEnabled = true
         }
@@ -651,8 +667,9 @@ extension FiringTopUpBottomSheetViewController {
                 "FiringTopUpSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
             )
             let amount = Double(preset.amount)
-            if BalanceService.shared.topUp(amount: amount) {
-                handlePurchaseSuccess(amount: preset.amount)
+            if balance.topUp(amount: amount),
+               let receipt = TopUpSuccessReceipt(amount: amount, currency: balance.walletCurrency) {
+                handlePurchaseSuccess(receipt)
             } else {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
@@ -672,16 +689,16 @@ extension FiringTopUpBottomSheetViewController {
 
     // MARK: - Success / failure
 
-    private func handlePurchaseSuccess(amount: Int) {
+    private func handlePurchaseSuccess(_ receipt: TopUpSuccessReceipt) {
         // Multiple StoreKit pathways (foreground purchase, background
         // Transaction.updates) can both post `purchaseCompletedNotification`.
         // Guard against showing the success state twice.
-        guard successAmount == nil else { return }
-        successAmount = amount
+        guard successReceipt == nil else { return }
+        successReceipt = receipt
         purchaseInFlight = false
 
         successAmountLabel.attributedText = MoneyFormatter.attributed(
-            Decimal(amount), digitsFont: AppTypography.moneyXl, prefix: "+"
+            receipt.amount, currency: receipt.currency, digitsFont: AppTypography.moneyXl, prefix: "+"
         )
         successContainer.isHidden = false
         UIView.animate(withDuration: SPSupport.durationBase) {
@@ -699,7 +716,7 @@ extension FiringTopUpBottomSheetViewController {
         countdownTimer?.invalidate()
         countdownTimer = nil
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+        scheduleSuccessDismissal(2) { [weak self] in
             self?.dismiss(animated: true)
         }
     }
@@ -733,7 +750,7 @@ extension FiringTopUpBottomSheetViewController {
         // Don't yank the sheet away if the user is mid-purchase — the StoreKit
         // sheet may still be on screen, and dismissing the host would orphan
         // the transaction.
-        guard !purchaseInFlight, successAmount == nil else { return }
+        guard !purchaseInFlight, successReceipt == nil else { return }
         AppLogger.coordinator.notice("FiringTopUpSheet: 60s auto-resume — closing without purchase")
         dismiss(animated: true)
     }
