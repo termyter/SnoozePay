@@ -223,7 +223,10 @@ final class PenaltyCell: UITableViewCell {
     /// configuring a cell never changes the stored billing amount.
     static func amountText(_ amount: Double) -> String? {
         guard amount.isFinite, amount >= Double(minimumAmount) else { return nil }
-        return String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), amount.rounded())
+        // Deliberately omit locale: Darwin's localized number formatter
+        // loses integer digits at 2^63, even with en_US_POSIX. The unlocalized
+        // fixed-format path prints the represented whole Double directly.
+        return String(format: "%.0f", amount.rounded())
     }
 
     // MARK: - Validation
