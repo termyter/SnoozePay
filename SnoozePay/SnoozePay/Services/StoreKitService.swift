@@ -4,7 +4,7 @@ import UserNotifications
 import os
 
 /// Manages consumable In-App Purchases using StoreKit 2.
-/// Five fixed packages: 49, 149, 299, 499, 999 RUB.
+/// Five package SKUs; verified transactions determine the paid amount/currency.
 @MainActor
 final class StoreKitService {
 
@@ -19,7 +19,7 @@ final class StoreKitService {
         "io.mobilife.snoozepay.balance.999"
     ]
 
-    // Corresponding RUB amounts to credit
+    // Legacy RUB nominals: fallback only for an absent price with explicit RUB currency.
     static let productAmounts: [String: Double] = [
         "io.mobilife.snoozepay.balance.49": 49,
         "io.mobilife.snoozepay.balance.149": 149,
@@ -38,7 +38,7 @@ final class StoreKitService {
     static let productsLoadedNotification = Notification.Name("snoozepay.storekit.productsLoaded")
     static let productsUserInfoKey = "products"
 
-    /// userInfo[`amountUserInfoKey`]: `Double` — RUB credited to the balance.
+    /// userInfo[`amountUserInfoKey`]: `Double` — amount credited in the wallet currency.
     static let purchaseCompletedNotification = Notification.Name("snoozepay.storekit.purchaseCompleted")
     static let amountUserInfoKey = "amount"
 
@@ -250,38 +250,9 @@ final class StoreKitService {
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
-                // Determine the credit amount BEFORE marking processed. If we
-                // can't credit (unknown productID), we must not poison the dedup
-                // table — otherwise StoreKit's retry on next launch would silently
-                // finish() without crediting (re-enabling the #115 money-loss class).
-                let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: product.price)
-                guard amount > 0 else {
-                    AppLogger.storeKit.error(
-                        "unknown productID \(transaction.productID, privacy: .public) tx=\(transaction.id, privacy: .private) — not finishing"
-                    )
-                    postPurchaseFailed(Localized.text("deposit.error.unknown_product"))
-                    return
-                }
-                switch markProcessed(transactionID: transaction.id) {
-                case .alreadyProcessed:
-                    AppLogger.storeKit.notice(
-                        "tx \(transaction.id, privacy: .private) already processed — skipping double credit"
-                    )
+                await applyVerifiedPurchase(RestorableTopUp(transaction: transaction)) {
                     await transaction.finish()
-                    return
-                case .degraded:
-                    // Dedup table corrupt — refuse to credit AND don't finish, so
-                    // StoreKit replays once the degraded state is recovered (#209).
-                    postPurchaseFailed(Self.degradedDedupFailureMessage)
-                    return
-                case .recorded:
-                    break
                 }
-                guard creditVerifiedPurchase(amount: amount, transaction: transaction) else {
-                    return
-                }
-                await transaction.finish()
-                postPurchaseCompleted(amount)
 
             case .userCancelled:
                 break
@@ -320,43 +291,17 @@ final class StoreKitService {
                 await transaction.finish()
                 return
             }
-            // Unknown productID in background listener: do NOT finish AND do NOT mark
-            // as processed — leave for retry after app update. Finishing would silently
-            // lose the user's money since fallbackPrice is nil here. Marking processed
-            // would poison the dedup table: on next launch the replay would be matched
-            // by the idempotency guard and finish() called below, also losing the money.
-            // Order matters — check amount before markProcessed.
-            let amount = Self.creditAmount(for: transaction.productID, fallbackPrice: nil)
-            guard amount > 0 else {
+            // Keep unknown background SKUs pending for a build that supports them.
+            guard Self.productAmounts[transaction.productID] != nil else {
                 AppLogger.storeKit.error(
                     "unknown productID \(transaction.productID, privacy: .public) tx=\(transaction.id, privacy: .private) — not finishing"
                 )
                 postPurchaseFailed(Localized.text("deposit.error.unknown_product"))
                 return
             }
-            // Idempotency — guard against StoreKit replaying a transaction we already
-            // credited (e.g. if the previous run crashed between topUp and finish()).
-            switch markProcessed(transactionID: transaction.id) {
-            case .alreadyProcessed:
-                AppLogger.storeKit.notice(
-                    "tx \(transaction.id, privacy: .private) already processed — finishing without re-credit"
-                )
+            await applyVerifiedPurchase(RestorableTopUp(transaction: transaction)) {
                 await transaction.finish()
-                return
-            case .degraded:
-                // Dedup table corrupt — refuse to credit AND don't finish, so the
-                // deferred transaction replays after recovery (#209). Surface so a
-                // background approval/restore failure isn't silent.
-                postPurchaseFailed(Self.degradedDedupFailureMessage)
-                return
-            case .recorded:
-                break
             }
-            guard creditVerifiedPurchase(amount: amount, transaction: transaction) else {
-                return
-            }
-            await transaction.finish()
-            postPurchaseCompleted(amount)
 
         case .unverified(let transaction, let error):
             // Don't finish — let Apple retry next launch. Verification can fail temporarily
@@ -372,6 +317,42 @@ final class StoreKitService {
 
     // MARK: - Crediting a verified purchase
 
+    /// Shared by foreground purchase and updates. Metadata is validated before
+    /// dedup writes; `finish` runs only after credit or an already-processed replay.
+    /// Plain transaction data and an injected wallet make this money boundary testable.
+    func applyVerifiedPurchase(
+        _ transaction: RestorableTopUp,
+        balance: BalanceService = .shared,
+        finish: () async -> Void
+    ) async {
+        guard let currency = transaction.currency,
+              let amount = Self.creditAmount(
+                for: transaction.productID, transactionPrice: transaction.transactionPrice, currency: currency
+              ) else {
+            AppLogger.storeKit.error(
+                "invalid paid metadata tx=\(transaction.transactionID, privacy: .private) — not crediting, not finishing"
+            )
+            postPurchaseFailed(Self.ledgerLockedFailureMessage)
+            return
+        }
+        switch markProcessed(transactionID: transaction.transactionID) {
+        case .alreadyProcessed:
+            await finish()
+            return
+        case .degraded:
+            postPurchaseFailed(Self.degradedDedupFailureMessage)
+            return
+        case .recorded:
+            break
+        }
+        guard creditVerifiedPurchase(amount: amount, currency: currency,
+                                     transaction: transaction, balance: balance) else {
+            return
+        }
+        await finish()
+        postPurchaseCompleted(amount)
+    }
+
     /// Credits a verified paid transaction and, if this is the wallet's first
     /// one, establishes the wallet currency from `Transaction.currency` (#563).
     ///
@@ -383,10 +364,11 @@ final class StoreKitService {
     /// through here so they cannot drift apart.
     private func creditVerifiedPurchase(
         amount: Double,
-        transaction: StoreKit.Transaction
+        currency: Currency,
+        transaction: RestorableTopUp,
+        balance: BalanceService
     ) -> Bool {
-        let currency = transaction.currency.flatMap { Currency($0) }
-        switch BalanceService.shared.topUpFromPurchase(amount: amount, currency: currency) {
+        switch balance.topUpFromPurchase(amount: amount, currency: currency) {
         case .credited:
             return true
 
@@ -395,10 +377,10 @@ final class StoreKitService {
             // starts, so this is the residue: a deferred approval or restore
             // that resolved after the storefront changed. Crediting the bare
             // number would book `purchase` money as `wallet` money (#558).
-            unmarkProcessed(transactionID: transaction.id)
+            unmarkProcessed(transactionID: transaction.transactionID)
             AppLogger.storeKit.fault(
                 """
-                tx=\(transaction.id, privacy: .private) paid in \(purchase.code, privacy: .public) \
+                tx=\(transaction.transactionID, privacy: .private) paid in \(purchase.code, privacy: .public) \
                 but wallet holds \(wallet.code, privacy: .public) — not crediting, not finishing
                 """
             )
@@ -410,10 +392,10 @@ final class StoreKitService {
             // Apple. Roll back the dedup mark and don't finish, so StoreKit
             // replays the transaction on next launch (another shot at
             // crediting). Surface to the user immediately.
-            unmarkProcessed(transactionID: transaction.id)
+            unmarkProcessed(transactionID: transaction.transactionID)
             AppLogger.storeKit.error(
                 """
-                topUp failed tx=\(transaction.id, privacy: .private) \
+                topUp failed tx=\(transaction.transactionID, privacy: .private) \
                 pid=\(transaction.productID, privacy: .public) — not finishing
                 """
             )
@@ -606,51 +588,27 @@ final class StoreKitService {
 
     // MARK: - Helpers
 
-    static func creditAmount(for productID: String, fallbackPrice: Decimal?) -> Double {
-        if let mapped = productAmounts[productID] {
-            return mapped
+    /// Never infer historical paid money from Product or the current storefront.
+    /// A present but invalid price cannot fall back to a SKU nominal (#939).
+    static func creditAmount(
+        for productID: String,
+        transactionPrice: Decimal?,
+        currency: Currency?
+    ) -> Double? {
+        guard let currency else { return nil }
+        guard let transactionPrice else {
+            return currency == .rub ? productAmounts[productID] : nil
         }
-        // Unknown product. We do NOT support free/promo products (#209), so a
-        // zero here means a misconfiguration (a SKU added to App Store Connect
-        // but not to `productAmounts`). The caller treats 0 as "unknown package"
-        // and refuses to finish — log loudly so a future misconfig isn't silent
-        // rather than being mistaken for an intentional zero-priced product.
-        let resolved = fallbackPrice?.doubleValue ?? 0
-        if resolved <= 0 {
-            AppLogger.storeKit.error(
-                "creditAmount: unknown product \(productID, privacy: .public) resolved to \(resolved, privacy: .public) — no free/promo products exist; likely a missing productAmounts entry"
-            )
-        }
-        return resolved
+        // Parse exact decimal text once. doubleValue can land one ULP below
+        // the nearest Double (2.99), making an equal snooze price unaffordable.
+        guard !transactionPrice.isNaN,
+              let amount = Double(NSDecimalNumber(decimal: transactionPrice).stringValue),
+              amount.isFinite, amount > 0 else { return nil }
+        return amount
     }
 
-    // MARK: - Display / catalogue amounts (#275)
-    //
-    // The amount rendered on a top-up tile or CTA MUST equal the amount the
-    // App Store charges AND the amount credited to the ledger. Historically the
-    // firing-screen tiles hard-coded rounded literals (200 / 500 / 1000 ₽) that
-    // mapped to the 149 / 499 / 999 SKUs — so the user saw 200 ₽ but was charged
-    // and credited 149. `catalogAmount(for:)` makes the displayed number derive
-    // from the same table the ledger credits from, so display == credit for the
-    // current catalogue.
-    //
-    // #557: there used to be a second helper here, `displayAmount(for:)`, which
-    // preferred `NSDecimalNumber(decimal: product.price).intValue` once
-    // `products` had resolved. It was removed because it broke the very
-    // invariant this section exists to hold. `Product.price` is a storefront
-    // price in the storefront's currency, so on a US storefront the five SKUs
-    // resolve to 0.49 / 1.49 / 2.99 / 5.99 / 9.99 and truncate to 0 / 1 / 2 /
-    // 5 / 9 — while `creditAmount(for:fallbackPrice:)` above deliberately
-    // IGNORES the resolved price for a known SKU and credits 49 / 149 / 299 /
-    // 499 / 999. Display would have diverged from credit exactly when the
-    // catalogue loaded (observed on CI run 33175946701). If a real charged
-    // price ever needs rendering, use `Product.displayPrice` — a localised,
-    // currency-correct string — not an Int in assumed-RUB.
-
-    /// The catalogue RUB amount for a SKU (49 / 149 / 299 / 499 / 999), or nil
-    /// for an unknown product ID. This is the same value credited on purchase
-    /// (see `creditAmount(for:fallbackPrice:)`), so it is the honest number to
-    /// render — whether or not `products` has resolved.
+    /// Static RUB catalogue used by existing presentation callers. It is a
+    /// paid-credit fallback only when a verified RUB transaction has no price.
     static func catalogAmount(for productID: String) -> Int? {
         productAmounts[productID].map { Int($0) }
     }
@@ -658,10 +616,4 @@ final class StoreKitService {
     enum StoreError: Error {
         case failedVerification
     }
-}
-
-// MARK: - Decimal to Double helper
-
-private extension Decimal {
-    var doubleValue: Double { NSDecimalNumber(decimal: self).doubleValue }
 }
