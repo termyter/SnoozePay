@@ -489,6 +489,7 @@ final class StatisticsViewController: UIViewController {
         weekMoneyCard.apply(
             days: viewModel.weekMoneyDays,
             summary: viewModel.weekMoneySummary,
+            currency: viewModel.walletCurrency,
             savingsNote: viewModel.savingsNote
         )
         if let wakeStats = viewModel.wakeTimeStats {

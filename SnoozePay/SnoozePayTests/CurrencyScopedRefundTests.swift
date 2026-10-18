@@ -62,7 +62,7 @@ final class CurrencyScopedRefundTests: XCTestCase {
                       row(.refund, currency: .rub, offset: 8, refunds: retained.id)]
         let charges = TransactionRepository.realCharges(from: ledger).filter { $0.currency == usd }
         let days = StatisticsViewModel.weekMoneyDays(
-            today: today, inputs: .init(charges: charges), calendar: calendar
+            today: today, inputs: .init(charges: charges), currency: usd, calendar: calendar
         )
         XCTAssertEqual(charges.map(\.id), [retained.id])
         XCTAssertEqual(days.count, 7)
