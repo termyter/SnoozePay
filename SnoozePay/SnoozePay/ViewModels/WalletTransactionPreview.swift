@@ -86,7 +86,7 @@ enum WalletTransactionPreview {
             icon = "questionmark"
             isDebit = false
         }
-        let absolute = Decimal(abs(transaction.amount))
+        let absolute = transaction.amount.isFinite ? Decimal(abs(transaction.amount)) : .nan
         // An unrecognised row has no known direction — show the bare amount
         // rather than asserting a "+" the ledger never promised.
         let sign = transaction.type.isUnrecognized ? "" : (isDebit ? "−" : "+")
@@ -105,7 +105,7 @@ enum WalletTransactionPreview {
         return WalletTransactionPreviewItem(
             title: title,
             timestampText: subtitle,
-            amountText: "\(sign)\(absolute.formattedRubles())",
+            amountText: sign + MoneyFormatter.string(absolute, currency: transaction.currency),
             isDebit: isDebit,
             iconSystemName: icon
         )

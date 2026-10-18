@@ -94,6 +94,53 @@ enum MoneyFormatter {
         return result
     }
 
+    // MARK: - Explicit currency (#559)
+
+    /// Uses the row's currency, with Foundation's currency precision. The
+    /// untagged overloads above remain the legacy whole-rouble API.
+    static func string(
+        _ amount: Decimal,
+        currency: Currency,
+        locale: Locale = AppLocale.display
+    ) -> String {
+        guard Money(amount, currency: currency) != nil else { return "—" }
+        if currency == .rub {
+            // Retain fmtRub typography, including whole values without .00,
+            // while preserving actual paid kopecks.
+            let digits = amount.formatted(
+                Decimal.FormatStyle().locale(locale).precision(.fractionLength(0...2))
+            )
+            return "\(digits)\(narrowSpace)₽"
+        }
+        // No explicit precision: USD/EUR, JPY and KWD have different minor units.
+        return amount.formatted(Decimal.FormatStyle.Currency(code: currency.code).locale(locale))
+    }
+
+    static func attributed(
+        _ amount: Decimal,
+        currency: Currency,
+        digitsFont: UIFont,
+        prefix: String = "",
+        color: UIColor? = nil,
+        locale: Locale = AppLocale.display
+    ) -> NSAttributedString {
+        let text = prefix + string(amount, currency: currency, locale: locale)
+        var attributes: [NSAttributedString.Key: Any] = [.font: digitsFont]
+        if let color = color { attributes[.foregroundColor] = color }
+        let result = NSMutableAttributedString(string: text, attributes: attributes)
+        if currency == .rub {
+            let gap = (text as NSString).range(of: narrowSpace + "₽", options: .backwards)
+            if gap.location != NSNotFound {
+                result.addAttribute(
+                    .font,
+                    value: AppFonts.sans(.regular, digitsFont.pointSize),
+                    range: NSRange(location: gap.location, length: 1)
+                )
+            }
+        }
+        return result
+    }
+
     // MARK: - Private
 
     /// Shared grouping formatter — `NumberFormatter` construction costs

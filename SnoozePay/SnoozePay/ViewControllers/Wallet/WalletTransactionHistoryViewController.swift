@@ -496,7 +496,8 @@ final class WalletTransactionHistoryViewController: UIViewController {
         // reader has only "+" / "−" to go on. `.unclassified` carries no sign
         // because this build genuinely doesn't know the direction.
         label.attributedText = MoneyFormatter.attributed(
-            Decimal(Int(abs(transaction.amount))),
+            transaction.amount.isFinite ? Decimal(abs(transaction.amount)) : .nan,
+            currency: transaction.currency,
             digitsFont: AppTypography.moneyMd,
             prefix: direction.signPrefix ?? ""
         )
