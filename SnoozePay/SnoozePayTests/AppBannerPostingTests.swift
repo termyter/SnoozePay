@@ -157,7 +157,7 @@ final class AppBannerPostingTests: XCTestCase {
         XCTAssertEqual(
             request.content.body,
             "Не удалось перепланировать будильники (3) — "
-                + "откройте приложение и проверьте разрешения на уведомления."
+                + "откройте приложение и проверьте, разрешены ли будильники"
         )
         try assertSharedShape(request)
     }
