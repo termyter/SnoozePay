@@ -84,7 +84,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     func testZeroBalancePill_inksItsTextWithTheWashPair_notTheGlowStep() throws {
         let (header, window) = makeHostedHeader(style: .light)
         defer { window.isHidden = true }
-        header.setBalance(0, hint: "Пополни, чтобы откладывать")
+        header.setBalance(0, currency: .rub, hint: "Пополни, чтобы откладывать")
         window.layoutIfNeeded()
 
         let labels = try pillLabels(of: header)
@@ -111,7 +111,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     func testLowBalancePill_inksItsHintAgainstItsOwnTint() throws {
         let (header, window) = makeHostedHeader(style: .light)
         defer { window.isHidden = true }
-        header.setBalance(50, hint: "Хватит на 1 откладывание")
+        header.setBalance(50, currency: .rub, hint: "Хватит на 1 откладывание")
         window.layoutIfNeeded()
 
         let labels = try pillLabels(of: header)
@@ -132,7 +132,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     func testPill_liftsOffTheLightPage_andStaysFlatInDark() throws {
         let (light, lightWindow) = makeHostedHeader(style: .light)
         defer { lightWindow.isHidden = true }
-        light.setBalance(840, hint: "Хватит на ~16 откладываний")
+        light.setBalance(840, currency: .rub, hint: "Хватит на ~16 откладываний")
         lightWindow.layoutIfNeeded()
         let lightPill = try XCTUnwrap(findPill(in: light))
         XCTAssertGreaterThan(lightPill.layer.shadowOpacity, 0, "light pill needs --sp-shadow-1")
@@ -140,7 +140,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
 
         let (dark, darkWindow) = makeHostedHeader(style: .dark)
         defer { darkWindow.isHidden = true }
-        dark.setBalance(840, hint: "Хватит на ~16 откладываний")
+        dark.setBalance(840, currency: .rub, hint: "Хватит на ~16 откладываний")
         darkWindow.layoutIfNeeded()
         let darkPill = try XCTUnwrap(findPill(in: dark))
         XCTAssertEqual(darkPill.layer.shadowOpacity, 0, "dark keeps the flat pill — bg2 on bg0 already steps")
@@ -167,7 +167,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     }
 
     func testHeroGradient_followsAThemeFlip() throws {
-        let card = SPBalanceCard(balance: 12_345)
+        let card = SPBalanceCard(balance: 12_345, currency: .rub)
         let window = makeWindow(style: .light, hosting: card, size: CGSize(width: 350, height: 200))
         defer { window.isHidden = true }
         window.layoutIfNeeded()
@@ -184,7 +184,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     }
 
     func testBalanceCard_carriesBorderAndShadowInLight_borderlessInDark() {
-        let light = SPBalanceCard(balance: 12_345)
+        let light = SPBalanceCard(balance: 12_345, currency: .rub)
         let lightWindow = makeWindow(style: .light, hosting: light, size: CGSize(width: 350, height: 200))
         defer { lightWindow.isHidden = true }
         lightWindow.layoutIfNeeded()
@@ -192,7 +192,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
         XCTAssertGreaterThan(light.layer.borderWidth, 0, "1.07:1 of separation also needs a hairline")
         XCTAssertFalse(light.layer.masksToBounds, "a clipped layer renders no shadow at all")
 
-        let dark = SPBalanceCard(balance: 12_345)
+        let dark = SPBalanceCard(balance: 12_345, currency: .rub)
         let darkWindow = makeWindow(style: .dark, hosting: dark, size: CGSize(width: 350, height: 200))
         defer { darkWindow.isHidden = true }
         darkWindow.layoutIfNeeded()

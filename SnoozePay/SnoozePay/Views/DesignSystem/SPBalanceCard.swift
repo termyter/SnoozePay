@@ -29,26 +29,28 @@ final class SPBalanceCard: UIView {
     // MARK: - State
 
     private(set) var balance: Decimal
+    private(set) var currency: Currency
     private(set) var delta: Decimal?
     private(set) var hint: String?
 
     // MARK: - Init
 
     /// - Parameters:
-    ///   - balance: Current balance — formatted as integer roubles
-    ///     ("12 345 ₽") via `Decimal.formattedRubles()` below.
+    ///   - balance: Current balance in the explicitly supplied wallet currency.
+    ///   - currency: Retained with the amount across updates and theme changes.
     ///   - delta: Optional weekly net change. Positive values render with
     ///     the up arrow + money tint; negative with the down arrow + pain
     ///     tint. `nil` hides the row.
     ///   - hint: Optional secondary line (`meta` 13pt). Used for context
     ///     such as «обновлено 2 ч назад» or «ближайшее списание завтра».
-    init(balance: Decimal, delta: Decimal? = nil, hint: String? = nil) {
+    init(balance: Decimal, currency: Currency, delta: Decimal? = nil, hint: String? = nil) {
         self.balance = balance
+        self.currency = currency
         self.delta = delta
         self.hint = hint
         super.init(frame: .zero)
         configure()
-        update(balance: balance, delta: delta, hint: hint)
+        update(balance: balance, currency: currency, delta: delta, hint: hint)
         // iOS 17 deprecated `traitCollectionDidChange(_:)` — register a
         // closure-based observer when available; the legacy override below
         // remains as a fallback for older runtimes.
@@ -154,8 +156,9 @@ final class SPBalanceCard: UIView {
     /// Update card data in-place. Cheaper than rebuilding the view when the
     /// balance updates — the same labels are reused so the gradient mask
     /// re-rasterises only when the layout cycle invalidates.
-    func update(balance: Decimal, delta: Decimal? = nil, hint: String? = nil) {
+    func update(balance: Decimal, currency: Currency, delta: Decimal? = nil, hint: String? = nil) {
         self.balance = balance
+        self.currency = currency
         self.delta = delta
         self.hint = hint
         // fmtRub rule: mono digits, proportional ~4pt gap before ₽ — the
@@ -163,6 +166,7 @@ final class SPBalanceCard: UIView {
         // advance grid (a plain string would render a full-cell space).
         valueLabel.attributedText = MoneyFormatter.attributed(
             balance,
+            currency: currency,
             digitsFont: AppTypography.moneyXl
         )
         // Crossing zero changes the tone, not just the digits — the ink and
@@ -311,7 +315,7 @@ final class SPBalanceCard: UIView {
     private func renderDelta(_ delta: Decimal) -> NSAttributedString {
         let arrow = delta < 0 ? "↓" : "↑"
         let abs = NSDecimalNumber(decimal: delta < 0 ? -delta : delta).decimalValue
-        let str = Localized.format("wallet.balance.delta_week", arrow, abs.formattedRubles())
+        let str = Localized.format("wallet.balance.delta_week", arrow, MoneyFormatter.string(abs, currency: currency))
         let color = delta < 0 ? AppColors.pain400 : AppColors.money400
         return NSAttributedString(
             string: str,

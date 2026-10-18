@@ -65,9 +65,10 @@ final class SPAlarmsListHeader: UIView {
     /// rolling-week change rendered as `↑/↓ amount` migrates onto the
     /// Wallet screen). Pass through unchanged so existing call sites
     /// keep compiling.
-    func setBalance(_ balance: Decimal, hint: String?, delta: Decimal? = nil) {
+    func setBalance(_ balance: Decimal, currency: Currency, hint: String?, delta: Decimal? = nil) {
         _ = delta // accepted for API compat; pill omits the delta row.
         currentBalance = balance
+        currentCurrency = currency
         hasBalance = true
         // The amount's ink is part of the tone (0 ₽ renders in the pain wash
         // ink; the zero-balance pill is handoff only,
@@ -86,7 +87,7 @@ final class SPAlarmsListHeader: UIView {
 
     /// Kept for source-compat with the legacy header. The V2 pill folds
     /// the warning into its own tone, so this method now just routes the
-    /// state through `setBalance(_:hint:)`'s low-balance branch — the
+    /// state through `setBalance(_:currency:hint:)`'s low-balance branch — the
     /// controller already calls both methods on refresh.
     func setWarning(visible: Bool, balance: Decimal) {
         // `applyTone` is driven by `setBalance`; this method is preserved
@@ -333,6 +334,7 @@ final class SPAlarmsListHeader: UIView {
     // MARK: - State
 
     private var currentBalance: Decimal = 0
+    private var currentCurrency: Currency?
 
     /// `applyTone` renders the amount, and it runs once during `configure`
     /// too — before the controller has pushed anything. Without this the pill
@@ -593,9 +595,10 @@ final class SPAlarmsListHeader: UIView {
             balanceHintLabel.textColor = AppColors.fg3
             restoreWalletTile()
         }
-        if hasBalance {
+        if hasBalance, let currentCurrency {
             balanceValueLabel.attributedText = MoneyFormatter.attributed(
                 currentBalance,
+                currency: currentCurrency,
                 digitsFont: Self.pillValueFont,
                 // The 0 ₽ amount sits on the same wash as the hint, so it
                 // takes the same ink; other tones keep the label's `fg1`.
