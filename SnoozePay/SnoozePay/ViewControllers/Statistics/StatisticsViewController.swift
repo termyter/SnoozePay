@@ -577,18 +577,19 @@ final class StatisticsViewController: UIViewController {
         heatmapView.clearSelection()
         let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
             cleanDays: viewModel.streak,
-            price: viewModel.snoozePrice
+            price: viewModel.snoozePrice, currency: viewModel.walletCurrency
         )
         let modal = StreakModalViewController(
             streakDays: viewModel.streak,
-            savedAmount: saved
+            savedAmount: saved,
+            currency: viewModel.walletCurrency
         )
         present(modal, animated: true)
     }
 
     #if DEBUG
     @objc func debugStreakTapped() {
-        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub)
         present(modal, animated: true)
     }
 

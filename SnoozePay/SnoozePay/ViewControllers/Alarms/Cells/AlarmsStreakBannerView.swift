@@ -103,12 +103,17 @@ final class AlarmsStreakBannerView: UIView {
 
     /// Last rendered copy — kept so a theme flip can re-resolve the caps
     /// title's snapshotted colour without the host re-configuring.
-    private var lastCopy: (streakDays: Int, savedAmount: Decimal)?
+    private struct LastCopy {
+        let streakDays: Int
+        let savedAmount: Decimal
+        let currency: Currency
+    }
+    private var lastCopy: LastCopy?
 
     /// Configure with current streak + savings. Pass `streakDays = 0` to
     /// render no copy (the host should hide the view instead).
-    func configure(streakDays: Int, savedAmount: Decimal) {
-        lastCopy = (streakDays, savedAmount)
+    func configure(streakDays: Int, savedAmount: Decimal, currency: Currency) {
+        lastCopy = LastCopy(streakDays: streakDays, savedAmount: savedAmount, currency: currency)
         let title = Localized.format(
             "alarms.streak.caps", streakDays, Self.daysWord(for: streakDays)
         )
@@ -123,7 +128,7 @@ final class AlarmsStreakBannerView: UIView {
                 .foregroundColor: AppColors.money300.resolvedColor(with: traitCollection)
             ]
         )
-        let formatted = NSDecimalNumber(decimal: savedAmount).decimalValue.formattedRubles()
+        let formatted = MoneyFormatter.string(savedAmount, currency: currency)
         metaLabel.text = Localized.format("alarms.streak.saved", formatted)
     }
 
@@ -234,7 +239,9 @@ final class AlarmsStreakBannerView: UIView {
             locations: SPSupport.moneyGradientLocations
         )
         if let lastCopy {
-            configure(streakDays: lastCopy.streakDays, savedAmount: lastCopy.savedAmount)
+            configure(
+                streakDays: lastCopy.streakDays, savedAmount: lastCopy.savedAmount, currency: lastCopy.currency
+            )
         }
     }
 
