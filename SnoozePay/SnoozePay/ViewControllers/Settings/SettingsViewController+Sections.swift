@@ -221,12 +221,22 @@ extension SettingsViewController {
     /// is unconditional (it removes the data key regardless of lock state), so
     /// clearing a healthy store here would destroy valid data the user never
     /// lost (e.g. transactions corrupt but alarms intact → don't nuke alarms).
-    private func performRecovery() {
-        if AlarmRepository.shared.lastLoadFailed {
-            AlarmRepository.shared.clearCorruptState()
+    func performRecovery(
+        balanceService: BalanceService = .shared,
+        alarmRepository: AlarmRepository = .shared
+    ) {
+        guard balanceService.recoverCorruptTransactionHistory() else {
+            let alert = UIAlertController(
+                title: Localized.text("common.balance_corrupted.title"),
+                message: Localized.text("settings.recovery.balance_invalid"),
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
+            present(alert, animated: true)
+            return
         }
-        if TransactionRepository.shared.lastLoadFailed {
-            TransactionRepository.shared.clearCorruptState()
+        if alarmRepository.lastLoadFailed {
+            alarmRepository.clearCorruptState()
         }
         tableView.reloadData()
     }

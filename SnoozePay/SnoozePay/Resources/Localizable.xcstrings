@@ -6334,19 +6334,19 @@
       }
     },
     "settings.recovery.alert_message" : {
-      "comment" : "Body of the confirmation alert for erasing a corrupt store; spells out that the loss is permanent.",
+      "comment" : "Corrupt-store recovery confirmation: only failed stores are erased and a valid saved balance is preserved.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The data that failed to load — your alarms, your transaction history, or both — will be permanently erased, and storage will be unlocked. If your transaction history is erased, your balance loses every transaction recorded in it, top-ups included. This can’t be undone."
+            "value" : "Only data that could not be loaded will be erased: alarms, transaction history, or both. Your valid saved balance will stay the same. If the saved balance is invalid, transaction history will not be erased. This cannot be undone."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Будильники и история операций будут удалены безвозвратно, а хранилище разблокировано. Это действие нельзя отменить."
+            "value" : "Будут удалены только данные, которые не удалось загрузить: будильники, история операций или и то и другое. Корректный сохранённый баланс останется прежним. При некорректном балансе история не удалится. Это действие нельзя отменить."
           }
         }
       }
@@ -6365,6 +6365,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Стереть повреждённые данные?"
+          }
+        }
+      }
+    },
+    "settings.recovery.balance_invalid" : {
+      "comment" : "Recovery refused because the saved balance cannot be validated; no transaction history is erased.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transaction history was not erased because the saved balance could not be validated. The data remains locked."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "История операций не удалена: не удалось подтвердить сохранённый баланс. Данные остаются заблокированными."
           }
         }
       }
