@@ -62,6 +62,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // tear a screen presented over the splash back down). Now the real
             // root is mounted, mount the deferred firing screen (#382).
             AlarmFiringPresenter.shared.flushPendingPresentation()
+            CriticalWarningCenter.shared.flush()
         }
     }
 
@@ -102,6 +103,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             : makePermissionsViewController()
         UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
             window.rootViewController = nextRoot
+        } completion: { _ in
+            CriticalWarningCenter.shared.flush()
         }
     }
 
@@ -115,6 +118,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let tabBar = Self.makeMainTabBar()
         UIView.transition(with: window, duration: 0.4, options: .transitionCrossDissolve) {
             window.rootViewController = tabBar
+        } completion: { _ in
+            CriticalWarningCenter.shared.flush()
         }
     }
 
@@ -219,6 +224,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // the window exists, so `AlarmFiringPresenter` records the alarm as
         // pending and mounts it here once a root view controller is attached.
         AlarmFiringPresenter.shared.flushPendingPresentation()
+        CriticalWarningCenter.shared.flush()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

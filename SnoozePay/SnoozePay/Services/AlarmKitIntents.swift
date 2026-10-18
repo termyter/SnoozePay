@@ -189,6 +189,7 @@ final class AlarmKitActionRouter {
     /// Where `handleSnooze` checks that the alarm still loads. Production
     /// never reassigns it; a test points it at its own defaults suite (#814).
     var alarmRepository: AlarmRepository = .shared
+    var criticalWarnings: CriticalWarningCenter = .shared
 
     /// Where `handleSnooze` posts the snooze-failed banner. Tests inject
     /// `LocalNotificationPosterSpy`.
@@ -237,7 +238,7 @@ final class AlarmKitActionRouter {
         AppLogger.scheduler.notice("AlarmKit snooze alarm=\(alarmID, privacy: .private)")
         stopAudioIfOwned(by: alarmID, action: "AlarmKit snooze")
         AlarmScheduler.shared.stopSystemAlarm(alarmID)
-        postSnoozeFailedBannerIfUnloadable(alarmID)
+        guard !reportSnoozeFailureIfUnloadable(alarmID) else { return }
         present(alarmID)
     }
 
@@ -276,14 +277,15 @@ final class AlarmKitActionRouter {
     /// not.
     ///
     /// "Refunded" copy, because nothing was charged: this button never charges,
-    /// the screen does, and it never mounted. The presenter still runs after
-    /// this and raises the data-corrupted alert for the cause.
+    /// the screen does, and it never mounted. The durable warning includes the
+    /// cause, so skip the firing presenter's generic corruption alert.
     ///
     /// A missing alarm (`nil`) is not reported here: that is a deletion, and
     /// the presenter's "not found" branch owns it.
-    private func postSnoozeFailedBannerIfUnloadable(_ alarmID: UUID) {
+    private func reportSnoozeFailureIfUnloadable(_ alarmID: UUID) -> Bool {
         do {
             _ = try alarmRepository.fetchChecked(id: alarmID)
+            return false
         } catch {
             let handle = String(alarmID.uuidString.prefix(8))
             AppLogger.emit(
@@ -291,10 +293,14 @@ final class AlarmKitActionRouter {
                 "ALARMKIT-868-SNOOZE-LOAD-FAILED: alarm \(handle) failed to load"
                     + " (\(String(describing: error))) — snooze not scheduled, requesting fallback banner"
             )
+            criticalWarnings.record(
+                detail: error.localizedDescription, refundLanded: true, alarmID: alarmID, cause: .alarmLoadFailed
+            )
             AppDelegate.postSnoozeScheduleFailedBanner(
                 detail: error.localizedDescription, refundLanded: true,
                 alarmID: alarmID, poster: notificationPoster
             )
+            return true // No firing presentation: it would duplicate the generic corruption alert.
         }
     }
 }

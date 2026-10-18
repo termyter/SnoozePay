@@ -103,8 +103,14 @@ final class AppBannerPostingTests: XCTestCase {
                 detail: "unreadable", refundLanded: true, alarmID: alarmID, poster: $0
             )
         }
+        let suite = "banner-outcome-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let delegate = AppDelegate()
+        delegate.criticalWarnings = CriticalWarningCenter(defaults: defaults)
+        delegate.criticalWarnings.isForegroundActive = { false }
         let viaOutcome = run(addError: Self.refusal) {
-            AppDelegate().handleSnoozeOutcome(
+            delegate.handleSnoozeOutcome(
                 .scheduleFailed(error: .system(message: "limit")), alarmID: alarmID, poster: $0
             )
         }

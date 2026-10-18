@@ -59,6 +59,8 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
         delegate = AppDelegate()
         delegate.alarmRepository = repository
+        delegate.criticalWarnings = CriticalWarningCenter(defaults: defaults)
+        delegate.criticalWarnings.isForegroundActive = { false }
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
     }
@@ -291,10 +293,11 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         XCTAssertEqual(banner.content.title, "Откладывание не запланировано")
         XCTAssertTrue(banner.content.body.hasPrefix("Установите запасной — "), banner.content.body)
         XCTAssertEqual(banner.content.interruptionLevel, .timeSensitive)
-        XCTAssertEqual(reported.count, 1, "the user must be told the alarm data is corrupted")
-        guard case .decodeFailure? = reported.first as? AlarmRepository.RepositoryError else {
-            return XCTFail("the alert must get the decode error, for its detail line; got \(reported)")
-        }
+        XCTAssertTrue(reported.isEmpty, "the durable critical warning replaces the generic corruption alert")
+        let saved = CriticalWarningCenter(defaults: defaults).pending
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.message, banner.content.body)
+        XCTAssertEqual(saved.first?.cause, .alarmLoadFailed)
     }
 
     // MARK: - Helpers
