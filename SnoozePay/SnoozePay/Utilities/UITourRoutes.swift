@@ -325,6 +325,16 @@ enum UITourRoutes {
         )
     }
 
+    /// Optional DEBUG fixture input for `firing-progressive`; normal tours stay
+    /// at 50. A finite price override lets E2E mount the actual initial ring
+    /// without touching money or waiting for a real system alarm (#933).
+    static func progressiveFiringPenalty(arguments: [String]) -> Double {
+        guard let index = arguments.firstIndex(of: "-uitour-penalty"),
+              arguments.indices.contains(index + 1),
+              let amount = Double(arguments[index + 1]), amount.isFinite, amount >= 1 else { return 50 }
+        return amount
+    }
+
     /// A progressive-scale variant of the firing sample. Used by the
     /// `firing-progressive` screen so the snoozed-state progressive pill
     /// («N-й поспать ещё») and the growing charge ladder render for the e2e
@@ -335,7 +345,7 @@ enum UITourRoutes {
             time: Date(),
             repeatDays: [0, 1, 2, 3, 4], // Monday-first indices: Пн–Пт
             name: "Спортзал",  // i18n:exempt имя будильника в фикстуре, не копия UI
-            penaltyAmount: 50,
+            penaltyAmount: progressiveFiringPenalty(arguments: ProcessInfo.processInfo.arguments),
             progressiveScale: true,
             theme: UITourLauncher.requestedTheme()
         )

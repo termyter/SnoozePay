@@ -311,7 +311,7 @@ final class AlarmFiringViewModel {
 
     /// One rung of the charge ladder: its amount (₽) plus its state.
     struct LadderStep: Equatable {
-        let amount: Int
+        let amount: Double
         let state: LadderStepState
     }
 
@@ -328,7 +328,7 @@ final class AlarmFiringViewModel {
     var ladderSteps: [LadderStep] {
         guard isProgressiveActive else { return [] }
         let base = alarm.penaltyAmount
-        let amounts = (0..<4).map { Int((base * pow(2.0, Double($0))).rounded()) }
+        let amounts = (0..<4).map { (base * pow(2.0, Double($0))).rounded() }
         let currentIdx = min(snoozeCount, amounts.count - 1)
         return amounts.enumerated().map { idx, amount in
             let state: LadderStepState

@@ -109,7 +109,7 @@ extension AlarmFiringViewController {
         let colours = ladderColours(for: step.state, accent: accent)
 
         let amount = UILabel()
-        amount.text = "\(step.amount)"
+        amount.text = Self.roundedPriceText(step.amount, withCurrency: false) ?? "—"
         amount.font = AppFonts.mono(.bold, 11)
         amount.textColor = colours.label
         amount.textAlignment = .center

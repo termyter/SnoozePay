@@ -105,6 +105,7 @@ extension AlarmFiringViewController {
             hint: Localized.text("firing.no_balance.hint")
         )
         card.translatesAutoresizingMaskIntoConstraints = false
+        card.accessibilityIdentifier = "firing.noBalance.snoozePrice"
         card.isEnabled = false
         // Spec calls for an extra-faded surface (alpha 0.5 vs the
         // `SPSnoozePrice` default 0.35) — the .35 reads as "tap me" still,

@@ -43,7 +43,16 @@ final class SPSnoozePrice: UIControl {
     // MARK: - State
 
     override var isEnabled: Bool {
-        didSet { refreshDisabledAppearance() }
+        didSet {
+            refreshDisabledAppearance()
+            // This custom accessibility button owns its traits, so mirror the
+            // disabled state without replacing its role or caller's traits.
+            if isEnabled {
+                accessibilityTraits.remove(.notEnabled)
+            } else {
+                accessibilityTraits.insert(.notEnabled)
+            }
+        }
     }
 
     override var isHighlighted: Bool {
