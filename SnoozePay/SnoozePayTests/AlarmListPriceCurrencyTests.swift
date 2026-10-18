@@ -36,7 +36,7 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
             let currency = Currency(code: code)!
             withPrice(amount, currency: currency) { viewModel in
                 XCTAssertEqual(viewModel.alarmPriceText(at: 0), "—", code)
-                XCTAssertEqual(viewModel.alarmPenaltyString(at: 0), Localized.format("alarms.penalty", "—"))
+                XCTAssertEqual(viewModel.alarmPenaltyString(at: 0), "—")
                 XCTAssertEqual(viewModel.alarms[0].penaltyAmount, amount)
             }
             withPrice(0, currency: currency) { viewModel in

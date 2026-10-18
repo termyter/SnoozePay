@@ -560,10 +560,9 @@ final class AlarmsListViewModel {
     /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return Localized.format(
-            "alarms.penalty",
-            formattedAlarmPrice(alarms[index].penaltyAmount)
-        )
+        let price = formattedAlarmPrice(alarms[index].penaltyAmount)
+        guard price != "—" else { return price }
+        return Localized.format("alarms.penalty", price)
     }
 
     // MARK: - V2 cell helpers
