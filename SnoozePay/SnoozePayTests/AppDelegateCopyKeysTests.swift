@@ -59,7 +59,8 @@ final class AppDelegateCopyKeysTests: XCTestCase {
     /// The copy #733 moved out of the target's root files, byte for byte what
     /// the literals it replaced read. Templates are spelled with their
     /// specifiers: an entry edit that drops or doubles one is a red test here,
-    /// not a banner missing its number.
+    /// not a banner missing its number. The re-arm body follows PM-approved
+    /// #915 wording: the relevant permission is AlarmKit, not notifications.
     private static let rootTargetWords: [String: String] = [
         "alarm_failure.silent_audio.title": "Будильник звучит беззвучно",
         "alarm_failure.silent_audio.body":
@@ -67,7 +68,7 @@ final class AppDelegateCopyKeysTests: XCTestCase {
         "alarm_failure.reschedule.title": "Будильники не перевзведены",
         "alarm_failure.reschedule.body":
             "Не удалось перепланировать будильники (%lld) — "
-            + "откройте приложение и проверьте разрешения на уведомления.",
+            + "откройте приложение и проверьте, разрешены ли будильники",
         "alarm_failure.snooze.title": "Откладывание не запланировано",
         "alarm_failure.snooze.body_refunded": "Установите запасной — %@",
         "alarm_failure.snooze.body_charged":
