@@ -36,7 +36,7 @@ final class FiringCopyTests: XCTestCase {
         "firing.alert.purchase_failed.title": "Покупка не выполнена",
         "firing.alert.refund_failed.message":
             "%@ Будильник не зазвенит повторно, а вернуть деньги автоматически не вышло. "
-            + "Напишите в поддержку — спишем вручную.",
+            + "Напишите в поддержку — вернём вручную.",
         "firing.alert.refund_failed.title": "Не удалось вернуть списание",
         "firing.alert.snooze_not_scheduled.message":
             "%@ Будильник не зазвенит повторно — установите запасной. "
