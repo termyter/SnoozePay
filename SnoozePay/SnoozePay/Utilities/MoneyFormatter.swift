@@ -181,7 +181,7 @@ enum MoneyFormatter {
         }
         guard let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")),
               !decimal.isNaN,
-              NSDecimalNumber(decimal: decimal).doubleValue == amount else { return .nan }
+              Double(NSDecimalNumber(decimal: decimal).stringValue) == amount else { return .nan }
         return decimal
     }
 

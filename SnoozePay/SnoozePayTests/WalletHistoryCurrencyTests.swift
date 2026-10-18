@@ -35,6 +35,20 @@ final class WalletHistoryCurrencyTests: XCTestCase {
         XCTAssertFalse(german.contains("₽"), german)
     }
 
+    func testDoubleBridgePreservesFractionalPaidValues() {
+        let usd = currency("USD")
+        for (value, expected) in [(0.49, "$0.49"), (2.99, "$2.99"), (1.79, "$1.79")] {
+            XCTAssertEqual(MoneyFormatter.string(value, currency: usd, locale: english), expected)
+            let transaction = Transaction(type: .topup, amount: value, currency: usd)
+            let preview = WalletTransactionPreview.item(for: transaction).amountText
+            let history = WalletTransactionHistoryViewController.makeAmountLabel(for: transaction).attributedText?.string
+            XCTAssertEqual(preview, history)
+            XCTAssertEqual(preview.filter(\.isNumber), expected.filter(\.isNumber))
+            XCTAssertTrue(preview.contains("$"), preview)
+            XCTAssertTrue(preview.hasPrefix("+"), preview)
+        }
+    }
+
     func testExplicitRublesKeepCanonWithoutTruncatingPaidKopecks() {
         XCTAssertEqual(
             MoneyFormatter.string(amount("1234"), currency: .rub, locale: russian),
