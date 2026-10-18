@@ -135,8 +135,7 @@ final class AlarmFiringBalanceCurrencyTests: XCTestCase {
         let suite = "firing-layout-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        var alarm = Alarm()
-        alarm.penaltyAmount = penalty
+        let alarm = Alarm(penaltyAmount: penalty)
         let model = AlarmFiringViewModel(
             alarm: alarm, balanceService: wallet,
             alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler),
