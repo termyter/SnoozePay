@@ -57,10 +57,13 @@ final class LargeSnoozePriceUITests: XCTestCase {
         XCTAssertFalse(oldText.isEmpty, "The fixture must start with an existing price to replace")
         XCTAssertTrue(oldText.utf8.allSatisfy { (48...57).contains($0) },
                       "The existing price must be one whole numeric token for native word selection")
+        makeFocusedPriceVisible(price, in: app)
+        XCTAssertEqual(price.value as? String, oldText, "Revealing the field must not change its contents")
         // A focus tap can leave the caret at the START, where backspaces do
         // nothing. Select the numeric token and require the native Cut action
         // as selection evidence; an empty read-back proves ALL text was cut.
         price.doubleTap()
+        XCTAssertEqual(price.value as? String, oldText, "Selection must not type into the obscuring keyboard")
         let cutAction = NSPredicate(
             format: "(elementType == %lu OR elementType == %lu) AND label IN %@",
             XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.menuItem.rawValue,
@@ -71,6 +74,39 @@ final class LargeSnoozePriceUITests: XCTestCase {
         XCTAssertTrue(cut.isHittable, "The native edit-menu action must be tappable")
         cut.tap()
         XCTAssertEqual(price.value as? String, "", "Clear the entire old price BEFORE typing once")
+    }
+
+    private func makeFocusedPriceVisible(_ price: XCUIElement, in app: XCUIApplication) {
+        let keyboard = app.keyboards.firstMatch
+        let toolbar = app.toolbars.containing(.button, identifier: "createAlarm.penaltyDone").firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
+        let table = app.tables.firstMatch
+        func viewport() -> CGRect {
+            let frame = table.frame.intersection(app.frame)
+            return CGRect(x: frame.minX, y: frame.minY, width: frame.width,
+                          height: max(0, min(frame.maxY, toolbar.frame.minY) - frame.minY))
+        }
+        var pans = 0
+        while pans < 3, !viewport().contains(price.frame) || !price.isHittable {
+            let visible = viewport()
+            XCTAssertFalse(visible.isEmpty, "A native pan needs an unobscured part of the table")
+            let origin = table.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: visible.midX - table.frame.minX,
+                                                   dy: visible.minY + visible.height * 0.85 - table.frame.minY))
+            let end = origin.withOffset(CGVector(dx: visible.midX - table.frame.minX,
+                                                 dy: visible.minY + visible.height * 0.15 - table.frame.minY))
+            // The full table extends BEHIND the keyboard. Its default swipe
+            // can start on a key; keep both ends in its actual visible viewport.
+            start.press(forDuration: 0.05, thenDragTo: end)
+            pans += 1
+            XCTAssertTrue(keyboard.exists, "The upward pan must retain the keyboard")
+            let focused = app.textFields.matching(identifier: "createAlarm.penaltyField")
+                .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+            XCTAssertTrue(focused.exists, "The upward pan must retain price-field focus")
+        }
+        XCTAssertTrue(viewport().contains(price.frame) && price.isHittable,
+                      "The FULL price field \(price.frame) must be above the keyboard toolbar in \(viewport())")
     }
 
     private func revealPrice(in app: XCUIApplication) -> XCUIElement {
