@@ -34,7 +34,8 @@ final class SPSnoozePrice: UIControl {
     // MARK: - Configuration
 
     private(set) var tone: Tone
-    private(set) var price: Decimal
+    private(set) var price: Double
+    private(set) var currency: Currency
     private(set) var minutes: Int
     private(set) var hint: String?
 
@@ -81,27 +82,30 @@ final class SPSnoozePrice: UIControl {
     // MARK: - Init
 
     /// - Parameters:
-    ///   - price: Cost of the snooze in roubles.
+    ///   - price: Cost of the snooze in the supplied wallet currency.
+    ///   - currency: The wallet currency for this exact price snapshot.
     ///   - minutes: Snooze duration, displayed in the caps line. Defaults
     ///     to 5 (the standard SnoozePay window).
     ///   - tone: `.warn` or `.pain`.
     ///   - hint: Optional secondary line («Уже 3-я задержка» etc).
     ///   - onTap: Tap callback.
     init(
-        price: Decimal,
+        price: Double,
+        currency: Currency,
         minutes: Int = 5,
         tone: Tone = .warn,
         hint: String? = nil,
         onTap: (() -> Void)? = nil
     ) {
         self.price = price
+        self.currency = currency
         self.minutes = minutes
         self.tone = tone
         self.hint = hint
         self.onTap = onTap
         super.init(frame: .zero)
         configure()
-        update(price: price, minutes: minutes, hint: hint)
+        update(price: price, currency: currency, minutes: minutes, hint: hint)
         addTarget(self, action: #selector(handleTap), for: .touchUpInside)
         // Expose as a SINGLE accessibility button rather than its internal
         // caps/price/hint labels — VoiceOver reads one control, and UI tests
@@ -145,13 +149,16 @@ final class SPSnoozePrice: UIControl {
 
     // MARK: - Public API
 
-    func update(price: Decimal, minutes: Int? = nil, hint: String? = nil) {
+    func update(price: Double, currency: Currency, minutes: Int? = nil, hint: String? = nil) {
         self.price = price
+        self.currency = currency
         if let minutes = minutes { self.minutes = minutes }
         self.hint = hint
         capsLabel.attributedText = makeCapsText()
+        let formatted = MoneyFormatter.string(price, currency: currency)
         priceLabel.attributedText = MoneyFormatter.attributed(
-            price, digitsFont: AppTypography.moneyLg, prefix: "−"
+            price, currency: currency, digitsFont: AppTypography.moneyLg,
+            prefix: formatted == "—" ? "" : "−"
         )
         if let hint = hint {
             hintLabel.text = hint
@@ -160,7 +167,7 @@ final class SPSnoozePrice: UIControl {
             hintLabel.isHidden = true
         }
         accessibilityLabel = Localized.format("firing.snooze.accessibility", self.minutes)
-        accessibilityValue = MoneyFormatter.string(price)
+        accessibilityValue = formatted
     }
 
     /// Re-tone the surface in place. Used by the progressive-firing flow
