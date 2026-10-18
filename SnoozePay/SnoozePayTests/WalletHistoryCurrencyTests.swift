@@ -113,10 +113,15 @@ final class WalletHistoryCurrencyTests: XCTestCase {
         let label = WalletTransactionHistoryViewController.makeAmountLabel(for: large)
         let digits = (label.attributedText?.string ?? "").filter(\.isNumber)
         XCTAssertEqual(digits, "18446744073709551616")
+        XCTAssertEqual(WalletTransactionPreview.item(for: large).amountText.filter(\.isNumber), digits)
         for invalid in [Decimal.nan, amount("-1")] {
             XCTAssertEqual(MoneyFormatter.string(invalid, currency: currency("USD")), "—")
         }
-        for invalid in [Double.nan, .infinity, -.infinity, 1e200, .leastNonzeroMagnitude] {
+        // 2^128 is within Decimal's exponent range but has 39 significant
+        // digits. Decimal rounding may still round-trip to this same Double.
+        let tooPrecise: Double = 340_282_366_920_938_463_463_374_607_431_768_211_456
+        for invalid in [Double.nan, .infinity, -.infinity, 1e200, .leastNonzeroMagnitude, tooPrecise] {
+            XCTAssertEqual(MoneyFormatter.string(invalid, currency: currency("USD")), "—")
             let transaction = Transaction(type: .unknown("future"), amount: invalid, currency: currency("USD"))
             XCTAssertEqual(WalletTransactionPreview.item(for: transaction).amountText, "—")
             XCTAssertEqual(
