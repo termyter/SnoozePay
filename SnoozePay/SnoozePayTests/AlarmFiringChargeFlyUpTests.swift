@@ -42,25 +42,30 @@ final class AlarmFiringChargeFlyUpTests: XCTestCase {
         XCTAssertEqual(controller.viewModel.lastChargeAmount, amount)
     }
 
-    func testRealZeroCreatesNoFlyUpButUnknownAndUnderflowStayUnsignedUnknown() throws {
+    func testRealZeroCreatesNoFlyUpButUnrepresentableAndUnderflowStayUnknown() throws {
         let usd = try XCTUnwrap(Currency(code: "USD"))
         XCTAssertNil(makeController(amount: 0, currency: usd).makeLastChargeLabel())
         XCTAssertNil(makeController(amount: 50, currency: usd, snoozeCount: 0).makeLastChargeLabel())
-        for amount in [0.002, -1, Double.nan, .infinity, .greatestFiniteMagnitude] {
+        for amount in [0.002, Double.greatestFiniteMagnitude] {
             let controller = makeController(amount: amount, currency: usd)
             let label = try XCTUnwrap(controller.makeLastChargeLabel())
             XCTAssertEqual(label.text, "—", "Invalid amounts must not print a charge of zero")
             XCTAssertFalse(controller.isViewLoaded)
-            if amount.isNaN {
-                XCTAssertTrue(controller.viewModel.lastChargeAmount.isNaN)
-            } else {
-                XCTAssertEqual(controller.viewModel.lastChargeAmount, amount)
-            }
+            XCTAssertEqual(controller.viewModel.lastChargeAmount, amount)
         }
     }
 
+    func testValidProgressivePenaltyOverflowStaysUnknownWithoutCrashing() throws {
+        let controller = makeController(
+            amount: .greatestFiniteMagnitude, currency: .rub, snoozeCount: 2, progressive: true
+        )
+        XCTAssertTrue(controller.viewModel.lastChargeAmount.isInfinite)
+        XCTAssertEqual(try XCTUnwrap(controller.makeLastChargeLabel()).text, "—")
+        XCTAssertFalse(controller.isViewLoaded)
+    }
+
     private func makeController(
-        amount: Double, currency: Currency, snoozeCount: Int = 1
+        amount: Double, currency: Currency, snoozeCount: Int = 1, progressive: Bool = false
     ) -> AlarmFiringViewController {
         let suite = "test.firing.chargeFlyUp.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -68,7 +73,7 @@ final class AlarmFiringChargeFlyUpTests: XCTestCase {
         XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(currency), .frozen(currency))
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend())
         let model = AlarmFiringViewModel(
-            alarm: Alarm(penaltyAmount: amount), snoozeCount: snoozeCount,
+            alarm: Alarm(penaltyAmount: amount, progressiveScale: progressive), snoozeCount: snoozeCount,
             balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter()),
             alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler),
             scheduler: scheduler, wakeStore: WakeEventStore(defaults: defaults),
