@@ -58,6 +58,7 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
         completion(result())
     }
 
+    func cancelOriginal(_ alarmID: UUID) {}
     func cancel(_ alarmID: UUID) {}
 
     func stop(_ alarmID: UUID) {}

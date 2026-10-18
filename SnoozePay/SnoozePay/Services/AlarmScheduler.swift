@@ -376,6 +376,10 @@ final class AlarmScheduler: AlarmScheduling {
             alarmKitScheduler.cancel(alarmID)
         }
 
+        cancelLegacyNotifications(alarmID)
+    }
+
+    private func cancelLegacyNotifications(_ alarmID: UUID) {
         let prefix = notificationIDPrefix(for: alarmID)
         let snoozeID = snoozeNotificationID(for: alarmID)
         // Prefix match rather than an exact one, so legacy per-day, one-off and
@@ -422,10 +426,9 @@ final class AlarmScheduler: AlarmScheduling {
         notificationCenter.removeAllPendingNotificationRequests()
     }
 
-    /// Re-arm every enabled alarm from scratch — cancel its existing triggers
-    /// and schedule it again. Mirrors the `cancel` → `schedule` sequence
-    /// `AlarmRepository.save(_:)` already uses, so the wallet semantics are
-    /// identical to a normal save.
+    /// Re-arm every enabled original schedule, preserving any paid pending
+    /// snooze under its separate AlarmKit ID and its original fire date (#935).
+    /// Full cancellation remains reserved for explicit disable/delete/finish.
     ///
     /// Called when something that silently invalidates already-scheduled
     /// alarms may have changed out from under us (#427):
@@ -466,7 +469,10 @@ final class AlarmScheduler: AlarmScheduling {
         var failedCount = 0
 
         for alarm in enabled {
-            cancel(alarm.id)
+            // Cancel even after authorization changes, but never remove the
+            // independently scheduled paid snooze or restart its deadline.
+            alarmKitScheduler?.cancelOriginal(alarm.id)
+            cancelLegacyNotifications(alarm.id)
             group.enter()
             schedule(alarm) { result in
                 if case .failure = result {

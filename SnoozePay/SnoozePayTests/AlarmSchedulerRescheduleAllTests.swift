@@ -5,7 +5,7 @@ import XCTest
 /// a reboot, or an authorization change, so they could fire at the wrong
 /// wall-clock time or stop firing entirely. `rescheduleAll` is the re-arm
 /// primitive AppDelegate calls from the relevant system signals. It must
-/// `cancel` + `schedule` every **enabled** alarm and leave **disabled** ones
+/// `cancelOriginal` + `schedule` every **enabled** alarm and leave **disabled** ones
 /// untouched (they hold nothing to re-arm).
 ///
 /// Since #472 the re-arm goes to AlarmKit and nowhere else, so the assertions
@@ -35,8 +35,9 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
 
         XCTAssertEqual(backend.scheduledIDs, [on.id],
                        "Only the enabled alarm is re-armed")
-        XCTAssertEqual(backend.cancelledIDs, [on.id],
-                       "The enabled alarm is cancelled before being re-scheduled; "
+        XCTAssertTrue(backend.cancelledIDs.isEmpty, "Rearm must never request a full cancellation")
+        XCTAssertEqual(backend.cancelledOriginalIDs, [on.id],
+                       "Only the original enabled alarm is cancelled before being re-scheduled; "
                        + "a disabled one is not touched at all")
     }
 
@@ -53,6 +54,7 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
 
         XCTAssertTrue(backend.scheduledIDs.isEmpty,
                       "No enabled alarms — nothing should be scheduled")
+        XCTAssertTrue(backend.cancelledOriginalIDs.isEmpty)
         XCTAssertTrue(backend.cancelledIDs.isEmpty)
     }
 
@@ -65,6 +67,7 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
         wait(for: [exp], timeout: 5)
 
         XCTAssertTrue(backend.scheduledIDs.isEmpty)
+        XCTAssertTrue(backend.cancelledOriginalIDs.isEmpty)
         XCTAssertTrue(backend.cancelledIDs.isEmpty)
     }
 
