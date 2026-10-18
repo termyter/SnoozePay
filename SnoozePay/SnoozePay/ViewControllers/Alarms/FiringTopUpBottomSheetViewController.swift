@@ -109,6 +109,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// Auto-resume timeout timer (60s). Reset to nil whenever the sheet is
     /// about to dismiss so a queued tick can't fire after teardown.
     private var autoResumeTimer: Timer?
+    private var autoResumeDeadlineExpired = false
+    private var failureAcknowledgementPending = false
+    private var pauseEnded = false
 
     /// Visible mm:ss countdown reflected in the pause label. Decremented every
     /// 1s so the user can see how long they have left to commit.
@@ -125,6 +128,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private let purchaseProduct: ((String) -> Void)?
     private let notificationCenter: NotificationCenter
     private let scheduleSuccessDismissal: TopUpSuccessDismissal
+    /// Narrow UI endpoints let lifecycle tests inspect the real alert and dismiss request.
+    private let presentPurchaseFailure: ((UIAlertController) -> Void)?
+    private let dismissForAutoResume: (() -> Void)?
     /// True while registered as a purchase-feedback subscriber so begin/end
     /// stay balanced across appear/disappear (#45).
     private var isObservingPurchaseFeedback = false
@@ -165,6 +171,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:137` contains "Будильник на паузе").
     private let pauseLabel: UILabel = {
         let label = UILabel()
+        label.accessibilityIdentifier = "firingTopUp.pauseCountdown"
         label.translatesAutoresizingMaskIntoConstraints = false
         label.numberOfLines = 1
         return label
@@ -277,13 +284,17 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         scheduleSuccessDismissal: @escaping TopUpSuccessDismissal = { delay, action in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { action() }
         },
-        purchaseProduct: ((String) -> Void)? = nil
+        purchaseProduct: ((String) -> Void)? = nil,
+        presentPurchaseFailure: ((UIAlertController) -> Void)? = nil,
+        dismissForAutoResume: (() -> Void)? = nil
     ) {
         self.presets = presets
         self.balance = balance
         self.purchaseProduct = purchaseProduct
         self.notificationCenter = notificationCenter
         self.scheduleSuccessDismissal = scheduleSuccessDismissal
+        self.presentPurchaseFailure = presentPurchaseFailure
+        self.dismissForAutoResume = dismissForAutoResume
         self.snoozePrice = snoozePrice
         self.currentBalance = currentBalance
         // Pre-select the cheapest tier that actually unlocks a snooze at the
@@ -372,10 +383,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        autoResumeTimer?.invalidate()
-        autoResumeTimer = nil
-        countdownTimer?.invalidate()
-        countdownTimer = nil
+        endPauseTimers()
         if isObservingPurchaseFeedback {
             isObservingPurchaseFeedback = false
             StoreKitService.shared.endObservingPurchaseFeedback()
@@ -594,9 +602,10 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         purchaseCancelledObserver = center.addObserver(
             forName: StoreKitService.purchaseCancelledNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
+            guard let self, !self.pauseEnded, self.purchaseInFlight, self.successReceipt == nil else { return }
             self.purchaseInFlight = false
             self.applePayButton.isEnabled = true
+            self.resumeIfDeadlineExpired()
         }
     }
 }
@@ -632,7 +641,7 @@ extension FiringTopUpBottomSheetViewController {
     // MARK: - Actions
 
     @objc private func applePayTapped() {
-        guard !purchaseInFlight else { return }
+        guard !pauseEnded, !purchaseInFlight, !failureAcknowledgementPending else { return }
         purchaseInFlight = true
         applePayButton.isEnabled = false
 
@@ -684,6 +693,7 @@ extension FiringTopUpBottomSheetViewController {
     }
 
     @objc private func closeTapped() {
+        endPauseTimers()
         dismiss(animated: true)
     }
 
@@ -693,7 +703,7 @@ extension FiringTopUpBottomSheetViewController {
         // Multiple StoreKit pathways (foreground purchase, background
         // Transaction.updates) can both post `purchaseCompletedNotification`.
         // Guard against showing the success state twice.
-        guard successReceipt == nil else { return }
+        guard !pauseEnded, successReceipt == nil else { return }
         successReceipt = receipt
         purchaseInFlight = false
 
@@ -711,10 +721,7 @@ extension FiringTopUpBottomSheetViewController {
             self.footerMetaLabel.alpha = 0
         }
 
-        autoResumeTimer?.invalidate()
-        autoResumeTimer = nil
-        countdownTimer?.invalidate()
-        countdownTimer = nil
+        endPauseTimers()
 
         scheduleSuccessDismissal(2) { [weak self] in
             self?.dismiss(animated: true)
@@ -722,6 +729,8 @@ extension FiringTopUpBottomSheetViewController {
     }
 
     private func handlePurchaseFailure(message: String?) {
+        guard !pauseEnded, successReceipt == nil, !failureAcknowledgementPending else { return }
+        failureAcknowledgementPending = true
         purchaseInFlight = false
         applePayButton.isEnabled = true
 
@@ -730,8 +739,30 @@ extension FiringTopUpBottomSheetViewController {
             message: message ?? Localized.text("firing.alert.purchase_failed.message"),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        present(alert, animated: true)
+        let acknowledge = UIAlertAction(
+            title: Localized.text("common.button.ok"), style: .default
+        ) { [weak self, weak alert] _ in
+            // Resume only after the alert is gone; dismissing the presenter while
+            // it still owns the alert would dismiss that alert instead of the sheet.
+            guard let alert else {
+                self?.acknowledgePurchaseFailure()
+                return
+            }
+            alert.dismiss(animated: true) { [weak self] in self?.acknowledgePurchaseFailure() }
+        }
+        alert.addAction(acknowledge)
+        if let presentPurchaseFailure {
+            presentPurchaseFailure(alert)
+        } else {
+            present(alert, animated: true)
+        }
+    }
+
+    /// Also called by the real error alert's OK action after its dismissal completes.
+    func acknowledgePurchaseFailure() {
+        guard !pauseEnded, failureAcknowledgementPending else { return }
+        failureAcknowledgementPending = false
+        resumeIfDeadlineExpired()
     }
 
     // MARK: - Auto-resume timer
@@ -746,13 +777,43 @@ extension FiringTopUpBottomSheetViewController {
         }
     }
 
-    private func handleAutoResume() {
-        // Don't yank the sheet away if the user is mid-purchase — the StoreKit
-        // sheet may still be on screen, and dismissing the host would orphan
-        // the transaction.
-        guard !purchaseInFlight, successReceipt == nil else { return }
+    /// The actual timer callback is also directly driveable without waiting 60 seconds.
+    func handleAutoResume() {
+        guard !pauseEnded, successReceipt == nil else { return }
+        autoResumeTimer?.invalidate()
+        autoResumeTimer = nil
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        autoResumeDeadlineExpired = true
+        remainingSeconds = 0
+        updatePauseLabel()
+        resumeIfDeadlineExpired()
+    }
+
+    private func resumeIfDeadlineExpired() {
+        // Keep the original deadline pending through StoreKit or the terminal
+        // error's OK action. Neither cancellation nor failure starts another 60s.
+        guard !pauseEnded, successReceipt == nil, autoResumeDeadlineExpired,
+              !purchaseInFlight, !failureAcknowledgementPending else { return }
+        endPauseTimers()
         AppLogger.coordinator.notice("FiringTopUpSheet: 60s auto-resume — closing without purchase")
-        dismiss(animated: true)
+        if let dismissForAutoResume {
+            dismissForAutoResume()
+        } else {
+            dismiss(animated: true)
+        }
+    }
+
+    /// Shared by manual dismissal, lifecycle teardown, success, and auto-resume.
+    func endPauseTimers() {
+        pauseEnded = true
+        autoResumeDeadlineExpired = false
+        failureAcknowledgementPending = false
+        purchaseInFlight = false
+        autoResumeTimer?.invalidate()
+        autoResumeTimer = nil
+        countdownTimer?.invalidate()
+        countdownTimer = nil
     }
 
     private func startCountdownTimer() {
