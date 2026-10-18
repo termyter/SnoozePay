@@ -207,15 +207,7 @@ extension AlarmFiringViewController {
     /// itself already shows the decremented balance). 1500ms: fade-in + rise,
     /// then fade-out + continued rise, matching the JSX keyframes.
     private func flyUpLastCharge() {
-        guard let pill = balancePill else { return }
-        let charge = Int(viewModel.lastChargeAmount.rounded())
-        guard charge > 0 else { return }
-
-        let label = UILabel()
-        label.text = "−\(charge) ₽"
-        label.font = AppFonts.mono(.bold, 14)
-        label.textColor = UIColor(snoozedRGB: 0xFF7A6B)
-        label.translatesAutoresizingMaskIntoConstraints = false
+        guard let pill = balancePill, let label = makeLastChargeLabel() else { return }
         view.addSubview(label)
         NSLayoutConstraint.activate([
             label.centerXAnchor.constraint(equalTo: pill.centerXAnchor),
@@ -240,6 +232,22 @@ extension AlarmFiringViewController {
         } completion: { _ in
             label.removeFromSuperview()
         }
+    }
+
+    /// The same label used by the animation, without loading the firing lifecycle.
+    /// Unknown or sub-minor positive charges must not turn into a zero receipt.
+    func makeLastChargeLabel() -> UILabel? {
+        let charge = viewModel.lastChargeAmount
+        guard charge != 0 else { return nil }
+        let currency = viewModel.walletCurrency
+        let formatted = MoneyFormatter.string(charge, currency: currency)
+        let known = formatted != "—" && formatted != MoneyFormatter.string(0.0, currency: currency)
+        let label = UILabel()
+        label.text = known ? "−" + formatted : "—"
+        label.font = AppFonts.mono(.bold, 14)
+        label.textColor = UIColor(snoozedRGB: 0xFF7A6B)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }
 }
 
