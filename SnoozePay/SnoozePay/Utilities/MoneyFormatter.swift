@@ -94,7 +94,96 @@ enum MoneyFormatter {
         return result
     }
 
+    // MARK: - Explicit currency (#559)
+
+    static func string(
+        _ amount: Double,
+        currency: Currency,
+        locale: Locale = AppLocale.display
+    ) -> String {
+        string(decimalAmount(amount), currency: currency, locale: locale)
+    }
+
+    static func attributed(
+        _ amount: Double,
+        currency: Currency,
+        digitsFont: UIFont,
+        prefix: String = "",
+        color: UIColor? = nil,
+        locale: Locale = AppLocale.display
+    ) -> NSAttributedString {
+        attributed(
+            decimalAmount(amount), currency: currency, digitsFont: digitsFont,
+            prefix: prefix, color: color, locale: locale
+        )
+    }
+
+    /// Uses the row's currency, with Foundation's currency precision. The
+    /// untagged overloads above remain the legacy whole-rouble API.
+    static func string(
+        _ amount: Decimal,
+        currency: Currency,
+        locale: Locale = AppLocale.display
+    ) -> String {
+        guard Money(amount, currency: currency) != nil else { return "—" }
+        if currency == .rub {
+            // Retain fmtRub typography, including whole values without .00,
+            // while preserving actual paid kopecks.
+            let digits = amount.formatted(
+                Decimal.FormatStyle().locale(locale).precision(.fractionLength(0...2))
+            )
+            return "\(digits)\(narrowSpace)₽"
+        }
+        // No explicit precision: USD/EUR, JPY and KWD have different minor units.
+        return amount.formatted(Decimal.FormatStyle.Currency(code: currency.code).locale(locale))
+    }
+
+    static func attributed(
+        _ amount: Decimal,
+        currency: Currency,
+        digitsFont: UIFont,
+        prefix: String = "",
+        color: UIColor? = nil,
+        locale: Locale = AppLocale.display
+    ) -> NSAttributedString {
+        let text = prefix + string(amount, currency: currency, locale: locale)
+        var attributes: [NSAttributedString.Key: Any] = [.font: digitsFont]
+        if let color = color { attributes[.foregroundColor] = color }
+        let result = NSMutableAttributedString(string: text, attributes: attributes)
+        if currency == .rub {
+            let gap = (text as NSString).range(of: narrowSpace + "₽", options: .backwards)
+            if gap.location != NSNotFound {
+                result.addAttribute(
+                    .font,
+                    value: AppFonts.sans(.regular, digitsFont.pointSize),
+                    range: NSRange(location: gap.location, length: 1)
+                )
+            }
+        }
+        return result
+    }
+
     // MARK: - Private
+
+    /// Decimal(Double) can change even exact large integers. Keep their fixed
+    /// C-format digits; for fractions use Double's shortest round-trip text.
+    /// Unrepresentable values stay unknown instead of becoming zero.
+    private static func decimalAmount(_ amount: Double) -> Decimal {
+        guard amount.isFinite, amount >= 0 else { return .nan }
+        let integral = amount.rounded(.towardZero) == amount
+        let text = integral ? String(format: "%.0f", amount) : String(amount)
+        if integral {
+            // A successful Decimal parse may round beyond its 38-digit
+            // precision. Exclude trailing zeros, which use only its exponent.
+            let significantDigits = text.drop(while: { $0 == "0" })
+                .reversed().drop(while: { $0 == "0" }).count
+            guard significantDigits <= 38 else { return .nan }
+        }
+        guard let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")),
+              !decimal.isNaN,
+              Double(NSDecimalNumber(decimal: decimal).stringValue) == amount else { return .nan }
+        return decimal
+    }
 
     /// Shared grouping formatter — `NumberFormatter` construction costs
     /// ~0.5ms; money strings rebuild on every balance tick so cache it.
