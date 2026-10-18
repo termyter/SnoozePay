@@ -223,7 +223,7 @@ final class StreakModalMoneyHeroThemeTests: XCTestCase {
         systemStyle: UIUserInterfaceStyle,
         appStyle: UIUserInterfaceStyle
     ) throws -> Hosted {
-        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub)
         modal.overrideUserInterfaceStyle = systemStyle
         modal.loadViewIfNeeded()
         // A detached layout pass, so the hero's mask (and with it the gradient

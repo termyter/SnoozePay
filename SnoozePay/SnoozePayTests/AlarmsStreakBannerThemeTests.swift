@@ -127,7 +127,7 @@ final class AlarmsStreakBannerThemeTests: XCTestCase {
     /// does, so the caps title froze on the same flip.
     func testCapsTitle_reresolvesOnAFlip() throws {
         let (banner, window) = makeHostedBanner()
-        banner.configure(streakDays: 5, savedAmount: 250)
+        banner.configure(streakDays: 5, savedAmount: 250, currency: .rub)
 
         flip(window, to: .dark, banner)
         let inDark = try XCTUnwrap(capsColor(of: banner))
