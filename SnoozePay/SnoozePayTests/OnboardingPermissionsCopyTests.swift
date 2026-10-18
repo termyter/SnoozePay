@@ -37,12 +37,14 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
     /// `onboarding.page3.option1_body` is absent on purpose: it takes an
     /// argument and is pinned by `testFirstPresetKeepsTheAmountItInterpolates`.
     ///
-    /// One row is not the pre-migration literal: `popular_caps` held
+    /// Four permission-card entries follow PM-approved #908 wording: the
+    /// app requests AlarmKit access and keeps background audio informational.
+    /// Another row is not the pre-migration literal: `popular_caps` held
     /// «ПОПУЛЯРНО» until #821 moved it to sentence case under the `_caps` rule
     /// (see `Localized`). The screen still shows «ПОПУЛЯРНО» — that is pinned
     /// by `testDepositPageRendersPresetCopyRatherThanKeys`; this row pins the
     /// stored word.
-    private static let copyBeforeMigration: [String: String] = [
+    private static let expectedRussianCopy: [String: String] = [
         "common.button.done": "Готово",
         "onboarding.button.later": "Позже — попробовать без баланса",
         "onboarding.button.next": "Дальше",
@@ -56,26 +58,26 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
         "onboarding.permissions.body": "Эти разрешения нужны, чтобы будильник прозвенел даже на беззвучном режиме.",
         "onboarding.permissions.caps": "ПОСЛЕДНИЙ ШАГ",
         "onboarding.permissions.grant_caps": "Дать",
-        "onboarding.permissions.notifications_body": "Чтобы показать будильник на экране",
-        "onboarding.permissions.notifications_title": "Уведомления",
-        "onboarding.permissions.sound_body": "Чтобы таймеры не убивались системой",
-        "onboarding.permissions.sound_title": "Фоновый режим",
+        "onboarding.permissions.notifications_body": "Чтобы будильник мог звонить и появляться на экране",
+        "onboarding.permissions.notifications_title": "Будильники",
+        "onboarding.permissions.sound_body": "Чтобы звук будильника продолжал играть при блокировке экрана",
+        "onboarding.permissions.sound_title": "Фоновое аудио",
         "onboarding.permissions.title": "Чтобы будильник работал",
         "onboarding.permissions.unavailable_caps": "Недоступно",
         "onboarding.splash.subtitle": "Будильник со ставкой"
     ]
 
     private static var allKeys: [String] {
-        Array(copyBeforeMigration.keys) + ["onboarding.page3.option1_body"]
+        Array(expectedRussianCopy.keys) + ["onboarding.page3.option1_body"]
     }
 
-    // MARK: - Layer 1: the catalogue says exactly what the code used to say
+    // MARK: - Layer 1: the catalogue matches approved Russian wording
 
-    func testMigratedCopyIsIdenticalToTheLiteralsItReplaced() {
-        for (key, literal) in Self.copyBeforeMigration {
+    func testRussianCopyMatchesApprovedWording() {
+        for (key, literal) in Self.expectedRussianCopy {
             XCTAssertEqual(
                 Localized.text(key), literal,
-                "«\(key)» no longer renders the text it replaced — the screen changed, which #600 forbids"
+                "«\(key)» no longer renders its approved Russian wording"
             )
         }
     }
