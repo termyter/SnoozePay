@@ -473,9 +473,10 @@ extension StatisticsViewModel {
     static func weekMoneyDays(
         today: Date,
         inputs: MoneyInputs,
+        currency: Currency,
         calendar: Calendar
     ) -> [WeekMoneyDay] {
-        let charges = inputs.charges
+        let charges = inputs.charges.filter { $0.currency == currency }
         let wakeDays = inputs.wakeDays
         let attemptedSnoozeDays = inputs.attemptedSnoozeDays
         let snoozePrice = inputs.snoozePrice
@@ -671,11 +672,10 @@ extension StatisticsViewModel {
     /// Kept alongside `signedMoneyAttributed` because VoiceOver reads
     /// `accessibilityLabel`, not attributed runs; the two must agree, so they
     /// share `MoneyFormatter` and this sign logic.
-    static func signedMoneyText(_ amount: Double?) -> String {
+    static func signedMoneyText(_ amount: Double?, currency: Currency) -> String {
         guard let amount else { return "—" }
-        let rounded = amount.rounded()
-        guard rounded != 0 else { return MoneyFormatter.string(Decimal(0)) }
-        return "\(moneySign(rounded))\(MoneyFormatter.string(Decimal(abs(rounded))))"
+        let text = MoneyFormatter.string(abs(amount), currency: currency)
+        return text == "—" ? text : moneySign(amount) + text
     }
 
     /// Mono-font variant of `signedMoneyText`.
@@ -686,19 +686,20 @@ extension StatisticsViewModel {
     /// the wallet history rows use (#348 review, finding 2).
     static func signedMoneyAttributed(
         _ amount: Double?,
+        currency: Currency,
         digitsFont: UIFont,
         color: UIColor
     ) -> NSAttributedString {
-        guard let amount else {
+        guard let amount, signedMoneyText(amount, currency: currency) != "—" else {
             return NSAttributedString(
                 string: "—", attributes: [.font: digitsFont, .foregroundColor: color]
             )
         }
-        let rounded = amount.rounded()
         return MoneyFormatter.attributed(
-            Decimal(abs(rounded)),
+            abs(amount),
+            currency: currency,
             digitsFont: digitsFont,
-            prefix: rounded == 0 ? "" : moneySign(rounded),
+            prefix: moneySign(amount),
             color: color
         )
     }
