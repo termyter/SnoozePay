@@ -81,9 +81,9 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
         window = makeHostWindow()
-        // The whole of setUp, not just the drain: building the host window and
-        // making it key is main-thread UIKit work like any other, and a stamp
-        // that skips it leaves a hole in the arithmetic against the duration
+        // The whole of setUp, not just the drain: constructing the host window
+        // is main-thread UIKit work like any other, and a stamp that skips it
+        // leaves a hole in the arithmetic against the duration
         // XCTest reports. Scheduling outside these phases and tearDown are
         // unstamped, so the remainder must not be attributed to cleanup alone.
         setUpEvidence = """
@@ -178,6 +178,8 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// A deterministic wait-helper liveness regression, NOT a reproduction of the
     /// historical flake: its mount was synchronous and its route beat used GCD.
     func testAsyncWaitAllowsAQueuedMainActorRouteMount() async {
+        XCTAssertTrue(window.isHidden, "A queued mount must not expose a bare window while the test yields")
+        XCTAssertNil(window.rootViewController, "The actual route must supply the root")
         let mount = Task { @MainActor [weak self] in
             guard !Task.isCancelled else { return }
             self?.mountRoute()
@@ -185,7 +187,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         defer { mount.cancel() }
         guard let sheet = await waitForPresentedSheet() else {
             mount.cancel()
-            let message = await timeoutMessage("The wait did not yield to the queued MainActor route mount.")
+            let message = await timeoutMessage("The queued route did not reach an attached confirmation sheet.")
             return XCTFail(message)
         }
         XCTAssertNotNil(sheet.viewIfLoaded?.window)
@@ -252,8 +254,9 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
 
     // MARK: - Host window
 
-    /// A key window on the host app's scene — a scene-less window would let
-    /// UIKit drop the presentation, which is the very failure under test.
+    /// A hidden window on the host app's scene. `mountRoute` installs the real
+    /// route root before making it key/visible, matching `SceneDelegate`.
+    /// Async setup/body scheduling must not expose a bare visible window.
     private func makeHostWindow() -> UIWindow {
         let scene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -263,7 +266,6 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             ?? CGRect(x: 0, y: 0, width: 393, height: 852)
         let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: bounds)
         window.frame = bounds
-        window.makeKeyAndVisible()
         return window
     }
 
@@ -335,8 +337,19 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// the wait. In the red attempt those three were indistinguishable.
     private func mountRoute() {
         let started = Date()
+        XCTAssertTrue(window.isHidden, "Install the route root before exposing the fixture window")
         UITourLauncher.mount("confirm-delete", in: window)
-        mountEvidence = "Mount returned after \(seconds(Date().timeIntervalSince(started)))."
+        let mounted = Date()
+        // Keep root assignment and visibility in the same MainActor turn,
+        // including when the regression queues this entire mount in a Task.
+        XCTAssertNotNil(window.rootViewController, "The route must supply its actual root before visibility")
+        window.makeKeyAndVisible()
+        XCTAssertTrue(window.isKeyWindow, "The rooted route window must become key")
+        mountEvidence = """
+            Mount began at \(started.timeIntervalSince1970), returned at \(mounted.timeIntervalSince1970) \
+            after \(seconds(mounted.timeIntervalSince(started))); key/visible at \(Date().timeIntervalSince1970) \
+            (root=\(window.rootViewController != nil), key=\(window.isKeyWindow), hidden=\(window.isHidden)).
+            """
     }
 
     /// The one message every timed-out wait prints.
