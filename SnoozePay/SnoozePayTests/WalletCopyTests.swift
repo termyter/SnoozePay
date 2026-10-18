@@ -165,18 +165,31 @@ final class WalletCopyTests: XCTestCase {
         }
     }
 
-    /// The one two-argument string in this slice: a swapped pair reads
-    /// «≈ откладываний 3» and still compiles. The declension itself stays with
-    /// `Plural`, which `PluralTests` cross-checks against the other six call
-    /// sites — this only pins the order.
-    func testPresetHintKeepsTheCountBeforeItsNoun() throws {
-        let label = DepositPresets.snoozeCountLabel(forAmount: 149)
-        let noun = DepositPresets.snoozeNoun(for: 3)
+    func testDepositPackagesOmitSnoozeEstimatesInBothThemes() throws {
+        func tiles(in view: UIView) -> [SPAmountPreset] {
+            (view as? SPAmountPreset).map { [$0] } ?? view.subviews.flatMap { tiles(in: $0) }
+        }
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let sheet = DepositBottomSheetViewController()
+            sheet.overrideUserInterfaceStyle = style
+            sheet.loadViewIfNeeded()
+            sheet.view.frame = CGRect(x: 0, y: 0, width: 393, height: 474)
+            sheet.view.layoutIfNeeded()
 
-        let count = try XCTUnwrap(label.range(of: "3"), "the count never reached the label: \(label)")
-        let word = try XCTUnwrap(label.range(of: noun), "the noun never reached the label: \(label)")
-        XCTAssertLessThan(count.lowerBound, word.lowerBound, "count must precede its noun: \(label)")
-        XCTAssertEqual(label, "≈ 3 откладывания", "the preset hint drifted off its pre-migration text")
+            let presets = tiles(in: sheet.view)
+            XCTAssertEqual(presets.map(\.value), [49, 149, 299, 499, 999])
+            XCTAssertEqual(presets.filter(\.popular).map(\.value), [149])
+            XCTAssertEqual(presets.filter(\.isSelected).map(\.value), [149])
+            for tile in presets {
+                XCTAssertNil(tile.label)
+                XCTAssertFalse(Self.strings(in: tile).contains { $0.contains("≈") })
+                XCTAssertGreaterThan(tile.bounds.height, 0)
+            }
+            let largest = try XCTUnwrap(presets.last)
+            largest.sendActions(for: .touchUpInside)
+            XCTAssertEqual(presets.filter(\.isSelected).map(\.value), [999])
+            XCTAssertFalse(Self.strings(in: sheet.view).contains { $0.contains("≈") })
+        }
     }
 
     // MARK: - Layer 3: the period picker

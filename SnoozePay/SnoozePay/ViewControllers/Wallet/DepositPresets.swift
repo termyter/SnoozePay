@@ -8,26 +8,18 @@ import Foundation
 /// 499/999 catalogue (see issue #233 item 8).
 struct DepositPreset: Equatable {
     let amount: Int
-    let label: String
     let productID: String
     let popular: Bool
 }
 
-/// Preset catalogue + label math for `DepositBottomSheetViewController`.
-/// Extracted from the controller so the SKU mapping and the localized
-/// «≈ N откладываний» pluralisation stay unit-testable.
+/// Stable SKU mapping and initial selection for the Deposit bottom sheet.
 enum DepositPresets {
-
-    /// Average snooze price used for the «≈ N откладываний» hint. Matches
-    /// the default penalty the rest of the app assumes (50 ₽).
-    static let averageSnoozePrice = 50
 
     /// The five live StoreKit SKUs, cheapest first. 149 ₽ carries the
     /// «Популярно» badge and is the initial selection.
     static let presets: [DepositPreset] = [49, 149, 299, 499, 999].map { amount in
         DepositPreset(
             amount: amount,
-            label: snoozeCountLabel(forAmount: amount),
             productID: "io.mobilife.snoozepay.balance.\(amount)",
             popular: amount == 149
         )
@@ -42,19 +34,4 @@ enum DepositPresets {
         presets.first { $0.amount == amount }
     }
 
-    /// «≈ N откладываний» secondary label. N is the rounded number of
-    /// snoozes the amount buys at `averagePrice`, floored at 1 so the
-    /// cheapest tile never reads «≈ 0».
-    static func snoozeCountLabel(forAmount amount: Int, averagePrice: Int = averageSnoozePrice) -> String {
-        guard averagePrice > 0 else { return "" }
-        let count = max(1, Int((Double(amount) / Double(averagePrice)).rounded()))
-        // One key, two positional arguments: a phrase assembled from a
-        // count key and a noun key would freeze Russian word order.
-        return Localized.format("deposit.preset.snooze_count", count, snoozeNoun(for: count))
-    }
-
-    /// Pluralisation for «откладывание».
-    static func snoozeNoun(for count: Int) -> String {
-        Plural.word(count, .snoozes)
-    }
 }

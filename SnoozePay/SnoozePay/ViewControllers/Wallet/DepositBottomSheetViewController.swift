@@ -296,7 +296,6 @@ final class DepositBottomSheetViewController: UIViewController {
                 let preset = presets[index]
                 let tile = SPAmountPreset(
                     value: Decimal(preset.amount),
-                    label: preset.label,
                     selected: preset.amount == selectedAmount,
                     popular: preset.popular
                 ) { [weak self] in

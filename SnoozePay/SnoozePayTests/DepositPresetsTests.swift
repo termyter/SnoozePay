@@ -2,8 +2,7 @@ import XCTest
 @testable import SnoozePay
 
 /// Tests the Deposit bottom-sheet preset catalogue (issue #233) — SKU
-/// mapping against the live StoreKit catalogue, default selection, and
-/// the localized "≈ N откладываний" pluralisation.
+/// mapping against the live StoreKit catalogue and default selection.
 final class DepositPresetsTests: XCTestCase {
 
     // MARK: - Catalogue
@@ -36,28 +35,4 @@ final class DepositPresetsTests: XCTestCase {
         XCTAssertNil(DepositPresets.preset(forAmount: 500))
     }
 
-    // MARK: - Labels
-
-    func testSnoozeCountLabels_roundAndPluralizeCorrectly() {
-        XCTAssertEqual(DepositPresets.snoozeCountLabel(forAmount: 49), "≈ 1 откладывание")
-        XCTAssertEqual(DepositPresets.snoozeCountLabel(forAmount: 100), "≈ 2 откладывания")
-        XCTAssertEqual(DepositPresets.snoozeCountLabel(forAmount: 149), "≈ 3 откладывания")
-        XCTAssertEqual(DepositPresets.snoozeCountLabel(forAmount: 299), "≈ 6 откладываний")
-        XCTAssertEqual(DepositPresets.snoozeCountLabel(forAmount: 499), "≈ 10 откладываний")
-        XCTAssertEqual(DepositPresets.snoozeCountLabel(forAmount: 999), "≈ 20 откладываний")
-    }
-
-    func testSnoozeCountLabel_neverShowsZero() {
-        XCTAssertEqual(DepositPresets.snoozeCountLabel(forAmount: 1), "≈ 1 откладывание")
-    }
-
-    func testSnoozeNoun_russianPluralRules() {
-        XCTAssertEqual(DepositPresets.snoozeNoun(for: 1), "откладывание")
-        XCTAssertEqual(DepositPresets.snoozeNoun(for: 2), "откладывания")
-        XCTAssertEqual(DepositPresets.snoozeNoun(for: 5), "откладываний")
-        XCTAssertEqual(DepositPresets.snoozeNoun(for: 11), "откладываний")
-        XCTAssertEqual(DepositPresets.snoozeNoun(for: 21), "откладывание")
-        XCTAssertEqual(DepositPresets.snoozeNoun(for: 22), "откладывания")
-        XCTAssertEqual(DepositPresets.snoozeNoun(for: 112), "откладываний")
-    }
 }
