@@ -198,7 +198,7 @@ final class DesignSystemCopyTests: XCTestCase {
     // MARK: - Layer 3: the firing chrome
 
     func testSnoozePriceRendersItsMinutesInBothCapsAndVoiceOver() {
-        let control = SPSnoozePrice(price: 50, minutes: 7)
+        let control = SPSnoozePrice(price: 50, currency: .rub, minutes: 7)
         control.layoutIfNeeded()
 
         XCTAssertEqual(control.accessibilityLabel, Localized.format("firing.snooze.accessibility", 7))
@@ -226,7 +226,7 @@ final class DesignSystemCopyTests: XCTestCase {
             (21, "Отложить на 21 минуту")
         ]
         for (minutes, label) in expected {
-            let control = SPSnoozePrice(price: 50, minutes: minutes)
+            let control = SPSnoozePrice(price: 50, currency: .rub, minutes: minutes)
             XCTAssertEqual(control.accessibilityLabel, label, "minutes = \(minutes)")
         }
     }
