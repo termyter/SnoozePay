@@ -21,6 +21,7 @@ import XCTest
 /// badge's height and both labels' intrinsic heights. The content assertions
 /// below are what caught that, so keep them measuring real geometry after a
 /// single layout pass.
+@MainActor
 final class UITourConfirmDeleteRouteTests: XCTestCase {
 
     /// Everything the harness must be able to photograph.
@@ -88,32 +89,50 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         setUpEvidence = """
             setUp took \(seconds(Date().timeIntervalSince(setUpStarted))), of which the \
             drain \(seconds(drainElapsed)), ending \(drain); the host window took the \
-            rest. Anything unaccounted for against the test's reported duration is \
-            tearDown.
+            rest. Unstamped XCTest scheduling and tearDown are outside these measurements.
             """
     }
 
-    override func tearDown() {
-        window?.rootViewController?.dismiss(animated: false)
-        window?.rootViewController = nil
-        window?.isHidden = true
+    nonisolated override func tearDown() async throws {
+        await dismissHostWindow()
+        try await super.tearDown()
+    }
+
+    private func dismissHostWindow() async {
+        guard let host = window else { return }
+        let restore = previousKeyWindow
+        let cleanup = { [host, weak restore] in
+            let wasKey = host.isKeyWindow
+            host.rootViewController = nil
+            host.isHidden = true
+            // A late completion must not steal a later fixture's key window.
+            if wasKey { restore?.makeKeyAndVisible() }
+        }
+        if let root = host.rootViewController, root.presentedViewController != nil {
+            let dismissed = XCTestExpectation(description: "tour fixture dismissed")
+            root.dismiss(animated: false) {
+                cleanup()
+                dismissed.fulfill()
+            }
+            let result = await XCTWaiter.fulfillment(of: [dismissed], timeout: 10)
+            XCTAssertEqual(result, .completed, "Keep the fixture alive through UIKit dismissal completion")
+        } else {
+            cleanup()
+        }
         window = nil
-        previousKeyWindow?.makeKeyAndVisible()
         previousKeyWindow = nil
-        super.tearDown()
     }
 
     // MARK: - Routing
 
     /// Deliberately waits only for "sheet is in the hierarchy", so a routing
     /// regression stays distinguishable from a layout-timing problem.
-    func testConfirmDeleteRoutePresentsSheetOverTheEditForm() {
+    func testConfirmDeleteRoutePresentsSheetOverTheEditForm() async {
         mountRoute()
 
-        guard let sheet = waitForPresentedSheet() else {
-            return XCTFail(
-                timeoutMessage("`-uitour confirm-delete` never presented the confirmation sheet.")
-            )
+        guard let sheet = await waitForPresentedSheet() else {
+            let message = await timeoutMessage("`-uitour confirm-delete` never presented the confirmation sheet.")
+            return XCTFail(message)
         }
 
         // The presenter must be the alarm-edit form, already on screen — this
@@ -136,7 +155,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// the presenter out of the hierarchy before the beat is the cheap way to
     /// assert the check exists: without it, `root` ends up owning a
     /// presentation that nobody can ever see.
-    func testConfirmDeleteRouteDoesNotPresentIntoADetachedPresenter() {
+    func testConfirmDeleteRouteDoesNotPresentIntoADetachedPresenter() async {
         mountRoute()
         guard let root = window.rootViewController else {
             return XCTFail("the route must mount a root before it presents anything")
@@ -147,7 +166,8 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         // means "declined to present", not "hasn't tried yet".
         let beatPassed = XCTestExpectation(description: "route had its chance to fire")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { beatPassed.fulfill() }
-        _ = XCTWaiter.wait(for: [beatPassed], timeout: 10)
+        let result = await XCTWaiter.fulfillment(of: [beatPassed], timeout: 10)
+        XCTAssertEqual(result, .completed, "The detached route must actually receive its scheduled turn")
 
         XCTAssertNil(
             root.presentedViewController,
@@ -155,17 +175,34 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         )
     }
 
+    /// A deterministic wait-helper liveness regression, NOT a reproduction of the
+    /// historical flake: its mount was synchronous and its route beat used GCD.
+    func testAsyncWaitAllowsAQueuedMainActorRouteMount() async {
+        let mount = Task { @MainActor [weak self] in
+            guard !Task.isCancelled else { return }
+            self?.mountRoute()
+        }
+        defer { mount.cancel() }
+        guard let sheet = await waitForPresentedSheet() else {
+            mount.cancel()
+            let message = await timeoutMessage("The wait did not yield to the queued MainActor route mount.")
+            return XCTFail(message)
+        }
+        XCTAssertNotNil(sheet.viewIfLoaded?.window)
+        XCTAssertTrue((sheet.presentingViewController as? UINavigationController)?.topViewController
+            is CreateAlarmViewController)
+    }
+
     // MARK: - Content
 
-    func testConfirmDeleteSheetShowsTitleBodyAndBothActions() {
+    func testConfirmDeleteSheetShowsTitleBodyAndBothActions() async {
         let expectedBody = AlarmDeletionCopy.body(balance: BalanceService.shared.balance)
 
         mountRoute()
 
-        guard let sheet = waitForSizedSheet() else {
-            return XCTFail(
-                timeoutMessage("`-uitour confirm-delete` never presented a sized confirmation sheet.")
-            )
+        guard let sheet = await waitForSizedSheet() else {
+            let message = await timeoutMessage("`-uitour confirm-delete` never presented a sized confirmation sheet.")
+            return XCTFail(message)
         }
         let diagnostics = layoutDiagnostics()
 
@@ -190,13 +227,12 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// bottom. Non-zero frames alone would not have caught that — assert the
     /// content actually lands INSIDE the window, which the wait predicate
     /// (size only) deliberately does not check.
-    func testConfirmDeleteSheetContentIsOnScreen() {
+    func testConfirmDeleteSheetContentIsOnScreen() async {
         mountRoute()
 
-        guard let sheet = waitForSizedSheet() else {
-            return XCTFail(
-                timeoutMessage("`-uitour confirm-delete` never presented a sized confirmation sheet.")
-            )
+        guard let sheet = await waitForSizedSheet() else {
+            let message = await timeoutMessage("`-uitour confirm-delete` never presented a sized confirmation sheet.")
+            return XCTFail(message)
         }
         let diagnostics = layoutDiagnostics()
 
@@ -234,8 +270,8 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     // MARK: - Waiting
 
     /// Waits until the sheet is merely in the window hierarchy.
-    private func waitForPresentedSheet(timeout: TimeInterval = 10) -> ConfirmDeleteAlarmViewController? {
-        return waitForSheet(timeout: timeout) { sheet in
+    private func waitForPresentedSheet(timeout: TimeInterval = 10) async -> ConfirmDeleteAlarmViewController? {
+        return await waitForSheet(timeout: timeout) { sheet in
             sheet.viewIfLoaded?.window != nil
         }
     }
@@ -251,8 +287,8 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// never does: the sheet view was already the full 402×874 while its
     /// children stayed collapsed. A wait that can only ever time out is a
     /// worse failure message than an assertion, not a better one.
-    private func waitForSizedSheet(timeout: TimeInterval = 10) -> ConfirmDeleteAlarmViewController? {
-        let settled = waitForSheet(timeout: timeout) { candidate in
+    private func waitForSizedSheet(timeout: TimeInterval = 10) async -> ConfirmDeleteAlarmViewController? {
+        let settled = await waitForSheet(timeout: timeout) { candidate in
             guard let view = candidate.viewIfLoaded, view.window != nil else { return false }
             return !view.bounds.isEmpty
         }
@@ -265,37 +301,29 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         return sheet
     }
 
-    /// The poll census and the elapsed stamp are the whole point of #728.
-    ///
-    /// A wait that ends empty says nothing about WHY, and the two candidates
-    /// need opposite fixes: a run loop that was not turning (the route's own
-    /// `asyncAfter` beat could not have been delivered either, so the drain in
-    /// `setUp` simply did not reach the backlog) versus a loop that turned all
-    /// the way through while the route declined to present. The census
-    /// separates them, and the elapsed-versus-budget figure catches the third
-    /// shape: an `XCTWaiter` cannot return while the loop is stuck, so a 10 s
-    /// wait that took 20 s IS the stall, measured from the outside.
+    /// Suspend the MainActor test while UIKit and the route's delayed blocks run.
+    /// Separate Timer modes, GCD, and MainActor evidence avoids diagnosing an
+    /// entire queue from one default-mode Timer's silence (#728).
     private func waitForSheet(
         timeout: TimeInterval,
         until isReady: @escaping (ConfirmDeleteAlarmViewController) -> Bool
-    ) -> ConfirmDeleteAlarmViewController? {
+    ) async -> ConfirmDeleteAlarmViewController? {
         var found: ConfirmDeleteAlarmViewController?
         let ready = XCTestExpectation(description: "confirm-delete sheet ready")
         let started = Date()
-        var census = RunLoopCensus(interval: pollInterval, started: started)
-        let poll = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] timer in
-            census.record()
+        let progress = UIWaitProgress(interval: pollInterval, timeout: timeout)
+        progress.start { [weak self, weak progress] in
             guard let sheet = self?.presentedConfirmSheet(), isReady(sheet) else { return }
             found = sheet
-            timer.invalidate()
+            progress?.cancel()
             ready.fulfill()
         }
-        defer { poll.invalidate() }
-        let result = XCTWaiter.wait(for: [ready], timeout: timeout)
-        let elapsed = Date().timeIntervalSince(started)
+        defer { progress.cancel() }
+        let result = await XCTWaiter.fulfillment(of: [ready], timeout: timeout)
+        let finished = Date()
         waitEvidence = """
-            Wait: \(result) after \(seconds(elapsed)) against a \(seconds(timeout)) budget \
-            — \(census.summary())
+            Wait: \(result) after \(seconds(finished.timeIntervalSince(started))) against a \(seconds(timeout)) budget.
+            \(progress.summary(at: finished))
             """
         return result == .completed ? found : nil
     }
@@ -316,10 +344,9 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// Order matters. The presentation chain is read FIRST, at the moment the
     /// wait gave up, so it describes that moment and not the aftermath. Only
     /// then does the queue get probed, and the chain is read a SECOND time:
-    /// what the route managed to mount while the queue was being spun is the
-    /// discriminator this failure has been missing. Anything new means the beat
-    /// had been delivered and was merely late — starvation. A chain identical
-    /// to the first means nothing was in flight and the route never presented.
+    /// what the route managed to mount while awaiting the probe shows late
+    /// presentation progress. An unchanged chain alone cannot distinguish work
+    /// still pending from a route that declined to present.
     ///
     /// Both chains, rather than "did the sheet appear", because this route is
     /// two steps: `presentLater(nav)`, then `nav.present(sheet)` from the
@@ -334,22 +361,21 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// Bounded at 5 s, and only ever reached on a failing test, so it cannot
     /// grow a green run. It is emphatically not a wider timeout: by the time it
     /// runs, the failure is already going to be recorded.
-    private func timeoutMessage(_ headline: String) -> String {
+    private func timeoutMessage(_ headline: String) async -> String {
         let chainAtTimeout = presentationDiagnostics(rootedAt: window?.rootViewController)
         let probeStarted = Date()
-        let probe = drainMainQueueOutcome(cap: 5)
+        let probe = XCTestExpectation(description: "post-timeout main queue probe")
+        DispatchQueue.main.async { probe.fulfill() }
+        let probeResult = await XCTWaiter.fulfillment(of: [probe], timeout: 5)
         let probeElapsed = Date().timeIntervalSince(probeStarted)
         let chainAfterProbe = presentationDiagnostics(rootedAt: window?.rootViewController)
-        let queue = probe.isQuiet
-            ? "a fresh probe came back in \(seconds(probeElapsed)) (\(probe))"
-            : probe.diagnosis
+        let queue = "a fresh asynchronous FIFO probe returned \(probeResult) in \(seconds(probeElapsed))"
         return """
             \(headline) At the timeout, \(chainAtTimeout). \(setUpEvidence) \(mountEvidence) \
             \(waitEvidence) After the timeout: \(queue). The chain then read: \
             \(chainAfterProbe) — anything mounted during that probe, sheet or merely the \
-            edit form, means the route's beat had been delivered and was running late; \
-            a chain unchanged from the one above means nothing was in flight and the \
-            route never presented at all.
+            edit form, proves late presentation progress. An unchanged chain does not \
+            distinguish pending work from a route that declined to present.
             """
     }
 
