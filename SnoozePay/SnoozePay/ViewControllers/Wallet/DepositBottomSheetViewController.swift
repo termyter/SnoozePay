@@ -32,6 +32,7 @@ final class DepositBottomSheetViewController: UIViewController {
 
     // MARK: - State
 
+    private let balance: BalanceService
     private let presets = DepositPresets.presets
     private var selectedAmount: Int = DepositPresets.defaultAmount
 
@@ -44,6 +45,9 @@ final class DepositBottomSheetViewController: UIViewController {
 
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
+    private var purchaseCancelledObserver: NSObjectProtocol?
+    /// Optional product dispatch keeps this real form testable without an App Store catalogue.
+    private let purchaseProduct: ((String) -> Void)?
     /// True while this screen is registered as a purchase-feedback subscriber
     /// so `begin`/`end` stay balanced across appear/disappear (#45).
     private var isObservingPurchaseFeedback = false
@@ -161,7 +165,9 @@ final class DepositBottomSheetViewController: UIViewController {
 
     // MARK: - Init
 
-    init() {
+    init(balance: BalanceService = .shared, purchaseProduct: ((String) -> Void)? = nil) {
+        self.balance = balance
+        self.purchaseProduct = purchaseProduct
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
         if let sheet = sheetPresentationController {
@@ -187,6 +193,9 @@ final class DepositBottomSheetViewController: UIViewController {
             NotificationCenter.default.removeObserver(token)
         }
         if let token = purchaseFailedObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = purchaseCancelledObserver {
             NotificationCenter.default.removeObserver(token)
         }
     }
@@ -316,6 +325,8 @@ final class DepositBottomSheetViewController: UIViewController {
             suffix: Decimal(amount).formattedRubles(),
             fullWidth: true
         )
+        button.accessibilityIdentifier = "deposit.purchaseButton"
+        button.isEnabled = !purchaseInFlight
         button.addTarget(self, action: #selector(depositTapped), for: .touchUpInside)
         return button
     }
@@ -358,6 +369,13 @@ final class DepositBottomSheetViewController: UIViewController {
             let message = note.userInfo?[messageKey] as? String
             self.handlePurchaseFailure(message: message)
         }
+        purchaseCancelledObserver = center.addObserver(
+            forName: StoreKitService.purchaseCancelledNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, self.purchaseInFlight, self.successAmount == nil else { return }
+            self.purchaseInFlight = false
+            self.depositButton.isEnabled = true
+        }
     }
 
     @objc private func depositTapped() {
@@ -367,7 +385,7 @@ final class DepositBottomSheetViewController: UIViewController {
         // `acknowledgeCorruption()`, so a top-up here would always fail back
         // into the generic «Покупка не выполнена» retry loop the user can't
         // satisfy. Surface a corruption-specific message instead.
-        guard !BalanceService.shared.balanceCorrupted else {
+        guard !balance.balanceCorrupted else {
             presentBalanceCorruptionAlert()
             return
         }
@@ -375,6 +393,10 @@ final class DepositBottomSheetViewController: UIViewController {
         purchaseInFlight = true
         depositButton.isEnabled = false
 
+        if let purchaseProduct {
+            purchaseProduct(preset.productID)
+            return
+        }
         if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
             // Foreign storefront: refuse before `purchase(_:)`, while refusing
             // is still free (#563).
@@ -395,7 +417,7 @@ final class DepositBottomSheetViewController: UIViewController {
             AppLogger.storeKit.notice(
                 "DepositSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
             )
-            if BalanceService.shared.topUp(amount: Double(preset.amount)) {
+            if balance.topUp(amount: Double(preset.amount)) {
                 handlePurchaseSuccess(amount: preset.amount)
             } else {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
@@ -458,8 +480,8 @@ final class DepositBottomSheetViewController: UIViewController {
             preferredStyle: .alert
         )
         let reset = Localized.text("common.button.reset")
-        alert.addAction(UIAlertAction(title: reset, style: .destructive) { _ in
-            BalanceService.shared.acknowledgeCorruption()
+        alert.addAction(UIAlertAction(title: reset, style: .destructive) { [weak self] _ in
+            self?.balance.acknowledgeCorruption()
         })
         alert.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
         present(alert, animated: true)

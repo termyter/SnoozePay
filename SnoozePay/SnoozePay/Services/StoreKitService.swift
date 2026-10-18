@@ -50,6 +50,9 @@ final class StoreKitService {
     /// Resolves later via `Transaction.updates` once parent approves. No userInfo.
     static let purchasePendingNotification = Notification.Name("snoozepay.storekit.purchasePending")
 
+    /// Terminal App Store cancellation. No credit, error, or userInfo.
+    static let purchaseCancelledNotification = Notification.Name("snoozepay.storekit.purchaseCancelled")
+
     /// User-facing copy posted via `purchaseFailedNotification` when StoreKit
     /// reports success but `BalanceService.topUp` returns `false` (ledger locked
     /// / record failed). Surfaced as a constant so tests can assert without
@@ -247,29 +250,35 @@ final class StoreKitService {
     func purchase(_ product: Product) async {
         do {
             let result = try await product.purchase()
-            switch result {
-            case .success(let verification):
-                let transaction = try checkVerified(verification)
-                await applyVerifiedPurchase(RestorableTopUp(transaction: transaction)) {
-                    await transaction.finish()
-                }
-
-            case .userCancelled:
-                break
-
-            case .pending:
-                // Ask-to-Buy or SCA — resolved later via Transaction.updates listener.
-                postPurchasePending()
-
-            @unknown default:
-                AppLogger.storeKit.error("unknown PurchaseResult case — likely future StoreKit addition")
-                postPurchaseFailed(Localized.text("deposit.error.unknown_result"))
-            }
+            try await handlePurchaseResult(result)
         } catch {
             AppLogger.storeKit.error(
                 "purchase failed: \(String(describing: error), privacy: .public)"
             )
             postPurchaseFailed(error.localizedDescription)
+        }
+    }
+
+    /// Separate result dispatch lets tests exercise real terminal/nonterminal branches
+    /// without constructing an App Store product. Verification and credit are unchanged.
+    func handlePurchaseResult(_ result: Product.PurchaseResult) async throws {
+        switch result {
+        case .success(let verification):
+            let transaction = try checkVerified(verification)
+            await applyVerifiedPurchase(RestorableTopUp(transaction: transaction)) {
+                await transaction.finish()
+            }
+
+        case .userCancelled:
+            NotificationCenter.default.post(name: Self.purchaseCancelledNotification, object: self)
+
+        case .pending:
+            // Ask-to-Buy or SCA — resolved later via Transaction.updates listener.
+            postPurchasePending()
+
+        @unknown default:
+            AppLogger.storeKit.error("unknown PurchaseResult case — likely future StoreKit addition")
+            postPurchaseFailed(Localized.text("deposit.error.unknown_result"))
         }
     }
 
