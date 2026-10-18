@@ -19,6 +19,9 @@ import UIKit
 /// hints live in `WalletHints.swift`.
 final class WalletViewController: UIViewController {
 
+    private let balanceService: BalanceService
+    private let transactionRepository: TransactionRepository
+
     // MARK: - Subviews
 
     private let scrollView: UIScrollView = {
@@ -53,10 +56,13 @@ final class WalletViewController: UIViewController {
 
     // MARK: - Init
 
-    init() {
-        let initialBalance = BalanceService.shared.balance
+    init(balanceService: BalanceService = .shared, transactionRepository: TransactionRepository = .shared) {
+        self.balanceService = balanceService
+        self.transactionRepository = transactionRepository
+        let initialBalance = balanceService.balance
         balanceCard = SPBalanceCard(
             balance: Decimal(initialBalance),
+            currency: balanceService.walletCurrency,
             delta: nil,
             // Real hint from the first frame (#546). The placeholder this
             // replaced was a hardcoded «~17 откладываний» that the first
@@ -207,15 +213,16 @@ final class WalletViewController: UIViewController {
     }
 
     private func refresh() {
-        let balance = BalanceService.shared.balance
+        let balance = balanceService.balance
+        let currency = balanceService.walletCurrency
         let decimal = Decimal(balance)
         // Checked read so a corrupt ledger drives the error banner instead of
         // the lossy `fetchAll()` rendering a deceptive empty preview (#419).
         // Shared across the delta, the chart and the preview so a single
         // decode failure classifies all three the same way.
-        let load = WalletLedgerLoad.load(from: TransactionRepository.shared)
+        let load = WalletLedgerLoad.load(from: transactionRepository)
         let transactions = load.transactions
-        let delta = load.didFail ? nil : WalletStats.weeklyDelta(from: transactions)
+        let delta = load.didFail ? nil : WalletStats.weeklyDelta(currency: currency, from: transactions)
         // Alarms feed the «Хватит на ~N» price (#546) — the number used to be
         // divided by a hardcoded 50 ₽ here, which is why this card and the
         // alarms list disagreed. The lossy `fetchAll` is deliberate: an
@@ -225,8 +232,8 @@ final class WalletViewController: UIViewController {
             forBalance: balance,
             alarms: AlarmRepository.shared.fetchAll()
         )
-        balanceCard.update(balance: decimal, delta: delta, hint: hint)
-        weeklyChart.update(values: WalletStats.weeklyPenaltyTotals(from: transactions))
+        balanceCard.update(balance: decimal, currency: currency, delta: delta, hint: hint)
+        weeklyChart.update(values: WalletStats.weeklyPenaltyTotals(currency: currency, from: transactions))
         rebuildTxPreview(load: load)
     }
 
@@ -260,8 +267,8 @@ final class WalletViewController: UIViewController {
 
     /// Pulls corruption state latched before this VC attached its observer.
     private func surfacePendingBalanceCorruption() {
-        guard BalanceService.shared.balanceCorrupted else { return }
-        surfaceBalanceCorruption(rawValue: BalanceService.shared.corruptedRawValue)
+        guard balanceService.balanceCorrupted else { return }
+        surfaceBalanceCorruption(rawValue: balanceService.corruptedRawValue)
     }
 
     private func surfaceBalanceCorruption(rawValue: Double?) {
@@ -275,7 +282,7 @@ final class WalletViewController: UIViewController {
         )
         let reset = Localized.text("common.button.reset")
         alert.addAction(UIAlertAction(title: reset, style: .destructive) { [weak self] _ in
-            BalanceService.shared.acknowledgeCorruption()
+            self?.balanceService.acknowledgeCorruption()
             // Allow a future re-corruption episode to surface a fresh alert.
             self?.hasSurfacedBalanceCorruption = false
             self?.refresh()
@@ -323,13 +330,13 @@ enum WalletStats {
     /// caller's single `WalletLedgerLoad` drives the delta, the chart and the
     /// preview together — a corrupt ledger surfaces a banner instead of these
     /// reading a lossy `fetchAll()` and silently rendering a zero delta.
-    static func weeklyDelta(from transactions: [Transaction]) -> Decimal? {
+    static func weeklyDelta(currency: Currency, from transactions: [Transaction]) -> Decimal? {
         let calendar = Calendar.current
         guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) else {
             return nil
         }
         let recent = transactions.filter {
-            $0.createdAt >= weekAgo
+            $0.currency == currency && $0.createdAt >= weekAgo
         }
         guard !recent.isEmpty else { return nil }
         var net: Decimal = 0
@@ -353,11 +360,11 @@ enum WalletStats {
     /// Per-day pain totals for the trailing 7-day window, oldest → newest.
     /// Used by `WalletWeeklyChartView` — only `.charge` rows contribute.
     /// Takes the caller's decode-checked transaction list (#419).
-    static func weeklyPenaltyTotals(from transactions: [Transaction]) -> [Decimal] {
+    static func weeklyPenaltyTotals(currency: Currency, from transactions: [Transaction]) -> [Decimal] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         var totals = Array(repeating: Decimal.zero, count: 7)
-        for transaction in transactions where transaction.type == .charge {
+        for transaction in transactions where transaction.currency == currency && transaction.type == .charge {
             let day = calendar.startOfDay(for: transaction.createdAt)
             guard let diff = calendar.dateComponents([.day], from: day, to: today).day else {
                 continue

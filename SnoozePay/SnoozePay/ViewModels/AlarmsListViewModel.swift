@@ -421,8 +421,10 @@ final class AlarmsListViewModel {
 
     // MARK: - Formatted balance
 
+    var walletCurrency: Currency { balanceService.walletCurrency }
+
     var formattedBalance: String {
-        MoneyFormatter.string(balance)
+        MoneyFormatter.string(balance, currency: walletCurrency)
     }
 
     // MARK: - Affordability hint
@@ -511,7 +513,7 @@ final class AlarmsListViewModel {
         // banner that explains WHY the row is missing, so the collapse here is
         // deliberate and not a silent swallow.
         let ledger = (try? transactionRepository.fetchAllChecked()) ?? []
-        let weekCharges = TransactionRepository.realCharges(from: ledger)
+        let weekCharges = TransactionRepository.realCharges(from: ledger.filter { $0.currency == walletCurrency })
             .filter { $0.createdAt >= weekAgo }
         guard !weekCharges.isEmpty else { return nil }
         let totalCharged = weekCharges.reduce(0.0) { $0 + $1.amount }

@@ -95,7 +95,7 @@ final class SPBalanceCardGradientMaskTests: XCTestCase {
     }
 
     func testGradientMaskLandsAfterBalanceCardLayout() {
-        let card = SPBalanceCard(balance: 1_234_567)
+        let card = SPBalanceCard(balance: 1_234_567, currency: .rub)
         card.frame = CGRect(x: 0, y: 0, width: 335, height: 180)
         card.setNeedsLayout()
         card.layoutIfNeeded()

@@ -105,7 +105,7 @@ final class DesignSystemCopyTests: XCTestCase {
 
     func testAlarmsListHeaderRendersCopyRatherThanKeys() {
         let header = SPAlarmsListHeader(frame: CGRect(x: 0, y: 0, width: 402, height: 220))
-        header.setBalance(500, hint: nil)
+        header.setBalance(500, currency: .rub, hint: nil)
         header.layoutIfNeeded()
 
         let rendered = Self.strings(in: header)
@@ -245,7 +245,7 @@ final class DesignSystemCopyTests: XCTestCase {
     /// The delta line substitutes two arguments in a row, and both are opaque
     /// `%@` — so a swapped pair reads «120 ₽ ↓ за неделю» and looks plausible.
     func testBalanceCardDeltaKeepsTheArrowBeforeTheAmount() throws {
-        let card = SPBalanceCard(balance: 500, delta: -120)
+        let card = SPBalanceCard(balance: 500, currency: .rub, delta: -120)
         card.layoutIfNeeded()
 
         let delta = try XCTUnwrap(

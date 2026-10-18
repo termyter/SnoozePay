@@ -15,18 +15,18 @@ final class ZeroBalanceToneTests: XCTestCase {
     // MARK: - Which state the card thinks it is in
 
     func testZeroBalanceIsRecognisedAsEmpty() {
-        XCTAssertTrue(SPBalanceCard(balance: 0).isZeroBalance)
+        XCTAssertTrue(SPBalanceCard(balance: 0, currency: .rub).isZeroBalance)
     }
 
     func testPositiveBalanceIsNotEmpty() {
-        XCTAssertFalse(SPBalanceCard(balance: 1).isZeroBalance)
-        XCTAssertFalse(SPBalanceCard(balance: 840).isZeroBalance)
+        XCTAssertFalse(SPBalanceCard(balance: 1, currency: .rub).isZeroBalance)
+        XCTAssertFalse(SPBalanceCard(balance: 840, currency: .rub).isZeroBalance)
     }
 
     /// A negative balance is not "money you have" either. Nothing should be
     /// able to put a below-zero wallet back on the green ramp.
     func testNegativeBalanceIsTreatedAsEmpty() {
-        XCTAssertTrue(SPBalanceCard(balance: -50).isZeroBalance)
+        XCTAssertTrue(SPBalanceCard(balance: -50, currency: .rub).isZeroBalance)
     }
 
     // MARK: - The ink

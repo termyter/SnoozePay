@@ -157,7 +157,7 @@ final class SPBalanceMaskRenderingTests: XCTestCase {
         // Same check through the real card, so the label's configuration (and
         // not just this file's copy of it) is what gets verified.
         let cardWidth = (wideBalance.size().width * 0.85).rounded() + 40   // 20pt side padding
-        let card = SPBalanceCard(balance: 1_234_567)
+        let card = SPBalanceCard(balance: 1_234_567, currency: .rub)
         card.frame = CGRect(x: 0, y: 0, width: cardWidth, height: 180)
         card.setNeedsLayout()
         card.layoutIfNeeded()
