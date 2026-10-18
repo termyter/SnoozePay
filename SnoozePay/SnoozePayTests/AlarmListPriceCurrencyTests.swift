@@ -70,6 +70,59 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         }
     }
 
+    private final class HostedList: AlarmsListViewController {
+        // Milestone presentation reads shared streak history; this fixture
+        // isolates currency refresh and keeps the real appearance/binding.
+        override func presentStreakModalIfNeeded(in viewController: UIViewController? = nil) {}
+    }
+
+    func testFirstForeignTopUpRebindsAlreadyVisibleRowsWithoutReappearance() async throws {
+        let suite = "test.alarmListFirstPaid.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = NotificationCenter()
+        let balance = BalanceService(defaults: defaults, notificationCenter: center)
+        let repository = AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler())
+        repository.save(Alarm(penaltyAmount: 2.99))
+        let monitor = AlarmBackendMonitor(
+            probe: AlarmsListBackendGuardTests.StubProbe(result: .available), notificationCenter: center
+        )
+        let viewModel = AlarmsListViewModel(
+            alarmRepository: repository, balanceService: balance,
+            transactionRepository: TransactionRepository(defaults: defaults), notificationCenter: center,
+            alarmDefaults: AlarmDefaults(defaults: defaults), backendMonitor: monitor
+        )
+        let controller = HostedList(viewModel: viewModel)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true; window.rootViewController = nil }
+        viewModel.loadData()
+        controller.view.layoutIfNeeded()
+        let table = try XCTUnwrap(descendants(of: controller.view).compactMap { $0 as? UITableView }.first)
+        table.layoutIfNeeded()
+        let first = try XCTUnwrap(table.cellForRow(at: IndexPath(row: 0, section: 0)) as? AlarmCell)
+        let rubPrice = MoneyFormatter.string(2.99, currency: .rub)
+        XCTAssertTrue(descendants(of: first).contains { $0.accessibilityLabel?.contains(rubPrice) == true })
+        let usd = Currency(code: "USD")!
+        guard case .credited = balance.topUpFromPurchase(amount: 10, currency: usd) else {
+            return XCTFail("A pristine wallet must accept its first foreign paid top-up")
+        }
+        let price = MoneyFormatter.string(2.99, currency: usd)
+        let updated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            table.visibleCells.contains { cell in
+                self.descendants(of: cell).contains { $0.accessibilityLabel?.contains(price) == true }
+            }
+        }, object: nil)
+        let result = await XCTWaiter.fulfillment(of: [updated], timeout: 5)
+        XCTAssertEqual(result, .completed, "The actual balance observer must rebind visible cells")
+        let refreshed = try XCTUnwrap(table.cellForRow(at: IndexPath(row: 0, section: 0)) as? AlarmCell)
+        XCTAssertFalse(descendants(of: refreshed).contains { $0.accessibilityLabel?.contains(rubPrice) == true })
+        let pill = try XCTUnwrap(descendants(of: refreshed).compactMap { $0 as? SPPill }.first)
+        XCTAssertTrue(descendants(of: pill).compactMap { $0 as? UIImageView }.allSatisfy { $0.isHidden })
+        XCTAssertEqual(viewModel.alarms[0].penaltyAmount, 2.99)
+    }
+
     private func withPrice(_ amount: Double, currency: Currency, body: (AlarmsListViewModel) -> Void) {
         let suite = "test.alarmListPrice.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
