@@ -74,11 +74,12 @@ final class SPWeekMoneyCard: UIView {
     func apply(
         days: [StatisticsViewModel.WeekMoneyDay],
         summary: StatisticsViewModel.MoneySummary,
+        currency: Currency,
         savingsNote: String? = nil
     ) {
         barsView.days = days
-        applyValue(savedValueLabel, amount: summary.saved, color: AppColors.money400)
-        applyValue(spentValueLabel, amount: -summary.spent, color: AppColors.pain400)
+        applyValue(savedValueLabel, amount: summary.saved, currency: currency, color: AppColors.money400)
+        applyValue(spentValueLabel, amount: -summary.spent, currency: currency, color: AppColors.pain400)
         // The net figure carries the verdict, so it takes the semantic colour
         // rather than staying neutral like the design's static mock.
         let netColor: UIColor
@@ -87,7 +88,7 @@ final class SPWeekMoneyCard: UIView {
         case .some(let net) where net < 0: netColor = AppColors.pain400
         default: netColor = AppColors.fg1
         }
-        applyValue(netValueLabel, amount: summary.net, color: netColor)
+        applyValue(netValueLabel, amount: summary.net, currency: currency, color: netColor)
 
         legendLabel.isHidden = false
         barsView.isHidden = false
@@ -98,12 +99,12 @@ final class SPWeekMoneyCard: UIView {
         savingsNoteLabel.isHidden = savingsNote == nil
     }
 
-    private func applyValue(_ label: UILabel, amount: Double?, color: UIColor) {
+    private func applyValue(_ label: UILabel, amount: Double?, currency: Currency, color: UIColor) {
         label.textColor = color
         label.attributedText = StatisticsViewModel.signedMoneyAttributed(
-            amount, digitsFont: AppTypography.moneyMd, color: color
+            amount, currency: currency, digitsFont: AppTypography.moneyMd, color: color
         )
-        label.accessibilityLabel = StatisticsViewModel.signedMoneyText(amount)
+        label.accessibilityLabel = StatisticsViewModel.signedMoneyText(amount, currency: currency)
     }
 
     // MARK: - Layout

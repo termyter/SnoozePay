@@ -81,7 +81,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         today: Date,
         inputs: StatisticsViewModel.MoneyInputs
     ) -> [StatisticsViewModel.WeekMoneyDay] {
-        StatisticsViewModel.weekMoneyDays(today: today, inputs: inputs, calendar: calendar)
+        StatisticsViewModel.weekMoneyDays(today: today, inputs: inputs, currency: .rub, calendar: calendar)
     }
 
     private func makeDay(
@@ -377,15 +377,15 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
 
     func testSignedMoneyText_carriesSignSeparatorAndCurrency() {
         XCTAssertEqual(
-            StatisticsViewModel.signedMoneyText(800), "+800\(MoneyFormatter.narrowSpace)₽",
+            StatisticsViewModel.signedMoneyText(800, currency: .rub), "+800\(MoneyFormatter.narrowSpace)₽",
             "Plain text must match MoneyFormatter exactly — VoiceOver reads this string"
         )
         XCTAssertEqual(
-            StatisticsViewModel.signedMoneyText(-400), "−400\(MoneyFormatter.narrowSpace)₽",
+            StatisticsViewModel.signedMoneyText(-400, currency: .rub), "−400\(MoneyFormatter.narrowSpace)₽",
             "Design copy uses U+2212, not a hyphen"
         )
-        XCTAssertEqual(StatisticsViewModel.signedMoneyText(0), "0\(MoneyFormatter.narrowSpace)₽")
-        XCTAssertEqual(StatisticsViewModel.signedMoneyText(nil), "—")
+        XCTAssertEqual(StatisticsViewModel.signedMoneyText(0, currency: .rub), "0\(MoneyFormatter.narrowSpace)₽")
+        XCTAssertEqual(StatisticsViewModel.signedMoneyText(nil, currency: .rub), "—")
     }
 
     /// Regression for #348 review finding 2: the mono money labels must go
@@ -394,7 +394,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
     func testSignedMoneyAttributed_reFontsTheSeparatorRun() {
         let mono = AppTypography.moneyMd
         let attributed = StatisticsViewModel.signedMoneyAttributed(
-            800, digitsFont: mono, color: AppColors.money400
+            800, currency: .rub, digitsFont: mono, color: AppColors.money400
         )
 
         XCTAssertEqual(attributed.string, "+800\(MoneyFormatter.narrowSpace)₽")
@@ -414,7 +414,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
 
     func testSignedMoneyAttributed_unknownAmountRendersDash() {
         let attributed = StatisticsViewModel.signedMoneyAttributed(
-            nil, digitsFont: AppTypography.moneyMd, color: AppColors.fg1
+            nil, currency: .rub, digitsFont: AppTypography.moneyMd, color: AppColors.fg1
         )
 
         XCTAssertEqual(attributed.string, "—")

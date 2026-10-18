@@ -93,6 +93,7 @@ final class StatisticsViewModel {
     /// (#348) — a saved morning is worth whatever a snooze would have cost.
     private let alarmRepository: AlarmRepository
     private let defaults: UserDefaults
+    private let currencyStore: WalletCurrencyStore
 
     /// UserDefaults key under which the all-time best streak is persisted.
     /// Centralised here so the read in `bestStreak` and the bump in `loadData`
@@ -117,6 +118,8 @@ final class StatisticsViewModel {
     // MARK: - State
 
     private(set) var charges: [Transaction] = []
+    /// Denomination captured by the same load as the financial snapshot.
+    private(set) var walletCurrency: Currency
     private(set) var wakeDays: Set<Date> = []
     /// Days on which the user *attempted* a snooze — every `.charge` row,
     /// including ones later rolled back by a refund. `charges` deliberately
@@ -206,6 +209,9 @@ final class StatisticsViewModel {
         self.wakeStore = wakeStore
         self.alarmRepository = alarmRepository
         self.defaults = defaults
+        let currencyStore = WalletCurrencyStore(defaults: defaults)
+        self.currencyStore = currencyStore
+        self.walletCurrency = currencyStore.currency
         self.calendar = calendar
     }
 
@@ -216,6 +222,7 @@ final class StatisticsViewModel {
         // heatmap and money/trend snapshots must describe one instant even if
         // midnight or a new dismissal lands while the ledger is decoding.
         let now = Date()
+        walletCurrency = currencyStore.currency
         let capturedWakeDays = wakeStore.wakeDays()
         let capturedWakeTimes = wakeStore.wakeTimes()
 
@@ -416,6 +423,7 @@ final class StatisticsViewModel {
                 attemptedSnoozeDays: attemptedSnoozeDays,
                 snoozePrice: snoozePrice
             ),
+            currency: walletCurrency,
             calendar: calendar
         )
         weekMoneySummary = Self.moneySummary(days: weekMoneyDays)
