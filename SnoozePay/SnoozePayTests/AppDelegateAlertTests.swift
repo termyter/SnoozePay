@@ -39,6 +39,19 @@ private final class SwallowingHost: UIViewController {
     }
 }
 
+/// Observes UIKit's real appearance callback; merely having a window does
+/// not mean the root's appearance transition has finished (#918).
+private final class MountedAlertHost: UIViewController {
+    var onDidAppear: (() -> Void)?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        let callback = onDidAppear
+        onDidAppear = nil
+        callback?()
+    }
+}
+
 /// The two alerts `AppDelegate` puts up itself, both of which used to be
 /// presented without a trace: the corrupt-alarm-data one (#752) and the
 /// notifications-disabled one (#789), whose copy also used to live in Swift
@@ -102,8 +115,8 @@ final class AppDelegateAlertTests: XCTestCase {
     private let message = "Тестовое сообщение о повреждённых данных будильника"
     private var savedRetry: ((@escaping (UIViewController?) -> Void) -> Void)!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         // The retry runs at once on the same presenter, so a refusal here ends
         // in its drop line synchronously instead of a timer firing mid-suite
         // (#805). `NotificationsAlertRetryTests` covers the retry itself.
@@ -113,18 +126,28 @@ final class AppDelegateAlertTests: XCTestCase {
         // would otherwise spend the backlog the preceding synchronous tests
         // left queued inside its own wait (#618, #693).
         drainMainQueue()
-        previousKeyWindow = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow }
-        window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first { $0.activationState == .foregroundActive },
+            "the alert harness requires the test host's active window scene"
+        )
+        previousKeyWindow = scene.windows.first { $0.isKeyWindow }
+        // A scene-less window can have a mounted root while the app's scene
+        // keeps another window key. In #918's failed CI attempt UIKit reported
+        // precisely that, and ALERT-SHOWN arrived only in the NEXT test's drain.
+        window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
     }
 
     override func tearDown() {
-        window?.rootViewController?.dismiss(animated: false)
+        dismissMountedAlert()
         window?.rootViewController = nil
         window?.isHidden = true
         window = nil
+        // Spend this fixture's deferred removal work before restoring the
+        // previous key window or letting the next test install a log sink.
+        drainMainQueue()
         previousKeyWindow?.makeKeyAndVisible()
         previousKeyWindow = nil
         AppDelegate.scheduleNotificationsAlertRetry = savedRetry
@@ -730,14 +753,35 @@ final class AppDelegateAlertTests: XCTestCase {
     }
 
     private func makeMountedHost() -> UIViewController {
-        let host = UIViewController()
+        let appeared = expectation(description: "the alert presenter's root appearance finished")
+        let host = MountedAlertHost()
+        host.onDidAppear = { appeared.fulfill() }
         window.rootViewController = host
         window.makeKeyAndVisible()
-        host.loadViewIfNeeded()
+        window.layoutIfNeeded()
+        // FIFO queue quietness does not finish a UIKit appearance transition.
+        // Wait for the actual lifecycle boundary before testing presentation;
+        // keep the alert's separate 25 s wait and completion-order assertions.
+        wait(for: [appeared], timeout: 25)
+        XCTAssertEqual(window.windowScene?.activationState, .foregroundActive)
+        XCTAssertTrue(window.isKeyWindow, "the alert must use the scene's actual key window")
+        XCTAssertTrue(host.viewIfLoaded?.window === window)
+        XCTAssertNil(host.transitionCoordinator, "the root's appearance must have settled")
         XCTAssertNil(
             host.presentedViewController,
             "test precondition: mounting already presented something, and the assertions would grade it"
         )
         return host
+    }
+
+    private func dismissMountedAlert() {
+        guard let root = window?.rootViewController, root.presentedViewController != nil else { return }
+        let dismissed = expectation(description: "the alert's dismissal finished before its window is released")
+        root.dismiss(animated: false) { dismissed.fulfill() }
+        // Keep the window and root alive until UIKit finishes, otherwise its
+        // outstanding presentation completion can escape into the next test.
+        wait(for: [dismissed], timeout: 25)
+        XCTAssertNil(root.presentedViewController)
+        XCTAssertNil(root.transitionCoordinator, "dismissal must not outlive the fixture")
     }
 }
