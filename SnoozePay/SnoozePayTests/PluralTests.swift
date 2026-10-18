@@ -113,11 +113,6 @@ final class PluralTests: XCTestCase {
                 "WokeMorningContent, count = \(count)"
             )
             XCTAssertEqual(
-                DepositPresets.snoozeNoun(for: count),
-                Plural.word(count, .snoozes),
-                "DepositPresets, count = \(count)"
-            )
-            XCTAssertEqual(
                 SnoozeAffordability.snoozeWord(for: count),
                 Plural.word(count, .snoozes),
                 "SnoozeAffordability, count = \(count)"
@@ -125,12 +120,10 @@ final class PluralTests: XCTestCase {
         }
     }
 
-    /// The three façades that spell the same noun must also agree with each
-    /// other — they were three separate word lists before.
+    /// The remaining façades that spell the same noun agree with each other.
     func testNominativeSnoozeCopyIsSpelledOnceEverywhere() {
         for count in boundaries {
             let statistics = StatisticsViewModel.snoozeWord(count)
-            XCTAssertEqual(DepositPresets.snoozeNoun(for: count), statistics, "count = \(count)")
             XCTAssertEqual(SnoozeAffordability.snoozeWord(for: count), statistics, "count = \(count)")
         }
     }
