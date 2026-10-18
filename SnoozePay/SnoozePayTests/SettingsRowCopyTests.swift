@@ -42,6 +42,17 @@ import XCTest
 @MainActor
 final class SettingsRowCopyTests: XCTestCase {
 
+    /// Recovery fixtures must never schedule or cancel real system alarms.
+    private final class NoopScheduler: AlarmScheduling {
+        func schedule(
+            _ alarm: Alarm,
+            completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
+        ) {
+            completion?(.success(()))
+        }
+        func cancel(_ alarmID: UUID) {}
+    }
+
     // MARK: - Layer 1 + 2: the catalogue and its words
 
     /// The strings as they read on screen today, copied from the literals this
@@ -94,7 +105,7 @@ final class SettingsRowCopyTests: XCTestCase {
             let defaults = UserDefaults(suiteName: suite)!
             defer { defaults.removePersistentDomain(forName: suite) }
             let ledger = TransactionRepository(defaults: defaults)
-            let alarms = AlarmRepository(defaults: defaults)
+            let alarms = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
             let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
                                         notificationCenter: NotificationCenter())
             XCTAssertTrue(wallet.topUp(amount: 149))

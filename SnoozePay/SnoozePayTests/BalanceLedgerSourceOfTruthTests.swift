@@ -341,6 +341,31 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
         }
     }
 
+    func testRecoverCorruptHistory_latchedCorruptionRefusesValidNumericCache() throws {
+        testDefaults.set(80.0, forKey: "user_balance")
+        let ledger = makeLedger()
+        let service = BalanceService(defaults: testDefaults, transactionRepository: ledger,
+                                     notificationCenter: NotificationCenter())
+        XCTAssertTrue(ledger.record(Transaction(type: .charge, amount: 500)))
+        XCTAssertEqual(service.balance, 0)
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertEqual(cachedBalance(), 80, "A valid numeric cache alone must not restore trust")
+        let corrupt = Data("unreadable after balance corruption".utf8)
+        testDefaults.set(corrupt, forKey: "stored_transactions")
+        testDefaults.set(["42"], forKey: "storekit.processed_tx_ids")
+        XCTAssertThrowsError(try ledger.fetchAllChecked())
+
+        XCTAssertFalse(service.recoverCorruptTransactionHistory())
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertTrue(ledger.lastLoadFailed)
+        XCTAssertEqual(cachedBalance(), 80)
+        XCTAssertEqual(testDefaults.double(forKey: LocalBalanceLedgerStore.openingBalanceKey), 80)
+        XCTAssertEqual(testDefaults.data(forKey: "stored_transactions"), corrupt)
+        XCTAssertEqual(testDefaults.data(forKey: TransactionRepository.corruptBackupKey), corrupt)
+        XCTAssertEqual(testDefaults.stringArray(forKey: "storekit.processed_tx_ids"), ["42"])
+    }
+
     func testRecoverCorruptHistory_healthyLedgerIsUntouched() {
         let service = makeService(balance: 80)
         XCTAssertTrue(service.topUp(amount: 300))
