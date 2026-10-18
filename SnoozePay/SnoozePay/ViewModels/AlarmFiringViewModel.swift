@@ -168,12 +168,19 @@ final class AlarmFiringViewModel {
     /// per clock tick, so this is not on a hot path.
     var billedSnoozes: BilledSnoozes { loadBilledSnoozes() }
 
-    /// Penalty amounts actually billed this wake, oldest first. Feeds the
-    /// firing screen's history ticker ("сегодня: −50 → −100 → ..."). Empty
+    /// Legacy unscoped amounts actually billed this wake, oldest first. The
+    /// currency-labelled ticker uses `pastPenalties(in:)` instead. Empty
     /// before the first billed snooze — and also when the ledger is
     /// unreadable, which hides the ticker rather than inventing amounts.
     var pastPenalties: [Double] {
         guard case .known(let amounts) = billedSnoozes else { return [] }
+        return amounts
+    }
+
+    /// Financial ticker projection. Refund pairing and ledger health checks
+    /// still see the complete history before selecting the displayed currency.
+    func pastPenalties(in currency: Currency) -> [Double] {
+        guard case .known(let amounts) = loadBilledSnoozes(currency: currency) else { return [] }
         return amounts
     }
 
@@ -206,7 +213,7 @@ final class AlarmFiringViewModel {
     /// Every failure mode returns `.unavailable` instead of an empty/partial
     /// total: this number is money the user is told they lost, so "we couldn't
     /// read it" must never render as "0 ₽" (the `try? … ?? []` trap, #210).
-    private func loadBilledSnoozes() -> BilledSnoozes {
+    private func loadBilledSnoozes(currency: Currency? = nil) -> BilledSnoozes {
         let all: [Transaction]
         do {
             all = try ledger.fetchAllChecked()
@@ -233,10 +240,10 @@ final class AlarmFiringViewModel {
         // `realCharges` must see the WHOLE ledger — a refund row lives outside
         // any window/alarm filter, and dropping it first would resurrect the
         // charge it reverses.
-        let amounts = TransactionRepository.realCharges(from: all)
+        let charges = TransactionRepository.realCharges(from: all)
             .filter { $0.alarmID == alarmKey && $0.createdAt >= windowStart }
             .sorted { $0.createdAt < $1.createdAt }
-            .map(\.amount)
+        let amounts = charges.map(\.amount)
         // Legacy rows predate the finite/positive guard in `chargeWithReceipt`
         // (#441); one NaN would render the summary as "списано nan ₽", and an
         // absurd magnitude would TRAP on the `Int` narrowing the summary does.
@@ -254,6 +261,9 @@ final class AlarmFiringViewModel {
                 "firing summary: charges sum beyond the plausible range — charged total suppressed"
             )
             return .unavailable
+        }
+        if let currency {
+            return .known(charges.filter { $0.currency == currency }.map(\.amount))
         }
         return .known(amounts)
     }

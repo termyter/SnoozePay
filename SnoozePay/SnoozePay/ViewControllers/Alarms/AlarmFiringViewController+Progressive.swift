@@ -124,8 +124,9 @@ extension AlarmFiringViewController {
             container.removeArrangedSubview($0)
             $0.removeFromSuperview()
         }
+        let currency = viewModel.walletCurrency
         let entries = SPFiringTicker.entries(
-            from: viewModel.pastPenalties, currency: viewModel.walletCurrency
+            from: viewModel.pastPenalties(in: currency), currency: currency
         )
         guard !entries.isEmpty else {
             container.isHidden = true
