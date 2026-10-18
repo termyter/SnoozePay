@@ -119,6 +119,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// Notification observer tokens torn down in `deinit`.
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
+    private var purchaseCancelledObserver: NSObjectProtocol?
+    /// Optional product dispatch keeps this real form testable without an App Store catalogue.
+    private let purchaseProduct: ((String) -> Void)?
     /// True while registered as a purchase-feedback subscriber so begin/end
     /// stay balanced across appear/disappear (#45).
     private var isObservingPurchaseFeedback = false
@@ -264,9 +267,11 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     init(
         presets: [Preset] = defaultPresets,
         snoozePrice: Double = 0,
-        currentBalance: Double = BalanceService.shared.balance
+        currentBalance: Double = BalanceService.shared.balance,
+        purchaseProduct: ((String) -> Void)? = nil
     ) {
         self.presets = presets
+        self.purchaseProduct = purchaseProduct
         self.snoozePrice = snoozePrice
         self.currentBalance = currentBalance
         // Pre-select the cheapest tier that actually unlocks a snooze at the
@@ -311,6 +316,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             NotificationCenter.default.removeObserver(token)
         }
         if let token = purchaseFailedObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = purchaseCancelledObserver {
             NotificationCenter.default.removeObserver(token)
         }
         autoResumeTimer?.invalidate()
@@ -532,6 +540,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             suffix: MoneyFormatter.string(amount),
             fullWidth: true
         )
+        button.accessibilityIdentifier = "firingTopUp.purchaseButton"
+        button.isEnabled = !purchaseInFlight
         button.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -564,6 +574,13 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             guard let self else { return }
             let message = note.userInfo?[messageKey] as? String
             self.handlePurchaseFailure(message: message)
+        }
+        purchaseCancelledObserver = center.addObserver(
+            forName: StoreKitService.purchaseCancelledNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, self.purchaseInFlight, self.successAmount == nil else { return }
+            self.purchaseInFlight = false
+            self.applePayButton.isEnabled = true
         }
     }
 }
@@ -609,6 +626,10 @@ extension FiringTopUpBottomSheetViewController {
             return
         }
 
+        if let purchaseProduct {
+            purchaseProduct(preset.productID)
+            return
+        }
         if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
             // Foreign storefront: refuse before `purchase(_:)`, while refusing
             // is still free (#563).
