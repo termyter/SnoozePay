@@ -495,10 +495,22 @@ class AlarmFiringViewController: UIViewController {
             return Localized.text("firing.hint.max_price")
         }
         let next = viewModel.alarm.penalty(forSnoozeCount: nextCount)
-        guard let nextText = Self.roundedPriceText(next) else { return nil }
+        guard let nextText = Self.quotedPriceText(next, currency: viewModel.walletCurrency) else { return nil }
         // Lowercase «следующее откладывание: …» per
         // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:241` contains "следующее откладывание".
         return Localized.format("firing.hint.next_price", nextText)
+    }
+
+    /// Quote the actual next penalty, retaining its currency and fractional units.
+    /// Huge finite integers keep full digits when Decimal cannot represent them.
+    static func quotedPriceText(_ amount: Double, currency: Currency) -> String? {
+        guard amount.isFinite, amount >= 0 else { return nil }
+        let formatted = MoneyFormatter.string(amount, currency: currency)
+        if formatted != "—" { return formatted }
+        guard amount >= 1, amount.rounded(.towardZero) == amount,
+              let digits = roundedPriceText(amount, withCurrency: false) else { return nil }
+        let unit = currency == .rub ? "₽" : currency.code
+        return digits + MoneyFormatter.narrowSpace + unit
     }
 
     /// Display-only rounding, with no Int narrowing or Decimal(Double) overflow.

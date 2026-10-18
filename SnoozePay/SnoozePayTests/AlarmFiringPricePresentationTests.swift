@@ -20,6 +20,34 @@ final class AlarmFiringPricePresentationTests: XCTestCase {
         }
     }
 
+    func testActualNextHintQuotesWalletCurrencyAndFractionalPrice() throws {
+        for (code, symbol) in [("USD", "$"), ("EUR", "€"), ("RUB", "₽")] {
+            let currency = Currency(code: code)!
+            let model = makeViewModel(base: 0.49, currency: currency)
+            let hint = try XCTUnwrap(AlarmFiringViewController(viewModel: model).snoozeHintText())
+            XCTAssertTrue(hint.contains("0,98"))
+            XCTAssertTrue(hint.contains(symbol))
+            if currency != .rub { XCTAssertFalse(hint.contains("₽")) }
+            XCTAssertEqual(model.snoozeCount, 0)
+            XCTAssertEqual(model.balance, 0)
+        }
+        let model = makeViewModel(base: 0.001, currency: Currency(code: "KWD")!)
+        let hint = try XCTUnwrap(AlarmFiringViewController(viewModel: model).snoozeHintText())
+        XCTAssertTrue(hint.contains("0,002"), "Preserve the currency's third fractional digit")
+    }
+
+    func testQuotedPricePreservesHugeFiniteCurrencyAndRejectsInvalidOrLossySubunits() throws {
+        let currency = Currency(code: "USD")!
+        let digits = try XCTUnwrap(AlarmFiringViewController.roundedPriceText(
+            .greatestFiniteMagnitude, withCurrency: false
+        ))
+        XCTAssertEqual(AlarmFiringViewController.quotedPriceText(.greatestFiniteMagnitude, currency: currency),
+                       digits + MoneyFormatter.narrowSpace + "USD")
+        for invalid in [Double.nan, .infinity, -.infinity, -1, .leastNonzeroMagnitude] {
+            XCTAssertNil(AlarmFiringViewController.quotedPriceText(invalid, currency: currency))
+        }
+    }
+
     func testRoundedPriceTextPreservesOrdinaryCurrencyFormattingAndKnownLargeDigits() {
         XCTAssertEqual(AlarmFiringViewController.roundedPriceText(1234.5), MoneyFormatter.string(1235))
         XCTAssertEqual(AlarmFiringViewController.roundedPriceText(9_223_372_036_854_775_808, withCurrency: false),
@@ -75,9 +103,11 @@ final class AlarmFiringPricePresentationTests: XCTestCase {
     }
     #endif
 
-    private func makeViewModel(base: Double, snoozeCount: Int = 0) -> AlarmFiringViewModel {
+    private func makeViewModel(
+        base: Double, snoozeCount: Int = 0, currency: Currency = .rub
+    ) -> AlarmFiringViewModel {
         AlarmFiringViewModel(alarm: Alarm(penaltyAmount: base, progressiveScale: true),
-                            snoozeCount: snoozeCount, balanceService: EmptyWallet())
+                            snoozeCount: snoozeCount, balanceService: EmptyWallet(currency: currency))
     }
 
     private func ladderLabels(for viewModel: AlarmFiringViewModel) -> [String] {
@@ -91,7 +121,8 @@ final class AlarmFiringPricePresentationTests: XCTestCase {
     }
 
     private final class EmptyWallet: AlarmFiringBalancing {
-        let walletCurrency: Currency = .rub
+        let walletCurrency: Currency
+        init(currency: Currency) { walletCurrency = currency }
         let balance: Double = 0
         func canAfford(_ amount: Double) -> Bool { false }
         func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? { nil }
