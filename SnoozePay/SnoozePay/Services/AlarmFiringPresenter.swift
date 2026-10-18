@@ -324,7 +324,7 @@ final class AlarmFiringPresenter {
             alarm = try alarmRepository.fetchChecked(id: alarmID)
         } catch {
             stopAudio(ifOwnedBy: request, "fetch failed (\(String(describing: error)))")
-            if !criticalWarnings.contains(alarmID: alarmID) {
+            if !criticalWarnings.containsAlarmLoadFailure(alarmID: alarmID) {
                 let previous = corruptionAlarmID
                 corruptionAlarmID = alarmID
                 defer { corruptionAlarmID = previous }

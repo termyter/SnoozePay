@@ -78,6 +78,7 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
         XCTAssertEqual(saved.count, 1)
         XCTAssertEqual(saved.first?.alarmID, alarmID)
         XCTAssertEqual(saved.first?.message, banner.content.body)
+        XCTAssertEqual(saved.first?.cause, .alarmLoadFailed)
 
         let failures = lines.filter { $0.message.hasPrefix("ALARMKIT-868-SNOOZE-LOAD-FAILED: ") }
         XCTAssertEqual(failures.count, 1, "the lost snooze must leave one line with its error id: \(lines)")

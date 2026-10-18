@@ -99,19 +99,35 @@ final class CriticalWarningCenterTests: XCTestCase {
         center.isForegroundActive = { false }
     }
 
-    func testPreviouslyQueuedFiringPresentation_doesNotDuplicateTheCriticalCorruptionWarning() {
+    func testOldScheduleWarning_doesNotHideNewCorruption_forTheSameAlarm() {
         defaults.set(Data("unreadable alarms".utf8), forKey: "stored_alarms")
         let alarmID = UUID()
-        center.record(detail: "decode failed", refundLanded: true, alarmID: alarmID)
+        center.record(.scheduleFailedAndRefundFailed(.system(message: "old schedule failure")), alarmID: alarmID)
         let presenter = AlarmFiringPresenter(alarmRepository: AlarmRepository(defaults: defaults))
         presenter.criticalWarnings = center
         var genericReports = 0
         presenter.reportDataCorrupted = { _ in genericReports += 1 }
         XCTAssertTrue(presenter.present(alarmID: alarmID))
-        XCTAssertEqual(genericReports, 0)
+        XCTAssertEqual(genericReports, 1, "the old scheduling/refund warning does not explain this new corruption")
+        center.record(detail: "decode failed", refundLanded: true, alarmID: alarmID, cause: .alarmLoadFailed)
+        XCTAssertTrue(presenter.present(alarmID: alarmID))
+        XCTAssertEqual(genericReports, 1, "only a load-failure warning owns this corruption diagnostic")
         XCTAssertTrue(presenter.present(alarmID: UUID()))
-        XCTAssertEqual(genericReports, 1, "unrelated alarm corruption still has its diagnostic")
-        XCTAssertEqual(makeCenter().pending.count, 1)
+        XCTAssertEqual(genericReports, 2, "unrelated alarm corruption still has its diagnostic")
+        XCTAssertEqual(makeCenter().pending.count, 2)
+    }
+
+    func testLegacyWarning_withoutCause_remainsReadableAndDoesNotSuppressCorruption() throws {
+        let alarmID = UUID()
+        let legacy: [String: Any] = [
+            "id": UUID().uuidString, "alarmID": alarmID.uuidString,
+            "detail": "previous warning format", "refundLanded": false
+        ]
+        defaults.set(try JSONSerialization.data(withJSONObject: [legacy]), forKey: "pending_critical_warnings")
+        let reloaded = makeCenter()
+        XCTAssertEqual(reloaded.pending.count, 1)
+        XCTAssertNil(reloaded.pending.first?.cause)
+        XCTAssertFalse(reloaded.containsAlarmLoadFailure(alarmID: alarmID))
     }
 
     func testRestoredDefaultReporter_keepsDeferredAlarmIdentity_andDoesNotSuppressIdenticalUnrelatedError() {
@@ -133,13 +149,20 @@ final class CriticalWarningCenterTests: XCTestCase {
         delegate.reportAlarmCorruption(error, alarmID: alarmID)
         XCTAssertEqual(overrides, 1)
         delegate.reportAlarmDataCorrupted = saved
+        center.record(detail: "earlier scheduling failure", refundLanded: false, alarmID: alarmID)
         AppDelegate.forwardAlarmDataCorrupted(error, alarmID: alarmID, to: delegate)
-        center.record(detail: error.localizedDescription, refundLanded: true, alarmID: alarmID)
         drainMainQueue()
-        XCTAssertEqual(host.attempts, 0, "the restored default must retain this alarm's deferred context")
+        XCTAssertEqual(host.attempts, 1, "an older scheduling warning does not replace this corruption cause")
+        host.screen = nil
+        AppDelegate.forwardAlarmDataCorrupted(error, alarmID: alarmID, to: delegate)
+        center.record(
+            detail: error.localizedDescription, refundLanded: true, alarmID: alarmID, cause: .alarmLoadFailed
+        )
+        drainMainQueue()
+        XCTAssertEqual(host.attempts, 1, "the restored default must retain this alarm's deferred context")
         AppDelegate.forwardAlarmDataCorrupted(error, alarmID: UUID(), to: delegate)
         drainMainQueue()
-        XCTAssertEqual(host.attempts, 1, "identical text for another alarm must not suppress its alert")
+        XCTAssertEqual(host.attempts, 2, "identical text for another alarm must not suppress its alert")
     }
 
     func testUnreadableQueue_newWarningSurvivesRelaunch_andOriginalBackupsRemainIntact() {
@@ -189,12 +212,34 @@ final class CriticalWarningCenterTests: XCTestCase {
         backend.completion = nil
         completion(.failure(NSError(domain: "schedule rejected", code: 1)))
         XCTAssertEqual(balance.balance, 100)
-        XCTAssertEqual(makeCenter().pending.count, 1)
         let transactionsBeforeReplay = try ledger.fetchAllChecked()
-        center.flush()
-        makeCenter().flush()
-        XCTAssertEqual(try ledger.fetchAllChecked().count, transactionsBeforeReplay.count)
-        XCTAssertEqual(backend.snoozeCalls, 1, "replay must not schedule a second snooze")
+        XCTAssertEqual(transactionsBeforeReplay.filter { $0.type == .charge }.count, 1)
+        XCTAssertEqual(transactionsBeforeReplay.filter { $0.type == .refund }.count, 1)
+        let ledgerBeforeReplay = defaults.data(forKey: "stored_transactions")
+        let balanceBeforeReplay = balance.balance
+        let replay = makeCenter()
+        let host = Host()
+        let window = UIWindow()
+        window.rootViewController = host
+        window.isHidden = false
+        defer { replay.isForegroundActive = { false }; window.isHidden = true; window.rootViewController = nil }
+        replay.locateRoot = { [weak host] in host }
+        replay.isForegroundActive = { true }
+        replay.flush()
+        let alert = try XCTUnwrap(host.screen as? UIAlertController)
+        XCTAssertEqual(host.attempts, 1, "the reconstructed warning must actually be presented in foreground")
+        XCTAssertEqual(alert.message, replay.pending.first?.message)
+        replay.flush()
+        XCTAssertEqual(host.attempts, 1, "a repeated foreground flush must not duplicate the in-flight alert")
+        // Exercise the store acknowledgement used by OK; this is not a UIKit button-tap test.
+        replay.acknowledge(try XCTUnwrap(replay.pending.first).id)
+        host.screen = nil
+        replay.flush()
+        XCTAssertTrue(makeCenter().pending.isEmpty)
+        XCTAssertEqual(host.attempts, 1)
+        XCTAssertEqual(defaults.data(forKey: "stored_transactions"), ledgerBeforeReplay)
+        XCTAssertEqual(balance.balance, balanceBeforeReplay)
+        XCTAssertEqual(backend.snoozeCalls, 1, "foreground replay and acknowledgement must not reschedule")
     }
 
     private final class Host: UIViewController {

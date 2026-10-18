@@ -6,10 +6,14 @@ import os
 @MainActor
 final class CriticalWarningCenter {
     struct Warning: Codable, Equatable {
+        enum Cause: String, Codable { case schedulingFailed, alarmLoadFailed }
+
         let id: UUID
         let alarmID: UUID?
         let detail: String
         let refundLanded: Bool
+        // Missing in older records: keep them readable without suppressing a new cause.
+        let cause: Cause?
 
         var title: String { Localized.text("alarm_failure.snooze.title") }
         var message: String {
@@ -48,8 +52,10 @@ final class CriticalWarningCenter {
         }
     }
 
-    func record(detail: String, refundLanded: Bool, alarmID: UUID?) {
-        pending.append(Warning(id: UUID(), alarmID: alarmID, detail: detail, refundLanded: refundLanded))
+    func record(
+        detail: String, refundLanded: Bool, alarmID: UUID?, cause: Warning.Cause = .schedulingFailed
+    ) {
+        pending.append(Warning(id: UUID(), alarmID: alarmID, detail: detail, refundLanded: refundLanded, cause: cause))
         _ = persist(pending) // Before any UIKit/optional-banner attempt.
         // Let the original callback finish its firing-screen teardown first.
         DispatchQueue.main.async { [weak self] in self?.flush() }
@@ -65,8 +71,8 @@ final class CriticalWarningCenter {
         }
     }
 
-    func contains(alarmID: UUID) -> Bool {
-        pending.contains { $0.alarmID == alarmID }
+    func containsAlarmLoadFailure(alarmID: UUID) -> Bool {
+        pending.contains { $0.alarmID == alarmID && $0.cause == .alarmLoadFailed }
     }
 
     func acknowledge(_ id: UUID) {

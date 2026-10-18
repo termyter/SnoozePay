@@ -297,6 +297,7 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         let saved = CriticalWarningCenter(defaults: defaults).pending
         XCTAssertEqual(saved.count, 1)
         XCTAssertEqual(saved.first?.message, banner.content.body)
+        XCTAssertEqual(saved.first?.cause, .alarmLoadFailed)
     }
 
     // MARK: - Helpers

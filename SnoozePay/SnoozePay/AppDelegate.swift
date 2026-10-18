@@ -610,7 +610,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // fires with no sound of its own, no firing screen and no diagnostic.
             // The alert is presented from the same dispatch we'd use for the
             // firing screen so it reaches whichever VC is on top.
-            if !criticalWarnings.contains(alarmID: payload.alarmID) {
+            if !criticalWarnings.containsAlarmLoadFailure(alarmID: payload.alarmID) {
                 reportAlarmCorruption(error, alarmID: payload.alarmID)
             }
             return .loadFailed
@@ -676,7 +676,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 error: error, refundLanded: false, alarmID: alarmID, poster: poster
             )
         case let .alarmLoadFailed(error):
-            criticalWarnings.record(detail: error.localizedDescription, refundLanded: true, alarmID: alarmID)
+            criticalWarnings.record(
+                detail: error.localizedDescription, refundLanded: true, alarmID: alarmID, cause: .alarmLoadFailed
+            )
             AppDelegate.postSnoozeScheduleFailedBanner(
                 detail: error.localizedDescription, refundLanded: true, alarmID: alarmID, poster: poster
             )
@@ -814,7 +816,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let warnings = criticalWarnings
         let locateRoot = locateCorruptionAlertRoot
         DispatchQueue.main.async {
-            if let alarmID, warnings.contains(alarmID: alarmID) { return }
+            if let alarmID, warnings.containsAlarmLoadFailure(alarmID: alarmID) { return }
             let rootVC: UIViewController
             switch locateRoot() {
             case let .success(located):
