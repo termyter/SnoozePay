@@ -209,10 +209,9 @@ extension StatisticsViewModel {
         }
 
         private static func displayAmount(from saved: Double) -> Decimal? {
-            guard saved.isFinite, saved > 0 else { return nil }
-            // Keep the UI's Decimal amount free of binary Double artefacts
-            // (50.0 must not become 49.999… before MoneyFormatter truncates).
-            return Decimal(string: String(format: "%.2f", saved))
+            let amount = MoneyFormatter.decimalForDisplay(saved)
+            guard !amount.isNaN, amount > 0 else { return nil }
+            return amount
         }
     }
 

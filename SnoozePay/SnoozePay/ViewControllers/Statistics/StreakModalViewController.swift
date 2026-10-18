@@ -61,6 +61,7 @@ final class StreakModalViewController: UIViewController {
     /// Number of consecutive snooze-free days. Drives the caption + the
     /// completed-square count in the 7-day visualizer.
     private let streakDays: Int
+    private let currency: Currency
 
     private let mode: Mode
 
@@ -162,8 +163,9 @@ final class StreakModalViewController: UIViewController {
     ///     The modal deliberately does **not** read the repository itself: the
     ///     `try?`-swallowed read it did before review turned a corrupted
     ///     `saved_alarms` blob into a confident, shareable "+350 ₽".
-    init(streakDays: Int, savedAmount: Decimal?) {
+    init(streakDays: Int, savedAmount: Decimal?, currency: Currency) {
         self.streakDays = streakDays
+        self.currency = currency
         self.mode = Self.mode(streakDays: streakDays, savedAmount: savedAmount)
         super.init(nibName: nil, bundle: nil)
         // Custom overlay presentation so we can paint our own backdrop with
@@ -372,7 +374,7 @@ final class StreakModalViewController: UIViewController {
         // Flat fallback in case the mask can't rasterise (zero-width label on a
         // pathological layout) — the number stays readable, just untinted.
         amountLabel.textColor = AppColors.money400
-        amountLabel.text = Self.formatSavedAmount(amount)
+        amountLabel.text = Self.formatSavedAmount(amount, currency: currency)
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
     }
 
@@ -458,7 +460,7 @@ final class StreakModalViewController: UIViewController {
         guard presentedViewController == nil else { return }
 
         let activity = UIActivityViewController(
-            activityItems: [Self.shareText(streakDays: streakDays, savedAmount: amount)],
+            activityItems: [Self.shareText(streakDays: streakDays, savedAmount: amount, currency: currency)],
             applicationActivities: nil
         )
         activity.completionWithItemsHandler = { activityType, completed, _, error in
@@ -506,7 +508,7 @@ extension StreakModalViewController {
     ///   "+0 ₽ / Сэкономили за неделю / Поделиться победой" is a joke at the
     ///   user's expense.
     static func mode(streakDays: Int, savedAmount: Decimal?) -> Mode {
-        guard streakDays > 0, let savedAmount, savedAmount > 0 else { return .behavioral }
+        guard streakDays > 0, let savedAmount, !savedAmount.isNaN, savedAmount > 0 else { return .behavioral }
         return .savings(savedAmount)
     }
 
@@ -561,19 +563,19 @@ extension StreakModalViewController {
             )
     }
 
-    /// Format the saved amount as `+1 234 ₽` with the brand thousand separator.
-    static func formatSavedAmount(_ amount: Decimal) -> String {
-        "+\(amount.formattedRubles())"
+    /// Format the saved amount in the caller's wallet currency.
+    static func formatSavedAmount(_ amount: Decimal, currency: Currency) -> String {
+        "+\(MoneyFormatter.string(amount, currency: currency))"
     }
 
     /// Text handed to `UIActivityViewController` by "Поделиться победой".
     /// Wording fixed by PM on 2026-07-30 (#347).
-    static func shareText(streakDays: Int, savedAmount: Decimal) -> String {
+    static func shareText(streakDays: Int, savedAmount: Decimal, currency: Currency) -> String {
         Localized.format(
             "streak.share.message",
             streakDays,
             dayWord(for: streakDays),
-            savedAmount.formattedRubles()
+            MoneyFormatter.string(savedAmount, currency: currency)
         )
     }
 

@@ -581,14 +581,15 @@ final class StatisticsViewController: UIViewController {
         )
         let modal = StreakModalViewController(
             streakDays: viewModel.streak,
-            savedAmount: saved
+            savedAmount: saved,
+            currency: viewModel.walletCurrency
         )
         present(modal, animated: true)
     }
 
     #if DEBUG
     @objc func debugStreakTapped() {
-        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub)
         present(modal, animated: true)
     }
 

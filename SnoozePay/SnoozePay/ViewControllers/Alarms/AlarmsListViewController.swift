@@ -143,7 +143,8 @@ class AlarmsListViewController: UIViewController {
             cleanDays: streakDays,
             alarms: viewModel.alarms
         )
-        let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved)
+        let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved,
+                                               currency: viewModel.walletCurrency)
         host.present(modal, animated: true)
     }
 
@@ -354,7 +355,7 @@ class AlarmsListViewController: UIViewController {
             tableView.tableHeaderView = nil
             return
         }
-        streakBanner.configure(streakDays: streak, savedAmount: saved)
+        streakBanner.configure(streakDays: streak, savedAmount: saved, currency: viewModel.walletCurrency)
         // Size the table header view with a layout pass — UITableView's
         // tableHeaderView requires a non-zero frame to render at all.
         let targetWidth = tableView.bounds.width > 0 ? tableView.bounds.width : view.bounds.width

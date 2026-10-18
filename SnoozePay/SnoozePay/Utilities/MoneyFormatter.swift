@@ -101,7 +101,7 @@ enum MoneyFormatter {
         currency: Currency,
         locale: Locale = AppLocale.display
     ) -> String {
-        string(decimalAmount(amount), currency: currency, locale: locale)
+        string(decimalForDisplay(amount), currency: currency, locale: locale)
     }
 
     static func attributed(
@@ -113,7 +113,7 @@ enum MoneyFormatter {
         locale: Locale = AppLocale.display
     ) -> NSAttributedString {
         attributed(
-            decimalAmount(amount), currency: currency, digitsFont: digitsFont,
+            decimalForDisplay(amount), currency: currency, digitsFont: digitsFont,
             prefix: prefix, color: color, locale: locale
         )
     }
@@ -163,12 +163,12 @@ enum MoneyFormatter {
         return result
     }
 
-    // MARK: - Private
+    // MARK: - Display bridge
 
     /// Decimal(Double) can change even exact large integers. Keep their fixed
     /// C-format digits; for fractions use Double's shortest round-trip text.
     /// Unrepresentable values stay unknown instead of becoming zero.
-    private static func decimalAmount(_ amount: Double) -> Decimal {
+    static func decimalForDisplay(_ amount: Double) -> Decimal {
         guard amount.isFinite, amount >= 0 else { return .nan }
         let integral = amount.rounded(.towardZero) == amount
         let text = integral ? String(format: "%.0f", amount) : String(amount)
@@ -184,6 +184,8 @@ enum MoneyFormatter {
               Double(NSDecimalNumber(decimal: decimal).stringValue) == amount else { return .nan }
         return decimal
     }
+
+    // MARK: - Private
 
     /// Shared grouping formatter — `NumberFormatter` construction costs
     /// ~0.5ms; money strings rebuild on every balance tick so cache it.

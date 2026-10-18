@@ -71,11 +71,11 @@ final class StreakModalCopyTests: XCTestCase {
 
     func testFormatSavedAmountIsSignedAndGrouped() {
         XCTAssertEqual(
-            StreakModalViewController.formatSavedAmount(350),
+            StreakModalViewController.formatSavedAmount(350, currency: .rub),
             "+350\(MoneyFormatter.narrowSpace)₽"
         )
         XCTAssertEqual(
-            StreakModalViewController.formatSavedAmount(1500),
+            StreakModalViewController.formatSavedAmount(1500, currency: .rub),
             "+\(MoneyFormatter.digits(Decimal(1500)))\(MoneyFormatter.narrowSpace)₽"
         )
     }
@@ -89,7 +89,7 @@ final class StreakModalCopyTests: XCTestCase {
             alarms: [defaultPriced]
         )
         XCTAssertEqual(
-            saved.map(StreakModalViewController.formatSavedAmount),
+            saved.map { StreakModalViewController.formatSavedAmount($0, currency: .rub) },
             "+350\(MoneyFormatter.narrowSpace)₽"
         )
     }
@@ -98,18 +98,18 @@ final class StreakModalCopyTests: XCTestCase {
 
     func testShareTextMentionsStreakAndSavedAmount() {
         XCTAssertEqual(
-            StreakModalViewController.shareText(streakDays: 7, savedAmount: 350),
+            StreakModalViewController.shareText(streakDays: 7, savedAmount: 350, currency: .rub),
             "Я не откладываю будильник 7 дней и сэкономил 350\(MoneyFormatter.narrowSpace)₽ — SnoozePay"
         )
     }
 
     func testShareTextDeclinesTheDayWord() {
         XCTAssertTrue(
-            StreakModalViewController.shareText(streakDays: 1, savedAmount: 50)
+            StreakModalViewController.shareText(streakDays: 1, savedAmount: 50, currency: .rub)
                 .hasPrefix("Я не откладываю будильник 1 день ")
         )
         XCTAssertTrue(
-            StreakModalViewController.shareText(streakDays: 3, savedAmount: 150)
+            StreakModalViewController.shareText(streakDays: 3, savedAmount: 150, currency: .rub)
                 .hasPrefix("Я не откладываю будильник 3 дня ")
         )
     }
@@ -186,7 +186,7 @@ final class StreakModalCopyTests: XCTestCase {
     // the loaded sheet and assert what the user can actually see and tap.
 
     func testRenderedSheetShowsHeroAndShareForRealSavings() {
-        let vc = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub)
         vc.loadViewIfNeeded()
 
         let texts = Self.renderedText(in: vc.view)
@@ -199,7 +199,7 @@ final class StreakModalCopyTests: XCTestCase {
     }
 
     func testRenderedSheetHidesHeroAndShareWhenAmountUnavailable() {
-        let vc = StreakModalViewController(streakDays: 7, savedAmount: nil)
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: nil, currency: .rub)
         vc.loadViewIfNeeded()
 
         let texts = Self.renderedText(in: vc.view)
@@ -213,7 +213,7 @@ final class StreakModalCopyTests: XCTestCase {
     }
 
     func testRenderedSheetHidesHeroAndShareForZeroSavings() {
-        let vc = StreakModalViewController(streakDays: 7, savedAmount: 0)
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: 0, currency: .rub)
         vc.loadViewIfNeeded()
 
         let texts = Self.renderedText(in: vc.view)
@@ -222,7 +222,7 @@ final class StreakModalCopyTests: XCTestCase {
     }
 
     func testRenderedSheetHidesMoneyForZeroStreak() {
-        let vc = StreakModalViewController(streakDays: 0, savedAmount: 350)
+        let vc = StreakModalViewController(streakDays: 0, savedAmount: 350, currency: .rub)
         vc.loadViewIfNeeded()
 
         let texts = Self.renderedText(in: vc.view)
@@ -234,7 +234,7 @@ final class StreakModalCopyTests: XCTestCase {
     /// the full sheet width, so only `textAlignment` keeps the glyphs in the
     /// middle (`applyGradientMask` reproduces it when it rasterises the mask).
     func testMoneyHeroIsCentreAligned() {
-        let vc = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub)
         vc.loadViewIfNeeded()
 
         let hero = Self.labels(in: vc.view).first {
@@ -253,7 +253,7 @@ final class StreakModalCopyTests: XCTestCase {
     /// of a real layout pass* is what catches that — the drawing code being
     /// correct proves nothing if it never runs.
     func testMoneyHeroGradientMaskLandsAfterLayoutPass() {
-        let vc = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub)
         vc.view.frame = CGRect(x: 0, y: 0, width: 440, height: 956)
         vc.loadViewIfNeeded()
         vc.view.layoutIfNeeded()
@@ -278,7 +278,7 @@ final class StreakModalCopyTests: XCTestCase {
     /// The behavioural sheet has no hero at all — nothing to mask, and no
     /// stray gradient layer left behind.
     func testBehavioralSheetHasNoGradientHero() {
-        let vc = StreakModalViewController(streakDays: 7, savedAmount: nil)
+        let vc = StreakModalViewController(streakDays: 7, savedAmount: nil, currency: .rub)
         vc.view.frame = CGRect(x: 0, y: 0, width: 440, height: 956)
         vc.loadViewIfNeeded()
         vc.view.layoutIfNeeded()
