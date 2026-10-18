@@ -379,6 +379,7 @@ private final class CorruptingThenFailingAlarmKit: AlarmKitScheduling {
         completion(.failure(Rejected()))
     }
 
+    func cancelOriginal(_ alarmID: UUID) {}
     func cancel(_ alarmID: UUID) {}
     func stop(_ alarmID: UUID) {}
 }

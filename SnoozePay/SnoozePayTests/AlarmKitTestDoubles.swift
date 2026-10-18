@@ -28,6 +28,7 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     private(set) var scheduledIDs: [UUID] = []
     private(set) var snoozedIDs: [UUID] = []
     private(set) var snoozeFireDates: [Date] = []
+    private(set) var cancelledOriginalIDs: [UUID] = []
     private(set) var cancelledIDs: [UUID] = []
     private(set) var stoppedIDs: [UUID] = []
     private(set) var authorizationRequests = 0
@@ -63,6 +64,8 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
         snoozeFireDates.append(fireDate)
         completion(failSnooze ? .failure(ScheduleRejected()) : .success(()))
     }
+
+    func cancelOriginal(_ alarmID: UUID) { cancelledOriginalIDs.append(alarmID) }
 
     func cancel(_ alarmID: UUID) { cancelledIDs.append(alarmID) }
 

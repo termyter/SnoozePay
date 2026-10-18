@@ -611,6 +611,7 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
         completion(failSnooze ? .failure(SnoozeScheduleError()) : .success(()))
     }
 
+    func cancelOriginal(_ alarmID: UUID) {}
     func cancel(_ alarmID: UUID) {
         cancelledIDs.append(alarmID)
         callLog.append("cancel")
@@ -663,6 +664,7 @@ private final class DeferringAlarmKitScheduler: AlarmKitScheduling {
         fireDate: Date,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {}
+    func cancelOriginal(_ alarmID: UUID) {}
     func cancel(_ alarmID: UUID) {}
     func stop(_ alarmID: UUID) {}
 }

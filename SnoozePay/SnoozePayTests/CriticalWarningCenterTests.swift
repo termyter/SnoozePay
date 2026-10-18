@@ -268,6 +268,7 @@ final class CriticalWarningCenterTests: XCTestCase {
             snoozeCalls += 1
             self.completion = completion
         }
+        func cancelOriginal(_ alarmID: UUID) {}
         func cancel(_ alarmID: UUID) {}
         func stop(_ alarmID: UUID) {}
     }

@@ -106,7 +106,11 @@ protocol AlarmKitScheduling: AnyObject {
         completion: @escaping (Result<Void, Error>) -> Void
     )
 
-    /// Cancel the system alarm for `alarmID` (pending — not yet alerting).
+    /// Cancel only the original schedule before rearming it. A paid one-shot
+    /// snooze under its separate ID must keep its existing fire date.
+    func cancelOriginal(_ alarmID: UUID)
+
+    /// Cancel the original system alarm AND any pending snooze (disable/delete/finish).
     func cancel(_ alarmID: UUID)
 
     /// Stop a currently-alerting system alarm (user tapped stop / snooze).
@@ -142,6 +146,13 @@ struct SnoozePayAlarmMetadata: AlarmMetadata {
 final class AlarmKitScheduler: AlarmKitScheduling {
 
     private let manager = AlarmManager.shared
+    private let cancelAlarm: (UUID) throws -> Void
+
+    /// Only cancellation is injectable: regressions exercise the production ID
+    /// selection against pending schedules without cancelling real system alarms.
+    init(cancelAlarm: @escaping (UUID) throws -> Void = { try AlarmManager.shared.cancel(id: $0) }) {
+        self.cancelAlarm = cancelAlarm
+    }
 
     var isAuthorized: Bool {
         authorization == .authorized
@@ -286,6 +297,10 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         }
     }
 
+    func cancelOriginal(_ alarmID: UUID) {
+        cancelOne(alarmID)
+    }
+
     func cancel(_ alarmID: UUID) {
         // Cancel both the alarm and any pending snooze re-ring scheduled under
         // its separate snooze id (#394) — otherwise a cancelled alarm could
@@ -296,7 +311,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
 
     private func cancelOne(_ id: UUID) {
         do {
-            try manager.cancel(id: id)
+            try cancelAlarm(id)
             AppLogger.scheduler.info("AlarmKit cancelled alarm=\(id, privacy: .private)")
         } catch {
             // A not-found cancel is benign (alarm already fired / never armed

@@ -117,6 +117,7 @@ private final class SnoozeMockAlarmKit: AlarmKitScheduling {
         snoozedIDs.append(alarm.id)
         completion(.success(()))
     }
+    func cancelOriginal(_ alarmID: UUID) {}
     func cancel(_ alarmID: UUID) { cancelledIDs.append(alarmID) }
     func stop(_ alarmID: UUID) { stoppedIDs.append(alarmID) }
 }
