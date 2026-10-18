@@ -162,3 +162,5 @@ dawn, radar, drops, piano, guitar, bell, waves, birds, classic, jazz + default_a
 4. **Помнить**: не мержить без ОК Ивана!
 - 2026-06-19 — autopilot: merged 6 PRs (#346, #343, #344, #349, #350, #351 → PRs #367-372), phase: ready-queue drained, next: /audit
 - 2026-07-30 — autopilot: merged 1 PR (#450 → #444 StoreKitRestoreErrorCopy tests). Останов: ready-queue пуст, все 11 proposals gated на pm-input-needed / no-touch, MVP-фичи из SPEC §7.1 реализованы, v2.0 (CloudKit, backend) — PM-стратегия. Свежий /audit пропущен: 8 audit-findings уже открыты и блочены Иваном, ещё один прогон дал бы только шум.
+
+- 2026-10-18T19:41:00+03:00 — autopilot release checkpoint: opened 3 PRs; merged #922 (Fixes #906) and #923 (Fixes #919); #921 (Fixes #918) awaits five consecutive green Unit tests attempts. PM requested release-first scope. Verified release map: https://github.com/termyter/SnoozePay/issues/480#issuecomment-6252365738. No additional cosmetic/refactor work promoted; PM/no-touch gates retained.
