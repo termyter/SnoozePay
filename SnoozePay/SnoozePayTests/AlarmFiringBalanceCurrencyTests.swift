@@ -80,14 +80,64 @@ final class AlarmFiringBalanceCurrencyTests: XCTestCase {
         XCTAssertEqual(wallet.balance, 0.49, accuracy: 1e-12)
     }
 
-    private func makeController(wallet: AlarmFiringBalancing) -> BalanceLayoutController {
+    func testActualPriceCardsPreserveCurrencyCentsOnInitialLayoutAndRefresh() throws {
+        for (code, symbol) in [("USD", "$"), ("EUR", "€")] {
+            let wallet = ReadOnlyFiringWallet(balance: 1, currency: Currency(code: code)!)
+            let controller = makeController(wallet: wallet, penalty: 0.49)
+            for initial in [controller.initialSnoozeValue, controller.initialDisabledValue] {
+                XCTAssertTrue(initial?.contains("0,49") == true)
+                XCTAssertTrue(initial?.contains(symbol) == true)
+                XCTAssertFalse(initial?.contains("₽") == true)
+            }
+            let snooze = try XCTUnwrap(controller.snoozeCTA)
+            let disabled = try XCTUnwrap(controller.noBalanceSnoozeCard)
+            XCTAssertTrue(snooze.isEnabled)
+            XCTAssertFalse(disabled.isEnabled)
+            for card in [snooze, disabled] {
+                XCTAssertEqual(card.price, 0.49)
+                XCTAssertTrue(pillText(card).contains("−0,49"))
+                XCTAssertEqual(card.currency, wallet.walletCurrency)
+            }
+
+            wallet.walletCurrency = .rub
+            wallet.balance = 0
+            controller.updateUI()
+            for card in [snooze, disabled] {
+                XCTAssertEqual(card.accessibilityValue, "0,49\u{202F}₽")
+                XCTAssertFalse(card.isEnabled)
+                XCTAssertTrue(card.accessibilityTraits.contains(.notEnabled))
+            }
+            XCTAssertTrue(controller.noBalanceContainer?.isHidden == false)
+        }
+    }
+
+    func testActualPriceCardsKeepExactLargeDigitsAndDoNotInventInvalidAmounts() {
+        let controller = makeController(
+            wallet: ReadOnlyFiringWallet(balance: 1, currency: .rub),
+            penalty: 18_446_744_073_709_551_616
+        )
+        let cards = [controller.snoozeCTA, controller.noBalanceSnoozeCard].compactMap { $0 }
+        XCTAssertEqual(cards.count, 2)
+        for card in cards {
+            XCTAssertEqual(card.accessibilityValue?.filter(\.isNumber), "18446744073709551616")
+            for invalid in [Double.nan, .infinity, -1, .greatestFiniteMagnitude] {
+                card.update(price: invalid, currency: Currency(code: "USD")!)
+                XCTAssertEqual(card.accessibilityValue, "—")
+                XCTAssertTrue(pillText(card).contains("—"))
+                XCTAssertFalse(pillText(card).contains("−—"))
+            }
+        }
+    }
+
+    private func makeController(wallet: AlarmFiringBalancing, penalty: Double = 50) -> BalanceLayoutController {
         let backend = TestAlarmKitBackend()
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
         let suite = "firing-layout-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
+        let alarm = Alarm(penaltyAmount: penalty)
         let model = AlarmFiringViewModel(
-            alarm: Alarm(), balanceService: wallet,
+            alarm: alarm, balanceService: wallet,
             alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler),
             scheduler: scheduler, wakeStore: WakeEventStore(defaults: defaults),
             ledger: TransactionRepository(defaults: defaults)
@@ -112,6 +162,8 @@ private func pillText(_ view: UIView?) -> String {
 private final class BalanceLayoutController: AlarmFiringViewController {
     private(set) var initialText: String?
     private(set) var initialTone: SPPill.Tone?
+    private(set) var initialSnoozeValue: String?
+    private(set) var initialDisabledValue: String?
 
     override func viewDidLoad() {
         // Exercise the real layout, without audio, observers, ticker or breathing.
@@ -122,6 +174,8 @@ private final class BalanceLayoutController: AlarmFiringViewController {
         if initialText == nil, let pill = balancePill {
             initialText = pillText(pill)
             initialTone = pill.tone
+            initialSnoozeValue = snoozeCTA?.accessibilityValue
+            initialDisabledValue = noBalanceSnoozeCard?.accessibilityValue
         }
         super.updateUI()
     }

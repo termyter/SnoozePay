@@ -80,7 +80,7 @@ final class SPPrimitiveAutoresizingContractTests: XCTestCase {
                 ])
             },
             Subject(name: "SPSnoozePrice", minimumHeight: 80) {
-                SPSnoozePrice(price: 100, minutes: 5, tone: .warn, hint: "Уже 3-я задержка")
+                SPSnoozePrice(price: 100, currency: .rub, minutes: 5, tone: .warn, hint: "Уже 3-я задержка")
             }
         ]
     }

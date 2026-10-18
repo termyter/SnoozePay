@@ -432,7 +432,8 @@ class AlarmFiringViewController: UIViewController {
         // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:96` contains "Следующее откладывание".
         if let snooze = snoozeCTA {
             snooze.update(
-                price: Decimal(viewModel.currentPenalty),
+                price: viewModel.currentPenalty,
+                currency: viewModel.walletCurrency,
                 minutes: viewModel.alarm.snoozeMinutes,
                 hint: snoozeHintText()
             )
