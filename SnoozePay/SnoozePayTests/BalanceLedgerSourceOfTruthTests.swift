@@ -256,6 +256,126 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
                        "A row in the wallet's own currency still moves it")
     }
 
+    // MARK: - Corrupt-history recovery (#910)
+
+    @MainActor
+    func testRecoverCorruptHistory_preservesPaidBalanceBackupAndPurchaseDedupAfterRelaunch() throws {
+        testDefaults.set(80.0, forKey: "user_balance")
+        testDefaults.set("USD", forKey: WalletCurrencyStore.storageKey)
+        let ledger = makeLedger()
+        let service = BalanceService(defaults: testDefaults, transactionRepository: ledger,
+                                     notificationCenter: NotificationCenter())
+        let purchases = StoreKitService(notificationPoster: LocalNotificationPosterSpy(), defaults: testDefaults)
+        XCTAssertEqual(purchases.markProcessed(transactionID: 42), .recorded)
+        XCTAssertTrue(service.topUp(amount: 300))
+        XCTAssertTrue(service.charge(amount: 50, alarmID: nil))
+        XCTAssertEqual(service.balance, 330)
+        let dedup = testDefaults.object(forKey: "storekit.processed_tx_ids") as? [String]
+        let corrupt = Data("unreadable paid history".utf8)
+        testDefaults.set(corrupt, forKey: "stored_transactions")
+        XCTAssertThrowsError(try ledger.fetchAllChecked())
+
+        XCTAssertTrue(service.recoverCorruptTransactionHistory())
+
+        XCTAssertEqual(service.balance, 330)
+        XCTAssertEqual(cachedBalance(), 330)
+        XCTAssertEqual(testDefaults.double(forKey: LocalBalanceLedgerStore.openingBalanceKey), 330)
+        XCTAssertTrue(try ledger.fetchAllChecked().isEmpty)
+        XCTAssertEqual(testDefaults.data(forKey: TransactionRepository.corruptBackupKey), corrupt)
+        XCTAssertEqual(testDefaults.object(forKey: "storekit.processed_tx_ids") as? [String], dedup)
+        let relaunchedDefaults = UserDefaults(suiteName: suiteName)!
+        let relaunched = BalanceService(
+            defaults: relaunchedDefaults,
+            transactionRepository: TransactionRepository(defaults: relaunchedDefaults),
+            notificationCenter: NotificationCenter()
+        )
+        XCTAssertEqual(relaunched.balance, 330)
+        XCTAssertEqual(relaunched.walletCurrency, Currency(code: "USD"))
+        XCTAssertEqual(relaunchedDefaults.string(forKey: WalletCurrencyStore.storageKey), "USD")
+        let relaunchedPurchases = StoreKitService(
+            notificationPoster: LocalNotificationPosterSpy(), defaults: relaunchedDefaults
+        )
+        XCTAssertEqual(relaunchedPurchases.markProcessed(transactionID: 42), .alreadyProcessed)
+        XCTAssertTrue(relaunched.charge(amount: 30, alarmID: nil))
+        XCTAssertEqual(relaunched.balance, 300)
+    }
+
+    func testRecoverCorruptHistory_validZeroDoesNotRestoreTheOldOpeningBalance() throws {
+        let ledger = makeLedger()
+        testDefaults.set(Data("corrupt".utf8), forKey: "stored_transactions")
+        testDefaults.set(80.0, forKey: LocalBalanceLedgerStore.openingBalanceKey)
+        testDefaults.set(0.0, forKey: "user_balance")
+        let service = BalanceService(defaults: testDefaults, transactionRepository: ledger,
+                                     notificationCenter: NotificationCenter())
+
+        XCTAssertTrue(service.recoverCorruptTransactionHistory())
+        XCTAssertEqual(service.balance, 0)
+        XCTAssertEqual(testDefaults.double(forKey: LocalBalanceLedgerStore.openingBalanceKey), 0)
+    }
+
+    func testRecoverCorruptHistory_invalidCachePreservesLockedDataAndOpening() throws {
+        let invalid: [Any?] = [-1.0, Double.nan, Double.infinity, -Double.infinity, "50", true, nil]
+        let corrupt = Data("keep for recovery".utf8)
+        for value in invalid {
+            testDefaults.set(corrupt, forKey: "stored_transactions")
+            testDefaults.set(80.0, forKey: LocalBalanceLedgerStore.openingBalanceKey)
+            testDefaults.set(value, forKey: "user_balance")
+            testDefaults.set(["42"], forKey: "storekit.processed_tx_ids")
+            let ledger = makeLedger()
+            let service = BalanceService(defaults: testDefaults, transactionRepository: ledger,
+                                         notificationCenter: NotificationCenter())
+            XCTAssertThrowsError(try ledger.fetchAllChecked())
+
+            XCTAssertFalse(service.recoverCorruptTransactionHistory(), "Invalid cache must not become credit")
+            XCTAssertTrue(ledger.lastLoadFailed)
+            XCTAssertFalse(service.topUp(amount: 10), "Failed recovery must not unblock wallet writes")
+            XCTAssertEqual(testDefaults.data(forKey: "stored_transactions"), corrupt)
+            XCTAssertEqual(testDefaults.data(forKey: TransactionRepository.corruptBackupKey), corrupt)
+            XCTAssertEqual(testDefaults.double(forKey: LocalBalanceLedgerStore.openingBalanceKey), 80)
+            XCTAssertEqual(testDefaults.stringArray(forKey: "storekit.processed_tx_ids"), ["42"])
+            if let number = value as? Double, number.isNaN {
+                XCTAssertTrue(cachedBalance().isNaN)
+            } else {
+                XCTAssertEqual(testDefaults.object(forKey: "user_balance") as? NSObject, value as? NSObject)
+            }
+        }
+    }
+
+    func testRecoverCorruptHistory_latchedCorruptionRefusesValidNumericCache() throws {
+        testDefaults.set(80.0, forKey: "user_balance")
+        let ledger = makeLedger()
+        let service = BalanceService(defaults: testDefaults, transactionRepository: ledger,
+                                     notificationCenter: NotificationCenter())
+        XCTAssertTrue(ledger.record(Transaction(type: .charge, amount: 500)))
+        XCTAssertEqual(service.balance, 0)
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertEqual(cachedBalance(), 80, "A valid numeric cache alone must not restore trust")
+        let corrupt = Data("unreadable after balance corruption".utf8)
+        testDefaults.set(corrupt, forKey: "stored_transactions")
+        testDefaults.set(["42"], forKey: "storekit.processed_tx_ids")
+        XCTAssertThrowsError(try ledger.fetchAllChecked())
+
+        XCTAssertFalse(service.recoverCorruptTransactionHistory())
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertTrue(ledger.lastLoadFailed)
+        XCTAssertEqual(cachedBalance(), 80)
+        XCTAssertEqual(testDefaults.double(forKey: LocalBalanceLedgerStore.openingBalanceKey), 80)
+        XCTAssertEqual(testDefaults.data(forKey: "stored_transactions"), corrupt)
+        XCTAssertEqual(testDefaults.data(forKey: TransactionRepository.corruptBackupKey), corrupt)
+        XCTAssertEqual(testDefaults.stringArray(forKey: "storekit.processed_tx_ids"), ["42"])
+    }
+
+    func testRecoverCorruptHistory_healthyLedgerIsUntouched() {
+        let service = makeService(balance: 80)
+        XCTAssertTrue(service.topUp(amount: 300))
+        let rows = testDefaults.data(forKey: "stored_transactions")
+        XCTAssertTrue(service.recoverCorruptTransactionHistory())
+        XCTAssertEqual(testDefaults.data(forKey: "stored_transactions"), rows)
+        XCTAssertEqual(testDefaults.double(forKey: LocalBalanceLedgerStore.openingBalanceKey), 80)
+        XCTAssertEqual(service.balance, 380)
+    }
+
     // MARK: - Provider flag
 
     func testProvider_defaultsToLocal() {

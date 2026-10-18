@@ -42,6 +42,17 @@ import XCTest
 @MainActor
 final class SettingsRowCopyTests: XCTestCase {
 
+    /// Recovery fixtures must never schedule or cancel real system alarms.
+    private final class NoopScheduler: AlarmScheduling {
+        func schedule(
+            _ alarm: Alarm,
+            completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
+        ) {
+            completion?(.success(()))
+        }
+        func cancel(_ alarmID: UUID) {}
+    }
+
     // MARK: - Layer 1 + 2: the catalogue and its words
 
     /// The strings as they read on screen today, copied from the literals this
@@ -51,8 +62,11 @@ final class SettingsRowCopyTests: XCTestCase {
         "common.button.cancel": "Отмена",
         "settings.picker.applies_to_new_alarms": "Применяется к новым будильникам",
         "settings.picker.minutes_option": "%lld мин",
-        "settings.recovery.alert_message": "Будильники и история операций будут удалены безвозвратно, "
-            + "а хранилище разблокировано. Это действие нельзя отменить.",
+        "settings.recovery.alert_message": "Будут удалены только данные, которые не удалось загрузить: "
+            + "будильники, история операций или и то и другое. Корректный сохранённый баланс останется прежним. "
+            + "При некорректном балансе история не удалится. Это действие нельзя отменить.",
+        "settings.recovery.balance_invalid": "История операций не удалена: не удалось подтвердить сохранённый баланс. "
+            + "Данные остаются заблокированными.",
         "settings.recovery.alert_title": "Стереть повреждённые данные?",
         "settings.recovery.confirm": "Подтвердить",
         "settings.recovery.row_subtitle": "Хранилище повреждено и заблокировано",
@@ -79,14 +93,43 @@ final class SettingsRowCopyTests: XCTestCase {
         }
     }
 
-    /// The alert body was two Swift literals concatenated to fit the line, and
-    /// the seam carried the space. One key now, so the space has to live inside
-    /// the catalogue value — nothing in the compiler notices if it is dropped.
-    func testRecoveryAlertMessageKeepsTheSpaceAtTheOldConcatenationSeam() {
-        XCTAssertTrue(
-            Localized.text("settings.recovery.alert_message").contains("безвозвратно, а хранилище"),
-            "the seam between the two former literals lost its space"
-        )
+    func testRecoveryConfirmationExplainsBalancePreservationAndRefusal() {
+        let message = Localized.text("settings.recovery.alert_message")
+        XCTAssertTrue(message.contains("Корректный сохранённый баланс останется прежним."))
+        XCTAssertTrue(message.contains("При некорректном балансе история не удалится."))
+    }
+
+    func testRecoveryOnlyClearsTheFailedStoreAndPreservesTheWallet() throws {
+        for transactionFailed in [true, false] {
+            let suite = "test.settings.recovery.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let ledger = TransactionRepository(defaults: defaults)
+            let alarms = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
+            let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
+                                        notificationCenter: NotificationCenter())
+            XCTAssertTrue(wallet.topUp(amount: 149))
+            alarms.save(Alarm(name: "Healthy", penaltyAmount: 50))
+            let failedKey = transactionFailed ? "stored_transactions" : "stored_alarms"
+            let healthyKey = transactionFailed ? "stored_alarms" : "stored_transactions"
+            let healthyBytes = defaults.data(forKey: healthyKey)
+            defaults.set(Data("corrupt".utf8), forKey: failedKey)
+            if transactionFailed {
+                XCTAssertThrowsError(try ledger.fetchAllChecked())
+            } else {
+                XCTAssertThrowsError(try alarms.fetchAllChecked())
+            }
+            let sut = SettingsViewController(alarmDefaults: AlarmDefaults(defaults: defaults))
+            sut.loadViewIfNeeded()
+
+            sut.performRecovery(balanceService: wallet, alarmRepository: alarms)
+
+            XCTAssertNil(defaults.object(forKey: failedKey))
+            XCTAssertEqual(defaults.data(forKey: healthyKey), healthyBytes)
+            XCTAssertEqual(wallet.balance, 149)
+            XCTAssertFalse(ledger.lastLoadFailed)
+            XCTAssertFalse(alarms.lastLoadFailed)
+        }
     }
 
     /// `%lld` and not `%@`: the call sites pass an `Int`, and a mismatched

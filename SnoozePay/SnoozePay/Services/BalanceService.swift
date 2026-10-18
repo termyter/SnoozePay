@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 import os
 
@@ -45,6 +46,7 @@ final class BalanceService {
     /// Source of truth for the balance (#483): every mutation is an append
     /// here, and `user_balance` is a cache of `openingBalance + Σ(ledger)`.
     private let ledgerStore: BalanceLedgerStore
+    private let transactionRepository: TransactionRepository
     private let queue = DispatchQueue(label: "com.snoozepay.balance.serial")
     private let notificationCenter: NotificationCenter
     private static let log = OSLog(
@@ -86,6 +88,7 @@ final class BalanceService {
         notificationCenter: NotificationCenter = .default
     ) {
         self.defaults = defaults
+        self.transactionRepository = transactionRepository
         self.currencyStore = WalletCurrencyStore(defaults: defaults)
         self.ledgerStore = BalanceLedgerStoreFactory.makeStore(
             repository: transactionRepository,
@@ -290,6 +293,25 @@ final class BalanceService {
     }
 
     // MARK: - Recovery (corruption)
+
+    /// Erases only an unreadable ledger, preserving its last valid cached
+    /// balance (#910). Never derive from the corrupt rows or reset purchase IDs.
+    /// Opening is saved BEFORE unlocking/removing the ledger: a restart between
+    /// those writes still sees the locked ledger and unchanged cache. The wallet
+    /// queue excludes concurrent charges, credits and reads during recovery.
+    /// `false` leaves recovery data untouched when the cache cannot be trusted.
+    func recoverCorruptTransactionHistory() -> Bool {
+        queue.sync {
+            guard transactionRepository.lastLoadFailed else { return true }
+            guard !_balanceCorrupted,
+                  let cached = defaults.object(forKey: balanceKey) as? NSNumber,
+                  CFGetTypeID(cached) != CFBooleanGetTypeID(),
+                  cached.doubleValue.isFinite, cached.doubleValue >= 0 else { return false }
+            ledgerStore.openingBalance = cached.doubleValue
+            transactionRepository.clearCorruptState()
+            return true
+        }
+    }
 
     /// Resets `user_balance` to `0` and clears the corruption flag. Called by
     /// the future Settings "Стереть повреждённые данные" button (see #102)
