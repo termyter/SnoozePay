@@ -560,10 +560,9 @@ final class AlarmsListViewModel {
     /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return Localized.format(
-            "alarms.penalty",
-            MoneyFormatter.string(alarms[index].penaltyAmount)
-        )
+        let price = formattedAlarmPrice(alarms[index].penaltyAmount)
+        guard price != "—" else { return price }
+        return Localized.format("alarms.penalty", price)
     }
 
     // MARK: - V2 cell helpers
@@ -647,11 +646,20 @@ final class AlarmsListViewModel {
         return dayList
     }
 
-    /// Price pill text — bare "50 ₽" formatted via `Decimal.formattedRubles`
-    /// so digit grouping matches the balance display.
+    /// Price pill text uses the injected wallet currency, like the balance.
     func alarmPriceText(at index: Int) -> String {
         guard index < alarms.count else { return "" }
-        return Decimal(alarms[index].penaltyAmount).formattedRubles()
+        return formattedAlarmPrice(alarms[index].penaltyAmount)
+    }
+
+    /// A positive price that rounds to the currency's zero display is unknown,
+    /// rather than a promise of a free snooze. Stored amounts are untouched.
+    private func formattedAlarmPrice(_ amount: Double) -> String {
+        let text = MoneyFormatter.string(amount, currency: walletCurrency)
+        if amount > 0, text == MoneyFormatter.string(0.0, currency: walletCurrency) {
+            return "—"
+        }
+        return text
     }
 
     /// Progressive-pain multiplier label. Returns `"×2"` when the alarm has

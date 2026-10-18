@@ -25,7 +25,18 @@ class AlarmsListViewController: UIViewController {
 
     // MARK: - ViewModel
 
-    private let viewModel = AlarmsListViewModel()
+    private let viewModel: AlarmsListViewModel
+    private var renderedPriceCurrency: Currency
+
+    init(viewModel: AlarmsListViewModel = AlarmsListViewModel()) {
+        self.viewModel = viewModel
+        self.renderedPriceCurrency = viewModel.walletCurrency
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     // MARK: - UI Elements
 
@@ -274,6 +285,7 @@ class AlarmsListViewController: UIViewController {
     private func bindViewModel() {
         viewModel.onAlarmsUpdated = { [weak self] in
             guard let self else { return }
+            self.renderedPriceCurrency = self.viewModel.walletCurrency
             self.tableView.reloadData()
             let isEmpty = self.viewModel.alarms.isEmpty
             self.emptyStateView.isHidden = !isEmpty
@@ -283,7 +295,15 @@ class AlarmsListViewController: UIViewController {
         }
 
         viewModel.onBalanceUpdated = { [weak self] _ in
-            self?.refreshHeader()
+            guard let self else { return }
+            // The first paid top-up can establish currency while a partial
+            // Deposit sheet is open; presenter appearance need not run again.
+            let currency = self.viewModel.walletCurrency
+            if currency != self.renderedPriceCurrency {
+                self.renderedPriceCurrency = currency
+                self.tableView.reloadData()
+            }
+            self.refreshHeader()
         }
 
         viewModel.onLoadError = { [weak self] error in
@@ -545,6 +565,7 @@ extension AlarmsListViewController: UITableViewDataSource {
             time: viewModel.alarmTimeString(at: indexPath.row),
             daysCaps: viewModel.alarmDaysCaps(at: indexPath.row),
             priceText: viewModel.alarmPriceText(at: indexPath.row),
+            priceCurrency: viewModel.walletCurrency,
             multiplier: viewModel.alarmMultiplierText(at: indexPath.row),
             soundName: viewModel.alarmSoundName(at: indexPath.row),
             enabled: alarm.enabled
