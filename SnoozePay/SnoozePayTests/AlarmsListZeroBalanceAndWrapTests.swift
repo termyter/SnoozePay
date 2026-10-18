@@ -109,6 +109,7 @@ final class AlarmCellTitleWrapTests: XCTestCase {
             time: "07:00",
             daysCaps: daysCaps,
             priceText: "50 ₽",
+            priceCurrency: .rub,
             multiplier: nil,
             soundName: "Soft Dawn",
             enabled: true

@@ -291,6 +291,7 @@ final class SPCardElevationOrderTests: XCTestCase {
             time: "07:00",
             daysCaps: "БУДНИ · ПН–ПТ",
             priceText: "50 ₽",
+            priceCurrency: .rub,
             multiplier: "×2",
             soundName: "Soft Dawn",
             enabled: enabled

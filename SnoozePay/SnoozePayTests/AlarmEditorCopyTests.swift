@@ -619,7 +619,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     func testAlarmCardToggleAnnouncesItsStateTheWayThePlatformDoes() throws {
         for enabled in [true, false] {
             let cell = AlarmCell(style: .default, reuseIdentifier: nil)
-            cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽",
+            cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽", priceCurrency: .rub,
                            multiplier: nil, soundName: nil, enabled: enabled)
             let baseline = UISwitch()
             baseline.isOn = enabled

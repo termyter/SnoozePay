@@ -544,6 +544,7 @@ extension AlarmsListViewController: UITableViewDataSource {
             time: viewModel.alarmTimeString(at: indexPath.row),
             daysCaps: viewModel.alarmDaysCaps(at: indexPath.row),
             priceText: viewModel.alarmPriceText(at: indexPath.row),
+            priceCurrency: viewModel.walletCurrency,
             multiplier: viewModel.alarmMultiplierText(at: indexPath.row),
             soundName: viewModel.alarmSoundName(at: indexPath.row),
             enabled: alarm.enabled
