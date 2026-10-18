@@ -68,6 +68,27 @@ final class StoreKitVerifiedPurchaseTests: XCTestCase {
         XCTAssertEqual(balance.balance, 2.99)
     }
 
+    func testDegradedDedupRefusesValidPaidPurchaseWithoutWalletMutationOrFinish() async {
+        let corrupt = ["unexpected": 7]
+        let previousBackup = Data("previous corrupt dedup blob".utf8)
+        defaults.set(corrupt, forKey: "storekit.processed_tx_ids")
+        defaults.set(previousBackup, forKey: StoreKitService.processedBackupCorruptKey)
+        let previousLedger = defaults.data(forKey: "stored_transactions")
+        var finishes = 0
+
+        for _ in 0..<2 {
+            await store.applyVerifiedPurchase(purchase(currency: usd), balance: balance) { finishes += 1 }
+            XCTAssertEqual(finishes, 0)
+            XCTAssertEqual(balance.balance, 0)
+            XCTAssertTrue(rows.isEmpty)
+            XCTAssertTrue(balance.walletIsPristine)
+            XCTAssertNil(defaults.object(forKey: WalletCurrencyStore.storageKey))
+            XCTAssertEqual(defaults.data(forKey: "stored_transactions"), previousLedger)
+            XCTAssertEqual(defaults.object(forKey: "storekit.processed_tx_ids") as? [String: Int], corrupt)
+            XCTAssertEqual(defaults.data(forKey: StoreKitService.processedBackupCorruptKey), previousBackup)
+        }
+    }
+
     func testForeignCurrencyAndLedgerFailureRollbackOnlyCurrentDedupMark() async {
         XCTAssertEqual(store.markProcessed(transactionID: 41), .recorded)
         _ = balance.freezeCurrency(.rub)
