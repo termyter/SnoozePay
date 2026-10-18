@@ -164,7 +164,7 @@ enum UITourRoutes {
             // audit screenshot doesn't depend on whatever alarms the tour
             // device happens to hold.
             presentLater(
-                StreakModalViewController(streakDays: 7, savedAmount: 350),
+                StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub),
                 over: root
             )
         }

@@ -235,7 +235,7 @@ final class StreakModalFlameBadgeTests: XCTestCase {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         window.overrideUserInterfaceStyle = style
         window.isHidden = false
-        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350)
+        let modal = StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub)
         window.rootViewController = modal
         hostWindows.append(window)
 

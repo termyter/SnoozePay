@@ -648,7 +648,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// reads «ДНЯ 3 БЕЗ ОТКЛАДЫВАНИЙ» and still compiles.
     func testStreakBannerKeepsTheCountBeforeItsNoun() throws {
         let banner = AlarmsStreakBannerView(frame: CGRect(x: 0, y: 0, width: 360, height: 96))
-        banner.configure(streakDays: 3, savedAmount: 250)
+        banner.configure(streakDays: 3, savedAmount: 250, currency: .rub)
         banner.layoutIfNeeded()
 
         let rendered = Self.strings(in: banner)

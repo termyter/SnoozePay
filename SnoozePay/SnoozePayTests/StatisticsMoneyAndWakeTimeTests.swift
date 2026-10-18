@@ -171,7 +171,7 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
         XCTAssertEqual(
             StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
                 cleanDays: 7,
-                alarms: [enabled, disabled]
+                alarms: [enabled, disabled], currency: .rub
             ),
             1400,
             "Every surface must price clean mornings from currently enabled alarms only"
@@ -181,9 +181,9 @@ final class StatisticsMoneyAndWakeTimeTests: XCTestCase {
     func testSavingsEstimateDisplayAmountHidesUnknownAndZeroSavings() {
         let free = Alarm(time: Date(), penaltyAmount: 0)
 
-        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 7, alarms: []))
-        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 7, alarms: [free]))
-        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 0, price: 50))
+        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 7, alarms: [], currency: .rub))
+        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 7, alarms: [free], currency: .rub))
+        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 0, price: 50, currency: .rub))
     }
 
     // MARK: - weekMoneyDays
