@@ -25,13 +25,13 @@ extension AlarmFiringViewController {
         installTopHeader()
         installHeroCenter()
 
-        // VM exposes `currentPenalty` as `Double`; wrap in `Decimal` so
-        // `SPSnoozePrice.formattedRubles()` does the locale-aware format. The
-        // CTA stays GOLD (`.warn`) on every step, progressive or not (#288) —
+        // Keep the raw penalty and wallet currency together through formatting.
+        // The CTA stays GOLD (`.warn`) on every step, progressive or not (#288) —
         // escalation lives in the background tone + indicator pill, not the
         // button colour.
         let snooze = SPSnoozePrice(
-            price: Decimal(viewModel.currentPenalty),
+            price: viewModel.currentPenalty,
+            currency: viewModel.walletCurrency,
             minutes: viewModel.alarm.snoozeMinutes,
             tone: .warn,
             hint: snoozeHintText()

@@ -4,7 +4,7 @@ import XCTest
 
 final class SPSnoozePriceAccessibilityTests: XCTestCase {
     func testEnabledTransitionsExposeDisabledStateAndPreserveOtherTraits() {
-        let control = SPSnoozePrice(price: 50)
+        let control = SPSnoozePrice(price: 50, currency: .rub)
         XCTAssertTrue(control.isEnabled)
         XCTAssertTrue(control.accessibilityTraits.contains(.button))
         XCTAssertFalse(control.accessibilityTraits.contains(.notEnabled))
@@ -20,13 +20,13 @@ final class SPSnoozePriceAccessibilityTests: XCTestCase {
     }
 
     func testPriceAndMinutesUpdatesPreserveDisabledAccessibilityState() {
-        let control = SPSnoozePrice(price: 50, minutes: 5)
+        let control = SPSnoozePrice(price: 50, currency: .rub, minutes: 5)
         control.accessibilityTraits.insert(.selected)
         control.isEnabled = false
         let previousValue = control.accessibilityValue
         let previousLabel = control.accessibilityLabel
 
-        control.update(price: 137, minutes: 10, hint: "Updated hint")
+        control.update(price: 137, currency: .rub, minutes: 10, hint: "Updated hint")
 
         XCTAssertEqual(control.price, 137)
         XCTAssertEqual(control.minutes, 10)
