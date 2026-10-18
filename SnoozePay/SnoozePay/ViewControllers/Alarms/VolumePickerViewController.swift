@@ -52,6 +52,7 @@ final class VolumePickerViewController: UIViewController {
     private let previewValue: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.accessibilityIdentifier = "volumePicker.percentage"
         label.font = AppTypography.moneyXl
         label.textColor = AppColors.fg1
         label.textAlignment = .center
@@ -63,6 +64,7 @@ final class VolumePickerViewController: UIViewController {
     private let slider: UISlider = {
         let slider = UISlider()
         slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.accessibilityIdentifier = "volumePicker.slider"
         slider.minimumValue = 0
         slider.maximumValue = 1
         slider.minimumTrackTintColor = AppColors.money500
@@ -211,6 +213,7 @@ final class VolumePickerViewController: UIViewController {
         // VoiceOver otherwise announces the brand `SPSwitch` as the generic
         // «Переключатель». Give it the fade row's title so the control is
         // self-describing (#425), mirroring the volume slider's label above.
+        fadeSwitch.accessibilityIdentifier = "volumePicker.fadeIn"
         fadeSwitch.accessibilityLabel = Localized.text("create_alarm.volume_picker.fade_title")
         fadeSwitch.addTarget(self, action: #selector(fadeToggled), for: .valueChanged)
     }

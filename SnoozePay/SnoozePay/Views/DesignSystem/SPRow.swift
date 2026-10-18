@@ -99,13 +99,28 @@ final class SPRow: UIControl {
             isAccessibilityElement = true
             accessibilityTraits = .button
             addTarget(self, action: #selector(handleTap), for: .touchUpInside)
-        } else {
-            isUserInteractionEnabled = false
         }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Touch routing
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let hit = super.hitTest(point, with: event) else { return nil }
+        // Keep native controls (including controls inside an accessory stack)
+        // in charge of their own touch sequence. Decorating the row must not
+        // disable those ancestors or also invoke the row's action (#930).
+        var ancestor: UIView? = hit
+        while let view = ancestor, view !== self {
+            if view is UIControl { return hit }
+            ancestor = view.superview
+        }
+        // Labels/containers should not swallow a tappable row's touches.
+        // A read-only row lets its containing cell handle them instead.
+        return onTap == nil ? nil : self
     }
 
     // MARK: - Highlight feedback
@@ -169,7 +184,6 @@ final class SPRow: UIControl {
         mainStack.axis = .horizontal
         mainStack.alignment = .center
         mainStack.spacing = 14    // matches `gap: 14px`
-        mainStack.isUserInteractionEnabled = false
         mainStack.addArrangedSubview(leadingContainer)
         mainStack.addArrangedSubview(textStack)
         mainStack.addArrangedSubview(trailingContainer)
