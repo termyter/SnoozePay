@@ -108,13 +108,15 @@ final class WalletHistoryCurrencyTests: XCTestCase {
         let exact = MoneyFormatter.string(amount("18446744073709551616"), currency: .rub, locale: russian)
         XCTAssertEqual(exact.filter(\.isNumber), "18446744073709551616")
         let large = Transaction(type: .topup, amount: 18_446_744_073_709_551_616, currency: .rub)
+        let plain = MoneyFormatter.string(large.amount, currency: .rub)
+        XCTAssertEqual(plain.filter(\.isNumber), "18446744073709551616")
         let label = WalletTransactionHistoryViewController.makeAmountLabel(for: large)
         let digits = (label.attributedText?.string ?? "").filter(\.isNumber)
         XCTAssertEqual(digits, "18446744073709551616")
         for invalid in [Decimal.nan, amount("-1")] {
             XCTAssertEqual(MoneyFormatter.string(invalid, currency: currency("USD")), "—")
         }
-        for invalid in [Double.nan, .infinity, -.infinity] {
+        for invalid in [Double.nan, .infinity, -.infinity, 1e200, .leastNonzeroMagnitude] {
             let transaction = Transaction(type: .unknown("future"), amount: invalid, currency: currency("USD"))
             XCTAssertEqual(WalletTransactionPreview.item(for: transaction).amountText, "—")
             XCTAssertEqual(

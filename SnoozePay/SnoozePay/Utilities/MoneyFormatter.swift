@@ -169,13 +169,21 @@ enum MoneyFormatter {
     /// C-format digits; for fractions use Double's shortest round-trip text.
     /// Unrepresentable values stay unknown instead of becoming zero.
     private static func decimalAmount(_ amount: Double) -> Decimal {
-        guard amount.isFinite else { return .nan }
-        let text = amount.rounded(.towardZero) == amount
-            ? String(format: "%.0f", amount)
-            : String(amount)
-        return Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) ?? .nan
+        guard amount.isFinite, amount >= 0 else { return .nan }
+        let integral = amount.rounded(.towardZero) == amount
+        let text = integral ? String(format: "%.0f", amount) : String(amount)
+        if integral {
+            // A successful Decimal parse may round beyond its 38-digit
+            // precision. Exclude trailing zeros, which use only its exponent.
+            let significantDigits = text.drop(while: { $0 == "0" })
+                .reversed().drop(while: { $0 == "0" }).count
+            guard significantDigits <= 38 else { return .nan }
+        }
+        guard let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")),
+              !decimal.isNaN,
+              NSDecimalNumber(decimal: decimal).doubleValue == amount else { return .nan }
+        return decimal
     }
-
 
     /// Shared grouping formatter — `NumberFormatter` construction costs
     /// ~0.5ms; money strings rebuild on every balance tick so cache it.
