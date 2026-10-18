@@ -37,7 +37,7 @@ final class StatisticsViewModel {
         let status: DayStatus
         /// Charge count for the day (1 charge == 1 snooze).
         let snoozes: Int
-        /// Total penalty roubles charged on the day — surfaces in the tooltip.
+        /// Penalties in the snapshot wallet currency — surfaces in the tooltip.
         let spent: Double
         /// `false` for the leading/trailing padding cells of adjacent months.
         let isInCurrentMonth: Bool
@@ -432,13 +432,7 @@ final class StatisticsViewModel {
         )
 
         let snoozesByDay = Self.snoozesByDay(charges: charges, calendar: calendar)
-
-        heatmapDays = Self.monthGrid(
-            today: today,
-            snoozesByDay: snoozesByDay,
-            wakeDays: wakeDays,
-            calendar: calendar
-        )
+        heatmapDays = makeHeatmapSnapshot(today: today, snoozesByDay: snoozesByDay)
         let averages = Self.weekdayAverages(
             today: today, snoozesByDay: snoozesByDay, calendar: calendar
         )
@@ -454,6 +448,20 @@ final class StatisticsViewModel {
             WeekTrendPoint(count: count, isCurrent: index == counts.count - 1)
         }
         trendDiff = Self.trendDiff(weeklyCounts: counts)
+    }
+
+    /// Combine every real snooze count with wallet-currency money for this snapshot.
+    private func makeHeatmapSnapshot(
+        today: Date,
+        snoozesByDay: [Date: (count: Int, spent: Double)]
+    ) -> [HeatmapDay] {
+        let moneyByDay = Self.snoozesByDay(
+            charges: charges.filter { $0.currency == walletCurrency }, calendar: calendar
+        )
+        let heatmapByDay = Dictionary(uniqueKeysWithValues: snoozesByDay.map { day, data in
+            (day, (count: data.count, spent: moneyByDay[day]?.spent ?? 0))
+        })
+        return Self.monthGrid(today: today, snoozesByDay: heatmapByDay, wakeDays: wakeDays, calendar: calendar)
     }
 
     // MARK: - Hero (Серия)
@@ -483,10 +491,11 @@ final class StatisticsViewModel {
     /// always a multiple of 7 (28–42 cells depending on the month's span).
     /// Tooltip payload for a tapped heatmap cell (artboard 27a).
     func tooltip(for day: HeatmapDay) -> HeatmapTooltip {
-        HeatmapTooltip(
+        let spentText = Self.signedMoneyText(-day.spent, currency: walletCurrency)
+        return HeatmapTooltip(
             dateText: Self.dayMonthText(day.date),
             statusText: Self.statusText(for: day),
-            spentText: day.spent > 0 ? "· −\(MoneyFormatter.string(day.spent))" : nil,
+            spentText: day.spent > 0 && spentText != "—" ? "· \(spentText)" : nil,
             status: day.status
         )
     }
