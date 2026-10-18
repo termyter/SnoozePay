@@ -166,7 +166,7 @@ final class StreakModalViewController: UIViewController {
     init(streakDays: Int, savedAmount: Decimal?, currency: Currency) {
         self.streakDays = streakDays
         self.currency = currency
-        self.mode = Self.mode(streakDays: streakDays, savedAmount: savedAmount)
+        self.mode = Self.mode(streakDays: streakDays, savedAmount: savedAmount, currency: currency)
         super.init(nibName: nil, bundle: nil)
         // Custom overlay presentation so we can paint our own backdrop with
         // a money-tinted radial glow.
@@ -507,8 +507,9 @@ extension StreakModalViewController {
     /// - `savedAmount <= 0` — a 0 ₽ alarm price is legal (`Alarm.swift`), and
     ///   "+0 ₽ / Сэкономили за неделю / Поделиться победой" is a joke at the
     ///   user's expense.
-    static func mode(streakDays: Int, savedAmount: Decimal?) -> Mode {
-        guard streakDays > 0, let savedAmount, !savedAmount.isNaN, savedAmount > 0 else { return .behavioral }
+    static func mode(streakDays: Int, savedAmount: Decimal?, currency: Currency) -> Mode {
+        guard streakDays > 0, let savedAmount,
+              MoneyFormatter.isPositiveDisplayAmount(savedAmount, currency: currency) else { return .behavioral }
         return .savings(savedAmount)
     }
 

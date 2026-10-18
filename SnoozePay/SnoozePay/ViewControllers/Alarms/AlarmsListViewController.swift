@@ -141,7 +141,7 @@ class AlarmsListViewController: UIViewController {
         // habit without quoting money.
         let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
             cleanDays: streakDays,
-            alarms: viewModel.alarms
+            alarms: viewModel.alarms, currency: viewModel.walletCurrency
         )
         let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved,
                                                currency: viewModel.walletCurrency)
@@ -350,7 +350,7 @@ class AlarmsListViewController: UIViewController {
         // (#347 review).
         guard let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
             cleanDays: streak,
-            alarms: viewModel.alarms
+            alarms: viewModel.alarms, currency: viewModel.walletCurrency
         ) else {
             tableView.tableHeaderView = nil
             return

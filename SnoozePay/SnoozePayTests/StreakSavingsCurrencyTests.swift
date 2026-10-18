@@ -20,7 +20,7 @@ final class StreakSavingsCurrencyTests: XCTestCase {
                                              ("KWD", 0.001, "0,001", "KWD")] {
             let currency = try XCTUnwrap(Currency(code: code))
             let saved = try XCTUnwrap(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
-                cleanDays: 1, price: price
+                cleanDays: 1, price: price, currency: currency
             ))
             XCTAssertEqual(saved, Decimal(string: String(price)))
             let modal = StreakModalViewController(streakDays: 1, savedAmount: saved, currency: currency)
@@ -40,6 +40,33 @@ final class StreakSavingsCurrencyTests: XCTestCase {
                 XCTAssertTrue(rendered.contains(symbol), rendered)
                 if currency != .rub { XCTAssertFalse(rendered.contains("₽"), rendered) }
             }
+        }
+    }
+
+    func testSubMinorBannerEstimateIsUnavailableAndRawModalIsBehavioral() throws {
+        for (code, price) in [("USD", 0.001), ("RUB", 0.001), ("JPY", 0.49)] {
+            let currency = try XCTUnwrap(Currency(code: code))
+            let raw = try XCTUnwrap(Decimal(string: String(price)))
+            XCTAssertFalse(MoneyFormatter.isPositiveDisplayAmount(raw, currency: currency))
+            XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+                cleanDays: 1, price: price, currency: currency
+            ))
+            // The alarms host mounts its banner only when this exact entry point supplies a figure.
+            XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+                cleanDays: 1, alarms: [Alarm(penaltyAmount: price)], currency: currency
+            ))
+            assertBehavioral(raw, currency: currency)
+        }
+    }
+
+    func testDisplayValidationDoesNotQuantizeSupportedEstimates() throws {
+        for (code, price) in [("USD", 0.006), ("JPY", 0.51), ("KWD", 0.001)] {
+            let currency = try XCTUnwrap(Currency(code: code))
+            let expected = try XCTUnwrap(Decimal(string: String(price)))
+            XCTAssertTrue(MoneyFormatter.isPositiveDisplayAmount(expected, currency: currency))
+            XCTAssertEqual(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+                cleanDays: 1, price: price, currency: currency
+            ), expected, "Only display eligibility changes; the estimate itself must remain unrounded")
         }
     }
 
@@ -65,43 +92,51 @@ final class StreakSavingsCurrencyTests: XCTestCase {
     func testUnavailableAndNonpositiveEstimatesCannotBecomeShareableClaims() {
         let invalid: [Double?] = [nil, 0, -1, .nan, .infinity, -.infinity]
         for price in invalid {
-            let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 7, price: price)
+            let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+                cleanDays: 7, price: price, currency: .rub
+            )
             XCTAssertNil(saved)
-            assertBehavioral(saved)
+            assertBehavioral(saved, currency: .rub)
         }
-        assertBehavioral(.nan)
-        assertBehavioral(0)
-        assertBehavioral(-1)
-        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 0, price: 0.49))
-        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: -1, price: 0.49))
-        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 7, alarms: []))
+        assertBehavioral(.nan, currency: .rub)
+        assertBehavioral(0, currency: .rub)
+        assertBehavioral(-1, currency: .rub)
+        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 0, price: 0.49, currency: .rub))
+        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: -1, price: 0.49, currency: .rub))
+        XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 7, alarms: [], currency: .rub))
         XCTAssertNil(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
-            cleanDays: 7, alarms: [Alarm(penaltyAmount: 0, progressiveScale: false)]
+            cleanDays: 7, alarms: [Alarm(penaltyAmount: 0, progressiveScale: false)], currency: .rub
         ))
     }
 
     func testExactLargeEstimateSurvivesWhileUnsupportedAndOverflowStayUnknown() throws {
         let exact: Double = 18_446_744_073_709_551_616
-        let saved = try XCTUnwrap(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 1, price: exact))
+        let saved = try XCTUnwrap(StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+            cleanDays: 1, price: exact, currency: .rub
+        ))
         XCTAssertEqual(saved, Decimal(string: "18446744073709551616"))
         let modal = StreakModalViewController(streakDays: 1, savedAmount: saved, currency: .rub)
         modal.loadViewIfNeeded()
         XCTAssertEqual(modal.amountLabel.text?.filter(\.isNumber), "18446744073709551616")
         let tooPrecise: Double = 340_282_366_920_938_463_463_374_607_431_768_211_456
         for price in [tooPrecise, Double.greatestFiniteMagnitude, .leastNonzeroMagnitude] {
-            let unsupported = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(cleanDays: 1, price: price)
+            let unsupported = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
+                cleanDays: 1, price: price, currency: .rub
+            )
             XCTAssertNil(unsupported)
-            assertBehavioral(unsupported)
+            assertBehavioral(unsupported, currency: .rub)
         }
         let overflow = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
-            cleanDays: Int.max, price: .greatestFiniteMagnitude
+            cleanDays: Int.max, price: .greatestFiniteMagnitude, currency: .rub
         )
         XCTAssertNil(overflow)
-        assertBehavioral(overflow)
+        assertBehavioral(overflow, currency: .rub)
     }
 
-    private func assertBehavioral(_ amount: Decimal?, file: StaticString = #filePath, line: UInt = #line) {
-        let modal = StreakModalViewController(streakDays: 7, savedAmount: amount, currency: Currency(code: "USD")!)
+    private func assertBehavioral(
+        _ amount: Decimal?, currency: Currency, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let modal = StreakModalViewController(streakDays: 7, savedAmount: amount, currency: currency)
         modal.loadViewIfNeeded()
         XCTAssertFalse(labels(in: modal.view).contains { $0 is SPGradientTextLabel }, file: file, line: line)
         XCTAssertFalse(controls(in: modal.view).contains {

@@ -163,6 +163,14 @@ enum MoneyFormatter {
         return result
     }
 
+    /// A savings claim must remain positive at the currency's display precision.
+    /// Compare the formatter's own output so validation follows its rounding.
+    static func isPositiveDisplayAmount(_ amount: Decimal, currency: Currency) -> Bool {
+        guard !amount.isNaN, amount > 0 else { return false }
+        let formatted = string(amount, currency: currency)
+        return formatted != "—" && formatted != string(Decimal.zero, currency: currency)
+    }
+
     // MARK: - Display bridge
 
     /// Decimal(Double) can change even exact large integers. Keep their fixed

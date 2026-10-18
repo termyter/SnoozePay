@@ -577,7 +577,7 @@ final class StatisticsViewController: UIViewController {
         heatmapView.clearSelection()
         let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
             cleanDays: viewModel.streak,
-            price: viewModel.snoozePrice
+            price: viewModel.snoozePrice, currency: viewModel.walletCurrency
         )
         let modal = StreakModalViewController(
             streakDays: viewModel.streak,

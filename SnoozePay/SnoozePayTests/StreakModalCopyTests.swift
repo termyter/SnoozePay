@@ -86,7 +86,7 @@ final class StreakModalCopyTests: XCTestCase {
         let defaultPriced = Alarm(penaltyAmount: 50, progressiveScale: false)
         let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
             cleanDays: 7,
-            alarms: [defaultPriced]
+            alarms: [defaultPriced], currency: .rub
         )
         XCTAssertEqual(
             saved.map { StreakModalViewController.formatSavedAmount($0, currency: .rub) },
@@ -118,7 +118,7 @@ final class StreakModalCopyTests: XCTestCase {
 
     func testModeShowsSavingsForPositiveStreakAndAmount() {
         XCTAssertEqual(
-            StreakModalViewController.mode(streakDays: 7, savedAmount: 350),
+            StreakModalViewController.mode(streakDays: 7, savedAmount: 350, currency: .rub),
             .savings(350)
         )
     }
@@ -127,22 +127,22 @@ final class StreakModalCopyTests: XCTestCase {
     /// celebrate the habit, never invent roubles.
     func testModeFallsBackToBehavioralWhenAmountUnavailable() {
         XCTAssertEqual(
-            StreakModalViewController.mode(streakDays: 7, savedAmount: nil),
+            StreakModalViewController.mode(streakDays: 7, savedAmount: nil, currency: .rub),
             .behavioral
         )
     }
 
     func testModeFallsBackToBehavioralForNonPositiveAmount() {
-        XCTAssertEqual(StreakModalViewController.mode(streakDays: 7, savedAmount: 0), .behavioral)
-        XCTAssertEqual(StreakModalViewController.mode(streakDays: 7, savedAmount: -50), .behavioral)
+        XCTAssertEqual(StreakModalViewController.mode(streakDays: 7, savedAmount: 0, currency: .rub), .behavioral)
+        XCTAssertEqual(StreakModalViewController.mode(streakDays: 7, savedAmount: -50, currency: .rub), .behavioral)
     }
 
     /// `StatisticsViewController` opens the sheet with `max(streak, 1)`, so a
     /// zero — or unreadable — streak reaches the modal as 1. The modal itself
     /// refuses to mint money out of it.
     func testModeFallsBackToBehavioralForNonPositiveStreak() {
-        XCTAssertEqual(StreakModalViewController.mode(streakDays: 0, savedAmount: 350), .behavioral)
-        XCTAssertEqual(StreakModalViewController.mode(streakDays: -3, savedAmount: 350), .behavioral)
+        XCTAssertEqual(StreakModalViewController.mode(streakDays: 0, savedAmount: 350, currency: .rub), .behavioral)
+        XCTAssertEqual(StreakModalViewController.mode(streakDays: -3, savedAmount: 350, currency: .rub), .behavioral)
     }
 
     // MARK: - Copy per mode
