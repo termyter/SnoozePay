@@ -36,6 +36,17 @@ final class AlarmFiringPricePresentationTests: XCTestCase {
         XCTAssertTrue(hint.contains("0,002"), "Preserve the currency's third fractional digit")
     }
 
+    func testActualNextHintOmitsPositivePricesBelowCurrencyDisplayPrecision() {
+        for (code, base) in [("USD", 0.001), ("JPY", 0.1)] {
+            let currency = Currency(code: code)!
+            let model = makeViewModel(base: base, currency: currency)
+            XCTAssertNil(AlarmFiringViewController(viewModel: model).snoozeHintText())
+            XCTAssertNotNil(AlarmFiringViewController.quotedPriceText(0, currency: currency),
+                            "A genuine free price is different from a positive price displayed as zero")
+            XCTAssertEqual(model.alarm.penalty(forSnoozeCount: 2), base * 2)
+        }
+    }
+
     func testQuotedPricePreservesHugeFiniteCurrencyAndRejectsInvalidOrLossySubunits() throws {
         let currency = Currency(code: "USD")!
         let digits = try XCTUnwrap(AlarmFiringViewController.roundedPriceText(

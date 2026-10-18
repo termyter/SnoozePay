@@ -506,6 +506,7 @@ class AlarmFiringViewController: UIViewController {
     static func quotedPriceText(_ amount: Double, currency: Currency) -> String? {
         guard amount.isFinite, amount >= 0 else { return nil }
         let formatted = MoneyFormatter.string(amount, currency: currency)
+        if amount > 0, formatted == MoneyFormatter.string(0.0, currency: currency) { return nil }
         if formatted != "—" { return formatted }
         guard amount >= 1, amount.rounded(.towardZero) == amount,
               let digits = roundedPriceText(amount, withCurrency: false) else { return nil }
