@@ -348,6 +348,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
 /// running balance so a snooze can flip `canSnooze` to `false` (the #398
 /// drain-to-empty scenario) without touching `UserDefaults`.
 private final class SnoozedStubBalance: AlarmFiringBalancing {
+    let walletCurrency: Currency = .rub
     private(set) var balance: Double
     init(balanceValue: Double) { balance = balanceValue }
 
