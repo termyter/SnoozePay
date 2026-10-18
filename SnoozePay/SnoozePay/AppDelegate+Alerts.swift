@@ -348,7 +348,9 @@ extension AppDelegate {
     /// `?.`: the alert never went up and nothing said so. Unreachable in
     /// production, where the delegate is always `AppDelegate`; it takes the
     /// delegate as a parameter so a test can reach the other branch.
-    static func forwardAlarmDataCorrupted(_ error: Error, to delegate: UIApplicationDelegate?) {
+    static func forwardAlarmDataCorrupted(
+        _ error: Error, alarmID: UUID? = nil, to delegate: UIApplicationDelegate?
+    ) {
         guard let appDelegate = delegate as? AppDelegate else {
             let found = delegate.map { String(describing: type(of: $0)) } ?? "nil"
             AppLogger.emit(
@@ -358,6 +360,6 @@ extension AppDelegate {
             )
             return
         }
-        appDelegate.reportAlarmDataCorrupted(error)
+        appDelegate.reportAlarmCorruption(error, alarmID: alarmID)
     }
 }

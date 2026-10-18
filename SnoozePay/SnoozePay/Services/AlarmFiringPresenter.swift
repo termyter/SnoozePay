@@ -113,9 +113,13 @@ final class AlarmFiringPresenter {
     /// the live application, and a test replaces it so no alert mounts on the
     /// test host's window. With no `AppDelegate` behind the application the
     /// default logs the dropped alert instead (#872).
-    var reportDataCorrupted: (Error) -> Void = { error in
-        AppDelegate.forwardAlarmDataCorrupted(error, to: UIApplication.shared.delegate)
+    private var corruptionAlarmID: UUID?
+    lazy var reportDataCorrupted: (Error) -> Void = { [unowned self] error in
+        AppDelegate.forwardAlarmDataCorrupted(
+            error, alarmID: self.corruptionAlarmID, to: UIApplication.shared.delegate
+        )
     }
+    var criticalWarnings: CriticalWarningCenter = .shared
 
     /// Takes the stale firing screen down before the replacement goes up:
     /// `dismiss(animated:completion:)` in production.
@@ -320,7 +324,12 @@ final class AlarmFiringPresenter {
             alarm = try alarmRepository.fetchChecked(id: alarmID)
         } catch {
             stopAudio(ifOwnedBy: request, "fetch failed (\(String(describing: error)))")
-            reportDataCorrupted(error)
+            if !criticalWarnings.contains(alarmID: alarmID) {
+                let previous = corruptionAlarmID
+                corruptionAlarmID = alarmID
+                defer { corruptionAlarmID = previous }
+                reportDataCorrupted(error)
+            }
             return true
         }
         guard let alarm else {

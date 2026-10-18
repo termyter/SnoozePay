@@ -40,13 +40,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// points a fresh `AppDelegate` at a repository over its own defaults
     /// suite, so it can save an alarm without writing `.standard` (#814).
     var alarmRepository: AlarmRepository = .shared
+    var criticalWarnings: CriticalWarningCenter = .shared
 
     /// What `resolveFiringAlarm(for:)` does when the repository fails to
     /// decode: put the data-corrupted alert on screen. Production never
     /// reassigns it; a test that drives a decode failure replaces it, so the
     /// alert never mounts on the test host's window (#860).
+    private var corruptionAlarmID: UUID?
     lazy var reportAlarmDataCorrupted: (Error) -> Void = { [unowned self] error in
-        self.presentAlarmDataCorruptedAlert(error: error)
+        self.presentAlarmDataCorruptedAlert(error: error, alarmID: self.corruptionAlarmID)
+    }
+    var locateCorruptionAlertRoot = { ActiveWindowLocator.rootViewController() }
+
+    func reportAlarmCorruption(_ error: Error, alarmID: UUID? = nil) {
+        // Synchronous main-actor context: the default closure captures the ID
+        // before deferring UIKit. Keeping the stored closure preserves test save/restore.
+        let previous = corruptionAlarmID
+        corruptionAlarmID = alarmID
+        defer { corruptionAlarmID = previous }
+        reportAlarmDataCorrupted(error)
     }
 
     /// Where `resolveFiringAlarm(for:)` landed. A miss keeps its reason, so
@@ -496,9 +508,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 resolveOnce()
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 25, execute: watchdog)
-            AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo) { [weak self] outcome in
+            AlarmFiringCoordinator.shared.handleSnooze(userInfo: userInfo) { [self] outcome in
                 watchdog.cancel()
-                self?.handleSnoozeOutcome(outcome, alarmID: payload?.alarmID)
+                handleSnoozeOutcome(outcome, alarmID: payload?.alarmID)
                 resolveOnce()
             }
             return // async path + watchdog own `completionHandler` from here on
@@ -598,7 +610,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // fires with no sound of its own, no firing screen and no diagnostic.
             // The alert is presented from the same dispatch we'd use for the
             // firing screen so it reaches whichever VC is on top.
-            reportAlarmDataCorrupted(error)
+            if !criticalWarnings.contains(alarmID: payload.alarmID) {
+                reportAlarmCorruption(error, alarmID: payload.alarmID)
+            }
             return .loadFailed
         }
         guard let alarm else {
@@ -638,8 +652,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// lost exactly as when the schedule fails, and a system banner survives a
     /// cold launch, where an alert over the splash is torn down with it. Its
     /// "refunded" copy is the right one — nothing was charged. The
-    /// data-corrupted alert still goes up for the cause; the alert dedup keeps
-    /// it from stacking on the one `willPresent` already raised.
+    /// durable critical warning includes the cause and replaces a second generic
+    /// data-corrupted alert for the same failed snooze.
     ///
     /// Internal so a test can hand it an outcome and a poster; `didReceive`
     /// cannot be driven. `alarmID` is the payload's, when it decoded; it only
@@ -652,18 +666,21 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         logSnoozeOutcome(outcome)
         switch outcome {
         case let .scheduleFailed(error):
+            criticalWarnings.record(detail: error.localizedDescription, refundLanded: true, alarmID: alarmID)
             AppDelegate.postSnoozeScheduleFailedBanner(
                 error: error, refundLanded: true, alarmID: alarmID, poster: poster
             )
         case let .scheduleFailedAndRefundFailed(error):
+            criticalWarnings.record(detail: error.localizedDescription, refundLanded: false, alarmID: alarmID)
             AppDelegate.postSnoozeScheduleFailedBanner(
                 error: error, refundLanded: false, alarmID: alarmID, poster: poster
             )
         case let .alarmLoadFailed(error):
+            criticalWarnings.record(detail: error.localizedDescription, refundLanded: true, alarmID: alarmID)
             AppDelegate.postSnoozeScheduleFailedBanner(
                 detail: error.localizedDescription, refundLanded: true, alarmID: alarmID, poster: poster
             )
-            reportAlarmDataCorrupted(error)
+            // The critical warning includes the cause; do not stack a generic corruption alert.
         default:
             break
         }
@@ -784,7 +801,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     /// but its data couldn't be decoded. Without this surface the user just
     /// hears their alarm cut off with no explanation — silently regressing
     /// the very pattern #117 is fixing.
-    private func presentAlarmDataCorruptedAlert(error: Error) {
+    private func presentAlarmDataCorruptedAlert(error: Error, alarmID: UUID? = nil) {
         let message: String
         if let repoError = error as? AlarmRepository.RepositoryError,
            case let .decodeFailure(detail) = repoError {
@@ -794,9 +811,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         } else {
             message = Localized.text("alarm_failure.corrupted.message_fallback")
         }
+        let warnings = criticalWarnings
+        let locateRoot = locateCorruptionAlertRoot
         DispatchQueue.main.async {
+            if let alarmID, warnings.contains(alarmID: alarmID) { return }
             let rootVC: UIViewController
-            switch ActiveWindowLocator.rootViewController() {
+            switch locateRoot() {
             case let .success(located):
                 rootVC = located
             case let .failure(miss):

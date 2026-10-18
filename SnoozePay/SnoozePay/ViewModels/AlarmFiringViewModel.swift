@@ -452,8 +452,9 @@ final class AlarmFiringViewModel {
         // and the real re-ring agree. Re-tapping snooze re-anchors to the new tap,
         // matching the freshly-armed trigger.
         snoozeAnchor = Date()
-        scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount) { [weak self] result in
-            self?.handleScheduleResult(
+        scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount) { [self] result in
+            // Retain this operation until its refund/outcome resolves, even if the VC disappears.
+            handleScheduleResult(
                 result,
                 penalty: penalty,
                 chargeTransactionID: chargeTransaction.id,

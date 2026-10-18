@@ -85,24 +85,16 @@ extension AlarmFiringViewController {
         // scheduleCompletion surfaces a notification-center failure (revoked
         // permission, 64-pending-limit, malformed trigger) so the user
         // doesn't pay for a snooze that will never re-fire (#127 finding).
+        let warnings = criticalWarnings
+        let alarmID = viewModel.alarm.id
         let success = viewModel.snooze { [weak self] outcome in
+            // Record before weak self: the AlarmKit screen can already be gone.
+            warnings.record(outcome, alarmID: alarmID)
             guard let self else { return }
             switch outcome {
-            case .scheduled:
-                break
-            case .scheduleFailed(let error):
-                // The charge was refunded and the alarm will NOT re-fire, so the
-                // snoozed chrome (a live countdown to a phantom ring + the
-                // decremented pill) would lie. Tear it back down to the active
-                // firing UI BEFORE surfacing the alert so the screen matches the
-                // alert's «будильник не зазвенит повторно / деньги возвращены».
+            case .scheduled: break
+            case .scheduleFailed, .scheduleFailedAndRefundFailed:
                 self.exitSnoozedState()
-                self.presentSnoozeScheduleFailureAlert(error: error)
-            case .scheduleFailedAndRefundFailed(let error):
-                // Worse: billed, no re-fire, refund also failed. Same teardown so
-                // the countdown stops lying; the alert routes the user to support.
-                self.exitSnoozedState()
-                self.presentSnoozeRefundFailedAlert(error: error)
             }
         }
 
@@ -169,39 +161,6 @@ extension AlarmFiringViewController {
             currentBalance: BalanceService.shared.balance
         )
         present(sheet, animated: true)
-    }
-
-    func presentSnoozeScheduleFailureAlert(
-        error: AlarmScheduler.SchedulingError
-    ) {
-        let detail = error.errorDescription ?? error.localizedDescription
-        let alert = UIAlertController(
-            title: Localized.text("firing.alert.snooze_not_scheduled.title"),
-            // The scheduler's own wording is a substitution, not a prefix: a
-            // language that wants «your alarm won't ring again — <reason>»
-            // gets to say so without touching this file.
-            message: Localized.format("firing.alert.snooze_not_scheduled.message", detail),
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        present(alert, animated: true)
-    }
-
-    /// Stronger banner for the degraded case (#197): the snooze didn't schedule
-    /// AND the refund failed (locked ledger), so the user was billed with no
-    /// re-fire and no money back. Route them to support rather than implying
-    /// the penalty was returned.
-    func presentSnoozeRefundFailedAlert(
-        error: AlarmScheduler.SchedulingError
-    ) {
-        let detail = error.errorDescription ?? error.localizedDescription
-        let alert = UIAlertController(
-            title: Localized.text("firing.alert.refund_failed.title"),
-            message: Localized.format("firing.alert.refund_failed.message", detail),
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        present(alert, animated: true)
     }
 }
 

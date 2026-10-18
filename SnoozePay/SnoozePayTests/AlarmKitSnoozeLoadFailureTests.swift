@@ -36,6 +36,8 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
             scheduler: AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: nil)
         )
         router.notificationPoster = poster
+        router.criticalWarnings = CriticalWarningCenter(defaults: defaults)
+        router.criticalWarnings.isForegroundActive = { false }
         router.present = { [weak self] in self?.presented.append($0) }
     }
 
@@ -71,7 +73,11 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
         // The "refunded" copy: this button never charges, the screen does.
         XCTAssertTrue(banner.content.body.hasPrefix("Установите запасной — "), banner.content.body)
         XCTAssertEqual(banner.content.interruptionLevel, .timeSensitive)
-        XCTAssertEqual(presented, [alarmID], "the presenter still runs: it raises the data-corrupted alert")
+        XCTAssertTrue(presented.isEmpty, "the critical warning replaces the generic corruption-alert path")
+        let saved = CriticalWarningCenter(defaults: defaults).pending
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.alarmID, alarmID)
+        XCTAssertEqual(saved.first?.message, banner.content.body)
 
         let failures = lines.filter { $0.message.hasPrefix("ALARMKIT-868-SNOOZE-LOAD-FAILED: ") }
         XCTAssertEqual(failures.count, 1, "the lost snooze must leave one line with its error id: \(lines)")
@@ -92,6 +98,7 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
         snooze(alarmID)
 
         let refusals = lines.filter { $0.message.hasPrefix(AppDelegate.snoozeBannerPostFailedErrorID) }
+        XCTAssertEqual(router.criticalWarnings.pending.count, 1, "a refused UN banner must not discard the warning")
         XCTAssertEqual(refusals.count, 1, "\(lines)")
         XCTAssertTrue(
             refusals.first?.message.contains("for alarm \(alarmID.uuidString.prefix(8)) ") == true,

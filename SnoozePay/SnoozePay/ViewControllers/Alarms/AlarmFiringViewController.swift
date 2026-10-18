@@ -157,6 +157,7 @@ class AlarmFiringViewController: UIViewController {
     /// every snooze tap. `internal` so the +Progressive extension can re-tone
     /// it on `updateUI()`.
     var snoozeCTA: SPSnoozePrice?
+    var criticalWarnings: CriticalWarningCenter = .shared
 
     /// `internal` so the +NoBalance extension can hide / show this when
     /// swapping between the normal (balance OK) and no-balance layouts.
