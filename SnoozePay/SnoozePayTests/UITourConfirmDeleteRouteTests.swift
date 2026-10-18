@@ -84,8 +84,8 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         // The whole of setUp, not just the drain: building the host window and
         // making it key is main-thread UIKit work like any other, and a stamp
         // that skips it leaves a hole in the arithmetic against the duration
-        // XCTest reports. Only tearDown is outside every stamp here, so the
-        // remainder is named rather than left for the reader to hunt.
+        // XCTest reports. Scheduling outside these phases and tearDown are
+        // unstamped, so the remainder must not be attributed to cleanup alone.
         setUpEvidence = """
             setUp took \(seconds(Date().timeIntervalSince(setUpStarted))), of which the \
             drain \(seconds(drainElapsed)), ending \(drain); the host window took the \

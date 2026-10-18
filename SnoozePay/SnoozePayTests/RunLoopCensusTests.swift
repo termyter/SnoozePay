@@ -98,7 +98,10 @@ final class RunLoopCensusTests: XCTestCase {
         let summary = census.summary(now: start.addingTimeInterval(10))
 
         XCTAssertTrue(summary.contains("1 of ~200"), "the ratio must be in the message, got: \(summary)")
-        XCTAssertTrue(summary.contains("longest delivery gap 9.95 s"), "the source delivery gap must be named, got: \(summary)")
+        XCTAssertTrue(
+            summary.contains("longest delivery gap 9.95 s"),
+            "the source delivery gap must be named, got: \(summary)"
+        )
         XCTAssertTrue(
             summary.contains("not proof that the whole run loop"),
             "a sampled source must not become a whole-loop conclusion, got: \(summary)"
