@@ -89,6 +89,7 @@ final class AlarmFiringAudioNoteTests: XCTestCase {
 
 /// A funded wallet that is never charged: the test only reads the banner.
 private final class AudioNoteWallet: AlarmFiringBalancing {
+    let walletCurrency: Currency = .rub
     var balance: Double { 1000 }
     func canAfford(_ amount: Double) -> Bool { true }
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? { nil }

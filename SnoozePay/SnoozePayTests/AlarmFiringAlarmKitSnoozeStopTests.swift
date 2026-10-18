@@ -111,6 +111,7 @@ final class AlarmFiringAlarmKitSnoozeStopTests: XCTestCase {
 
 /// A funded wallet that is never charged: nothing here snoozes.
 private final class SnoozeStopWallet: AlarmFiringBalancing {
+    let walletCurrency: Currency = .rub
     var balance: Double { 1000 }
     func canAfford(_ amount: Double) -> Bool { true }
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? { nil }

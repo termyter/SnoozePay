@@ -275,6 +275,7 @@ final class AlarmFiringViewModel {
     }
 
     var balance: Double { balanceService.balance }
+    var walletCurrency: Currency { balanceService.walletCurrency }
 
     var alarmName: String { alarm.name }
 
@@ -558,6 +559,7 @@ final class AlarmFiringViewModel {
 /// locked ledger fails `charge` too (issue #197).
 protocol AlarmFiringBalancing: AnyObject {
     var balance: Double { get }
+    var walletCurrency: Currency { get }
     func canAfford(_ amount: Double) -> Bool
     /// Charges the penalty and returns the persisted charge `Transaction` (or
     /// `nil` on insufficient funds / locked ledger). The returned `id` lets the
