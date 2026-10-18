@@ -350,13 +350,11 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     ///
     /// Both chains, rather than "did the sheet appear", because this route is
     /// two steps: `presentLater(nav)`, then `nav.present(sheet)` from the
-    /// form's completion (`UITourRoutes.confirm-delete`). A starved queue
-    /// delivers the overdue beat ahead of the probe, so the first turn mounts
-    /// the nav — but UIKit may call that completion a turn later, while the
-    /// drain returns as soon as one round trip lands inside its 0.1 s
-    /// threshold. Asking only about the sheet would then print "nothing was
-    /// running late" over a beat that was exactly that, which is the misreading
-    /// this whole message exists to prevent.
+    /// form's completion (`UITourRoutes.confirm-delete`). An overdue beat can
+    /// mount the nav before the FIFO probe runs, while UIKit delivers the
+    /// presentation completion after the probe. Asking only about the sheet
+    /// would miss that progress, so retain both presentation chains. The probe
+    /// observes one queued turn; it does not establish that the queue is quiet.
     ///
     /// Bounded at 5 s, and only ever reached on a failing test, so it cannot
     /// grow a green run. It is emphatically not a wider timeout: by the time it
