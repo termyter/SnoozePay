@@ -170,7 +170,13 @@ final class WalletCopyTests: XCTestCase {
             (view as? SPAmountPreset).map { [$0] } ?? view.subviews.flatMap { tiles(in: $0) }
         }
         for style in [UIUserInterfaceStyle.light, .dark] {
-            let sheet = DepositBottomSheetViewController()
+            let sheet = DepositBottomSheetViewController(offerProvider: { productID in
+                guard let preset = DepositPresets.presets.first(where: { $0.productID == productID }) else {
+                    return nil
+                }
+                return TopUpOffer(productID: productID, price: Decimal(preset.amount), currencyCode: "RUB",
+                                  displayPrice: "\(preset.amount) ₽")
+            })
             sheet.overrideUserInterfaceStyle = style
             sheet.loadViewIfNeeded()
             sheet.view.frame = CGRect(x: 0, y: 0, width: 393, height: 474)
