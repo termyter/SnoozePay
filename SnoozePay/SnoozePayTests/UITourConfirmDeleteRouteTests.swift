@@ -34,6 +34,8 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
 
     private var window: UIWindow!
     private var previousKeyWindow: UIWindow?
+    private var timeline: UIWaitTimeline!
+    private var savedRouteTrace: UITourRoutes.ConfirmDeleteTrace?
 
     /// How the three phases of a test went, stamped as they happen and printed
     /// only if a wait times out (#728).
@@ -81,6 +83,15 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
         window = makeHostWindow()
+        let timeline = UIWaitTimeline()
+        self.timeline = timeline
+        savedRouteTrace = UITourRoutes.confirmDeleteTrace
+        let record: (UUID, String, Date) -> Void = { [weak timeline] fixtureID, event, time in
+            guard let timeline, timeline.fixtureID == fixtureID else { return }
+            timeline.record(event, at: time)
+        }
+        UITourRoutes.confirmDeleteTrace = .init(fixtureID: timeline.fixtureID, window: window, record: record)
+        timeline.record("fixture.created hidden=\(window.isHidden) root=\(window.rootViewController != nil)")
         // The whole of setUp, not just the drain: constructing the host window
         // is main-thread UIKit work like any other, and a stamp that skips it
         // leaves a hole in the arithmetic against the duration
@@ -95,6 +106,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
 
     nonisolated override func tearDown() async throws {
         await dismissHostWindow()
+        await finishDiagnostics()
         try await super.tearDown()
     }
 
@@ -121,6 +133,23 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         }
         window = nil
         previousKeyWindow = nil
+    }
+
+    private func finishDiagnostics() {
+        guard let timeline else { return }
+        if UITourRoutes.confirmDeleteTrace?.fixtureID == timeline.fixtureID {
+            UITourRoutes.confirmDeleteTrace = savedRouteTrace
+        }
+        savedRouteTrace = nil
+        timeline.record("teardown.finished")
+        print(timeline.finish())
+        self.timeline = nil
+    }
+
+    private func recordConfirmationState(_ event: String) {
+        let sheet = presentedConfirmSheet()
+        timeline?.recordState(event, state: "exists=\(sheet != nil) "
+            + "attached=\(sheet?.viewIfLoaded?.window != nil) sized=\(sheet?.viewIfLoaded?.bounds.isEmpty == false)")
     }
 
     // MARK: - Routing
@@ -166,6 +195,7 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         // means "declined to present", not "hasn't tried yet".
         let beatPassed = XCTestExpectation(description: "route had its chance to fire")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { beatPassed.fulfill() }
+        timeline.beginWait(started: Date(), timeout: 10)
         let result = await XCTWaiter.fulfillment(of: [beatPassed], timeout: 10)
         XCTAssertEqual(result, .completed, "The detached route must actually receive its scheduled turn")
 
@@ -314,7 +344,9 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         let ready = XCTestExpectation(description: "confirm-delete sheet ready")
         let started = Date()
         let progress = UIWaitProgress(interval: pollInterval, timeout: timeout)
+        timeline.beginWait(started: started, timeout: timeout)
         progress.start { [weak self, weak progress] in
+            self?.recordConfirmationState("poll.confirmation")
             guard let sheet = self?.presentedConfirmSheet(), isReady(sheet) else { return }
             found = sheet
             progress?.cancel()
@@ -323,6 +355,8 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         defer { progress.cancel() }
         let result = await XCTWaiter.fulfillment(of: [ready], timeout: timeout)
         let finished = Date()
+        timeline.record("wait.returned result=\(result)", at: finished)
+        recordConfirmationState("wait.confirmation")
         waitEvidence = """
             Wait: \(result) after \(seconds(finished.timeIntervalSince(started))) against a \(seconds(timeout)) budget.
             \(progress.summary(at: finished))
@@ -343,7 +377,9 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         // Keep root assignment and visibility in the same MainActor turn,
         // including when the regression queues this entire mount in a Task.
         XCTAssertNotNil(window.rootViewController, "The route must supply its actual root before visibility")
+        timeline.record("fixture.visibility.requested")
         window.makeKeyAndVisible()
+        timeline.record("fixture.visible key=\(window.isKeyWindow) hidden=\(window.isHidden)")
         XCTAssertTrue(window.isKeyWindow, "The rooted route window must become key")
         mountEvidence = """
             Mount began at \(started.timeIntervalSince1970), returned at \(mounted.timeIntervalSince1970) \
@@ -374,12 +410,15 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     /// runs, the failure is already going to be recorded.
     private func timeoutMessage(_ headline: String) async -> String {
         let chainAtTimeout = presentationDiagnostics(rootedAt: window?.rootViewController)
+        recordConfirmationState("timeout.confirmation")
         let probeStarted = Date()
         let probe = XCTestExpectation(description: "post-timeout main queue probe")
         DispatchQueue.main.async { probe.fulfill() }
         let probeResult = await XCTWaiter.fulfillment(of: [probe], timeout: 5)
         let probeElapsed = Date().timeIntervalSince(probeStarted)
         let chainAfterProbe = presentationDiagnostics(rootedAt: window?.rootViewController)
+        timeline.record("probe.returned result=\(probeResult)")
+        recordConfirmationState("probe.confirmation")
         let queue = "a fresh asynchronous FIFO probe returned \(probeResult) in \(seconds(probeElapsed))"
         return """
             \(headline) At the timeout, \(chainAtTimeout). \(setUpEvidence) \(mountEvidence) \

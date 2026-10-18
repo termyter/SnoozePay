@@ -111,4 +111,41 @@ final class RunLoopCensusTests: XCTestCase {
             "the independent sources needed for diagnosis must be named, got: \(summary)"
         )
     }
+
+    // MARK: - Independent background evidence (#728)
+
+    func testBackgroundHeartbeatKeepsBothSidesOfTheDeadlineButNotBeyondItsHardEnd() {
+        let heartbeat = BackgroundWaitHeartbeat(started: start, timeout: 10)
+        XCTAssertFalse(heartbeat.record(at: start.addingTimeInterval(-0.01)))
+        XCTAssertTrue(heartbeat.record(at: start.addingTimeInterval(0.05)))
+        XCTAssertTrue(heartbeat.record(at: start.addingTimeInterval(10)))
+        XCTAssertTrue(heartbeat.record(at: start.addingTimeInterval(12)))
+        XCTAssertFalse(heartbeat.record(at: start.addingTimeInterval(15)))
+
+        XCTAssertEqual(heartbeat.snapshot().ticks, [0.05, 10, 12].map { start.addingTimeInterval($0) })
+        XCTAssertEqual(heartbeat.deadline, start.addingTimeInterval(10))
+        XCTAssertEqual(heartbeat.end, start.addingTimeInterval(15))
+    }
+
+    func testBackgroundHeartbeatSerializesConcurrentUpdates() {
+        let started = start
+        let heartbeat = BackgroundWaitHeartbeat(started: started, timeout: 10)
+        DispatchQueue.concurrentPerform(iterations: 256) { index in
+            heartbeat.record(at: started.addingTimeInterval(Double(index) / 100))
+        }
+        XCTAssertEqual(heartbeat.snapshot().ticks,
+                       (0..<256).map { started.addingTimeInterval(Double($0) / 100) })
+    }
+
+    func testBackgroundHeartbeatIsCappedAndCannotRestartAfterCancellation() {
+        let heartbeat = BackgroundWaitHeartbeat(started: start, timeout: 10)
+        for _ in 0..<520 { heartbeat.record(at: start.addingTimeInterval(0.05)) }
+        XCTAssertEqual(heartbeat.snapshot().ticks.count, 512)
+        heartbeat.cancel()
+        heartbeat.start(interval: 0.05)
+        XCTAssertTrue(heartbeat.snapshot().stopped)
+        XCTAssertFalse(heartbeat.record(at: start.addingTimeInterval(1)))
+        XCTAssertEqual(heartbeat.snapshot().ticks.count, 512)
+    }
+
 }

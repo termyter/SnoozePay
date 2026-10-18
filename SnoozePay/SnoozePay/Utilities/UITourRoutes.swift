@@ -20,6 +20,24 @@ import UIKit
 /// alarm-off-warning, txhistory, periodpicker, deposit, streak.
 enum UITourRoutes {
 
+    /// Opt-in, fixture-scoped evidence for #728. Captured once by the route so
+    /// delayed callbacks cannot inherit a later fixture's generation or sink.
+    struct ConfirmDeleteTrace {
+        let fixtureID: UUID
+        weak var window: UIWindow?
+        let record: (UUID, String, Date) -> Void
+
+        func stamp(_ event: String, controller: UIViewController? = nil) {
+            let state = controller.map {
+                " attached=\($0.viewIfLoaded?.window != nil) sized=\($0.viewIfLoaded?.bounds.isEmpty == false)"
+                    + " presenting=\($0.isBeingPresented) dismissing=\($0.isBeingDismissed)"
+            } ?? ""
+            record(fixtureID, event + state, Date())
+        }
+    }
+
+    static var confirmDeleteTrace: ConfirmDeleteTrace?
+
     /// The mounter for `screen`, or the fallback. An unknown screen id lands on
     /// the alarms tab so the audit screenshot makes the mistake obvious
     /// instead of hanging.
@@ -85,13 +103,24 @@ enum UITourRoutes {
             }
         },
         "confirm-delete": { window in
+            let trace = confirmDeleteTrace.flatMap { $0.window === window ? $0 : nil }
+            trace?.stamp("route.entered")
             let nav = createNav(alarm: sampleAlarm())
+            trace?.stamp("navigation.created", controller: nav)
             // Sequence, don't race (#467): both presentations used to share
             // one 0.8 s deadline, so the sheet asked a navigation controller
             // still mid-transition to present — a silent no-op. Chaining off
             // the form's completion guarantees the presenter is in the window.
-            mountPresented(nav, onTab: 0, in: window) {
-                nav.present(ConfirmDeleteAlarmViewController(), animated: false)
+            mountPresented(nav, onTab: 0, in: window, trace: trace) {
+                let sheet = ConfirmDeleteAlarmViewController()
+                trace?.stamp("confirmation.requested", controller: sheet)
+                if let trace {
+                    nav.present(sheet, animated: false) {
+                        trace.stamp("confirmation.completed", controller: sheet)
+                    }
+                } else {
+                    nav.present(sheet, animated: false)
+                }
             }
         },
         "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
@@ -193,11 +222,13 @@ enum UITourRoutes {
         _ vc: UIViewController,
         onTab index: Int,
         in window: UIWindow,
+        trace: ConfirmDeleteTrace? = nil,
         then next: (() -> Void)? = nil
     ) {
         let root = tabBar(selected: index)
         window.rootViewController = root
-        presentLater(vc, over: root, then: next)
+        trace?.stamp("root.installed", controller: root)
+        presentLater(vc, over: root, trace: trace, then: next)
     }
 
     private static func createNav(alarm: Alarm?) -> UINavigationController {
@@ -239,9 +270,10 @@ enum UITourRoutes {
     private static func presentLater(
         _ vc: UIViewController,
         over presenter: UIViewController,
+        trace: ConfirmDeleteTrace? = nil,
         then next: (() -> Void)? = nil
     ) {
-        Self.present(vc, over: presenter, after: 0.8, attemptsLeft: 50, then: next)
+        Self.present(vc, over: presenter, after: 0.8, attemptsLeft: 50, trace: trace, then: next)
     }
 
     private static func present(
@@ -249,11 +281,13 @@ enum UITourRoutes {
         over presenter: UIViewController,
         after delay: TimeInterval,
         attemptsLeft: Int,
+        trace: ConfirmDeleteTrace?,
         then next: (() -> Void)?
     ) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             let host = presenter.presentedViewController ?? presenter
             guard Self.canPresent(from: host) else {
+                trace?.stamp("navigation.deferred attemptsLeft=\(attemptsLeft)", controller: host)
                 guard attemptsLeft > 0 else {
                     let name = String(describing: type(of: vc))
                     AppLogger.ui.error(
@@ -261,10 +295,19 @@ enum UITourRoutes {
                     )
                     return
                 }
-                Self.present(vc, over: presenter, after: 0.1, attemptsLeft: attemptsLeft - 1, then: next)
+                Self.present(vc, over: presenter, after: 0.1,
+                             attemptsLeft: attemptsLeft - 1, trace: trace, then: next)
                 return
             }
-            host.present(vc, animated: false, completion: next)
+            trace?.stamp("navigation.requested", controller: vc)
+            var completion = next
+            if let trace {
+                completion = {
+                    trace.stamp("navigation.completed", controller: vc)
+                    next?()
+                }
+            }
+            host.present(vc, animated: false, completion: completion)
         }
     }
 

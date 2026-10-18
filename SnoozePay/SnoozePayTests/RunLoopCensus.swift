@@ -86,3 +86,61 @@ struct RunLoopCensus {
         return String(format: "%.2f s", value)
     }
 }
+
+/// Only timestamp state crosses threads; every mutable field is protected by
+/// `lock`. No UIKit, actor hop, logging, or thread sampling runs on this queue.
+nonisolated final class BackgroundWaitHeartbeat: @unchecked Sendable {
+    let started: Date
+    let deadline: Date
+    let end: Date
+    private let lock = NSLock()
+    private var ticks: [Date] = []
+    private var stopped = false
+    private var timer: DispatchSourceTimer?
+
+    init(started: Date, timeout: TimeInterval, diagnosticBudget: TimeInterval = 5) {
+        self.started = started
+        deadline = started.addingTimeInterval(timeout)
+        end = deadline.addingTimeInterval(diagnosticBudget)
+    }
+
+    func start(interval: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped, timer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "UIWaitHeartbeat", qos: .utility))
+        timer.schedule(deadline: .now() + interval, repeating: interval)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            if !self.record(at: Date()) { self.cancel() }
+        }
+        self.timer = timer
+        timer.resume()
+    }
+
+    @discardableResult
+    func record(at moment: Date) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped, moment >= started, moment < end, ticks.count < 512 else { return false }
+        ticks.append(moment)
+        return true
+    }
+
+    func snapshot() -> (ticks: [Date], stopped: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (ticks.sorted(), stopped)
+    }
+
+    func cancel() {
+        lock.lock()
+        stopped = true
+        let timer = self.timer
+        self.timer = nil
+        lock.unlock()
+        timer?.cancel()
+    }
+
+    deinit { timer?.cancel() }
+}

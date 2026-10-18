@@ -103,3 +103,58 @@ final class UIWaitProgress {
         "mainThread=\(Thread.isMainThread), mode=\(RunLoop.current.currentMode?.rawValue ?? "nil")"
     }
 }
+
+/// MainActor-owned route milestones, with a separately locked background clock.
+/// One capped report per fixture includes events on either side of its unchanged deadline.
+@MainActor
+final class UIWaitTimeline {
+    let fixtureID = UUID()
+    private var events: [(name: String, time: Date)] = []
+    private var lastStates: [String: String] = [:]
+    private var omitted = 0
+    private var heartbeat: BackgroundWaitHeartbeat?
+
+    func record(_ event: String, at time: Date = Date()) {
+        guard events.count < 96 else { omitted += 1; return }
+        events.append((event, time))
+    }
+
+    func recordState(_ event: String, state: String) {
+        guard lastStates[event] != state else { return }
+        lastStates[event] = state
+        record(event + " " + state)
+    }
+
+    func beginWait(started: Date, timeout: TimeInterval) {
+        heartbeat?.cancel()
+        let heartbeat = BackgroundWaitHeartbeat(started: started, timeout: timeout)
+        self.heartbeat = heartbeat
+        record("wait.began", at: started)
+        heartbeat.start(interval: 0.05)
+    }
+
+    func finish() -> String {
+        heartbeat?.cancel()
+        let ticks = heartbeat?.snapshot().ticks ?? []
+        let deadline = heartbeat?.deadline
+        let lines = events.map { event in
+            let phase = deadline.map { event.time <= $0 ? "before/on deadline" : "after deadline" } ?? "no wait"
+            return "\(event.time.timeIntervalSince1970) [\(phase)] \(event.name)"
+        }.joined(separator: "\n")
+        let before = ticks.filter { tick in deadline.map { tick <= $0 } ?? false }.count
+        let tickTimes = ticks.map { $0.timeIntervalSince1970 }
+        var census = RunLoopCensus(interval: 0.05, started: heartbeat?.started ?? Date())
+        ticks.forEach { census.record(at: $0) }
+        let gap = census.longestStall(now: min(Date(), heartbeat?.end ?? Date()))
+        return """
+            UITour fixture=\(fixtureID.uuidString) timeline (omitted=\(omitted), \
+            nominalDeadline=\(deadline?.timeIntervalSince1970.description ?? "none")):
+            \(lines)
+            Background heartbeat: before/on=\(before), after=\(ticks.count - before), \
+            first=\(tickTimes.first?.description ?? "none"), last=\(tickTimes.last?.description ?? "none"), \
+            hardEnd=\(heartbeat?.end.timeIntervalSince1970.description ?? "none"), \
+            longestGap=\(gap.to - gap.from)s (+\(gap.from) to +\(gap.to)). \
+            Counts distinguish delivery sources, not a blocking stack or owner.
+            """
+    }
+}
