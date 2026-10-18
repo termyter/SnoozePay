@@ -41,6 +41,15 @@ final class StoreKitVerifiedPurchaseTests: XCTestCase {
         }
         XCTAssertEqual(finishes, 1)
         XCTAssertEqual(balance.walletCurrency, usd)
+        XCTAssertTrue(balance.canAfford(2.99), "The paid amount must cover an equal snooze price")
+    }
+
+    func testResolverPreservesNonCentFractionInRubAndUsd() throws {
+        let price = try XCTUnwrap(Decimal(string: "1.2345", locale: Locale(identifier: "en_US_POSIX")))
+        for currency in [Currency.rub, usd] {
+            XCTAssertEqual(StoreKitService.creditAmount(for: "io.mobilife.snoozepay.balance.299",
+                                                       transactionPrice: price, currency: currency), 1.2345)
+        }
     }
 
     func testAbsentPriceWithExplicitRubUsesApprovedNominalFallback() async {

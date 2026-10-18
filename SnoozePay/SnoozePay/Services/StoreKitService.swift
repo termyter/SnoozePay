@@ -599,8 +599,11 @@ final class StoreKitService {
         guard let transactionPrice else {
             return currency == .rub ? productAmounts[productID] : nil
         }
-        let amount = transactionPrice.doubleValue
-        guard !transactionPrice.isNaN, amount.isFinite, amount > 0 else { return nil }
+        // Parse exact decimal text once. doubleValue can land one ULP below
+        // the nearest Double (2.99), making an equal snooze price unaffordable.
+        guard !transactionPrice.isNaN,
+              let amount = Double(NSDecimalNumber(decimal: transactionPrice).stringValue),
+              amount.isFinite, amount > 0 else { return nil }
         return amount
     }
 
@@ -613,10 +616,4 @@ final class StoreKitService {
     enum StoreError: Error {
         case failedVerification
     }
-}
-
-// MARK: - Decimal to Double helper
-
-private extension Decimal {
-    var doubleValue: Double { NSDecimalNumber(decimal: self).doubleValue }
 }
