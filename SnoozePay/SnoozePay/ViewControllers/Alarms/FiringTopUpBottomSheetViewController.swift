@@ -119,6 +119,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     /// Tests drive real lifecycle callbacks without touching shared audio or feedback state.
     private let pauseLifecycle: ((Bool) -> Void)?
+    private let preflightRefusal: ((String) -> String?)?
 
     /// Visible mm:ss countdown reflected in the pause label. Decremented every
     /// 1s so the user can see how long they have left to commit.
@@ -294,7 +295,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         purchaseProduct: ((String) -> Void)? = nil,
         presentPurchaseFailure: ((UIAlertController) -> Void)? = nil,
         dismissForAutoResume: (() -> Void)? = nil,
-        pauseLifecycle: ((Bool) -> Void)? = nil
+        pauseLifecycle: ((Bool) -> Void)? = nil,
+        preflightRefusal: ((String) -> String?)? = nil
     ) {
         self.presets = presets
         self.balance = balance
@@ -304,6 +306,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         self.presentPurchaseFailure = presentPurchaseFailure
         self.dismissForAutoResume = dismissForAutoResume
         self.pauseLifecycle = pauseLifecycle
+        self.preflightRefusal = preflightRefusal
         self.snoozePrice = snoozePrice
         self.currentBalance = currentBalance
         // Pre-select the cheapest tier that actually unlocks a snooze at the
@@ -674,19 +677,16 @@ extension FiringTopUpBottomSheetViewController {
             return
         }
 
+        if let blocked = purchaseRefusal(for: preset.productID) {
+            handlePurchaseFailure(message: blocked, title: ForeignCurrencyNotice.alertTitle,
+                                  dismissTitle: Localized.text("deposit.foreign_currency.dismiss"))
+            return
+        }
         if let purchaseProduct {
             purchaseProduct(preset.productID)
             return
         }
         if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
-            // Foreign storefront: refuse before `purchase(_:)`, while refusing
-            // is still free (#563).
-            if let blocked = ForeignCurrencyNotice.blockingMessage(for: product) {
-                purchaseInFlight = false
-                applePayButton.isEnabled = true
-                present(ForeignCurrencyNotice.alert(message: blocked), animated: true)
-                return
-            }
             Task { @MainActor in
                 await StoreKitService.shared.purchase(product)
             }
@@ -713,6 +713,14 @@ extension FiringTopUpBottomSheetViewController {
             handlePurchaseFailure(message: Localized.text("firing.top_up.load_failed"))
             #endif
         }
+    }
+
+    private func purchaseRefusal(for productID: String) -> String? {
+        if let preflightRefusal { return preflightRefusal(productID) }
+        // Existing dispatch fixtures do not depend on the shared App Store catalogue.
+        guard purchaseProduct == nil,
+              let product = StoreKitService.shared.products.first(where: { $0.id == productID }) else { return nil }
+        return ForeignCurrencyNotice.blockingMessage(for: product, balanceService: balance)
     }
 
     @objc private func closeTapped() {
@@ -751,19 +759,19 @@ extension FiringTopUpBottomSheetViewController {
         }
     }
 
-    private func handlePurchaseFailure(message: String?) {
+    private func handlePurchaseFailure(message: String?, title: String? = nil, dismissTitle: String? = nil) {
         guard !pauseEnded, successReceipt == nil, !failureAcknowledgementPending else { return }
         failureAcknowledgementPending = true
         purchaseInFlight = false
         applePayButton.isEnabled = true
 
         let alert = UIAlertController(
-            title: Localized.text("firing.alert.purchase_failed.title"),
+            title: title ?? Localized.text("firing.alert.purchase_failed.title"),
             message: message ?? Localized.text("firing.alert.purchase_failed.message"),
             preferredStyle: .alert
         )
         let acknowledge = UIAlertAction(
-            title: Localized.text("common.button.ok"), style: .default
+            title: dismissTitle ?? Localized.text("common.button.ok"), style: .default
         ) { [weak self, weak alert] _ in
             // Resume only after the alert is gone; dismissing the presenter while
             // it still owns the alert would dismiss that alert instead of the sheet.

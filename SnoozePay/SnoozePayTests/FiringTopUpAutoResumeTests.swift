@@ -183,6 +183,39 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         try fixture.assertWalletUnchanged()
     }
 
+    func testForeignCurrencyRefusalRetainsOverduePauseUntilNoticeAcknowledgement() throws {
+        let fixture = try Fixture()
+        defer { fixture.clear() }
+        XCTAssertEqual(fixture.balance.topUpFromPurchase(amount: 10, currency: .rub), .credited)
+        fixture.refusal = ForeignCurrencyNotice.message(wallet: .rub, storefront: try XCTUnwrap(Currency(code: "USD")))
+        let before = fixture.defaults.persistentDomain(forName: fixture.suite) as NSDictionary?
+        let sheet = fixture.makeSheet()
+        sheet.loadViewIfNeeded()
+        sheet.viewWillAppear(false)
+        let originalDeadline = try XCTUnwrap(sheet.autoResumeFireDate)
+        try purchaseButton(in: sheet).sendActions(for: .touchUpInside)
+        let notice = try XCTUnwrap(fixture.alerts.first)
+        XCTAssertEqual(notice.title, ForeignCurrencyNotice.alertTitle)
+        XCTAssertEqual(notice.message, fixture.refusal)
+        XCTAssertEqual(notice.actions.map(\.title), [Localized.text("deposit.foreign_currency.dismiss")])
+        XCTAssertEqual(sheet.autoResumeFireDate, originalDeadline)
+        XCTAssertTrue(fixture.requested.isEmpty, "Refusal must precede product dispatch")
+        sheet.handleAutoResume()
+        sheet.handleAutoResume()
+        XCTAssertEqual(fixture.resumes, 0, "The original deadline must not dismiss only the child notice")
+        XCTAssertTrue(try countdown(in: sheet).contains("00:00"))
+        // The real notice action uses this acknowledgement after its alert dismissal completes.
+        sheet.acknowledgePurchaseFailure()
+        sheet.acknowledgePurchaseFailure()
+        sheet.handleAutoResume()
+        try purchaseButton(in: sheet).sendActions(for: .touchUpInside)
+        XCTAssertEqual(fixture.resumes, 1)
+        XCTAssertEqual(fixture.alerts.count, 1)
+        XCTAssertTrue(fixture.successDelays.isEmpty)
+        XCTAssertTrue(fixture.requested.isEmpty)
+        XCTAssertEqual(fixture.defaults.persistentDomain(forName: fixture.suite) as NSDictionary?, before)
+    }
+
     private func purchaseButton(in sheet: FiringTopUpBottomSheetViewController) throws -> SPButton {
         sheet.loadViewIfNeeded()
         return try XCTUnwrap(descendants(in: sheet.view).compactMap { $0 as? SPButton }.first {
@@ -213,6 +246,7 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         var successDelays: [TimeInterval] = []
         var pauseLifecycle: [Bool] = []
         var dismissals = 0
+        var refusal: String?
 
         init() throws {
             let suite = "FiringTopUpAutoResumeTests.\(UUID())"
@@ -233,7 +267,8 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
                 purchaseProduct: { [weak self] in self?.requested.append($0) },
                 presentPurchaseFailure: { [weak self] in self?.alerts.append($0) },
                 dismissForAutoResume: { [weak self] in self?.resumes += 1 },
-                pauseLifecycle: { [weak self] in self?.pauseLifecycle.append($0) }
+                pauseLifecycle: { [weak self] in self?.pauseLifecycle.append($0) },
+                preflightRefusal: { [weak self] _ in self?.refusal }
             )
             sheet.onDismiss = { [weak self] in self?.dismissals += 1 }
             return sheet
