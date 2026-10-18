@@ -10,6 +10,7 @@
 		47E841C354E5DA7707DA30DA /* FiringFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */; };
 		A3400000000000000000B001 /* NoBalanceTopUpUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F001 /* NoBalanceTopUpUITests.swift */; };
 		A3400000000000000000B002 /* CreateAlarmUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F002 /* CreateAlarmUITests.swift */; };
+		928FEEB4EDC3402E9A381AA1 /* LargeSnoozePriceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 928FEEB4EDC3402E9A381AA2 /* LargeSnoozePriceUITests.swift */; };
 		A3400000000000000000B003 /* ProgressiveSnoozeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F003 /* ProgressiveSnoozeUITests.swift */; };
 		A9300000000000000000B001 /* VolumeFadeInUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9300000000000000000F001 /* VolumeFadeInUITests.swift */; };
 		A3400000000000000000B004 /* OnboardingFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F004 /* OnboardingFlowUITests.swift */; };
@@ -39,6 +40,7 @@
 		4AED0CBCB2279D458B93ABDC /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		A3400000000000000000F001 /* NoBalanceTopUpUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NoBalanceTopUpUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F002 /* CreateAlarmUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CreateAlarmUITests.swift; sourceTree = "<group>"; };
+		928FEEB4EDC3402E9A381AA2 /* LargeSnoozePriceUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LargeSnoozePriceUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F003 /* ProgressiveSnoozeUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProgressiveSnoozeUITests.swift; sourceTree = "<group>"; };
 		A9300000000000000000F001 /* VolumeFadeInUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VolumeFadeInUITests.swift; sourceTree = "<group>"; };
 		A3400000000000000000F004 /* OnboardingFlowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnboardingFlowUITests.swift; sourceTree = "<group>"; };
@@ -143,6 +145,7 @@
 				EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */,
 				A3400000000000000000F001 /* NoBalanceTopUpUITests.swift */,
 				A3400000000000000000F002 /* CreateAlarmUITests.swift */,
+				928FEEB4EDC3402E9A381AA2 /* LargeSnoozePriceUITests.swift */,
 				A3400000000000000000F003 /* ProgressiveSnoozeUITests.swift */,
 				A9300000000000000000F001 /* VolumeFadeInUITests.swift */,
 				A3400000000000000000F004 /* OnboardingFlowUITests.swift */,
@@ -302,6 +305,7 @@
 				47E841C354E5DA7707DA30DA /* FiringFlowUITests.swift in Sources */,
 				A3400000000000000000B001 /* NoBalanceTopUpUITests.swift in Sources */,
 				A3400000000000000000B002 /* CreateAlarmUITests.swift in Sources */,
+				928FEEB4EDC3402E9A381AA1 /* LargeSnoozePriceUITests.swift in Sources */,
 				A3400000000000000000B003 /* ProgressiveSnoozeUITests.swift in Sources */,
 				A9300000000000000000B001 /* VolumeFadeInUITests.swift in Sources */,
 				A3400000000000000000B004 /* OnboardingFlowUITests.swift in Sources */,
