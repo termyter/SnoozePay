@@ -40,12 +40,14 @@ final class TopUpRestoreServiceTests: XCTestCase {
         id: UInt64,
         amount: Int = 499,
         currency: Currency? = Currency.rub,
+        price: Decimal? = nil,
         daysAgo: Double = 1
     ) -> RestorableTopUp {
         RestorableTopUp(
             transactionID: id,
             productID: "io.mobilife.snoozepay.balance.\(amount)",
             currency: currency,
+            transactionPrice: price,
             purchaseDate: Date(timeIntervalSinceNow: -daysAgo * 86_400)
         )
     }
@@ -75,15 +77,23 @@ final class TopUpRestoreServiceTests: XCTestCase {
     /// A top-up bought in March is March's revenue. Stamping restored rows with
     /// "now" would move a year of purchases into today's Statistics.
     func testRestore_stampsRowsWithTheOriginalPurchaseDate() {
-        let purchase = candidate(id: 1, daysAgo: 45)
+        let purchase = candidate(id: 1, currency: Currency(code: "EUR"), price: 1.79, daysAgo: 45)
 
         service.restore([purchase])
 
+        XCTAssertEqual(ledgerRows.first?.amount, 1.79)
+        XCTAssertEqual(ledgerRows.first?.currency, Currency(code: "EUR"))
         XCTAssertEqual(
             ledgerRows.first?.createdAt.timeIntervalSince1970 ?? 0,
             purchase.purchaseDate.timeIntervalSince1970,
             accuracy: 1
         )
+    }
+
+    func testRestore_usesAdjustedRubPriceInsteadOfSkuNominal() {
+        XCTAssertEqual(service.restore([candidate(id: 1, amount: 299, price: 249)])?.credited, 249)
+        XCTAssertEqual(balance.balance, 249)
+        XCTAssertEqual(ledgerRows.first?.currency, rub)
     }
 
     // MARK: - Idempotency by Transaction.id
@@ -148,14 +158,16 @@ final class TopUpRestoreServiceTests: XCTestCase {
     func testRestore_adoptsTheMostRecentCurrencyAndSkipsTheRest() {
         let report = service.restore([
             candidate(id: 1, amount: 999, currency: rub, daysAgo: 400),
-            candidate(id: 2, amount: 299, currency: usd, daysAgo: 3)
+            candidate(id: 2, amount: 299, currency: usd, price: 2.99, daysAgo: 3),
+            candidate(id: 3, currency: Currency(code: "EUR"), daysAgo: 1)
         ])
 
         XCTAssertEqual(balance.walletCurrency, usd)
         XCTAssertEqual(report?.creditedCount, 1)
-        XCTAssertEqual(report?.credited, 299)
+        XCTAssertEqual(report?.credited, 2.99)
         XCTAssertEqual(report?.foreignCurrency, 1)
-        XCTAssertEqual(balance.balance, 299)
+        XCTAssertEqual(report?.notRecorded, 1, "Newest incomplete metadata must not freeze the wallet")
+        XCTAssertEqual(balance.balance, 2.99)
         XCTAssertEqual(ledgerRows.count, 1, "a foreign purchase leaves no row it would be summed out of")
     }
 
@@ -163,28 +175,41 @@ final class TopUpRestoreServiceTests: XCTestCase {
     /// denominated in it.
     func testRestore_creditsEveryPurchaseFromASingleForeignStorefront() {
         let report = service.restore([
-            candidate(id: 1, amount: 499, currency: usd, daysAgo: 60),
-            candidate(id: 2, amount: 49, currency: usd, daysAgo: 1)
+            candidate(id: 1, amount: 499, currency: usd, price: 4.99, daysAgo: 60),
+            candidate(id: 2, amount: 49, currency: usd, price: 0.49, daysAgo: 1)
         ])
 
         XCTAssertEqual(balance.walletCurrency, usd)
-        XCTAssertEqual(report?.credited, 548)
+        XCTAssertEqual(report?.credited ?? 0, 5.48, accuracy: 0.000001)
         XCTAssertEqual(report?.foreignCurrency, 0)
-        XCTAssertEqual(balance.balance, 548)
+        XCTAssertEqual(balance.balance, 5.48, accuracy: 0.000001)
     }
 
-    /// StoreKit does not always report a currency. Such a transaction is
-    /// credited into the wallet as it stands and freezes nothing — guessing is
-    /// how a wallet would quietly acquire a currency nobody chose.
-    func testRestore_withoutAReportedCurrency_freezesNothing() {
-        let report = service.restore([candidate(id: 1, amount: 149, currency: nil)])
+    func testRestore_withoutReportedCurrency_waitsForMetadataAndCanRetry() {
+        let report = service.restore([candidate(id: 1, amount: 149, currency: nil, price: 1.49)])
 
-        XCTAssertEqual(report?.creditedCount, 1)
-        XCTAssertEqual(balance.balance, 149)
-        XCTAssertNil(
-            testDefaults.string(forKey: WalletCurrencyStore.storageKey),
-            "no currency was reported, so none may be recorded"
-        )
+        XCTAssertEqual(report?.creditedCount, 0)
+        XCTAssertEqual(report?.notRecorded, 1)
+        XCTAssertEqual(balance.balance, 0)
+        XCTAssertTrue(balance.walletIsPristine)
+        XCTAssertTrue(ledgerRows.isEmpty)
+        XCTAssertNil(testDefaults.object(forKey: "storekit.processed_tx_ids"))
+        XCTAssertNil(testDefaults.string(forKey: WalletCurrencyStore.storageKey))
+        XCTAssertEqual(service.restore([candidate(id: 1, amount: 149)])?.credited, 149)
+    }
+
+    func testRestore_invalidMetadataDoesNotMutateWalletOrDedup() {
+        let before = testDefaults.persistentDomain(forName: suiteName) as NSDictionary?
+        let report = service.restore([
+            candidate(id: 1, currency: usd),
+            candidate(id: 2, currency: usd, price: .nan),
+            candidate(id: 3, price: 0),
+            candidate(id: 4, price: -1)
+        ])
+
+        XCTAssertEqual(report?.notRecorded, 4)
+        XCTAssertTrue(balance.walletIsPristine)
+        XCTAssertEqual(testDefaults.persistentDomain(forName: suiteName) as NSDictionary?, before)
     }
 
     // MARK: - Nothing to restore
@@ -208,6 +233,7 @@ final class TopUpRestoreServiceTests: XCTestCase {
                 transactionID: 1,
                 productID: "io.mobilife.snoozepay.balance.1999",
                 currency: rub,
+                transactionPrice: 19.99,
                 purchaseDate: Date()
             ),
             candidate(id: 2, amount: 49)
