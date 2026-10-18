@@ -58,7 +58,11 @@ final class AlarmOffWarningViewController: UIViewController {
     // MARK: - Layout
 
     private func configureLayout() {
-        let scrollView = UIScrollView()
+        let scrollView: UIScrollView = {
+            let view = UIScrollView()
+            view.showsVerticalScrollIndicator = false
+            return view
+        }()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
 

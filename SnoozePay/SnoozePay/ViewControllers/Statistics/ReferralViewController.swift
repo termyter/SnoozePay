@@ -35,7 +35,11 @@ final class ReferralViewController: UIViewController {
 
     // MARK: - Subviews
 
-    private let scrollView = UIScrollView()
+    private let scrollView: UIScrollView = {
+        let view = UIScrollView()
+        view.showsVerticalScrollIndicator = false
+        return view
+    }()
     private let contentStack = UIStackView()
 
     private let friendCodeField = UITextField()
