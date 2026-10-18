@@ -91,6 +91,7 @@ final class AlarmFiringPricePresentationTests: XCTestCase {
     }
 
     private final class EmptyWallet: AlarmFiringBalancing {
+        let walletCurrency: Currency = .rub
         let balance: Double = 0
         func canAfford(_ amount: Double) -> Bool { false }
         func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? { nil }

@@ -119,13 +119,13 @@ extension AlarmFiringViewController {
 
         // Initial balance pill — money tone with current balance. Re-built in
         // `updateBalancePill()` when the tone needs to flip to pain (zero).
-        let balance = Int(viewModel.balance.rounded())
-        let initialTone: SPPill.Tone = balance == 0 ? .pain : .money
+        let balance = viewModel.balance
+        let initialTone: SPPill.Tone = balance > 0 ? .money : .pain
         let pill = SPPill(text: "", tone: initialTone, icon: SPIcons.coin(size: 12))
         // Two-tier typography — muted «Баланс» label + bold value (#288).
         pill.setBalance(
             label: Localized.text("firing.pill.balance"),
-            value: MoneyFormatter.string(balance)
+            value: MoneyFormatter.string(balance, currency: viewModel.walletCurrency)
         )
         pill.translatesAutoresizingMaskIntoConstraints = false
         balancePill = pill

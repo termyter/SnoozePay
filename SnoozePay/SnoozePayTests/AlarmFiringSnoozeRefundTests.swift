@@ -203,6 +203,7 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
 /// independently — the only way to exercise `scheduleFailedAndRefundFailed`
 /// (the real services are `final` and a locked ledger fails both calls).
 private final class StubFiringBalance: AlarmFiringBalancing {
+    let walletCurrency: Currency = .rub
     private(set) var balance: Double
     private let chargeResult: Bool
     private let refundResult: Bool

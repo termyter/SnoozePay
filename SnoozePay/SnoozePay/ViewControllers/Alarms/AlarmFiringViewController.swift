@@ -520,10 +520,10 @@ class AlarmFiringViewController: UIViewController {
     /// track the live balance. Called from `updateUI` (every VM tick) and
     /// implicitly from the balance observer (which calls `updateUI`).
     private func updateBalancePill() {
-        let balance = Int(viewModel.balance.rounded())
-        let tone: SPPill.Tone = balance == 0 ? .pain : .money
+        let balance = viewModel.balance
+        let tone: SPPill.Tone = balance > 0 ? .money : .pain
         guard let pill = balancePill else { return }
-        let value = MoneyFormatter.string(balance)
+        let value = MoneyFormatter.string(balance, currency: viewModel.walletCurrency)
         pill.setBalance(label: Localized.text("firing.pill.balance"), value: value)
         // SPPill's `tone` is `let` (constructor-only), so we re-build when
         // the tone needs to flip between money and pain. Cheap — pill is a
