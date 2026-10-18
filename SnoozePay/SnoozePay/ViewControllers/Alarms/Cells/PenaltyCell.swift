@@ -112,7 +112,7 @@ final class PenaltyCell: UITableViewCell {
     private var presetButtons: [UIButton] = []
     private var currentAmount: Double = 0
     /// Last value that passed validation — restored if the field is left blank.
-    private var lastValidAmount: Double = Double(PenaltyCell.minimumAmount)
+    private var lastValidAmount: Double?
 
     // MARK: - Callbacks
 
@@ -155,7 +155,7 @@ final class PenaltyCell: UITableViewCell {
 
         for amount in Self.presets {
             let button = UIButton(type: .system)
-            button.setTitle(String(Int(amount)), for: .normal)
+            button.setTitle(Self.amountText(amount), for: .normal)
             button.titleLabel?.font = AppFonts.mono(.semibold, 14)
             button.layer.cornerRadius = AppRadius.sm
             button.layer.masksToBounds = true
@@ -210,22 +210,30 @@ final class PenaltyCell: UITableViewCell {
     // MARK: - Configure
 
     func configure(amount: Double) {
-        let whole = max(Int(amount.rounded()), Self.minimumAmount)
-        currentAmount = Double(whole)
-        lastValidAmount = currentAmount
-        amountField.text = String(whole)
-        setHelper(visible: false)
+        let text = Self.amountText(amount)
+        currentAmount = amount.rounded()
+        lastValidAmount = text == nil ? nil : currentAmount
+        amountField.text = text
+        setHelper(visible: text == nil)
         refreshAppearance()
+    }
+
+    /// Fixed decimal digits round-trip through the existing Double model even
+    /// beyond Int.max (#928). Preserve legacy fractional display rounding only;
+    /// configuring a cell never changes the stored billing amount.
+    static func amountText(_ amount: Double) -> String? {
+        guard amount.isFinite, amount >= Double(minimumAmount) else { return nil }
+        return String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), amount.rounded())
     }
 
     // MARK: - Validation
 
     /// Parse the field as a whole ₽ amount ≥ minimum. Returns nil for empty /
     /// zero / non-numeric input.
-    private func validatedAmount() -> Int? {
-        guard let text = amountField.text, let value = Int(text), value >= Self.minimumAmount else {
-            return nil
-        }
+    private func validatedAmount() -> Double? {
+        guard let text = amountField.text, !text.isEmpty,
+              text.utf8.allSatisfy({ (48...57).contains($0) }),
+              let value = Double(text), Self.amountText(value) != nil else { return nil }
         return value
     }
 
@@ -239,25 +247,32 @@ final class PenaltyCell: UITableViewCell {
             return
         }
         setHelper(visible: false)
-        currentAmount = Double(value)
+        currentAmount = value
         refreshAppearance()
     }
 
     @objc private func amountEditingEnded() {
         guard let value = validatedAmount() else {
-            // Left blank / invalid — revert to the last valid amount.
-            amountField.text = String(Int(lastValidAmount))
-            currentAmount = lastValidAmount
-            setHelper(visible: false)
+            // Invalid persisted values have no trusted fallback; leave the
+            // helper visible until the user enters a valid price or picks a chip.
+            if let lastValidAmount {
+                amountField.text = Self.amountText(lastValidAmount)
+                currentAmount = lastValidAmount
+            }
+            setHelper(visible: lastValidAmount == nil)
             refreshAppearance()
             return
         }
+        // Show the actual representable value before Save (Int.max rounds to
+        // 2^63 as Double); rendering and invalid-edit fallback use the same text.
+        amountField.text = Self.amountText(value)
         setHelper(visible: false)
-        currentAmount = Double(value)
-        // Commit only the final value once editing ends.
-        guard abs(lastValidAmount - currentAmount) >= .ulpOfOne else { return }
+        currentAmount = value
+        let previous = lastValidAmount
         lastValidAmount = currentAmount
         refreshAppearance()
+        // Commit only the final value once editing ends.
+        guard previous != currentAmount else { return }
         onValueChanged?(currentAmount)
     }
 
@@ -292,7 +307,7 @@ final class PenaltyCell: UITableViewCell {
         guard let index = presetButtons.firstIndex(of: sender) else { return }
         let amount = Self.presets[index]
         UISelectionFeedbackGenerator().selectionChanged()
-        amountField.text = String(Int(amount))
+        amountField.text = Self.amountText(amount)
         currentAmount = amount
         lastValidAmount = amount
         setHelper(visible: false)
