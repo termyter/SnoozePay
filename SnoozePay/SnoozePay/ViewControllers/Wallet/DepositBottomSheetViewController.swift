@@ -13,11 +13,10 @@ import os
 ///
 /// Purchase flow mirrors `FiringTopUpBottomSheetViewController`: tap →
 /// `StoreKitService.purchase(_:)`; success / failure arrive via the
-/// service's notifications. When the product list hasn't loaded (debug /
-/// simulator without StoreKit config) the sheet falls back to a direct
-/// `BalanceService.topUp` credit so the flow stays demoable.
+/// service's notifications. StoreKit supplies the displayed offer; only the
+/// explicit DEBUG UI-tour fixture permits a local demo credit.
 ///
-/// On success the form crossfades into a green check + "+N ₽" state and
+/// On success the form crossfades into the actual credited amount and
 /// auto-dismisses after 2 seconds.
 final class DepositBottomSheetViewController: UIViewController {
 
@@ -46,6 +45,8 @@ final class DepositBottomSheetViewController: UIViewController {
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
     private var purchaseCancelledObserver: NSObjectProtocol?
+    private var productsLoadedObserver: NSObjectProtocol?
+    private let offerProvider: ((String) -> TopUpOffer?)?
     /// Optional product dispatch keeps this real form testable without an App Store catalogue.
     private let purchaseProduct: ((String) -> Void)?
     private let notificationCenter: NotificationCenter
@@ -96,7 +97,17 @@ final class DepositBottomSheetViewController: UIViewController {
         return stack
     }()
 
-    private lazy var depositButton: SPButton = makeDepositButton(amount: selectedAmount)
+    private lazy var depositButton: SPButton = makeDepositButton()
+
+    private let availabilityLabel: UILabel = {
+        let label = UILabel()
+        label.font = AppTypography.meta
+        label.textColor = AppColors.fg2
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.text = Localized.text("deposit.error.products_unavailable")
+        return label
+    }()
 
     private let disclaimerLabel: UILabel = {
         let label = UILabel()
@@ -174,10 +185,12 @@ final class DepositBottomSheetViewController: UIViewController {
         scheduleSuccessDismissal: @escaping TopUpSuccessDismissal = { delay, action in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { action() }
         },
-        purchaseProduct: ((String) -> Void)? = nil
+        purchaseProduct: ((String) -> Void)? = nil,
+        offerProvider: ((String) -> TopUpOffer?)? = nil
     ) {
         self.balance = balance
         self.purchaseProduct = purchaseProduct
+        self.offerProvider = offerProvider
         self.notificationCenter = notificationCenter
         self.scheduleSuccessDismissal = scheduleSuccessDismissal
         super.init(nibName: nil, bundle: nil)
@@ -201,6 +214,9 @@ final class DepositBottomSheetViewController: UIViewController {
     }
 
     deinit {
+        if let token = productsLoadedObserver {
+            notificationCenter.removeObserver(token)
+        }
         if let token = purchaseCompletedObserver {
             notificationCenter.removeObserver(token)
         }
@@ -252,6 +268,7 @@ final class DepositBottomSheetViewController: UIViewController {
         contentStack.addArrangedSubview(grid)
         ctaHost.addArrangedSubview(depositButton)
         contentStack.addArrangedSubview(ctaHost)
+        contentStack.addArrangedSubview(availabilityLabel)
         contentStack.addArrangedSubview(disclaimerLabel)
         contentStack.addArrangedSubview(restoreButton)
         contentStack.setCustomSpacing(AppSpacing.sp5, after: titleLabel)
@@ -306,8 +323,10 @@ final class DepositBottomSheetViewController: UIViewController {
             row.spacing = AppSpacing.sp2
             for index in rowStart..<min(rowStart + columns, presets.count) {
                 let preset = presets[index]
+                let offer = offer(for: preset.productID)
                 let tile = SPAmountPreset(
-                    value: Decimal(preset.amount),
+                    value: offer?.price ?? .nan,
+                    displayPrice: offer?.displayPrice ?? "—",
                     selected: preset.amount == selectedAmount,
                     popular: preset.popular
                 ) { [weak self] in
@@ -327,17 +346,19 @@ final class DepositBottomSheetViewController: UIViewController {
         return grid
     }
 
-    private func makeDepositButton(amount: Int) -> SPButton {
+    private func makeDepositButton() -> SPButton {
+        let offer = selectedOffer
+        availabilityLabel.isHidden = offer != nil
         let button = SPButton(
             title: Localized.text("common.button.top_up"),
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "wallet.pass"),
-            suffix: Decimal(amount).formattedRubles(),
+            suffix: offer?.displayPrice ?? "—",
             fullWidth: true
         )
         button.accessibilityIdentifier = "deposit.purchaseButton"
-        button.isEnabled = !purchaseInFlight
+        button.isEnabled = canPurchase(offer: offer)
         button.addTarget(self, action: #selector(depositTapped), for: .touchUpInside)
         return button
     }
@@ -350,9 +371,47 @@ final class DepositBottomSheetViewController: UIViewController {
         for (tile, preset) in zip(presetTiles, presets) {
             tile.isSelected = preset.amount == amount
         }
+        rebuildPurchaseButton()
+    }
+
+    private var selectedOffer: TopUpOffer? {
+        DepositPresets.preset(forAmount: selectedAmount).flatMap { offer(for: $0.productID) }
+    }
+
+    private func canPurchase(offer: TopUpOffer?) -> Bool {
+        !purchaseInFlight && successReceipt == nil && offer != nil
+    }
+
+    private func offer(for productID: String) -> TopUpOffer? {
+        if let offerProvider {
+            let offer = offerProvider(productID)
+            return offer?.productID == productID ? offer : nil
+        }
+        if let product = StoreKitService.shared.products.first(where: { $0.id == productID }) {
+            return TopUpOffer(product: product)
+        }
+        #if DEBUG
+        if StoreKitService.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments),
+           let preset = presets.first(where: { $0.productID == productID }) {
+            return TopUpOffer(productID: productID, price: Decimal(preset.amount), currencyCode: "RUB",
+                              displayPrice: MoneyFormatter.string(preset.amount))
+        }
+        #endif
+        return nil
+    }
+
+    private func refreshCatalog() {
+        for (tile, preset) in zip(presetTiles, presets) {
+            let offer = offer(for: preset.productID)
+            tile.update(value: offer?.price ?? .nan, label: nil, displayPrice: offer?.displayPrice ?? "—")
+        }
+        rebuildPurchaseButton()
+    }
+
+    private func rebuildPurchaseButton() {
         // SPButton title/suffix is immutable post-init — swap the instance.
         depositButton.removeFromSuperview()
-        depositButton = makeDepositButton(amount: amount)
+        depositButton = makeDepositButton()
         ctaHost.addArrangedSubview(depositButton)
     }
 
@@ -360,6 +419,9 @@ final class DepositBottomSheetViewController: UIViewController {
 
     private func observePurchaseNotifications() {
         let center = notificationCenter
+        productsLoadedObserver = center.addObserver(
+            forName: StoreKitService.productsLoadedNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.refreshCatalog() }
         let amountKey = StoreKitService.amountUserInfoKey
         let messageKey = StoreKitService.messageUserInfoKey
         purchaseCompletedObserver = center.addObserver(
@@ -389,12 +451,12 @@ final class DepositBottomSheetViewController: UIViewController {
         ) { [weak self] _ in
             guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
             self.purchaseInFlight = false
-            self.depositButton.isEnabled = true
+            self.depositButton.isEnabled = self.canPurchase(offer: self.selectedOffer)
         }
     }
 
     @objc private func depositTapped() {
-        guard !purchaseInFlight else { return }
+        guard !purchaseInFlight, successReceipt == nil else { return }
         // Detect a corrupt balance BEFORE attempting a top-up (#419). The
         // BalanceService mutation gate stays locked until the user resets via
         // `acknowledgeCorruption()`, so a top-up here would always fail back
@@ -404,7 +466,15 @@ final class DepositBottomSheetViewController: UIViewController {
             presentBalanceCorruptionAlert()
             return
         }
-        guard let preset = DepositPresets.preset(forAmount: selectedAmount) else { return }
+        guard let preset = DepositPresets.preset(forAmount: selectedAmount), let offer = selectedOffer else {
+            refreshCatalog()
+            return
+        }
+        guard balance.acceptsPurchase(in: offer.currency) else {
+            let message = ForeignCurrencyNotice.message(wallet: balance.walletCurrency, storefront: offer.currency)
+            present(ForeignCurrencyNotice.alert(message: message), animated: true)
+            return
+        }
         purchaseInFlight = true
         depositButton.isEnabled = false
 
@@ -413,42 +483,24 @@ final class DepositBottomSheetViewController: UIViewController {
             return
         }
         if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
-            // Foreign storefront: refuse before `purchase(_:)`, while refusing
-            // is still free (#563).
-            if let blocked = ForeignCurrencyNotice.blockingMessage(for: product) {
-                purchaseInFlight = false
-                depositButton.isEnabled = true
-                present(ForeignCurrencyNotice.alert(message: blocked), animated: true)
-                return
-            }
             Task { @MainActor in
                 await StoreKitService.shared.purchase(product)
             }
         } else {
-            let pid = preset.productID
             #if DEBUG
-            // DEBUG/simulator without a loaded StoreKit catalogue: credit
-            // locally so the flow stays testable without ASC products.
-            AppLogger.storeKit.notice(
-                "DepositSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
-            )
-            let amount = Double(preset.amount)
-            if balance.topUp(amount: amount),
-               let receipt = TopUpSuccessReceipt(amount: amount, currency: balance.walletCurrency) {
-                handlePurchaseSuccess(receipt)
-            } else {
-                handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
+            if offerProvider == nil,
+               StoreKitService.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments) {
+                let amount = Double(preset.amount)
+                if balance.topUp(amount: amount),
+                   let receipt = TopUpSuccessReceipt(amount: amount, currency: balance.walletCurrency) {
+                    handlePurchaseSuccess(receipt)
+                } else {
+                    handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
+                }
+                return
             }
-            #else
-            // Release: NEVER credit balance without a real StoreKit
-            // transaction. An empty product list (inactive Paid Apps /
-            // unpropagated SKU / offline) must surface as an error, not as
-            // free balance.
-            AppLogger.storeKit.error(
-                "DepositSheet: product \(pid, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
-            )
-            handlePurchaseFailure(message: Localized.text("deposit.error.products_unavailable"))
             #endif
+            handlePurchaseFailure(message: Localized.text("deposit.error.products_unavailable"))
         }
     }
 
@@ -471,6 +523,7 @@ final class DepositBottomSheetViewController: UIViewController {
         guard successReceipt == nil else { return }
         successReceipt = receipt
         purchaseInFlight = false
+        depositButton.isEnabled = false
 
         successAmountLabel.text = "+" + MoneyFormatter.string(receipt.amount, currency: receipt.currency)
         successContainer.isHidden = false
@@ -505,8 +558,9 @@ final class DepositBottomSheetViewController: UIViewController {
     }
 
     private func handlePurchaseFailure(message: String?) {
+        guard successReceipt == nil else { return }
         purchaseInFlight = false
-        depositButton.isEnabled = true
+        depositButton.isEnabled = canPurchase(offer: selectedOffer)
 
         let alert = UIAlertController(
             title: Localized.text("common.purchase_failed.title"),
