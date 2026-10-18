@@ -179,8 +179,16 @@ final class TransactionRepository {
     /// charges. Used by streak computation and by `StatisticsViewModel` so the
     /// two sites can never drift on what counts as "the user actually snoozed".
     static func realCharges(from transactions: [Transaction]) -> [Transaction] {
-        let refundedIDs = Set(transactions.compactMap { $0.refundsTransactionID })
-        return transactions.filter { $0.type == .charge && !refundedIDs.contains($0.id) }
+        // Collect every link over the full ledger before consumers apply date windows.
+        // Keep legacy topup links, but never let a foreign-currency row cancel a charge.
+        var refundedIDsByCurrency: [Currency: Set<UUID>] = [:]
+        for transaction in transactions {
+            guard let targetID = transaction.refundsTransactionID else { continue }
+            refundedIDsByCurrency[transaction.currency, default: []].insert(targetID)
+        }
+        return transactions.filter {
+            $0.type == .charge && !(refundedIDsByCurrency[$0.currency]?.contains($0.id) ?? false)
+        }
     }
 
     // MARK: - Recovery
