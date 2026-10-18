@@ -495,10 +495,25 @@ class AlarmFiringViewController: UIViewController {
             return Localized.text("firing.hint.max_price")
         }
         let next = viewModel.alarm.penalty(forSnoozeCount: nextCount)
-        let nextInt = Int(next.rounded())
+        guard let nextText = Self.roundedPriceText(next) else { return nil }
         // Lowercase «следующее откладывание: …» per
         // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:241` contains "следующее откладывание".
-        return Localized.format("firing.hint.next_price", MoneyFormatter.string(nextInt))
+        return Localized.format("firing.hint.next_price", nextText)
+    }
+
+    /// Display-only rounding, with no Int narrowing or Decimal(Double) overflow.
+    /// Decimal's 38-digit precision limit selects grouping, not a business cap:
+    /// larger finite values keep their full fixed digits. Nonfinite is unknown.
+    static func roundedPriceText(_ amount: Double, withCurrency: Bool = true) -> String? {
+        guard amount.isFinite, amount >= 0 else { return nil }
+        // No locale overload: that path rounds large integers to 17 significant
+        // digits on Darwin (#931). C formatting preserves the represented value.
+        let digits = String(format: "%.0f", amount.rounded())
+        guard withCurrency else { return digits }
+        if digits.count <= 38, let decimal = Decimal(string: digits), decimal.isFinite {
+            return MoneyFormatter.string(decimal)
+        }
+        return digits + MoneyFormatter.narrowSpace + "₽"
     }
 
     /// Refresh the top-right balance pill so the displayed amount + tone

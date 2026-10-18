@@ -34,6 +34,26 @@ final class ProgressiveSnoozeUITests: XCTestCase {
         super.tearDown()
     }
 
+    func testLargeProgressiveAlarmOpensInitialRingWithZeroWalletBeforePayment() {
+        for price in ["4611686018427387904", "9223372036854775808"] {
+            let app = XCUIApplication()
+            app.launchArguments = [
+                "-uitour", "firing-progressive", "-uitour-penalty", price,
+                "-uitour-balance", "0", "-uitour-alarmkit", "granted"
+            ]
+            app.launch()
+            XCTAssertTrue(app.buttons["firing.noBalance.topUpButton"].waitForExistence(timeout: 10),
+                          "Initial ringing layout must finish for a large progressive price")
+            let zeroBalance = app.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS[c] %@ AND label ENDSWITH %@", "баланс", "0\u{202F}₽"
+            )).firstMatch
+            XCTAssertTrue(zeroBalance.exists, "The initial ring must have a zero wallet")
+            XCTAssertFalse(app.staticTexts["firing.countdown"].exists, "No snooze payment was attempted")
+            XCTAssertEqual(app.state, .runningForeground)
+            app.terminate()
+        }
+    }
+
     func testProgressiveSnoozeShowsPillAndLadder() {
         let app = XCUIApplication()
         // `-uitour-alarmkit denied` for the same reason as in
