@@ -44,6 +44,13 @@ final class ProgressiveSnoozeUITests: XCTestCase {
             app.launch()
             XCTAssertTrue(app.buttons["firing.noBalance.topUpButton"].waitForExistence(timeout: 10),
                           "Initial ringing layout must finish for a large progressive price")
+            let priceCard = app.buttons["firing.noBalance.snoozePrice"]
+            XCTAssertTrue(priceCard.waitForExistence(timeout: 5))
+            XCTAssertFalse(priceCard.isEnabled)
+            let renderedPrice = priceCard.value as? String ?? ""
+            let digits = renderedPrice.filter { $0 >= "0" && $0 <= "9" }
+            XCTAssertEqual(digits, price,
+                           "The rendered price must match the large fixture, not the default 50")
             let zeroBalance = app.staticTexts.matching(NSPredicate(
                 format: "label CONTAINS[c] %@ AND label ENDSWITH %@", "баланс", "0\u{202F}₽"
             )).firstMatch
