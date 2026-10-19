@@ -88,11 +88,9 @@ enum UITourRoutes {
             let nav = createNav(alarm: sampleAlarm())
             // Sequence, don't race (#467): both presentations used to share
             // one 0.8 s deadline, so the sheet asked a navigation controller
-            // still mid-transition to present — a silent no-op. Chaining off
-            // the form's completion guarantees the presenter is in the window.
-            mountPresented(nav, onTab: 0, in: window) {
-                nav.present(ConfirmDeleteAlarmViewController(), animated: false)
-            }
+            // still mid-transition to present — a silent no-op. Completion
+            // serializes the steps; it can still arrive after teardown (#996).
+            mountPresented(nav, onTab: 0, in: window, then: confirmDeleteCompletion(for: nav, in: window))
         },
         "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
         // The same screen, mounted the way the app actually mounts it:
@@ -185,9 +183,9 @@ enum UITourRoutes {
         nav?.pushViewController(vc, animated: false)
     }
 
-    /// Mounts a tab-bar root and presents `vc` over it. `then` runs only after
-    /// that presentation has actually finished, which is the only safe moment
-    /// to chain a second presentation or a push onto `vc` (#467).
+    /// Mounts a tab-bar root and presents `vc` over it. `then` runs after that
+    /// presentation finishes (#467). A delayed completion must still recheck
+    /// its host before chaining another UIKit operation after teardown.
     private static func mountPresented(
         _ vc: UIViewController,
         onTab index: Int,
@@ -205,6 +203,18 @@ enum UITourRoutes {
         )
         nav.modalPresentationStyle = .fullScreen
         return nav
+    }
+
+    /// The actual second-stage callback, internal so lifecycle tests can hold
+    /// it across teardown without replacing UIKit's first presentation (#996).
+    static func confirmDeleteCompletion(for nav: UINavigationController, in window: UIWindow) -> () -> Void {
+        return {
+            guard !window.isHidden,
+                  window.rootViewController != nil,
+                  nav.viewIfLoaded?.window === window,
+                  Self.canPresent(from: nav) else { return }
+            nav.present(ConfirmDeleteAlarmViewController(), animated: false)
+        }
     }
 
     private static func mountPushedOnCreate(
