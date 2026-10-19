@@ -344,6 +344,7 @@ final class AlarmFiringNoBalanceColumnLayoutTests: XCTestCase {
 /// Wallet stub — `canSnooze` is the single switch between the normal screen and
 /// the no-balance state, and it reads nothing but `canAfford`.
 private final class StubWallet: AlarmFiringBalancing {
+    func acceptsPurchase(in currency: Currency) -> Bool { false }
     let walletCurrency: Currency = .rub
     var balance: Double
 

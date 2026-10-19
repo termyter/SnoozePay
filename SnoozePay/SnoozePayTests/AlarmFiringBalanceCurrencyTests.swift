@@ -182,6 +182,7 @@ private final class BalanceLayoutController: AlarmFiringViewController {
 }
 
 private final class ReadOnlyFiringWallet: AlarmFiringBalancing {
+    func acceptsPurchase(in currency: Currency) -> Bool { false }
     var balance: Double
     var walletCurrency: Currency
 

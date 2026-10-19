@@ -685,6 +685,7 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
 /// Billing stub — these tests exercise the READ path, so charging is a no-op
 /// with a balance high enough to keep `canSnooze` true.
 private final class StubBilledBalance: AlarmFiringBalancing {
+    func acceptsPurchase(in currency: Currency) -> Bool { false }
     let walletCurrency: Currency
     var balance: Double = 1000
     init(currency: Currency = .rub) { walletCurrency = currency }
