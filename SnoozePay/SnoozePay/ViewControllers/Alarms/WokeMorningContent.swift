@@ -49,8 +49,10 @@ struct WokeMorningContent {
     /// — deliberately optional so a consumer can't mistake «we don't know» for
     /// a confident zero.
     let snoozes: Int?
-    /// Roubles billed this wake, whole ₽. `nil` when the ledger is unreadable.
-    let charged: Int?
+    /// Raw amount billed in the wallet currency; nil when unavailable.
+    let charged: Double?
+    let currency: Currency?
+    private let chargedText: String?
     /// Snooze attempts that were charged and then refunded. `nil` when the
     /// ledger is unreadable.
     let reversedSnoozes: Int?
@@ -60,16 +62,23 @@ struct WokeMorningContent {
     ///   - snoozes: Times the user was BILLED for a snooze this wake (>= 0) —
     ///     reversed (refunded) snoozes excluded, see
     ///     `AlarmFiringViewModel.billedSnoozeCount`.
-    ///   - charged: Roubles charged across those snoozes (rounded to whole ₽
-    ///     for display, matching the JSX `${charged} ₽`).
+    ///   - charged: Raw wallet-currency total across the surviving charges.
     ///   - attempts: Times the user tapped «Поспать ещё» and was charged,
     ///     including attempts later refunded. Defaults to `snoozes` (nothing
     ///     was reversed). Anything above `snoozes` selects `.partiallyReversed`.
-    init(snoozes: Int, charged: Int, attempts: Int? = nil) {
+    init(snoozes: Int, charged: Double, attempts: Int? = nil, currency: Currency = .rub) {
+        let text = MoneyFormatter.string(charged, currency: currency)
+        guard charged.isFinite, charged >= 0, text != "—",
+              charged == 0 || text != MoneyFormatter.string(0.0, currency: currency) else {
+            self = .chargesUnavailable
+            return
+        }
+        self.currency = currency
+        self.chargedText = text
         let billed = max(0, snoozes)
         let tries = max(billed, attempts ?? billed)
         self.snoozes = billed
-        self.charged = max(0, charged)
+        self.charged = charged
         self.reversedSnoozes = tries - billed
         if tries > billed {
             self.variant = .partiallyReversed
@@ -93,6 +102,8 @@ struct WokeMorningContent {
     private init() {
         self.snoozes = nil
         self.charged = nil
+        self.currency = nil
+        self.chargedText = nil
         self.reversedSnoozes = nil
         self.variant = .chargesUnavailable
     }
@@ -119,17 +130,17 @@ struct WokeMorningContent {
         case .clean:
             return Localized.text("woke_morning.subtitle.clean")
         case .recovered:
-            return Localized.format("woke_morning.subtitle.recovered", charged ?? 0)
+            return Localized.format("woke_morning.subtitle.recovered", chargedText ?? "—")
         case .partiallyReversed:
             // Both branches are whole two-sentence entries rather than a
             // lead-in plus the shared «не состоявшихся откладываний» tail: the
             // reversal is what the second sentence explains, and a language
             // that wants it first can only say so if it owns both.
             let reversed = reversedSnoozes ?? 0
-            guard let charged, charged > 0 else {
+            guard (snoozes ?? 0) > 0 else {
                 return Localized.format("woke_morning.subtitle.reversed_none", reversed)
             }
-            return Localized.format("woke_morning.subtitle.reversed_charged", charged, reversed)
+            return Localized.format("woke_morning.subtitle.reversed_charged", chargedText ?? "—", reversed)
         case .chargesUnavailable:
             return Localized.text("woke_morning.subtitle.unavailable")
         }

@@ -82,9 +82,9 @@ final class FiringCopyTests: XCTestCase {
         "woke_morning.headline.unavailable": "Вы встали",
         "woke_morning.headline.unchanged": "Баланс не изменился",
         "woke_morning.subtitle.clean": "Баланс в полной сохранности. Так держать.",
-        "woke_morning.subtitle.recovered": "Сегодня списано %lld ₽. Завтра попробуем не списать ничего.",
+        "woke_morning.subtitle.recovered": "Сегодня списано %@. Завтра попробуем не списать ничего.",
         "woke_morning.subtitle.reversed_charged":
-            "Сегодня списано %1$lld ₽. Не состоявшихся откладываний: %2$lld — "
+            "Сегодня списано %1$@. Не состоявшихся откладываний: %2$lld — "
             + "деньги за них вернули.",
         "woke_morning.subtitle.reversed_none":
             "Списаний не осталось. Не состоявшихся откладываний: %lld — деньги за них вернули.",
@@ -269,11 +269,11 @@ final class FiringCopyTests: XCTestCase {
         )
         XCTAssertEqual(
             WokeMorningContent(snoozes: 2, charged: 100).subtitle,
-            "Сегодня списано 100 ₽. Завтра попробуем не списать ничего."
+            "Сегодня списано 100\u{202F}₽. Завтра попробуем не списать ничего."
         )
         XCTAssertEqual(
             WokeMorningContent(snoozes: 1, charged: 50, attempts: 3).subtitle,
-            "Сегодня списано 50 ₽. Не состоявшихся откладываний: 2 — деньги за них вернули."
+            "Сегодня списано 50\u{202F}₽. Не состоявшихся откладываний: 2 — деньги за них вернули."
         )
         XCTAssertEqual(
             WokeMorningContent(snoozes: 0, charged: 0, attempts: 2).subtitle,
