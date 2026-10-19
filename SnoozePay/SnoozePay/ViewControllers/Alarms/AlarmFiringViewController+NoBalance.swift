@@ -224,34 +224,7 @@ extension AlarmFiringViewController {
     /// automatically once the user crosses the affordability threshold
     /// (purchase success, external charge, debug top-up).
     func observeBalanceForNoBalanceState() {
-        balanceChangeObserver = NotificationCenter.default.addObserver(
-            forName: BalanceService.balanceChangedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            // `updateUI` re-reads `viewModel.canSnooze` and re-runs
-            // `refreshNoBalanceVisibility` so a single hop here covers
-            // the whole swap (snooze CTA tone, disabled card hint, etc).
-            self.updateUI()
-            self.noBalancePurchaseInFlight = false
-            self.applePayNoBalanceButton?.isEnabled = true
-        }
-        // Surface StoreKit failures (Ask-to-Buy declined, purchase cancelled
-        // by parent, ledger locked) as a UIAlert. Success is implicit — the
-        // balanceChanged observer above handles UI recovery for that path.
-        let messageKey = StoreKitService.messageUserInfoKey
-        purchaseFailedObserver = NotificationCenter.default.addObserver(
-            forName: StoreKitService.purchaseFailedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            guard let self else { return }
-            self.noBalancePurchaseInFlight = false
-            self.applePayNoBalanceButton?.isEnabled = true
-            let message = note.userInfo?[messageKey] as? String
-            self.presentNoBalancePurchaseFailureAlert(message: message)
-        }
+        noBalancePurchase.observeBalance()
     }
 
     // MARK: - Actions
@@ -266,17 +239,24 @@ extension AlarmFiringViewController {
         guard !noBalancePurchaseInFlight else { return }
         noBalancePurchaseInFlight = true
         applePayNoBalanceButton?.isEnabled = false
+        chooseAmountLink?.isEnabled = false
 
+        let purchase = noBalancePurchase
         let productID = Self.noBalanceProductID
+        if let dispatch = purchase.dispatch {
+            purchase.observeFeedback()
+            dispatch(productID)
+            return
+        }
         if let product = StoreKitService.shared.products.first(where: { $0.id == productID }) {
             // Foreign storefront: refuse before `purchase(_:)`, while refusing
             // is still free (#563).
             if let blocked = ForeignCurrencyNotice.blockingMessage(for: product) {
-                noBalancePurchaseInFlight = false
-                applePayNoBalanceButton?.isEnabled = true
+                purchase.finish()
                 present(ForeignCurrencyNotice.alert(message: blocked), animated: true)
                 return
             }
+            purchase.observeFeedback()
             Task { @MainActor in
                 await StoreKitService.shared.purchase(product)
             }
@@ -291,6 +271,7 @@ extension AlarmFiringViewController {
         )
         let amount = Double(Self.noBalanceDisplayAmount)
         if BalanceService.shared.topUp(amount: amount) {
+            purchase.finish()
             return
         }
         #else
@@ -300,8 +281,7 @@ extension AlarmFiringViewController {
             "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
         )
         #endif
-        noBalancePurchaseInFlight = false
-        applePayNoBalanceButton?.isEnabled = true
+        purchase.finish()
         presentNoBalancePurchaseFailureAlert(
             message: StoreKitService.ledgerLockedFailureMessage
         )
@@ -309,12 +289,13 @@ extension AlarmFiringViewController {
 
     /// «Выбрать другую сумму» tap. Routes to the presets bottom sheet.
     @objc func noBalanceChooseAmountTapped() {
+        guard !noBalancePurchaseInFlight else { return }
         presentTopUpSheet()
     }
 
     // MARK: - Helpers
 
-    private func presentNoBalancePurchaseFailureAlert(message: String?) {
+    func presentNoBalancePurchaseFailureAlert(message: String?) {
         let alert = UIAlertController(
             title: Localized.text("firing.alert.purchase_failed.title"),
             message: message ?? Localized.text("firing.alert.purchase_failed.message"),
