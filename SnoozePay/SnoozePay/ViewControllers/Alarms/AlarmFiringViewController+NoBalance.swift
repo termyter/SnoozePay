@@ -302,22 +302,7 @@ extension AlarmFiringViewController {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        // Stop may have placed the morning summary above this retained firing screen.
-        // Keep the subscriber's late result visible instead of presenting behind it.
-        var presenter: UIViewController = self
-        while let presented = presenter.presentedViewController { presenter = presented }
-        let show = { [weak self] in
-            guard let self else { return }
-            var current: UIViewController = self
-            while let presented = current.presentedViewController { current = presented }
-            current.present(alert, animated: true)
-        }
-        if (presenter.isBeingPresented || presenter.isBeingDismissed),
-           let transition = presenter.transitionCoordinator,
-           transition.animate(alongsideTransition: nil, completion: { _ in show() }) {
-            return
-        }
-        show()
+        present(alert, animated: true)
     }
 }
 
