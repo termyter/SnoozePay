@@ -14,14 +14,14 @@ final class AlarmFiringNoBalancePurchase {
     init(
         controller: AlarmFiringViewController, center: NotificationCenter = .default,
         dispatch: ((String) -> Void)? = nil,
-        beginFeedback: @escaping () -> Void = { StoreKitService.shared.beginObservingPurchaseFeedback() },
-        endFeedback: @escaping () -> Void = { StoreKitService.shared.endObservingPurchaseFeedback() }
+        beginFeedback: (() -> Void)? = nil,
+        endFeedback: (() -> Void)? = nil
     ) {
         self.controller = controller
         self.center = center
         self.dispatch = dispatch
-        self.beginFeedback = beginFeedback
-        self.endFeedback = endFeedback
+        self.beginFeedback = beginFeedback ?? { StoreKitService.shared.beginObservingPurchaseFeedback() }
+        self.endFeedback = endFeedback ?? { StoreKitService.shared.endObservingPurchaseFeedback() }
     }
 
     deinit {
