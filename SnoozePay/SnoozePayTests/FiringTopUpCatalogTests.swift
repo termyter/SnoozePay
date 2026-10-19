@@ -31,6 +31,36 @@ final class FiringTopUpCatalogTests: XCTestCase {
         }
     }
 
+    func testMissingInvalidAndMismatchedOffersStayUnknownWithoutDispatchOrWalletWrites() throws {
+        let unavailable: [TopUpOffer?] = [
+            nil,
+            TopUpOffer(productID: Fixture.sku(149), price: 0, currencyCode: "USD", displayPrice: "$0.00"),
+            TopUpOffer(productID: Fixture.sku(149), price: .nan, currencyCode: "USD", displayPrice: "NaN"),
+            TopUpOffer(productID: Fixture.sku(149), price: 1.49, currencyCode: "invalid", displayPrice: "$1.49"),
+            TopUpOffer(productID: Fixture.sku(499), price: 4.99, currencyCode: "USD", displayPrice: "$4.99")
+        ]
+        for offer in unavailable {
+            let fixture = Fixture()
+            defer { fixture.clear() }
+            fixture.offers[Fixture.sku(149)] = offer
+            let before = fixture.defaults.persistentDomain(forName: fixture.suite) as NSDictionary?
+            let sheet = fixture.makeSheet()
+            sheet.loadViewIfNeeded()
+            let rows = descendants(sheet.view).compactMap { $0 as? FiringTopUpPresetRow }
+            XCTAssertTrue(rows.allSatisfy { !$0.isEnabled && strings($0).contains("—") })
+            rows[0].sendActions(for: .touchUpInside)
+            let button = try purchaseButton(sheet)
+            XCTAssertFalse(button.isEnabled)
+            XCTAssertTrue(strings(button).contains("—"))
+            button.sendActions(for: .touchUpInside)
+            _ = sheet.perform(NSSelectorFromString("applePayTapped"))
+            XCTAssertTrue(fixture.requested.isEmpty)
+            XCTAssertTrue(fixture.alerts.isEmpty)
+            XCTAssertTrue(fixture.delays.isEmpty)
+            XCTAssertEqual(fixture.defaults.persistentDomain(forName: fixture.suite) as NSDictionary?, before)
+        }
+    }
+
     func testInitialRecommendationUsesTheInjectedWalletAndOneActualNextCharge() throws {
         let fixture = Fixture()
         defer { fixture.clear() }
@@ -82,6 +112,45 @@ final class FiringTopUpCatalogTests: XCTestCase {
         XCTAssertFalse(try purchaseButton(sheet).isEnabled)
         XCTAssertTrue(fixture.requested.isEmpty)
         XCTAssertEqual(fixture.wallet.balance, 0)
+    }
+
+    func testPendingSelectionSurvivesCatalogChangesAndCancellationRetriesThatSKU() throws {
+        let fixture = Fixture()
+        defer { fixture.clear() }
+        fixture.put(149, price: "1.49", code: "USD", display: "$1.49")
+        let sheet = fixture.makeSheet()
+        sheet.loadViewIfNeeded()
+        try purchaseButton(sheet).sendActions(for: .touchUpInside)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        fixture.put(999, price: "0.49", code: "USD", display: "$0.49")
+        fixture.refresh()
+        let rows = descendants(sheet.view).compactMap { $0 as? FiringTopUpPresetRow }
+        XCTAssertTrue(rows[0].isSelected, "Catalog refresh cannot silently replace the pending SKU")
+        XCTAssertTrue(rows[2].isEnabled, "Selection is allowed while purchase dispatch stays locked")
+        rows[2].sendActions(for: .touchUpInside)
+        XCTAssertTrue(rows[2].isSelected)
+        XCTAssertFalse(try purchaseButton(sheet).isEnabled)
+        fixture.put(999, price: "0.99", code: "USD", display: "$0.99")
+        fixture.refresh()
+        XCTAssertTrue(rows[2].isSelected)
+        XCTAssertTrue(strings(try purchaseButton(sheet)).contains("$0.99"))
+        _ = sheet.perform(NSSelectorFromString("applePayTapped"))
+        XCTAssertEqual(fixture.requested, [Fixture.sku(149)], "A new selection cannot start a concurrent purchase")
+        fixture.offers[Fixture.sku(999)] = nil
+        fixture.refresh()
+        XCTAssertTrue(rows[2].isSelected)
+        XCTAssertFalse(rows[2].isEnabled)
+        fixture.post(StoreKitService.purchaseCancelledNotification)
+        XCTAssertFalse(try purchaseButton(sheet).isEnabled, "Cancellation cannot make a missing offer purchasable")
+        fixture.put(999, price: "0.79", code: "USD", display: "$0.79")
+        fixture.refresh()
+        XCTAssertTrue(rows[2].isSelected)
+        XCTAssertTrue(try purchaseButton(sheet).isEnabled)
+        XCTAssertTrue(strings(try purchaseButton(sheet)).contains("$0.79"))
+        try purchaseButton(sheet).sendActions(for: .touchUpInside)
+        XCTAssertEqual(fixture.requested, [Fixture.sku(149), Fixture.sku(999)])
+        XCTAssertEqual(fixture.wallet.balance, 0)
+        XCTAssertTrue(TransactionRepository(defaults: fixture.defaults).fetchAll().isEmpty)
     }
 
     func testCatalogRefreshNeverClearsPendingAcknowledgementOrSuccessState() throws {

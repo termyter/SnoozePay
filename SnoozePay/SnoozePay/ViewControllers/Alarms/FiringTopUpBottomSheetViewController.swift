@@ -523,15 +523,18 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
                               icon: UIImage(systemName: "applelogo"), suffix: price, fullWidth: true)
         button.accessibilityIdentifier = "firingTopUp.purchaseButton"
         button.accessibilityLabel = "Apple Pay, " + price
-        button.isEnabled = canInteract && offer != nil
+        button.isEnabled = canPurchase && offer != nil
         button.alpha = successReceipt == nil ? 1 : 0
         button.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }
 
-    private var canInteract: Bool {
-        !purchaseInFlight && successReceipt == nil && !failureAcknowledgementPending && !pauseEnded
+    private var canPurchase: Bool { !purchaseInFlight && canSelectProduct }
+
+    /// A pending purchase blocks dispatch, but a new SKU remains selected for retry after cancellation.
+    private var canSelectProduct: Bool {
+        successReceipt == nil && !failureAcknowledgementPending && !pauseEnded
     }
 
     private var selectedOffer: TopUpOffer? { selectedProductID.flatMap { offer(for: $0) } }
@@ -561,7 +564,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     private func refreshCatalog() {
         let offers = presets.compactMap { offer(for: $0.productID) }
-        if !hasUserSelection {
+        if !hasUserSelection && canPurchase {
             let compatible = offers.filter { balance.acceptsPurchase(in: $0.currency) }
             selectedProductID = FiringTopUpCopy.recommendedProductID(
                 offers: compatible, balance: balance.balance, price: snoozePrice, walletCurrency: balance.walletCurrency
@@ -581,9 +584,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     }
 
     private func updatePurchaseAvailability() {
-        applePayButton.isEnabled = canInteract && selectedOffer != nil
+        applePayButton.isEnabled = canPurchase && selectedOffer != nil
         for (row, preset) in zip(presetRows, presets) {
-            row.isEnabled = canInteract && offer(for: preset.productID) != nil
+            row.isEnabled = canSelectProduct && offer(for: preset.productID) != nil
         }
     }
 
@@ -638,7 +641,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 extension FiringTopUpBottomSheetViewController {
 
     private func selectProduct(_ productID: String) {
-        guard canInteract, presets.contains(where: { $0.productID == productID }) else { return }
+        guard canSelectProduct, offer(for: productID) != nil else { return }
         hasUserSelection = true
         selectedProductID = productID
         refreshCatalog()
@@ -665,7 +668,7 @@ extension FiringTopUpBottomSheetViewController {
     // MARK: - Actions
 
     @objc private func applePayTapped() {
-        guard canInteract else { return }
+        guard canPurchase else { return }
         guard let offer = selectedOffer else { refreshCatalog(); return }
         // The real wallet policy precedes both test dispatch and optional refusals.
         let refusal = balance.acceptsPurchase(in: offer.currency)

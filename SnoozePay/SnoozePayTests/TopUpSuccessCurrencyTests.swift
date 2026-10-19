@@ -138,7 +138,8 @@ final class TopUpSuccessCurrencyTests: XCTestCase {
                     scheduleSuccessDismissal: schedule, purchaseProduct: purchase,
                     offerProvider: { [weak self] productID in
                         guard let self else { return nil }
-                        return TopUpOffer(productID: productID, price: 1, currencyCode: self.balance.walletCurrency.code,
+                        return TopUpOffer(productID: productID, price: 1,
+                                          currencyCode: self.balance.walletCurrency.code,
                                           displayPrice: "1 " + self.balance.walletCurrency.code)
                     }
                 )
