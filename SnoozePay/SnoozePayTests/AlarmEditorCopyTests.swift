@@ -167,6 +167,9 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// do, and nobody editing `Cells/SoundPickerRowCell.swift` will think to
     /// open a copy suite — so the suite has to notice on its own.
     private static let coveredByAnotherSuite: Set<String> = [
+        // No direct catalogue reads. FiringDirectPurchaseTerminalTests checks
+        // the delegated failure alert; FiringCopyTests pins its catalogue strings.
+        "AlarmFiringNoBalancePurchase.swift",
         // FiringCopyTests
         "AlarmFiringViewController.swift",
         "AlarmFiringViewController+Audio.swift",

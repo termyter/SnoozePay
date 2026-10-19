@@ -122,12 +122,17 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
     }
 
     func testOwnerTeardownBalancesActiveFeedbackAndRemovesAllTokens() throws {
-        let fixture = Fixture()
-        weak var controller = fixture.controller
-        weak var owner = fixture.controller?.noBalancePurchase
-        try XCTUnwrap(controller?.applePayNoBalanceButton).sendActions(for: .touchUpInside)
-        XCTAssertEqual(fixture.calls.begins, 1)
-        autoreleasepool { fixture.controller = nil }
+        weak var controller: PurchaseController?
+        weak var owner: AlarmFiringNoBalancePurchase?
+        let fixture = try autoreleasepool {
+            let fixture = Fixture()
+            controller = fixture.controller
+            owner = fixture.controller?.noBalancePurchase
+            try XCTUnwrap(fixture.controller?.applePayNoBalanceButton).sendActions(for: .touchUpInside)
+            XCTAssertEqual(fixture.calls.begins, 1)
+            fixture.controller = nil
+            return fixture
+        }
         XCTAssertNil(controller)
         XCTAssertNil(owner)
         XCTAssertEqual(fixture.calls.ends, 1)
