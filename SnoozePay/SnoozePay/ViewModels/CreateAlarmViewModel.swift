@@ -290,35 +290,20 @@ final class CreateAlarmViewModel {
 
     // MARK: - Progressive scale preview text
 
-    /// The four doubling steps of the progressive penalty in roubles —
-    /// `[base, ×2, ×4, ×8]`. Drives the `50 → 100 → 200 → 400 ₽` chain on
-    /// the progressive card (#231). Non-finite penalty input degrades to the
-    /// default 50 ₽ base, mirroring `makeAlarmFromCurrentState`.
-    ///
-    /// Doubling is computed on `Double` via `pow(2.0, …)` so the preview
-    /// follows the same doubling progression as the canonical charge engine
-    /// `Alarm.penalty(forSnoozeCount:)` (which multiplies on `Double`), instead
-    /// of the old truncate-then-shift `Int(base) << $0` that diverged on
-    /// fractional bases (49.5 ₽ → 49/98/196/392 vs the engine's 49.5/99/198/396).
-    /// Each rung is then rounded to whole roubles for display, so a fractional
-    /// base shows e.g. `50/99/198/396` — the doubling matches the engine; only
-    /// the display is rounded. The final `Int` conversion is clamped to avoid
-    /// trapping on an absurdly large penalty — `PenaltyCell` enforces only a
-    /// minimum, no upper bound (#373).
-    var progressiveChain: [Int] {
+    /// Match the charge engine's raw Double doubling, using the same base
+    /// sanitation as Save. Rendering must not round or clamp to an Int range.
+    var progressiveChain: [Double] {
         let base = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
-        return (0..<4).map { step in
-            let value = (base * pow(2.0, Double(step))).rounded()
-            return value >= Double(Int.max) ? Int.max : Int(value)
-        }
+        return (0..<4).map { base * pow(2.0, Double($0)) }
     }
 
-    /// Spoken/long form of `progressiveChain` — used as the chain row's
-    /// accessibility label.
-    var progressiveScalePreview: String {
+    var progressiveScalePreview: String { progressiveScalePreview(currency: walletCurrency) }
+
+    /// A currency snapshot keeps the visible and spoken chains in the same unit.
+    func progressiveScalePreview(currency: Currency) -> String {
         progressiveChain.enumerated()
             .map { step -> String in
-                let sum = MoneyFormatter.string(step.element)
+                let sum = MoneyFormatter.quotedString(step.element, currency: currency) ?? "—"
                 return Localized.format("create_alarm.progressive.step", step.offset + 1, sum)
             }
             .joined(separator: " → ")

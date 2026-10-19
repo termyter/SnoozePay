@@ -104,6 +104,104 @@ final class EditorPriceCurrencyTests: XCTestCase {
         XCTAssertEqual(sut.viewModel.penaltyAmount, 49.5)
     }
 
+    func testProgressiveCellReusesRawCurrencyAmountsAndKeepsToggleCallbacks() throws {
+        let fixture = makeSUT()
+        let model = fixture.controller.viewModel
+        XCTAssertTrue(model.progressiveScalePreview.hasPrefix("1-е: 49,50"))
+        XCTAssertTrue(model.progressiveScalePreview.contains("$"))
+        let cell = ProgressiveScaleCell(style: .default, reuseIdentifier: nil)
+        var toggles: [Bool] = []
+        for (code, base, prefix, finalDigits) in [
+            ("RUB", 49.5, "49,5 → 99 → 198 → ", "396"),
+            ("USD", 49.5, "49,50 → 99,00 → 198,00 → ", "396,00"),
+            ("EUR", 49.5, "49,50 → 99,00 → 198,00 → ", "396,00"),
+            ("KWD", 1.001, "1,001 → 2,002 → 4,004 → ", "8,008"),
+            ("USD", 0.001, "— → — → — → ", "0,01"),
+            ("USD", 0, "0,00 → 0,00 → 0,00 → ", "0,00")
+        ] {
+            let currency = Currency(code: code)!
+            model.penaltyAmount = base
+            cell.prepareForReuse()
+            cell.onToggled = { toggles.append($0) }
+            cell.configure(isOn: true, chain: model.progressiveChain, currency: currency,
+                           accessibilityChain: model.progressiveScalePreview(currency: currency))
+            let label = try progressiveLabel(in: cell)
+            XCTAssertTrue(label.text?.hasPrefix(prefix) == true, label.text ?? "")
+            XCTAssertTrue(label.text?.contains(finalDigits) == true)
+            let spokenPrefix = "1-е: " + prefix.components(separatedBy: " → ")[0]
+            XCTAssertTrue(label.accessibilityLabel?.hasPrefix(spokenPrefix) == true)
+            if let symbol = ["USD": "$", "EUR": "€", "KWD": "KWD"][code] {
+                XCTAssertTrue(label.text?.contains(symbol) == true)
+                XCTAssertTrue(label.accessibilityLabel?.contains(symbol) == true)
+                XCTAssertFalse(label.text?.contains("₽") == true)
+            }
+            XCTAssertEqual(model.penaltyAmount, base)
+            XCTAssertTrue(toggles.isEmpty)
+        }
+        let toggle = try XCTUnwrap(descendants(in: cell).compactMap { $0 as? SPSwitch }.first)
+        toggle.isOn = false
+        toggle.sendActions(for: .valueChanged)
+        XCTAssertEqual(toggles, [false])
+        XCTAssertTrue(try progressiveLabel(in: cell).isHidden)
+    }
+
+    func testProgressiveCellKeepsExactLargeDigitsAndMarksMultiplicationOverflowUnknown() throws {
+        let model = makeSUT().controller.viewModel
+        let cell = ProgressiveScaleCell(style: .default, reuseIdentifier: nil)
+        model.penaltyAmount = 18_446_744_073_709_551_616
+        cell.configure(isOn: true, chain: model.progressiveChain, currency: .rub,
+                       accessibilityChain: model.progressiveScalePreview(currency: .rub))
+        let label = try progressiveLabel(in: cell)
+        XCTAssertEqual(label.text?.components(separatedBy: " → ").first?.filter(\.isNumber), "18446744073709551616")
+        let largeDigits = "18\u{00A0}446\u{00A0}744\u{00A0}073\u{00A0}709\u{00A0}551\u{00A0}616"
+        XCTAssertTrue(label.accessibilityLabel?.contains(largeDigits) == true)
+        model.penaltyAmount = .greatestFiniteMagnitude
+        cell.configure(isOn: true, chain: model.progressiveChain, currency: .rub,
+                       accessibilityChain: model.progressiveScalePreview(currency: .rub))
+        let overflow = try XCTUnwrap(progressiveLabel(in: cell).text)
+        XCTAssertEqual(Array(overflow.components(separatedBy: " → ").dropFirst()), ["—", "—", "—"])
+        XCTAssertTrue(try progressiveLabel(in: cell).accessibilityLabel?.contains("2-е: —") == true)
+    }
+
+    func testMountedProgressivePreviewRefreshesBaseToggleAndCurrencyOnReappearance() throws {
+        let fixture = makeSUT(currency: nil)
+        let sut = fixture.controller
+        sut.viewModel.progressiveScale = true
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = sut
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        window.layoutIfNeeded()
+        let indexPath = IndexPath(row: 0, section: CreateAlarmViewController.Section.progressiveScale.rawValue)
+        sut.tableView.scrollToRow(at: indexPath, at: .middle, animated: false)
+        sut.tableView.layoutIfNeeded()
+        let cell = try XCTUnwrap(sut.tableView.cellForRow(at: indexPath) as? ProgressiveScaleCell)
+        let label = try progressiveLabel(in: cell)
+        XCTAssertEqual(label.text, "49,5 → 99 → 198 → 396\u{202F}₽")
+        sut.setPenaltyAmount(1.001)
+        XCTAssertTrue(label.text?.hasPrefix("1 → 2 → 4 → ") == true)
+        let kwd = Currency(code: "KWD")!
+        XCTAssertEqual(fixture.wallet.freezeCurrency(kwd), .frozen(kwd))
+        sut.viewWillAppear(false)
+        XCTAssertTrue(label.text?.hasPrefix("1,001 → 2,002 → 4,004 → ") == true)
+        XCTAssertTrue(label.accessibilityLabel?.contains("1-е: 1,001") == true)
+        XCTAssertEqual(sut.viewModel.penaltyAmount, 1.001)
+        let toggle = try XCTUnwrap(descendants(in: cell).compactMap { $0 as? SPSwitch }.first)
+        toggle.isOn = false
+        toggle.sendActions(for: .valueChanged)
+        XCTAssertFalse(sut.viewModel.progressiveScale)
+        sut.setProgressiveScale(true)
+        XCTAssertTrue(toggle.isOn)
+        XCTAssertFalse(label.isHidden)
+    }
+
+    private func progressiveLabel(in cell: UIView) throws -> UILabel {
+        try XCTUnwrap(labels(in: cell).first { $0.attributedText?.string.contains(" → ") == true })
+    }
+
     private struct Fixture {
         let controller: CreateAlarmViewController
         let repository: AlarmRepository
