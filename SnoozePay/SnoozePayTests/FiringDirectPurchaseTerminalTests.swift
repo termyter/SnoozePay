@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 import XCTest
 @testable import SnoozePay
 
@@ -83,6 +84,41 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertEqual(fixture.calls.requested.count, 3)
         XCTAssertEqual(fixture.calls.begins, 3)
         XCTAssertFalse(button.isEnabled)
+    }
+
+    func testGhostStopEndsPendingFeedbackBeforeSummaryAndRestoresStoreKitFallback() throws {
+        let fixture = Fixture()
+        let controller = try XCTUnwrap(fixture.controller)
+        try XCTUnwrap(controller.applePayNoBalanceButton).sendActions(for: .touchUpInside)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        let stop = try XCTUnwrap(controller.noBalanceDismissButton)
+        XCTAssertTrue(stop.isEnabled)
+        XCTAssertTrue(fixture.store.hasPurchaseFeedbackSubscriber)
+        var summaries = 0
+        controller.onSummaryPresentation = { [calls = fixture.calls, store = fixture.store, center = fixture.center] in
+            summaries += 1
+            XCTAssertFalse(store.hasPurchaseFeedbackSubscriber)
+            XCTAssertEqual(calls.ends, 1)
+            XCTAssertEqual(center.removals, 3)
+        }
+        stop.sendActions(for: .touchUpInside)
+        XCTAssertEqual(summaries, 1, "Exercise the real ghost Stop handler without mounting the summary")
+        XCTAssertTrue(controller.isStoppedByUser)
+        XCTAssertFalse(controller.noBalancePurchaseInFlight)
+        fixture.store.postPurchaseFailed("Deferred failure after Stop")
+        XCTAssertEqual(fixture.poster.requests.count, 1)
+        XCTAssertEqual(fixture.poster.requests.first?.content.body, "Deferred failure after Stop")
+        XCTAssertEqual(
+            fixture.poster.requests.first?.content.title, Localized.text("deposit.notification.failed.title")
+        )
+        fixture.post(StoreKitService.purchaseFailedNotification)
+        fixture.post(StoreKitService.purchaseCompletedNotification)
+        fixture.post(StoreKitService.purchaseCancelledNotification)
+        XCTAssertTrue(controller.alerts.isEmpty)
+        XCTAssertEqual(fixture.calls.ends, 1)
+        XCTAssertEqual(fixture.center.removals, 3)
+        XCTAssertEqual(fixture.wallet.balance, 0)
+        XCTAssertEqual(controller.dismissals, 0)
     }
 
     func testOwnerTeardownBalancesActiveFeedbackAndRemovesAllTokens() throws {
@@ -213,12 +249,15 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         let backend = TestAlarmKitBackend()
         let defaults: UserDefaults
         let wallet: BalanceService
+        let poster = LocalNotificationPosterSpy()
+        let store: StoreKitService
         var controller: PurchaseController?
         var offer: TopUpOffer?
 
         init(available: Bool = true) {
             defaults = UserDefaults(suiteName: suite)!
             wallet = BalanceService(defaults: defaults, notificationCenter: center)
+            store = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
             if available { offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID,
                                               price: 499, currencyCode: "RUB", displayPrice: "499 RUB") }
             let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
@@ -232,7 +271,8 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             controller.noBalancePurchase = AlarmFiringNoBalancePurchase(
                 controller: controller, center: center, dispatch: { [calls] in calls.requested.append($0) },
                 offerProvider: { [weak self] _ in self?.offer },
-                beginFeedback: { [calls] in calls.begins += 1 }, endFeedback: { [calls] in calls.ends += 1 }
+                beginFeedback: { [calls, store] in calls.begins += 1; store.beginObservingPurchaseFeedback() },
+                endFeedback: { [calls, store] in calls.ends += 1; store.endObservingPurchaseFeedback() }
             )
             controller.loadViewIfNeeded()
             controller.observeBalanceForNoBalanceState()
@@ -253,6 +293,7 @@ private final class PurchaseController: AlarmFiringViewController {
     var alerts: [UIAlertController] = []
     var dismissals = 0
     var sheetPresentations = 0
+    var onSummaryPresentation: (() -> Void)?
     override func viewDidLoad() { buildFiringLayout() }
     override func updateUI() { updates += 1; super.updateUI() }
     override func present(
@@ -260,6 +301,7 @@ private final class PurchaseController: AlarmFiringViewController {
     ) {
         if let alert = viewControllerToPresent as? UIAlertController { alerts.append(alert) }
         if viewControllerToPresent is FiringTopUpBottomSheetViewController { sheetPresentations += 1 }
+        if viewControllerToPresent is WokeMorningViewController { onSummaryPresentation?() }
     }
     override func dismiss(animated: Bool, completion: (() -> Void)? = nil) { dismissals += 1 }
 }
