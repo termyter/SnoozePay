@@ -40,6 +40,7 @@ final class UITourRouteRegistryTests: XCTestCase {
         "firing-presented",
         "firing-snoozed",
         "firing-progressive",
+        "firing-progressive-snoozed",
         "firing-nobalance",
         "firing-topup",
         "firing-topup-expensive",
@@ -97,7 +98,9 @@ final class UITourRouteRegistryTests: XCTestCase {
             "confirm-delete": "ConfirmDeleteRouteUITests",
             "firing": "FiringFlowUITests",
             "firing-presented": "AlarmKitSnoozeHandoffUITests (in FiringFlowUITests.swift)",
-            "firing-progressive": "ProgressiveSnoozeUITests",
+            "firing-progressive":
+                "ProgressiveSnoozeUITests.testLargeProgressiveAlarmOpensInitialRingWithZeroWalletBeforePayment",
+            "firing-progressive-snoozed": "ProgressiveSnoozeUITests.testProgressiveSnoozeShowsPillAndLadder",
             "firing-nobalance": "NoBalanceTopUpUITests"
         ]
 

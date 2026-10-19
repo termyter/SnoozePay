@@ -16,7 +16,7 @@ import UIKit
 /// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
 /// wallet, stats, settings, create, edit, theme-picker, sound-picker,
 /// volume-picker, confirm-delete, firing, firing-presented, firing-snoozed,
-/// firing-progressive, firing-nobalance, firing-topup, firing-topup-expensive,
+/// firing-progressive, firing-progressive-snoozed, firing-nobalance, firing-topup, firing-topup-expensive,
 /// alarm-off-warning, txhistory, periodpicker, deposit, streak.
 enum UITourRoutes {
 
@@ -110,9 +110,8 @@ enum UITourRoutes {
         "firing-progressive": {
             $0.rootViewController = AlarmFiringViewController(alarm: progressiveFiringAlarm())
         },
-        "firing-snoozed": {
-            $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm(), snoozeCount: 2)
-        },
+        "firing-snoozed": { mountSnoozedFixture(firingSampleAlarm(), in: $0) },
+        "firing-progressive-snoozed": { mountSnoozedFixture(progressiveFiringAlarm(), in: $0) },
         "firing-nobalance": { window in
             UITourLauncher.forceBalance(to: 0)
             window.rootViewController = makeNoBalanceFiringController()
@@ -323,6 +322,16 @@ enum UITourRoutes {
             }, offerProvider: { $0 == productID ? offer : nil }
         )
         return firing
+    }
+
+    /// Standalone visual state: no charge, scheduler call, or denied-backend
+    /// success. This entire route table is DEBUG-only; production never enters it.
+    private static func mountSnoozedFixture(_ alarm: Alarm, in window: UIWindow) {
+        let model = AlarmFiringViewModel(alarm: alarm, snoozeCount: 1, snoozeAnchor: Date())
+        let firing = AlarmFiringViewController(viewModel: model)
+        window.rootViewController = firing
+        firing.loadViewIfNeeded()
+        firing.enterSnoozedState()
     }
 
     // MARK: - Sample data
