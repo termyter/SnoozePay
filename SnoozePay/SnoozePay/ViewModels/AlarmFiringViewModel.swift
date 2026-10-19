@@ -49,15 +49,19 @@ final class AlarmFiringViewModel {
     /// `billedSnoozes`, read from the ledger (#400).
     private(set) var snoozeCount: Int
 
-    /// Wall-clock moment the user last tapped «Поспать ещё», captured ONCE per
-    /// snooze in `snooze()`. The snoozed countdown anchors its target to this
+    /// Confirmed snooze's tap moment, captured ONCE in `snooze()` and published
+    /// only after scheduling succeeds. The visual countdown anchors to this
     /// FIXED instant (`snoozeAnchor + snoozeMinutes`) so the live countdown
     /// ticks down against a moving `now` and actually reaches `0` (issue #396).
     /// It must equal what the scheduler arms — `AlarmScheduler.scheduledFireDate`
     /// = tap moment + snoozeMinutes — so the in-app countdown and the real
     /// re-ring agree even when the user snoozes minutes after the alarm fired.
-    /// `nil` before the first snooze (the active firing UI shows no countdown).
+    /// `nil` before confirmation, after failure, and after Stop.
     private(set) var snoozeAnchor: Date?
+
+    /// Prevent another debit while the current scheduling result is unresolved.
+    private(set) var isSnoozeScheduling = false
+    private var hasBeenDismissed = false
 
     /// Moment this firing session was mounted. Anchors the ledger window the
     /// billed-charge summary looks back over (`wakeWindow`), so charges from
@@ -295,13 +299,8 @@ final class AlarmFiringViewModel {
 
     var alarmName: String { alarm.name }
 
-    /// `true` when this firing runs on the AlarmKit (Strategy A) backend — iOS
-    /// 26+ with AlarmKit authorized (#383). On that path the SYSTEM owns the
-    /// alarm sound (the in-app screen must not start its own `AudioService`) and
-    /// a snooze re-fires as a real system alarm, so the firing screen DISMISSES
-    /// after a snooze rather than running the in-place notification-snooze
-    /// countdown (which is a Strategy-B-only affordance). Below iOS 26 this is
-    /// `false` and the existing notification behaviour is unchanged.
+    /// Whether AlarmKit currently owns the alarm sound. Every production snooze
+    /// must await `.scheduled` before dismissing, even if authorization changes.
     var usesAlarmKit: Bool { scheduler.usesAlarmKit }
 
     /// Amount charged by the MOST RECENT snooze — the rung the user just paid
@@ -446,7 +445,8 @@ final class AlarmFiringViewModel {
     func snooze(
         scheduleCompletion: ((SnoozeScheduleOutcome) -> Void)? = nil
     ) -> Bool {
-        guard canSnooze else { return false }
+        guard !hasBeenDismissed, !isSnoozeScheduling, canSnooze else { return false }
+        isSnoozeScheduling = true
 
         // Capture the penalty for this snooze BEFORE bumping the count so the
         // refund (if the schedule fails) returns the exact amount charged.
@@ -459,25 +459,38 @@ final class AlarmFiringViewModel {
         guard let chargeTransaction = balanceService.chargeWithReceipt(
             amount: penalty,
             alarmID: alarm.id
-        ) else { return false }
+        ) else {
+            isSnoozeScheduling = false
+            return false
+        }
 
         snoozeCount += 1
-        // Pin the tap moment ONCE so the live countdown target stays fixed while
-        // `now` advances (issue #396). Mirrors the instant the scheduler arms the
-        // trigger at (`scheduledFireDate(now: Date(), …)`) so the in-app countdown
-        // and the real re-ring agree. Re-tapping snooze re-anchors to the new tap,
-        // matching the freshly-armed trigger.
-        snoozeAnchor = Date()
+        // Keep the tap instant, but publish a next-ring promise only once the
+        // scheduler confirms it. A rejected attempt leaves no countdown target.
+        let anchor = Date()
+        snoozeAnchor = nil
+        onStateChanged?()
         scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount) { [self] result in
             // Retain this operation until its refund/outcome resolves, even if the VC disappears.
+            isSnoozeScheduling = false
+            if case .success = result {
+                if hasBeenDismissed {
+                    // Stop may have cancelled before the async backend created
+                    // this trigger. Cancel again so a late success cannot re-arm.
+                    scheduler.cancel(alarm.id)
+                } else {
+                    snoozeAnchor = anchor
+                }
+            }
             handleScheduleResult(
                 result,
                 penalty: penalty,
-                chargeTransactionID: chargeTransaction.id,
-                completion: scheduleCompletion
-            )
+                chargeTransactionID: chargeTransaction.id
+            ) { outcome in
+                self.onStateChanged?()
+                scheduleCompletion?(outcome)
+            }
         }
-        onStateChanged?()
         return true
     }
 
@@ -550,6 +563,8 @@ final class AlarmFiringViewModel {
     /// only surface a diagnostic — no UI rollback or user-facing error needed
     /// (issue #54 mirrors the silent-failure fix from #35 for the list path).
     func dismiss() {
+        hasBeenDismissed = true
+        snoozeAnchor = nil
         // The user got up — feed the behavioural statistics heatmap (#235).
         // Recorded per calendar day; the snooze count for the day comes from
         // the charge ledger, so "встал сразу" = wake event + zero charges.
