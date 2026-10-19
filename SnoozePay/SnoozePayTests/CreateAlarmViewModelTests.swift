@@ -20,6 +20,13 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         super.tearDown()
     }
 
+    private func makePreviewViewModel() -> CreateAlarmViewModel {
+        CreateAlarmViewModel(
+            repository: repo,
+            balanceService: BalanceService(defaults: testDefaults, notificationCenter: NotificationCenter())
+        )
+    }
+
     // MARK: - Available sounds
 
     func testAvailableSounds_hasCorrectCount() {
@@ -169,14 +176,14 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     // MARK: - Progressive scale preview
 
     func testProgressiveScalePreview_format() {
-        let vm = CreateAlarmViewModel(repository: repo)
+        let vm = makePreviewViewModel()
         vm.penaltyAmount = 50
         let preview = vm.progressiveScalePreview
         XCTAssertEqual(preview, "1-е: 50\u{202F}₽ → 2-е: 100\u{202F}₽ → 3-е: 200\u{202F}₽ → 4-е: 400\u{202F}₽")
     }
 
     func testProgressiveScalePreview_withHighPenalty() {
-        let vm = CreateAlarmViewModel(repository: repo)
+        let vm = makePreviewViewModel()
         vm.penaltyAmount = 1000
         let preview = vm.progressiveScalePreview
         XCTAssertEqual(
@@ -186,7 +193,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     }
 
     func testProgressiveScalePreview_withMinimumPenalty() {
-        let vm = CreateAlarmViewModel(repository: repo)
+        let vm = makePreviewViewModel()
         vm.penaltyAmount = 10
         let preview = vm.progressiveScalePreview
         XCTAssertTrue(preview.hasPrefix("1-е: 10\u{202F}₽"))
@@ -224,7 +231,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         // The CreateAlarmVC toggle handler now refreshes the preview label from
         // `progressiveScalePreview` whenever the toggle flips. Make sure the
         // ViewModel always returns the up-to-date computation (no caching).
-        let vm = CreateAlarmViewModel(repository: repo)
+        let vm = makePreviewViewModel()
         vm.penaltyAmount = 50
         let firstPreview = vm.progressiveScalePreview
 
