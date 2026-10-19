@@ -348,10 +348,10 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
 /// running balance so a snooze can flip `canSnooze` to `false` (the #398
 /// drain-to-empty scenario) without touching `UserDefaults`.
 private final class SnoozedStubBalance: AlarmFiringBalancing {
+    func acceptsPurchase(in currency: Currency) -> Bool { false }
     let walletCurrency: Currency = .rub
     private(set) var balance: Double
     init(balanceValue: Double) { balance = balanceValue }
-
     func canAfford(_ amount: Double) -> Bool { balance >= amount }
 
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {

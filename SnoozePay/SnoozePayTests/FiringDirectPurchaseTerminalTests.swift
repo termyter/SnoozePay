@@ -95,7 +95,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertNil(controller)
         XCTAssertNil(owner)
         XCTAssertEqual(fixture.calls.ends, 1)
-        XCTAssertEqual(fixture.center.removals, 4)
+        XCTAssertEqual(fixture.center.removals, 5)
         fixture.post(StoreKitService.purchaseFailedNotification)
         fixture.post(StoreKitService.purchaseCompletedNotification)
         fixture.post(StoreKitService.purchaseCancelledNotification)
@@ -106,6 +106,99 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertTrue(fixture.backend.snoozedIDs.isEmpty)
         XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty)
     }
+
+    func testCatalogRefreshReplacesOnlyChangedPriceAndNeverReenablesBusyOrRemovedOffers() throws {
+        let fixture = Fixture(available: false)
+        let controller = try XCTUnwrap(fixture.controller)
+        let empty = try XCTUnwrap(controller.applePayNoBalanceButton)
+        XCTAssertFalse(empty.isEnabled)
+        XCTAssertEqual(fixture.wallet.balance, 0)
+        controller.noBalanceApplePayTapped()
+        XCTAssertTrue(fixture.calls.requested.isEmpty)
+        fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 4.99,
+                                   currencyCode: "USD", displayPrice: "$4.99")
+        fixture.post(StoreKitService.productsLoadedNotification)
+        let loaded = try XCTUnwrap(controller.applePayNoBalanceButton)
+        XCTAssertFalse(empty === loaded)
+        XCTAssertNil(empty.superview)
+        XCTAssertTrue(loaded.isEnabled)
+        fixture.post(StoreKitService.productsLoadedNotification)
+        XCTAssertTrue(loaded === controller.applePayNoBalanceButton)
+        loaded.sendActions(for: .touchUpInside)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 4.99,
+                                   currencyCode: "EUR", displayPrice: "4,99 €")
+        fixture.post(StoreKitService.productsLoadedNotification)
+        let changed = try XCTUnwrap(controller.applePayNoBalanceButton)
+        XCTAssertFalse(changed === loaded)
+        XCTAssertEqual(changed.accessibilityLabel, Localized.text("common.button.top_up") + ", 4,99 €")
+        XCTAssertFalse(changed.isEnabled)
+        XCTAssertTrue(controller.noBalancePurchaseInFlight)
+        XCTAssertFalse(controller.chooseAmountLink?.isEnabled == true)
+        for terminal in [StoreKitService.purchaseCancelledNotification, StoreKitService.purchaseFailedNotification,
+                         StoreKitService.purchaseCompletedNotification] {
+            fixture.offer = nil
+            fixture.post(StoreKitService.productsLoadedNotification)
+            XCTAssertTrue(controller.noBalancePurchaseInFlight)
+            fixture.post(terminal)
+            let unavailable = try XCTUnwrap(controller.applePayNoBalanceButton)
+            XCTAssertFalse(unavailable.isEnabled)
+            XCTAssertFalse(controller.noBalancePurchaseInFlight)
+            let stack = try XCTUnwrap(controller.noBalanceContainer)
+            XCTAssertTrue(stack.arrangedSubviews[1] === unavailable)
+            XCTAssertEqual(stack.arrangedSubviews.filter {
+                $0.accessibilityIdentifier == "firing.noBalance.topUpButton"
+            }.count, 1)
+            controller.noBalanceApplePayTapped()
+            fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 499.49,
+                                       currencyCode: "RUB", displayPrice: "499,49 RUB")
+            fixture.post(StoreKitService.productsLoadedNotification)
+            controller.applePayNoBalanceButton?.sendActions(for: .touchUpInside)
+        }
+        XCTAssertEqual(fixture.calls.requested,
+                       Array(repeating: AlarmFiringViewController.noBalanceProductID, count: 4))
+    }
+
+    func testInjectedWalletAllowsFirstForeignPurchaseAndRefusesEstablishedRublesWithoutMutation() throws {
+        for pristine in [true, false] {
+            let fixture = Fixture()
+            if !pristine { XCTAssertEqual(fixture.wallet.topUpFromPurchase(amount: 1, currency: .rub), .credited) }
+            fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 4.99,
+                                       currencyCode: "USD", displayPrice: "$4.99")
+            fixture.post(StoreKitService.productsLoadedNotification)
+            let controller = try XCTUnwrap(fixture.controller)
+            let before = fixture.defaults.persistentDomain(forName: fixture.suite) as NSDictionary?
+            controller.applePayNoBalanceButton?.sendActions(for: .touchUpInside)
+            XCTAssertEqual(fixture.calls.requested.count, pristine ? 1 : 0)
+            XCTAssertEqual(controller.noBalancePurchaseInFlight, pristine)
+            XCTAssertEqual(fixture.defaults.persistentDomain(forName: fixture.suite) as NSDictionary?, before)
+            if !pristine { XCTAssertEqual(controller.alerts.first?.title, ForeignCurrencyNotice.alertTitle) }
+        }
+    }
+
+    #if DEBUG
+    func testRealTourFactoryEnablesDemoOnlyExplicitlyAndCreditsItsBoundWallet() throws {
+        for arguments in [[], ["-uitour", "firing-nobalance"], [StoreKitService.emptyCatalogArgument]] {
+            let fixture = Fixture()
+            let controller = UITourRoutes.makeNoBalanceFiringController(
+                arguments: arguments, balance: fixture.wallet, controllerBuilder: PurchaseController.init(viewModel:)
+            )
+            XCTAssertEqual(controller.viewModel.balance, 0)
+            let demo = StoreKitService.isCatalogForcedEmpty(arguments: arguments)
+            XCTAssertEqual(controller.noBalancePurchase.dispatch != nil, demo)
+            if demo {
+                controller.loadViewIfNeeded()
+                let button = try XCTUnwrap(controller.applePayNoBalanceButton)
+                XCTAssertTrue(button.isEnabled)
+                button.sendActions(for: .touchUpInside)
+                XCTAssertEqual(fixture.wallet.balance, 499)
+                XCTAssertEqual(controller.viewModel.balance, 499)
+                XCTAssertFalse(controller.noBalancePurchaseInFlight)
+                XCTAssertTrue(controller.noBalanceContainer?.isHidden == true)
+            } else { XCTAssertEqual(fixture.wallet.balance, 0) }
+        }
+    }
+    #endif
 
     private final class Calls {
         var requested: [String] = []
@@ -121,10 +214,13 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         let defaults: UserDefaults
         let wallet: BalanceService
         var controller: PurchaseController?
+        var offer: TopUpOffer?
 
-        init() {
+        init(available: Bool = true) {
             defaults = UserDefaults(suiteName: suite)!
             wallet = BalanceService(defaults: defaults, notificationCenter: center)
+            if available { offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID,
+                                              price: 499, currencyCode: "RUB", displayPrice: "499 RUB") }
             let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
             let model = AlarmFiringViewModel(
                 alarm: Alarm(penaltyAmount: 50), balanceService: wallet,
@@ -132,11 +228,12 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
                 wakeStore: WakeEventStore(defaults: defaults), ledger: TransactionRepository(defaults: defaults)
             )
             let controller = PurchaseController(viewModel: model)
+            self.controller = controller
             controller.noBalancePurchase = AlarmFiringNoBalancePurchase(
                 controller: controller, center: center, dispatch: { [calls] in calls.requested.append($0) },
+                offerProvider: { [weak self] _ in self?.offer },
                 beginFeedback: { [calls] in calls.begins += 1 }, endFeedback: { [calls] in calls.ends += 1 }
             )
-            self.controller = controller
             controller.loadViewIfNeeded()
             controller.observeBalanceForNoBalanceState()
             controller.observeBalanceForNoBalanceState()

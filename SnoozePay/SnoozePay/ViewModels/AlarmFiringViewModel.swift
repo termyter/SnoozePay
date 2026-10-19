@@ -291,6 +291,7 @@ final class AlarmFiringViewModel {
 
     var balance: Double { balanceService.balance }
     var walletCurrency: Currency { balanceService.walletCurrency }
+    func acceptsPurchase(in currency: Currency) -> Bool { balanceService.acceptsPurchase(in: currency) }
 
     var alarmName: String { alarm.name }
 
@@ -574,6 +575,7 @@ final class AlarmFiringViewModel {
 protocol AlarmFiringBalancing: AnyObject {
     var balance: Double { get }
     var walletCurrency: Currency { get }
+    func acceptsPurchase(in currency: Currency) -> Bool
     func canAfford(_ amount: Double) -> Bool
     /// Charges the penalty and returns the persisted charge `Transaction` (or
     /// `nil` on insufficient funds / locked ledger). The returned `id` lets the

@@ -123,6 +123,7 @@ private final class SnoozeMockAlarmKit: AlarmKitScheduling {
 }
 
 private final class SnoozeStubBalance: AlarmFiringBalancing {
+    func acceptsPurchase(in currency: Currency) -> Bool { false }
     let walletCurrency: Currency = .rub
     private(set) var balance: Double
     private(set) var chargeCalls: [Double] = []

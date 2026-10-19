@@ -367,6 +367,7 @@ final class FiringCopyTests: XCTestCase {
 /// Wallet stub — `canSnooze` is the single switch between the solvent screen
 /// and the no-balance state, and it reads nothing but `canAfford`.
 private final class FiringCopyWallet: AlarmFiringBalancing {
+    func acceptsPurchase(in currency: Currency) -> Bool { false }
     let walletCurrency: Currency = .rub
     var balance: Double
 
