@@ -187,68 +187,24 @@ final class FiringCopyTests: XCTestCase {
 
     // MARK: - Layer 3: the firing-time top-up sheet
 
-    func testTopUpSheetRendersCopyRatherThanKeys() {
-        let sheet = FiringTopUpBottomSheetViewController(snoozePrice: 200, currentBalance: 0)
+    func testTopUpSheetRendersGenericRowsAndWalletDisclaimerWithoutForecasts() {
+        let suite = "FiringCopyTests.sheet.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let balance = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+        let sheet = FiringTopUpBottomSheetViewController(
+            snoozePrice: 200, balance: balance, notificationCenter: NotificationCenter(), offerProvider: { productID in
+                TopUpOffer(productID: productID, price: 149, currencyCode: "RUB", displayPrice: "149 ₽")
+            }
+        )
         sheet.loadViewIfNeeded()
-        sheet.view.frame = CGRect(x: 0, y: 0, width: 402, height: 600)
-        sheet.view.layoutIfNeeded()
-
         let rendered = Self.strings(in: sheet.view)
         assertNoKeysLeaked(Self.allKeys, in: rendered)
-        for key in ["firing.top_up.title", "firing.top_up.footer", "firing.top_up.success"] {
-            XCTAssertTrue(
-                rendered.contains(Localized.text(key)),
-                "the top-up sheet never renders «\(Localized.text(key))»: \(rendered)"
-            )
-        }
-        XCTAssertTrue(
-            rendered.contains(
-                FiringTopUpCopy.subtitle(
-                    amounts: FiringTopUpBottomSheetViewController.defaultPresets.map(\.amount),
-                    balance: 0,
-                    price: 200
-                )
-            ),
-            "the sheet subtitle is no longer the one FiringTopUpCopy computes: \(rendered)"
-        )
-    }
-
-    // MARK: - The entries that take arguments
-
-    /// «+2 откладывания» — the count leads in Russian and does not in English,
-    /// which is the whole reason the pair is one entry and not two.
-    func testTopUpRowTitleKeepsTheCountAndTheNounInOneString() {
-        // The argument-free branches are asserted by `FiringTopUpCopyTests`.
-        XCTAssertEqual(
-            FiringTopUpCopy.rowTitle(topUp: 500, balance: 0, price: 200),
-            "+2 \(SnoozeAffordability.snoozeWord(for: 2))"
-        )
-    }
-
-    /// All four subtitle branches are one entry each — a translator gets the
-    /// price sentence and the advice sentence together, and can reorder them.
-    func testTopUpSubtitleKeepsBothSentencesInOneEntry() {
-        let price = MoneyFormatter.string(200)
-        XCTAssertEqual(
-            FiringTopUpCopy.subtitle(amounts: [149, 499], balance: 0, price: 0),
-            "Самое маленькое пополнение — \(MoneyFormatter.string(149)). "
-            + "Можно больше, чтобы не возвращаться сюда."
-        )
-        XCTAssertEqual(
-            FiringTopUpCopy.subtitle(amounts: [49, 99], balance: 0, price: 200),
-            "Откладывание сейчас стоит \(price). Даже \(MoneyFormatter.string(99)) "
-            + "на него не хватит — понадобится несколько пополнений."
-        )
-        XCTAssertEqual(
-            FiringTopUpCopy.subtitle(amounts: [499, 999], balance: 0, price: 200),
-            "Откладывание сейчас стоит \(price). Хватит самого маленького пополнения — "
-            + "\(MoneyFormatter.string(499)). Можно больше, чтобы не возвращаться сюда."
-        )
-        XCTAssertEqual(
-            FiringTopUpCopy.subtitle(amounts: [149, 499], balance: 0, price: 200),
-            "Откладывание сейчас стоит \(price). Хватит начиная с "
-            + "\(MoneyFormatter.string(499)) — меньшие пополнения откладывание не разблокируют."
-        )
+        XCTAssertTrue(rendered.contains("Пополнить баланс"))
+        XCTAssertTrue(rendered.contains("Деньги попадают в баланс. Списываются только при откладывании."))
+        XCTAssertFalse(rendered.contains { $0.contains("откладыван") && $0.hasPrefix("+") })
+        XCTAssertFalse(rendered.contains { $0.contains("Зачислится мгновенно") })
+        XCTAssertTrue(rendered.contains(Localized.text("firing.top_up.success")))
     }
 
     func testProgressivePillCountsUpThroughTheCatalogue() {

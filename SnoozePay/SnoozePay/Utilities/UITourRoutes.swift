@@ -138,7 +138,7 @@ enum UITourRoutes {
             window.rootViewController = firing
             presentLater(
                 FiringTopUpBottomSheetViewController(
-                    snoozePrice: alarm.penaltyAmount, currentBalance: 0
+                    snoozePrice: alarm.penaltyAmount
                 ),
                 over: firing
             )
