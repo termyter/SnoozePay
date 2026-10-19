@@ -232,7 +232,7 @@ final class DesignSystemCopyTests: XCTestCase {
     }
 
     func testFiringTickerKeepsItsEyebrow() {
-        let row = SPFiringTicker.makeRow(for: [SPFiringTicker.Entry(amount: 50)])
+        let row = SPFiringTicker.makeRow(for: [SPFiringTicker.Entry(amount: 50, currency: .rub)])
         row.layoutIfNeeded()
 
         let rendered = Self.strings(in: row)
