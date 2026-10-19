@@ -105,7 +105,6 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
             $0.text == rubCaption
         })
         XCTAssertEqual(caption.text, rubCaption)
-        // Check UILabel eligibility here; this test does not read the system accessibility tree.
         XCTAssertEqual(balance.walletCurrency, .rub)
         XCTAssertNil(fixture.defaults.object(forKey: WalletCurrencyStore.storageKey), "The wallet must be pristine")
         let appearances = controller.appearanceCount
