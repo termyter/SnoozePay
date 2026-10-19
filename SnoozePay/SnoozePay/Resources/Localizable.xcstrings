@@ -2053,6 +2053,24 @@
         }
       }
     },
+    "create_alarm.penalty.accessibility_currency" : {
+      "comment" : "Alarm editor price field, VoiceOver. %@ is the wallet ISO currency code; the digits remain a separate editable value.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze fee, %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цена откладывания, %@"
+          }
+        }
+      }
+    },
     "create_alarm.penalty.caps" : {
       "comment" : "Alarm editor: caps caption of the snooze-price card. The call site upper-cases it.",
       "extractionState" : "manual",
@@ -2103,6 +2121,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Минимум 1 ₽"
+          }
+        }
+      }
+    },
+    "create_alarm.penalty.minimum_currency" : {
+      "comment" : "Alarm editor invalid-price helper. %@ is the wallet ISO currency code. The whole-number minimum remains 1.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimum 1 %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Минимум 1 %@"
           }
         }
       }

@@ -146,7 +146,7 @@ extension CreateAlarmViewController {
     func makePenaltyCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: PenaltyCell.reuseID, for: indexPath)
         if let cell = cell as? PenaltyCell {
-            cell.configure(amount: viewModel.penaltyAmount)
+            cell.configure(amount: viewModel.penaltyAmount, currency: viewModel.walletCurrency)
             cell.onValueChanged = { [weak self] amount in self?.setPenaltyAmount(amount) }
         }
         return cell
@@ -158,10 +158,10 @@ extension CreateAlarmViewController {
     ) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ProgressiveScaleCell.reuseID, for: indexPath)
         if let cell = cell as? ProgressiveScaleCell {
+            let currency = viewModel.walletCurrency
             cell.configure(
-                isOn: viewModel.progressiveScale,
-                chain: viewModel.progressiveChain,
-                accessibilityChain: viewModel.progressiveScalePreview
+                isOn: viewModel.progressiveScale, chain: viewModel.progressiveChain, currency: currency,
+                accessibilityChain: viewModel.progressiveScalePreview(currency: currency)
             )
             cell.onToggled = { [weak self] isOn in self?.setProgressiveScale(isOn) }
         }

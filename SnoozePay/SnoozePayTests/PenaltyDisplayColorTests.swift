@@ -192,7 +192,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
 
     private func hostedCell(amount: Double) -> PenaltyCell {
         let cell = PenaltyCell(style: .default, reuseIdentifier: nil)
-        cell.configure(amount: amount)
+        cell.configure(amount: amount, currency: .rub)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 343, height: 400))
         window.overrideUserInterfaceStyle = .light
         window.isHidden = false

@@ -209,13 +209,29 @@ final class PenaltyCell: UITableViewCell {
 
     // MARK: - Configure
 
-    func configure(amount: Double) {
+    func configure(amount: Double, currency: Currency) {
+        updateCurrency(currency)
         let text = Self.amountText(amount)
         currentAmount = amount.rounded()
         lastValidAmount = text == nil ? nil : currentAmount
         amountField.text = text
         setHelper(visible: text == nil)
         refreshAppearance()
+    }
+
+    /// Presentation only: never reconfigure the number or its editing state.
+    func updateCurrency(_ currency: Currency) {
+        if currency == .rub {
+            suffixLabel.text = "₽"
+            helperLabel.text = Localized.text("create_alarm.penalty.minimum")
+            amountField.accessibilityLabel = Localized.text("create_alarm.penalty.accessibility")
+        } else {
+            suffixLabel.text = currency.code
+            helperLabel.text = Localized.format("create_alarm.penalty.minimum_currency", currency.code)
+            amountField.accessibilityLabel = Localized.format(
+                "create_alarm.penalty.accessibility_currency", currency.code
+            )
+        }
     }
 
     /// Fixed decimal digits round-trip through the existing Double model even
