@@ -176,6 +176,7 @@ final class FiringTopUpCatalogTests: XCTestCase {
         XCTAssertEqual(fixture.wallet.topUpFromPurchase(amount: 0.49, currency: Currency(code: "USD")!), .credited)
         fixture.post(StoreKitService.purchaseCompletedNotification,
                      info: [StoreKitService.amountUserInfoKey: 0.49])
+        XCTAssertEqual(try purchaseButton(sheet).alpha, 0, "Ending the pause must retain the success UI")
         fixture.refresh()
         fixture.post(StoreKitService.purchaseCancelledNotification)
         sheet.acknowledgePurchaseFailure()
@@ -228,6 +229,11 @@ final class FiringTopUpCatalogTests: XCTestCase {
         #if DEBUG
         let demo = fixture.makeSheet(provider: false, dispatch: false, arguments: ["-uitour-storekit-empty"])
         demo.loadViewIfNeeded()
+        let demoRow = try XCTUnwrap(descendants(demo.view).compactMap { $0 as? FiringTopUpPresetRow }.first {
+            $0.accessibilityIdentifier == "firingTopUp.preset." + Fixture.sku(149)
+        })
+        demoRow.sendActions(for: .touchUpInside)
+        XCTAssertTrue(demoRow.isSelected)
         XCTAssertTrue(strings(try purchaseButton(demo)).contains("149\u{202F}₽"))
         try purchaseButton(demo).sendActions(for: .touchUpInside)
         XCTAssertEqual(fixture.wallet.balance, 149)

@@ -585,6 +585,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     private func updatePurchaseAvailability() {
         applePayButton.isEnabled = canPurchase && selectedOffer != nil
+        // SPButton refreshes its disabled alpha even when isEnabled stays false.
+        if successReceipt != nil { applePayButton.alpha = 0 }
         for (row, preset) in zip(presetRows, presets) {
             row.isEnabled = canSelectProduct && offer(for: preset.productID) != nil
         }
