@@ -8,6 +8,8 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         let fixture = Fixture()
         let controller = try XCTUnwrap(fixture.controller)
         let button = try XCTUnwrap(controller.applePayNoBalanceButton)
+        let chooseAmount = try XCTUnwrap(controller.chooseAmountLink)
+        XCTAssertTrue(chooseAmount.isEnabled)
         let initialUpdates = controller.updates
         fixture.post(StoreKitService.purchaseCancelledNotification)
         XCTAssertEqual(fixture.calls.ends, 0)
@@ -20,10 +22,18 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertEqual(controller.updates, initialUpdates + 1)
         XCTAssertTrue(controller.noBalancePurchaseInFlight)
         XCTAssertFalse(button.isEnabled)
+        XCTAssertFalse(chooseAmount.isEnabled)
+        chooseAmount.sendActions(for: .touchUpInside)
+        controller.noBalanceChooseAmountTapped()
+        controller.presentTopUpSheet()
+        XCTAssertEqual(controller.sheetPresentations, 0)
         button.sendActions(for: .touchUpInside)
         XCTAssertEqual(fixture.calls.requested.count, 1)
         fixture.post(StoreKitService.purchaseCancelledNotification)
         XCTAssertTrue(button.isEnabled)
+        XCTAssertTrue(chooseAmount.isEnabled)
+        chooseAmount.sendActions(for: .touchUpInside)
+        XCTAssertEqual(controller.sheetPresentations, 1)
         XCTAssertFalse(controller.noBalancePurchaseInFlight)
         XCTAssertTrue(controller.alerts.isEmpty)
         XCTAssertEqual(controller.dismissals, 0)
@@ -49,6 +59,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertEqual(controller.alerts.map(\.message), ["Failure fixture"])
         XCTAssertEqual(controller.alerts.first?.title, Localized.text("firing.alert.purchase_failed.title"))
         XCTAssertTrue(button.isEnabled)
+        XCTAssertTrue(controller.chooseAmountLink?.isEnabled == true)
         fixture.post(StoreKitService.purchaseFailedNotification)
         fixture.post(StoreKitService.purchaseCompletedNotification)
         XCTAssertEqual(controller.alerts.count, 1)
@@ -61,6 +72,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertTrue(controller.noBalanceContainer?.isHidden == false)
         XCTAssertTrue(button.isEnabled)
         XCTAssertFalse(controller.noBalancePurchaseInFlight)
+        XCTAssertTrue(controller.chooseAmountLink?.isEnabled == true)
         XCTAssertEqual(fixture.wallet.balance, 1, "Feedback must not credit the wallet")
         XCTAssertEqual(controller.dismissals, 0)
         XCTAssertEqual(fixture.calls.ends, 2)
@@ -143,12 +155,14 @@ private final class PurchaseController: AlarmFiringViewController {
     var updates = 0
     var alerts: [UIAlertController] = []
     var dismissals = 0
+    var sheetPresentations = 0
     override func viewDidLoad() { buildFiringLayout() }
     override func updateUI() { updates += 1; super.updateUI() }
     override func present(
         _ viewControllerToPresent: UIViewController, animated: Bool, completion: (() -> Void)? = nil
     ) {
         if let alert = viewControllerToPresent as? UIAlertController { alerts.append(alert) }
+        if viewControllerToPresent is FiringTopUpBottomSheetViewController { sheetPresentations += 1 }
     }
     override func dismiss(animated: Bool, completion: (() -> Void)? = nil) { dismissals += 1 }
 }

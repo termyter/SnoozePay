@@ -69,6 +69,7 @@ final class AlarmFiringNoBalancePurchase {
         guard let controller, controller.noBalancePurchaseInFlight else { return false }
         controller.noBalancePurchaseInFlight = false
         controller.applePayNoBalanceButton?.isEnabled = true
+        controller.chooseAmountLink?.isEnabled = true
         terminalTokens.forEach { center.removeObserver($0) }
         terminalTokens.removeAll()
         if observingFeedback {

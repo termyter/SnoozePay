@@ -239,6 +239,7 @@ extension AlarmFiringViewController {
         guard !noBalancePurchaseInFlight else { return }
         noBalancePurchaseInFlight = true
         applePayNoBalanceButton?.isEnabled = false
+        chooseAmountLink?.isEnabled = false
 
         let purchase = noBalancePurchase
         let productID = Self.noBalanceProductID
@@ -288,6 +289,7 @@ extension AlarmFiringViewController {
 
     /// «Выбрать другую сумму» tap. Routes to the presets bottom sheet.
     @objc func noBalanceChooseAmountTapped() {
+        guard !noBalancePurchaseInFlight else { return }
         presentTopUpSheet()
     }
 
