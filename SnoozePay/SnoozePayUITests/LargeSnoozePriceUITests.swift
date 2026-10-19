@@ -20,7 +20,13 @@ final class LargeSnoozePriceUITests: XCTestCase {
         let price = revealPrice(in: app)
         focusPrice(price, in: app)
         clearPriceField(price, in: app)
+        recordInputState("post-Cut", price: price, in: app)
+        let focusTaps = focusPrice(price, in: app)
+        let viewportPans = makeFocusedPriceVisible(price, in: app)
+        recordInputState("ready", price: price, in: app, focusTaps: focusTaps, viewportPans: viewportPans)
+        XCTAssertEqual(price.value as? String, "", "Readiness actions must leave the entire field empty")
         price.typeText("9223372036854775807")
+        recordInputState("post-type", price: price, in: app, focusTaps: focusTaps, viewportPans: viewportPans)
         XCTAssertEqual(price.value as? String, "9223372036854775807")
         let done = app.buttons["createAlarm.penaltyDone"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
@@ -51,7 +57,8 @@ final class LargeSnoozePriceUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
     }
 
-    private func focusPrice(_ price: XCUIElement, in app: XCUIApplication) {
+    @discardableResult
+    private func focusPrice(_ price: XCUIElement, in app: XCUIApplication) -> Int {
         let focusedPrice = app.textFields.matching(identifier: "createAlarm.penaltyField")
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
         var taps = 0
@@ -61,6 +68,7 @@ final class LargeSnoozePriceUITests: XCTestCase {
             _ = focusedPrice.waitForExistence(timeout: 3)
         }
         XCTAssertTrue(focusedPrice.exists, "The price field must receive native keyboard input")
+        return taps
     }
 
     private func clearPriceField(_ price: XCUIElement, in app: XCUIApplication) {
@@ -104,7 +112,8 @@ final class LargeSnoozePriceUITests: XCTestCase {
         return app.descendants(matching: .any).matching(action).firstMatch
     }
 
-    private func makeFocusedPriceVisible(_ price: XCUIElement, in app: XCUIApplication) {
+    @discardableResult
+    private func makeFocusedPriceVisible(_ price: XCUIElement, in app: XCUIApplication) -> Int {
         let keyboard = app.keyboards.firstMatch
         let toolbar = app.toolbars.containing(.button, identifier: "createAlarm.penaltyDone").firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
@@ -135,6 +144,45 @@ final class LargeSnoozePriceUITests: XCTestCase {
         }
         XCTAssertTrue(viewport().contains(price.frame) && price.isHittable,
                       "The FULL price field \(price.frame) must be above the keyboard toolbar in \(viewport())")
+        return pans
+    }
+
+    /// Small read-only observations preserve whether a corrective action actually ran.
+    /// They do not claim that passing this guard explains the historical partial input.
+    private func recordInputState(
+        _ stage: String, price: XCUIElement, in app: XCUIApplication,
+        focusTaps: Int? = nil, viewportPans: Int? = nil
+    ) {
+        XCTContext.runActivity(named: "Price input readiness: " + stage) { activity in
+            let focused = app.textFields.matching(identifier: "createAlarm.penaltyField")
+                .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+            let keyboard = app.keyboards.firstMatch
+            let toolbar = app.toolbars.containing(.button, identifier: "createAlarm.penaltyDone").firstMatch
+            let keyboardExists = keyboard.exists
+            let toolbarExists = toolbar.exists
+            let fieldFrame = price.frame
+            let tableFrame = app.tables.firstMatch.frame.intersection(app.frame)
+            let toolbarFrame = toolbarExists ? toolbar.frame : CGRect.null
+            let viewport = toolbarExists ? CGRect(
+                x: tableFrame.minX, y: tableFrame.minY, width: tableFrame.width,
+                height: max(0, min(tableFrame.maxY, toolbarFrame.minY) - tableFrame.minY)
+            ) : .null
+            let fieldValue = String((price.value as? String ?? "<nil>").prefix(32))
+            let evidence = """
+            stage=\(stage)
+            fieldValue=\(fieldValue)
+            focusMatch=\(focused.exists) hittable=\(price.isHittable) fieldFrame=\(fieldFrame)
+            keyboardExists=\(keyboardExists) keyboardFrame=\(keyboardExists ? keyboard.frame : .null)
+            toolbarExists=\(toolbarExists) toolbarFrame=\(toolbarFrame)
+            viewport=\(viewport) containsField=\(viewport.contains(fieldFrame))
+            correctiveFocusTaps=\(focusTaps.map { String($0) } ?? "not-run")
+            correctiveViewportPans=\(viewportPans.map { String($0) } ?? "not-run")
+            """
+            let attachment = XCTAttachment(string: evidence)
+            attachment.name = "price-input-" + stage
+            attachment.lifetime = .keepAlways
+            activity.add(attachment)
+        }
     }
 
     private func revealPrice(in app: XCUIApplication) -> XCUIElement {
