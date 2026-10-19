@@ -6,8 +6,8 @@ import UIKit
 /// Spec — `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:114-136` contains "function TickerRow":
 /// a caps «СЕГОДНЯ» eyebrow, then
 /// one chip per charged snooze separated by a thin «·». Each chip shows the
-/// rounded rouble amount and tints amber when the charge was under 200 ₽, red
-/// when it was 200 ₽ or more. This replaces the old single-line mono text
+/// actual wallet-currency amount and retains the legacy rounded 200-unit
+/// threshold for its amber/red tint. This replaces the old single-line mono text
 /// summary that lived above the CTA.
 ///
 /// The amount → tint mapping is pure logic, so it lives in `SPFiringTickerEntry`
@@ -16,14 +16,23 @@ enum SPFiringTicker {
 
     /// One charge in today's snooze history.
     struct Entry: Equatable {
-        /// Rounded rouble amount charged for this snooze.
-        let amount: Int
+        /// Actual charged amount and the currency of the paid ledger projection.
+        let amount: Double
+        let currency: Currency
 
         /// Tint threshold per
         /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:124-125` contains "h.amount >= 200":
         /// amber below 200 ₽, red at
         /// or above 200 ₽.
-        var isHeavy: Bool { amount >= 200 }
+        /// Preserve the previous rounded threshold; currency display does not reprice tints.
+        var isHeavy: Bool { amount.rounded() >= 200 }
+
+        var displayText: String {
+            let text = MoneyFormatter.string(amount, currency: currency)
+            guard text != "—",
+                  !(amount > 0 && text == MoneyFormatter.string(0.0, currency: currency)) else { return "—" }
+            return "−" + text
+        }
 
         /// Chip text colour. `pain300` (coral) for heavy charges, `warn300`
         /// (amber) otherwise.
@@ -36,10 +45,9 @@ enum SPFiringTicker {
         }
     }
 
-    /// Map a chronological list of penalty amounts (doubles, as the VM emits
-    /// them) to rounded ticker entries.
-    static func entries(from penalties: [Double]) -> [Entry] {
-        penalties.map { Entry(amount: Int($0.rounded())) }
+    /// Keep the chronological paid amounts without integer narrowing or rounding.
+    static func entries(from penalties: [Double], currency: Currency) -> [Entry] {
+        penalties.map { Entry(amount: $0, currency: currency) }
     }
 
     /// Build the chip row view for the supplied entries. Returns a horizontal
@@ -80,8 +88,9 @@ enum SPFiringTicker {
 
     private static func makeChip(_ entry: SPFiringTicker.Entry) -> UIView {
         let label = SPPaddedLabel(insets: UIEdgeInsets(top: 3, left: 8, bottom: 3, right: 8))
+        label.accessibilityLabel = entry.displayText
         label.attributedText = NSAttributedString(
-            string: "−\(entry.amount)",
+            string: entry.displayText,
             attributes: [
                 .font: AppTypography.moneySm,
                 .foregroundColor: entry.textColor

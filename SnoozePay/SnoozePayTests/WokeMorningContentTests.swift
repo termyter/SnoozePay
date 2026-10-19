@@ -58,8 +58,23 @@ final class WokeMorningContentTests: XCTestCase {
     func testRecoveredSubtitleEmbedsChargedSum() {
         XCTAssertEqual(
             WokeMorningContent(snoozes: 2, charged: 150).subtitle,
-            "Сегодня списано 150 ₽. Завтра попробуем не списать ничего."
+            "Сегодня списано 150\u{202F}₽. Завтра попробуем не списать ничего."
         )
+    }
+
+    func testUnquotablePositiveAmountsStayUnavailableWhileTrueZeroSurvives() {
+        let usd = Currency(code: "USD")!
+        for amount in [Double.nan, .infinity, -1, .greatestFiniteMagnitude, 0.002] {
+            let content = WokeMorningContent(snoozes: 1, charged: amount, currency: usd)
+            XCTAssertEqual(content.variant, .chargesUnavailable)
+            XCTAssertNil(content.charged)
+            XCTAssertNil(content.currency)
+            XCTAssertFalse(content.subtitle.contains("₽"))
+        }
+        let zero = WokeMorningContent(snoozes: 1, charged: 0, currency: usd)
+        XCTAssertEqual(zero.variant, .recovered)
+        XCTAssertEqual(zero.charged, 0)
+        XCTAssertTrue(zero.subtitle.contains(MoneyFormatter.string(0.0, currency: usd)))
     }
 
     // MARK: - Declension («после N откладывани…», genitive after «после»)

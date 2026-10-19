@@ -8872,37 +8872,37 @@
       }
     },
     "woke_morning.subtitle.recovered" : {
-      "comment" : "Summary subtitle naming what this morning cost; %lld is whole roubles.",
+      "comment" : "Summary subtitle naming what this morning cost; %@ is the formatted wallet-currency amount.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You were charged %lld ₽ today. Let’s aim for zero tomorrow."
+            "value" : "You were charged %@ today. Let’s aim for zero tomorrow."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сегодня списано %lld ₽. Завтра попробуем не списать ничего."
+            "value" : "Сегодня списано %@. Завтра попробуем не списать ничего."
           }
         }
       }
     },
     "woke_morning.subtitle.reversed_charged" : {
-      "comment" : "Summary subtitle when some charges stuck and some were reversed; %1$lld is roubles charged, %2$lld the reversed count.",
+      "comment" : "Summary subtitle when some charges stuck and some were reversed; %1$@ is the formatted wallet-currency amount, %2$lld the reversed count.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You were charged %1$lld ₽ today. Snoozes that didn’t go through: %2$lld — those charges were refunded."
+            "value" : "You were charged %1$@ today. Snoozes that didn’t go through: %2$lld — those charges were refunded."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сегодня списано %1$lld ₽. Не состоявшихся откладываний: %2$lld — деньги за них вернули."
+            "value" : "Сегодня списано %1$@. Не состоявшихся откладываний: %2$lld — деньги за них вернули."
           }
         }
       }
