@@ -21,6 +21,7 @@ class SettingsViewController: UIViewController {
 
     private let themeService: ThemeService
     let alarmDefaults: AlarmDefaults
+    let walletCurrencyStore: WalletCurrencyStore
 
     /// Backs the `.referral` section. Internal so the cross-file
     /// `SettingsViewController+Referral` extension can reach it.
@@ -50,11 +51,13 @@ class SettingsViewController: UIViewController {
     init(
         themeService: ThemeService = .shared,
         alarmDefaults: AlarmDefaults = .shared,
-        referralService: ReferralService = .shared
+        referralService: ReferralService = .shared,
+        walletCurrencyStore: WalletCurrencyStore = WalletCurrencyStore(defaults: .standard)
     ) {
         self.themeService = themeService
         self.alarmDefaults = alarmDefaults
         self.referralService = referralService
+        self.walletCurrencyStore = walletCurrencyStore
         super.init(nibName: nil, bundle: nil)
     }
 

@@ -505,14 +505,7 @@ class AlarmFiringViewController: UIViewController {
     /// Quote the actual next penalty, retaining its currency and fractional units.
     /// Huge finite integers keep full digits when Decimal cannot represent them.
     static func quotedPriceText(_ amount: Double, currency: Currency) -> String? {
-        guard amount.isFinite, amount >= 0 else { return nil }
-        let formatted = MoneyFormatter.string(amount, currency: currency)
-        if amount > 0, formatted == MoneyFormatter.string(0.0, currency: currency) { return nil }
-        if formatted != "—" { return formatted }
-        guard amount >= 1, amount.rounded(.towardZero) == amount,
-              let digits = roundedPriceText(amount, withCurrency: false) else { return nil }
-        let unit = currency == .rub ? "₽" : currency.code
-        return digits + MoneyFormatter.narrowSpace + unit
+        MoneyFormatter.quotedString(amount, currency: currency)
     }
 
     /// Display-only rounding, with no Int narrowing or Decimal(Double) overflow.
@@ -658,7 +651,7 @@ class AlarmFiringViewController: UIViewController {
 
     /// Copy for the morning summary, chosen from what the ledger could confirm.
     ///
-    /// ONE `billedSnoozes` read, not `chargedThisMorning` + `billedSnoozeCount`:
+    /// ONE checked charge-row read, not `chargedThisMorning` + `billedSnoozeCount`:
     /// each accessor re-reads the ledger, and a refund landing from the
     /// scheduler's completion between two reads would print a count and a sum
     /// taken from different snapshots.
@@ -669,13 +662,13 @@ class AlarmFiringViewController: UIViewController {
     /// snooze instead of quietly showing a billed pair that can't be squared
     /// with the doubling ladder. `internal` for unit testing.
     func wokeMorningContent() -> WokeMorningContent {
-        guard case .known(let amounts) = viewModel.billedSnoozes else {
-            return .chargesUnavailable
-        }
+        let currency = viewModel.walletCurrency
+        guard let billing = viewModel.morningBilling(in: currency) else { return .chargesUnavailable }
         return WokeMorningContent(
-            snoozes: amounts.count,
-            charged: Int(amounts.reduce(0, +).rounded()),
-            attempts: viewModel.snoozeCount
+            snoozes: billing.billedCount,
+            charged: billing.walletTotal,
+            attempts: viewModel.snoozeCount,
+            currency: currency
         )
     }
 

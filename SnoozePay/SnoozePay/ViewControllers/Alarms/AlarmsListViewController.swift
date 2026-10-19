@@ -27,10 +27,15 @@ class AlarmsListViewController: UIViewController {
 
     private let viewModel: AlarmsListViewModel
     private var renderedPriceCurrency: Currency
+    private let bannerStreakCount: () -> Int
 
-    init(viewModel: AlarmsListViewModel = AlarmsListViewModel()) {
+    init(
+        viewModel: AlarmsListViewModel = AlarmsListViewModel(),
+        bannerStreakCount: @escaping () -> Int = { TransactionRepository.shared.currentStreak() }
+    ) {
         self.viewModel = viewModel
         self.renderedPriceCurrency = viewModel.walletCurrency
+        self.bannerStreakCount = bannerStreakCount
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -302,6 +307,7 @@ class AlarmsListViewController: UIViewController {
             if currency != self.renderedPriceCurrency {
                 self.renderedPriceCurrency = currency
                 self.tableView.reloadData()
+                self.refreshStreakBanner()
             }
             self.refreshHeader()
         }
@@ -359,7 +365,7 @@ class AlarmsListViewController: UIViewController {
     /// current streak is 0, the banner is removed entirely so the empty
     /// state column doesn't collide with a stale header view.
     private func refreshStreakBanner() {
-        let streak = TransactionRepository.shared.currentStreak()
+        let streak = bannerStreakCount()
         guard streak > 0 else {
             tableView.tableHeaderView = nil
             return

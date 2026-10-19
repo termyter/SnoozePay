@@ -10,7 +10,7 @@ final class PenaltyCellAmountTests: XCTestCase {
         var changes: [Double] = []
         cell.onValueChanged = { changes.append($0) }
         for amount in [Double(Int.max).nextDown, Double(Int.max), Double(Int.max) * 2, .greatestFiniteMagnitude] {
-            cell.configure(amount: amount)
+            cell.configure(amount: amount, currency: .rub)
             let text = try XCTUnwrap(field.text)
             XCTAssertEqual(Double(text), amount)
             XCTAssertTrue(text.utf8.allSatisfy { (48...57).contains($0) })
@@ -21,7 +21,7 @@ final class PenaltyCellAmountTests: XCTestCase {
     func testIntMaxInputCommitsTheDoubleRepresentationAndInvalidEditRestoresIt() throws {
         let cell = PenaltyCell(style: .default, reuseIdentifier: nil)
         let field = try amountField(in: cell)
-        cell.configure(amount: 50)
+        cell.configure(amount: 50, currency: .rub)
         var changes: [Double] = []
         cell.onValueChanged = { changes.append($0) }
         field.text = "9223372036854775807"
@@ -42,7 +42,7 @@ final class PenaltyCellAmountTests: XCTestCase {
     func testInputBeyondIntRangeUsesFiniteDoubleRepresentationWithoutABusinessCap() throws {
         let cell = PenaltyCell(style: .default, reuseIdentifier: nil)
         let field = try amountField(in: cell)
-        cell.configure(amount: 50)
+        cell.configure(amount: 50, currency: .rub)
         var changes: [Double] = []
         cell.onValueChanged = { changes.append($0) }
         field.text = "18446744073709551616"
@@ -58,11 +58,11 @@ final class PenaltyCellAmountTests: XCTestCase {
             $0.text == Localized.text("create_alarm.penalty.minimum")
         })
         for amount in [Double.nan, .infinity, -.infinity, 0, -1] {
-            cell.configure(amount: 50)
+            cell.configure(amount: 50, currency: .rub)
             cell.prepareForReuse()
             var changes: [Double] = []
             cell.onValueChanged = { changes.append($0) }
-            cell.configure(amount: amount)
+            cell.configure(amount: amount, currency: .rub)
             XCTAssertTrue(field.text?.isEmpty != false)
             XCTAssertFalse(helper.isHidden)
             field.text = "0"
@@ -70,7 +70,7 @@ final class PenaltyCellAmountTests: XCTestCase {
             XCTAssertEqual(field.text, "0", "Do not restore the previous cell's price or invent 1")
             XCTAssertFalse(helper.isHidden)
             XCTAssertTrue(changes.isEmpty)
-            cell.configure(amount: 137)
+            cell.configure(amount: 137, currency: .rub)
             XCTAssertEqual(field.text, "137")
             XCTAssertTrue(helper.isHidden)
             XCTAssertTrue(changes.isEmpty)
@@ -82,7 +82,7 @@ final class PenaltyCellAmountTests: XCTestCase {
         let field = try amountField(in: cell)
         var changes: [Double] = []
         cell.onValueChanged = { changes.append($0) }
-        cell.configure(amount: 49.5)
+        cell.configure(amount: 49.5, currency: .rub)
         XCTAssertEqual(field.text, "50")
         XCTAssertTrue(changes.isEmpty, "Display rounding must not rewrite fractional billing data")
         let preset = try XCTUnwrap(descendant(UIButton.self, in: cell) { $0.title(for: .normal) == "20" })

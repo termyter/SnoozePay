@@ -112,6 +112,48 @@ final class MoneyFormatterTests: XCTestCase {
         }
     }
 
+    func testQuotedDigitsUsesCurrencyPrecisionAndSemanticNumericRuns() {
+        let locale = Locale(identifier: "ru_RU")
+        for (code, amount, expected) in [
+            ("RUB", 49.5, "49,5"), ("USD", 49.5, "49,50"), ("EUR", 49.5, "49,50"),
+            ("KWD", 1.001, "1,001"), ("JPY", 49.4, "49")
+        ] {
+            let actual = MoneyFormatter.quotedDigits(amount, currency: Currency(code: code)!, locale: locale)
+            XCTAssertEqual(actual, expected)
+        }
+        XCTAssertEqual(MoneyFormatter.quotedDigits(1234.5, currency: Currency(code: "USD")!,
+                                                 locale: Locale(identifier: "en_US")), "1,234.50")
+        XCTAssertEqual(MoneyFormatter.quotedDigits(18_446_744_073_709_551_616, currency: .rub, locale: locale),
+                       "18\u{00A0}446\u{00A0}744\u{00A0}073\u{00A0}709\u{00A0}551\u{00A0}616")
+    }
+
+    func testQuotedDigitsDistinguishesPositiveUnderflowAndInvalidValuesFromRealZero() {
+        for (code, underflow, zero) in [("USD", 0.001, "0,00"), ("KWD", 0.0001, "0,000"), ("JPY", 0.1, "0")] {
+            let currency = Currency(code: code)!
+            XCTAssertNil(MoneyFormatter.quotedString(underflow, currency: currency))
+            XCTAssertNil(MoneyFormatter.quotedDigits(underflow, currency: currency))
+            XCTAssertEqual(MoneyFormatter.quotedDigits(0, currency: currency), zero)
+        }
+        for invalid in [Double.nan, .infinity, -.infinity, -1, .leastNonzeroMagnitude] {
+            XCTAssertNil(MoneyFormatter.quotedDigits(invalid, currency: .rub))
+        }
+    }
+
+    func testQuotedAttributedKeepsRubleGapAndPositiveUnderflowUnknown() {
+        let font = UIFont.monospacedSystemFont(ofSize: 16, weight: .bold)
+        let text = MoneyFormatter.quotedAttributed(49.5, currency: .rub, digitsFont: font, color: .red)
+        XCTAssertEqual(text.string, "49,5\u{202F}₽")
+        let gap = (text.string as NSString).range(of: "\u{202F}").location
+        guard gap != NSNotFound else {
+            XCTFail("Quoted rubles lost their proportional gap")
+            return
+        }
+        XCTAssertEqual(text.attribute(.font, at: gap, effectiveRange: nil) as? UIFont, AppFonts.sans(.regular, 16))
+        XCTAssertEqual(text.attribute(.font, at: 0, effectiveRange: nil) as? UIFont, font)
+        XCTAssertEqual(MoneyFormatter.quotedAttributed(0.001, currency: Currency(code: "USD")!,
+                                                     digitsFont: font, color: .red).string, "—")
+    }
+
     // MARK: - Legacy bridge
 
     func testFormattedRubles_delegatesToMoneyFormatter() {
