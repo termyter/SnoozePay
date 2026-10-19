@@ -146,7 +146,7 @@ extension CreateAlarmViewController {
     func makePenaltyCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: PenaltyCell.reuseID, for: indexPath)
         if let cell = cell as? PenaltyCell {
-            cell.configure(amount: viewModel.penaltyAmount)
+            cell.configure(amount: viewModel.penaltyAmount, currency: viewModel.walletCurrency)
             cell.onValueChanged = { [weak self] amount in self?.setPenaltyAmount(amount) }
         }
         return cell

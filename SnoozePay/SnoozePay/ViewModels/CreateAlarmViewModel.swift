@@ -8,6 +8,9 @@ final class CreateAlarmViewModel {
     // MARK: - Dependencies
 
     private let alarmRepository: AlarmRepository
+    private let balanceService: BalanceService
+
+    var walletCurrency: Currency { balanceService.walletCurrency }
 
     // MARK: - Editable state (bound to UI controls)
 
@@ -43,9 +46,11 @@ final class CreateAlarmViewModel {
     init(
         alarm: Alarm? = nil,
         repository: AlarmRepository = .shared,
-        defaults: AlarmDefaults = .shared
+        defaults: AlarmDefaults = .shared,
+        balanceService: BalanceService = .shared
     ) {
         self.alarmRepository = repository
+        self.balanceService = balanceService
         self.existingID = alarm?.id
 
         // Seed from existing alarm or — for a brand-new alarm — the user's

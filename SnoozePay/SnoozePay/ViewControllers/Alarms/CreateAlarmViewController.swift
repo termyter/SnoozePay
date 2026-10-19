@@ -79,8 +79,12 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Init
 
-    init(alarm: Alarm?) {
-        self.viewModel = CreateAlarmViewModel(alarm: alarm)
+    convenience init(alarm: Alarm?) {
+        self.init(viewModel: CreateAlarmViewModel(alarm: alarm))
+    }
+
+    init(viewModel: CreateAlarmViewModel) {
+        self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -111,6 +115,11 @@ final class CreateAlarmViewController: UIViewController {
         // Refresh the sound + theme rows in case the user picked a new value
         // on a pushed picker and is returning here.
         tableView.reloadSections(IndexSet([Section.settings.rawValue]), with: .none)
+        // A first paid top-up can establish currency while this form is away.
+        // Refresh only labels so pending text and selection stay untouched.
+        for case let cell as PenaltyCell in tableView.visibleCells {
+            cell.updateCurrency(viewModel.walletCurrency)
+        }
     }
 
     // NOTE: the create-mode auto-focus on «Название» from #143 was intentionally
