@@ -35,7 +35,7 @@ final class AppLanguageUITests: XCTestCase {
         XCTAssertTrue(app.switches.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(app.switches.count, 1)
         // A Russian region keeps 24-hour formatting even for English copy.
-        XCTAssertTrue(app.staticTexts["7:00"].exists)
+        assertAlarmClock(in: app, alarmNoun: "Alarm", expectedTime: "7:00")
         app.terminate()
 
         launch(app, language: "ru", region: "en_US", screen: "alarms")
@@ -45,10 +45,27 @@ final class AppLanguageUITests: XCTestCase {
         XCTAssertEqual(app.switches.count, 1)
         // This catches a return to hardcoded ru_RU display formatting even
         // though the unit-test fixture itself runs with a Russian region.
-        let twelveHourClock = app.staticTexts.matching(NSPredicate(
-            format: "label BEGINSWITH %@ AND label ENDSWITH %@", "7:00", "AM"
-        )).firstMatch
-        XCTAssertTrue(twelveHourClock.exists)
+        assertAlarmClock(in: app, alarmNoun: "Будильник", expectedTime: "7:00 AM")
+    }
+
+    /// AlarmCell exposes the card as one VoiceOver summary, hiding its child
+    /// clock label. Read that real row's opening segment instead of querying a
+    /// standalone static text that is deliberately absent from accessibility.
+    private func assertAlarmClock(
+        in app: XCUIApplication, alarmNoun: String, expectedTime: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let summary = app.tables.cells.firstMatch.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", alarmNoun + " ")).firstMatch
+        guard summary.exists else {
+            XCTFail("The saved alarm must expose its localized card summary", file: file, line: line)
+            return
+        }
+        let opening = summary.label.split(separator: ",", maxSplits: 1).first ?? ""
+        // ICU uses a narrow no-break space before AM; retain an exact time
+        // comparison while accepting the platform's whitespace spelling.
+        let normalized = opening.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        XCTAssertEqual(normalized, "\(alarmNoun) \(expectedTime)", file: file, line: line)
     }
 
     private func launch(
