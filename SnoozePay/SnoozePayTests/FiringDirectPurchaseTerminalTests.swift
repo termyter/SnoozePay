@@ -85,6 +85,32 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertFalse(button.isEnabled)
     }
 
+    func testPendingFailureReachesCurrentMorningPresenterWithoutBlockingStopOrAddingCredit() throws {
+        let fixture = Fixture()
+        let controller = try XCTUnwrap(fixture.controller)
+        try XCTUnwrap(controller.applePayNoBalanceButton).sendActions(for: .touchUpInside)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        XCTAssertTrue(controller.noBalanceDismissButton?.isEnabled == true, "Stop stays available")
+        let overlay = PurchaseFeedbackPresenter()
+        let visible = PurchaseFeedbackPresenter()
+        overlay.overlay = visible
+        controller.overlay = overlay
+        fixture.post(StoreKitService.purchaseFailedNotification, message: "Deferred failure")
+        XCTAssertEqual(visible.alerts.map(\.message), ["Deferred failure"])
+        XCTAssertEqual(visible.alerts.first?.title, Localized.text("firing.alert.purchase_failed.title"))
+        XCTAssertTrue(controller.alerts.isEmpty)
+        XCTAssertTrue(overlay.alerts.isEmpty)
+        XCTAssertFalse(controller.noBalancePurchaseInFlight)
+        XCTAssertTrue(controller.chooseAmountLink?.isEnabled == true)
+        XCTAssertEqual(fixture.calls.ends, 1)
+        XCTAssertEqual(fixture.center.removals, 3)
+        XCTAssertEqual(fixture.wallet.balance, 0)
+        XCTAssertEqual(controller.dismissals, 0)
+        fixture.post(StoreKitService.purchaseFailedNotification, message: "Duplicate")
+        XCTAssertEqual(visible.alerts.count, 1)
+        XCTAssertEqual(fixture.calls.ends, 1)
+    }
+
     func testOwnerTeardownBalancesActiveFeedbackAndRemovesAllTokens() throws {
         let fixture = Fixture()
         weak var controller = fixture.controller
@@ -156,6 +182,8 @@ private final class PurchaseController: AlarmFiringViewController {
     var alerts: [UIAlertController] = []
     var dismissals = 0
     var sheetPresentations = 0
+    var overlay: UIViewController?
+    override var presentedViewController: UIViewController? { overlay ?? super.presentedViewController }
     override func viewDidLoad() { buildFiringLayout() }
     override func updateUI() { updates += 1; super.updateUI() }
     override func present(
@@ -172,5 +200,17 @@ private final class TrackingCenter: NotificationCenter, @unchecked Sendable {
     override func removeObserver(_ observer: Any) {
         removals += 1
         super.removeObserver(observer)
+    }
+}
+
+@MainActor
+private final class PurchaseFeedbackPresenter: UIViewController {
+    var overlay: UIViewController?
+    var alerts: [UIAlertController] = []
+    override var presentedViewController: UIViewController? { overlay ?? super.presentedViewController }
+    override func present(
+        _ viewControllerToPresent: UIViewController, animated: Bool, completion: (() -> Void)? = nil
+    ) {
+        if let alert = viewControllerToPresent as? UIAlertController { alerts.append(alert) }
     }
 }
