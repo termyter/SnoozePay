@@ -322,6 +322,8 @@ final class CreateAlarmViewController: UIViewController {
             case .success:
                 self.onSave?()
                 self.dismiss(animated: true)
+            case .alreadySaving:
+                break
             case .permissionRequired(let availability):
                 self.presentPermissionRequired(availability)
             case .persistFailed:

@@ -24,10 +24,13 @@ final class CreateAlarmPermissionTests: XCTestCase {
 
     private func makeViewModel(
         probe: AlarmsListBackendGuardTests.StubProbe,
-        alarm: Alarm? = nil
+        alarm: Alarm? = nil,
+        repository: AlarmRepository? = nil
     ) -> CreateAlarmViewModel {
         CreateAlarmViewModel(
-            alarm: alarm, repository: repository,
+            alarm: alarm, repository: repository ?? self.repository,
+            defaults: AlarmDefaults(defaults: defaults),
+            balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter()),
             backendMonitor: AlarmBackendMonitor(probe: probe, notificationCenter: NotificationCenter())
         )
     }
@@ -137,6 +140,57 @@ final class CreateAlarmPermissionTests: XCTestCase {
             XCTAssertEqual(repo.fetchOrFail(id: candidate.id), later)
             XCTAssertTrue(repo.delete(id: candidate.id))
             delayed.completions.removeAll()
+        }
+    }
+
+    func testPendingSaveStaysExclusiveAcrossRepeatEditsAndBothSaveEntryPoints() throws {
+        for editing in [false, true] {
+            for startThroughUI in [false, true] {
+                let delayed = DelayedScheduler()
+                defer { delayed.completions.removeAll() }
+                let repo = AlarmRepository(defaults: defaults, scheduler: delayed)
+                let original = Alarm(name: "Original", penaltyAmount: 149, enabled: false)
+                if editing { XCTAssertTrue(repo.save(original)) }
+                let model = makeViewModel(
+                    probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+                    alarm: editing ? original : nil, repository: repo
+                )
+                model.enabled = true
+                model.name = "Unconfirmed candidate"
+                let controller = CreateAlarmViewController(viewModel: model)
+                controller.loadViewIfNeeded()
+                let saveButton = try XCTUnwrap(controller.saveButton)
+                var savedCallbacks = 0
+                controller.onSave = { savedCallbacks += 1 }
+                if startThroughUI {
+                    saveButton.sendActions(for: .touchUpInside)
+                } else {
+                    XCTAssertTrue(model.save())
+                }
+                XCTAssertTrue(model.isSaving)
+                XCTAssertEqual(delayed.completions.count, 1)
+
+                model.repeatDays = [0, 2]
+                model.repeatMode = .weekly
+                controller.refreshRepeatValidity()
+                XCTAssertFalse(model.canSave)
+                XCTAssertFalse(saveButton.isEnabled, "Editing repeat must not reopen a pending Save")
+                var duplicateOutcome: CreateAlarmViewModel.SaveOutcome?
+                model.save { duplicateOutcome = $0 }
+                XCTAssertEqual(duplicateOutcome, .alreadySaving)
+                XCTAssertFalse(model.save(), "The legacy entry point shares the same pending guard")
+                saveButton.sendActions(for: .touchUpInside)
+                XCTAssertEqual(delayed.completions.count, 1, "Overlapping taps must not start another schedule")
+                XCTAssertEqual(savedCallbacks, 0, "An overlapping Save cannot dismiss or report success")
+
+                delayed.completions[0]?(.failure(.backendUnavailable))
+
+                XCTAssertFalse(model.isSaving)
+                XCTAssertTrue(model.canSave)
+                XCTAssertEqual(savedCallbacks, 0)
+                XCTAssertEqual(repo.fetchAllOrFail(), editing ? [original] : [])
+                if editing { XCTAssertTrue(repo.delete(id: original.id)) }
+            }
         }
     }
 

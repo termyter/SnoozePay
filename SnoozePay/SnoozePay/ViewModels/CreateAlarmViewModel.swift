@@ -141,7 +141,9 @@ final class CreateAlarmViewModel {
     /// Whether «Готово» / «Сохранить» may be tapped. The controller mirrors
     /// this onto the button's `isEnabled`; `save` enforces it regardless, so
     /// a missed UI refresh cannot resurrect the silent downgrade.
-    var canSave: Bool { validationError == nil }
+    /// Both Save entry points share one scheduling attempt until its callback.
+    private(set) var isSaving = false
+    var canSave: Bool { validationError == nil && !isSaving }
 
     // MARK: - Save
 
@@ -159,6 +161,7 @@ final class CreateAlarmViewModel {
         case success
         case persistFailed
         case permissionRequired(AlarmBackendAvailability)
+        case alreadySaving
         case schedulingFailed(AlarmScheduler.SchedulingError)
         case invalid(ValidationError)
     }
@@ -170,6 +173,10 @@ final class CreateAlarmViewModel {
     /// The repository contract guarantees `schedulingResult` only fires on
     /// the successful-persist path, so we never deliver two outcomes.
     func save(completion: @escaping (SaveOutcome) -> Void) {
+        guard !isSaving else {
+            completion(.alreadySaving)
+            return
+        }
         // Refuse before touching the store (#633): persisting here would write
         // a mode the screen does not show.
         if let error = validationError {
@@ -185,7 +192,9 @@ final class CreateAlarmViewModel {
 
         let alarm = makeAlarmFromCurrentState()
 
+        isSaving = true
         let didPersist = alarmRepository.save(alarm, rollbackOnSchedulingFailure: true) { schedulingResult in
+            self.isSaving = false
             switch schedulingResult {
             case .success:
                 completion(.success)
@@ -195,6 +204,7 @@ final class CreateAlarmViewModel {
         }
 
         if !didPersist {
+            isSaving = false
             completion(.persistFailed)
         }
     }
@@ -210,7 +220,12 @@ final class CreateAlarmViewModel {
     func save() -> Bool {
         backendMonitor.refresh()
         guard canSave, permissionAllowsSaving else { return false }
-        return alarmRepository.save(makeAlarmFromCurrentState(), rollbackOnSchedulingFailure: true)
+        isSaving = true
+        let didPersist = alarmRepository.save(makeAlarmFromCurrentState(), rollbackOnSchedulingFailure: true) { _ in
+            self.isSaving = false
+        }
+        if !didPersist { isSaving = false }
+        return didPersist
     }
 
     private var permissionAllowsSaving: Bool {
