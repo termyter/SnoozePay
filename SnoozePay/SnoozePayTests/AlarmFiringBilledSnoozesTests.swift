@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import UserNotifications
 @testable import SnoozePay
 
@@ -382,7 +383,7 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
 
         XCTAssertEqual(content.charged, 50, "The refunded 100 ₽ must not reach the screen")
         XCTAssertEqual(content.snoozes, 1)
-        XCTAssertTrue(content.subtitle.contains("списано 50 ₽"))
+        XCTAssertTrue(content.subtitle.contains("списано 50\u{202F}₽"))
         XCTAssertFalse(content.subtitle.contains("150"))
     }
 
@@ -403,7 +404,7 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
         XCTAssertEqual(content.snoozes, 2)
         XCTAssertEqual(content.charged, 150)
         XCTAssertEqual(content.headline, "Удержались после 2 откладываний")
-        XCTAssertEqual(content.subtitle, "Сегодня списано 150 ₽. Завтра попробуем не списать ничего.")
+        XCTAssertEqual(content.subtitle, "Сегодня списано 150\u{202F}₽. Завтра попробуем не списать ничего.")
     }
 
     func testSummaryScreen_cleanWakeShowsCleanCopy() {
@@ -457,7 +458,7 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
 
         XCTAssertEqual(content.variant, .partiallyReversed)
         XCTAssertEqual(content.reversedSnoozes, 1)
-        XCTAssertTrue(content.subtitle.contains("списано 100 ₽"))
+        XCTAssertTrue(content.subtitle.contains("списано 100\u{202F}₽"))
         XCTAssertTrue(content.subtitle.contains("вернули"),
                       "The refunded attempt must be named, not silently dropped")
     }
@@ -492,18 +493,172 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
         XCTAssertEqual(content.charged, 50)
     }
 
+    func testCurrencyTickerScopesRealLedgerAfterFullRefundPairing() {
+        let alarm = makeAlarm()
+        let started = Date()
+        let usd = Currency(code: "USD")!
+        let kept = Transaction(type: .charge, amount: 2.99, currency: usd, alarmID: alarm.id.uuidString,
+                               createdAt: started.addingTimeInterval(-600))
+        let reversed = Transaction(type: .charge, amount: 5, currency: usd, alarmID: alarm.id.uuidString,
+                                   createdAt: started.addingTimeInterval(-400))
+        seedLedger([
+            kept,
+            Transaction(type: .charge, amount: 100, currency: .rub, alarmID: alarm.id.uuidString,
+                        createdAt: started.addingTimeInterval(-500)),
+            reversed,
+            Transaction(type: .charge, amount: 1.25, currency: usd, alarmID: alarm.id.uuidString,
+                        createdAt: started.addingTimeInterval(-300)),
+            Transaction(type: .refund, amount: 5, currency: usd,
+                        createdAt: started.addingTimeInterval(86_400), refundsTransactionID: reversed.id),
+            Transaction(type: .refund, amount: 2.99, currency: .rub, refundsTransactionID: kept.id)
+        ])
+        let viewModel = AlarmFiringViewModel(
+            alarm: alarm, snoozeCount: 4, balanceService: StubBilledBalance(currency: usd),
+            scheduler: makeSucceedingScheduler(), ledger: TransactionRepository(defaults: defaults),
+            firingStartedAt: started
+        )
+        XCTAssertEqual(viewModel.pastPenalties(in: usd), [2.99, 1.25])
+        XCTAssertEqual(viewModel.billedSnoozeCount, 3, "Existing unscoped summary behavior is unchanged")
+        XCTAssertEqual(viewModel.snoozeCount, 4, "Attempt count is not a financial currency projection")
+        let controller = CurrencyTickerHost(viewModel: viewModel)
+        _ = controller.installProgressiveStack(inset: 0)
+        controller.updateProgressiveChrome()
+        let container = controller.historyTickerContainer!
+        let labels = tickerLabels(in: container)
+        XCTAssertEqual(labels.map { $0.attributedText?.string },
+                       ["−" + MoneyFormatter.string(2.99, currency: usd),
+                        "−" + MoneyFormatter.string(1.25, currency: usd)])
+        XCTAssertFalse(labels.contains { $0.attributedText?.string.contains("₽") == true })
+    }
+
+    func testCurrencyTickerKeepsGlobalUnreadableAndUnrecognizedLedgerGates() {
+        let usd = Currency(code: "USD")!
+        let alarm = makeAlarm()
+        let viewModel = makeViewModel(alarm: alarm, snoozeCount: 1)
+        defaults.set(Data("{broken ledger".utf8), forKey: "stored_transactions")
+        XCTAssertTrue(viewModel.pastPenalties(in: usd).isEmpty)
+        XCTAssertNil(viewModel.morningBilling(in: usd))
+        seedLedger([
+            Transaction(type: .charge, amount: 2.99, currency: usd, alarmID: alarm.id.uuidString),
+            Transaction(type: .unknown("future-kind"), amount: 100, currency: .rub)
+        ])
+        let unrecognized = makeViewModel(alarm: alarm, snoozeCount: 1)
+        XCTAssertTrue(unrecognized.pastPenalties(in: usd).isEmpty)
+        XCTAssertNil(unrecognized.morningBilling(in: usd))
+    }
+
+    func testCurrencyTickerRetainsExistingImplausibleChargeGateBeforeCurrencyFilter() {
+        let usd = Currency(code: "USD")!
+        let alarm = makeAlarm()
+        let ledger = FixedLedger(transactions: [
+            Transaction(type: .charge, amount: 2.99, currency: usd, alarmID: alarm.id.uuidString),
+            Transaction(type: .charge, amount: .infinity, currency: .rub, alarmID: alarm.id.uuidString)
+        ])
+        let viewModel = AlarmFiringViewModel(alarm: alarm, balanceService: StubBilledBalance(currency: usd),
+                                           scheduler: makeSucceedingScheduler(), ledger: ledger)
+        XCTAssertTrue(viewModel.pastPenalties(in: usd).isEmpty)
+        XCTAssertNil(viewModel.morningBilling(in: usd))
+    }
+
+    private func tickerLabels(in view: UIView) -> [SPPaddedLabel] {
+        (view as? SPPaddedLabel).map { [$0] } ?? view.subviews.flatMap { tickerLabels(in: $0) }
+    }
+
+    @MainActor
+    func testMorningSummaryRendersActualFractionAndWalletCurrency() throws {
+        for (code, amount) in [("RUB", 0.49), ("USD", 0.49), ("EUR", 0.49), ("KWD", 0.001)] {
+            let currency = try XCTUnwrap(Currency(code: code))
+            let alarm = makeAlarm()
+            let started = Date()
+            seedLedger([Transaction(type: .charge, amount: amount, currency: currency,
+                                    alarmID: alarm.id.uuidString, createdAt: started)])
+            let content = makeFiringViewController(
+                alarm: alarm, snoozeCount: 1, firingStartedAt: started, currency: currency
+            ).wokeMorningContent()
+            XCTAssertEqual(content.charged, amount)
+            XCTAssertEqual(content.currency, currency)
+            XCTAssertEqual(content.variant, .recovered)
+            let expected = "Сегодня списано \(MoneyFormatter.string(amount, currency: currency)). "
+                + "Завтра попробуем не списать ничего."
+            XCTAssertEqual(content.subtitle, expected)
+            let screen = WokeMorningViewController(content: content, onClose: {})
+            screen.loadViewIfNeeded()
+            XCTAssertTrue(summaryTexts(in: screen.view).contains(expected))
+        }
+    }
+
+    func testMorningSummaryUsesOneCheckedSnapshotForGlobalCountAndWalletTotal() {
+        let alarm = makeAlarm()
+        let started = Date()
+        let usd = Currency(code: "USD")!
+        let kept = Transaction(type: .charge, amount: 0.49, currency: usd, alarmID: alarm.id.uuidString,
+                               createdAt: started.addingTimeInterval(-600))
+        let reversed = Transaction(type: .charge, amount: 0.75, currency: usd, alarmID: alarm.id.uuidString,
+                                   createdAt: started.addingTimeInterval(-400))
+        let ledger = FixedLedger(transactions: [
+            kept,
+            Transaction(type: .charge, amount: 100, currency: .rub, alarmID: alarm.id.uuidString,
+                        createdAt: started.addingTimeInterval(-500)),
+            reversed,
+            Transaction(type: .refund, amount: 0.75, currency: usd,
+                        createdAt: started.addingTimeInterval(86_400), refundsTransactionID: reversed.id),
+            Transaction(type: .refund, amount: 0.49, currency: .rub, refundsTransactionID: kept.id)
+        ])
+        let viewModel = AlarmFiringViewModel(
+            alarm: alarm, snoozeCount: 3, balanceService: StubBilledBalance(currency: usd),
+            scheduler: makeSucceedingScheduler(), ledger: ledger, firingStartedAt: started
+        )
+        let content = AlarmFiringViewController(viewModel: viewModel).wokeMorningContent()
+        XCTAssertEqual(ledger.readCount, 1)
+        XCTAssertEqual(content.charged, 0.49)
+        XCTAssertEqual(content.snoozes, 2)
+        XCTAssertEqual(content.reversedSnoozes, 1)
+        XCTAssertEqual(content.variant, .partiallyReversed)
+        XCTAssertTrue(content.subtitle.contains(MoneyFormatter.string(0.49, currency: usd)))
+        XCTAssertEqual(viewModel.billedSnoozes, .known([0.49, 100]), "Legacy projection must stay unscoped")
+        XCTAssertEqual(viewModel.pastPenalties(in: usd), [0.49])
+    }
+
+    func testMorningSummaryForeignChargeCannotBecomeCleanOrAllRefunded() {
+        let alarm = makeAlarm()
+        let started = Date()
+        seedLedger([Transaction(type: .charge, amount: 100, currency: .rub,
+                                alarmID: alarm.id.uuidString, createdAt: started)])
+        let usd = Currency(code: "USD")!
+        for attempts in [1, 2] {
+            let content = makeFiringViewController(
+                alarm: alarm, snoozeCount: attempts, firingStartedAt: started, currency: usd
+            ).wokeMorningContent()
+            XCTAssertEqual(content.snoozes, 1)
+            XCTAssertEqual(content.charged, 0)
+            XCTAssertEqual(content.reversedSnoozes, attempts - 1)
+            XCTAssertEqual(content.variant, attempts == 1 ? .recovered : .partiallyReversed)
+            XCTAssertTrue(content.subtitle.contains(MoneyFormatter.string(0.0, currency: usd)))
+            XCTAssertFalse(content.subtitle.contains("Списаний не осталось"))
+            XCTAssertFalse(content.subtitle.contains("сохранности"))
+        }
+    }
+
+    private func summaryTexts(in view: UIView) -> [String] {
+        var texts: [String] = []
+        if let text = (view as? UILabel)?.text { texts.append(text) }
+        return texts + view.subviews.flatMap { summaryTexts(in: $0) }
+    }
+
     // MARK: - VC / VM factories
 
     private func makeFiringViewController(
         alarm: Alarm,
         snoozeCount: Int,
-        firingStartedAt: Date = Date()
+        firingStartedAt: Date = Date(),
+        currency: Currency = .rub
     ) -> AlarmFiringViewController {
         AlarmFiringViewController(
             viewModel: makeViewModel(
                 alarm: alarm,
                 snoozeCount: snoozeCount,
-                firingStartedAt: firingStartedAt
+                firingStartedAt: firingStartedAt,
+                currency: currency
             )
         )
     }
@@ -511,12 +666,13 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
     private func makeViewModel(
         alarm: Alarm,
         snoozeCount: Int,
-        firingStartedAt: Date = Date()
+        firingStartedAt: Date = Date(),
+        currency: Currency = .rub
     ) -> AlarmFiringViewModel {
         AlarmFiringViewModel(
             alarm: alarm,
             snoozeCount: snoozeCount,
-            balanceService: StubBilledBalance(),
+            balanceService: StubBilledBalance(currency: currency),
             scheduler: makeSucceedingScheduler(),
             ledger: TransactionRepository(defaults: defaults),
             firingStartedAt: firingStartedAt
@@ -529,8 +685,9 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
 /// Billing stub — these tests exercise the READ path, so charging is a no-op
 /// with a balance high enough to keep `canSnooze` true.
 private final class StubBilledBalance: AlarmFiringBalancing {
-    let walletCurrency: Currency = .rub
+    let walletCurrency: Currency
     var balance: Double = 1000
+    init(currency: Currency = .rub) { walletCurrency = currency }
     func canAfford(_ amount: Double) -> Bool { balance >= amount }
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
         balance -= amount
@@ -556,12 +713,16 @@ private final class ThrowingLedger: AlarmFiringLedgerReading {
 private final class FixedLedger: AlarmFiringLedgerReading {
     private let transactions: [Transaction]
     var lastLoadHadUnrecognizedTypes = false
+    private(set) var readCount = 0
 
     init(transactions: [Transaction]) {
         self.transactions = transactions
     }
 
-    func fetchAllChecked() throws -> [Transaction] { transactions }
+    func fetchAllChecked() throws -> [Transaction] {
+        readCount += 1
+        return transactions
+    }
 }
 
 /// Minimal `NotificationScheduling` stub. `addError` forces `add(_:)` to fail so
@@ -595,4 +756,9 @@ private final class BilledMockNotificationCenter: NotificationScheduling {
     ) {
         completionHandler(false, nil)
     }
+}
+
+/// Exercise the actual progressive renderer without starting audio or scheduling.
+private final class CurrencyTickerHost: AlarmFiringViewController {
+    override func viewDidLoad() {}
 }

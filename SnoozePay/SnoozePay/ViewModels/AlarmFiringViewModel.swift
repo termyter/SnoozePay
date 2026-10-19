@@ -135,12 +135,8 @@ final class AlarmFiringViewModel {
     /// snoozed past midnight still reports its pre-midnight charges.
     static let wakeWindow: TimeInterval = 12 * 60 * 60
 
-    /// Largest per-charge amount the summary will believe (1 млрд ₽). Rows this
-    /// big can only come from ledger damage or a pre-#441 write, and they are
-    /// not merely wrong: the display path narrows the total to `Int`, and
-    /// `Int(1e300.rounded())` **traps** (SIGTRAP) rather than saturating. The
-    /// bound keeps that conversion — and the running sum — inside `Int`'s range
-    /// for any plausible row count.
+    /// Existing ledger-health bound for each charge and this wake's aggregate.
+    /// Currency projection must not hide implausible rows in another currency.
     static let maxPlausibleCharge: Double = 1e9
 
     /// What the ledger says the user was ACTUALLY billed for this wake.
@@ -166,10 +162,13 @@ final class AlarmFiringViewModel {
     /// firing screen refreshes. Reads are serialised inside the repository, and
     /// `updateUI()` is event-driven (state change / balance notification), not
     /// per clock tick, so this is not on a hot path.
-    var billedSnoozes: BilledSnoozes { loadBilledSnoozes() }
+    var billedSnoozes: BilledSnoozes {
+        guard let charges = loadBilledChargeRows() else { return .unavailable }
+        return .known(charges.map(\.amount))
+    }
 
-    /// Penalty amounts actually billed this wake, oldest first. Feeds the
-    /// firing screen's history ticker ("сегодня: −50 → −100 → ..."). Empty
+    /// Legacy unscoped amounts actually billed this wake, oldest first. The
+    /// currency-labelled ticker uses `pastPenalties(in:)` instead. Empty
     /// before the first billed snooze — and also when the ledger is
     /// unreadable, which hides the ticker rather than inventing amounts.
     var pastPenalties: [Double] {
@@ -177,11 +176,30 @@ final class AlarmFiringViewModel {
         return amounts
     }
 
-    /// Total roubles the user is actually out of pocket this wake. Drives the
-    /// WokeMorning «recovered» subtitle "Сегодня списано N ₽" (#228); `0` when
-    /// the user got up on the first ring. **`nil` when the ledger is
-    /// unreadable** — the caller must then show the no-figure variant instead
-    /// of a fabricated sum (#400).
+    /// Financial ticker projection. Refund pairing and ledger health checks
+    /// still see the complete history before selecting the displayed currency.
+    func pastPenalties(in currency: Currency) -> [Double] {
+        loadBilledChargeRows()?.filter { $0.currency == currency }.map(\.amount) ?? []
+    }
+
+    struct MorningBilling {
+        let billedCount: Int
+        let walletTotal: Double
+    }
+
+    /// Count every surviving charge, but quote money only in the wallet currency.
+    /// Both projections share one checked read, so a refund cannot split them.
+    func morningBilling(in currency: Currency) -> MorningBilling? {
+        guard let charges = loadBilledChargeRows() else { return nil }
+        return MorningBilling(
+            billedCount: charges.count,
+            walletTotal: charges.filter { $0.currency == currency }.reduce(0) { $0 + $1.amount }
+        )
+    }
+
+    /// Legacy unscoped total across this wake's surviving charges.
+    /// Currency-labelled summaries use `morningBilling(in:)` instead.
+    /// Nil preserves unreadable history rather than fabricating a zero (#400).
     var chargedThisMorning: Double? {
         guard case .known(let amounts) = billedSnoozes else { return nil }
         return amounts.reduce(0, +)
@@ -191,11 +209,9 @@ final class AlarmFiringViewModel {
     /// minus any attempt whose penalty was refunded. `nil` when the ledger is
     /// unreadable, same contract as `chargedThisMorning`.
     ///
-    /// A caller that renders BOTH the count and the sum must take a single
-    /// `billedSnoozes` snapshot instead of reading these two convenience
-    /// accessors: each one re-reads the ledger, and an async refund landing
-    /// between the two reads would put a count and a total from different
-    /// snapshots on the same screen.
+    /// Currency-labelled count/sum pairs use `morningBilling(in:)`; legacy
+    /// unscoped pairs use one `billedSnoozes` snapshot. Separate convenience
+    /// reads can disagree if an asynchronous refund lands between them.
     var billedSnoozeCount: Int? {
         guard case .known(let amounts) = billedSnoozes else { return nil }
         return amounts.count
@@ -203,10 +219,10 @@ final class AlarmFiringViewModel {
 
     /// Pulls this wake's surviving charges out of the ledger.
     ///
-    /// Every failure mode returns `.unavailable` instead of an empty/partial
+    /// Every failure mode returns `nil` instead of an empty/partial
     /// total: this number is money the user is told they lost, so "we couldn't
     /// read it" must never render as "0 ₽" (the `try? … ?? []` trap, #210).
-    private func loadBilledSnoozes() -> BilledSnoozes {
+    private func loadBilledChargeRows() -> [Transaction]? {
         let all: [Transaction]
         do {
             all = try ledger.fetchAllChecked()
@@ -215,7 +231,7 @@ final class AlarmFiringViewModel {
             AppLogger.ui.error(
                 "firing summary: ledger unreadable (\(desc, privacy: .public)) — charged total suppressed"
             )
-            return .unavailable
+            return nil
         }
         // A row whose `type` token this build can't classify is skipped by
         // every aggregate, including `realCharges` — so the total would be
@@ -225,7 +241,7 @@ final class AlarmFiringViewModel {
             AppLogger.ui.error(
                 "firing summary: ledger holds unrecognised transaction types — charged total suppressed"
             )
-            return .unavailable
+            return nil
         }
 
         let windowStart = firingStartedAt.addingTimeInterval(-Self.wakeWindow)
@@ -233,29 +249,28 @@ final class AlarmFiringViewModel {
         // `realCharges` must see the WHOLE ledger — a refund row lives outside
         // any window/alarm filter, and dropping it first would resurrect the
         // charge it reverses.
-        let amounts = TransactionRepository.realCharges(from: all)
+        let charges = TransactionRepository.realCharges(from: all)
             .filter { $0.alarmID == alarmKey && $0.createdAt >= windowStart }
             .sorted { $0.createdAt < $1.createdAt }
-            .map(\.amount)
+        let amounts = charges.map(\.amount)
         // Legacy rows predate the finite/positive guard in `chargeWithReceipt`
-        // (#441); one NaN would render the summary as "списано nan ₽", and an
-        // absurd magnitude would TRAP on the `Int` narrowing the summary does.
+        // (#441); invalid or implausible amounts make the summary untrustworthy
+        // even when they belong to another currency.
         guard amounts.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= Self.maxPlausibleCharge }) else {
             AppLogger.ui.error(
                 "firing summary: ledger holds an implausible charge amount — charged total suppressed"
             )
-            return .unavailable
+            return nil
         }
-        // Belt for the same trap on the aggregate: a ledger stuffed with
-        // in-range rows could still sum past what the display can narrow.
+        // Retain the same global aggregate bound before projecting currency.
         let total = amounts.reduce(0, +)
         guard total.isFinite, total <= Self.maxPlausibleCharge else {
             AppLogger.ui.error(
                 "firing summary: charges sum beyond the plausible range — charged total suppressed"
             )
-            return .unavailable
+            return nil
         }
-        return .known(amounts)
+        return charges
     }
 
     var canSnooze: Bool {
