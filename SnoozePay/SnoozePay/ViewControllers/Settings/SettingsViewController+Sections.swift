@@ -27,11 +27,12 @@ extension SettingsViewController {
     /// Existing alarms keep their own saved price.
     func makeDefaultPriceRow(at indexPath: IndexPath) -> UITableViewCell {
         let cell = dequeueIconRowCell(at: indexPath)
+        let currency = walletCurrencyStore.currency
         cell.configure(
-            systemName: "rublesign.circle",
+            systemName: currency == .rub ? "rublesign.circle" : "banknote",
             iconColor: AppColors.warn400,
             title: Localized.text("settings.row.default_price"),
-            trailingText: Decimal(alarmDefaults.penaltyAmount).formattedRubles(),
+            trailingText: MoneyFormatter.string(alarmDefaults.penaltyAmount, currency: currency),
             trailingColor: AppColors.warn400,
             accessory: .disclosureIndicator,
             selectionStyle: .default
@@ -293,13 +294,18 @@ extension SettingsViewController {
     /// `presentSnoozeDurationPicker()` with the canonical price chips. Writing
     /// the global default never rewrites existing alarms — only new ones inherit.
     func presentDefaultPricePicker() {
+        present(makeDefaultPricePicker(), animated: true)
+    }
+
+    func makeDefaultPricePicker() -> UIAlertController {
+        let currency = walletCurrencyStore.currency
         let sheet = UIAlertController(
             title: Localized.text("settings.row.default_price"),
             message: Localized.text("settings.picker.applies_to_new_alarms"),
             preferredStyle: .actionSheet
         )
         for amount in [20, 50, 100, 200, 500] {
-            let title = Decimal(amount).formattedRubles()
+            let title = MoneyFormatter.string(Double(amount), currency: currency)
             sheet.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
                 self?.alarmDefaults.penaltyAmount = Double(amount)
                 self?.tableView.reloadData()
@@ -317,7 +323,7 @@ extension SettingsViewController {
             popover.sourceView = tableView
             popover.sourceRect = tableView.rectForRow(at: indexPath)
         }
-        present(sheet, animated: true)
+        return sheet
     }
 
     // MARK: - Cell factory helpers

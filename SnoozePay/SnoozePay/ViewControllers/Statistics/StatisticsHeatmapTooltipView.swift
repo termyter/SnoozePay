@@ -110,6 +110,8 @@ final class HeatmapTooltipView: UIView {
         status = tooltip.status
         refreshSwatch()
         spentLabel.text = tooltip.spentText
+        spentLabel.accessibilityLabel = tooltip.spentText
+        spentLabel.isAccessibilityElement = tooltip.spentText != nil
         spentLabel.isHidden = tooltip.spentText == nil
     }
 

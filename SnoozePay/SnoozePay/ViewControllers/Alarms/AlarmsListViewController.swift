@@ -25,7 +25,23 @@ class AlarmsListViewController: UIViewController {
 
     // MARK: - ViewModel
 
-    private let viewModel = AlarmsListViewModel()
+    private let viewModel: AlarmsListViewModel
+    private var renderedPriceCurrency: Currency
+    private let bannerStreakCount: () -> Int
+
+    init(
+        viewModel: AlarmsListViewModel = AlarmsListViewModel(),
+        bannerStreakCount: @escaping () -> Int = { TransactionRepository.shared.currentStreak() }
+    ) {
+        self.viewModel = viewModel
+        self.renderedPriceCurrency = viewModel.walletCurrency
+        self.bannerStreakCount = bannerStreakCount
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     // MARK: - UI Elements
 
@@ -141,9 +157,10 @@ class AlarmsListViewController: UIViewController {
         // habit without quoting money.
         let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
             cleanDays: streakDays,
-            alarms: viewModel.alarms
+            alarms: viewModel.alarms, currency: viewModel.walletCurrency
         )
-        let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved)
+        let modal = StreakModalViewController(streakDays: streakDays, savedAmount: saved,
+                                               currency: viewModel.walletCurrency)
         host.present(modal, animated: true)
     }
 
@@ -273,6 +290,7 @@ class AlarmsListViewController: UIViewController {
     private func bindViewModel() {
         viewModel.onAlarmsUpdated = { [weak self] in
             guard let self else { return }
+            self.renderedPriceCurrency = self.viewModel.walletCurrency
             self.tableView.reloadData()
             let isEmpty = self.viewModel.alarms.isEmpty
             self.emptyStateView.isHidden = !isEmpty
@@ -282,7 +300,16 @@ class AlarmsListViewController: UIViewController {
         }
 
         viewModel.onBalanceUpdated = { [weak self] _ in
-            self?.refreshHeader()
+            guard let self else { return }
+            // The first paid top-up can establish currency while a partial
+            // Deposit sheet is open; presenter appearance need not run again.
+            let currency = self.viewModel.walletCurrency
+            if currency != self.renderedPriceCurrency {
+                self.renderedPriceCurrency = currency
+                self.tableView.reloadData()
+                self.refreshStreakBanner()
+            }
+            self.refreshHeader()
         }
 
         viewModel.onLoadError = { [weak self] error in
@@ -338,7 +365,7 @@ class AlarmsListViewController: UIViewController {
     /// current streak is 0, the banner is removed entirely so the empty
     /// state column doesn't collide with a stale header view.
     private func refreshStreakBanner() {
-        let streak = TransactionRepository.shared.currentStreak()
+        let streak = bannerStreakCount()
         guard streak > 0 else {
             tableView.tableHeaderView = nil
             return
@@ -349,12 +376,12 @@ class AlarmsListViewController: UIViewController {
         // (#347 review).
         guard let saved = StatisticsViewModel.SavingsEstimate.savedDisplayAmount(
             cleanDays: streak,
-            alarms: viewModel.alarms
+            alarms: viewModel.alarms, currency: viewModel.walletCurrency
         ) else {
             tableView.tableHeaderView = nil
             return
         }
-        streakBanner.configure(streakDays: streak, savedAmount: saved)
+        streakBanner.configure(streakDays: streak, savedAmount: saved, currency: viewModel.walletCurrency)
         // Size the table header view with a layout pass — UITableView's
         // tableHeaderView requires a non-zero frame to render at all.
         let targetWidth = tableView.bounds.width > 0 ? tableView.bounds.width : view.bounds.width
@@ -544,6 +571,7 @@ extension AlarmsListViewController: UITableViewDataSource {
             time: viewModel.alarmTimeString(at: indexPath.row),
             daysCaps: viewModel.alarmDaysCaps(at: indexPath.row),
             priceText: viewModel.alarmPriceText(at: indexPath.row),
+            priceCurrency: viewModel.walletCurrency,
             multiplier: viewModel.alarmMultiplierText(at: indexPath.row),
             soundName: viewModel.alarmSoundName(at: indexPath.row),
             enabled: alarm.enabled

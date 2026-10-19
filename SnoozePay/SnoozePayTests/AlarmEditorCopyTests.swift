@@ -619,7 +619,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     func testAlarmCardToggleAnnouncesItsStateTheWayThePlatformDoes() throws {
         for enabled in [true, false] {
             let cell = AlarmCell(style: .default, reuseIdentifier: nil)
-            cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽",
+            cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽", priceCurrency: .rub,
                            multiplier: nil, soundName: nil, enabled: enabled)
             let baseline = UISwitch()
             baseline.isOn = enabled
@@ -648,7 +648,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// reads «ДНЯ 3 БЕЗ ОТКЛАДЫВАНИЙ» and still compiles.
     func testStreakBannerKeepsTheCountBeforeItsNoun() throws {
         let banner = AlarmsStreakBannerView(frame: CGRect(x: 0, y: 0, width: 360, height: 96))
-        banner.configure(streakDays: 3, savedAmount: 250)
+        banner.configure(streakDays: 3, savedAmount: 250, currency: .rub)
         banner.layoutIfNeeded()
 
         let rendered = Self.strings(in: banner)

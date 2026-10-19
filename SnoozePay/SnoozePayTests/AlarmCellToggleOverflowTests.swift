@@ -84,6 +84,7 @@ final class AlarmCellToggleOverflowTests: XCTestCase {
             time: "07:00",
             daysCaps: daysCaps,
             priceText: "50 ₽",
+            priceCurrency: .rub,
             multiplier: "×2",
             soundName: "Soft Dawn",
             enabled: true
