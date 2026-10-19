@@ -28,7 +28,7 @@ final class SwitchAccessibilityLabelTests: XCTestCase {
 
     func testProgressiveScaleCellSwitchHasContextualLabel() {
         let cell = ProgressiveScaleCell(style: .default, reuseIdentifier: nil)
-        cell.configure(isOn: false, chain: [50, 100], accessibilityChain: "50, 100")
+        cell.configure(isOn: false, chain: [50, 100], currency: .rub, accessibilityChain: "50, 100")
         let toggle = firstSwitch(in: cell.contentView)
         XCTAssertEqual(toggle?.accessibilityLabel, "Прогрессивный режим")
     }
