@@ -197,11 +197,9 @@ final class AlarmFiringViewModel {
         )
     }
 
-    /// Total roubles the user is actually out of pocket this wake. Drives the
-    /// WokeMorning «recovered» subtitle "Сегодня списано N ₽" (#228); `0` when
-    /// the user got up on the first ring. **`nil` when the ledger is
-    /// unreadable** — the caller must then show the no-figure variant instead
-    /// of a fabricated sum (#400).
+    /// Legacy unscoped total across this wake's surviving charges.
+    /// Currency-labelled summaries use `morningBilling(in:)` instead.
+    /// Nil preserves unreadable history rather than fabricating a zero (#400).
     var chargedThisMorning: Double? {
         guard case .known(let amounts) = billedSnoozes else { return nil }
         return amounts.reduce(0, +)
@@ -211,11 +209,9 @@ final class AlarmFiringViewModel {
     /// minus any attempt whose penalty was refunded. `nil` when the ledger is
     /// unreadable, same contract as `chargedThisMorning`.
     ///
-    /// A caller that renders BOTH the count and the sum must take a single
-    /// `billedSnoozes` snapshot instead of reading these two convenience
-    /// accessors: each one re-reads the ledger, and an async refund landing
-    /// between the two reads would put a count and a total from different
-    /// snapshots on the same screen.
+    /// Currency-labelled count/sum pairs use `morningBilling(in:)`; legacy
+    /// unscoped pairs use one `billedSnoozes` snapshot. Separate convenience
+    /// reads can disagree if an asynchronous refund lands between them.
     var billedSnoozeCount: Int? {
         guard case .known(let amounts) = billedSnoozes else { return nil }
         return amounts.count
