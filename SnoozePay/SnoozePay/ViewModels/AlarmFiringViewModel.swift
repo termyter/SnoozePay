@@ -328,8 +328,7 @@ final class AlarmFiringViewModel {
     /// isn't progressive (the snoozed state hides the ladder entirely).
     var ladderSteps: [LadderStep] {
         guard isProgressiveActive else { return [] }
-        let base = alarm.penaltyAmount
-        let amounts = (0..<4).map { (base * pow(2.0, Double($0))).rounded() }
+        let amounts = (1...4).map { alarm.penalty(forSnoozeCount: $0) }
         let currentIdx = min(snoozeCount, amounts.count - 1)
         return amounts.enumerated().map { idx, amount in
             let state: LadderStepState
