@@ -240,6 +240,7 @@ final class AlarmFiringPricePresentationTests: XCTestCase {
     }
 
     private final class EmptyWallet: AlarmFiringBalancing {
+        func acceptsPurchase(in currency: Currency) -> Bool { false }
         var currency: Currency
         private(set) var currencyReads = 0
         var walletCurrency: Currency { currencyReads += 1; return currency }

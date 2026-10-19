@@ -1,9 +1,10 @@
+import UIKit
 import XCTest
 @testable import SnoozePay
 
-/// Historical RUB catalogue and DEBUG fallback presentation invariants (#275).
-/// Verified paid credit now uses transaction metadata (#939), independently of
-/// these static display nominals; its regressions live in StoreKitVerifiedPurchaseTests.
+/// Historical preset RUB nominals and the direct CTA's actual storefront offer.
+/// Verified paid credit uses transaction metadata (#939), independently of these
+/// display contracts; its regressions live in StoreKitVerifiedPurchaseTests.
 @MainActor
 final class TopUpDisplayAmountTests: XCTestCase {
 
@@ -78,25 +79,47 @@ final class TopUpDisplayAmountTests: XCTestCase {
 
     // MARK: - No-balance CTA
 
-    /// The no-balance Apple Pay CTA displays the catalogue amount of its SKU
-    /// (499), not the previous 500 literal. Display == charge == credit.
-    func testNoBalanceCTA_displayedAmount_equalsCatalogueAmount() {
-        let displayed = AlarmFiringViewController.noBalanceDisplayAmount
-        let catalogue = StoreKitService.catalogAmount(
-            for: AlarmFiringViewController.noBalanceProductID
-        )
-        XCTAssertEqual(catalogue, displayed)
-        XCTAssertEqual(displayed, 499, "no-balance CTA must show the real 499 SKU amount")
+    func testNoBalanceCTA_rendersActualOfferSuffixAndExplicitButtonAccessibilityLabel() {
+        for (code, price, display) in [("USD", "4.99", "$4.99"), ("EUR", "4.99", "4,99 €"),
+                                       ("RUB", "499.49", "499,49 ₽")] {
+            let offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID,
+                                   price: Decimal(string: price)!, currencyCode: code, displayPrice: display)
+            let button = directButton(offer: offer)
+            XCTAssertTrue(button.isEnabled)
+            XCTAssertTrue(labels(button).contains(display))
+            XCTAssertEqual(button.accessibilityLabel, Localized.text("common.button.top_up") + ", " + display)
+            XCTAssertEqual(button.accessibilityIdentifier, "firing.noBalance.topUpButton")
+        }
     }
 
-    /// The no-balance debug fallback credits `Double(noBalanceDisplayAmount)`.
-    /// Assert it equals the catalogue credit for the resolved SKU.
-    func testNoBalanceCTA_debugFallbackCredit_equalsCatalogue() {
-        let creditedByFallback = Double(AlarmFiringViewController.noBalanceDisplayAmount)
-        let catalogue = StoreKitService.productAmounts[
-            AlarmFiringViewController.noBalanceProductID
-        ]
-        XCTAssertEqual(creditedByFallback, catalogue)
+    func testNoBalanceCTA_disablesMissingInvalidAndMismatchedOffersIncludingDirectAction() {
+        let invalid = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 0,
+                                 currencyCode: "USD", displayPrice: "$0.00")
+        let mismatched = TopUpOffer(productID: "io.mobilife.snoozepay.balance.149", price: 1.49,
+                                    currencyCode: "USD", displayPrice: "$1.49")
+        for offer in [nil, invalid, mismatched] {
+            let button = directButton(offer: offer)
+            XCTAssertFalse(button.isEnabled)
+            XCTAssertTrue(labels(button).contains("—"))
+        }
+    }
+
+    private func directButton(offer: TopUpOffer?) -> SPButton {
+        let controller = AlarmFiringViewController(alarm: Alarm(penaltyAmount: 50))
+        controller.noBalancePurchase = AlarmFiringNoBalancePurchase(
+            controller: controller, dispatch: { _ in XCTFail("Invalid offers must not dispatch") },
+            offerProvider: { _ in offer }
+        )
+        let button = controller.makeNoBalanceApplePayButton(
+            displayPrice: controller.noBalancePurchase.offer?.displayPrice
+        )
+        controller.applePayNoBalanceButton = button
+        if offer?.productID != AlarmFiringViewController.noBalanceProductID { controller.noBalanceApplePayTapped() }
+        return button
+    }
+
+    private func labels(_ view: UIView) -> [String] {
+        [(view as? UILabel)?.text].compactMap { $0 } + view.subviews.flatMap(labels)
     }
 
     // MARK: - StoreKitService helpers

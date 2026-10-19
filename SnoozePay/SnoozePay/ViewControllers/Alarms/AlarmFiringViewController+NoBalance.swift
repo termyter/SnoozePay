@@ -1,6 +1,5 @@
 import StoreKit
 import UIKit
-import os
 
 /// No-balance («Баланса не осталось») state for the firing screen — V2 spec.
 ///
@@ -16,8 +15,8 @@ import os
 /// - Bottom CTAs:
 ///   1. Disabled `SPSnoozePrice` (hint «Недостаточно средств») — visual
 ///      continuity so the user sees what they wanted to tap.
-///   2. `SPButton(.money, .lg, fullWidth)` "Apple Pay · N ₽" (N = catalogue
-///      amount of the resolved SKU) — single-tap purchase via StoreKitService.
+///   2. `SPButton(.money, .lg, fullWidth)` — actual storefront display price
+///      and single-tap purchase via StoreKitService.
 ///   3. `SPButton(.ghost, .lg, fullWidth)` «Я встал — выключить».
 ///
 /// Auto-recovery: `BalanceService.balanceChangedNotification` triggers a
@@ -28,14 +27,6 @@ extension AlarmFiringViewController {
     /// SKU resolved by the no-balance Apple Pay tap. Targets the 499 ₽ tier;
     /// the 500 ₽ SKU doesn't exist in App Store Connect (lineup is PM's #240).
     static var noBalanceProductID: String { "io.mobilife.snoozepay.balance.499" }
-
-    /// Display amount (₽) for the no-balance Apple Pay button title. Derived
-    /// from the catalogue amount of `noBalanceProductID` so the rendered number
-    /// equals what the App Store charges and the ledger credits — see #275. The
-    /// CTA used to show 500 ₽ over the 499 SKU (display != charge != credit).
-    static var noBalanceDisplayAmount: Int {
-        StoreKitService.catalogAmount(for: noBalanceProductID) ?? 0
-    }
 
     // MARK: - Setup
 
@@ -50,7 +41,7 @@ extension AlarmFiringViewController {
         installNoBalanceColumnSlack()
 
         let disabledCard = makeNoBalanceDisabledCard()
-        let payButton = makeNoBalanceApplePayButton()
+        let payButton = makeNoBalanceApplePayButton(displayPrice: noBalancePurchase.offer?.displayPrice)
         let ghostDismiss = makeNoBalanceGhostDismissButton()
         let chooseLink = makeNoBalanceChooseAmountLink()
 
@@ -116,24 +107,19 @@ extension AlarmFiringViewController {
         return card
     }
 
-    private func makeNoBalanceApplePayButton() -> SPButton {
-        // V3 (#227): neutral green money CTA — wallet icon + «Пополнить» + the
-        // amount suffix. NO "Apple Pay ·" in the label (cross-platform neutral
-        // copy, PM decision chat2); the purchase still runs through StoreKit /
-        // Apple Pay under the hood — only the visible branding is dropped, so
-        // the `applePay*` identifiers stay accurate. Suffix keeps the catalogue
-        // amount of the resolved SKU (#275: display == charge == credit) rather
-        // than a hardcoded 500 ₽, so the rendered number matches what's charged.
+    func makeNoBalanceApplePayButton(displayPrice: String?) -> SPButton {
+        noBalancePurchase.renderedPrice = displayPrice
         let button = SPButton(
             title: Localized.text("common.button.top_up"),
             variant: .money,
             size: .lg,
             icon: SPIcons.wallet(size: 20),
-            suffix: MoneyFormatter.string(Self.noBalanceDisplayAmount),
+            suffix: displayPrice ?? "—",
             fullWidth: true
         )
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityIdentifier = "firing.noBalance.topUpButton"
+        button.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight
         button.addTarget(
             self,
             action: #selector(noBalanceApplePayTapped),
@@ -224,97 +210,62 @@ extension AlarmFiringViewController {
     /// automatically once the user crosses the affordability threshold
     /// (purchase success, external charge, debug top-up).
     func observeBalanceForNoBalanceState() {
-        balanceChangeObserver = NotificationCenter.default.addObserver(
-            forName: BalanceService.balanceChangedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            // `updateUI` re-reads `viewModel.canSnooze` and re-runs
-            // `refreshNoBalanceVisibility` so a single hop here covers
-            // the whole swap (snooze CTA tone, disabled card hint, etc).
-            self.updateUI()
-            self.noBalancePurchaseInFlight = false
-            self.applePayNoBalanceButton?.isEnabled = true
-        }
-        // Surface StoreKit failures (Ask-to-Buy declined, purchase cancelled
-        // by parent, ledger locked) as a UIAlert. Success is implicit — the
-        // balanceChanged observer above handles UI recovery for that path.
-        let messageKey = StoreKitService.messageUserInfoKey
-        purchaseFailedObserver = NotificationCenter.default.addObserver(
-            forName: StoreKitService.purchaseFailedNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            guard let self else { return }
-            self.noBalancePurchaseInFlight = false
-            self.applePayNoBalanceButton?.isEnabled = true
-            let message = note.userInfo?[messageKey] as? String
-            self.presentNoBalancePurchaseFailureAlert(message: message)
-        }
+        noBalancePurchase.observeBalance()
     }
 
     // MARK: - Actions
 
-    /// Apple Pay tap (catalogue amount of the resolved SKU). Resolves the
-    /// StoreKit product if loaded,
-    /// otherwise falls back to a direct `BalanceService.topUp` so the
-    /// debug / test paths still credit. The re-entrancy guard
-    /// (`noBalancePurchaseInFlight`) and `isEnabled = false` flip together
-    /// so a double-tap doesn't kick off two purchases.
+    /// Revalidate the offer and this VM's wallet before dispatching the fixed SKU.
     @objc func noBalanceApplePayTapped() {
         guard !noBalancePurchaseInFlight else { return }
+        let purchase = noBalancePurchase
+        guard let offer = purchase.offer else {
+            refreshNoBalanceCatalog()
+            return
+        }
+        guard viewModel.acceptsPurchase(in: offer.currency) else {
+            let message = ForeignCurrencyNotice.message(wallet: viewModel.walletCurrency, storefront: offer.currency)
+            present(ForeignCurrencyNotice.alert(message: message), animated: true)
+            return
+        }
         noBalancePurchaseInFlight = true
         applePayNoBalanceButton?.isEnabled = false
-
-        let productID = Self.noBalanceProductID
-        if let product = StoreKitService.shared.products.first(where: { $0.id == productID }) {
-            // Foreign storefront: refuse before `purchase(_:)`, while refusing
-            // is still free (#563).
-            if let blocked = ForeignCurrencyNotice.blockingMessage(for: product) {
-                noBalancePurchaseInFlight = false
-                applePayNoBalanceButton?.isEnabled = true
-                present(ForeignCurrencyNotice.alert(message: blocked), animated: true)
-                return
-            }
-            Task { @MainActor in
-                await StoreKitService.shared.purchase(product)
-            }
-            return
+        chooseAmountLink?.isEnabled = false
+        if let dispatch = purchase.dispatch {
+            purchase.observeFeedback()
+            dispatch(Self.noBalanceProductID)
+        } else if let product = StoreKitService.shared.products.first(where: { $0.id == Self.noBalanceProductID }) {
+            purchase.observeFeedback()
+            Task { @MainActor in await StoreKitService.shared.purchase(product) }
+        } else {
+            purchase.finish()
+            presentNoBalancePurchaseFailureAlert(message: Localized.text("deposit.error.products_unavailable"))
         }
+    }
 
-        // Product list hasn't loaded yet.
-        #if DEBUG
-        // DEBUG/simulator: credit locally so the flow stays testable.
-        AppLogger.storeKit.notice(
-            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — DEBUG fallback to topUp"
-        )
-        let amount = Double(Self.noBalanceDisplayAmount)
-        if BalanceService.shared.topUp(amount: amount) {
-            return
+    /// SPButton's immutable suffix requires replacement only when the quoted price changes.
+    func refreshNoBalanceCatalog() {
+        let displayPrice = noBalancePurchase.offer?.displayPrice
+        if let old = applePayNoBalanceButton, let stack = noBalanceContainer,
+           noBalancePurchase.renderedPrice != displayPrice {
+            stack.removeArrangedSubview(old)
+            old.removeFromSuperview()
+            let button = makeNoBalanceApplePayButton(displayPrice: displayPrice)
+            stack.insertArrangedSubview(button, at: 1)
+            applePayNoBalanceButton = button
         }
-        #else
-        // Release: never credit without a real StoreKit transaction —
-        // fall through to reset + the failure alert below.
-        AppLogger.storeKit.error(
-            "noBalanceApplePayTapped: product \(productID, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
-        )
-        #endif
-        noBalancePurchaseInFlight = false
-        applePayNoBalanceButton?.isEnabled = true
-        presentNoBalancePurchaseFailureAlert(
-            message: StoreKitService.ledgerLockedFailureMessage
-        )
+        applePayNoBalanceButton?.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight
     }
 
     /// «Выбрать другую сумму» tap. Routes to the presets bottom sheet.
     @objc func noBalanceChooseAmountTapped() {
+        guard !noBalancePurchaseInFlight else { return }
         presentTopUpSheet()
     }
 
     // MARK: - Helpers
 
-    private func presentNoBalancePurchaseFailureAlert(message: String?) {
+    func presentNoBalancePurchaseFailureAlert(message: String?) {
         let alert = UIAlertController(
             title: Localized.text("firing.alert.purchase_failed.title"),
             message: message ?? Localized.text("firing.alert.purchase_failed.message"),
