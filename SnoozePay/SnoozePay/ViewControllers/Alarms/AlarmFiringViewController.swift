@@ -615,6 +615,8 @@ class AlarmFiringViewController: UIViewController {
         // inflate either the count or the sum the user is shown. When the
         // ledger can't be read we say so rather than print a guessed total.
         let summary = wokeMorningContent()
+        // Stop hands deferred feedback back to StoreKit before the summary covers this screen.
+        noBalancePurchase.finish()
         viewModel.dismiss()
         isStoppedByUser = true
         onUserStop?()
