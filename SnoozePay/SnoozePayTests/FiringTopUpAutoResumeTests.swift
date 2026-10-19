@@ -262,13 +262,16 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
 
         func makeSheet() -> FiringTopUpBottomSheetViewController {
             let sheet = FiringTopUpBottomSheetViewController(
-                currentBalance: 0, balance: balance, notificationCenter: center,
+                balance: balance, notificationCenter: center,
                 scheduleSuccessDismissal: { [weak self] delay, _ in self?.successDelays.append(delay) },
                 purchaseProduct: { [weak self] in self?.requested.append($0) },
                 presentPurchaseFailure: { [weak self] in self?.alerts.append($0) },
                 dismissForAutoResume: { [weak self] in self?.resumes += 1 },
                 pauseLifecycle: { [weak self] in self?.pauseLifecycle.append($0) },
-                preflightRefusal: { [weak self] _ in self?.refusal }
+                preflightRefusal: { [weak self] _ in self?.refusal },
+                offerProvider: { productID in
+                    TopUpOffer(productID: productID, price: 1, currencyCode: "RUB", displayPrice: "1 ₽")
+                }
             )
             sheet.onDismiss = { [weak self] in self?.dismissals += 1 }
             return sheet

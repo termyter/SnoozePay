@@ -158,8 +158,7 @@ extension AlarmFiringViewController {
         // user is about to pay) and the live balance, so every label it shows
         // is derived from what this snooze actually costs — #548.
         let sheet = FiringTopUpBottomSheetViewController(
-            snoozePrice: viewModel.currentPenalty,
-            currentBalance: BalanceService.shared.balance
+            snoozePrice: viewModel.currentPenalty
         )
         present(sheet, animated: true)
     }

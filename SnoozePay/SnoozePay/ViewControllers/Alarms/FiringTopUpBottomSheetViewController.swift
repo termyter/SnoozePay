@@ -8,8 +8,8 @@ import os
 /// V2 spec: `FiringTopUpPresets`,
 /// `docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:103-197` contains "function FiringTopUpPresets".
 /// Three vertical preset rows feed a single Apple Pay primary CTA; each row's
-/// amount is the catalogue amount of its mapped SKU (#275/#297) so display ==
-/// charge == credit. Visuals match the V2 design system — bg1 surface, 28pt
+/// price is the actual storefront offer of its mapped SKU. Visuals match
+/// the V2 design system — bg1 surface, 28pt
 /// top corners, a pulsing warn dot + caps «Будильник на паузе · MM:SS» + h2
 /// «Пополнить баланс» header, full-width preset rows, money-toned Apple Pay
 /// button, footer meta.
@@ -19,50 +19,28 @@ import os
 ///   `AudioService.pauseAlarmSound()`. A 60-second auto-resume timer starts
 ///   so an abandoned sheet can't keep the alarm silent indefinitely.
 /// - On a successful purchase the controller flips to a green-checkmark
-///   "+N ₽" success state and auto-dismisses after 2 seconds.
+///   credited amount/currency success state and auto-dismisses after 2 seconds.
 /// - On dismissal (any path: cancel, success-auto, 60s-timeout) the audio
 ///   resumes unless the alarm was already stopped externally.
 final class FiringTopUpBottomSheetViewController: UIViewController {
 
     // MARK: - Preset model
 
-    /// One of the three top-up tiles. The displayed `amount` is NOT a free
-    /// literal — it is derived from the mapped SKU's catalogue amount (or, once
-    /// loaded, the resolved StoreKit product price) so display == charge ==
-    /// credit. See #275: the tiles used to render rounded literals (200 / 500 /
-    /// 1000 ₽) over the 149 / 499 / 999 SKUs, charging and crediting less than
-    /// shown. The lineup (which SKUs exist) is PM's #240 — this only guarantees
-    /// the rendered number is honest for the current catalogue.
+    /// SKU identity and its historical RUB amount, used only by the explicit
+    /// empty-catalog UI-tour demo. Paid prices always come from TopUpOffer.
     struct Preset {
-        /// RUB amount to display AND credit. Always equals the catalogue amount
-        /// of `productID` for the current catalogue (or the real product price
-        /// once `StoreKitService` has loaded it).
-        let amount: Int
+        let rubDemoAmount: Int
         let popular: Bool
-        /// StoreKit product ID. Falls back to `BalanceService.topUp(amount:)`
-        /// when not loaded so debug paths still credit the wallet — with the
-        /// SAME `amount` shown, never a rounded literal.
         let productID: String
 
-        /// Build a preset whose displayed amount is the catalogue amount of the
-        /// supplied SKU. Returns nil for an unknown SKU so we never render an
-        /// invented number.
         init?(productID: String, popular: Bool) {
-            guard let catalogAmount = StoreKitService.catalogAmount(for: productID) else { return nil }
-            self.amount = catalogAmount
+            guard let nominal = StoreKitService.catalogAmount(for: productID) else { return nil }
+            rubDemoAmount = nominal
             self.popular = popular
             self.productID = productID
         }
     }
 
-    /// Default preset list. Amounts are resolved from the SKU catalogue so each
-    /// row shows exactly what the App Store charges and the ledger credits
-    /// (#297).
-    ///
-    /// Row titles and hints used to live here as literals from the design comp
-    /// («+1 откладывание · ровно на сейчас» over the 149 ₽ SKU). They are gone:
-    /// the copy is a function of the CURRENT snooze price, so it is computed at
-    /// render time by `FiringTopUpCopy` (#548).
     static let defaultPresets: [Preset] = [
         Preset(productID: "io.mobilife.snoozepay.balance.149", popular: false),
         Preset(productID: "io.mobilife.snoozepay.balance.499", popular: true),
@@ -73,16 +51,10 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     private let presets: [Preset]
 
-    /// Price of the NEXT snooze — `AlarmFiringViewModel.currentPenalty`, so the
-    /// progressive rung the user is about to pay, not the alarm's base price.
-    /// Every label on the sheet is derived from it (#548); `0` means the caller
-    /// had no price to give (free alarm / preview route) and the copy degrades
-    /// to price-free wording rather than assuming a default.
+    /// One next charge, used only to recommend an actual compatible offer.
+    /// Unknown arithmetic never produces an affordability claim.
     private let snoozePrice: Double
 
-    /// Wallet balance the purchase lands on top of. Part of the arithmetic:
-    /// with 100 ₽ already banked a 149 ₽ top-up DOES unlock a 200 ₽ snooze.
-    private let currentBalance: Double
     private let balance: BalanceService
 
     /// Auto-resume timeout. Spec is 60 seconds. Stored as a constant so the
@@ -96,7 +68,12 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     // MARK: - State
 
-    private var selectedAmount: Int
+    private var selectedProductID: String?
+    private var hasUserSelection = false
+    private let offerProvider: ((String) -> TopUpOffer?)?
+    private let launchArguments: [String]
+    private var productsLoadedObserver: NSObjectProtocol?
+    private var purchaseButtonConstraints: [NSLayoutConstraint] = []
 
     /// Set to true once we've kicked off Apple Pay so the auto-resume timer
     /// doesn't yank the sheet out from under the StoreKit dialog.
@@ -200,17 +177,13 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         label.font = AppTypography.body
         label.textColor = AppColors.fg2
         label.numberOfLines = 0
-        // Text seeded in `setupUI` from `FiringTopUpCopy.subtitle` so the copy
-        // follows the current snooze price instead of naming the cheapest SKU
-        // and calling it the amount a snooze needs — #275/#548.
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     /// Vertical column of full-width preset rows
     /// (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:144-175` contains "Пресеты"): each
-    /// row shows the «+1 откладывание» title + hint on the left and the rouble
-    /// amount + a check chip on the right when selected.
+    /// row shows generic package copy, the actual price and a selection chip.
     private var presetRows: [FiringTopUpPresetRow] = []
     private let presetStack: UIStackView = {
         let stack = UIStackView()
@@ -221,20 +194,18 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     }()
 
     /// Apple Pay primary CTA. Money tone with applelogo icon + suffix that
-    /// tracks the selected preset. Rebuilt on every selection because
-    /// SPButton title/suffix is immutable post-init.
-    private lazy var applePayButton: SPButton = makeApplePayButton(amount: selectedAmount)
+    /// tracks the selected offer. Selection/catalog refresh replaces this
+    /// immutable-title control while retaining one set of active anchors.
+    private lazy var applePayButton: SPButton = makeApplePayButton()
 
-    /// Footer meta line — «Зачислится мгновенно. Откладывание будет доступно
-    /// сразу.» Replaces the V1 cancel button (the close X in the header
-    /// covers the same affordance).
+    /// A top-up is wallet credit, not a promise that one snooze is now affordable.
     private let footerMetaLabel: UILabel = {
         let label = UILabel()
         label.font = AppTypography.meta
         label.textColor = AppColors.fg3
         label.textAlignment = .center
         label.numberOfLines = 0
-        label.text = Localized.text("firing.top_up.footer")
+        label.text = Localized.text("deposit.disclaimer")
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -286,7 +257,6 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     init(
         presets: [Preset] = defaultPresets,
         snoozePrice: Double = 0,
-        currentBalance: Double = BalanceService.shared.balance,
         balance: BalanceService = .shared,
         notificationCenter: NotificationCenter = .default,
         scheduleSuccessDismissal: @escaping TopUpSuccessDismissal = { delay, action in
@@ -296,9 +266,13 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         presentPurchaseFailure: ((UIAlertController) -> Void)? = nil,
         dismissForAutoResume: (() -> Void)? = nil,
         pauseLifecycle: ((Bool) -> Void)? = nil,
-        preflightRefusal: ((String) -> String?)? = nil
+        preflightRefusal: ((String) -> String?)? = nil,
+        offerProvider: ((String) -> TopUpOffer?)? = nil,
+        arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
         self.presets = presets
+        self.offerProvider = offerProvider
+        self.launchArguments = arguments
         self.balance = balance
         self.purchaseProduct = purchaseProduct
         self.notificationCenter = notificationCenter
@@ -308,18 +282,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         self.pauseLifecycle = pauseLifecycle
         self.preflightRefusal = preflightRefusal
         self.snoozePrice = snoozePrice
-        self.currentBalance = currentBalance
-        // Pre-select the cheapest tier that actually unlocks a snooze at the
-        // current price (#548). The comp pre-selected the SMALLEST tier
-        // (`docs/design/snoozepay-2026-04-27/project/components/SPTopUp.jsx:104` contains "tuS(200)") —
-        // correct only while the cheapest SKU covered the
-        // price; at 200 ₽ it opened on a 149 ₽ tier that buys nothing. Falls
-        // back to 0 (no invented literal) if the list is empty — #275/#297.
-        self.selectedAmount = FiringTopUpCopy.recommendedAmount(
-            from: presets.map(\.amount),
-            balance: currentBalance,
-            price: snoozePrice
-        ) ?? 0
+        self.selectedProductID = presets.first?.productID
         self.remainingSeconds = 60
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
@@ -347,6 +310,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     }
 
     deinit {
+        if let token = productsLoadedObserver { notificationCenter.removeObserver(token) }
         if let token = purchaseCompletedObserver {
             notificationCenter.removeObserver(token)
         }
@@ -433,15 +397,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         // баланс». Close X sits top-right of the row. The dot is static in
         // the design; the app pulses it (`startPauseDotPulse()`).
 
-        // Subtitle derived from the live snooze price (#548). It used to read
-        // «Минимум — 149 ₽ на следующее откладывание», naming the cheapest SKU
-        // while claiming it was the amount a snooze needs — two different
-        // numbers at every price except exactly 149 ₽.
-        subtitleLabel.text = FiringTopUpCopy.subtitle(
-            amounts: presets.map(\.amount),
-            balance: currentBalance,
-            price: snoozePrice
-        )
+        subtitleLabel.text = Localized.text("deposit.disclaimer")
 
         let pauseRow = UIStackView(arrangedSubviews: [pauseDot, pauseLabel])
         pauseRow.translatesAutoresizingMaskIntoConstraints = false
@@ -513,17 +469,12 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             presetStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             presetStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
 
-            // Apple Pay
-            applePayButton.topAnchor.constraint(equalTo: presetStack.bottomAnchor, constant: AppSpacing.sp4),
-            applePayButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-            applePayButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-
             // Footer meta
-            footerMetaLabel.topAnchor.constraint(equalTo: applePayButton.bottomAnchor, constant: AppSpacing.sp3),
             footerMetaLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
             footerMetaLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset)
         ])
 
+        pinPurchaseButton()
         activateSuccessConstraints(inset: inset)
     }
 
@@ -554,49 +505,95 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     private func setupPresetTiles() {
         for preset in presets {
-            let row = FiringTopUpPresetRow(
-                title: FiringTopUpCopy.rowTitle(
-                    topUp: preset.amount, balance: currentBalance, price: snoozePrice
-                ),
-                hint: FiringTopUpCopy.rowHint(
-                    topUp: preset.amount, balance: currentBalance, price: snoozePrice
-                ),
-                amount: preset.amount,
-                selected: preset.amount == selectedAmount,
-                insufficient: !FiringTopUpCopy.isSufficient(
-                    topUp: preset.amount, balance: currentBalance, price: snoozePrice
-                )
-            ) { [weak self] in
-                self?.selectAmount(preset.amount)
+            let row = FiringTopUpPresetRow(title: Localized.text("firing.top_up.row.title.generic"), hint: "",
+                                          displayPrice: "—", selected: false) { [weak self] in
+                self?.selectProduct(preset.productID)
             }
+            row.accessibilityIdentifier = "firingTopUp.preset." + preset.productID
             presetStack.addArrangedSubview(row)
             presetRows.append(row)
         }
+        refreshCatalog()
     }
 
-    /// Build a fresh Apple Pay button for the supplied amount. SPButton's
-    /// title / suffix are immutable post-init, so selection changes rebuild
-    /// the button instance. Cheap — three presets, max three swaps.
-    private func makeApplePayButton(amount: Int) -> SPButton {
-        let button = SPButton(
-            title: "Apple Pay",
-            variant: .money,
-            size: .lg,
-            icon: UIImage(systemName: "applelogo"),
-            suffix: MoneyFormatter.string(amount),
-            fullWidth: true
-        )
+    private func makeApplePayButton() -> SPButton {
+        let offer = selectedOffer
+        let price = offer?.displayPrice ?? "—"
+        let button = SPButton(title: "Apple Pay", variant: .money, size: .lg,
+                              icon: UIImage(systemName: "applelogo"), suffix: price, fullWidth: true)
         button.accessibilityIdentifier = "firingTopUp.purchaseButton"
-        button.isEnabled = !purchaseInFlight
+        button.accessibilityLabel = "Apple Pay, " + price
+        button.isEnabled = canInteract && offer != nil
+        button.alpha = successReceipt == nil ? 1 : 0
         button.addTarget(self, action: #selector(applePayTapped), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
+    }
+
+    private var canInteract: Bool {
+        !purchaseInFlight && successReceipt == nil && !failureAcknowledgementPending && !pauseEnded
+    }
+
+    private var selectedOffer: TopUpOffer? { selectedProductID.flatMap { offer(for: $0) } }
+
+    private var usesDemoCatalog: Bool {
+        #if DEBUG
+        return offerProvider == nil && StoreKitService.isCatalogForcedEmpty(arguments: launchArguments)
+        #else
+        return false
+        #endif
+    }
+
+    private func offer(for productID: String) -> TopUpOffer? {
+        guard let preset = presets.first(where: { $0.productID == productID }) else { return nil }
+        if let offerProvider {
+            let offer = offerProvider(productID)
+            return offer?.productID == productID ? offer : nil
+        }
+        #if DEBUG
+        if usesDemoCatalog {
+            return TopUpOffer(productID: productID, price: Decimal(preset.rubDemoAmount), currencyCode: "RUB",
+                              displayPrice: MoneyFormatter.string(preset.rubDemoAmount))
+        }
+        #endif
+        return StoreKitService.shared.products.first { $0.id == productID }.flatMap { TopUpOffer(product: $0) }
+    }
+
+    private func refreshCatalog() {
+        let offers = presets.compactMap { offer(for: $0.productID) }
+        if !hasUserSelection {
+            let compatible = offers.filter { balance.acceptsPurchase(in: $0.currency) }
+            selectedProductID = FiringTopUpCopy.recommendedProductID(
+                offers: compatible, balance: balance.balance, price: snoozePrice, walletCurrency: balance.walletCurrency
+            ) ?? offers.first?.productID ?? presets.first?.productID
+        }
+        for (row, preset) in zip(presetRows, presets) {
+            let offer = offers.first { $0.productID == preset.productID }
+            row.update(title: Localized.text("firing.top_up.row.title.generic"), hint: "",
+                       displayPrice: offer?.displayPrice ?? "—", selected: preset.productID == selectedProductID,
+                       insufficient: offer.map {
+                           FiringTopUpCopy.coversNextCharge(offer: $0, balance: balance.balance, price: snoozePrice,
+                                                          walletCurrency: balance.walletCurrency) == false
+                       } ?? false)
+        }
+        rebuildApplePayButton()
+        updatePurchaseAvailability()
+    }
+
+    private func updatePurchaseAvailability() {
+        applePayButton.isEnabled = canInteract && selectedOffer != nil
+        for (row, preset) in zip(presetRows, presets) {
+            row.isEnabled = canInteract && offer(for: preset.productID) != nil
+        }
     }
 
     // MARK: - StoreKit observers
 
     private func observePurchaseNotifications() {
         let center = notificationCenter
+        productsLoadedObserver = center.addObserver(
+            forName: StoreKitService.productsLoadedNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.refreshCatalog() }
         // Capture the userInfo keys into local lets so the closure isn't
         // forced to read main-actor-isolated `StoreKitService.*UserInfoKey`
         // statics at notification-delivery time (which would emit a
@@ -630,8 +627,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         ) { [weak self] _ in
             guard let self, !self.pauseEnded, self.purchaseInFlight, self.successReceipt == nil else { return }
             self.purchaseInFlight = false
-            self.applePayButton.isEnabled = true
             self.resumeIfDeadlineExpired()
+            self.updatePurchaseAvailability()
         }
     }
 }
@@ -640,87 +637,65 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
 extension FiringTopUpBottomSheetViewController {
 
-    private func selectAmount(_ amount: Int) {
-        guard amount != selectedAmount else { return }
-        selectedAmount = amount
-        for (row, preset) in zip(presetRows, presets) {
-            row.isSelected = preset.amount == amount
-        }
-        rebuildApplePayButton()
+    private func selectProduct(_ productID: String) {
+        guard canInteract, presets.contains(where: { $0.productID == productID }) else { return }
+        hasUserSelection = true
+        selectedProductID = productID
+        refreshCatalog()
+    }
+
+    private func pinPurchaseButton() {
+        purchaseButtonConstraints = [
+            applePayButton.topAnchor.constraint(equalTo: presetStack.bottomAnchor, constant: AppSpacing.sp4),
+            applePayButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp5),
+            applePayButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp5),
+            footerMetaLabel.topAnchor.constraint(equalTo: applePayButton.bottomAnchor, constant: AppSpacing.sp3)
+        ]
+        NSLayoutConstraint.activate(purchaseButtonConstraints)
     }
 
     private func rebuildApplePayButton() {
-        let oldButton = applePayButton
-        let newButton = makeApplePayButton(amount: selectedAmount)
-        view.insertSubview(newButton, aboveSubview: oldButton)
-        NSLayoutConstraint.activate([
-            newButton.topAnchor.constraint(equalTo: presetStack.bottomAnchor, constant: AppSpacing.sp4),
-            newButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppSpacing.sp5),
-            newButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppSpacing.sp5)
-        ])
-        // Re-pin the footer meta below the replacement so it stays anchored.
-        footerMetaLabel.topAnchor.constraint(equalTo: newButton.bottomAnchor, constant: AppSpacing.sp3).isActive = true
-        oldButton.removeFromSuperview()
-        applePayButton = newButton
+        NSLayoutConstraint.deactivate(purchaseButtonConstraints)
+        applePayButton.removeFromSuperview()
+        applePayButton = makeApplePayButton()
+        view.insertSubview(applePayButton, belowSubview: footerMetaLabel)
+        pinPurchaseButton()
     }
 
     // MARK: - Actions
 
     @objc private func applePayTapped() {
-        guard !pauseEnded, !purchaseInFlight, !failureAcknowledgementPending else { return }
-        purchaseInFlight = true
-        applePayButton.isEnabled = false
-
-        guard let preset = presets.first(where: { $0.amount == selectedAmount }) else {
-            purchaseInFlight = false
-            applePayButton.isEnabled = true
-            return
-        }
-
-        if let blocked = purchaseRefusal(for: preset.productID) {
-            handlePurchaseFailure(message: blocked, title: ForeignCurrencyNotice.alertTitle,
+        guard canInteract else { return }
+        guard let offer = selectedOffer else { refreshCatalog(); return }
+        // The real wallet policy precedes both test dispatch and optional refusals.
+        let refusal = balance.acceptsPurchase(in: offer.currency)
+            ? preflightRefusal?(offer.productID)
+            : ForeignCurrencyNotice.message(wallet: balance.walletCurrency, storefront: offer.currency)
+        if let refusal {
+            handlePurchaseFailure(message: refusal, title: ForeignCurrencyNotice.alertTitle,
                                   dismissTitle: Localized.text("deposit.foreign_currency.dismiss"))
             return
         }
-        if let purchaseProduct {
-            purchaseProduct(preset.productID)
-            return
-        }
-        if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
-            Task { @MainActor in
-                await StoreKitService.shared.purchase(product)
-            }
-        } else {
-            let pid = preset.productID
-            #if DEBUG
-            // DEBUG/simulator without a loaded StoreKit catalogue: credit
-            // locally so the flow stays testable without ASC products.
-            AppLogger.storeKit.notice(
-                "FiringTopUpSheet: product \(pid, privacy: .public) not loaded — DEBUG fallback to BalanceService.topUp"
-            )
-            let amount = Double(preset.amount)
-            if balance.topUp(amount: amount),
-               let receipt = TopUpSuccessReceipt(amount: amount, currency: balance.walletCurrency) {
+        purchaseInFlight = true
+        updatePurchaseAvailability()
+        if let purchaseProduct { purchaseProduct(offer.productID); return }
+        #if DEBUG
+        if usesDemoCatalog, let preset = presets.first(where: { $0.productID == offer.productID }) {
+            let amount = Double(preset.rubDemoAmount)
+            if balance.topUp(amount: amount), let receipt = TopUpSuccessReceipt(amount: amount, currency: .rub) {
                 handlePurchaseSuccess(receipt)
             } else {
                 handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
-            #else
-            // Release: never credit without a real StoreKit transaction.
-            AppLogger.storeKit.error(
-                "FiringTopUpSheet: product \(pid, privacy: .public) not loaded — purchase unavailable (no local credit in release)"
-            )
-            handlePurchaseFailure(message: Localized.text("firing.top_up.load_failed"))
-            #endif
+            return
         }
-    }
-
-    private func purchaseRefusal(for productID: String) -> String? {
-        if let preflightRefusal { return preflightRefusal(productID) }
-        // Existing dispatch fixtures do not depend on the shared App Store catalogue.
-        guard purchaseProduct == nil,
-              let product = StoreKitService.shared.products.first(where: { $0.id == productID }) else { return nil }
-        return ForeignCurrencyNotice.blockingMessage(for: product, balanceService: balance)
+        #endif
+        guard offerProvider == nil,
+              let product = StoreKitService.shared.products.first(where: { $0.id == offer.productID }) else {
+            handlePurchaseFailure(message: Localized.text("deposit.error.products_unavailable"))
+            return
+        }
+        Task { @MainActor in await StoreKitService.shared.purchase(product) }
     }
 
     @objc private func closeTapped() {
@@ -763,7 +738,7 @@ extension FiringTopUpBottomSheetViewController {
         guard !pauseEnded, successReceipt == nil, !failureAcknowledgementPending else { return }
         failureAcknowledgementPending = true
         purchaseInFlight = false
-        applePayButton.isEnabled = true
+        updatePurchaseAvailability()
 
         let alert = UIAlertController(
             title: title ?? Localized.text("firing.alert.purchase_failed.title"),
@@ -794,6 +769,7 @@ extension FiringTopUpBottomSheetViewController {
         guard !pauseEnded, failureAcknowledgementPending else { return }
         failureAcknowledgementPending = false
         resumeIfDeadlineExpired()
+        updatePurchaseAvailability()
     }
 
     // MARK: - Auto-resume timer
@@ -845,6 +821,7 @@ extension FiringTopUpBottomSheetViewController {
         autoResumeTimer = nil
         countdownTimer?.invalidate()
         countdownTimer = nil
+        if isViewLoaded { updatePurchaseAvailability() }
     }
 
     private func startCountdownTimer() {

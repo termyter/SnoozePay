@@ -106,7 +106,11 @@ final class StoreKitPurchaseCancellationTests: XCTestCase {
 
     private func makeSheet(firing: Bool, purchase: @escaping (String) -> Void) -> UIViewController {
         if firing {
-            return FiringTopUpBottomSheetViewController(currentBalance: 0, balance: balance, purchaseProduct: purchase)
+            return FiringTopUpBottomSheetViewController(
+                balance: balance, purchaseProduct: purchase, offerProvider: { productID in
+                    TopUpOffer(productID: productID, price: 1, currencyCode: "RUB", displayPrice: "1 ₽")
+                }
+            )
         }
         return DepositBottomSheetViewController(
             balance: balance, purchaseProduct: purchase, offerProvider: { productID in
