@@ -45,7 +45,18 @@ final class TopUpDisplayAmountTests: XCTestCase {
     }
 
     private func directButton(offer: TopUpOffer?) -> SPButton {
-        let controller = AlarmFiringViewController(alarm: Alarm(penaltyAmount: 50))
+        let suite = "test.topUpDisplayAmount.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend())
+        let model = AlarmFiringViewModel(
+            alarm: Alarm(penaltyAmount: 50),
+            balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter()),
+            alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler),
+            scheduler: scheduler, wakeStore: WakeEventStore(defaults: defaults),
+            ledger: TransactionRepository(defaults: defaults)
+        )
+        let controller = AlarmFiringViewController(viewModel: model)
         controller.noBalancePurchase = AlarmFiringNoBalancePurchase(
             controller: controller, dispatch: { _ in XCTFail("Invalid offers must not dispatch") },
             offerProvider: { _ in offer }
@@ -55,6 +66,7 @@ final class TopUpDisplayAmountTests: XCTestCase {
         )
         controller.applePayNoBalanceButton = button
         if offer?.productID != AlarmFiringViewController.noBalanceProductID { controller.noBalanceApplePayTapped() }
+        XCTAssertFalse(controller.isViewLoaded, "Price rendering must not start the firing lifecycle")
         return button
     }
 
