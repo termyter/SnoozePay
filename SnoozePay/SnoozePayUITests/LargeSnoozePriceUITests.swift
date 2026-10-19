@@ -156,27 +156,19 @@ final class LargeSnoozePriceUITests: XCTestCase {
         XCTContext.runActivity(named: "Price input readiness: " + stage) { activity in
             let focused = app.textFields.matching(identifier: "createAlarm.penaltyField")
                 .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-            let keyboard = app.keyboards.firstMatch
-            let toolbar = app.toolbars.containing(.button, identifier: "createAlarm.penaltyDone").firstMatch
-            let keyboardExists = keyboard.exists
-            let toolbarExists = toolbar.exists
             let fieldFrame = price.frame
-            let tableFrame = app.tables.firstMatch.frame.intersection(app.frame)
-            let toolbarFrame = toolbarExists ? toolbar.frame : CGRect.null
-            let viewport = toolbarExists ? CGRect(
-                x: tableFrame.minX, y: tableFrame.minY, width: tableFrame.width,
-                height: max(0, min(tableFrame.maxY, toolbarFrame.minY) - tableFrame.minY)
-            ) : .null
             let fieldValue = String((price.value as? String ?? "<nil>").prefix(32))
+            // Capture volatile keyboard/toolbar frames in the app tree instead of
+            // resolving children after a separate existence check.
+            let appAccessibilitySnapshot = app.debugDescription
             let evidence = """
             stage=\(stage)
             fieldValue=\(fieldValue)
             focusMatch=\(focused.exists) hittable=\(price.isHittable) fieldFrame=\(fieldFrame)
-            keyboardExists=\(keyboardExists) keyboardFrame=\(keyboardExists ? keyboard.frame : .null)
-            toolbarExists=\(toolbarExists) toolbarFrame=\(toolbarFrame)
-            viewport=\(viewport) containsField=\(viewport.contains(fieldFrame))
             correctiveFocusTaps=\(focusTaps.map { String($0) } ?? "not-run")
             correctiveViewportPans=\(viewportPans.map { String($0) } ?? "not-run")
+            appAccessibilitySnapshot=
+            \(appAccessibilitySnapshot)
             """
             let attachment = XCTAttachment(string: evidence)
             attachment.name = "price-input-" + stage
