@@ -447,40 +447,15 @@ class AlarmsListViewController: UIViewController {
 
     // MARK: - Backend guard UI (#428)
 
-    /// Shared interception for the create / enable CTAs. Copy comes from the
-    /// same `AlarmBackendWarning` the banner renders, so the screen states the
-    /// problem once and in one voice.
-    ///
-    /// Returns `false` when the alert could NOT be shown (another modal is up,
-    /// or the guard cleared between tap and present). It deliberately does not
-    /// fall through to `onProceed` in that case: silently performing the
-    /// guarded action would be exactly the swallowed failure this PR removes.
-    /// Callers decide what "couldn't warn" means for them.
-    @discardableResult
-    private func presentBackendUnavailableAlert(
-        proceedTitle: String,
-        onCancel: (() -> Void)? = nil,
-        onProceed: @escaping () -> Void
-    ) -> Bool {
-        guard presentedViewController == nil, let warning = viewModel.backendWarning else {
-            return false
-        }
-        let alert = UIAlertController(
-            title: warning.title,
-            message: warning.message,
-            preferredStyle: .alert
-        )
-        // `.notRequested` can still raise the system dialog in place; a decided
-        // grant can only be changed in Settings.
+    /// Permission remedies never continue into creating/enabling an unarmed alarm.
+    private func presentBackendUnavailableAlert() {
+        guard presentedViewController == nil, let warning = viewModel.backendWarning else { return }
+        let alert = UIAlertController(title: warning.title, message: warning.message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: warning.actionTitle, style: .default) { [weak self] _ in
             self?.resolveBackendWarning()
-            onCancel?()
         })
-        alert.addAction(UIAlertAction(title: proceedTitle, style: .cancel) { _ in
-            onProceed()
-        })
+        alert.addAction(UIAlertAction(title: Localized.text("alarms.backend_guard.action.not_now"), style: .cancel))
         present(alert, animated: true)
-        return true
     }
 
     /// Route the banner / alert action: prompt in place while the OS still
@@ -512,22 +487,12 @@ class AlarmsListViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func addAlarmTapped() {
-        // Gate the create CTA on there being a backend at all (#428) — without
-        // it the alarm saves, fails to schedule, and the user learns that one
-        // alarm at a time. The alert is an interception, not a wall: it leads
-        // to Settings but still lets a user who plans to grant permission
-        // later set the alarm up now.
-        guard viewModel.shouldInterceptCreate else {
-            presentCreateAlarm()
+        viewModel.refreshBackendAvailability()
+        guard !viewModel.shouldInterceptCreate else {
+            presentBackendUnavailableAlert()
             return
         }
-        // If the alert can't be shown (another modal is already up) we simply
-        // do nothing — presenting the editor on top of it would fail anyway.
-        presentBackendUnavailableAlert(
-            proceedTitle: Localized.text("alarms.backend_guard.create_anyway")
-        ) { [weak self] in
-            self?.presentCreateAlarm()
-        }
+        presentCreateAlarm()
     }
 
     private func presentCreateAlarm() {
@@ -580,30 +545,13 @@ extension AlarmsListViewController: UITableViewDataSource {
         let alarmID = alarm.id
         cell.onToggle = { [weak self] isOn in
             guard let self else { return }
-            // Same gate as the "+" CTA (#428): switching an alarm ON with no
-            // backend produces a scheduling error the user can't act on from
-            // here. Intercept once, point at Settings, and revert the switch
-            // if they take that route.
-            guard self.viewModel.shouldInterceptToggle(isOn: isOn) else {
-                self.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
+            self.viewModel.refreshBackendAvailability()
+            guard !self.viewModel.shouldInterceptToggle(isOn: isOn) else {
+                self.tableView.reloadData()
+                self.presentBackendUnavailableAlert()
                 return
             }
-            let warned = self.presentBackendUnavailableAlert(
-                proceedTitle: Localized.text("alarms.backend_guard.enable_anyway"),
-                onCancel: { [weak self] in
-                    // Cell already flipped its own switch optimistically —
-                    // re-bind from the (unchanged) model to snap it back.
-                    self?.tableView.reloadData()
-                },
-                onProceed: { [weak self] in
-                    self?.viewModel.toggleAlarm(id: alarmID, enabled: true)
-                }
-            )
-            if !warned {
-                // Couldn't warn ⇒ don't enable behind the user's back; snap the
-                // switch back to the model's truth instead.
-                self.tableView.reloadData()
-            }
+            self.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
         }
 
         return cell

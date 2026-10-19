@@ -9,6 +9,8 @@ final class CreateAlarmViewModel {
 
     private let alarmRepository: AlarmRepository
     private let balanceService: BalanceService
+    let backendMonitor: AlarmBackendMonitor
+    private let draftID = UUID()
 
     var walletCurrency: Currency { balanceService.walletCurrency }
 
@@ -47,10 +49,12 @@ final class CreateAlarmViewModel {
         alarm: Alarm? = nil,
         repository: AlarmRepository = .shared,
         defaults: AlarmDefaults = .shared,
-        balanceService: BalanceService = .shared
+        balanceService: BalanceService = .shared,
+        backendMonitor: AlarmBackendMonitor = AlarmBackendMonitor()
     ) {
         self.alarmRepository = repository
         self.balanceService = balanceService
+        self.backendMonitor = backendMonitor
         self.existingID = alarm?.id
 
         // Seed from existing alarm or — for a brand-new alarm — the user's
@@ -154,6 +158,7 @@ final class CreateAlarmViewModel {
     enum SaveOutcome: Equatable {
         case success
         case persistFailed
+        case permissionRequired(AlarmBackendAvailability)
         case schedulingFailed(AlarmScheduler.SchedulingError)
         case invalid(ValidationError)
     }
@@ -172,9 +177,15 @@ final class CreateAlarmViewModel {
             return
         }
 
+        backendMonitor.refresh()
+        guard permissionAllowsSaving else {
+            completion(.permissionRequired(backendMonitor.availability))
+            return
+        }
+
         let alarm = makeAlarmFromCurrentState()
 
-        let didPersist = alarmRepository.save(alarm) { schedulingResult in
+        let didPersist = alarmRepository.save(alarm, rollbackOnSchedulingFailure: true) { schedulingResult in
             switch schedulingResult {
             case .success:
                 completion(.success)
@@ -197,8 +208,13 @@ final class CreateAlarmViewModel {
     /// ``validationError``.
     @discardableResult
     func save() -> Bool {
-        guard canSave else { return false }
-        return alarmRepository.save(makeAlarmFromCurrentState())
+        backendMonitor.refresh()
+        guard canSave, permissionAllowsSaving else { return false }
+        return alarmRepository.save(makeAlarmFromCurrentState(), rollbackOnSchedulingFailure: true)
+    }
+
+    private var permissionAllowsSaving: Bool {
+        (isEditing && !enabled) || backendMonitor.availability == .available
     }
 
     private func makeAlarmFromCurrentState() -> Alarm {
@@ -214,7 +230,7 @@ final class CreateAlarmViewModel {
         let safePenalty = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
         let safeRepeatDays = repeatDays.filter(Alarm.weekdayIndexRange.contains)
         return Alarm(
-            id: existingID ?? UUID(),
+            id: existingID ?? draftID,
             time: time,
             repeatDays: safeRepeatDays,
             // Empty field → no user name at all, rather than a copy of the

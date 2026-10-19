@@ -85,11 +85,11 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         XCTAssertFalse(viewModel.canCreateAlarms, "create/enable CTAs must be gated with no backend")
         let warning = viewModel.backendWarning
         XCTAssertNotNil(warning, "no-backend state must surface a banner")
-        XCTAssertEqual(warning?.title, "Будильники не зазвонят")
+        XCTAssertEqual(warning?.title, "Доступ к будильникам выключен")
         XCTAssertTrue(warning?.gatesAlarmCreation == true)
         // The copy has to lead somewhere, not just state the problem.
-        XCTAssertTrue(warning?.message.contains("Настройках") == true)
-        XCTAssertEqual(warning?.actionTitle, "Открыть Настройки")
+        XCTAssertTrue(warning?.message.contains("настройках iOS") == true)
+        XCTAssertEqual(warning?.actionTitle, "Открыть настройки")
     }
 
     // MARK: - At least one backend available
@@ -151,7 +151,7 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         XCTAssertNotNil(warning, "an unasked permission still means alarms won't ring")
         XCTAssertTrue(warning?.gatesAlarmCreation == true, "gate stays on — the alarm would not ring")
         XCTAssertTrue(warning?.canRequestInApp == true, "the OS prompt is still available in this state")
-        XCTAssertEqual(warning?.actionTitle, "Разрешить")
+        XCTAssertEqual(warning?.actionTitle, "Разрешить будильники")
         XCTAssertFalse(
             warning?.message.contains("выключено") == true,
             "copy must not claim a permission was switched off when it was never requested"
@@ -167,7 +167,7 @@ final class AlarmsListBackendGuardTests: XCTestCase {
             viewModel.backendWarning?.canRequestInApp == true,
             "a decided grant can only be changed in Settings — an in-app prompt would no-op"
         )
-        XCTAssertEqual(viewModel.backendWarning?.actionTitle, "Открыть Настройки")
+        XCTAssertEqual(viewModel.backendWarning?.actionTitle, "Открыть настройки")
     }
 
     func testRequestAlarmPermissions_promptsThenRefreshes() {
@@ -214,16 +214,16 @@ final class AlarmsListBackendGuardTests: XCTestCase {
 
     // MARK: - Unresolved / indeterminate must not read as "all fine"
 
-    func testBeforeFirstProbe_stateIsUnresolvedAndSilent() {
+    func testBeforeFirstProbe_stateIsUnresolvedAndGated() {
         let (viewModel, _) = makeViewModel(probe: StubProbe(result: .unavailable))
 
-        // No probe has answered yet: claim nothing, show nothing, gate nothing.
+        // Unknown authorization is not a grant; browsing remains available.
         XCTAssertEqual(viewModel.backendAvailability, .unresolved)
-        XCTAssertNil(viewModel.backendWarning)
-        XCTAssertTrue(viewModel.canCreateAlarms)
+        XCTAssertNotNil(viewModel.backendWarning)
+        XCTAssertFalse(viewModel.canCreateAlarms)
     }
 
-    func testIndeterminate_warnsButDoesNotGate() {
+    func testIndeterminate_warnsAndGates() {
         let (viewModel, _) = makeViewModel(probe: StubProbe(result: .indeterminate))
 
         viewModel.refreshBackendAvailability()
@@ -232,8 +232,8 @@ final class AlarmsListBackendGuardTests: XCTestCase {
         let warning = viewModel.backendWarning
         XCTAssertNotNil(warning, "an unreadable status must never pass for 'everything is fine'")
         XCTAssertEqual(warning?.title, "Не удалось проверить разрешения")
-        XCTAssertFalse(warning?.gatesAlarmCreation == true, "our failure must not block the user")
-        XCTAssertTrue(viewModel.canCreateAlarms)
+        XCTAssertTrue(warning?.gatesAlarmCreation == true)
+        XCTAssertFalse(viewModel.canCreateAlarms)
     }
 
     // MARK: - Foreground transition (return from iOS Settings)
@@ -333,7 +333,7 @@ final class AlarmsListBackendGuardTests: XCTestCase {
 
         XCTAssertTrue(gated.shouldInterceptCreate)
         XCTAssertFalse(open.shouldInterceptCreate)
-        XCTAssertFalse(unprobed.shouldInterceptCreate, "an un-probed app must not block the CTA")
+        XCTAssertTrue(unprobed.shouldInterceptCreate, "an un-probed app cannot promise an armed alarm")
     }
 
     // MARK: - Observation seam

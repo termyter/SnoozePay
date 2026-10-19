@@ -45,17 +45,8 @@ extension AppDelegate {
     /// starts and does not finish — torn down or stalled — which leaves no
     /// line for as long as the completion has not run, here as in #752.
     ///
-    /// ⚠️ The title's words are load-bearing outside this file:
-    /// `CreateAlarmUITests` finds this alert as `app.alerts["Уведомления
-    /// выключены"]`, and E2E only runs behind the `ui-test` label — so a
-    /// reworded value would go red on some later PR instead of the one that
-    /// changed it. `AppDelegateAlertTests` pins the words in the unit suite,
-    /// which always runs.
-    ///
-    /// Catalogue copy since #752. These two button titles were the last
-    /// literal `UIAlertAction` titles in the app at that point: #664 swept the
-    /// ones that read as acknowledgements, and «Отмена»/«Настройки» are
-    /// neither, so its scan passed over them by design rather than by oversight.
+    /// PM-approved AlarmKit wording (#594) is shared with the list's denied
+    /// guard. AppDelegateAlertTests and CreateAlarmUITests pin the rendered copy.
     ///
     /// The guard's three refusals are transient, so each earns one retry (#805);
     /// the read-back drops at once, as its cause is unknown.
@@ -83,8 +74,8 @@ extension AppDelegate {
             message: message,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.settings"), style: .default) { _ in
+        alert.addAction(UIAlertAction(title: Localized.text("alarms.backend_guard.action.not_now"), style: .cancel))
+        alert.addAction(UIAlertAction(title: Localized.text("alarms.backend_guard.action.open_settings"), style: .default) { _ in
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }

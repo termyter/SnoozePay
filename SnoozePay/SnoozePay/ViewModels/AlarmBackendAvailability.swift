@@ -18,8 +18,7 @@ import os
 /// the app can still request with one tap).
 enum AlarmBackendAvailability: Equatable {
 
-    /// No probe has answered yet (app just launched). Claim nothing: no banner,
-    /// no gate.
+    /// No probe has answered yet. Creation stays blocked until authorization is confirmed.
     case unresolved
 
     /// AlarmKit is authorized — an alarm will ring.
@@ -38,8 +37,7 @@ enum AlarmBackendAvailability: Equatable {
 
     /// The probe answered with something we can't interpret (an authorization
     /// state this build doesn't know). We surface a "couldn't verify" banner
-    /// rather than pretending the alarms are armed — but we do NOT gate the
-    /// CTAs, because the failure is ours, not the user's.
+    /// rather than pretending the alarms are armed. Creation remains blocked.
     case indeterminate
 }
 
@@ -263,10 +261,7 @@ struct AlarmBackendWarning: Equatable {
     let message: String
     let actionTitle: String
 
-    /// `true` when the state is severe enough to gate the create / enable
-    /// CTAs. We gate on "this alarm will not ring" only — an indeterminate
-    /// probe is our failure, and blocking the user over it would be worse than
-    /// the bug.
+    /// Every non-authorized state blocks creating or enabling an alarm.
     let gatesAlarmCreation: Bool
 
     /// `true` when the app can still surface the OS permission dialog itself.
@@ -277,25 +272,25 @@ struct AlarmBackendWarning: Equatable {
 
     init?(availability: AlarmBackendAvailability) {
         switch availability {
-        case .unresolved, .available:
+        case .available:
             return nil
         case .notRequested:
-            title = Localized.text("alarms.backend_guard.title.wont_ring")
+            title = Localized.text("alarms.backend_guard.title.not_requested")
             message = Localized.text("alarms.backend_guard.message.not_requested")
             actionTitle = Localized.text("alarms.backend_guard.action.request")
             gatesAlarmCreation = true
             canRequestInApp = true
         case .unavailable:
-            title = Localized.text("alarms.backend_guard.title.wont_ring")
+            title = Localized.text("alarms.backend_guard.title.unavailable")
             message = Localized.text("alarms.backend_guard.message.unavailable")
             actionTitle = Localized.text("alarms.backend_guard.action.open_settings")
             gatesAlarmCreation = true
             canRequestInApp = false
-        case .indeterminate:
+        case .unresolved, .indeterminate:
             title = Localized.text("alarms.backend_guard.title.indeterminate")
             message = Localized.text("alarms.backend_guard.message.indeterminate")
             actionTitle = Localized.text("alarms.backend_guard.action.open_settings")
-            gatesAlarmCreation = false
+            gatesAlarmCreation = true
             canRequestInApp = false
         }
     }

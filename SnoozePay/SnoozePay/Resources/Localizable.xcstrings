@@ -415,6 +415,24 @@
         }
       }
     },
+    "alarms.backend_guard.action.not_now" : {
+      "comment" : "PM-approved AlarmKit permission gate copy (#594).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не сейчас"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Now"
+          }
+        }
+      }
+    },
     "alarms.backend_guard.action.open_settings" : {
       "comment" : "CTA on the AlarmKit requirement screen that deep-links into Settings, used by the states the app can no longer resolve on its own.",
       "extractionState" : "manual",
@@ -428,7 +446,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Открыть Настройки"
+            "value" : "Открыть настройки"
           }
         }
       }
@@ -440,49 +458,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Allow"
+            "value" : "Allow Alarms"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Разрешить"
-          }
-        }
-      }
-    },
-    "alarms.backend_guard.create_anyway" : {
-      "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user taps «+».",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Create Anyway"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Всё равно создать"
-          }
-        }
-      }
-    },
-    "alarms.backend_guard.enable_anyway" : {
-      "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user switches an alarm on.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turn On Anyway"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Всё равно включить"
+            "value" : "Разрешить будильники"
           }
         }
       }
@@ -512,13 +494,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The app hasn’t asked for permission to use alarms and notifications yet. Without it, the alarms you create won’t ring."
+            "value" : "Allow SnoozePay to use alarms. You need this permission to set an alarm."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Приложение ещё не спросило разрешение на будильники и уведомления. Без него созданные будильники не сработают."
+            "value" : "Разрешите SnoozePay использовать будильники. Без этого разрешения поставить будильник не получится"
           }
         }
       }
@@ -530,13 +512,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Permission for alarms and notifications is turned off. Turn it on in Settings — otherwise the alarms you create won’t ring."
+            "value" : "Enable alarm access for SnoozePay in iOS Settings. Without it, your alarms won’t ring."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Разрешение на будильники и уведомления выключено. Включите его в Настройках — иначе созданные будильники не сработают."
+            "value" : "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
           }
         }
       }
@@ -559,20 +541,38 @@
         }
       }
     },
-    "alarms.backend_guard.title.wont_ring" : {
-      "comment" : "Heading of the AlarmKit permission requirement screen / banner, shown both when the grant was never asked for and when it is switched off. One entry for both states because the sentence is the same promise being broken; the message below it is what differs.",
+    "alarms.backend_guard.title.not_requested" : {
+      "comment" : "PM-approved AlarmKit permission gate copy (#594).",
       "extractionState" : "manual",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alarms Won’t Ring"
-          }
-        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Будильники не зазвонят"
+            "value" : "Нужно разрешение на будильники"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm Permission Needed"
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.title.unavailable" : {
+      "comment" : "PM-approved AlarmKit permission gate copy (#594).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Доступ к будильникам выключен"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm Access Is Off"
           }
         }
       }
@@ -5356,13 +5356,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Without notification permission, alarms won’t ring. Turn on notifications in Settings."
+            "value" : "Enable alarm access for SnoozePay in iOS Settings. Without it, your alarms won’t ring."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Без разрешения на уведомления будильники не сработают. Включите их в Настройках."
+            "value" : "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
           }
         }
       }
@@ -5374,13 +5374,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Notifications Are Off"
+            "value" : "Alarm Access Is Off"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Уведомления выключены"
+            "value" : "Доступ к будильникам выключен"
           }
         }
       }

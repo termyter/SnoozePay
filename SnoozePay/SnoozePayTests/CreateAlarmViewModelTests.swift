@@ -12,7 +12,14 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         super.setUp()
         suiteName = "test.createAlarm.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
-        repo = AlarmRepository(defaults: testDefaults)
+        repo = AlarmRepository(defaults: testDefaults, scheduler: AlarmsListViewModelTests.StubScheduler())
+    }
+
+    private func grantedMonitor() -> AlarmBackendMonitor {
+        AlarmBackendMonitor(
+            probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+            notificationCenter: NotificationCenter()
+        )
     }
 
     override func tearDown() {
@@ -207,7 +214,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         // saved alarm so the UI toggle on CreateAlarmViewController stays in
         // sync with persisted state. Regression guard for the toggle handler
         // that previously crashed before the value could be saved.
-        let vm = CreateAlarmViewModel(repository: repo)
+        let vm = CreateAlarmViewModel(repository: repo, backendMonitor: grantedMonitor())
         XCTAssertFalse(vm.progressiveScale)
 
         vm.progressiveScale = true
@@ -219,7 +226,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         // on the SAME VM would create a second alarm instead of updating the
         // first. Re-open the persisted alarm in edit mode — that is the flow
         // the #51 toggle actually runs through on the edit screen.
-        let editVM = CreateAlarmViewModel(alarm: saved, repository: repo)
+        let editVM = CreateAlarmViewModel(alarm: saved, repository: repo, backendMonitor: grantedMonitor())
         XCTAssertTrue(editVM.progressiveScale, "Edit VM must pick up the persisted toggle state")
         editVM.progressiveScale = false
         editVM.save()
@@ -245,7 +252,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     // MARK: - Save
 
     func testSave_createsAlarm() {
-        let vm = CreateAlarmViewModel(repository: repo)
+        let vm = CreateAlarmViewModel(repository: repo, backendMonitor: grantedMonitor())
         vm.name = "Утренний"
         vm.penaltyAmount = 100
         vm.snoozeMinutes = 5
@@ -266,7 +273,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     }
 
     func testSave_emptyNameDefaultsToPlaceholder() {
-        let vm = CreateAlarmViewModel(repository: repo)
+        let vm = CreateAlarmViewModel(repository: repo, backendMonitor: grantedMonitor())
         vm.name = ""
         vm.save()
 
@@ -291,7 +298,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let original = Alarm(repeatDays: [0], penaltyAmount: 50)
         repo.save(original)
 
-        let vm = CreateAlarmViewModel(alarm: original, repository: repo)
+        let vm = CreateAlarmViewModel(alarm: original, repository: repo, backendMonitor: grantedMonitor())
         XCTAssertEqual(vm.name, "", "A default name is not something the user typed")
 
         vm.penaltyAmount = 120
@@ -307,7 +314,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         let original = Alarm(repeatDays: [0], name: "Спорт", penaltyAmount: 50)
         repo.save(original)
 
-        let vm = CreateAlarmViewModel(alarm: original, repository: repo)
+        let vm = CreateAlarmViewModel(alarm: original, repository: repo, backendMonitor: grantedMonitor())
         XCTAssertEqual(vm.name, "Спорт")
 
         vm.save()
@@ -324,7 +331,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertEqual(repo.fetchAllOrFail().count, 1)
 
         // Edit it
-        let vm = CreateAlarmViewModel(alarm: original, repository: repo)
+        let vm = CreateAlarmViewModel(alarm: original, repository: repo, backendMonitor: grantedMonitor())
         XCTAssertTrue(vm.isEditing)
         vm.name = "Изменённый"
         vm.penaltyAmount = 200

@@ -25,7 +25,14 @@ final class CreateAlarmRepeatValidityTests: XCTestCase {
         super.setUp()
         suiteName = "test.repeatValidity.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
-        repo = AlarmRepository(defaults: testDefaults)
+        repo = AlarmRepository(defaults: testDefaults, scheduler: AlarmsListViewModelTests.StubScheduler())
+    }
+
+    private func grantedMonitor() -> AlarmBackendMonitor {
+        AlarmBackendMonitor(
+            probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+            notificationCenter: NotificationCenter()
+        )
     }
 
     override func tearDown() {
@@ -49,7 +56,7 @@ final class CreateAlarmRepeatValidityTests: XCTestCase {
     /// The exact reproduction from the issue: open, touch nothing, tap «Готово».
     /// What lands in the store must be the mode the pill was showing.
     func testNewForm_savedWithoutAnyInteraction_persistsTheModeItDisplayed() {
-        let viewModel = CreateAlarmViewModel(repository: repo)
+        let viewModel = CreateAlarmViewModel(repository: repo, backendMonitor: grantedMonitor())
         let displayedMode = viewModel.repeatMode
 
         XCTAssertTrue(viewModel.save())
@@ -93,7 +100,7 @@ final class CreateAlarmRepeatValidityTests: XCTestCase {
     // MARK: - Weekly is saved as weekly
 
     func testWeeklySelection_withDays_roundTripsAsWeekly() {
-        let viewModel = CreateAlarmViewModel(repository: repo)
+        let viewModel = CreateAlarmViewModel(repository: repo, backendMonitor: grantedMonitor())
         viewModel.toggleDay(1)
         viewModel.toggleDay(3)
         viewModel.repeatMode = .weekly
@@ -118,7 +125,7 @@ final class CreateAlarmRepeatValidityTests: XCTestCase {
     }
 
     func testWeeklyWithoutDays_savesNothing() {
-        let viewModel = CreateAlarmViewModel(repository: repo)
+        let viewModel = CreateAlarmViewModel(repository: repo, backendMonitor: grantedMonitor())
         viewModel.repeatMode = .weekly
 
         XCTAssertFalse(viewModel.save(), "An unsavable form must report that nothing was saved")

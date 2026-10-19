@@ -463,22 +463,22 @@ final class AppDelegateAlertTests: XCTestCase {
     /// their words rather than by their keys.
     ///
     /// The title especially: `CreateAlarmUITests` matches this alert as
-    /// `app.alerts["Уведомления выключены"]`, and the E2E job only runs behind
+    /// `app.alerts["Доступ к будильникам выключен"]`, and the E2E job only runs behind
     /// the `ui-test` label — so without this, a reword would go red on some
     /// unrelated later PR rather than on the one that changed the words.
     func testNotificationsDisabledAlertCopyResolvesToTheShippedWords() {
         XCTAssertEqual(
             Localized.text("permissions.alert.notifications_disabled.title"),
-            "Уведомления выключены",
+            "Доступ к будильникам выключен",
             "CreateAlarmUITests matches this alert by these exact words"
         )
         XCTAssertEqual(
             Localized.text("permissions.alert.notifications_disabled.message"),
-            "Без разрешения на уведомления будильники не сработают. Включите их в Настройках."
+            "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
         )
-        XCTAssertEqual(Localized.text("common.button.settings"), "Настройки")
+        XCTAssertEqual(Localized.text("alarms.backend_guard.action.open_settings"), "Открыть настройки")
         XCTAssertEqual(
-            Localized.text("common.button.cancel"), "Отмена",
+            Localized.text("alarms.backend_guard.action.not_now"), "Не сейчас",
             "the alert's cancel action reuses the shared key rather than adding a second spelling"
         )
     }
@@ -572,12 +572,12 @@ final class AppDelegateAlertTests: XCTestCase {
             """
         )
         XCTAssertEqual(
-            alert?.title, "Уведомления выключены",
+            alert?.title, "Доступ к будильникам выключен",
             "CreateAlarmUITests matches this alert by these exact words"
         )
         XCTAssertEqual(alert?.actions.count, 2, "the guard must not have cost the alert its actions")
-        XCTAssertEqual(alert?.actions.first?.title, "Отмена")
-        XCTAssertEqual(alert?.actions.last?.title, "Настройки", "this is the action that opens Settings")
+        XCTAssertEqual(alert?.actions.first?.title, "Не сейчас")
+        XCTAssertEqual(alert?.actions.last?.title, "Открыть настройки", "this is the action that opens Settings")
     }
 
     /// The branch #789 exists for. A presenter off the window hierarchy is the
