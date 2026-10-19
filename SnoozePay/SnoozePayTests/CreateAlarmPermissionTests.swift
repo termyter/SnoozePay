@@ -112,7 +112,7 @@ final class CreateAlarmPermissionTests: XCTestCase {
     }
 
     func testDeniedPermissionStillAllowsEditingAnAlreadyDisabledAlarm() {
-        let original = Alarm(name: "Disabled", enabled: false)
+        let original = Alarm(repeatDays: [0, 2], name: "Disabled", enabled: false, repeatMode: .weekly)
         XCTAssertTrue(repository.save(original))
         let model = makeViewModel(probe: AlarmsListBackendGuardTests.StubProbe(result: .unavailable), alarm: original)
         model.name = "Renamed"

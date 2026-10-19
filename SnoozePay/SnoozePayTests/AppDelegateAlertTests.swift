@@ -552,7 +552,9 @@ final class AppDelegateAlertTests: XCTestCase {
             """
         )
         XCTAssertTrue(
-            shownLines.first?.message.contains("Без разрешения на уведомления будильники не сработают.") == true,
+            shownLines.first?.message.contains(
+                "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
+            ) == true,
             """
             the line must carry the warning the user read; a missing catalogue key \
             would put the key itself here instead. It reads «\(shownLines.first?.message ?? "")»
@@ -620,7 +622,9 @@ final class AppDelegateAlertTests: XCTestCase {
             """
         )
         XCTAssertTrue(
-            dropLines.first?.message.contains("Без разрешения на уведомления будильники не сработают.") == true,
+            dropLines.first?.message.contains(
+                "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
+            ) == true,
             """
             the unshown warning is the part worth recovering; it reads \
             «\(dropLines.first?.message ?? "")»
@@ -668,7 +672,9 @@ final class AppDelegateAlertTests: XCTestCase {
             "the line must name who refused; it reads «\(dropLines.first?.message ?? "")»"
         )
         XCTAssertTrue(
-            dropLines.first?.message.contains("Без разрешения на уведомления будильники не сработают.") == true,
+            dropLines.first?.message.contains(
+                "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
+            ) == true,
             """
             the unshown warning is the part worth recovering; it reads \
             «\(dropLines.first?.message ?? "")»
