@@ -46,8 +46,8 @@ final class RunLoopCensusTests: XCTestCase {
         XCTAssertEqual(stall.to, 9.45, accuracy: 0.001)
     }
 
-    /// A loop that never turns at all is the reading that names starvation
-    /// outright, and it is precisely the case with no gap *between* ticks to
+    /// A source with no delivered ticks still has a measurable gap, even
+    /// though it cannot identify the cause. There is no gap *between* ticks to
     /// measure. Reporting zero here would describe the healthiest possible wait.
     func testAWaitWithNoTicksReportsItsWholeLengthAsOneStall() {
         let census = RunLoopCensus(interval: 0.05, started: start)
@@ -89,23 +89,63 @@ final class RunLoopCensusTests: XCTestCase {
 
     /// The summary is the only part anyone will actually read, so it has to
     /// carry both numbers the diagnosis turns on — how many polls survived out
-    /// of how many were due, and the longest stall — plus the two readings they
-    /// choose between.
-    func testSummaryCarriesTheRatioTheStallAndBothReadings() {
+    /// of how many were due, and the longest delivery gap — alongside the
+    /// limits of inference from one source.
+    func testSummaryCarriesDeliveryNumbersWithoutClaimingWholeLoopStarvation() {
         var census = RunLoopCensus(interval: 0.05, started: start)
         census.record(at: start.addingTimeInterval(0.05))
 
         let summary = census.summary(now: start.addingTimeInterval(10))
 
         XCTAssertTrue(summary.contains("1 of ~200"), "the ratio must be in the message, got: \(summary)")
-        XCTAssertTrue(summary.contains("longest stall 9.95 s"), "the stall must be named, got: \(summary)")
         XCTAssertTrue(
-            summary.contains("run loop was not turning"),
-            "the starvation reading must be spelled out, got: \(summary)"
+            summary.contains("longest delivery gap 9.95 s"),
+            "the source delivery gap must be named, got: \(summary)"
         )
         XCTAssertTrue(
-            summary.contains("the presentation is what"),
-            "the other reading must be spelled out too, got: \(summary)"
+            summary.contains("not proof that the whole run loop"),
+            "a sampled source must not become a whole-loop conclusion, got: \(summary)"
+        )
+        XCTAssertTrue(
+            summary.contains("Compare common-mode, GCD, and MainActor"),
+            "the independent sources needed for diagnosis must be named, got: \(summary)"
         )
     }
+
+    // MARK: - Independent background evidence (#728)
+
+    func testBackgroundHeartbeatKeepsBothSidesOfTheDeadlineButNotBeyondItsHardEnd() {
+        let heartbeat = BackgroundWaitHeartbeat(started: start, timeout: 10)
+        XCTAssertFalse(heartbeat.record(at: start.addingTimeInterval(-0.01)))
+        XCTAssertTrue(heartbeat.record(at: start.addingTimeInterval(0.05)))
+        XCTAssertTrue(heartbeat.record(at: start.addingTimeInterval(10)))
+        XCTAssertTrue(heartbeat.record(at: start.addingTimeInterval(12)))
+        XCTAssertFalse(heartbeat.record(at: start.addingTimeInterval(15)))
+
+        XCTAssertEqual(heartbeat.snapshot().ticks, [0.05, 10, 12].map { start.addingTimeInterval($0) })
+        XCTAssertEqual(heartbeat.deadline, start.addingTimeInterval(10))
+        XCTAssertEqual(heartbeat.end, start.addingTimeInterval(15))
+    }
+
+    func testBackgroundHeartbeatSerializesConcurrentUpdates() {
+        let started = start
+        let heartbeat = BackgroundWaitHeartbeat(started: started, timeout: 10)
+        DispatchQueue.concurrentPerform(iterations: 256) { index in
+            heartbeat.record(at: started.addingTimeInterval(Double(index) / 100))
+        }
+        XCTAssertEqual(heartbeat.snapshot().ticks,
+                       (0..<256).map { started.addingTimeInterval(Double($0) / 100) })
+    }
+
+    func testBackgroundHeartbeatIsCappedAndCannotRestartAfterCancellation() {
+        let heartbeat = BackgroundWaitHeartbeat(started: start, timeout: 10)
+        for _ in 0..<520 { heartbeat.record(at: start.addingTimeInterval(0.05)) }
+        XCTAssertEqual(heartbeat.snapshot().ticks.count, 512)
+        heartbeat.cancel()
+        heartbeat.start(interval: 0.05)
+        XCTAssertTrue(heartbeat.snapshot().stopped)
+        XCTAssertFalse(heartbeat.record(at: start.addingTimeInterval(1)))
+        XCTAssertEqual(heartbeat.snapshot().ticks.count, 512)
+    }
+
 }

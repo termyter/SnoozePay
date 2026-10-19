@@ -1,30 +1,15 @@
 import Foundation
 
-/// A record of when a fixed-interval poll *actually* got to run during a wait.
+/// Timestamp arithmetic for one sampled source's delivery (#728).
 ///
-/// Why this exists (#728). `UITourConfirmDeleteRouteTests` times out waiting for
-/// a route to present, and two very different failures produce that one symptom:
+/// Missing Timer fires measure a source-delivery gap, not the cause: another
+/// run-loop mode can suppress a default-mode Timer while GCD/UIKit still run.
+/// `UIWaitProgress` supplies independent modes/queue/actor observations.
+/// Timer coalescing can omit missed fires; no claim about whole-loop progress
+/// should be inferred from this source's tick count alone.
 ///
-///   1. the run loop was starved, so the wait's own poll — and the route's
-///      `asyncAfter` beat with it — never got a turn. Nothing could have been
-///      observed, whatever the route did;
-///   2. the loop turned normally throughout and the route still never presented.
-///
-/// The CI log of the red attempt cannot tell them apart, because a wait that
-/// ends empty looks identical either way. A poll that leaves a trail can.
-///
-/// The premise — stated as a premise, because this target does not test
-/// Foundation and a test that did would be slow and flaky for no gain — is that
-/// a repeating `Timer` coalesces rather than queues up the fires it missed. On
-/// that premise a stalled loop shows as ticks that are simply absent, and the
-/// gap between the surviving ones measures the stall directly. If it ever turned
-/// out that missed fires are replayed instead, this would under-report stalls;
-/// it would not invent one that did not happen, and the elapsed-versus-budget
-/// figure alongside it is independent of the premise either way.
-///
-/// Deliberately a value type with injected timestamps: every number it reports
-/// is arithmetic over `Date`s handed to it, so its own tests are exact instead
-/// of racing the machine they run on.
+/// Injected timestamps keep arithmetic tests deterministic, independent of
+/// the runner's scheduling and mode selection.
 struct RunLoopCensus {
 
     /// The interval the poll was scheduled at, kept so the summary can say how
@@ -56,11 +41,11 @@ struct RunLoopCensus {
         return max(0, Int((now.timeIntervalSince(started) / interval).rounded()))
     }
 
-    /// The longest stretch the loop went without turning, as offsets from
+    /// The longest observed source-delivery gap, as offsets from
     /// `started`.
     ///
     /// The stretch before the first tick and the one after the last count as
-    /// stalls too. That is not tidiness: a loop that dies right after the wait
+    /// delivery gaps too. That is not tidiness: a loop that dies right after the wait
     /// starts and one that dies just before it ends are two shapes this failure
     /// could take, and measuring only the gaps *between* ticks reports both as
     /// "no stall".
@@ -81,28 +66,81 @@ struct RunLoopCensus {
 
     /// The sentence a timed-out wait should print.
     ///
-    /// It states both readings rather than picking one, for the same reason
-    /// `MainQueueDrainOutcome.diagnosis` does: the threshold between "starved"
-    /// and "merely nothing to find" is a judgement about a specific run, and
-    /// baking a guess into the message would hand the next reader a verdict
-    /// where the numbers are what they need.
+    /// It names what these numbers cannot prove; a single source cannot
+    /// distinguish main-thread blockage from run-loop mode suppression.
     func summary(now: Date = Date()) -> String {
         let elapsed = now.timeIntervalSince(started)
         let stall = longestStall(now: now)
         return """
             run loop census: \(ticks.count) of ~\(expectedTicks(now: now)) expected \
-            \(seconds(interval)) polls over \(seconds(elapsed)), longest stall \
+            \(seconds(interval)) polls over \(seconds(elapsed)), longest delivery gap \
             \(seconds(stall.to - stall.from)) (+\(seconds(stall.from)) → +\(seconds(stall.to))). \
-            Far fewer polls than expected, or one stall covering most of the wait, means the \
-            run loop was not turning: the route's own beat could not have been delivered \
-            either, and a drain in setUp does not reach a backlog that accrues inside the \
-            test (#618, #728). Polls arriving on schedule mean the opposite — the loop \
-            turned the whole time, the beat was delivered, and the presentation is what \
-            never happened.
+            These are delivery gaps for the sampled source, not proof that the whole run loop \
+            or main queue stopped. A default-mode Timer may be suppressed by another run-loop mode. \
+            Compare common-mode, GCD, and MainActor evidence before naming a mechanism; even \
+            regular ticks do not prove the presentation callbacks ran.
             """
     }
 
     private func seconds(_ value: TimeInterval) -> String {
         return String(format: "%.2f s", value)
     }
+}
+
+/// Only timestamp state crosses threads; every mutable field is protected by
+/// `lock`. No UIKit, actor hop, logging, or thread sampling runs on this queue.
+nonisolated final class BackgroundWaitHeartbeat: @unchecked Sendable {
+    let started: Date
+    let deadline: Date
+    let end: Date
+    private let lock = NSLock()
+    private var ticks: [Date] = []
+    private var stopped = false
+    private var timer: DispatchSourceTimer?
+
+    init(started: Date, timeout: TimeInterval, diagnosticBudget: TimeInterval = 5) {
+        self.started = started
+        deadline = started.addingTimeInterval(timeout)
+        end = deadline.addingTimeInterval(diagnosticBudget)
+    }
+
+    func start(interval: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped, timer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "UIWaitHeartbeat", qos: .utility))
+        timer.schedule(deadline: .now() + interval, repeating: interval)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            if !self.record(at: Date()) { self.cancel() }
+        }
+        self.timer = timer
+        timer.resume()
+    }
+
+    @discardableResult
+    func record(at moment: Date) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped, moment >= started, moment < end, ticks.count < 512 else { return false }
+        ticks.append(moment)
+        return true
+    }
+
+    func snapshot() -> (ticks: [Date], stopped: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (ticks.sorted(), stopped)
+    }
+
+    func cancel() {
+        lock.lock()
+        stopped = true
+        let timer = self.timer
+        self.timer = nil
+        lock.unlock()
+        timer?.cancel()
+    }
+
+    deinit { timer?.cancel() }
 }
