@@ -117,7 +117,7 @@ enum UITourRoutes {
         },
         "firing-nobalance": { window in
             UITourLauncher.forceBalance(to: 0)
-            window.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm())
+            window.rootViewController = makeNoBalanceFiringController()
         },
         "firing-topup": { window in
             let alarm = firingSampleAlarm()
@@ -288,6 +288,31 @@ enum UITourRoutes {
             sheet.preferredCornerRadius = AppRadius.xl
         }
         return warning
+    }
+
+    /// Only the explicit empty-catalog tour may credit a demo top-up, using the VM's same wallet.
+    static func makeNoBalanceFiringController(
+        arguments: [String] = ProcessInfo.processInfo.arguments, balance: BalanceService = .shared,
+        controllerBuilder: ((AlarmFiringViewModel) -> AlarmFiringViewController)? = nil
+    ) -> AlarmFiringViewController {
+        let model = AlarmFiringViewModel(alarm: firingSampleAlarm(), balanceService: balance)
+        let firing = controllerBuilder?(model) ?? AlarmFiringViewController(viewModel: model)
+        guard StoreKitService.isCatalogForcedEmpty(arguments: arguments) else { return firing }
+        let productID = AlarmFiringViewController.noBalanceProductID
+        let offer = TopUpOffer(productID: productID, price: 499, currencyCode: "RUB",
+                               displayPrice: MoneyFormatter.string(Double(499), currency: .rub))
+        firing.noBalancePurchase = AlarmFiringNoBalancePurchase(
+            controller: firing, dispatch: { [weak firing] _ in
+                let credited = balance.topUp(amount: 499)
+                firing?.noBalancePurchase.finish()
+                if credited {
+                    firing?.updateUI()
+                } else {
+                    firing?.presentNoBalancePurchaseFailureAlert(message: StoreKitService.ledgerLockedFailureMessage)
+                }
+            }, offerProvider: { $0 == productID ? offer : nil }
+        )
+        return firing
     }
 
     // MARK: - Sample data
