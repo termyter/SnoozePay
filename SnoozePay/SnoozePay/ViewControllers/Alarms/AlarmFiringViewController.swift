@@ -437,7 +437,7 @@ class AlarmFiringViewController: UIViewController {
                 minutes: viewModel.alarm.snoozeMinutes,
                 hint: snoozeHintText()
             )
-            snooze.isEnabled = viewModel.canSnooze
+            snooze.isEnabled = viewModel.canSnooze && !viewModel.isSnoozeScheduling
             // The CTA stays GOLD on every progressive step (#288). Escalation
             // is carried by the background tone crossfade + the indicator pill,
             // never by reddening the button — so we no longer re-tone it here.
