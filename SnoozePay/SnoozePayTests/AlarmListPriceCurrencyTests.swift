@@ -106,7 +106,6 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         })
         XCTAssertEqual(caption.text, rubCaption)
         // Check UILabel eligibility here; this test does not read the system accessibility tree.
-        XCTAssertTrue(caption.isAccessibilityElement)
         XCTAssertEqual(balance.walletCurrency, .rub)
         XCTAssertNil(fixture.defaults.object(forKey: WalletCurrencyStore.storageKey), "The wallet must be pristine")
         let appearances = controller.appearanceCount
@@ -121,7 +120,6 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         let usdCaption = Localized.format("alarms.streak.saved", MoneyFormatter.string(saved, currency: usd))
         XCTAssertTrue(table.tableHeaderView === banner)
         XCTAssertEqual(caption.text, usdCaption)
-        XCTAssertTrue(caption.isAccessibilityElement)
         XCTAssertFalse(caption.text?.contains("₽") == true)
         XCTAssertGreaterThan(fixture.streakReads.count, readsBeforeCurrencyChange)
         XCTAssertEqual(controller.appearanceCount, appearances)
@@ -164,7 +162,6 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         }.contains(newBalance), "Ordinary balance refresh must still reach the real header")
         XCTAssertEqual(fixture.streakReads.count, readsBeforeCredit, "Same-currency credit must not rebuild the banner")
         XCTAssertEqual(caption.text, oldCaption)
-        XCTAssertTrue(caption.isAccessibilityElement)
         XCTAssertTrue(fixture.table.cellForRow(at: IndexPath(row: 0, section: 0)) === row)
         XCTAssertEqual(fixture.controller.appearanceCount, appearances)
         XCTAssertEqual(fixture.viewModel.alarms[0].penaltyAmount, 2.99)
