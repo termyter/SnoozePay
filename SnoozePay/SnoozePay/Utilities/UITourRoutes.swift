@@ -300,7 +300,7 @@ enum UITourRoutes {
         guard StoreKitService.isCatalogForcedEmpty(arguments: arguments) else { return firing }
         let productID = AlarmFiringViewController.noBalanceProductID
         let offer = TopUpOffer(productID: productID, price: 499, currencyCode: "RUB",
-                               displayPrice: MoneyFormatter.string(499, currency: .rub))
+                               displayPrice: MoneyFormatter.string(Double(499), currency: .rub))
         firing.noBalancePurchase = AlarmFiringNoBalancePurchase(
             controller: firing, dispatch: { [weak firing] _ in
                 let credited = balance.topUp(amount: 499)
