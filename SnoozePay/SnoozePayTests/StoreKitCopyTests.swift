@@ -72,8 +72,8 @@ final class StoreKitCopyTests: XCTestCase {
         "deposit.notification.failed.title": "Покупка пополнения",
         "deposit.restore.success.title": "Запрос отправлен",
         "deposit.restore.success.message":
-            "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение "
-            + "нескольких секунд.",
+            "Если есть незавершённая покупка, баланс обновится после её подтверждения. "
+            + "Завершённые пополнения не восстанавливаются",
         "deposit.restore.error.title": "Не удалось восстановить покупки",
         "deposit.restore.error.network": "Проверьте подключение к интернету и попробуйте снова.",
         "deposit.restore.error.generic": "%@\n\nЕсли проблема повторяется, свяжитесь с поддержкой.",

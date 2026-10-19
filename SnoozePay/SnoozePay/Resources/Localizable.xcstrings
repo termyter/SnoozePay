@@ -3806,13 +3806,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "If any purchase is still pending, your balance will update within a few seconds."
+            "value" : "If a purchase is still pending, your balance will update once it is confirmed. Completed top-ups cannot be restored."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение нескольких секунд."
+            "value" : "Если есть незавершённая покупка, баланс обновится после её подтверждения. Завершённые пополнения не восстанавливаются"
           }
         }
       }
