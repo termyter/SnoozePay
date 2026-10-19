@@ -97,19 +97,21 @@ extension AlarmFiringViewController {
             $0.removeFromSuperview()
         }
         let accent = firingPalette?.accent ?? .white
+        let currency = viewModel.walletCurrency
         for step in viewModel.ladderSteps {
-            row.addArrangedSubview(makeLadderColumn(step: step, accent: accent))
+            row.addArrangedSubview(makeLadderColumn(step: step, accent: accent, currency: currency))
         }
     }
 
     private func makeLadderColumn(
         step: AlarmFiringViewModel.LadderStep,
-        accent: UIColor
+        accent: UIColor,
+        currency: Currency
     ) -> UIStackView {
         let colours = ladderColours(for: step.state, accent: accent)
 
         let amount = UILabel()
-        amount.text = Self.roundedPriceText(step.amount, withCurrency: false) ?? "—"
+        amount.text = Self.quotedPriceText(step.amount, currency: currency) ?? "—"
         amount.font = AppFonts.mono(.bold, 11)
         amount.textColor = colours.label
         amount.textAlignment = .center
