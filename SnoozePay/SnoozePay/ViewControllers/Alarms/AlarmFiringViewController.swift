@@ -505,14 +505,7 @@ class AlarmFiringViewController: UIViewController {
     /// Quote the actual next penalty, retaining its currency and fractional units.
     /// Huge finite integers keep full digits when Decimal cannot represent them.
     static func quotedPriceText(_ amount: Double, currency: Currency) -> String? {
-        guard amount.isFinite, amount >= 0 else { return nil }
-        let formatted = MoneyFormatter.string(amount, currency: currency)
-        if amount > 0, formatted == MoneyFormatter.string(0.0, currency: currency) { return nil }
-        if formatted != "—" { return formatted }
-        guard amount >= 1, amount.rounded(.towardZero) == amount,
-              let digits = roundedPriceText(amount, withCurrency: false) else { return nil }
-        let unit = currency == .rub ? "₽" : currency.code
-        return digits + MoneyFormatter.narrowSpace + unit
+        MoneyFormatter.quotedString(amount, currency: currency)
     }
 
     /// Display-only rounding, with no Int narrowing or Decimal(Double) overflow.

@@ -154,11 +154,11 @@ final class ProgressiveScaleCell: UITableViewCell {
 
     /// - Parameters:
     ///   - isOn: Whether progressive mode is armed.
-    ///   - chain: The four doubling steps (base, ×2, ×4, ×8) in roubles.
+    ///   - chain: Raw wallet-unit amounts (base, ×2, ×4, ×8).
     ///   - accessibilityChain: Spoken form of the chain («1-е: 50 ₽ → …»).
-    func configure(isOn: Bool, chain: [Int], accessibilityChain: String) {
+    func configure(isOn: Bool, chain: [Double], currency: Currency, accessibilityChain: String) {
         toggle.isOn = isOn
-        chainLabel.attributedText = Self.chainText(for: chain)
+        chainLabel.attributedText = Self.chainText(for: chain, currency: currency)
         chainLabel.accessibilityLabel = accessibilityChain
         applyArmedAppearance(isOn)
     }
@@ -180,9 +180,9 @@ final class ProgressiveScaleCell: UITableViewCell {
 
     /// `50 → 100 → 200 → 400 ₽` per `SPMore2.jsx`: the first two steps are
     /// warn-tinted (still affordable), the back half pain-tinted, and the
-    /// final step renders bold at 16pt with the rouble glyph via
+    /// final step renders bold at 16pt with the wallet currency via
     /// `MoneyFormatter` so the narrow-space rule holds.
-    private static func chainText(for chain: [Int]) -> NSAttributedString {
+    private static func chainText(for chain: [Double], currency: Currency) -> NSAttributedString {
         guard chain.count == 4 else { return NSAttributedString() }
         let stepFont = AppFonts.mono(.semibold, 14)
         let arrowAttributes: [NSAttributedString.Key: Any] = [
@@ -196,13 +196,13 @@ final class ProgressiveScaleCell: UITableViewCell {
         let result = NSMutableAttributedString()
         for (index, value) in chain.prefix(3).enumerated() {
             result.append(NSAttributedString(
-                string: MoneyFormatter.digits(value),
+                string: MoneyFormatter.quotedDigits(value, currency: currency) ?? "—",
                 attributes: [.font: stepFont, .foregroundColor: stepColors[index]]
             ))
             result.append(NSAttributedString(string: " → ", attributes: arrowAttributes))
         }
-        result.append(MoneyFormatter.attributed(
-            Decimal(chain[3]),
+        result.append(MoneyFormatter.quotedAttributed(
+            chain[3], currency: currency,
             digitsFont: AppFonts.mono(.bold, 16),
             color: AppColors.pain400
         ))

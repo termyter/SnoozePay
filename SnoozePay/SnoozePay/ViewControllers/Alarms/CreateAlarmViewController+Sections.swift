@@ -158,10 +158,10 @@ extension CreateAlarmViewController {
     ) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ProgressiveScaleCell.reuseID, for: indexPath)
         if let cell = cell as? ProgressiveScaleCell {
+            let currency = viewModel.walletCurrency
             cell.configure(
-                isOn: viewModel.progressiveScale,
-                chain: viewModel.progressiveChain,
-                accessibilityChain: viewModel.progressiveScalePreview
+                isOn: viewModel.progressiveScale, chain: viewModel.progressiveChain, currency: currency,
+                accessibilityChain: viewModel.progressiveScalePreview(currency: currency)
             )
             cell.onToggled = { [weak self] isOn in self?.setProgressiveScale(isOn) }
         }

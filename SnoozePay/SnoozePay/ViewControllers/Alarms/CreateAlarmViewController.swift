@@ -120,6 +120,7 @@ final class CreateAlarmViewController: UIViewController {
         for case let cell as PenaltyCell in tableView.visibleCells {
             cell.updateCurrency(viewModel.walletCurrency)
         }
+        refreshProgressivePreview()
     }
 
     // NOTE: the create-mode auto-focus on «Название» from #143 was intentionally
@@ -366,6 +367,7 @@ final class CreateAlarmViewController: UIViewController {
     /// asks the table to re-measure the now taller/shorter card.
     func setProgressiveScale(_ isOn: Bool) {
         viewModel.progressiveScale = isOn
+        refreshProgressivePreview()
         guard view.window != nil else { return }
         // Animate the self-sizing height change without reloading the cell —
         // a reload would tear down the SPSwitch mid-gesture.
@@ -376,14 +378,16 @@ final class CreateAlarmViewController: UIViewController {
     /// (#182).
     func setPenaltyAmount(_ amount: Double) {
         viewModel.penaltyAmount = amount
-        // Refresh the progressive card's 50 → 100 → 200 → 400 ₽ chain so it
-        // tracks the new base price live.
+        refreshProgressivePreview()
+    }
+
+    private func refreshProgressivePreview() {
         let progressiveIndexPath = IndexPath(row: 0, section: Section.progressiveScale.rawValue)
         if let cell = tableView.cellForRow(at: progressiveIndexPath) as? ProgressiveScaleCell {
+            let currency = viewModel.walletCurrency
             cell.configure(
-                isOn: viewModel.progressiveScale,
-                chain: viewModel.progressiveChain,
-                accessibilityChain: viewModel.progressiveScalePreview
+                isOn: viewModel.progressiveScale, chain: viewModel.progressiveChain, currency: currency,
+                accessibilityChain: viewModel.progressiveScalePreview(currency: currency)
             )
         }
     }

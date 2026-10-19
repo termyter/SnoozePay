@@ -33,7 +33,7 @@ final class ProgressiveScaleCellLayoutTests: XCTestCase {
         // Armed: the chain row is only in the hierarchy while the mode is on,
         // and it is the widest row — laying out without it would measure a
         // column the user never sees.
-        cell.configure(isOn: true, chain: [50, 100, 200, 400], accessibilityChain: "")
+        cell.configure(isOn: true, chain: [50, 100, 200, 400], currency: .rub, accessibilityChain: "")
 
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: cardWidth, height: 400))
         window.isHidden = false
