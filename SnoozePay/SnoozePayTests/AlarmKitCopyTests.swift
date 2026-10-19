@@ -113,9 +113,21 @@ final class AlarmKitCopyTests: XCTestCase {
     ) {
         XCTAssertEqual(title.key, key, "AppIntents must export the symbolic catalogue key")
         XCTAssertEqual(title.table, "Localizable")
-        guard case .main = title.bundle else {
-            XCTFail("AppIntents requires a main-bundle title resource: \(key)")
-            return
+        // `bundle` is a computed description, not the initializer's stored
+        // enum case. A main-bundle resource can be returned as its file URL.
+        // Check the destination, retaining rejection of any foreign bundle.
+        switch title.bundle {
+        case .main:
+            break
+        case .atURL(let url):
+            XCTAssertEqual(
+                url.standardizedFileURL, Bundle.main.bundleURL.standardizedFileURL,
+                "AppIntents requires a main-bundle title resource: \(key)"
+            )
+        case .forClass(let type):
+            XCTFail("Unexpected class-bundle title resource for \(key): \(type)")
+        @unknown default:
+            XCTFail("Unknown title resource bundle for \(key): \(title.bundle)")
         }
         for (identifier, expected) in [("ru_RU", russian), ("en_US", english)] {
             // Mutate a copy: resolving Siri's locale must not pin the static
