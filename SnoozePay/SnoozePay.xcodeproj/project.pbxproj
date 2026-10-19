@@ -16,6 +16,7 @@
 		A3400000000000000000B004 /* OnboardingFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F004 /* OnboardingFlowUITests.swift */; };
 		A3400000000000000000B005 /* ConfirmDeleteRouteUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3400000000000000000F005 /* ConfirmDeleteRouteUITests.swift */; };
 		A7D767A1C75F0B3D99B35C0E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4AED0CBCB2279D458B93ABDC /* Foundation.framework */; };
+		1296563455E94B8EAC53D539 /* AppLanguageUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C97C3CDC604B4ADE8EDB5FD7 /* AppLanguageUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +49,7 @@
 		AA0001012F5B000000000002 /* SnoozePayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D9F3B13686755D92D101DDAA /* SnoozePayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnoozePayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EFDCCED99F5E96ADD3426269 /* FiringFlowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FiringFlowUITests.swift; sourceTree = "<group>"; };
+		C97C3CDC604B4ADE8EDB5FD7 /* AppLanguageUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLanguageUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -150,6 +152,7 @@
 				A9300000000000000000F001 /* VolumeFadeInUITests.swift */,
 				A3400000000000000000F004 /* OnboardingFlowUITests.swift */,
 				A3400000000000000000F005 /* ConfirmDeleteRouteUITests.swift */,
+				C97C3CDC604B4ADE8EDB5FD7 /* AppLanguageUITests.swift */,
 			);
 			path = SnoozePayUITests;
 			sourceTree = SOURCE_ROOT;
@@ -310,6 +313,7 @@
 				A9300000000000000000B001 /* VolumeFadeInUITests.swift in Sources */,
 				A3400000000000000000B004 /* OnboardingFlowUITests.swift in Sources */,
 				A3400000000000000000B005 /* ConfirmDeleteRouteUITests.swift in Sources */,
+				1296563455E94B8EAC53D539 /* AppLanguageUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

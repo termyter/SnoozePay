@@ -130,10 +130,12 @@ final class PluralTests: XCTestCase {
 
     // MARK: - Display locale
 
-    /// The seam #569 needs: one constant, not twelve `Locale(identifier:)`
-    /// literals. Flipping it to the device locale must stay a one-line change.
-    func testDisplayLocaleIsRussianForNow() {
-        XCTAssertEqual(AppLocale.display.identifier, "ru_RU")
-        XCTAssertEqual(AppLocale.display.language.languageCode?.identifier, "ru")
+    /// Formatting follows the user, while text follows the supported app
+    /// language. The scheme pins RU scenarios; English overrides have separate
+    /// compiled-resource and process-launch regressions.
+    func testDisplayLocaleTracksTheUsersRegionalPreferences() {
+        XCTAssertEqual(AppLocale.display, Locale.autoupdatingCurrent)
+        XCTAssertEqual(AppLocale.display.identifier, Locale.autoupdatingCurrent.identifier)
+        XCTAssertEqual(AppLocale.text.language.languageCode?.identifier, "ru")
     }
 }
