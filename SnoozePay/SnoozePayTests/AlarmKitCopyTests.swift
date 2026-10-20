@@ -1,57 +1,16 @@
 import XCTest
 @testable import SnoozePay
 
-/// Pins the three strings the app hands to AlarmKit and AppIntents for a
-/// ringing alarm: the text of the alert's secondary button, and the names of
-/// the two intents wired to the alert's actions (which Shortcuts and Siri
-/// show). Whether the system also paints the stop intent's name on the alert
-/// is not established here — see `AlarmKitCopy`.
+/// Guards the three strings handed to AlarmKit and AppIntents: the priced
+/// secondary-button label, and the two intent names shown in Shortcuts/Siri.
+/// Intent metadata uses static catalogue keys in the main bundle; each actual
+/// title resource is rendered in RU and EN so a missing key cannot pass by
+/// echoing its spelling. The priced button is resolved at schedule time using
+/// the app's language and is a separate surface from the intent's name.
 ///
-/// All three were literals in `AlarmKitIntents` / `AlarmKitScheduler`, and they
-/// were invisible to every other test here for a mechanical reason.
-/// `AlarmButton(text:)` and `AppIntent.title` take a `LocalizedStringResource`,
-/// and a resource built from a string literal uses that literal as its **lookup
-/// key**; the lookup misses and hands the literal straight back. So the words
-/// rendered correctly while living entirely in Swift — which is exactly the
-/// state that ships Russian copy to an English user with nothing going red.
-///
-/// # One of the three moved; two are pinned instead
-///
-/// The secondary button is an ordinary `AlarmButton`, so it now reads
-/// `alarm_kit.action.snooze.priced` at runtime. The two intent titles cannot:
-/// AppIntents exports them at build time and `appintentsmetadataprocessor`
-/// refuses both a runtime-computed value and any bundle but the main one, which
-/// is the one bundle this app's copy is unreachable through while
-/// `knownRegions` is `(en, Base)` (#596). `AlarmKitCopy` records the four
-/// spellings that were tried and what the processor said to each; #727 tracks
-/// the rest.
-///
-/// So for those two the assertion is weaker and deliberately so: the literal is
-/// still what renders, and what is checked is that it has not drifted from the
-/// catalogue entry holding the same words. That does not localize the button —
-/// it stops the two copies of it from diverging without anyone noticing.
-///
-/// Layers, so a red run names which one broke:
-///
-///  1. **Catalogue** — the three keys exist and do not resolve to themselves.
-///     `Localized.text` echoes an absent key, so a typo'd key would otherwise
-///     ship as `alarm_kit.action.stop`.
-///  2. **Copy** — the words are byte-for-byte the literals that stood on
-///     `origin/main` before this change, transcribed here rather than read back
-///     out of the file under test. A list derived from the catalogue would
-///     agree with any mistake in it.
-///  3. **Call site** — `AlarmKitCopy` is invoked and the resource it hands to
-///     AlarmKit is rendered back to a `String`, and the two intent titles are
-///     rendered the same way and compared with the catalogue.
-///
-/// # What no assertion here reaches
-///
-/// Where any of it is shown. That needs a device with an armed alarm, and this
-/// project's tests run on a CI simulator. The layer-3 assertions render each
-/// resource through the same `Bundle.main` path the system uses, so the claim
-/// they support is "the resource carries these words", not "this surface
-/// shows them" — least of all for the stop intent, whose title may or may not
-/// reach the alert at all (see `AlarmKitCopy`).
+/// These tests cover resources and copy, not system presentation. An armed
+/// alarm and physical Shortcuts/Siri checks remain #727 acceptance; changing
+/// an intent title does not configure the system-owned stop-button label.
 final class AlarmKitCopyTests: XCTestCase {
 
     /// Transcribed from the literals as they stood on `origin/main` —
@@ -129,35 +88,74 @@ final class AlarmKitCopyTests: XCTestCase {
         )
     }
 
-    // MARK: - Layer 3': the two literals AppIntents will not let us move
+    // MARK: - Layer 4: exported intent resources in both languages
 
-    /// `StopAlarmIntent.title` and `SnoozeAlarmIntent.title` are still Swift
-    /// literals, because `appintentsmetadataprocessor` exports intent titles at
-    /// build time and refuses every bundle but the main one — see
-    /// `AlarmKitCopy` for the four spellings and its answer to each, and #727.
-    ///
-    /// This is the strongest assertion available under that constraint: the
-    /// catalogue holds the words, and if someone translates or rewords an
-    /// entry, this goes red and says the literal did not follow. It does
-    /// **not** claim either intent reads the catalogue — neither does.
-    func testIntentTitleLiteralsStillAgreeWithTheirCatalogueEntries() throws {
+    func testIntentTitlesResolveMainBundleCatalogueInRussianAndEnglish() throws {
         #if canImport(AppIntents)
         guard #available(iOS 26.0, *) else {
             throw XCTSkip("The AlarmKit intents are gated to iOS 26.")
         }
-        XCTAssertEqual(
-            String(localized: StopAlarmIntent.title),
-            Localized.text(AlarmKitCopy.stopKey),
-            "the stop intent's name drifted from alarm_kit.action.stop"
+        assertIntentTitle(
+            StopAlarmIntent.title, key: "alarm_kit.action.stop",
+            russian: "Выключить будильник", english: "Turn Off Alarm"
         )
-        XCTAssertEqual(
-            String(localized: SnoozeAlarmIntent.title),
-            Localized.text(AlarmKitCopy.snoozeKey),
-            "the snooze intent's name drifted from alarm_kit.action.snooze"
+        assertIntentTitle(
+            SnoozeAlarmIntent.title, key: "alarm_kit.action.snooze",
+            russian: "Поспать ещё", english: "Snooze"
         )
         #else
         throw XCTSkip("AppIntents is unavailable in this build.")
         #endif
+    }
+
+    private func assertIntentTitle(
+        _ title: LocalizedStringResource, key: String, russian: String, english: String
+    ) {
+        XCTAssertEqual(title.key, key, "AppIntents must export the symbolic catalogue key")
+        XCTAssertEqual(title.table, "Localizable")
+        // `bundle` is a computed description, not the initializer's stored
+        // enum case. A main-bundle resource can be returned as its file URL.
+        // Check the destination, retaining rejection of any foreign bundle.
+        switch title.bundle {
+        case .main:
+            break
+        case .atURL(let url):
+            XCTAssertEqual(
+                url.standardizedFileURL, Bundle.main.bundleURL.standardizedFileURL,
+                "AppIntents requires a main-bundle title resource: \(key)"
+            )
+        case .forClass(let type):
+            XCTFail("Unexpected class-bundle title resource for \(key): \(type)")
+        @unknown default:
+            XCTFail("Unknown title resource bundle for \(key): \(title.bundle)")
+        }
+        for (identifier, expected) in [("ru_RU", russian), ("en_US", english)] {
+            // Mutate a copy: resolving Siri's locale must not pin the static
+            // metadata to the app's language or modify it for another caller.
+            var localizedTitle = title
+            localizedTitle.locale = Locale(identifier: identifier)
+            let rendered = String(localized: localizedTitle)
+            XCTAssertEqual(rendered, expected, "\(key) in \(identifier)")
+            XCTAssertNotEqual(rendered, key, "missing compiled catalogue entry: \(key)")
+        }
+    }
+
+    /// The priced secondary button uses a separate entry from the bare intent
+    /// name in both languages. The preformatted amount keeps its own currency;
+    /// translating the button does not convert a rouble charge into dollars.
+    func testPricedButtonCatalogueKeepsTheAmountInBothLanguages() {
+        for (identifier, expected) in [
+            ("ru_RU", "Поспать ещё (−50 ₽)"),
+            ("en_US", "Snooze (−50 ₽)")
+        ] {
+            let locale = Locale(identifier: identifier)
+            let format = String(localized: LocalizedStringResource(
+                "alarm_kit.action.snooze.priced", table: "Localizable", locale: locale
+            ))
+            XCTAssertNotEqual(format, AlarmKitCopy.pricedSnoozeKey)
+            XCTAssertEqual(String(format: format, locale: locale, arguments: ["50 ₽"]), expected)
+        }
+        XCTAssertNotEqual(AlarmKitCopy.pricedSnoozeKey, AlarmKitCopy.snoozeKey)
     }
 
     // MARK: - The keys that hold the same words on purpose
