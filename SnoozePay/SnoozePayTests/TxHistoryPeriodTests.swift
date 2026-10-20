@@ -102,7 +102,7 @@ final class TxHistoryPeriodTests: XCTestCase {
     /// Most cases look at one period whose refunds are all in-window, so the
     /// visible slice doubles as the ledger.
     private func summary(of transactions: [Transaction]) -> TxHistorySummary {
-        TxHistorySummary.compute(from: transactions, ledger: transactions)
+        TxHistorySummary.compute(from: transactions, ledger: transactions, currency: .legacyDefault)
     }
 
     func testSummary_aggregatesSpentTopupsAndSnoozeCount() {
@@ -117,6 +117,67 @@ final class TxHistoryPeriodTests: XCTestCase {
         XCTAssertEqual(summary.spent, 350)
         XCTAssertEqual(summary.topups, 1500)
         XCTAssertEqual(summary.snoozeCount, 3)
+    }
+
+    func testSummary_projectsMoneyOntoOneCurrencyWithoutNarrowingSnoozeCount() throws {
+        let usd = try XCTUnwrap(Currency(code: "USD"))
+        let eur = try XCTUnwrap(Currency(code: "EUR"))
+        let transactions = [
+            Transaction(type: .charge, amount: 12.34),
+            Transaction(type: .topup, amount: 49.99),
+            Transaction(type: .charge, amount: 0.25, currency: usd),
+            Transaction(type: .topup, amount: 0.49, currency: usd),
+            Transaction(type: .charge, amount: 1.79, currency: eur),
+            Transaction(type: .topup, amount: 2.99, currency: eur)
+        ]
+        for (currency, spent, topups) in [(Currency.rub, 12.34, 49.99), (usd, 0.25, 0.49), (eur, 1.79, 2.99)] {
+            let summary = TxHistorySummary.compute(from: transactions, ledger: transactions, currency: currency)
+            XCTAssertEqual(NSDecimalNumber(decimal: summary.spent).doubleValue, spent, accuracy: 0.000001)
+            XCTAssertEqual(NSDecimalNumber(decimal: summary.topups).doubleValue, topups, accuracy: 0.000001)
+            XCTAssertEqual(summary.snoozeCount, 3, "The count still includes surviving charges in all currencies")
+        }
+    }
+
+    func testSummary_unsetWalletUsesLegacyRublesWithoutAddingForeignMoney() throws {
+        let suite = "TxHistoryPeriodTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let currency = WalletCurrencyStore(defaults: defaults).currency
+        let transactions = [
+            Transaction(type: .topup, amount: 49.99),
+            Transaction(type: .topup, amount: 0.49, currency: try XCTUnwrap(Currency(code: "USD")))
+        ]
+        let summary = TxHistorySummary.compute(from: transactions, ledger: transactions, currency: currency)
+        XCTAssertEqual(currency, .rub)
+        XCTAssertEqual(NSDecimalNumber(decimal: summary.topups).doubleValue, 49.99, accuracy: 0.000001)
+    }
+
+    func testSummary_currencyProjectionKeepsFullLedgerRefundPairing() throws {
+        let usd = try XCTUnwrap(Currency(code: "USD"))
+        let eur = try XCTUnwrap(Currency(code: "EUR"))
+        let january = date(year: 2026, month: 1, day: 31)
+        let february = date(year: 2026, month: 2, day: 1)
+        let reversed = Transaction(type: .charge, amount: 0.49, currency: usd, createdAt: january)
+        let foreignReversed = Transaction(type: .charge, amount: 2.99, currency: eur, createdAt: january)
+        let surviving = Transaction(type: .charge, amount: 0.25, currency: usd, createdAt: january)
+        let ledger = [
+            reversed, foreignReversed, surviving,
+            Transaction(type: .charge, amount: 49.99, createdAt: january),
+            Transaction(type: .refund, amount: 0.49, currency: usd, createdAt: february,
+                        refundsTransactionID: reversed.id),
+            Transaction(type: .refund, amount: 2.99, currency: eur, createdAt: february,
+                        refundsTransactionID: foreignReversed.id),
+            Transaction(type: .refund, amount: 0.25, currency: eur, createdAt: february,
+                        refundsTransactionID: surviving.id),
+            Transaction(type: .topup, amount: 99, currency: usd, createdAt: february)
+        ]
+        let visible = TxHistoryPeriod(month: YearMonth(year: 2026, month: 1)).filter(ledger)
+        for (currency, spent) in [(usd, 0.25), (Currency.rub, 49.99), (eur, 0)] {
+            let summary = TxHistorySummary.compute(from: visible, ledger: ledger, currency: currency)
+            XCTAssertEqual(NSDecimalNumber(decimal: summary.spent).doubleValue, spent, accuracy: 0.000001)
+            XCTAssertEqual(summary.topups, 0, "An adjacent month's paid top-up stays outside this period")
+            XCTAssertEqual(summary.snoozeCount, 2, "Refunds pair by currency before the monetary projection")
+        }
     }
 
     func testSummary_excludesBonusesFromTopups() {
@@ -207,12 +268,12 @@ final class TxHistoryPeriodTests: XCTestCase {
         let january = TxHistoryPeriod(month: YearMonth(year: 2026, month: 1))
             .filter([charge, refund])
 
-        let scoped = TxHistorySummary.compute(from: january, ledger: [charge, refund])
+        let scoped = TxHistorySummary.compute(from: january, ledger: [charge, refund], currency: .legacyDefault)
         XCTAssertEqual(scoped.spent, 0, "A fully reversed snooze must not be billed in either period")
         XCTAssertEqual(scoped.snoozeCount, 0)
 
         // Guard the regression the full-ledger argument exists to prevent.
-        let narrow = TxHistorySummary.compute(from: january, ledger: january)
+        let narrow = TxHistorySummary.compute(from: january, ledger: january, currency: .legacyDefault)
         XCTAssertEqual(narrow.spent, 50,
             "Scoping the pairing to the visible slice is exactly the bug — pinned so the argument can't be dropped")
     }
