@@ -1,4 +1,7 @@
 import UIKit
+#if DEBUG
+import os
+#endif
 
 /// V3 «Цена откладывания» card (#230, `SPComponents.jsx` `SnoozePriceCard`):
 /// a large free-numeric field (mono 32pt, amber, trailing ₽) over the curated
@@ -150,6 +153,11 @@ final class PenaltyCell: UITableViewCell {
         selectionStyle = .none
 
         amountField.inputAccessoryView = accessoryToolbar
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-uitour") {
+            amountField.addTarget(self, action: #selector(amountEditingBegan), for: .editingDidBegin)
+        }
+        #endif
         amountField.addTarget(self, action: #selector(amountEditingChanged), for: .editingChanged)
         amountField.addTarget(self, action: #selector(amountEditingEnded), for: .editingDidEnd)
 
@@ -210,6 +218,10 @@ final class PenaltyCell: UITableViewCell {
     // MARK: - Configure
 
     func configure(amount: Double, currency: Currency) {
+        #if DEBUG
+        traceInput("configure.enter")
+        defer { traceInput("configure.exit") }
+        #endif
         updateCurrency(currency)
         let text = Self.amountText(amount)
         currentAmount = amount.rounded()
@@ -271,6 +283,10 @@ final class PenaltyCell: UITableViewCell {
     }
 
     @objc private func amountEditingEnded() {
+        #if DEBUG
+        traceInput("editingDidEnd.enter")
+        defer { traceInput("editingDidEnd.exit") }
+        #endif
         guard let value = validatedAmount() else {
             // Invalid persisted values have no trusted fallback; leave the
             // helper visible until the user enters a valid price or picks a chip.
@@ -296,8 +312,37 @@ final class PenaltyCell: UITableViewCell {
     }
 
     @objc private func doneTapped() {
+        #if DEBUG
+        traceInput("done.enter")
+        let resigned = amountField.resignFirstResponder()
+        traceInput("done.return", resigned: resigned)
+        #else
         amountField.resignFirstResponder()
+        #endif
     }
+
+    #if DEBUG
+    @objc private func amountEditingBegan() { traceInput("editingDidBegin") }
+
+    private static let inputTraceLogger = Logger(subsystem: AppLogger.subsystem, category: "PriceInputTrace")
+
+    private func traceInput(_ event: String, resigned: Bool? = nil) {
+        guard ProcessInfo.processInfo.arguments.contains("-uitour") else { return }
+        let field = amountField
+        let accessory = field.inputAccessoryView
+        func id(_ object: AnyObject?) -> String {
+            object.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+        }
+        let identity = "cell=\(id(self)) field=\(id(field)) accessory=\(id(accessory))"
+        let windows = "cellWindow=\(id(window)) fieldWindow=\(id(field.window))"
+            + " accessoryWindow=\(id(accessory?.window))"
+        let state = "firstResponder=\(field.isFirstResponder) editing=\(field.isEditing)"
+            + " textLength=\(field.text?.count ?? 0)"
+        let result = resigned.map { String($0) } ?? "not-called"
+        let details = "event=\(event) \(identity) \(windows) \(state) resigned=\(result)"
+        Self.inputTraceLogger.notice("\(details, privacy: .public)")
+    }
+    #endif
 
     private func setHelper(visible: Bool) {
         helperLabel.isHidden = !visible
