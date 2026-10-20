@@ -208,7 +208,7 @@ jobs:
             -resultBundlePath UITestResults.xcresult
 
       - name: Upload test results
-        if: failure()
+        if: failure() || github.event.pull_request.number == 1005
         uses: actions/upload-artifact@v4
         with:
           name: ui-test-results
