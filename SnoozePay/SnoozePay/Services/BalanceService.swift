@@ -374,6 +374,14 @@ final class BalanceService {
     /// calling back into `balance` would deadlock.
     var walletCurrency: Currency { currencyStore.currency }
 
+    /// A pristine wallet may still adopt a foreign currency. Do not persist a
+    /// RUB quote into an alert that could be ringing during its first purchase.
+    var alarmQuoteCurrency: Currency? {
+        if let established = currencyStore.storedCurrency { return established }
+        let pristine = walletIsPristine
+        return currencyStore.storedCurrency ?? (pristine ? nil : .legacyDefault)
+    }
+
     /// Records this wallet's currency, once. See `WalletCurrencyFreeze` for why
     /// the result is a value the caller has to look at rather than a silent
     /// no-op.

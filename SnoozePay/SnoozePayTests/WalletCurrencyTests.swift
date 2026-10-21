@@ -197,7 +197,9 @@ final class WalletCurrencyTests: XCTestCase {
             observed.append((name, service.walletCurrency))
         }
         defer { tokens.forEach { center.removeObserver($0) } }
+        XCTAssertNil(service.alarmQuoteCurrency)
         XCTAssertEqual(service.freezeCurrency(usd), .frozen(usd))
+        XCTAssertEqual(service.alarmQuoteCurrency, usd)
         XCTAssertEqual(service.freezeCurrency(usd), .unchanged(usd))
         XCTAssertEqual(service.freezeCurrency(eur), .refused(existing: usd, attempted: eur))
         XCTAssertEqual(observed.map(\.0), [BalanceService.walletCurrencyChangedNotification])
@@ -213,6 +215,7 @@ final class WalletCurrencyTests: XCTestCase {
                                        object: nil, queue: .main) { _ in currencies.append(service.walletCurrency) }
         defer { center.removeObserver(token) }
         service.topUp(amount: 5)
+        XCTAssertEqual(service.alarmQuoteCurrency, .rub)
         XCTAssertTrue(currencies.isEmpty, "DEBUG top-up does not establish a currency")
         XCTAssertEqual(service.topUpFromPurchase(amount: 2.99, currency: nil), .credited)
         XCTAssertTrue(currencies.isEmpty)

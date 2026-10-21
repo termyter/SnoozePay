@@ -377,7 +377,7 @@ final class AlarmKitSchedulerTests: XCTestCase {
             for amount in [1.25, 0.001] {
                 let alarm = AppAlarm(penaltyAmount: amount)
                 var copies: [String] = []
-                let build: (AppAlarm, Currency) -> AlarmPresentation = { source, supplied in
+                let build: (AppAlarm, Currency?) -> AlarmPresentation = { source, supplied in
                     XCTAssertEqual(source.penaltyAmount, amount, "Configuration must preserve the raw amount")
                     XCTAssertEqual(supplied, currency)
                     let presentation = AlarmKitScheduler.makePresentation(for: source, currency: supplied)
@@ -395,6 +395,12 @@ final class AlarmKitSchedulerTests: XCTestCase {
                 XCTAssertEqual(alarm.penaltyAmount, amount)
             }
         }
+    }
+
+    @available(iOS 26.0, *)
+    func testPristineWalletPresentationDoesNotBakeInALegacyCurrencyBeforeFirstPurchase() {
+        let presentation = AlarmKitScheduler.makePresentation(for: AppAlarm(penaltyAmount: 50), currency: nil)
+        XCTAssertEqual(presentation.alert.secondaryButton.map { String(localized: $0.text) }, "Поспать ещё")
     }
 
     // MARK: - Config mapping (iOS 26 only)

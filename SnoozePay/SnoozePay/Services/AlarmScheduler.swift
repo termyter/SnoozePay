@@ -426,6 +426,16 @@ final class AlarmScheduler: AlarmScheduling {
         notificationCenter.removeAllPendingNotificationRequests()
     }
 
+    /// Updating copy must not stop a ringing original or reset a paid snooze.
+    func refreshCurrencyPresentations(_ alarms: [Alarm], completion: ((Int) -> Void)? = nil) {
+        guard let alerting = alarmKitScheduler?.alertingAlarmIDs else {
+            AppLogger.scheduler.error("currency refresh skipped: current AlarmKit state unavailable")
+            completion?(alarms.filter { $0.enabled }.count)
+            return
+        }
+        rescheduleAll(alarms.filter { !alerting.contains($0.id) }, completion: completion)
+    }
+
     /// Re-arm every enabled original schedule, preserving any paid pending
     /// snooze under its separate AlarmKit ID and its original fire date (#935).
     /// Full cancellation remains reserved for explicit disable/delete/finish.

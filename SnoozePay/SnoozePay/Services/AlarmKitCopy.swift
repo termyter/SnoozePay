@@ -98,11 +98,12 @@ enum AlarmKitCopy {
     /// concatenated, because where the price sits inside the phrase is a
     /// property of the language — the same rule ``Localized`` states for
     /// `firing.hint.next_price`.
-    static func pricedSnooze(penalty: Double, currency: Currency = .legacyDefault) -> String {
-        Localized.format(pricedSnoozeKey, MoneyFormatter.quotedString(penalty, currency: currency) ?? "—")
+    static func pricedSnooze(penalty: Double, currency: Currency? = .legacyDefault) -> String {
+        guard let currency else { return Localized.text(snoozeKey) }
+        return Localized.format(pricedSnoozeKey, MoneyFormatter.quotedString(penalty, currency: currency) ?? "—")
     }
 
-    static func pricedSnoozeTitle(penalty: Double, currency: Currency = .legacyDefault) -> LocalizedStringResource {
+    static func pricedSnoozeTitle(penalty: Double, currency: Currency? = .legacyDefault) -> LocalizedStringResource {
         LocalizedStringResource(stringLiteral: pricedSnooze(penalty: penalty, currency: currency))
     }
 }
