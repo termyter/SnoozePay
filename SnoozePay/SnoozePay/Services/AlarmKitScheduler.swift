@@ -59,6 +59,8 @@ protocol AlarmKitScheduling: AnyObject {
     /// `SystemAlarmBackendProbe`, which needs "never asked" and "refused" kept
     /// apart to choose between an in-app prompt and a deep link to Settings.
     var authorization: AlarmKitAuthorization { get }
+    /// Nil means the current system state could not be read; refresh must not cancel blindly.
+    var alertingAlarmIDs: Set<UUID>? { get }
 
     /// Request AlarmKit authorization. Completes with `true` when authorized.
     /// Idempotent — AlarmKit returns the cached state once decided.
@@ -123,6 +125,7 @@ protocol AlarmKitScheduling: AnyObject {
 /// which is the only place the distinction can actually be observed.
 extension AlarmKitScheduling {
     var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
+    var alertingAlarmIDs: Set<UUID>? { nil }
 }
 
 #if canImport(AlarmKit)
@@ -174,6 +177,15 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         }
     }
 
+    var alertingAlarmIDs: Set<UUID>? {
+        do {
+            return Set(try manager.alarms.filter { $0.state == .alerting }.map(\.id))
+        } catch {
+            AppLogger.scheduler.error("currency refresh skipped: AlarmKit state unreadable: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
     func requestAuthorization(completion: @escaping (Bool) -> Void) {
         // Already decided? Report synchronously without re-prompting.
         switch manager.authorizationState {
@@ -211,7 +223,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     ) {
         let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
         do {
-            configuration = try Self.makeConfiguration(for: alarm)
+            configuration = try Self.makeConfiguration(for: alarm, currency: BalanceService.shared.alarmQuoteCurrency)
         } catch {
             // Synchronous config-build failure — report immediately so the
             // caller surfaces it instead of claiming the alarm is armed (#417).
@@ -260,7 +272,9 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         // rings once.
         let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
         do {
-            configuration = try Self.makeSnoozeConfiguration(for: alarm, fireDate: fireDate)
+            configuration = try Self.makeSnoozeConfiguration(
+                for: alarm, fireDate: fireDate, currency: BalanceService.shared.alarmQuoteCurrency
+            )
         } catch {
             // Synchronous config-build failure — report immediately so the
             // caller arms the notification fallback (#394 Finding 1).
@@ -347,10 +361,12 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// + weekly recurrence), the full-screen alert presentation (title + stop /
     /// snooze buttons), the stop / snooze intents, and the alarm sound.
     static func makeConfiguration(
-        for alarm: Alarm
+        for alarm: Alarm,
+        currency: Currency? = .legacyDefault,
+        presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation
     ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
         let schedule = makeSchedule(for: alarm)
-        let presentation = makePresentation(for: alarm)
+        let presentation = buildPresentation(alarm, currency)
         let attributes = AlarmAttributes<SnoozePayAlarmMetadata>(
             presentation: presentation,
             metadata: SnoozePayAlarmMetadata(),
@@ -371,10 +387,12 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// now + snoozeMinutes instead of the alarm's configured time-of-day (#383).
     static func makeSnoozeConfiguration(
         for alarm: Alarm,
-        fireDate: Date
+        fireDate: Date,
+        currency: Currency? = .legacyDefault,
+        presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation
     ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
         let schedule = makeSnoozeSchedule(fireDate: fireDate)
-        let presentation = makePresentation(for: alarm)
+        let presentation = buildPresentation(alarm, currency)
         let attributes = AlarmAttributes<SnoozePayAlarmMetadata>(
             presentation: presentation,
             metadata: SnoozePayAlarmMetadata(),
@@ -479,13 +497,13 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// Build the full-screen alert presentation. The primary (stop) button is
     /// driven by `stopIntent`; the secondary (snooze) button shows the paid
     /// snooze cost and is driven by `secondaryIntent`.
-    private static func makePresentation(for alarm: Alarm) -> AlarmPresentation {
+    static func makePresentation(for alarm: Alarm, currency: Currency?) -> AlarmPresentation {
         // The price is substituted into a catalogue format rather than
         // interpolated into a literal: interpolating made the whole rendered
         // phrase the resource's lookup key, so the words could never come from
         // the catalogue (`AlarmKitCopy`).
         let snoozeTitle = AlarmKitCopy.pricedSnoozeTitle(
-            penalty: alarm.penalty(forSnoozeCount: 1)
+            penalty: alarm.penalty(forSnoozeCount: 1), currency: currency
         )
         let snoozeButton = AlarmButton(
             text: snoozeTitle,

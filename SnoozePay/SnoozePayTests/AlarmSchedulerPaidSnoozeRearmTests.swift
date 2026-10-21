@@ -65,6 +65,50 @@ final class AlarmSchedulerPaidSnoozeRearmTests: XCTestCase {
                       "Disable, delete and finish must still cancel both system IDs")
     }
 
+    func testFirstCurrencyFreezeRefreshesFutureOriginalButPreservesAlertingOriginalAndPaidDeadline() async throws {
+        let alarm = dailyAlarm()
+        let future = Alarm(time: originalDate.addingTimeInterval(60))
+        let backend = backendWithPaidSnooze(alarm)
+        backend.schedule(future) { _ in }
+        backend.alertingAlarmIDs = [alarm.id]
+        let before = backend.pending
+        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
+        let center = NotificationCenter()
+        let suite = "currency.rearm.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let wallet = BalanceService(defaults: defaults, notificationCenter: center)
+        let completed = expectation(description: "currency presentation refresh completed")
+        let tokens = AppDelegate.observeAlarmRescheduleTriggers(center: center) { trigger in
+            AppDelegate.rearmSavedAlarms([alarm, future], trigger: trigger, scheduler: scheduler) { failures in
+                XCTAssertEqual(failures, 0)
+                completed.fulfill()
+            }
+        }
+        defer { tokens.forEach { center.removeObserver($0) } }
+        XCTAssertNil(wallet.alarmQuoteCurrency)
+        XCTAssertEqual(wallet.topUpFromPurchase(amount: 2.99, currency: Currency(code: "USD")!), .credited)
+        await fulfillment(of: [completed], timeout: 5)
+        XCTAssertEqual(backend.cancelledOriginals, [future.id], "Buying must not cancel the currently ringing original")
+        XCTAssertEqual(backend.pending, before)
+        XCTAssertEqual(backend.pending[snoozeID], paidFireDate)
+        XCTAssertEqual(wallet.alarmQuoteCurrency, Currency(code: "USD"))
+    }
+
+    func testCurrencyRefreshWithUnknownSystemStateDoesNotCancelAnythingAndReportsFailure() {
+        let alarm = dailyAlarm()
+        let backend = backendWithPaidSnooze(alarm)
+        backend.alertingAlarmIDs = nil
+        let before = backend.pending
+        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
+        var failures: Int?
+        AppDelegate.rearmSavedAlarms([alarm], trigger: BalanceService.walletCurrencyChangedNotification,
+                                    scheduler: scheduler) { failures = $0 }
+        XCTAssertEqual(failures, 1)
+        XCTAssertTrue(backend.cancelledOriginals.isEmpty)
+        XCTAssertEqual(backend.pending, before)
+    }
+
     private func dailyAlarm() -> Alarm {
         Alarm(id: alarmID, time: originalDate, repeatDays: [0, 1, 2, 3, 4, 5, 6])
     }
@@ -93,6 +137,8 @@ private final class PendingAlarmKitBackend: AlarmKitScheduling {
     var authorization: AlarmKitAuthorization = .authorized
     var isAuthorized: Bool { authorization == .authorized }
     var failSchedule = false
+    var alertingAlarmIDs: Set<UUID>? = []
+    private(set) var cancelledOriginals: [UUID] = []
     private(set) var pending: [UUID: Date] = [:]
     private lazy var cancellation = AlarmKitScheduler(cancelAlarm: { [unowned self] alarmID in
         _ = self.pending.removeValue(forKey: alarmID)
@@ -114,7 +160,10 @@ private final class PendingAlarmKitBackend: AlarmKitScheduling {
         completion(.success(()))
     }
 
-    func cancelOriginal(_ alarmID: UUID) { cancellation.cancelOriginal(alarmID) }
+    func cancelOriginal(_ alarmID: UUID) {
+        cancelledOriginals.append(alarmID)
+        cancellation.cancelOriginal(alarmID)
+    }
     func cancel(_ alarmID: UUID) { cancellation.cancel(alarmID) }
     func stop(_ alarmID: UUID) {}
 }

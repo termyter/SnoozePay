@@ -192,7 +192,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     // MARK: - Alarm re-arming (#427)
 
-    /// Observe the two system signals that can silently invalidate already
+    /// Observe system signals and the first wallet currency that invalidate already
     /// scheduled alarm triggers and re-arm every saved alarm in response:
     ///
     /// - `significantTimeChangeNotification` — posted on timezone change, DST
@@ -205,22 +205,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ///   permission (so `usesAlarmKit` is re-evaluated and the alarm moves to
     ///   the correct backend).
     ///
+    /// - Wallet currency establishment refreshes price labels on future
+    ///   originals only; original IDs reported as alerting are skipped.
+    ///
     /// Re-arming is idempotent — for an unchanged alarm `cancel` + `schedule`
     /// re-adds the same deterministic notification identifiers — so firing it on
     /// every activation only recomputes triggers, never duplicates them.
     private func registerAlarmRescheduleObservers() {
+        rescheduleObserverTokens = Self.observeAlarmRescheduleTriggers(center: .default) { [weak self] name in
+            self?.rescheduleSavedAlarms(trigger: name)
+        }
+    }
+
+    /// Shared registration boundary; tests supply an isolated center and rearm handler.
+    static func observeAlarmRescheduleTriggers(
+        center: NotificationCenter, onTrigger: @escaping (Notification.Name) -> Void
+    ) -> [NSObjectProtocol] {
         let names: [Notification.Name] = [
             UIApplication.significantTimeChangeNotification,
-            UIApplication.didBecomeActiveNotification
+            UIApplication.didBecomeActiveNotification,
+            BalanceService.walletCurrencyChangedNotification
         ]
-        rescheduleObserverTokens = names.map { name in
-            NotificationCenter.default.addObserver(
-                forName: name,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.rescheduleSavedAlarms(trigger: name)
-            }
+        return names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { _ in onTrigger(name) }
         }
     }
 
@@ -248,8 +255,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             )
             return
         }
-        AlarmScheduler.shared.rescheduleAll(saved) { [weak self] failedCount in
+        Self.rearmSavedAlarms(saved, trigger: trigger, scheduler: .shared) { [weak self] failedCount in
             self?.handleRescheduleOutcome(failedCount: failedCount)
+        }
+    }
+
+    static func rearmSavedAlarms(
+        _ alarms: [Alarm], trigger: Notification.Name, scheduler: AlarmScheduler,
+        completion: @escaping (Int) -> Void
+    ) {
+        if trigger == BalanceService.walletCurrencyChangedNotification {
+            scheduler.refreshCurrencyPresentations(alarms, completion: completion)
+        } else {
+            scheduler.rescheduleAll(alarms, completion: completion)
         }
     }
 

@@ -188,6 +188,44 @@ final class WalletCurrencyTests: XCTestCase {
         XCTAssertNil(storedCurrencyCode)
     }
 
+    func testFirstCurrencyFreezeRearmsThroughTheProductionObserverRegistrationOnlyOnce() {
+        let center = NotificationCenter()
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+        var observed: [(Notification.Name, Currency)] = []
+        let tokens = AppDelegate.observeAlarmRescheduleTriggers(center: center) { name in
+            XCTAssertTrue(Thread.isMainThread)
+            observed.append((name, service.walletCurrency))
+        }
+        defer { tokens.forEach { center.removeObserver($0) } }
+        XCTAssertNil(service.alarmQuoteCurrency)
+        XCTAssertEqual(service.freezeCurrency(usd), .frozen(usd))
+        XCTAssertEqual(service.alarmQuoteCurrency, usd)
+        XCTAssertEqual(service.freezeCurrency(usd), .unchanged(usd))
+        XCTAssertEqual(service.freezeCurrency(eur), .refused(existing: usd, attempted: eur))
+        XCTAssertEqual(observed.map(\.0), [BalanceService.walletCurrencyChangedNotification])
+        XCTAssertEqual(observed.map(\.1), [usd], "Rearm sees the persisted currency, never the old RUB fallback")
+        XCTAssertEqual(storedCurrencyCode, "USD")
+    }
+
+    func testPaidCreditBroadcastsFirstCurrencyButNotSubsequentCreditsOrMissingMetadata() {
+        let center = NotificationCenter()
+        let service = BalanceService(defaults: testDefaults, notificationCenter: center)
+        var currencies: [Currency] = []
+        let token = center.addObserver(forName: BalanceService.walletCurrencyChangedNotification,
+                                       object: nil, queue: .main) { _ in currencies.append(service.walletCurrency) }
+        defer { center.removeObserver(token) }
+        service.topUp(amount: 5)
+        XCTAssertEqual(service.alarmQuoteCurrency, .rub)
+        XCTAssertTrue(currencies.isEmpty, "DEBUG top-up does not establish a currency")
+        XCTAssertEqual(service.topUpFromPurchase(amount: 2.99, currency: nil), .credited)
+        XCTAssertTrue(currencies.isEmpty)
+        // Missing-metadata legacy credit makes this wallet non-pristine; use
+        // RUB so this check preserves the existing no-re-denomination policy.
+        XCTAssertEqual(service.topUpFromPurchase(amount: 149.99, currency: .rub), .credited)
+        XCTAssertEqual(service.topUpFromPurchase(amount: 149.99, currency: .rub), .credited)
+        XCTAssertEqual(currencies, [.rub])
+    }
+
     // MARK: - Writing the currency is a once-only operation
 
     func testFreeze_isIdempotentForTheSameCurrencyAndRefusesAnyOther() {
