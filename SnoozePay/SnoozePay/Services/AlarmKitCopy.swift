@@ -41,7 +41,7 @@ import Foundation
 /// # What moved, and what could not
 ///
 /// The alert's **secondary button** is an ordinary `AlarmButton` built at
-/// schedule time, so ``pricedSnoozeTitle(penalty:)`` reads the catalogue and
+/// schedule time, so ``pricedSnoozeTitle(penalty:currency:)`` reads the catalogue and
 /// hands the resolved words on as a resource via
 /// `LocalizedStringResource(stringLiteral:)` — the idiom `AlarmKitScheduler`
 /// already uses for the alarm's own name. The rendered text is now the
@@ -80,14 +80,13 @@ enum AlarmKitCopy {
     static let stopKey = "alarm_kit.action.stop"
 
     /// «Поспать ещё» — the name Shortcuts shows for `SnoozeAlarmIntent`, under
-    /// the same pinned-but-not-yet-read arrangement as ``stopKey``. Not the
-    /// text of the alert's snooze button: that is ``pricedSnoozeKey``.
+    /// the same pinned arrangement as ``stopKey``. Also read at runtime for
+    /// an unpriced snooze button until a pristine wallet establishes currency.
     static let snoozeKey = "alarm_kit.action.snooze"
 
     /// «Поспать ещё (−50 ₽)» — the text of the alert's secondary button, which
     /// names the price. `%@` is a sum already formatted by ``MoneyFormatter``.
-    /// The only one of the three whose surface is ours to set, and the only
-    /// one read at runtime.
+    /// Used at runtime once the wallet has an established or legacy currency.
     static let pricedSnoozeKey = "alarm_kit.action.snooze.priced"
 
     // MARK: - Copy

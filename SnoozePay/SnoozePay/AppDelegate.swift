@@ -206,7 +206,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ///   the correct backend).
     ///
     /// - Wallet currency establishment refreshes price labels on future
-    ///   originals only; currently alerting originals keep ringing.
+    ///   originals only; original IDs reported as alerting are skipped.
     ///
     /// Re-arming is idempotent — for an unchanged alarm `cancel` + `schedule`
     /// re-adds the same deterministic notification identifiers — so firing it on
