@@ -209,18 +209,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// re-adds the same deterministic notification identifiers — so firing it on
     /// every activation only recomputes triggers, never duplicates them.
     private func registerAlarmRescheduleObservers() {
+        rescheduleObserverTokens = Self.observeAlarmRescheduleTriggers(center: .default) { [weak self] name in
+            self?.rescheduleSavedAlarms(trigger: name)
+        }
+    }
+
+    /// Shared registration boundary; tests supply an isolated center and rearm handler.
+    static func observeAlarmRescheduleTriggers(
+        center: NotificationCenter, onTrigger: @escaping (Notification.Name) -> Void
+    ) -> [NSObjectProtocol] {
         let names: [Notification.Name] = [
             UIApplication.significantTimeChangeNotification,
-            UIApplication.didBecomeActiveNotification
+            UIApplication.didBecomeActiveNotification,
+            BalanceService.walletCurrencyChangedNotification
         ]
-        rescheduleObserverTokens = names.map { name in
-            NotificationCenter.default.addObserver(
-                forName: name,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.rescheduleSavedAlarms(trigger: name)
-            }
+        return names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { _ in onTrigger(name) }
         }
     }
 
