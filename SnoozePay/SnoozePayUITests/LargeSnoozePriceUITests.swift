@@ -166,11 +166,7 @@ final class LargeSnoozePriceUITests: XCTestCase {
                 .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
             let fieldFrame = price.frame
             let fieldValue = String((price.value as? String ?? "<nil>").prefix(32))
-            let done = app.buttons["createAlarm.penaltyDone"]
-            let doneExists = done.exists
-            let doneState = doneExists
-                ? "exists=true enabled=\(done.isEnabled) hittable=\(done.isHittable) frame=\(done.frame)"
-                : "exists=false"
+            let doneExists = app.buttons["createAlarm.penaltyDone"].exists
             // Capture volatile keyboard/toolbar frames in the app tree instead of
             // resolving children after a separate existence check.
             let appAccessibilitySnapshot = app.debugDescription
@@ -178,7 +174,7 @@ final class LargeSnoozePriceUITests: XCTestCase {
             stage=\(stage)
             fieldValue=\(fieldValue)
             immediateObservedValue=\(observedValue ?? "not-sampled")
-            done=\(doneState)
+            doneExistsObserved=\(doneExists)
             focusMatch=\(focused.exists) hittable=\(price.isHittable) fieldFrame=\(fieldFrame)
             correctiveFocusTaps=\(focusTaps.map { String($0) } ?? "not-run")
             correctiveViewportPans=\(viewportPans.map { String($0) } ?? "not-run")
