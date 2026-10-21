@@ -16,7 +16,7 @@ import UIKit
 /// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
 /// wallet, stats, settings, create, edit, theme-picker, sound-picker,
 /// volume-picker, confirm-delete, firing, firing-presented, firing-snoozed,
-/// firing-progressive, firing-nobalance, firing-topup, firing-topup-expensive,
+/// firing-progressive, firing-progressive-snoozed, firing-nobalance, firing-topup, firing-topup-expensive,
 /// alarm-off-warning, txhistory, periodpicker, deposit, streak.
 enum UITourRoutes {
 
@@ -109,19 +109,10 @@ enum UITourRoutes {
             trace?.stamp("navigation.created", controller: nav)
             // Sequence, don't race (#467): both presentations used to share
             // one 0.8 s deadline, so the sheet asked a navigation controller
-            // still mid-transition to present — a silent no-op. Chaining off
-            // the form's completion guarantees the presenter is in the window.
-            mountPresented(nav, onTab: 0, in: window, trace: trace) {
-                let sheet = ConfirmDeleteAlarmViewController()
-                trace?.stamp("confirmation.requested", controller: sheet)
-                if let trace {
-                    nav.present(sheet, animated: false) {
-                        trace.stamp("confirmation.completed", controller: sheet)
-                    }
-                } else {
-                    nav.present(sheet, animated: false)
-                }
-            }
+            // still mid-transition to present — a silent no-op. Completion
+            // serializes the steps; it can still arrive after teardown (#996).
+            mountPresented(nav, onTab: 0, in: window, trace: trace,
+                           then: confirmDeleteCompletion(for: nav, in: window, trace: trace))
         },
         "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
         // The same screen, mounted the way the app actually mounts it:
@@ -141,12 +132,11 @@ enum UITourRoutes {
         "firing-progressive": {
             $0.rootViewController = AlarmFiringViewController(alarm: progressiveFiringAlarm())
         },
-        "firing-snoozed": {
-            $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm(), snoozeCount: 2)
-        },
+        "firing-snoozed": { mountSnoozedFixture(firingSampleAlarm(), in: $0) },
+        "firing-progressive-snoozed": { mountSnoozedFixture(progressiveFiringAlarm(), in: $0) },
         "firing-nobalance": { window in
             UITourLauncher.forceBalance(to: 0)
-            window.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm())
+            window.rootViewController = makeNoBalanceFiringController()
         },
         "firing-topup": { window in
             let alarm = firingSampleAlarm()
@@ -167,7 +157,7 @@ enum UITourRoutes {
             window.rootViewController = firing
             presentLater(
                 FiringTopUpBottomSheetViewController(
-                    snoozePrice: alarm.penaltyAmount, currentBalance: 0
+                    snoozePrice: alarm.penaltyAmount
                 ),
                 over: firing
             )
@@ -193,7 +183,7 @@ enum UITourRoutes {
             // audit screenshot doesn't depend on whatever alarms the tour
             // device happens to hold.
             presentLater(
-                StreakModalViewController(streakDays: 7, savedAmount: 350),
+                StreakModalViewController(streakDays: 7, savedAmount: 350, currency: .rub),
                 over: root
             )
         }
@@ -215,9 +205,9 @@ enum UITourRoutes {
         nav?.pushViewController(vc, animated: false)
     }
 
-    /// Mounts a tab-bar root and presents `vc` over it. `then` runs only after
-    /// that presentation has actually finished, which is the only safe moment
-    /// to chain a second presentation or a push onto `vc` (#467).
+    /// Mounts a tab-bar root and presents `vc` over it. `then` runs after that
+    /// presentation finishes (#467). A delayed completion must still recheck
+    /// its host before chaining another UIKit operation after teardown.
     private static func mountPresented(
         _ vc: UIViewController,
         onTab index: Int,
@@ -237,6 +227,31 @@ enum UITourRoutes {
         )
         nav.modalPresentationStyle = .fullScreen
         return nav
+    }
+
+    /// The actual second-stage callback, internal so lifecycle tests can hold
+    /// it across teardown without replacing UIKit's first presentation (#996).
+    static func confirmDeleteCompletion(
+        for nav: UINavigationController, in window: UIWindow, trace: ConfirmDeleteTrace? = nil
+    ) -> () -> Void {
+        return {
+            guard !window.isHidden,
+                  window.rootViewController != nil,
+                  nav.viewIfLoaded?.window === window,
+                  Self.canPresent(from: nav) else {
+                trace?.stamp("confirmation.declined", controller: nav)
+                return
+            }
+            let sheet = ConfirmDeleteAlarmViewController()
+            trace?.stamp("confirmation.requested", controller: sheet)
+            if let trace {
+                nav.present(sheet, animated: false) {
+                    trace.stamp("confirmation.completed", controller: sheet)
+                }
+            } else {
+                nav.present(sheet, animated: false)
+            }
+        }
     }
 
     private static func mountPushedOnCreate(
@@ -331,6 +346,41 @@ enum UITourRoutes {
             sheet.preferredCornerRadius = AppRadius.xl
         }
         return warning
+    }
+
+    /// Only the explicit empty-catalog tour may credit a demo top-up, using the VM's same wallet.
+    static func makeNoBalanceFiringController(
+        arguments: [String] = ProcessInfo.processInfo.arguments, balance: BalanceService = .shared,
+        controllerBuilder: ((AlarmFiringViewModel) -> AlarmFiringViewController)? = nil
+    ) -> AlarmFiringViewController {
+        let model = AlarmFiringViewModel(alarm: firingSampleAlarm(), balanceService: balance)
+        let firing = controllerBuilder?(model) ?? AlarmFiringViewController(viewModel: model)
+        guard StoreKitService.isCatalogForcedEmpty(arguments: arguments) else { return firing }
+        let productID = AlarmFiringViewController.noBalanceProductID
+        let offer = TopUpOffer(productID: productID, price: 499, currencyCode: "RUB",
+                               displayPrice: MoneyFormatter.string(Double(499), currency: .rub))
+        firing.noBalancePurchase = AlarmFiringNoBalancePurchase(
+            controller: firing, dispatch: { [weak firing] _ in
+                let credited = balance.topUp(amount: 499)
+                firing?.noBalancePurchase.finish()
+                if credited {
+                    firing?.updateUI()
+                } else {
+                    firing?.presentNoBalancePurchaseFailureAlert(message: StoreKitService.ledgerLockedFailureMessage)
+                }
+            }, offerProvider: { $0 == productID ? offer : nil }
+        )
+        return firing
+    }
+
+    /// Standalone visual state: no charge, scheduler call, or denied-backend
+    /// success. This entire route table is DEBUG-only; production never enters it.
+    private static func mountSnoozedFixture(_ alarm: Alarm, in window: UIWindow) {
+        let model = AlarmFiringViewModel(alarm: alarm, snoozeCount: 1, snoozeAnchor: Date())
+        let firing = AlarmFiringViewController(viewModel: model)
+        window.rootViewController = firing
+        firing.loadViewIfNeeded()
+        firing.enterSnoozedState()
     }
 
     // MARK: - Sample data

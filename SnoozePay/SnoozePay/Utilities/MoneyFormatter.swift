@@ -101,7 +101,7 @@ enum MoneyFormatter {
         currency: Currency,
         locale: Locale = AppLocale.display
     ) -> String {
-        string(decimalAmount(amount), currency: currency, locale: locale)
+        string(decimalForDisplay(amount), currency: currency, locale: locale)
     }
 
     static func attributed(
@@ -113,7 +113,7 @@ enum MoneyFormatter {
         locale: Locale = AppLocale.display
     ) -> NSAttributedString {
         attributed(
-            decimalAmount(amount), currency: currency, digitsFont: digitsFont,
+            decimalForDisplay(amount), currency: currency, digitsFont: digitsFont,
             prefix: prefix, color: color, locale: locale
         )
     }
@@ -163,12 +163,64 @@ enum MoneyFormatter {
         return result
     }
 
-    // MARK: - Private
+    /// A savings claim must remain positive at the currency's display precision.
+    /// Compare the formatter's own output so validation follows its rounding.
+    static func isPositiveDisplayAmount(_ amount: Decimal, currency: Currency) -> Bool {
+        guard !amount.isNaN, amount > 0 else { return false }
+        let formatted = string(amount, currency: currency)
+        return formatted != "—" && formatted != string(Decimal.zero, currency: currency)
+    }
+
+    /// A charge quote may not turn a positive subunit into a free price.
+    /// Finite whole Doubles beyond Decimal precision retain their exact digits.
+    static func quotedString(_ amount: Double, currency: Currency, locale: Locale = AppLocale.display) -> String? {
+        guard amount.isFinite, amount >= 0 else { return nil }
+        let formatted = string(amount, currency: currency, locale: locale)
+        if amount > 0, formatted == string(0.0, currency: currency, locale: locale) { return nil }
+        if formatted != "—" { return formatted }
+        guard amount >= 1, amount.rounded(.towardZero) == amount else { return nil }
+        let digits = String(format: "%.0f", amount.rounded())
+        let unit = currency == .rub ? "₽" : currency.code
+        return digits + narrowSpace + unit
+    }
+
+    /// Numeric-only quote at the currency's precision, without its symbol or
+    /// literal padding. Grouping, decimal separators and signs are semantic runs.
+    static func quotedDigits(_ amount: Double, currency: Currency, locale: Locale = AppLocale.display) -> String? {
+        guard quotedString(amount, currency: currency, locale: locale) != nil else { return nil }
+        let decimal = decimalForDisplay(amount)
+        guard !decimal.isNaN else { return String(format: "%.0f", amount.rounded()) }
+        var style = Decimal.FormatStyle.Currency(code: currency.code).locale(locale)
+        if currency == .rub { style = style.precision(.fractionLength(0...2)) }
+        let formatted = style.attributed.format(decimal)
+        let digits = formatted.runs.filter { run in
+            run.numberPart != nil || run.numberSymbol == .groupingSeparator
+                || run.numberSymbol == .decimalSeparator || run.numberSymbol == .sign
+        }.map { String(formatted[$0.range].characters) }.joined()
+        return digits.isEmpty ? nil : digits
+    }
+
+    static func quotedAttributed(
+        _ amount: Double, currency: Currency, digitsFont: UIFont, color: UIColor
+    ) -> NSAttributedString {
+        let text = quotedString(amount, currency: currency) ?? "—"
+        let result = NSMutableAttributedString(string: text, attributes: [.font: digitsFont, .foregroundColor: color])
+        if currency == .rub {
+            let gap = (text as NSString).range(of: narrowSpace + "₽", options: .backwards)
+            if gap.location != NSNotFound {
+                result.addAttribute(.font, value: AppFonts.sans(.regular, digitsFont.pointSize),
+                                    range: NSRange(location: gap.location, length: 1))
+            }
+        }
+        return result
+    }
+
+    // MARK: - Display bridge
 
     /// Decimal(Double) can change even exact large integers. Keep their fixed
     /// C-format digits; for fractions use Double's shortest round-trip text.
     /// Unrepresentable values stay unknown instead of becoming zero.
-    private static func decimalAmount(_ amount: Double) -> Decimal {
+    static func decimalForDisplay(_ amount: Double) -> Decimal {
         guard amount.isFinite, amount >= 0 else { return .nan }
         let integral = amount.rounded(.towardZero) == amount
         let text = integral ? String(format: "%.0f", amount) : String(amount)
@@ -184,6 +236,8 @@ enum MoneyFormatter {
               Double(NSDecimalNumber(decimal: decimal).stringValue) == amount else { return .nan }
         return decimal
     }
+
+    // MARK: - Private
 
     /// Shared grouping formatter — `NumberFormatter` construction costs
     /// ~0.5ms; money strings rebuild on every balance tick so cache it.

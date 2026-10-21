@@ -215,12 +215,12 @@ enum TxHistoryTypeFilter: CaseIterable {
 }
 
 /// Three-column aggregate for the summary card — Списано / Пополнения /
-/// Откладываний (issue #234 item 3). Computed over the *visible* list so
-/// the card always reconciles with what the user sees below it.
+/// Откладываний (issue #234 item 3). Money is scoped to the wallet currency;
+/// the snooze count covers every surviving charge in the selected period.
 struct TxHistorySummary: Equatable {
-    /// Absolute sum of charges, ₽.
+    /// Absolute sum of charges in the requested currency.
     let spent: Decimal
-    /// Sum of paid top-ups, ₽. Bonuses (`.promotion`) and penalty reversals
+    /// Sum of paid top-ups in the requested currency. Bonuses and reversals
     /// are deliberately excluded — they appear in the list but not in this
     /// aggregate (issue #234 item 4; issue #358 for refunds, which are
     /// returned money, never income). "Reversal" covers both shapes: the
@@ -235,13 +235,17 @@ struct TxHistorySummary: Equatable {
     /// - Parameters:
     ///   - transactions: the rows the card must reconcile with — the period
     ///     slice the user is looking at.
+    ///   - currency: the wallet currency; unlike currencies are never added.
+    ///     This scopes monetary totals, not the snooze count or visible rows.
     ///   - ledger: the FULL ledger, used only to decide which charges were
     ///     reversed. A refund can land in a different period than its charge
     ///     (23:59 on the 31st, refunded at 00:00 on the 1st), and scoping the
     ///     pairing to the visible slice would then show a fully-reversed snooze
     ///     as real spend. Same convention `AlarmsListViewModel.weeklyDelta`
     ///     follows for its rolling window (#440).
-    static func compute(from transactions: [Transaction], ledger: [Transaction]) -> TxHistorySummary {
+    static func compute(
+        from transactions: [Transaction], ledger: [Transaction], currency: Currency
+    ) -> TxHistorySummary {
         var spent = Decimal(0)
         var topups = Decimal(0)
         var snoozes = 0
@@ -255,14 +259,16 @@ struct TxHistorySummary: Equatable {
             switch transaction.type {
             case .charge:
                 guard realCharges.contains(transaction.id) else { continue }
-                spent += Decimal(abs(transaction.amount))
                 snoozes += 1
+                if transaction.currency == currency {
+                    spent += Decimal(abs(transaction.amount))
+                }
             case .topup:
                 // Pre-#358 ledgers recorded reversals as `.topup` + link. Now
                 // that the charge side drops out, counting this side would
                 // claim a top-up that never happened — the card would imply
                 // +50 ₽ of movement against a balance that never moved.
-                guard transaction.refundsTransactionID == nil else { continue }
+                guard transaction.refundsTransactionID == nil, transaction.currency == currency else { continue }
                 topups += Decimal(abs(transaction.amount))
             case .promotion, .refund, .unknown:
                 continue // bonus / reversal / unrecognised — list-only

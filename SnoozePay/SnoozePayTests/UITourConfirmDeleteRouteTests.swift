@@ -225,6 +225,59 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             is CreateAlarmViewController)
     }
 
+    /// Hold the production second step until AFTER a real first presentation,
+    /// then reproduce teardown. The spy counts attempts before UIKit can drop
+    /// a detached presentation, so removing the guard makes this fail (#996).
+    func testDelayedConfirmDeleteCompletionDoesNotPresentAfterTeardown() async {
+        guard let (nav, completion) = await pendingConfirmDeleteCompletion(), await dismissEditHost(nav) else { return }
+
+        window.rootViewController = nil
+        window.isHidden = true
+        XCTAssertNil(nav.viewIfLoaded?.window)
+        completion()
+
+        XCTAssertEqual(nav.presentationAttempts, 0, "A stale completion must not even ask UIKit to present")
+        XCTAssertNil(nav.presentedViewController)
+    }
+
+    func testDelayedConfirmDeleteCompletionDoesNotPresentIntoHiddenWindow() async {
+        guard let (nav, completion) = await pendingConfirmDeleteCompletion() else { return }
+
+        window.isHidden = true
+        completion()
+
+        XCTAssertEqual(nav.presentationAttempts, 0)
+        XCTAssertNil(nav.presentedViewController)
+    }
+
+    func testDelayedConfirmDeleteCompletionDoesNotFollowPresenterToAnotherWindow() async {
+        guard let (nav, completion) = await pendingConfirmDeleteCompletion(), await dismissEditHost(nav) else { return }
+        window.rootViewController = UIViewController()
+        let replacementWindow = makeHostWindow()
+        defer {
+            replacementWindow.rootViewController = nil
+            replacementWindow.isHidden = true
+        }
+        replacementWindow.rootViewController = nav
+        replacementWindow.makeKeyAndVisible()
+        replacementWindow.layoutIfNeeded()
+        XCTAssertTrue(nav.viewIfLoaded?.window === replacementWindow)
+
+        completion()
+
+        XCTAssertEqual(nav.presentationAttempts, 0, "The callback belongs to its original route window")
+        XCTAssertNil(nav.presentedViewController)
+    }
+
+    func testDelayedConfirmDeleteCompletionPresentsRealSheetWhileHostRemainsActive() async {
+        guard let (nav, completion) = await pendingConfirmDeleteCompletion() else { return }
+
+        completion()
+
+        XCTAssertEqual(nav.presentationAttempts, 1)
+        XCTAssertTrue(nav.presentedViewController is ConfirmDeleteAlarmViewController)
+    }
+
     // MARK: - Content
 
     func testConfirmDeleteSheetShowsTitleBodyAndBothActions() async {
@@ -297,6 +350,48 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
         let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: bounds)
         window.frame = bounds
         return window
+    }
+
+    /// UIKit completes the first presentation before the test decides when to
+    /// deliver the same second-stage callback used by the route registry.
+    private func pendingConfirmDeleteCompletion() async -> (ConfirmDeleteNavigationSpy, () -> Void)? {
+        let root = UIViewController()
+        window.rootViewController = root
+        window.makeKeyAndVisible()
+        XCTAssertTrue(window.isKeyWindow)
+        window.layoutIfNeeded()
+        let nav = ConfirmDeleteNavigationSpy(rootViewController: UIViewController())
+        nav.modalPresentationStyle = .fullScreen
+        let completion = UITourRoutes.confirmDeleteCompletion(for: nav, in: window)
+        let firstPresentation = XCTestExpectation(description: "edit host presentation completed")
+        root.present(nav, animated: false) { firstPresentation.fulfill() }
+        guard await XCTWaiter.fulfillment(of: [firstPresentation], timeout: 10) == .completed else {
+            XCTFail("The first presentation must finish before testing its delayed second step")
+            return nil
+        }
+        guard nav.viewIfLoaded?.window === window else {
+            XCTFail("The first presenter must be attached to the original window before teardown")
+            return nil
+        }
+        XCTAssertNil(nav.presentedViewController)
+        return (nav, completion)
+    }
+
+    private func dismissEditHost(_ nav: UINavigationController) async -> Bool {
+        let dismissed = XCTestExpectation(description: "edit host dismissed before delayed callback")
+        nav.dismiss(animated: false) { dismissed.fulfill() }
+        let result = await XCTWaiter.fulfillment(of: [dismissed], timeout: 10)
+        XCTAssertEqual(result, .completed, "Detach must finish before delivering the stale second step")
+        return result == .completed
+    }
+
+    private final class ConfirmDeleteNavigationSpy: UINavigationController {
+        private(set) var presentationAttempts = 0
+
+        override func present(_ screen: UIViewController, animated flag: Bool, completion: (() -> Void)? = nil) {
+            presentationAttempts += 1
+            super.present(screen, animated: flag, completion: completion)
+        }
     }
 
     // MARK: - Waiting

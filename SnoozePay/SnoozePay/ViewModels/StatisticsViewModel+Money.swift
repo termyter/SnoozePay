@@ -193,26 +193,25 @@ extension StatisticsViewModel {
             Double(max(0, cleanDays)) * price
         }
 
-        /// UI-facing variant of the canonical formula. A zero result is not a
-        /// savings figure worth showing in a streak celebration, and `nil`
-        /// also preserves the distinction between an unknown price and 0 ₽.
-        static func savedDisplayAmount(cleanDays: Int, alarms: [Alarm]) -> Decimal? {
+        /// UI-facing variant of the canonical formula. A result displayed as
+        /// zero in this currency is not a savings figure worth celebrating.
+        /// `nil` also preserves the distinction between unknown and zero.
+        static func savedDisplayAmount(cleanDays: Int, alarms: [Alarm], currency: Currency) -> Decimal? {
             guard let saved = saved(cleanDays: cleanDays, alarms: alarms) else { return nil }
-            return displayAmount(from: saved)
+            return displayAmount(from: saved, currency: currency)
         }
 
         /// Price-injected display variant for callers that already hold a
         /// checked alarm-price snapshot.
-        static func savedDisplayAmount(cleanDays: Int, price: Double?) -> Decimal? {
+        static func savedDisplayAmount(cleanDays: Int, price: Double?, currency: Currency) -> Decimal? {
             guard let price else { return nil }
-            return displayAmount(from: saved(cleanDays: cleanDays, price: price))
+            return displayAmount(from: saved(cleanDays: cleanDays, price: price), currency: currency)
         }
 
-        private static func displayAmount(from saved: Double) -> Decimal? {
-            guard saved.isFinite, saved > 0 else { return nil }
-            // Keep the UI's Decimal amount free of binary Double artefacts
-            // (50.0 must not become 49.999… before MoneyFormatter truncates).
-            return Decimal(string: String(format: "%.2f", saved))
+        private static func displayAmount(from saved: Double, currency: Currency) -> Decimal? {
+            let amount = MoneyFormatter.decimalForDisplay(saved)
+            guard MoneyFormatter.isPositiveDisplayAmount(amount, currency: currency) else { return nil }
+            return amount
         }
     }
 

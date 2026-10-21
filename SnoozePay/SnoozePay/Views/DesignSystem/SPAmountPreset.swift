@@ -101,12 +101,14 @@ final class SPAmountPreset: UIControl {
     /// - Parameters:
     ///   - value: Top-up amount (rendered with `formattedRubles()`).
     ///   - label: Optional second line («Бонус 5%», «Минимум», ...).
+    ///   - displayPrice: StoreKit's localized price, rendered verbatim when supplied.
     ///   - selected: Initial selection state.
     ///   - popular: Show the «Популярно» badge above the top edge.
     ///   - onTap: Tap callback.
     init(
         value: Decimal,
         label: String? = nil,
+        displayPrice: String? = nil,
         selected: Bool = false,
         popular: Bool = false,
         onTap: (() -> Void)? = nil
@@ -117,7 +119,7 @@ final class SPAmountPreset: UIControl {
         self.onTap = onTap
         super.init(frame: .zero)
         configure()
-        update(value: value, label: label)
+        update(value: value, label: label, displayPrice: displayPrice)
         isSelected = selected
         applySelectionState(animated: false)
         popularBadge.isHidden = !popular
@@ -169,12 +171,14 @@ final class SPAmountPreset: UIControl {
 
     // MARK: - Public API
 
-    func update(value: Decimal, label: String?) {
+    func update(value: Decimal, label: String?, displayPrice: String? = nil) {
         self.value = value
         self.label = label
-        valueLabel.attributedText = MoneyFormatter.attributed(
-            value, digitsFont: Self.valueFont
-        )
+        if let displayPrice {
+            valueLabel.attributedText = NSAttributedString(string: displayPrice, attributes: [.font: Self.valueFont])
+        } else {
+            valueLabel.attributedText = MoneyFormatter.attributed(value, digitsFont: Self.valueFont)
+        }
         if let label = label {
             labelView.text = label
             labelView.isHidden = false

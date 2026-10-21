@@ -261,6 +261,7 @@ final class AlarmCell: UITableViewCell {
         time: String,
         daysCaps: String,
         priceText: String,
+        priceCurrency: Currency,
         multiplier: String?,
         soundName: String?,
         enabled: Bool
@@ -286,7 +287,10 @@ final class AlarmCell: UITableViewCell {
         )
         toggleSwitch.isOn = enabled
         applyEnabledTone(enabled)
-        rebuildPills(price: priceText, multiplier: multiplier, soundName: soundName, enabled: enabled)
+        rebuildPills(
+            price: priceText, currency: priceCurrency,
+            multiplier: multiplier, soundName: soundName, enabled: enabled
+        )
 
         // Compose the VoiceOver summary from the same fields.
         //
@@ -357,20 +361,23 @@ final class AlarmCell: UITableViewCell {
     /// Legacy-style call site preserved for migration. Forwards to the
     /// V2 signature with empty pill set so callers that haven't been
     /// updated yet still compile. New code should use `configure(time:
-    /// daysCaps: priceText: multiplier: soundName: enabled:)`.
+    /// daysCaps: priceText: priceCurrency: multiplier: soundName: enabled:)`.
     func configure(time: String, detail: String, penalty: String, enabled: Bool, theme: AlarmTheme) {
         _ = theme // theme strip retired in V2 layout.
         configure(
             time: time,
             daysCaps: detail.uppercased(),
             priceText: penalty,
+            priceCurrency: .rub, // This retired signature only serves legacy rouble fixtures.
             multiplier: nil,
             soundName: nil,
             enabled: enabled
         )
     }
 
-    private func rebuildPills(price: String, multiplier: String?, soundName: String?, enabled: Bool) {
+    private func rebuildPills(
+        price: String, currency: Currency, multiplier: String?, soundName: String?, enabled: Bool
+    ) {
         pillsStack.arrangedSubviews.forEach { view in
             pillsStack.removeArrangedSubview(view)
             view.removeFromSuperview()
@@ -380,11 +387,11 @@ final class AlarmCell: UITableViewCell {
         // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:367-371` contains "×2</SPPill>"
         // vs `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:384-387` contains "20 ₽</SPPill>".
         // Price pill — warn-tone when enabled (leading ₽-coin), neutral +
-        // icon-less when disabled.
+        // icon-less when disabled or the wallet is not denominated in RUB.
         let pricePill = SPPill(
             text: price,
             tone: enabled ? .warn : .neutral,
-            icon: enabled ? SPIcons.rubleCoin(size: 12) : nil
+            icon: enabled && currency == .rub ? SPIcons.rubleCoin(size: 12) : nil
         )
         pillsStack.addArrangedSubview(pricePill)
 

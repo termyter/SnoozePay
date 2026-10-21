@@ -15,6 +15,44 @@ final class WalletHistoryCurrencyTests: XCTestCase {
         Decimal(string: value)!
     }
 
+    func testRealSummaryLabelsPreserveWalletCurrencyAndMinorUnits() throws {
+        struct Fixture {
+            let code: String
+            let value: Double
+            let digits: String
+            let symbol: String
+        }
+        let cases = [
+            Fixture(code: "USD", value: 0.49, digits: "049", symbol: "$"),
+            Fixture(code: "RUB", value: 49.99, digits: "4999", symbol: "₽"),
+            Fixture(code: "JPY", value: 1234, digits: "1234", symbol: "¥"),
+            Fixture(code: "KWD", value: 1.234, digits: "1234", symbol: "KWD")
+        ]
+        for fixture in cases {
+            let unit = currency(fixture.code)
+            let transactions = [
+                Transaction(type: .charge, amount: fixture.value, currency: unit),
+                Transaction(type: .topup, amount: fixture.value, currency: unit)
+            ]
+            let summary = TxHistorySummary.compute(from: transactions, ledger: transactions, currency: unit)
+            let card = WalletTransactionHistoryViewController().makeSummaryCard(summary: summary, currency: unit)
+            let values = attributedStrings(in: card)
+            let spent = try XCTUnwrap(values.first { $0.hasPrefix("−") })
+            let topups = try XCTUnwrap(values.first { $0.hasPrefix("+") })
+            for rendered in [spent, topups] {
+                XCTAssertTrue(rendered.contains(fixture.symbol), rendered)
+                XCTAssertEqual(rendered.filter(\.isNumber), fixture.digits, rendered)
+                if fixture.code != "RUB" { XCTAssertFalse(rendered.contains("₽"), rendered) }
+            }
+            XCTAssertTrue(values.contains("1"), "Snooze count remains a plain count")
+        }
+    }
+
+    private func attributedStrings(in view: UIView) -> [String] {
+        let own = (view as? UILabel)?.attributedText.map { [$0.string] } ?? []
+        return own + view.subviews.flatMap { attributedStrings(in: $0) }
+    }
+
     func testExplicitCurrencyPreservesCentsAndCurrencySpecificMinorUnits() {
         XCTAssertEqual(MoneyFormatter.string(amount("0.49"), currency: currency("USD"), locale: english), "$0.49")
         XCTAssertEqual(MoneyFormatter.string(amount("0.49"), currency: currency("EUR"), locale: english), "€0.49")

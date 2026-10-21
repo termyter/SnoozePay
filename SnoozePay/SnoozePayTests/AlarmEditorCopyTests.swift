@@ -72,9 +72,11 @@ final class AlarmEditorCopyTests: XCTestCase {
         "create_alarm.error.schedule_failed": "Не удалось запланировать будильник",
         "create_alarm.name.placeholder": "Название · напр. Будни",
         "create_alarm.penalty.accessibility": "Цена откладывания, рублей",
+        "create_alarm.penalty.accessibility_currency": "Цена откладывания, %@",
         "create_alarm.penalty.caps": "Цена откладывания",
         "create_alarm.penalty.hint": "Сколько спишется при «отложить»",
         "create_alarm.penalty.minimum": "Минимум 1 ₽",
+        "create_alarm.penalty.minimum_currency": "Минимум 1 %@",
         "create_alarm.progressive.subtitle": "Каждое откладывание — в 2 раза дороже.",
         "create_alarm.progressive.title": "Прогрессивный режим",
         "create_alarm.repeat.caps": "ПОВТОР",
@@ -167,6 +169,9 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// do, and nobody editing `Cells/SoundPickerRowCell.swift` will think to
     /// open a copy suite — so the suite has to notice on its own.
     private static let coveredByAnotherSuite: Set<String> = [
+        // No direct catalogue reads. FiringDirectPurchaseTerminalTests checks
+        // the delegated failure alert; FiringCopyTests pins its catalogue strings.
+        "AlarmFiringNoBalancePurchase.swift",
         // FiringCopyTests
         "AlarmFiringViewController.swift",
         "AlarmFiringViewController+Audio.swift",
@@ -619,7 +624,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     func testAlarmCardToggleAnnouncesItsStateTheWayThePlatformDoes() throws {
         for enabled in [true, false] {
             let cell = AlarmCell(style: .default, reuseIdentifier: nil)
-            cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽",
+            cell.configure(time: "07:00", daysCaps: "ВЫХОДНЫЕ", priceText: "50 ₽", priceCurrency: .rub,
                            multiplier: nil, soundName: nil, enabled: enabled)
             let baseline = UISwitch()
             baseline.isOn = enabled
@@ -648,7 +653,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// reads «ДНЯ 3 БЕЗ ОТКЛАДЫВАНИЙ» and still compiles.
     func testStreakBannerKeepsTheCountBeforeItsNoun() throws {
         let banner = AlarmsStreakBannerView(frame: CGRect(x: 0, y: 0, width: 360, height: 96))
-        banner.configure(streakDays: 3, savedAmount: 250)
+        banner.configure(streakDays: 3, savedAmount: 250, currency: .rub)
         banner.layoutIfNeeded()
 
         let rendered = Self.strings(in: banner)
