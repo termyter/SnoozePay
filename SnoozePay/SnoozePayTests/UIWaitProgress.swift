@@ -18,9 +18,9 @@ final class UIWaitProgress {
     private var dispatchTimer: DispatchSourceTimer?
     private var actorTask: Task<Void, Never>?
     private var active = false
+    private var observationStoppedAt: Date?
 
-    init(interval: TimeInterval, timeout: TimeInterval) {
-        let started = Date()
+    init(interval: TimeInterval, timeout: TimeInterval, started: Date = Date()) {
         self.interval = interval
         self.started = started
         self.deadline = started.addingTimeInterval(timeout)
@@ -61,7 +61,8 @@ final class UIWaitProgress {
         }
     }
 
-    func cancel() {
+    func cancel(at moment: Date = Date()) {
+        observationStoppedAt = observationStoppedAt ?? min(moment, deadline)
         active = false
         defaultTimer?.invalidate()
         defaultTimer = nil
@@ -87,14 +88,18 @@ final class UIWaitProgress {
     }
 
     func summary(at finished: Date) -> String {
+        let sampledUntil = min(finished, observationStoppedAt ?? deadline)
+        let unobserved = max(0, finished.timeIntervalSince(sampledUntil))
         let sources = Source.allCases.map { source in
             let census = censuses[source]!
-            let gap = census.longestStall(now: finished)
+            let gap = census.longestStall(now: sampledUntil)
             let modes = contexts[source, default: []].sorted().joined(separator: ", ")
-            return "\(source.rawValue): \(census.ticks.count)/~\(census.expectedTicks(now: finished)) ticks, "
+            return "\(source.rawValue): \(census.ticks.count)/~\(census.expectedTicks(now: sampledUntil)) ticks, "
                 + "longest delivery gap \(String(format: "%.2f", gap.to - gap.from))s, contexts=[\(modes)]"
         }.joined(separator: "; ")
         return "Wait started at \(started.timeIntervalSince1970) (\(startContext)); \(sources). "
+            + "Sampling ended at \(sampledUntil.timeIntervalSince1970); waiter returned "
+            + "\(String(format: "%.2f", unobserved))s after sampling ended (unobserved). "
             + "Default Timer silence alone may be mode suppression. GCD/MainActor ticks prove some queue/actor "
             + "progress; silence across all sources still does not identify the blocking code."
     }

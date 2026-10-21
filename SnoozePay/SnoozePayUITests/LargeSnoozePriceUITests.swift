@@ -30,8 +30,13 @@ final class LargeSnoozePriceUITests: XCTestCase {
         XCTAssertEqual(price.value as? String, "9223372036854775807")
         let done = app.buttons["createAlarm.penaltyDone"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
+        recordInputState("before-first-Done", price: price, in: app)
         done.tap()
-        XCTAssertEqual(price.value as? String, "9223372036854775808")
+        // Capture the same immediate sample as before diagnostics were added;
+        // collecting the subsequent snapshot must not make a late commit pass.
+        let firstDoneValue = price.value as? String
+        recordInputState("after-first-Done", price: price, in: app, observedValue: firstDoneValue)
+        XCTAssertEqual(firstDoneValue, "9223372036854775808")
         app.buttons["createAlarm.saveButton"].tap()
         XCTAssertTrue(app.textFields["createAlarm.nameField"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.switches.firstMatch.waitForExistence(timeout: 5))
@@ -43,8 +48,11 @@ final class LargeSnoozePriceUITests: XCTestCase {
         makeFocusedPriceVisible(reopenedPrice, in: app)
         XCTAssertEqual(reopenedPrice.value as? String, "9223372036854775808")
         XCTAssertTrue(done.waitForExistence(timeout: 5))
+        recordInputState("before-second-Done", price: reopenedPrice, in: app)
         done.tap()
-        XCTAssertEqual(reopenedPrice.value as? String, "9223372036854775808")
+        let secondDoneValue = reopenedPrice.value as? String
+        recordInputState("after-second-Done", price: reopenedPrice, in: app, observedValue: secondDoneValue)
+        XCTAssertEqual(secondDoneValue, "9223372036854775808")
 
         let name = app.textFields["createAlarm.nameField"]
         var scrolls = 0
@@ -151,19 +159,26 @@ final class LargeSnoozePriceUITests: XCTestCase {
     /// They do not claim that passing this guard explains the historical partial input.
     private func recordInputState(
         _ stage: String, price: XCUIElement, in app: XCUIApplication,
-        focusTaps: Int? = nil, viewportPans: Int? = nil
+        focusTaps: Int? = nil, viewportPans: Int? = nil, observedValue: String? = nil
     ) {
         XCTContext.runActivity(named: "Price input readiness: " + stage) { activity in
             let focused = app.textFields.matching(identifier: "createAlarm.penaltyField")
                 .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
             let fieldFrame = price.frame
             let fieldValue = String((price.value as? String ?? "<nil>").prefix(32))
+            let done = app.buttons["createAlarm.penaltyDone"]
+            let doneExists = done.exists
+            let doneState = doneExists
+                ? "exists=true enabled=\(done.isEnabled) hittable=\(done.isHittable) frame=\(done.frame)"
+                : "exists=false"
             // Capture volatile keyboard/toolbar frames in the app tree instead of
             // resolving children after a separate existence check.
             let appAccessibilitySnapshot = app.debugDescription
             let evidence = """
             stage=\(stage)
             fieldValue=\(fieldValue)
+            immediateObservedValue=\(observedValue ?? "not-sampled")
+            done=\(doneState)
             focusMatch=\(focused.exists) hittable=\(price.isHittable) fieldFrame=\(fieldFrame)
             correctiveFocusTaps=\(focusTaps.map { String($0) } ?? "not-run")
             correctiveViewportPans=\(viewportPans.map { String($0) } ?? "not-run")

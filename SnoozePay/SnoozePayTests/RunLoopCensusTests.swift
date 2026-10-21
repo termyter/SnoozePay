@@ -112,6 +112,23 @@ final class RunLoopCensusTests: XCTestCase {
         )
     }
 
+    func testWaitProgressDoesNotCountTheUnobservedTailAfterItsDeadline() {
+        let progress = UIWaitProgress(interval: 0.05, timeout: 10, started: start)
+        let summary = progress.summary(at: start.addingTimeInterval(20))
+        XCTAssertTrue(summary.contains("0/~200 ticks, longest delivery gap 10.00s"), summary)
+        XCTAssertTrue(summary.contains("10.00s after sampling ended (unobserved)"), summary)
+        XCTAssertFalse(summary.contains("0/~400 ticks"), summary)
+    }
+
+    func testWaitProgressStopsItsArithmeticAtEarlyCancellation() {
+        let progress = UIWaitProgress(interval: 0.05, timeout: 10, started: start)
+        progress.cancel(at: start.addingTimeInterval(2))
+        progress.cancel(at: start.addingTimeInterval(5))
+        let summary = progress.summary(at: start.addingTimeInterval(20))
+        XCTAssertTrue(summary.contains("0/~40 ticks, longest delivery gap 2.00s"), summary)
+        XCTAssertTrue(summary.contains("18.00s after sampling ended (unobserved)"), summary)
+    }
+
     // MARK: - Independent background evidence (#728)
 
     func testBackgroundHeartbeatKeepsBothSidesOfTheDeadlineButNotBeyondItsHardEnd() {

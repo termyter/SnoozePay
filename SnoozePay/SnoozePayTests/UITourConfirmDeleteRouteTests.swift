@@ -113,7 +113,10 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     private func dismissHostWindow() async {
         guard let host = window else { return }
         let restore = previousKeyWindow
+        var didCleanup = false
         let cleanup = { [host, weak restore] in
+            guard !didCleanup else { return }
+            didCleanup = true
             let wasKey = host.isKeyWindow
             host.rootViewController = nil
             host.isHidden = true
@@ -128,6 +131,9 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
             }
             let result = await XCTWaiter.fulfillment(of: [dismissed], timeout: 10)
             XCTAssertEqual(result, .completed, "Keep the fixture alive through UIKit dismissal completion")
+            // A failed teardown still relinquishes the window; a late UIKit
+            // completion must not restore this fixture's key window twice.
+            if result != .completed { cleanup() }
         } else {
             cleanup()
         }
