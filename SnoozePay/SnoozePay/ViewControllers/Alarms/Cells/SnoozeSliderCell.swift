@@ -153,8 +153,8 @@ final class SnoozeSliderCell: UITableViewCell {
                 constant: AppSpacing.cardHorizontalPadding
             ),
             // Card padding 20pt top and bottom — the canon's `SPCard`
-            // default (`SPComponents.jsx` L38, and `padding={20}` explicitly
-            // on this card in `SPScreensV2.jsx`). Was `sm`/`md` (8/12), which
+            // default (`docs/design/snoozepay-2026-04-27/project/components/SPComponents.jsx:38`,
+            // and `padding={20}` explicitly on this card in `SPScreensV2.jsx`). Was `sm`/`md` (8/12), which
             // put the caps caption hard against the card's own top edge while
             // the neighbouring progressive card sat at a roomy 20.
             captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
