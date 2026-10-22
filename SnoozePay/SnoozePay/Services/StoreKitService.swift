@@ -359,7 +359,7 @@ final class StoreKitService {
             return
         }
         await finish()
-        postPurchaseCompleted(amount)
+        postPurchaseCompleted(amount, currency: currency)
     }
 
     /// Credits a verified paid transaction and, if this is the wallet's first
@@ -425,15 +425,15 @@ final class StoreKitService {
 
     /// `internal` so #45 fallback tests can drive the no-subscriber path and
     /// assert a local notification is posted. Not public.
-    func postPurchaseCompleted(_ amount: Double) {
+    func postPurchaseCompleted(_ amount: Double, currency: Currency) {
         // A mounted screen handles the in-app banner. If none is mounted the
         // broadcast is lost — fall back to a local notification so a deferred
         // approval / restore credited in the background is never silent (#45).
         guard hasPurchaseFeedbackSubscriber else {
-            let rubles = Int(amount.rounded())
+            let credited = MoneyFormatter.string(amount, currency: currency)
             postLocalFeedbackNotification(
                 title: Localized.text("deposit.notification.credited.title"),
-                body: Localized.format("deposit.notification.credited.body", rubles)
+                body: Localized.format("deposit.notification.credited.body", credited)
             )
             return
         }

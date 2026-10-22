@@ -169,12 +169,12 @@ final class StoreKitServiceTests: XCTestCase {
         let service = makeService(poster: poster, defaults: defaults)
 
         XCTAssertFalse(service.hasPurchaseFeedbackSubscriber)
-        service.postPurchaseCompleted(149)
+        service.postPurchaseCompleted(149, currency: .rub)
 
         XCTAssertEqual(poster.requests.count, 1)
         let content = poster.requests.first?.content
         XCTAssertEqual(content?.title, "Баланс пополнен")
-        XCTAssertEqual(content?.body, "Баланс пополнен на 149 ₽.")
+        XCTAssertEqual(content?.body, "Баланс пополнен на 149\u{202F}₽.")
         // Immediate delivery — no trigger.
         XCTAssertNil(poster.requests.first?.trigger)
         // Recognised as an app banner, so `willPresent` shows it in the
@@ -195,7 +195,7 @@ final class StoreKitServiceTests: XCTestCase {
 
         service.beginObservingPurchaseFeedback()
         XCTAssertTrue(service.hasPurchaseFeedbackSubscriber)
-        service.postPurchaseCompleted(149)
+        service.postPurchaseCompleted(149, currency: .rub)
 
         XCTAssertTrue(poster.requests.isEmpty, "must not double-notify when a screen is mounted")
     }
@@ -227,7 +227,7 @@ final class StoreKitServiceTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: name) }
         let service = makeService(poster: poster, defaults: defaults)
 
-        let faults = storeKitFaults { service.postPurchaseCompleted(149) }
+        let faults = storeKitFaults { service.postPurchaseCompleted(149, currency: .rub) }
 
         XCTAssertEqual(poster.requests.count, 1, "precondition: the banner reached the poster")
         XCTAssertEqual(faults, ["deferred purchase feedback banner failed: Notifications are not allowed"])
@@ -241,7 +241,7 @@ final class StoreKitServiceTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: name) }
         let service = makeService(poster: poster, defaults: defaults)
 
-        let faults = storeKitFaults { service.postPurchaseCompleted(149) }
+        let faults = storeKitFaults { service.postPurchaseCompleted(149, currency: .rub) }
 
         XCTAssertEqual(poster.requests.count, 1, "precondition: the banner reached the poster")
         XCTAssertEqual(faults, [])
