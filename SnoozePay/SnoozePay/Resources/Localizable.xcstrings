@@ -3566,19 +3566,19 @@
       }
     },
     "deposit.notification.credited.body" : {
-      "comment" : "Top-up: body of the credited local notification. %lld is the amount in roubles.",
+      "comment" : "Top-up: body of the credited local notification. %@ is the credited amount formatted with its receipt currency.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your balance was topped up by %lld ₽."
+            "value" : "Your balance was topped up by %@."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Баланс пополнен на %lld ₽."
+            "value" : "Баланс пополнен на %@."
           }
         }
       }
