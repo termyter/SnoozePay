@@ -158,7 +158,6 @@ function SettingsV2() {
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)", padding: "0 4px 8px" }}>Звук и уведомления</div>
             <SPCard padding={4} radius={16}>
               <SPRow leading={<IconSound size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Громкость" trailing={<><span className="sp-meta">80%</span><IconChevR size={16}/></>}/>
-              <SPRow leading={<IconBell size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Critical Alerts" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
               <SPRow divider={false} leading={<IconClock size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Вибрация" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
             </SPCard>
           </div>
@@ -167,9 +166,7 @@ function SettingsV2() {
           <div>
             <div className="sp-caps" style={{ color: "var(--sp-fg-3)", padding: "0 4px 8px" }}>Правила</div>
             <SPCard padding={4} radius={16}>
-              <SPRow leading={<IconFlame size={20} style={{color:"var(--sp-pain-400)"}}/>} title="Прогрессивная цена" subtitle="50 → 100 → 200 → 400" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
-              <SPRow leading={<IconCoin size={20} style={{color:"var(--sp-money-400)"}}/>} title="Бонус за серию" subtitle="+10% к балансу за 7 дней" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
-              <SPRow divider={false} leading={<IconLock size={20} style={{color:"var(--sp-fg-3)"}}/>} title="Защита от скуки" subtitle="Не давать выключить во время звонка" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
+              <SPRow divider={false} leading={<IconFlame size={20} style={{color:"var(--sp-pain-400)"}}/>} title="Прогрессивная цена" subtitle="50 → 100 → 200 → 400" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
             </SPCard>
           </div>
 
