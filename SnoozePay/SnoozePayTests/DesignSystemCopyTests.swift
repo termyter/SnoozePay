@@ -15,9 +15,8 @@ import XCTest
 /// So the tests come in three layers, and a red run names which one broke:
 ///
 ///  1. **Catalogue layer** — every key exists.
-///  2. **Copy layer** — every key still holds the exact words it held before
-///     the migration. This is the layer that makes the PR's claim of "no
-///     visible change" checkable rather than asserted; layer 1 passes just as
+///  2. **Copy layer** — every key holds the exact pinned words, including
+///     deliberate copy corrections such as #904. Layer 1 passes just as
 ///     happily against a catalogue whose values were retyped from memory.
 ///  3. **Call-site layer** — the real views are built and what they render is
 ///     compared against the catalogue. Layer 1 and 2 are both blind to a typo
@@ -29,8 +28,8 @@ final class DesignSystemCopyTests: XCTestCase {
 
     /// Written out rather than read back from the catalogue: a list derived
     /// from the file under test agrees with any mistake in it. These are the
-    /// strings as they read on screen today, copied from the pre-migration
-    /// literals.
+    /// current on-screen expectations, originally copied from pre-migration
+    /// literals and updated only for deliberate copy changes.
     private static let copy: [String: String] = [
         "alarms.empty.body": "Создайте первый — выставите время, цену откладывания и положите баланс.",
         "alarms.empty.button": "Создать будильник",
@@ -42,7 +41,7 @@ final class DesignSystemCopyTests: XCTestCase {
         "deposit.preset.popular": "Популярно",
         "firing.snooze.caps": "Спать ещё %lld мин",
         "firing.ticker.caps": "СЕГОДНЯ",
-        "statistics.empty.body": "Статистика появится после первой недели использования.",
+        "statistics.empty.body": "Статистика появится после первого утра с будильником.",
         "statistics.empty.streak_chip": "Серия · %1$lld %2$@",
         "statistics.empty.title": "Пока нечего считать",
         "statistics.empty.unavailable_title": "Статистика недоступна",
@@ -87,7 +86,7 @@ final class DesignSystemCopyTests: XCTestCase {
         }
     }
 
-    func testMigratedCopyStillReadsTheWayItDidBefore() {
+    func testMigratedCopyMatchesPinnedWords() {
         for (key, expected) in Self.copy {
             XCTAssertEqual(Localized.text(key), expected, "copy drifted for \(key)")
         }
