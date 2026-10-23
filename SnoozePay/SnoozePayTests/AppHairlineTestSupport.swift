@@ -91,6 +91,7 @@ extension AppHairlineTests {
     /// a production literal out of the test — resizing the tile would
     /// otherwise redden this with a wrong diagnosis. Then look for the height
     /// constraint in both places a single-item constraint can be filed.
+    @nonobjc
     func dividerHeightConstraint(of cell: SoundPickerRowCell) -> NSLayoutConstraint? {
         let plainViews = cell.contentView.subviews.filter {
             !($0 is UIStackView) && !($0 is UIImageView)
@@ -117,6 +118,7 @@ extension AppHairlineTests {
     /// not the content stack. A single-item constraint is installed on that
     /// view itself, not on the row, so look in both places rather than
     /// assuming where UIKit filed it.
+    @nonobjc
     func dividerHeightConstraint(of row: SPRow) -> NSLayoutConstraint? {
         guard let divider = row.subviews.first(where: { !($0 is UIStackView) }) else { return nil }
         let candidates = divider.constraints + row.constraints
