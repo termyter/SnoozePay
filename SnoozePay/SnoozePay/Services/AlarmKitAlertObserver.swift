@@ -40,10 +40,14 @@ final class AlarmKitAlertObserver {
 
     static let shared = AlarmKitAlertObserver(
         stream: AlarmKitAlertObserver.makeDefaultStream(),
-        onAlerting: { AlarmFiringPresenter.shared.requestPresentation(alarmID: $0) }
+        onAlerting: { AlarmFiringPresenter.shared.requestPresentation(alarmID: $0) },
+        alarmRepository: .shared
     )
 
     private let stream: AlertingAlarmStream?
+    /// Production resolves system snooze IDs against persisted originals.
+    /// Nil is reserved for the framework-free, identity-agnostic dedup tests.
+    private let alarmRepository: AlarmRepository?
     /// Closure invoked with each newly-alerting alarm ID. Injectable so tests
     /// can capture presentations; production presents the firing screen.
     /// `@MainActor` because the only caller (`handle`) is main-actor isolated
@@ -67,18 +71,22 @@ final class AlarmKitAlertObserver {
     #if DEBUG
     init(
         stream: AlertingAlarmStream?,
-        onAlerting: @escaping @MainActor (UUID) -> Void
+        onAlerting: @escaping @MainActor (UUID) -> Void,
+        alarmRepository: AlarmRepository? = nil
     ) {
         self.stream = stream
         self.onAlerting = onAlerting
+        self.alarmRepository = alarmRepository
     }
     #else
     private init(
         stream: AlertingAlarmStream?,
-        onAlerting: @escaping @MainActor (UUID) -> Void
+        onAlerting: @escaping @MainActor (UUID) -> Void,
+        alarmRepository: AlarmRepository
     ) {
         self.stream = stream
         self.onAlerting = onAlerting
+        self.alarmRepository = alarmRepository
     }
     #endif
 
@@ -129,8 +137,29 @@ final class AlarmKitAlertObserver {
             AppLogger.scheduler.notice(
                 "AlarmKit foreground alerting alarm=\(alarmID, privacy: .private) — presenting firing screen"
             )
-            onAlerting(alarmID)
+            onAlerting(repositoryAlarmID(for: alarmID))
         }
+    }
+
+    private func repositoryAlarmID(for systemID: UUID) -> UUID {
+        guard let alarmRepository else { return systemID }
+        do {
+            // An actual original ID always takes precedence over an alias.
+            if try alarmRepository.fetchChecked(id: systemID) != nil { return systemID }
+            #if canImport(AlarmKit)
+            // snoozeID XORs a fixed namespace, so applying it again recovers
+            // the original. Only accept the candidate when it is persisted.
+            let originalID = AlarmKitScheduler.snoozeID(for: systemID)
+            if try alarmRepository.fetchChecked(id: originalID) != nil { return originalID }
+            #endif
+        } catch {
+            AppLogger.scheduler.error(
+                "AlarmKit alert identity lookup failed: \(String(describing: error), privacy: .public)"
+            )
+        }
+        // Preserve the presenter's checked missing/corrupt-store path, including
+        // its user-facing corruption warning, rather than silently dropping it.
+        return systemID
     }
 }
 
