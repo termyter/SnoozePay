@@ -111,16 +111,24 @@ extension SettingsViewController {
             systemName: "flame",
             iconColor: AppColors.pain400,
             title: Localized.text("settings.row.progressive_price"),
-            // Design copy — the doubling ramp reads clearer than prose and
-            // won't clip (#313):
-            // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:170` contains "50 → 100 → 200 → 400".
-            subtitle: "50 → 100 → 200 → 400",
+            subtitle: progressivePricePreview,
             isOn: alarmDefaults.progressiveScale,
             onChange: { [weak self] isOn in
                 self?.alarmDefaults.progressiveScale = isOn
             }
         )
         return cell
+    }
+
+    /// The rule's four-step explanation uses the selected base and the same
+    /// capped calculation as charging. It stays visible while the switch is
+    /// off, as before, without changing the default flag or any saved alarm.
+    private var progressivePricePreview: String {
+        let alarm = Alarm(penaltyAmount: alarmDefaults.penaltyAmount, progressiveScale: true)
+        let currency = walletCurrencyStore.currency
+        return (1...4).map {
+            MoneyFormatter.quotedString(alarm.penalty(forSnoozeCount: $0), currency: currency) ?? "—"
+        }.joined(separator: " → ")
     }
 
     // MARK: Прочее
@@ -307,8 +315,7 @@ extension SettingsViewController {
         for amount in [20, 50, 100, 200, 500] {
             let title = MoneyFormatter.string(Double(amount), currency: currency)
             sheet.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
-                self?.alarmDefaults.penaltyAmount = Double(amount)
-                self?.tableView.reloadData()
+                self?.applyDefaultPrice(Double(amount))
             })
         }
         sheet.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
@@ -324,6 +331,13 @@ extension SettingsViewController {
             popover.sourceRect = tableView.rectForRow(at: indexPath)
         }
         return sheet
+    }
+
+    /// Refresh both the selected amount and the explanatory progressive row
+    /// immediately after the picker commits a new default.
+    func applyDefaultPrice(_ amount: Double) {
+        alarmDefaults.penaltyAmount = amount
+        tableView.reloadData()
     }
 
     // MARK: - Cell factory helpers
