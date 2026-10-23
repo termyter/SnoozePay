@@ -47,9 +47,14 @@ final class AlarmFiringViewModel {
         snoozeReference = reference
         do {
             guard case .token(let token) = reference else { throw AlarmSnoozeContextError.unavailable }
-            snoozeCount = try store.resolve(token, alarmID: alarm.id).count
+            let snapshot = try store.resolve(token, alarmID: alarm.id)
+            snoozeCount = snapshot.count
+            confirmedSnoozeFireDate = snapshot.fireDate
+            isProgressionAvailable = true
         } catch {
             isProgressionAvailable = false
+            confirmedSnoozeFireDate = nil
+            snoozeAnchor = nil
             AppLogger.emit(.ui, .error, "Snooze session unavailable — refusing paid continuation")
         }
     }
@@ -74,6 +79,7 @@ final class AlarmFiringViewModel {
     /// re-ring agree even when the user snoozes minutes after the alarm fired.
     /// `nil` before confirmation, after failure, and after Stop.
     private(set) var snoozeAnchor: Date?
+    private var confirmedSnoozeFireDate: Date?
 
     /// Prevent another debit while the current scheduling result is unresolved.
     private(set) var isSnoozeScheduling = false
@@ -378,6 +384,8 @@ final class AlarmFiringViewModel {
     }
 
     /// Wall-clock `Date` of the next ring after the current snooze — the FIXED
+    /// A tracked snooze uses the actual fixed date returned by AlarmKit, including backend latency/flooring.
+    /// An explicit `anchor` retains the legacy arithmetic seam below.
     /// `anchor` (the moment the user tapped «Поспать ещё», stored once in
     /// `snooze()`) shifted forward exactly one `snoozeMinutes` interval. This
     /// mirrors `AlarmScheduler.scheduledFireDate`, which arms the snooze trigger
@@ -390,6 +398,7 @@ final class AlarmFiringViewModel {
     /// (`snoozeAnchor`, the stored tap moment) is used by production call sites;
     /// tests pin it explicitly. Returns `nil` before the first snooze.
     func nextRingDate(anchor: Date? = nil) -> Date? {
+        if anchor == nil, let confirmedSnoozeFireDate { return confirmedSnoozeFireDate }
         guard let tap = anchor ?? snoozeAnchor else { return nil }
         return AlarmScheduler.scheduledFireDate(now: tap, snoozeMinutes: alarm.snoozeMinutes)
     }
@@ -472,6 +481,11 @@ final class AlarmFiringViewModel {
         let penalty = currentPenalty
         let token: AlarmSnoozeToken?
         do {
+            if snoozeSessions != nil {
+                guard let current = try alarmRepository.fetchChecked(id: alarm.id), current.enabled else {
+                    throw AlarmSnoozeContextError.finished
+                }
+            }
             let sessionID: UUID?
             if case .token(let bound)? = snoozeReference { sessionID = bound.sessionID } else { sessionID = nil }
             token = try snoozeSessions?.reserve(alarmID: alarm.id, sessionID: sessionID, expectedCount: snoozeCount)
@@ -506,6 +520,7 @@ final class AlarmFiringViewModel {
         // scheduler confirms it. A rejected attempt leaves no countdown target.
         let anchor = Date()
         snoozeAnchor = nil
+        confirmedSnoozeFireDate = nil
         onStateChanged?()
         let finish: (Result<Void, AlarmScheduler.SchedulingError>) -> Void = { [self] result in
             // Retain this operation until its refund/outcome resolves, even if the VC disappears.
@@ -514,7 +529,7 @@ final class AlarmFiringViewModel {
                 if hasBeenDismissed || !isProgressionAvailable {
                     // Stop may have cancelled before the async backend created
                     // this trigger. Cancel again so a late success cannot re-arm.
-                    scheduler.cancel(alarm.id)
+                    if token == nil { scheduler.cancel(alarm.id) }
                 } else {
                     snoozeAnchor = anchor
                 }
@@ -540,19 +555,26 @@ final class AlarmFiringViewModel {
             return true
         }
         scheduler.scheduleTrackedSnooze(for: alarm, token: token) { [self] result in
+            let mapped = result.mapError { error in
+                (error as? AlarmScheduler.SchedulingError) ?? .system(message: error.localizedDescription)
+            }
             do {
+                if case .failure(let error) = result,
+                   case .unconfirmedRegistration? = error as? AlarmSnoozeContextError { throw error }
                 let receipt: AlarmSnoozeReceipt?
                 switch result {
                 case .success(let registered): receipt = registered
                 case .failure: receipt = nil
                 }
                 try snoozeSessions.complete(token, alarmID: alarm.id, receipt: receipt)
-                finish(result.map { _ in () })
+                confirmedSnoozeFireDate = receipt?.fireDate
+                finish(mapped.map { _ in () })
             } catch {
                 isProgressionAvailable = false
-                if case .success = result, !hasBeenDismissed { scheduler.cancel(alarm.id) }
+                snoozeSessions.operationEnded(token)
+                scheduler.cleanUpTrackedSnooze(alarm.id)
                 if hasBeenDismissed {
-                    finish(result.map { _ in () })
+                    finish(mapped.map { _ in () })
                 } else {
                     finish(.failure(.system(message: error.localizedDescription)))
                 }
@@ -636,6 +658,7 @@ final class AlarmFiringViewModel {
             AppLogger.ui.error("Snooze finish persistence failed: \(detail, privacy: .public)")
         }
         snoozeAnchor = nil
+        confirmedSnoozeFireDate = nil
         // The user got up — feed the behavioural statistics heatmap (#235).
         // Recorded per calendar day; the snooze count for the day comes from
         // the charge ledger, so "встал сразу" = wake event + zero charges.

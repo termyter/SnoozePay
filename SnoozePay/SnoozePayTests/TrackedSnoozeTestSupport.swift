@@ -8,22 +8,33 @@ final class TrackedSessionBackend: AlarmKitScheduling {
     var isAuthorized = true
     var deferred = false
     var reject = false
+    var unconfirmedRegistration = false
+    var confirmsCancellation = true
+    var alertingAlarmIDs: Set<UUID>? = []
+    private(set) var attemptCounts: [Int] = []
+    private(set) var cancelledSnoozes: [UUID] = []
     private(set) var tokens: [AlarmSnoozeToken] = []
     private(set) var receipts: [AlarmSnoozeReceipt] = []
     private(set) var requestedDates: [Date] = []
     private(set) var cancelled: [UUID] = []
-    private var registrations: [UUID: Date] = [:]
+    private(set) var registrations: [UUID: Date] = [:]
     private var pending: (() -> Void)?
 
     func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(isAuthorized) }
-    func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) { completion(.success(())) }
+    func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) {
+        registrations[alarm.id] = alarm.time
+        completion(.success(()))
+    }
     func scheduleSnooze(_ alarm: Alarm, fireDate: Date, completion: @escaping (Result<Void, Error>) -> Void) {
         completion(.failure(AlarmSnoozeContextError.unsupportedBackend))
     }
     func scheduleTrackedSnooze(
-        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken,
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
+        isCurrent: @escaping () -> Bool,
         completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
     ) {
+        guard isCurrent() else { completion(.failure(AlarmSnoozeContextError.finished)); return }
+        attemptCounts.append(attemptCount)
         tokens.append(token)
         requestedDates.append(fireDate)
         let register = { [self] in
@@ -34,14 +45,23 @@ final class TrackedSessionBackend: AlarmKitScheduling {
             guard let actual = registrations[id] else { XCTFail("Fake registration missing"); return }
             let receipt = AlarmSnoozeReceipt(systemID: id, fireDate: actual)
             receipts.append(receipt)
-            completion(.success(receipt))
+            if unconfirmedRegistration {
+                completion(.failure(AlarmSnoozeContextError.unconfirmedRegistration))
+            } else { completion(.success(receipt)) }
         }
         if deferred { pending = register } else { register() }
     }
     func resolve() { let operation = pending; pending = nil; operation?() }
-    func cancelOriginal(_ alarmID: UUID) {}
+    func cancelOriginal(_ alarmID: UUID) { registrations[alarmID] = nil }
+    func cancelTrackedSnooze(_ alarmID: UUID) -> Bool {
+        cancelledSnoozes.append(alarmID)
+        guard confirmsCancellation else { return false }
+        registrations[AlarmKitScheduler.snoozeID(for: alarmID)] = nil
+        return true
+    }
     func cancel(_ alarmID: UUID) {
         cancelled.append(alarmID)
+        registrations[alarmID] = nil
         registrations[AlarmKitScheduler.snoozeID(for: alarmID)] = nil
     }
     func stop(_ alarmID: UUID) {}
@@ -51,12 +71,14 @@ final class TrackedSessionBackend: AlarmKitScheduling {
 final class TrackedSessionFixture {
     let suite = "TrackedSession-\(UUID().uuidString)"
     let defaults: UserDefaults
-    let alarm = Alarm(snoozeMinutes: 5, penaltyAmount: 50, progressiveScale: true, enabled: false)
+    let alarm: Alarm
 
-    init() {
+    init(alarm: Alarm? = nil) {
+        self.alarm = alarm ?? Alarm(repeatDays: [0, 1, 2, 3, 4, 5, 6], snoozeMinutes: 5,
+                                    penaltyAmount: 50, progressiveScale: true, enabled: true)
         defaults = UserDefaults(suiteName: suite)!
         let repository = AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler())
-        XCTAssertTrue(repository.save(alarm))
+        XCTAssertTrue(repository.save(self.alarm))
         XCTAssertTrue(BalanceService(defaults: defaults).topUp(amount: 2_000))
     }
     func close() { defaults.removePersistentDomain(forName: suite) }

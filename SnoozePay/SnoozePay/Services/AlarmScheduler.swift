@@ -357,17 +357,23 @@ final class AlarmScheduler: AlarmScheduling {
 
     func scheduleTrackedSnooze(
         for alarm: Alarm, token: AlarmSnoozeToken,
-        completion: @escaping (Result<AlarmSnoozeReceipt, SchedulingError>) -> Void
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
     ) {
         guard usesAlarmKit, let alarmKitScheduler else {
-            completion(.failure(.backendUnavailable))
+            completion(.failure(SchedulingError.backendUnavailable))
+            return
+        }
+        guard let snoozeSessions, let count = try? snoozeSessions.pendingCount(token, alarmID: alarm.id) else {
+            completion(.failure(AlarmSnoozeContextError.unavailable))
             return
         }
         alarmKitScheduler.stop(alarm.id)
         alarmKitScheduler.scheduleTrackedSnooze(
-            alarm, fireDate: Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes), token: token
+            alarm, fireDate: Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes),
+            token: token, attemptCount: count,
+            isCurrent: { (try? snoozeSessions.pendingCount(token, alarmID: alarm.id)) == count }
         ) { result in
-            completion(result.mapError { .system(message: $0.localizedDescription) })
+            completion(result)
         }
     }
 
@@ -400,7 +406,16 @@ final class AlarmScheduler: AlarmScheduling {
             alarmKitScheduler.cancel(alarmID)
         }
 
+        cleanUpTrackedSnooze(alarmID)
         cancelLegacyNotifications(alarmID)
+    }
+
+    /// Keeps unresolved reservations blocked unless physical absence is confirmed.
+    func cleanUpTrackedSnooze(_ alarmID: UUID) {
+        guard snoozeSessions != nil, alarmKitScheduler?.cancelTrackedSnooze(alarmID) == true else { return }
+        do { try snoozeSessions?.settleCancelled(alarmID: alarmID) } catch {
+            AppLogger.emit(.scheduler, .error, "Snooze cancellation context remains unavailable")
+        }
     }
 
     private func cancelLegacyNotifications(_ alarmID: UUID) {

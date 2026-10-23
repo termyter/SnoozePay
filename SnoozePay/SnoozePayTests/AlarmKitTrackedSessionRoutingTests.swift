@@ -1,3 +1,5 @@
+import AlarmKit
+import AppIntents
 import XCTest
 @testable import SnoozePay
 
@@ -11,25 +13,40 @@ final class AlarmKitTrackedSessionRoutingTests: XCTestCase {
         let backend = TrackedSessionBackend()
         XCTAssertTrue(fixture.model(backend: backend).snooze())
         let token = try XCTUnwrap(backend.tokens.last)
-        let stop = StopAlarmIntent(alarmID: fixture.alarm.id, token: token)
-        let snooze = SnoozeAlarmIntent(alarmID: fixture.alarm.id, token: token)
-        XCTAssertEqual(stop.sessionID, snooze.sessionID)
-        XCTAssertEqual(stop.attemptID, snooze.attemptID)
         for isStop in [true, false] {
             let host = TrackedSessionHost()
             let presenter = fixture.presenter(host: host, backend: backend)
             presenter.isRootReady = { true }
             let router = router(presenter: presenter, backend: backend)
-            if isStop {
-                router.handleStop(alarmIDString: stop.alarmID, sessionIDString: stop.sessionID, attemptIDString: stop.attemptID)
-            } else {
-                await router.handleSnooze(
-                    alarmIDString: snooze.alarmID, sessionIDString: snooze.sessionID, attemptIDString: snooze.attemptID
-                )
-            }
+            let dependencies = AppDependencyManager()
+            dependencies.add(dependency: router)
+            var capturedStop: StopAlarmIntent?
+            var capturedSnooze: SnoozeAlarmIntent?
+            _ = try AlarmKitScheduler.makeSnoozeConfiguration(
+                for: fixture.alarm, fireDate: try XCTUnwrap(backend.receipts.last).fireDate,
+                token: token, attemptCount: 1, dependencyManager: dependencies,
+                construct: { schedule, attributes, stop, snooze, sound in
+                    capturedStop = stop
+                    capturedSnooze = snooze
+                    return .alarm(schedule: schedule, attributes: attributes,
+                                  stopIntent: stop, secondaryIntent: snooze, sound: sound)
+                }
+            )
+            var stop = try XCTUnwrap(capturedStop)
+            var snooze = try XCTUnwrap(capturedSnooze)
+            // Public per-instance dependency setter prepares direct perform without a framework invocation.
+            // Both wrappers belong to this test's manager; shared dependency state is untouched.
+            stop.actionRouter = router
+            snooze.actionRouter = router
+            XCTAssertEqual(stop.sessionID, snooze.sessionID)
+            XCTAssertEqual(stop.attemptID, snooze.attemptID)
+            XCTAssertEqual(stop.sessionID, token.sessionID.uuidString)
+            XCTAssertEqual(stop.attemptID, token.attemptID.uuidString)
+            if isStop { _ = try await stop.perform() } else { _ = try await snooze.perform() }
             let mounted = try XCTUnwrap(host.screens.last)
             XCTAssertEqual(mounted.viewModel.snoozeCount, 1)
             XCTAssertEqual(mounted.viewModel.currentPenalty, 100)
+            XCTAssertEqual(mounted.viewModel.nextRingDate(), backend.receipts.last?.fireDate)
             XCTAssertEqual(try fixture.store().resolve(token, alarmID: fixture.alarm.id).count, 1)
             XCTAssertTrue(presenter.pendingPresentations.isEmpty)
         }

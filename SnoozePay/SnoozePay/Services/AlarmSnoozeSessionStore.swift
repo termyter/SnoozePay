@@ -16,7 +16,7 @@ enum AlarmSnoozeReference: Equatable {
 }
 
 enum AlarmSnoozeContextError: LocalizedError {
-    case unavailable, finished, unsupportedBackend
+    case unavailable, finished, unsupportedBackend, unconfirmedRegistration
 
     var errorDescription: String? { Localized.text("firing.progression.unavailable") }
 }
@@ -32,6 +32,7 @@ final class AlarmSnoozeSessionStore {
         let sessionID: UUID
         let alarmID: UUID
         let count: Int
+        let fireDate: Date?
     }
 
     private enum Phase: String, Codable { case reserved, charged, scheduled, failed, rejected }
@@ -52,6 +53,8 @@ final class AlarmSnoozeSessionStore {
         var sessions: [Session] = []
     }
 
+    // Main-actor physical operations survive finish until their callback settles.
+    private static var running: Set<AlarmSnoozeToken> = []
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults) { self.defaults = defaults }
@@ -65,7 +68,8 @@ final class AlarmSnoozeSessionStore {
               !session.attempts.contains(where: { $0.phase == .reserved || $0.phase == .charged }) else {
             throw AlarmSnoozeContextError.unavailable
         }
-        return Snapshot(sessionID: session.id, alarmID: session.alarmID, count: session.count)
+        return Snapshot(sessionID: session.id, alarmID: session.alarmID, count: session.count,
+                        fireDate: session.attempts.last?.receipt?.fireDate)
     }
 
     /// Equality against the actual confirmed fixed schedule, never the latest record or `now`.
@@ -94,7 +98,7 @@ final class AlarmSnoozeSessionStore {
               envelope.sessions[index].count == expectedCount,
               expectedCount >= 0, expectedCount < Int.max - 2,
               !envelope.sessions.contains(where: { session in
-                  session.alarmID == alarmID && !session.finished
+                  session.alarmID == alarmID
                       && session.attempts.contains { $0.phase == .reserved || $0.phase == .charged }
               }) else { throw AlarmSnoozeContextError.unavailable }
         let token = AlarmSnoozeToken(sessionID: id, attemptID: UUID())
@@ -109,6 +113,7 @@ final class AlarmSnoozeSessionStore {
             session.count += 1
             attempt.phase = .charged
         }
+        Self.running.insert(token)
     }
 
     func rejectCharge(_ token: AlarmSnoozeToken, alarmID: UUID) throws {
@@ -126,6 +131,33 @@ final class AlarmSnoozeSessionStore {
             attempt.phase = receipt == nil ? .failed : .scheduled
             attempt.receipt = receipt
         }
+        Self.running.remove(token)
+    }
+
+    func pendingCount(_ token: AlarmSnoozeToken, alarmID: UUID) throws -> Int {
+        let session = try find(token, alarmID: alarmID, in: read())
+        guard !session.finished, session.attempts.last?.id == token.attemptID,
+              session.attempts.last?.phase == .charged else { throw AlarmSnoozeContextError.unavailable }
+        return session.count
+    }
+
+    /// Only after the physical callback and checked derived-ID cancellation.
+    func operationEnded(_ token: AlarmSnoozeToken) { Self.running.remove(token) }
+
+    func settleCancelled(alarmID: UUID) throws {
+        var envelope = try read()
+        for index in envelope.sessions.indices where envelope.sessions[index].alarmID == alarmID
+            && envelope.sessions[index].finished {
+            for attempt in envelope.sessions[index].attempts.indices {
+                let value = envelope.sessions[index].attempts[attempt]
+                let token = AlarmSnoozeToken(sessionID: envelope.sessions[index].id, attemptID: value.id)
+                guard !Self.running.contains(token) else { continue }
+                if value.phase == .reserved || value.phase == .charged {
+                    envelope.sessions[index].attempts[attempt].phase = value.phase == .charged ? .failed : .rejected
+                }
+            }
+        }
+        try write(envelope)
     }
 
     func finish(alarmID: UUID) throws {

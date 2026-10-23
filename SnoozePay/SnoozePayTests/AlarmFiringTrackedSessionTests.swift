@@ -1,3 +1,4 @@
+import AlarmKit
 import XCTest
 @testable import SnoozePay
 
@@ -9,7 +10,7 @@ final class AlarmFiringTrackedSessionTests: XCTestCase {
 
     func testFreshVMAndAllReconstructedServicesChargeTheApprovedLadder() throws {
         var reference: AlarmSnoozeReference?
-        for expected in [50.0, 100, 200, 400, 400] {
+        for (index, expected) in [50.0, 100, 200, 400, 400].enumerated() {
             let backend = TrackedSessionBackend()
             let model = fixture.model(backend: backend, reference: reference)
             XCTAssertEqual(model.currentPenalty, expected)
@@ -20,6 +21,21 @@ final class AlarmFiringTrackedSessionTests: XCTestCase {
             let actual = try XCTUnwrap(backend.receipts.last)
             let requested = try XCTUnwrap(backend.requestedDates.last)
             XCTAssertNotEqual(actual.fireDate, requested)
+            XCTAssertEqual(model.nextRingDate(), actual.fireDate)
+            XCTAssertEqual(model.secondsUntilNextRing(from: actual.fireDate), 0)
+            XCTAssertEqual(backend.attemptCounts, [index + 1])
+            var systemTitle: String?
+            _ = try AlarmKitScheduler.makeSnoozeConfiguration(
+                for: fixture.alarm, fireDate: requested, token: token, attemptCount: try XCTUnwrap(backend.attemptCounts.last),
+                construct: { schedule, attributes, stop, snooze, sound in
+                    systemTitle = attributes.presentation.alert.secondaryButton.map { String(localized: $0.text) }
+                    return .alarm(schedule: schedule, attributes: attributes,
+                                  stopIntent: stop, secondaryIntent: snooze, sound: sound)
+                }
+            )
+            XCTAssertEqual(systemTitle, AlarmKitCopy.pricedSnooze(
+                penalty: [100.0, 200, 400, 400, 400][index], currency: .legacyDefault
+            ))
             XCTAssertEqual(try fixture.store().token(for: actual, alarmID: fixture.alarm.id), token)
             XCTAssertThrowsError(try fixture.store().token(for: AlarmSnoozeReceipt(
                 systemID: actual.systemID, fireDate: requested
@@ -85,7 +101,9 @@ final class AlarmFiringTrackedSessionTests: XCTestCase {
         backend.resolve()
         XCTAssertNil(model.nextRingDate())
         XCTAssertFalse(model.snooze())
-        XCTAssertEqual(backend.cancelled, [fixture.alarm.id, fixture.alarm.id])
+        XCTAssertEqual(backend.cancelled, [fixture.alarm.id])
+        XCTAssertEqual(backend.cancelledSnoozes, [fixture.alarm.id, fixture.alarm.id])
+        XCTAssertNil(backend.registrations[AlarmKitScheduler.snoozeID(for: fixture.alarm.id)])
         XCTAssertThrowsError(try fixture.store().resolve(token, alarmID: fixture.alarm.id))
         XCTAssertEqual(try fixture.ledger().fetchAllChecked().filter { $0.type == .refund }.count, 0,
                        "Confirmed finish retains the existing charge/refund policy")

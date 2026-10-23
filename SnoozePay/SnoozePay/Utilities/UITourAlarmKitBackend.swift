@@ -62,10 +62,12 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
     private var fixedSchedules: [UUID: Date] = [:]
 
     func scheduleTrackedSnooze(
-        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken,
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
+        isCurrent: @escaping () -> Bool,
         completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
     ) {
         guard isAuthorized else { completion(.failure(NotAuthorized())); return }
+        guard isCurrent() else { completion(.failure(AlarmSnoozeContextError.finished)); return }
         let id = AlarmKitScheduler.snoozeID(for: alarm.id)
         fixedSchedules[id] = fireDate
         guard let registered = fixedSchedules[id] else {
@@ -75,6 +77,10 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
         completion(.success(AlarmSnoozeReceipt(systemID: id, fireDate: registered)))
     }
 
+    func cancelTrackedSnooze(_ alarmID: UUID) -> Bool {
+        fixedSchedules[AlarmKitScheduler.snoozeID(for: alarmID)] = nil
+        return true
+    }
     func cancelOriginal(_ alarmID: UUID) {}
     func cancel(_ alarmID: UUID) { fixedSchedules[AlarmKitScheduler.snoozeID(for: alarmID)] = nil }
 

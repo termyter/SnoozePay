@@ -110,14 +110,18 @@ struct StopAlarmIntent: LiveActivityIntent {
     @Parameter(title: "Snooze Attempt")
     var attemptID: String?
 
-    init(alarmID: UUID, token: AlarmSnoozeToken? = nil) {
+    @Dependency(default: { await AlarmKitActionRouter.shared })
+    var actionRouter: AlarmKitActionRouter
+
+    init(alarmID: UUID, token: AlarmSnoozeToken? = nil, dependencyManager: AppDependencyManager = .shared) {
+        self._actionRouter = Dependency(manager: dependencyManager, default: { await AlarmKitActionRouter.shared })
         self.alarmID = alarmID.uuidString
         self.sessionID = token?.sessionID.uuidString
         self.attemptID = token?.attemptID.uuidString
     }
 
     func perform() async throws -> some IntentResult {
-        await AlarmKitActionRouter.shared.handleStop(
+        await actionRouter.handleStop(
             alarmIDString: alarmID, sessionIDString: sessionID, attemptIDString: attemptID
         )
         return .result()
@@ -150,14 +154,18 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
     @Parameter(title: "Snooze Attempt")
     var attemptID: String?
 
-    init(alarmID: UUID, token: AlarmSnoozeToken? = nil) {
+    @Dependency(default: { await AlarmKitActionRouter.shared })
+    var actionRouter: AlarmKitActionRouter
+
+    init(alarmID: UUID, token: AlarmSnoozeToken? = nil, dependencyManager: AppDependencyManager = .shared) {
+        self._actionRouter = Dependency(manager: dependencyManager, default: { await AlarmKitActionRouter.shared })
         self.alarmID = alarmID.uuidString
         self.sessionID = token?.sessionID.uuidString
         self.attemptID = token?.attemptID.uuidString
     }
 
     func perform() async throws -> some IntentResult {
-        await AlarmKitActionRouter.shared.handleSnooze(
+        await actionRouter.handleSnooze(
             alarmIDString: alarmID, sessionIDString: sessionID, attemptIDString: attemptID
         )
         return .result()
