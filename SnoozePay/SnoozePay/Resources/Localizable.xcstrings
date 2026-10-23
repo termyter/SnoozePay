@@ -7341,6 +7341,24 @@
         }
       }
     },
+    "statistics.wake_time.calculation_unavailable" : {
+      "comment" : "Wake-time card when enough history exists but its median cannot be published. No recovery promise.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up time couldn’t be calculated from the recorded history."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось рассчитать время подъёма по записанной истории."
+          }
+        }
+      }
+    },
     "statistics.wake_time.caps" : {
       "comment" : "Caps title of the wake-time card (SPWakeTimeCard).",
       "extractionState" : "manual",
@@ -7355,6 +7373,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ВРЕМЯ ПОДЪЁМА"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.comparison_unavailable" : {
+      "comment" : "Wake-time card comparison when the baseline result was refused; the recent median remains visible.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The wake-up time comparison is unavailable."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сравнение времени подъёма недоступно."
           }
         }
       }
@@ -7463,6 +7499,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Копим историю: нужно ещё %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.unreadable" : {
+      "comment" : "Wake history could not be read. Used by the wake-time card or the statistics unavailable state; no repair action.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up history couldn’t be read."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать историю подъёмов."
           }
         }
       }

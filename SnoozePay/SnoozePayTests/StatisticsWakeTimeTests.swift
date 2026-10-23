@@ -165,7 +165,7 @@ final class StatisticsWakeTimeTests: XCTestCase {
         )
 
         XCTAssertNil(refused.medianMinutes, "One minute past the day is not a wake time")
-        XCTAssertTrue(refused.hasNothingToShow, "…so the host drops the whole card")
+        XCTAssertTrue(refused.hasNothingToShow, "No figure can be published; the card must explain unavailability")
         XCTAssertFalse(refused.isAccumulating, "The window is full — history is not what's missing")
     }
 
@@ -279,7 +279,7 @@ final class StatisticsWakeTimeTests: XCTestCase {
         )
         XCTAssertTrue(
             refused.hasNothingToShow,
-            "Nothing to publish and nothing honest to promise — the host hides the card"
+            "Nothing to publish or accumulate — an unavailable reason is required"
         )
     }
 
@@ -303,7 +303,7 @@ final class StatisticsWakeTimeTests: XCTestCase {
     }
     /// The card's copy, compared against the copy it shows in the healthy
     /// short-history case rather than against a string typed here.
-    func testWakeTimeCard_refusedMedianShowsNoCopyRatherThanZeroMornings() {
+    func testWakeTimeCard_refusedMedianExplainsFailureRatherThanZeroMornings() {
         let card = SPWakeTimeCard()
 
         let accumulating = StatisticsViewModel.WakeTimeStats(
@@ -326,6 +326,7 @@ final class StatisticsWakeTimeTests: XCTestCase {
         card.apply(refused)
         card.layoutIfNeeded()
         let refusedCopy = Self.visibleStrings(in: card)
+        XCTAssertTrue(refusedCopy.contains("Не удалось рассчитать время подъёма по записанной истории."))
 
         XCTAssertFalse(
             refusedCopy.contains(StatisticsViewModel.wakeSamplesPendingText(0)),
