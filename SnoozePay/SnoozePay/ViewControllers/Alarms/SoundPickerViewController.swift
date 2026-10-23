@@ -113,6 +113,8 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.tintColor = AppColors.fgOnMoney
+        button.isAccessibilityElement = true
+        button.accessibilityTraits = .button
         button.setImage(
             UIImage(systemName: "play.fill")?
                 .withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)),
