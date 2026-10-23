@@ -27,7 +27,7 @@ import XCTest
 ///
 /// Coverage is **29 of 31 keys at the call site**; the two exceptions:
 ///
-///   * `statistics.error.title` and `statistics.error.message` render from
+///   * `common.error.data_title` and `statistics.error.message` render from
 ///     `presentRepositoryError`. Catalogue layer only — **not for want of a
 ///     seam**, which is what this comment claimed until review. The seam is
 ///     three lines wide: `StatisticsViewController.viewModel` is internal,
@@ -71,8 +71,8 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
         "alarm_off.lower_price.title",
         "alarm_off.reschedule.subtitle",
         "alarm_off.reschedule.title",
+        "common.error.data_title",
         "statistics.error.message",
-        "statistics.error.title",
         "statistics.streak.caps",
         "statistics.title",
         "statistics.trend.axis_end",
