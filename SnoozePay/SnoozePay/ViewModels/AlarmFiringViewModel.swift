@@ -383,20 +383,12 @@ final class AlarmFiringViewModel {
         }
     }
 
-    /// Wall-clock `Date` of the next ring after the current snooze — the FIXED
-    /// A tracked snooze uses the actual fixed date returned by AlarmKit, including backend latency/flooring.
-    /// An explicit `anchor` retains the legacy arithmetic seam below.
-    /// `anchor` (the moment the user tapped «Поспать ещё», stored once in
-    /// `snooze()`) shifted forward exactly one `snoozeMinutes` interval. This
-    /// mirrors `AlarmScheduler.scheduledFireDate`, which arms the snooze trigger
-    /// at `tap + snoozeMinutes` regardless of `snoozeCount`. Anchoring to the
-    /// FIXED tap moment (not the per-tick clock and not the alarm's time-of-day ×
-    /// snoozeCount) is what lets the live countdown decrement: the target is
-    /// constant while `now` moves, so `secondsUntilNextRing(from:)` falls to `0`
-    /// and the chrome tears down. A 07:00 alarm snoozed at 07:12 counts down to
-    /// 07:17, not the long-past 07:05 (issue #396). The default `anchor`
-    /// (`snoozeAnchor`, the stored tap moment) is used by production call sites;
-    /// tests pin it explicitly. Returns `nil` before the first snooze.
+    /// Fixed wall-clock target of a confirmed snooze. Tracked production schedules use
+    /// the actual date returned by AlarmKit, including backend latency or flooring.
+    /// An explicit `anchor`, or an untracked legacy snooze, uses the stored tap moment
+    /// plus `snoozeMinutes` through `AlarmScheduler.scheduledFireDate` (#396).
+    /// The target stays constant while `now` advances, so the countdown reaches zero.
+    /// Returns `nil` before confirmation and after finish.
     func nextRingDate(anchor: Date? = nil) -> Date? {
         if anchor == nil, let confirmedSnoozeFireDate { return confirmedSnoozeFireDate }
         guard let tap = anchor ?? snoozeAnchor else { return nil }

@@ -459,7 +459,6 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         currency: Currency? = .legacyDefault,
         token: AlarmSnoozeToken? = nil,
         attemptCount: Int = 0,
-        dependencyManager: AppDependencyManager = .shared,
         presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation,
         construct: (AlarmKit.Alarm.Schedule, AlarmAttributes<SnoozePayAlarmMetadata>, StopAlarmIntent,
                     SnoozeAlarmIntent, ActivityKit.AlertConfiguration.AlertSound) -> SnoozeConfiguration = {
@@ -476,8 +475,8 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         )
         return construct(
             schedule, attributes,
-            StopAlarmIntent(alarmID: alarm.id, token: token, dependencyManager: dependencyManager),
-            SnoozeAlarmIntent(alarmID: alarm.id, token: token, dependencyManager: dependencyManager),
+            StopAlarmIntent(alarmID: alarm.id, token: token),
+            SnoozeAlarmIntent(alarmID: alarm.id, token: token),
             alarmSound(for: alarm)
         )
     }

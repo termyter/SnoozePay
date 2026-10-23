@@ -110,18 +110,17 @@ struct StopAlarmIntent: LiveActivityIntent {
     @Parameter(title: "Snooze Attempt")
     var attemptID: String?
 
-    @Dependency(default: { await AlarmKitActionRouter.shared })
-    var actionRouter: AlarmKitActionRouter
+    var routerProvider: @MainActor @Sendable () -> AlarmKitActionRouter = { .shared }
 
-    init(alarmID: UUID, token: AlarmSnoozeToken? = nil, dependencyManager: AppDependencyManager = .shared) {
-        self._actionRouter = Dependency(manager: dependencyManager, default: { await AlarmKitActionRouter.shared })
+    init(alarmID: UUID, token: AlarmSnoozeToken? = nil) {
         self.alarmID = alarmID.uuidString
         self.sessionID = token?.sessionID.uuidString
         self.attemptID = token?.attemptID.uuidString
     }
 
     func perform() async throws -> some IntentResult {
-        await actionRouter.handleStop(
+        let router = await routerProvider()
+        await router.handleStop(
             alarmIDString: alarmID, sessionIDString: sessionID, attemptIDString: attemptID
         )
         return .result()
@@ -154,18 +153,17 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
     @Parameter(title: "Snooze Attempt")
     var attemptID: String?
 
-    @Dependency(default: { await AlarmKitActionRouter.shared })
-    var actionRouter: AlarmKitActionRouter
+    var routerProvider: @MainActor @Sendable () -> AlarmKitActionRouter = { .shared }
 
-    init(alarmID: UUID, token: AlarmSnoozeToken? = nil, dependencyManager: AppDependencyManager = .shared) {
-        self._actionRouter = Dependency(manager: dependencyManager, default: { await AlarmKitActionRouter.shared })
+    init(alarmID: UUID, token: AlarmSnoozeToken? = nil) {
         self.alarmID = alarmID.uuidString
         self.sessionID = token?.sessionID.uuidString
         self.attemptID = token?.attemptID.uuidString
     }
 
     func perform() async throws -> some IntentResult {
-        await actionRouter.handleSnooze(
+        let router = await routerProvider()
+        await router.handleSnooze(
             alarmIDString: alarmID, sessionIDString: sessionID, attemptIDString: attemptID
         )
         return .result()

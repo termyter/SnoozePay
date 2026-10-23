@@ -1,5 +1,4 @@
 import AlarmKit
-import AppIntents
 import XCTest
 @testable import SnoozePay
 
@@ -18,13 +17,11 @@ final class AlarmKitTrackedSessionRoutingTests: XCTestCase {
             let presenter = fixture.presenter(host: host, backend: backend)
             presenter.isRootReady = { true }
             let router = router(presenter: presenter, backend: backend)
-            let dependencies = AppDependencyManager()
-            dependencies.add(dependency: router)
             var capturedStop: StopAlarmIntent?
             var capturedSnooze: SnoozeAlarmIntent?
             _ = try AlarmKitScheduler.makeSnoozeConfiguration(
                 for: fixture.alarm, fireDate: try XCTUnwrap(backend.receipts.last).fireDate,
-                token: token, attemptCount: 1, dependencyManager: dependencies,
+                token: token, attemptCount: 1,
                 construct: { schedule, attributes, stop, snooze, sound in
                     capturedStop = stop
                     capturedSnooze = snooze
@@ -34,10 +31,9 @@ final class AlarmKitTrackedSessionRoutingTests: XCTestCase {
             )
             var stop = try XCTUnwrap(capturedStop)
             var snooze = try XCTUnwrap(capturedSnooze)
-            // Public per-instance dependency setter prepares direct perform without a framework invocation.
-            // Both wrappers belong to this test's manager; shared dependency state is untouched.
-            stop.actionRouter = router
-            snooze.actionRouter = router
+            // Inject only the captured instances; actual perform() owns the routing call.
+            stop.routerProvider = { router }
+            snooze.routerProvider = { router }
             XCTAssertEqual(stop.sessionID, snooze.sessionID)
             XCTAssertEqual(stop.attemptID, snooze.attemptID)
             XCTAssertEqual(stop.sessionID, token.sessionID.uuidString)

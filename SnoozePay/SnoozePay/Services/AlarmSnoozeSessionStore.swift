@@ -141,7 +141,8 @@ final class AlarmSnoozeSessionStore {
         return session.count
     }
 
-    /// Only after the physical callback and checked derived-ID cancellation.
+    /// Called when the physical callback ends. Durable pending phases still quarantine the alarm
+    /// until checked cleanup settles them.
     func operationEnded(_ token: AlarmSnoozeToken) { Self.running.remove(token) }
 
     func settleCancelled(alarmID: UUID) throws {
