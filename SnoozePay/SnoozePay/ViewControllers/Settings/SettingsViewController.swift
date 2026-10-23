@@ -252,7 +252,7 @@ extension SettingsViewController: UITableViewDataSource {
         // already filtered the section out, so no index maps here.
         case .referral:           return ReferralRow.allCases.count
         case .other:              return OtherRow.allCases.count
-        case .diagnostics:        return isRecoveryVisible ? 1 : 0
+        case .diagnostics:        return 1
         }
     }
 
@@ -264,9 +264,8 @@ extension SettingsViewController: UITableViewDataSource {
         case .rules:              return Localized.text("settings.section.rules")
         case .referral:           return Localized.text("settings.section.referral")
         case .other:              return Localized.text("settings.section.other")
-        // No header when the recovery row is hidden, so the empty section
-        // collapses entirely rather than leaving a stray caps title.
-        case .diagnostics:        return isRecoveryVisible ? Localized.text("settings.section.recovery") : nil
+        // Hidden optional sections have already been removed from the mapping.
+        case .diagnostics:        return Localized.text("settings.section.recovery")
         }
     }
 
