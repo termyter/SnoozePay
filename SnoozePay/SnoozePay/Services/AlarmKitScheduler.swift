@@ -108,6 +108,12 @@ protocol AlarmKitScheduling: AnyObject {
         completion: @escaping (Result<Void, Error>) -> Void
     )
 
+    /// A tracked schedule must return its actual registered fixed schedule, not a predicted date.
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    )
+
     /// Cancel only the original schedule before rearming it. A paid one-shot
     /// snooze under its separate ID must keep its existing fire date.
     func cancelOriginal(_ alarmID: UUID)
@@ -124,6 +130,14 @@ protocol AlarmKitScheduling: AnyObject {
 /// The production `AlarmKitScheduler` overrides this with the real tri-state,
 /// which is the only place the distinction can actually be observed.
 extension AlarmKitScheduling {
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        // An old backend's Void success is not evidence of a registered fixed schedule.
+        completion(.failure(AlarmSnoozeContextError.unsupportedBackend))
+    }
+
     var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
     var alertingAlarmIDs: Set<UUID>? { nil }
 }
@@ -311,6 +325,35 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         }
     }
 
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        do {
+            let configuration = try Self.makeSnoozeConfiguration(
+                for: alarm, fireDate: fireDate, currency: BalanceService.shared.alarmQuoteCurrency, token: token
+            )
+            Task {
+                do {
+                    let registered = try await manager.schedule(
+                        id: Self.snoozeID(for: alarm.id), configuration: configuration
+                    )
+                    guard registered.id == Self.snoozeID(for: alarm.id),
+                          case .fixed(let actualDate)? = registered.schedule,
+                          actualDate.timeIntervalSince1970.isFinite else {
+                        cancelOne(Self.snoozeID(for: alarm.id))
+                        throw AlarmSnoozeContextError.unavailable
+                    }
+                    completion(.success(AlarmSnoozeReceipt(systemID: registered.id, fireDate: actualDate)))
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
     func cancelOriginal(_ alarmID: UUID) {
         cancelOne(alarmID)
     }
@@ -389,6 +432,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         for alarm: Alarm,
         fireDate: Date,
         currency: Currency? = .legacyDefault,
+        token: AlarmSnoozeToken? = nil,
         presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation
     ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
         let schedule = makeSnoozeSchedule(fireDate: fireDate)
@@ -401,8 +445,8 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         return AlarmManager.AlarmConfiguration.alarm(
             schedule: schedule,
             attributes: attributes,
-            stopIntent: StopAlarmIntent(alarmID: alarm.id),
-            secondaryIntent: SnoozeAlarmIntent(alarmID: alarm.id),
+            stopIntent: StopAlarmIntent(alarmID: alarm.id, token: token),
+            secondaryIntent: SnoozeAlarmIntent(alarmID: alarm.id, token: token),
             sound: alarmSound(for: alarm)
         )
     }

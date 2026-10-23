@@ -37,6 +37,22 @@ final class AlarmFiringViewModel {
     /// («сегодня списано N ₽», the history ticker) are derived from THIS, not
     /// from `snoozeCount` — see `billedSnoozes` (#400).
     private let ledger: AlarmFiringLedgerReading
+    private var snoozeSessions: AlarmSnoozeSessionStore?
+    private(set) var snoozeReference: AlarmSnoozeReference?
+    private(set) var isProgressionAvailable = true
+
+    /// Called before mounting through the existing screen factory/read-back path.
+    func bindSnoozeSession(_ reference: AlarmSnoozeReference, store: AlarmSnoozeSessionStore) {
+        snoozeSessions = store
+        snoozeReference = reference
+        do {
+            guard case .token(let token) = reference else { throw AlarmSnoozeContextError.unavailable }
+            snoozeCount = try store.resolve(token, alarmID: alarm.id).count
+        } catch {
+            isProgressionAvailable = false
+            AppLogger.emit(.ui, .error, "Snooze session unavailable — refusing paid continuation")
+        }
+    }
 
     // MARK: - State
 
@@ -91,7 +107,8 @@ final class AlarmFiringViewModel {
         scheduler: AlarmScheduler = .shared,
         wakeStore: WakeEventStore = .shared,
         ledger: AlarmFiringLedgerReading = TransactionRepository.shared,
-        firingStartedAt: Date = Date()
+        firingStartedAt: Date = Date(),
+        snoozeSessions: AlarmSnoozeSessionStore? = nil
     ) {
         self.alarm = alarm
         self.snoozeCount = snoozeCount
@@ -102,12 +119,13 @@ final class AlarmFiringViewModel {
         self.wakeStore = wakeStore
         self.ledger = ledger
         self.firingStartedAt = firingStartedAt
+        self.snoozeSessions = snoozeSessions
     }
 
     // MARK: - Computed properties for UI
 
     var currentPenalty: Double {
-        alarm.penalty(forSnoozeCount: snoozeCount + 1)
+        isProgressionAvailable ? alarm.penalty(forSnoozeCount: snoozeCount + 1) : .nan
     }
 
     // MARK: - Progressive escalation (#139)
@@ -278,10 +296,11 @@ final class AlarmFiringViewModel {
     }
 
     var canSnooze: Bool {
-        balanceService.canAfford(currentPenalty)
+        isProgressionAvailable && balanceService.canAfford(currentPenalty)
     }
 
     var snoozeButtonTitle: String {
+        guard isProgressionAvailable else { return Localized.text("firing.progression.unavailable") }
         if canSnooze {
             return Localized.format(
                 "firing.snooze.button.affordable",
@@ -451,6 +470,18 @@ final class AlarmFiringViewModel {
         // Capture the penalty for this snooze BEFORE bumping the count so the
         // refund (if the schedule fails) returns the exact amount charged.
         let penalty = currentPenalty
+        let token: AlarmSnoozeToken?
+        do {
+            let sessionID: UUID?
+            if case .token(let bound)? = snoozeReference { sessionID = bound.sessionID } else { sessionID = nil }
+            token = try snoozeSessions?.reserve(alarmID: alarm.id, sessionID: sessionID, expectedCount: snoozeCount)
+            if let token { snoozeReference = .token(token) }
+        } catch {
+            isProgressionAvailable = false
+            isSnoozeScheduling = false
+            onStateChanged?()
+            return false
+        }
         // `chargeWithReceipt` surfaces the persisted charge transaction so a
         // later refund can link back to it via `refundsTransactionID` (issue
         // #366). Without that link the foreground refund offsets the balance
@@ -460,6 +491,12 @@ final class AlarmFiringViewModel {
             amount: penalty,
             alarmID: alarm.id
         ) else {
+            if let token {
+                do { try snoozeSessions?.rejectCharge(token, alarmID: alarm.id) } catch {
+                    isProgressionAvailable = false
+                    onStateChanged?()
+                }
+            }
             isSnoozeScheduling = false
             return false
         }
@@ -470,11 +507,11 @@ final class AlarmFiringViewModel {
         let anchor = Date()
         snoozeAnchor = nil
         onStateChanged?()
-        scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount) { [self] result in
+        let finish: (Result<Void, AlarmScheduler.SchedulingError>) -> Void = { [self] result in
             // Retain this operation until its refund/outcome resolves, even if the VC disappears.
             isSnoozeScheduling = false
             if case .success = result {
-                if hasBeenDismissed {
+                if hasBeenDismissed || !isProgressionAvailable {
                     // Stop may have cancelled before the async backend created
                     // this trigger. Cancel again so a late success cannot re-arm.
                     scheduler.cancel(alarm.id)
@@ -489,6 +526,36 @@ final class AlarmFiringViewModel {
             ) { outcome in
                 self.onStateChanged?()
                 scheduleCompletion?(outcome)
+            }
+        }
+        guard let token, let snoozeSessions else {
+            scheduler.scheduleSnooze(for: alarm, snoozeCount: snoozeCount, completion: finish)
+            return true
+        }
+        do {
+            try snoozeSessions.recordCharge(token, alarmID: alarm.id)
+        } catch {
+            isProgressionAvailable = false
+            finish(.failure(.system(message: error.localizedDescription)))
+            return true
+        }
+        scheduler.scheduleTrackedSnooze(for: alarm, token: token) { [self] result in
+            do {
+                let receipt: AlarmSnoozeReceipt?
+                switch result {
+                case .success(let registered): receipt = registered
+                case .failure: receipt = nil
+                }
+                try snoozeSessions.complete(token, alarmID: alarm.id, receipt: receipt)
+                finish(result.map { _ in () })
+            } catch {
+                isProgressionAvailable = false
+                if case .success = result, !hasBeenDismissed { scheduler.cancel(alarm.id) }
+                if hasBeenDismissed {
+                    finish(result.map { _ in () })
+                } else {
+                    finish(.failure(.system(message: error.localizedDescription)))
+                }
             }
         }
         return true
@@ -564,6 +631,10 @@ final class AlarmFiringViewModel {
     /// (issue #54 mirrors the silent-failure fix from #35 for the list path).
     func dismiss() {
         hasBeenDismissed = true
+        do { try snoozeSessions?.finish(alarmID: alarm.id) } catch {
+            let detail = String(describing: error)
+            AppLogger.ui.error("Snooze finish persistence failed: \(detail, privacy: .public)")
+        }
         snoozeAnchor = nil
         // The user got up — feed the behavioural statistics heatmap (#235).
         // Recorded per calendar day; the snooze count for the day comes from

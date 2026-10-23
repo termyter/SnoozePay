@@ -171,6 +171,7 @@ enum UITourLauncher {
     /// without this a previous run's alarms leak into the next test's counts.
     private static func resetIfRequested() {
         guard ProcessInfo.processInfo.arguments.contains("-uitour-reset") else { return }
+        UserDefaults.standard.removeObject(forKey: AlarmSnoozeSessionStore.key)
         let repo = AlarmRepository.shared
         // Checked read collapsed with `try?` (#271): a wipe driven by an
         // unreadable store would silently do nothing, and the tour must not

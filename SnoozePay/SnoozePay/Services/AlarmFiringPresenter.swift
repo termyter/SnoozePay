@@ -278,8 +278,25 @@ final class AlarmFiringPresenter {
     /// is not up by the time it returns (the retry signal). Seam so the pending /
     /// flush logic is unit-testable without standing up the VC hierarchy;
     /// production points at the real `present(alarmID:snoozeCount:)`.
+    var snoozeSessions: AlarmSnoozeSessionStore = .shared
+    var mountingSnoozeReference: AlarmSnoozeReference?
+
+    func requestTrackedPresentation(alarmID: UUID, reference: AlarmSnoozeReference) {
+        let count: Int
+        do {
+            if case .token(let token) = reference {
+                count = try snoozeSessions.resolve(token, alarmID: alarmID).count
+            } else { count = 0 }
+        } catch AlarmSnoozeContextError.finished { return } catch { count = 0 }
+        armRetry(
+            PendingPresentation(alarmID: alarmID, snoozeCount: count, snoozeReference: reference), level: .default, nil
+        )
+        flushPendingPresentation()
+    }
+
     lazy var mount: (UUID, Int) -> Bool = { [weak self] alarmID, snoozeCount in
-        self?.present(alarmID: alarmID, snoozeCount: snoozeCount) ?? false
+        guard let self else { return false }
+        return self.present(alarmID: alarmID, snoozeCount: snoozeCount, snoozeReference: self.mountingSnoozeReference)
     }
 
     // Explicit (no defaulted-argument) init: a `= .shared` default on a
@@ -317,8 +334,10 @@ final class AlarmFiringPresenter {
     /// pending-present retry (#382) keys off. See `present(alarm:snoozeCount:)`
     /// for the two states behind that `false`.
     @discardableResult
-    func present(alarmID: UUID, snoozeCount: Int = 0) -> Bool {
-        let request = PendingPresentation(alarmID: alarmID, snoozeCount: snoozeCount)
+    func present(
+        alarmID: UUID, snoozeCount: Int = 0, snoozeReference: AlarmSnoozeReference? = nil
+    ) -> Bool {
+        let request = PendingPresentation(alarmID: alarmID, snoozeCount: snoozeCount, snoozeReference: snoozeReference)
         let alarm: Alarm?
         do {
             alarm = try alarmRepository.fetchChecked(id: alarmID)
@@ -336,7 +355,7 @@ final class AlarmFiringPresenter {
             stopAudio(ifOwnedBy: request, "not found")
             return true
         }
-        return present(alarm: alarm, snoozeCount: snoozeCount)
+        return present(alarm: alarm, snoozeCount: snoozeCount, snoozeReference: snoozeReference)
     }
 
     /// Present the firing screen for an already-resolved alarm. The single
@@ -362,8 +381,16 @@ final class AlarmFiringPresenter {
     /// `true` without mounting when this alarm's screen is up and still
     /// ringing at a count no lower than the request's: `settleOnRingingScreen`.
     @discardableResult
-    func present(alarm: Alarm, snoozeCount: Int = 0) -> Bool {
-        let request = PendingPresentation(alarmID: alarm.id, snoozeCount: snoozeCount)
+    func present(
+        alarm: Alarm, snoozeCount: Int = 0, snoozeReference: AlarmSnoozeReference? = nil
+    ) -> Bool {
+        var count = snoozeCount
+        if case .token(let token)? = snoozeReference {
+            do {
+                count = try snoozeSessions.resolve(token, alarmID: alarm.id).count
+            } catch AlarmSnoozeContextError.finished { return true } catch { /* Bind unavailable below. */ }
+        }
+        let request = PendingPresentation(alarmID: alarm.id, snoozeCount: count, snoozeReference: snoozeReference)
         let topVC: UIViewController
         switch locateHost() {
         case let .success(located):
@@ -391,7 +418,8 @@ final class AlarmFiringPresenter {
             return false
         }
 
-        let firingVC = makeFiringScreen(alarm, snoozeCount)
+        let firingVC = makeFiringScreen(alarm, count)
+        if let snoozeReference { firingVC.viewModel.bindSnoozeSession(snoozeReference, store: snoozeSessions) }
         firingVC.modalPresentationStyle = .fullScreen
         firingVC.onUserStop = { [weak self, weak firingVC] in
             guard let firingVC else { return }
@@ -560,6 +588,7 @@ final class AlarmFiringPresenter {
     ) -> RingMismatch? {
         let model = screen.viewModel
         if model.alarm.id != request.alarmID { return .otherAlarm }
+        if request.snoozeReference != nil && model.snoozeReference != request.snoozeReference { return .previousFiring }
         if model.snoozeCount < request.snoozeCount { return .olderCount }
         if screen.isBeingDismissed { return .dismissing }
         if screen.isStoppedByUser { return .stopped }
@@ -670,7 +699,8 @@ final class AlarmFiringPresenter {
                     )
                 case let reason?:
                     let rebuilt = PendingPresentation(
-                        alarmID: retry.alarmID, snoozeCount: max(retry.snoozeCount, shown.snoozeCount)
+                        alarmID: retry.alarmID, snoozeCount: max(retry.snoozeCount, shown.snoozeCount),
+                        snoozeReference: retry.snoozeReference
                     )
                     armRetry(
                         rebuilt, level: .default,
@@ -730,6 +760,17 @@ final class AlarmFiringPresenter {
         _ firingVC: UIViewController, on host: UIViewController, request: PendingPresentation,
         context: String, raiseParked: Bool
     ) -> Bool {
+        if let reference = request.snoozeReference {
+            if case .token(let token) = reference {
+                do {
+                    _ = try snoozeSessions.resolve(token, alarmID: request.alarmID)
+                } catch AlarmSnoozeContextError.finished {
+                    clearPending(shownAs: request)
+                    return true
+                } catch { /* Keep the free-finish screen, with no paid quote. */ }
+            }
+            (firingVC as? AlarmFiringViewController)?.viewModel.bindSnoozeSession(reference, store: snoozeSessions)
+        }
         host.present(firingVC, animated: false)
         guard firingVC.presentingViewController != nil else {
             let reason = AppDelegate.presentationRefusalReason(presenter: host)

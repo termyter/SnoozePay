@@ -58,8 +58,25 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
         completion(result())
     }
 
+    /// This fake owns an in-memory fixed registration, rather than adapting a Void success.
+    private var fixedSchedules: [UUID: Date] = [:]
+
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        guard isAuthorized else { completion(.failure(NotAuthorized())); return }
+        let id = AlarmKitScheduler.snoozeID(for: alarm.id)
+        fixedSchedules[id] = fireDate
+        guard let registered = fixedSchedules[id] else {
+            completion(.failure(AlarmSnoozeContextError.unavailable))
+            return
+        }
+        completion(.success(AlarmSnoozeReceipt(systemID: id, fireDate: registered)))
+    }
+
     func cancelOriginal(_ alarmID: UUID) {}
-    func cancel(_ alarmID: UUID) {}
+    func cancel(_ alarmID: UUID) { fixedSchedules[AlarmKitScheduler.snoozeID(for: alarmID)] = nil }
 
     func stop(_ alarmID: UUID) {}
 
