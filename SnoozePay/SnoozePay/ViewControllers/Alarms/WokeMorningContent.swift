@@ -91,9 +91,9 @@ struct WokeMorningContent {
     ///
     /// Carries no numbers at all — not even a zero. In particular it does NOT
     /// fall back to `.clean` when the in-memory attempt count is `0`: that
-    /// counter is reset on the AlarmKit path (the firing screen tears down
-    /// after each snooze and the next ring builds a fresh view model with
-    /// `snoozeCount: 0`), so «no attempts this session» is NOT evidence that
+    /// legacy ID-only AlarmKit routes still default to zero, while tracked
+    /// snooze tokens restore attempts. Neither an attempt counter nor a
+    /// legacy zero is proof of billing, so «no attempts this session» cannot prove that
     /// nothing was charged this morning. Claiming «баланс в полной
     /// сохранности» off an unreadable ledger would be the same nil-collapse
     /// this variant exists to prevent.

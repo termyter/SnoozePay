@@ -96,6 +96,7 @@ final class AlarmScheduler: AlarmScheduling {
     }
 
     private let notificationCenter: NotificationScheduling
+    private let snoozeSessions: AlarmSnoozeSessionStore?
 
     /// The AlarmKit backend as wired by `init`. Non-nil in production;
     /// injectable (and omittable) in tests so the "no backend at all" refusal
@@ -169,6 +170,7 @@ final class AlarmScheduler: AlarmScheduling {
         self.notificationCenter = UNUserNotificationCenter.current()
         self.wiredAlarmKitScheduler = AlarmKitScheduler()
         self.honoursTourOverride = true
+        self.snoozeSessions = .shared
     }
 
     /// Test-only initializer that swaps the notification-center seam and,
@@ -178,7 +180,8 @@ final class AlarmScheduler: AlarmScheduling {
     /// models "no backend authorized", which must refuse rather than schedule.
     init(
         notificationCenter: NotificationScheduling,
-        alarmKit: AlarmKitScheduling? = nil
+        alarmKit: AlarmKitScheduling? = nil,
+        snoozeSessions: AlarmSnoozeSessionStore? = nil
     ) {
         self.notificationCenter = notificationCenter
         self.wiredAlarmKitScheduler = alarmKit
@@ -186,6 +189,7 @@ final class AlarmScheduler: AlarmScheduling {
         // tour override leaked from another test — same rule as
         // `AlarmBackendMonitor`, where an injected probe always wins (#545).
         self.honoursTourOverride = false
+        self.snoozeSessions = snoozeSessions
     }
 
     // MARK: - Permission
@@ -351,6 +355,28 @@ final class AlarmScheduler: AlarmScheduling {
         }
     }
 
+    func scheduleTrackedSnooze(
+        for alarm: Alarm, token: AlarmSnoozeToken,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        guard usesAlarmKit, let alarmKitScheduler else {
+            completion(.failure(SchedulingError.backendUnavailable))
+            return
+        }
+        guard let snoozeSessions, let count = try? snoozeSessions.pendingCount(token, alarmID: alarm.id) else {
+            completion(.failure(AlarmSnoozeContextError.unavailable))
+            return
+        }
+        alarmKitScheduler.stop(alarm.id)
+        alarmKitScheduler.scheduleTrackedSnooze(
+            alarm, fireDate: Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes),
+            token: token, attemptCount: count,
+            isCurrent: { (try? snoozeSessions.pendingCount(token, alarmID: alarm.id)) == count }
+        ) { result in
+            completion(result)
+        }
+    }
+
     /// Pure factory for the snooze fire date — extracted so unit tests can pin the
     /// arithmetic without touching the backend. Bug guard for mistaken
     /// unit conversions (minutes vs seconds vs hours).
@@ -369,6 +395,10 @@ final class AlarmScheduler: AlarmScheduling {
     /// (`once`) alarm kept ringing after deletion because its identifier was
     /// missing from the cancel set.
     func cancel(_ alarmID: UUID) {
+        do { try snoozeSessions?.finish(alarmID: alarmID) } catch {
+            let detail = String(describing: error)
+            AppLogger.scheduler.error("Snooze session invalidation failed: \(detail, privacy: .public)")
+        }
         // Always attempt the AlarmKit cancel regardless of `usesAlarmKit` so an
         // alarm scheduled while authorized is still cancellable if the
         // authorization later changed.
@@ -376,7 +406,16 @@ final class AlarmScheduler: AlarmScheduling {
             alarmKitScheduler.cancel(alarmID)
         }
 
+        cleanUpTrackedSnooze(alarmID)
         cancelLegacyNotifications(alarmID)
+    }
+
+    /// Keeps unresolved reservations blocked unless physical absence is confirmed.
+    func cleanUpTrackedSnooze(_ alarmID: UUID) {
+        guard snoozeSessions != nil, alarmKitScheduler?.cancelTrackedSnooze(alarmID) == true else { return }
+        do { try snoozeSessions?.settleCancelled(alarmID: alarmID) } catch {
+            AppLogger.emit(.scheduler, .error, "Snooze cancellation context remains unavailable")
+        }
     }
 
     private func cancelLegacyNotifications(_ alarmID: UUID) {
