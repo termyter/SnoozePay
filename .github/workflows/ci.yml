@@ -242,9 +242,16 @@ jobs:
           fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
-      - name: Build & Test (clean, full suite)
+      - name: Build & Test (clean)
+        env:
+          UI_E2E_ENABLED: ${{ vars.SNOOZEPAY_UI_E2E_ENABLED == 'true' }}
         run: |
+          E2E_TEST_SCOPE=()
+          if [ "$UI_E2E_ENABLED" != "true" ]; then
+            E2E_TEST_SCOPE=(-only-testing:SnoozePayTests)
+          fi
           xcodebuild test \
+            "${E2E_TEST_SCOPE[@]}" \
             -project "$PROJECT" -scheme "$SCHEME" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -parallel-testing-enabled NO \
