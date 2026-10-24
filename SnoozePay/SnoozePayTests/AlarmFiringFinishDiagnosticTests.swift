@@ -40,6 +40,10 @@ final class AlarmFiringFinishDiagnosticTests: XCTestCase {
         AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: { model.dismiss() })
 
         XCTAssertFalse(lines.contains { $0.category == .ui && $0.message.hasPrefix(prefix) })
-        XCTAssertThrowsError(try store.resolve(token, alarmID: fixture.alarm.id), "finish must make the token terminal")
+        XCTAssertThrowsError(try store.resolve(token, alarmID: fixture.alarm.id)) { error in
+            guard case .finished? = error as? AlarmSnoozeContextError else {
+                return XCTFail("Expected a finished session, got \(error)")
+            }
+        }
     }
 }
