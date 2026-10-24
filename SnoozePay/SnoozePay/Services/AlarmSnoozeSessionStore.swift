@@ -147,6 +147,7 @@ final class AlarmSnoozeSessionStore {
 
     func settleCancelled(alarmID: UUID) throws {
         var envelope = try read()
+        var changed = false
         for index in envelope.sessions.indices where envelope.sessions[index].alarmID == alarmID
             && envelope.sessions[index].finished {
             for attempt in envelope.sessions[index].attempts.indices {
@@ -155,17 +156,23 @@ final class AlarmSnoozeSessionStore {
                 guard !Self.running.contains(token) else { continue }
                 if value.phase == .reserved || value.phase == .charged {
                     envelope.sessions[index].attempts[attempt].phase = value.phase == .charged ? .failed : .rejected
+                    changed = true
                 }
             }
         }
+        guard changed else { return }
         try write(envelope)
     }
 
     func finish(alarmID: UUID) throws {
         var envelope = try read()
-        for index in envelope.sessions.indices where envelope.sessions[index].alarmID == alarmID {
+        var changed = false
+        for index in envelope.sessions.indices where envelope.sessions[index].alarmID == alarmID
+            && !envelope.sessions[index].finished {
             envelope.sessions[index].finished = true
+            changed = true
         }
+        guard changed else { return }
         try write(envelope)
     }
 
