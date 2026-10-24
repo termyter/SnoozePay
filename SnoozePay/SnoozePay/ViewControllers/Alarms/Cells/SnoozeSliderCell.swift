@@ -18,7 +18,7 @@ final class SnoozeSliderCell: UITableViewCell {
     // MARK: - UI
 
     /// In-card caps caption «Длительность откладывания»
-    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:201` contains "Длительность откладывания").
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:200` contains "Длительность откладывания").
     /// Lives inside the card so the table no longer needs a section header (#278).
     private let captionLabel: UILabel = {
         let label = UILabel()
@@ -35,7 +35,7 @@ final class SnoozeSliderCell: UITableViewCell {
     }()
 
     /// Meta hint «На сколько минут отодвигается звонок»
-    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:202` contains "На сколько минут").
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:201` contains "На сколько минут").
     private let hintLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.snooze.hint")

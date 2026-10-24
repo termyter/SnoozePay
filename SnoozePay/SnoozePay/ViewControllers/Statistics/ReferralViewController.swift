@@ -1,7 +1,7 @@
 import UIKit
 
 /// Referral programme screen — V2 design (`Referral()`,
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:235-329` contains "function Referral").
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:232-326` contains "function Referral").
 ///
 /// Layout (top → bottom):
 ///   1. `ReferralHeroCardView` — deep-green promo panel (dark fill in BOTH

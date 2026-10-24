@@ -12,7 +12,7 @@ import XCTest
 /// that already carries its own `--sp-white-06` fill, so two buttons the canon
 /// draws identically, both `variant="quiet"` —
 /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313` contains "quiet",
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet" —
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:339` contains "quiet" —
 /// rendered differently depending on which screen you were on. The form's
 /// «Готово» is bare in the canon too, but it is `variant="money"` —
 /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "Готово</SPButton>" —
