@@ -220,7 +220,7 @@ final class AlarmRepository {
 
         guard let alarm = updated else {
             os_log(
-                "setEnabled: no alarm with id %{public}@ (or store locked)",
+                "setEnabled: no alarm with id %{private}@ (or store locked)",
                 log: Self.log, type: .info, id.uuidString
             )
             return false
