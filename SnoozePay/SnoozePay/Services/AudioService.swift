@@ -538,7 +538,7 @@ final class AudioService {
     /// reports the absence of.
     ///
     /// ⚠️ Reached from `startAlarmSoundLocked`, i.e. inside `queue.sync`, so
-    /// unlike every other `AppLogger.emit` call site this one is not
+    /// this `AppLogger.emit` call site is not
     /// GUARANTEED to be on the main thread. `sync` runs the block on whichever
     /// thread called it: `AlarmFiringViewController.viewDidLoad` is main, but
     /// the notification-centre delegate in `AppDelegate` carries no documented
@@ -546,13 +546,12 @@ final class AudioService {
     /// and the suite drives `startAlarmSound` from background threads on
     /// purpose (`testStartAlarmSound_fromBackgroundThread_reachesPlayingState`).
     ///
-    /// `queue.sync` buys `emit`'s unguarded `testSink` nothing: it serialises
-    /// audio work against other audio work, not against a test installing or
-    /// removing the sink on its own thread. What a test can lean on instead is
-    /// that `startAlarmSound` returns only once the queued body has run, so a
-    /// sink installed around that call is still installed when this line is
-    /// emitted — `AudioServiceStartWiringTests` reads it that way, and that is
-    /// what keeps `startAlarmSoundLocked` calling this method at all (#774).
+    /// `queue.sync` only serialises audio work. AppLogger separately synchronizes
+    /// its DEBUG sink access and callback delivery against installation and
+    /// restoration. `startAlarmSound` returns only once the queued body has run,
+    /// so a sink installed around that call still observes this line —
+    /// `AudioServiceStartWiringTests` reads it that way, which keeps
+    /// `startAlarmSoundLocked` calling this method at all (#774).
     /// The `AudioServiceTests` cases call it directly instead.
     func resolveAlarmPlayer(
         soundID: String,
