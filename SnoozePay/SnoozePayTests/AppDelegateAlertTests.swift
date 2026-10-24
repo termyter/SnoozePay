@@ -159,7 +159,7 @@ final class AppDelegateAlertTests: XCTestCase {
         window = nil
         // Spend this fixture's deferred removal work before restoring the
         // previous key window or letting the next test install a log sink.
-        drainMainQueue()
+        await drainMainQueueAsync()
         previousKeyWindow?.makeKeyAndVisible()
         previousKeyWindow = nil
         AppDelegate.scheduleNotificationsAlertRetry = savedRetry
@@ -179,7 +179,7 @@ final class AppDelegateAlertTests: XCTestCase {
         // sink that waits catches whatever deferred work a neighbour left
         // behind, and a stray ALERT-SHOWN would carry the same handle this test
         // counts (#742).
-        drainMainQueue()
+        await drainMainQueueAsync()
         assertMountedHost(host)
 
         let shown = expectation(description: "the ALERT-SHOWN line reached the seam")
@@ -515,7 +515,7 @@ final class AppDelegateAlertTests: XCTestCase {
 
         // Drained immediately before the sink goes in: a sink that waits also
         // catches whatever deferred work a neighbour left queued (#742).
-        drainMainQueue()
+        await drainMainQueueAsync()
         assertMountedHost(host)
 
         let shown = expectation(description: "the ALARM-789 ALERT-SHOWN line reached the seam")
