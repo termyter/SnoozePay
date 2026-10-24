@@ -1,11 +1,11 @@
 name: CI
 
-# #1038: preserve the complete selected test set while measuring a faster host.
-# ARM run 40129819631: Unit 444s, build 59s, test step 325s; XCTest execution 69s.
-# Standard Intel has 4 CPU/14GB versus ARM 3 CPU/7GB; speed still needs measurement.
+# #1038: preserve the complete selected test set while reducing CI overhead.
+# Intel experiment 40132195818 exceeded the ARM baseline and was cancelled.
+# Keep the supported ARM runner; build and test in one xcodebuild invocation.
 # TEST_HOST stays: existing tests assert the app bundle, resources and UIKit scene.
-# Caches are architecture-specific. The uncached nightly lane remains ARM.
-# Keep boot/build sequential: parallel boot previously worsened 325s to 444s
+# All cached lanes and the uncached nightly lane remain ARM.
+# Do not add manual parallel boot/build: it previously worsened 325s to 444s
 # (run 33157073616). The temporary UI opt-in below is unchanged.
 on:
   push:
@@ -58,7 +58,7 @@ jobs:
   # Required PR gate; the 60s target is not an established duration.
   unit:
     name: Unit tests
-    runs-on: macos-26-intel
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +69,7 @@ jobs:
 
       - name: Runner capacity
         run: |
-          test "$(uname -m)" = "x86_64"
+          test "$(uname -m)" = "arm64"
           sysctl hw.logicalcpu hw.memsize
           xcodebuild -version
 
@@ -81,10 +81,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.DD }}
-          key: dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
           restore-keys: |
-            dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
-            dd-xc26.5-${{ runner.arch }}-
+            dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
+            dd-xc26.5-
 
       - name: Pick a simulator
         id: sim
@@ -98,23 +98,11 @@ jobs:
           fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
-      # Сборка и прогон — РАЗНЫМИ шагами, чтобы в логе было видно, сколько
-      # стоит каждая половина, и чтобы кэш можно было оценить по одному числу.
-      - name: Build for testing
-        run: |
-          xcodebuild build-for-testing \
-            -project "$PROJECT" -scheme "$SCHEME" \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }},arch=x86_64" \
-            -derivedDataPath "$DD" \
-            -only-testing:SnoozePayTests \
-            -quiet \
-            $FAST_BUILD
-
       # The temporary UI flag pauses exactly two complete window-driven
       # UITour suites here, including their non-presentation assertions.
-      # Keep serial execution: parallel simulator workers previously crashed
-      # on ARM. This runner comparison does not also change test scheduling.
-      - name: Run unit tests
+      # One invocation builds only the target selected below and then runs it.
+      # Keep serial execution and report build timings for the combined step.
+      - name: Build and run unit tests
         env:
           UI_E2E_ENABLED: ${{ vars.SNOOZEPAY_UI_E2E_ENABLED == 'true' }}
         run: |
@@ -125,14 +113,16 @@ jobs:
               -skip-testing:SnoozePayTests/UITourConfirmDeleteRouteTests
             )
           fi
-          xcodebuild test-without-building \
+          xcodebuild test \
             "${E2E_TEST_SCOPE[@]}" \
             -project "$PROJECT" -scheme "$SCHEME" \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }},arch=x86_64" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }},arch=arm64" \
             -derivedDataPath "$DD" \
             -only-testing:SnoozePayTests \
             -parallel-testing-enabled NO \
-            -resultBundlePath TestResults.xcresult
+            -resultBundlePath TestResults.xcresult \
+            -showBuildTimingSummary \
+            $FAST_BUILD
 
       - name: Upload test results
         if: failure()
@@ -152,7 +142,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ env.DD }}
-          key: dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
 
   # ── 145 с ради 5 кейсов. Уведено с критического пути PR. ──────────────────
   # PM temporarily paused E2E on 2026-10-24 to reduce background CI work.
@@ -174,10 +164,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.DD }}
-          key: dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
           restore-keys: |
-            dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
-            dd-xc26.5-${{ runner.arch }}-
+            dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
+            dd-xc26.5-
 
       - name: Pick a simulator
         id: sim
