@@ -259,11 +259,21 @@ final class AudioService {
     /// but a stale session may keep other apps duck'ed.
     private func deactivateAudioSession() {
         do {
-            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            try sessionDeactivator()
         } catch {
-            AppLogger.audio.error("failed to deactivate audio session: \(error.localizedDescription, privacy: .public)")
+            AppLogger.emit(.audio, .error, "failed to deactivate audio session: \(error.localizedDescription)")
         }
     }
+
+    /// Queue-confined alarm teardown, separate from preview test overrides.
+    private var sessionDeactivator: () throws -> Void = AudioService.othersNotifyingDeactivator
+
+    #if DEBUG
+    /// Fail alarm teardown without reaching AVAudioSession. `nil` restores it.
+    func overrideSessionDeactivation(_ deactivator: (() throws -> Void)?) {
+        queue.sync { sessionDeactivator = deactivator ?? Self.othersNotifyingDeactivator }
+    }
+    #endif
 
     // MARK: - Preview session (#850)
 
