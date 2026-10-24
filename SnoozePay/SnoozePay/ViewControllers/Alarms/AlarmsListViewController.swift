@@ -412,7 +412,7 @@ class AlarmsListViewController: UIViewController {
     private func presentRepositoryError(_ error: LocalizedError) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
-            title: Localized.text("alarms.error.data_title"),
+            title: Localized.text("common.error.data_title"),
             message: error.errorDescription ?? Localized.text("alarms.error.load_failed_fallback"),
             preferredStyle: .alert
         )

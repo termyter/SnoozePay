@@ -426,7 +426,7 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
     }
 
     /// The first error reaches the user, with catalogue copy — the call-site
-    /// coverage `statistics.error.title` never had (see
+    /// coverage `common.error.data_title` never had (see
     /// `StatisticsScreensLocalizationTests`, which left it to #721).
     func testFirstLoadError_presentsAlertWithCatalogueCopy() {
         let controller = makeMountedController()
@@ -441,7 +441,7 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
             \(presentationDiagnostics(rootedAt: window.rootViewController))
             """
         )
-        XCTAssertEqual(alert?.title, Localized.text("statistics.error.title"))
+        XCTAssertEqual(alert?.title, Localized.text("common.error.data_title"))
         XCTAssertEqual(
             alert?.message, Localized.text("wallet.error.load_failed"),
             "the repository's own description wins over the generic fallback"
