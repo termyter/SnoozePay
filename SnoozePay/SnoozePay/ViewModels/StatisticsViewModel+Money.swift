@@ -77,14 +77,8 @@ extension StatisticsViewModel {
     /// cancellation. Merging the IDs would hide the surprising case inside the
     /// expected one.
     static var unexpectedLedgerErrorID: String { "STATS-721-LEDGER-UNEXPECTED" }
-    /// Log identifier for a wake median the card refused as not-a-time-of-day.
-    ///
-    /// Hiding the card is the honest outcome for the reader, but it looks
-    /// exactly like a fresh install with no history — so without this line a
-    /// real aggregation defect leaves the product with no trace at all, and a
-    /// support ticket has nothing to grep. That is the trade #657 makes: it
-    /// replaces a bug that shouted a wrong number with one that says nothing,
-    /// and the shouting has to move into the log.
+    /// Log identifier for a refused time-of-day median. The card explains
+    /// unavailability; the trace retains the field/value for diagnosis.
     static var wakeMedianOutOfDayErrorID: String { "STATS-657-WAKE-MEDIAN-OUT-OF-DAY" }
 
     /// A ledger read that threw something the screen has no specific copy
@@ -309,6 +303,7 @@ extension StatisticsViewModel {
         /// decided it will not print. Being stored also puts it in `Equatable`,
         /// so a refused 1500 no longer compares equal to an honest absence.
         let medianWasRefused: Bool
+        let baselineWasRefused: Bool
 
         /// Minutes-since-midnight a wall clock can actually show.
         static let minuteOfDayRange = 0...(24 * 60 - 1)
@@ -328,8 +323,8 @@ extension StatisticsViewModel {
         /// Today's pipeline cannot produce such a value: ``minuteOfDay`` reads
         /// `Calendar` hour/minute components, which are 0…23 and 0…59. This
         /// guards the *contract*, so a future aggregation (a circular median,
-        /// a merged window, a decoded blob) fails by visible omission rather
-        /// than by looking fine.
+        /// a merged window, a decoded blob) shows an unavailable reason rather
+        /// than a plausible clamped time.
         init(
             medianMinutes: Int?,
             baselineMedianMinutes: Int?,
@@ -337,14 +332,16 @@ extension StatisticsViewModel {
             minimumSamples: Int
         ) {
             let median = WakeTimeStats.timeOfDay(
-                medianMinutes, field: "median", consequence: "wake-time card suppressed"
+                medianMinutes, field: "median", consequence: "wake-time calculation unavailable"
             )
             self.medianMinutes = median
-            self.baselineMedianMinutes = WakeTimeStats.timeOfDay(
+            let baseline = WakeTimeStats.timeOfDay(
                 baselineMedianMinutes,
                 field: "baseline",
-                consequence: "comparison columns dropped, card still shown"
+                consequence: "comparison unavailable, recent median still shown"
             )
+            self.baselineMedianMinutes = baseline
+            self.baselineWasRefused = baselineMedianMinutes != nil && baseline == nil
             self.medianWasRefused = medianMinutes != nil && median == nil
             self.recentSampleCount = recentSampleCount
             self.minimumSamples = minimumSamples
@@ -360,8 +357,8 @@ extension StatisticsViewModel {
         /// to survive into release — if it ever fires, nothing else will say so.
         /// `consequence` comes from the call site rather than being baked into
         /// the message, because the two fields do NOT have the same one: a
-        /// refused median hides the card, a refused baseline only drops the
-        /// comparison columns and leaves the card on screen — which this PR's
+        /// refused median replaces its figures with a reason, while a refused
+        /// baseline drops only comparison columns — which this PR's
         /// own `testWakeTimeStats_outOfDayBaselineDropsOnlyTheComparison`
         /// asserts. A single shared sentence therefore told the truth in one
         /// call and lied in the other, and a wrong diagnosis is worse than a
@@ -408,7 +405,7 @@ extension StatisticsViewModel {
         }
 
         /// `true` when there is neither a median to publish nor an honest
-        /// "still accumulating" story to tell — the host hides the card.
+        /// "still accumulating" story to tell — show an unavailable reason.
         var hasNothingToShow: Bool { medianMinutes == nil && !isAccumulating }
     }
 
@@ -591,15 +588,28 @@ extension StatisticsViewModel {
         windowDays: Int = StatisticsViewModel.wakeTimeWindowDays,
         minimumSamples: Int = StatisticsViewModel.wakeTimeMinimumSamples
     ) -> WakeTimeStats? {
+        wakeTimeAvailability(
+            today: today, wakeTimes: wakeTimes, calendar: calendar,
+            windowDays: windowDays, minimumSamples: minimumSamples
+        ).stats
+    }
+
+    static func wakeTimeAvailability(
+        today: Date,
+        wakeTimes: [Date],
+        calendar: Calendar,
+        windowDays: Int = StatisticsViewModel.wakeTimeWindowDays,
+        minimumSamples: Int = StatisticsViewModel.wakeTimeMinimumSamples
+    ) -> WakeTimeAvailability {
         let todayStart = calendar.startOfDay(for: today)
         guard
             windowDays > 0,
             let recentStart = calendar.date(byAdding: .day, value: -(windowDays - 1), to: todayStart),
             let baselineStart = calendar.date(byAdding: .day, value: -windowDays, to: recentStart)
-        else { return nil }
+        else { return .unavailable(.calculationUnavailable) }
         let firstWakes = firstWakePerDay(times: wakeTimes, calendar: calendar)
         let recent = firstWakes.filter { $0.key >= recentStart && $0.key <= todayStart }.map(\.value)
-        guard !recent.isEmpty else { return nil }
+        guard !recent.isEmpty else { return .noRecentHistory }
         let baseline = firstWakes.filter { $0.key >= baselineStart && $0.key < recentStart }.map(\.value)
         let stats = WakeTimeStats(
             medianMinutes: medianMinuteOfDay(
@@ -611,10 +621,10 @@ extension StatisticsViewModel {
             recentSampleCount: recent.count,
             minimumSamples: minimumSamples
         )
-        // A full window whose median the struct refused leaves the card with
-        // nothing to say: "Копим историю" would be a lie and a clamped 23:59
-        // would be a fabrication. The host hides it instead (#657).
-        return stats.hasNothingToShow ? nil : stats
+        // Retain the distinction between short history and a refused result
+        // until presentation; neither a clamped time nor more-history copy
+        // explains a full window whose median cannot be published (#669).
+        return WakeTimeAvailability(stats: stats)
     }
 
     // MARK: - Presentation strings
