@@ -42,8 +42,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// slice replaced. A list derived from the catalogue would agree with any
     /// mistake in it.
     private static let copy: [String: String] = [
-        "alarms.backend_guard.create_anyway": "Всё равно создать",
-        "alarms.backend_guard.enable_anyway": "Всё равно включить",
+        "alarms.backend_guard.action.not_now": "Не сейчас",
         "alarms.balance_corrupted.later": "Позже",
         "alarms.balance_corrupted.message": "В хранилище обнаружено некорректное значение баланса (%@). "
             + "Пополнения и списания приостановлены. Сбросить баланс до 0 ₽?",

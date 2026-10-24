@@ -49,6 +49,9 @@ final class AlarmRepository {
     private let queue = DispatchQueue(label: "com.snoozepay.alarms.serial")
     private static let log = OSLog(subsystem: AppLogger.subsystem, category: "AlarmRepository")
 
+    /// Per-record attempt identity; ephemeral and confined to `queue`.
+    private var saveRevisions: [UUID: UUID] = [:]
+
     /// Set inside `queue.sync` whenever a decode failure is observed. While
     /// true, `persist()` refuses to write — this prevents the user from
     /// pressing "+" on what looks like an empty list and silently
@@ -119,6 +122,10 @@ final class AlarmRepository {
     ///   Callers (CreateAlarmViewModel) surface the failure to the user
     ///   instead of pretending the alarm landed safely (issue #72).
     ///
+    /// `rollbackOnSchedulingFailure` is used by the create/edit form. A rejected
+    /// new candidate is removed; an existing record keeps its original fields
+    /// but becomes disabled because its previous schedule was cancelled.
+    ///
     /// `schedulingResult` is invoked **only on the successful-persist path**
     /// once `AlarmScheduler.schedule` finishes (issue #118). Disabled alarms
     /// resolve with `.success(())` because there is no scheduling work, but
@@ -129,8 +136,11 @@ final class AlarmRepository {
     @discardableResult
     func save(
         _ alarm: Alarm,
+        rollbackOnSchedulingFailure: Bool = false,
         schedulingResult: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)? = nil
     ) -> Bool {
+        let revision = UUID()
+        var previous: Alarm?
         let didPersist: Bool = queue.sync {
             guard !_lastLoadFailed else { return false }
             // Read fresh state inside the lock so concurrent saves don't
@@ -143,24 +153,55 @@ final class AlarmRepository {
                 return false
             }
             if let idx = alarms.firstIndex(where: { $0.id == alarm.id }) {
+                previous = alarms[idx]
                 alarms[idx] = alarm
             } else {
                 alarms.append(alarm)
             }
-            return persist(alarms)
+            guard persist(alarms) else { return false }
+            saveRevisions[alarm.id] = revision
+            return true
         }
 
         guard didPersist else { return false }
 
         scheduler.cancel(alarm.id)
         if alarm.enabled {
-            scheduler.schedule(alarm, completion: schedulingResult)
+            scheduler.schedule(alarm) { result in
+                if rollbackOnSchedulingFailure, case .failure = result {
+                    self.compensateFailedSave(alarm, previous: previous, revision: revision)
+                }
+                schedulingResult?(result)
+            }
         } else {
             // Disabled alarms don't schedule — report success so async
             // callers don't hang waiting for a closure that never fires.
             schedulingResult?(.success(()))
         }
         return true
+    }
+
+    /// Remove a failed new candidate; preserve an existing record's fields but
+    /// disable it, since its previous schedule was cancelled. A late callback
+    /// must never undo a newer edit, even when that edit has identical values.
+    private func compensateFailedSave(_ alarm: Alarm, previous: Alarm?, revision: UUID) {
+        let compensated = queue.sync { () -> Bool in
+            guard saveRevisions[alarm.id] == revision else { return true }
+            guard var alarms = try? readAll(),
+                  let index = alarms.firstIndex(where: { $0.id == alarm.id }),
+                  alarms[index] == alarm else { return false }
+            if let previous {
+                alarms[index] = previous.with(enabled: false)
+            } else {
+                alarms.remove(at: index)
+            }
+            guard persist(alarms) else { return false }
+            saveRevisions.removeValue(forKey: alarm.id)
+            return true
+        }
+        if !compensated {
+            AppLogger.repository.fault("Failed to roll back an unarmed alarm after a rejected schedule")
+        }
     }
 
     @discardableResult
@@ -174,7 +215,9 @@ final class AlarmRepository {
                 return false
             }
             alarms.removeAll { $0.id == id }
-            return persist(alarms)
+            guard persist(alarms) else { return false }
+            saveRevisions.removeValue(forKey: id)
+            return true
         }
         if didPersist {
             scheduler.cancel(id)
@@ -215,6 +258,7 @@ final class AlarmRepository {
             guard let idx = alarms.firstIndex(where: { $0.id == id }) else { return nil }
             alarms[idx] = alarms[idx].with(enabled: enabled)
             guard persist(alarms) else { return nil }
+            saveRevisions[id] = UUID()
             return alarms[idx]
         }
 

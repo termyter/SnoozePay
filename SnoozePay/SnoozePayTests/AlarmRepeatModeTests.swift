@@ -196,8 +196,15 @@ final class AlarmRepeatModeTests: XCTestCase {
     }
 
     func testCreateVM_save_persistsRepeatMode() {
-        let repo = AlarmRepository(defaults: defaults)
-        let viewModel = CreateAlarmViewModel(repository: repo)
+        let repo = AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler())
+        let viewModel = CreateAlarmViewModel(
+            repository: repo, defaults: AlarmDefaults(defaults: defaults),
+            balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter()),
+            backendMonitor: AlarmBackendMonitor(
+                probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+                notificationCenter: NotificationCenter()
+            )
+        )
         viewModel.repeatDays = [0, 2]
         viewModel.repeatMode = .never
 

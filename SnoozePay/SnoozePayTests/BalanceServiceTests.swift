@@ -831,9 +831,13 @@ final class CreateAlarmViewModelTests: XCTestCase {
 
     private func makeViewModel() -> CreateAlarmViewModel {
         CreateAlarmViewModel(
-            repository: AlarmRepository(defaults: defaults),
+            repository: AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler()),
             defaults: AlarmDefaults(defaults: defaults),
-            balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+            balanceService: BalanceService(defaults: defaults, notificationCenter: NotificationCenter()),
+            backendMonitor: AlarmBackendMonitor(
+                probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+                notificationCenter: NotificationCenter()
+            )
         )
     }
 

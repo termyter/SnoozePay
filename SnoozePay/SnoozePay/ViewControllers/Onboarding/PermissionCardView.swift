@@ -210,7 +210,7 @@ final class PermissionCardView: UIView {
     /// status. Idempotent — re-application with the same status simply
     /// rebuilds the trailing view (cheap; max a handful of swaps over the
     /// screen's lifetime).
-    func apply(status: PermissionStatus) {
+    func apply(status: PermissionStatus, actionTitle: String? = nil) {
         currentStatus = status
         refreshTileFill()
         trailingHost.subviews.forEach { $0.removeFromSuperview() }
@@ -233,7 +233,7 @@ final class PermissionCardView: UIView {
             // label sits — treated as a mockup bug (#238 p.6): the
             // ungranted row keeps its explicit «Дать» affordance.
             mount(capsLabel(
-                text: Localized.text("onboarding.permissions.grant_caps"),
+                text: actionTitle ?? Localized.text("onboarding.permissions.grant_caps"),
                 color: AppColors.warn400
             ))
             tapGesture.isEnabled = true

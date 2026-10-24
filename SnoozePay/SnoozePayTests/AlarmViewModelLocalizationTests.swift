@@ -12,7 +12,7 @@ import XCTest
 ///
 /// The failure this exists for is silent: `Localized` echoes an unknown key, so
 /// a typo turns the permission screen's heading into
-/// `alarms.backend_guard.title.wont_ring` on screen without anything throwing,
+/// `alarms.backend_guard.title.unavailable` on screen without anything throwing,
 /// logging, or failing to compile. Neither the compiler nor SwiftLint can see
 /// it — a key is an ordinary `String`.
 ///
@@ -37,7 +37,8 @@ final class AlarmViewModelLocalizationTests: XCTestCase {
         "alarms.backend_guard.message.not_requested",
         "alarms.backend_guard.message.unavailable",
         "alarms.backend_guard.title.indeterminate",
-        "alarms.backend_guard.title.wont_ring",
+        "alarms.backend_guard.title.not_requested",
+        "alarms.backend_guard.title.unavailable",
         "create_alarm.progressive.step",
         "create_alarm.repeat.hint.once",
         "create_alarm.repeat.hint.once_on_days",
@@ -137,21 +138,19 @@ final class AlarmViewModelLocalizationTests: XCTestCase {
     /// and action labels of these three states but not their bodies. Each was
     /// two concatenated Swift literals before the migration and is one
     /// catalogue entry now; the rendered sentence must come out identical.
-    func testNotRequestedMessageIsUnchanged() {
+    func testNotRequestedMessageMatchesApprovedPermissionExplanation() {
         let warning = AlarmBackendWarning(availability: .notRequested)
         XCTAssertEqual(
             warning?.message,
-            "Приложение ещё не спросило разрешение на будильники и уведомления. "
-                + "Без него созданные будильники не сработают."
+            "Разрешите SnoozePay использовать будильники. Без этого разрешения поставить будильник не получится"
         )
     }
 
-    func testUnavailableMessageIsUnchanged() {
+    func testUnavailableMessageMatchesApprovedSettingsExplanation() {
         let warning = AlarmBackendWarning(availability: .unavailable)
         XCTAssertEqual(
             warning?.message,
-            "Разрешение на будильники и уведомления выключено. "
-                + "Включите его в Настройках — иначе созданные будильники не сработают."
+            "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
         )
     }
 
@@ -164,12 +163,10 @@ final class AlarmViewModelLocalizationTests: XCTestCase {
         )
     }
 
-    /// The two ringing states still produce no copy at all. Guards against a
-    /// migration that wired every branch to a key and lost the `nil` that call
-    /// sites read as «nothing to warn about».
+    /// Only a confirmed grant suppresses the warning; unknown is not authorized.
     func testRingingStatesStillProduceNoWarning() {
         XCTAssertNil(AlarmBackendWarning(availability: .available))
-        XCTAssertNil(AlarmBackendWarning(availability: .unresolved))
+        XCTAssertTrue(AlarmBackendWarning(availability: .unresolved)?.gatesAlarmCreation == true)
     }
 
     // MARK: - The validation copy stays single-sourced
