@@ -1,27 +1,12 @@
 name: CI
 
-# Цель — быстрый PR-фидбек. Два замера, второй опроверг первый:
-#
-#   run 30763680898 (428 с одним блоком): казалось, что всё съедает компиляция.
-#   run 33156328491 (шаги разделены):     компиляция 48 с, тесты 252 с. Внутри
-#                                         тестового шага 157 с уходит на буст
-#                                         симулятора и установку тест-хоста.
-#   run 33157073616 (буст в фоне):        444 с — ХУЖЕ. Сборка распухла 48→258 с.
-#
-# Вывод третьего прогона: раннер трёхъядерный и упирается в CPU, а не в
-# последовательность. Буст симулятора — не простой в ожидании, а такая же
-# вычислительная работа, поэтому совмещать её с компиляцией нечем. Откачено.
-#
-# Раскладка:
-#   * UI-тесты (145 с ради 5 кейсов) уведены с критического пути PR;
-#   * 1034 unit-теста исполняются за 22 с — им место на КАЖДОМ PR;
-#   * DerivedData кэшируется, индексатор выключен (Xcode.app тут некому).
-#
-# Потолок ~325 с упирается в буст симулятора. Пробить его можно только сняв
-# у тест-таргета TEST_HOST (логические тесты без хост-приложения), а это
-# правка project.pbxproj — зона PM.
-# Ночью гоняется clean-build без кэша: он ловит «ложный green», когда
-# инкрементальная сборка не заметила новый файл.
+# #1038: preserve the complete selected test set while measuring a faster host.
+# ARM run 40129819631: Unit 444s, build 59s, test step 325s; XCTest execution 69s.
+# Standard Intel has 4 CPU/14GB versus ARM 3 CPU/7GB; speed still needs measurement.
+# TEST_HOST stays: existing tests assert the app bundle, resources and UIKit scene.
+# Caches are architecture-specific. The uncached nightly lane remains ARM.
+# Keep boot/build sequential: parallel boot previously worsened 325s to 444s
+# (run 33157073616). The temporary UI opt-in below is unchanged.
 on:
   push:
     branches:
@@ -70,10 +55,10 @@ jobs:
       - name: Run SwiftLint
         run: swiftlint lint --quiet SnoozePay/SnoozePay
 
-  # ── Главный гейт PR. Цель — уложиться в ~90 с. ────────────────────────────
+  # Required PR gate; the 60s target is not an established duration.
   unit:
     name: Unit tests
-    runs-on: macos-26
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -81,6 +66,12 @@ jobs:
       # test host падал с malloc-ошибкой на каждом тесте.
       - name: Select Xcode 26.5
         run: sudo xcode-select -switch /Applications/Xcode_26.5.app
+
+      - name: Runner capacity
+        run: |
+          test "$(uname -m)" = "x86_64"
+          sysctl hw.logicalcpu hw.memsize
+          xcodebuild -version
 
       # Кэш только ВОССТАНАВЛИВАЕМ на PR — писать с каждого PR значит выбить
       # из 10-гигабайтного лимита все полезные записи. Пишет только push
@@ -90,10 +81,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.DD }}
-          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          key: dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
           restore-keys: |
-            dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
-            dd-xc26.5-
+            dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
+            dd-xc26.5-${{ runner.arch }}-
 
       - name: Pick a simulator
         id: sim
@@ -113,16 +104,16 @@ jobs:
         run: |
           xcodebuild build-for-testing \
             -project "$PROJECT" -scheme "$SCHEME" \
-            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }},arch=x86_64" \
             -derivedDataPath "$DD" \
+            -only-testing:SnoozePayTests \
             -quiet \
             $FAST_BUILD
 
       # The temporary UI flag pauses exactly two complete window-driven
       # UITour suites here, including their non-presentation assertions.
-      # -parallel-testing-enabled NO: параллельные клоны симулятора роняют
-      # worker-процессы на 3-ядерном раннере (тесты «падают» за 0.000 с).
-      # 1034 теста и так проходят за 22 с последовательно.
+      # Keep serial execution: parallel simulator workers previously crashed
+      # on ARM. This runner comparison does not also change test scheduling.
       - name: Run unit tests
         env:
           UI_E2E_ENABLED: ${{ vars.SNOOZEPAY_UI_E2E_ENABLED == 'true' }}
@@ -137,7 +128,7 @@ jobs:
           xcodebuild test-without-building \
             "${E2E_TEST_SCOPE[@]}" \
             -project "$PROJECT" -scheme "$SCHEME" \
-            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }},arch=x86_64" \
             -derivedDataPath "$DD" \
             -only-testing:SnoozePayTests \
             -parallel-testing-enabled NO \
@@ -161,7 +152,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ env.DD }}
-          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          key: dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
 
   # ── 145 с ради 5 кейсов. Уведено с критического пути PR. ──────────────────
   # PM temporarily paused E2E on 2026-10-24 to reduce background CI work.
@@ -183,10 +174,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.DD }}
-          key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
+          key: dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
           restore-keys: |
-            dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
-            dd-xc26.5-
+            dd-xc26.5-${{ runner.arch }}-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-
+            dd-xc26.5-${{ runner.arch }}-
 
       - name: Pick a simulator
         id: sim
