@@ -4285,6 +4285,24 @@
         }
       }
     },
+    "firing.progression.unavailable" : {
+      "comment" : "Tracked snooze-session state cannot establish a safe next price. Paid continuation is refused; the normal free finish remains available.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze price can’t be verified. Finish this alarm for free."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось проверить цену откладывания. Выключите будильник бесплатно."
+          }
+        }
+      }
+    },
     "firing.progressive.pill" : {
       "comment" : "Pain-toned pill in the firing hero on a progressive alarm; %lld is the ordinal of the snooze about to be bought (snoozeCount + 1).",
       "extractionState" : "manual",
