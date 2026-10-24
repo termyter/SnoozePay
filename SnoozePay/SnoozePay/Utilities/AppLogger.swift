@@ -186,8 +186,8 @@ extension AppLogger {
     #if DEBUG
     /// Test-only redirect for ``emit(_:_:_:)``.
     ///
-    /// `private(set)`, so the only way to install one is
-    /// ``withTestSink(_:perform:)``. A direct assignment with no matching
+    /// `private(set)`, so installation goes through the scoped synchronous or
+    /// async helpers below. A direct assignment with no matching
     /// restore would absorb every later suite's lines while those suites assert
     /// on absence — green while observing nothing, which is the same defect one
     /// level up. Review asked for this: the doc used to merely ASK callers to
@@ -234,6 +234,20 @@ extension AppLogger {
         testSink = sink
         defer { testSink = previous }
         return try perform()
+    }
+
+    /// Keeps the same scoped redirect across suspension without blocking UIKit
+    /// in a synchronous XCTest wait. Only serial main-actor test bodies may use
+    /// this global sink; defer restores it when the body returns or throws.
+    @MainActor
+    static func withAsyncTestSink<T>(
+        _ sink: @escaping Sink,
+        perform: @MainActor () async throws -> T
+    ) async rethrows -> T {
+        let previous = testSink
+        testSink = sink
+        defer { testSink = previous }
+        return try await perform()
     }
     #endif
 
