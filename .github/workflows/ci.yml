@@ -28,7 +28,7 @@ on:
       - main
       - design-refresh-2026-04-27
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
   schedule:
     # 02:37 UTC — некруглая минута намеренно: на '0 2' GitHub задерживал прогон на 6.5 ч (#524).
     - cron: '37 2 * * *'
@@ -153,14 +153,15 @@ jobs:
           key: dd-xc26.5-${{ hashFiles('SnoozePay/SnoozePay.xcodeproj/project.pbxproj') }}-${{ github.sha }}
 
   # ── 145 с ради 5 кейсов. Уведено с критического пути PR. ──────────────────
-  # Гоняется после merge, ночью и по кнопке. На PR — только если поставить
-  # лейбл `ui-test` (когда правка реально трогает экраны и хочется проверить
-  # до merge, не дожидаясь ночи).
+  # PM temporarily paused E2E on 2026-10-24 to reduce background CI work.
+  # Re-enable with repository Actions variable SNOOZEPAY_UI_E2E_ENABLED=true.
+  # The original event/PR-label selector remains in place behind that opt-in.
   uitests:
     name: UI tests (E2E)
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'ui-test')
+      vars.SNOOZEPAY_UI_E2E_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' ||
+       contains(github.event.pull_request.labels.*.name, 'ui-test'))
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
