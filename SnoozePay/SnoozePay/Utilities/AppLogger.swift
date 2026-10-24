@@ -20,7 +20,7 @@ import os
 /// Usage:
 ///   AppLogger.scheduler.error("schedule failed: \(error.localizedDescription, privacy: .public)")
 ///   AppLogger.audio.notice("startAlarmSound: vibration only — no audio source")
-enum AppLogger {
+nonisolated enum AppLogger {
 
     /// The `os_log` subsystem every line of this app ships under: the bundle
     /// identifier of the process that is running, resolved once at first use.
@@ -146,7 +146,7 @@ enum AppLogger {
 /// such grep without failing anything. `testEveryCategoryKeepsItsOsLogName`
 /// pins them. Uniqueness is NOT that test's job — the compiler rejects a
 /// duplicate raw value outright.
-enum AppLogCategory: String, CaseIterable {
+nonisolated enum AppLogCategory: String, CaseIterable {
     case scheduler = "Scheduler"
     case audio = "Audio"
     case balance = "Balance"
@@ -203,7 +203,7 @@ extension AppLogger {
     // Recursive because a sink may emit another line or open a nested scope.
     // Never held across perform, an await, or the production logger call.
     private static let sinkLock = NSRecursiveLock()
-    private static var installedSink: Sink?
+    nonisolated(unsafe) private static var installedSink: Sink?
 
     private static func replaceTestSink(_ sink: Sink?) -> Sink? {
         sinkLock.lock()

@@ -26,11 +26,37 @@ final class AppLoggerConcurrencyTests: XCTestCase {
             probe.receive(message)
         }, perform: {
             await Task.detached {
+                XCTAssertFalse(Thread.isMainThread)
                 AppLogger.emit(.audio, .error, "background line")
             }.value
         })
 
         XCTAssertEqual(probe.messages, ["background line"])
+        XCTAssertNil(AppLogger.testSink)
+    }
+
+    func testSerialSinkScopesCanChangeWhileBackgroundEmittersAreRunning() {
+        let finished = expectation(description: "background logging finished")
+        let probe = DeliveryProbe()
+        DispatchQueue.global().async {
+            for index in 0..<128 {
+                AppLogger.emit(.audio, .error, "background \(index)")
+            }
+            finished.fulfill()
+        }
+
+        for index in 0..<32 {
+            AppLogger.withTestSink({ _, _, message in
+                probe.receive(message)
+            }, perform: {
+                AppLogger.emit(.audio, .error, "scoped \(index)")
+            })
+        }
+        wait(for: [finished], timeout: 5)
+
+        let scoped = probe.messages.filter { $0.hasPrefix("scoped ") }
+        XCTAssertEqual(Set(scoped), Set((0..<32).map { "scoped \($0)" }))
+        XCTAssertEqual(probe.maximumInFlight, 1)
         XCTAssertNil(AppLogger.testSink)
     }
 
@@ -64,17 +90,29 @@ final class AppLoggerConcurrencyTests: XCTestCase {
     }
 }
 
-private final class DeliveryProbe {
+nonisolated private final class DeliveryProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var inFlight = 0
-    private(set) var maximumInFlight = 0
-    private(set) var messages: Set<String> = []
+    private var peak = 0
+    private var received: Set<String> = []
+
+    var maximumInFlight: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return peak
+    }
+
+    var messages: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return received
+    }
 
     func receive(_ message: String) {
         lock.lock()
         inFlight += 1
-        maximumInFlight = max(maximumInFlight, inFlight)
-        messages.insert(message)
+        peak = max(peak, inFlight)
+        received.insert(message)
         lock.unlock()
 
         // Widen overlap between real concurrent callbacks without racing the
