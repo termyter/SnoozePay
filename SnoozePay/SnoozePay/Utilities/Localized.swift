@@ -3,19 +3,10 @@ import os
 
 /// Reads user-facing copy out of `Resources/Localizable.xcstrings`.
 ///
-/// # Why not plain `String(localized:)`
-///
-/// `knownRegions` in `project.pbxproj` is `(en, Base)` and `developmentRegion`
-/// is `en`, so the built app *declares* English while shipping Russian
-/// (#596, PM's file). On a device whose preferred language is anything but
-/// Russian, `Bundle.main` therefore negotiates its way to `Base.lproj` — which
-/// holds two storyboards and no copy — and every `String(localized:)` quietly
-/// returns the key. This type sidesteps the negotiation by opening the
-/// `ru.lproj` bundle for ``AppLocale/display`` directly.
-///
-/// When #596 lands, ``bundle`` collapses to `.main` and call sites can move to
-/// `String(localized:)` verbatim; that is the only reason this indirection
-/// exists, and it is why call sites pass bare keys and nothing else.
+/// The app bundle negotiates the supported language, including iOS's per-app
+/// override. Read its selected .lproj directly so an intentionally absent
+/// optional noun form cannot fall through to another language. Regional
+/// formatting is independent and follows ``AppLocale/display``.
 ///
 /// # Key naming convention
 ///
@@ -120,33 +111,32 @@ import os
 /// entries**, never by taking one side wholesale.
 enum Localized {
 
-    /// The bundle that actually holds the compiled catalogue.
-    ///
-    /// Falls back to `.main` so that a missing `ru.lproj` surfaces as keys on
-    /// screen and a red `LocalizableCatalogTests`, rather than a crash.
-    static let bundle: Bundle = {
-        guard
-            let code = AppLocale.display.language.languageCode?.identifier,
-            let path = Bundle.main.path(forResource: code, ofType: "lproj"),
-            let localized = Bundle(path: path)
-        else { return .main }
+    /// The language selected by iOS for this process, independent of region.
+    static let bundle = localizedBundle(for: Bundle.main.preferredLocalizations)
+
+    /// Explicit immutable scenarios use the same selection path as production.
+    /// Missing compiled resources stay visible as lookup failures in tests.
+    static func localizedBundle(for preferences: [String], in appBundle: Bundle = .main) -> Bundle {
+        let language = AppLocale.textLocale(for: preferences, in: appBundle).identifier
+        guard let path = appBundle.path(forResource: language, ofType: "lproj"),
+              let localized = Bundle(path: path) else { return appBundle }
         return localized
-    }()
+    }
 
     /// The copy for `key`, or `key` itself when the catalogue has no entry.
     ///
     /// Echoing the key is deliberate: it is loud on screen and trivial to
     /// assert on, whereas a Russian fallback baked into Swift would hide the
     /// miss forever. `LocalizableCatalogTests` is what turns it into a failure.
-    static func text(_ key: String) -> String {
-        optionalText(key) ?? key
+    static func text(_ key: String, in bundle: Bundle = Localized.bundle) -> String {
+        optionalText(key, in: bundle) ?? key
     }
 
     /// The copy for `key`, or `nil` when the catalogue has no entry.
     ///
     /// Used for genuinely optional forms — a two-form language omits
     /// `plural.*.few` and expects the many form to stand in.
-    static func optionalText(_ key: String) -> String? {
+    static func optionalText(_ key: String, in bundle: Bundle = Localized.bundle) -> String? {
         // `localizedString(forKey:value:)` hands back `value` on a miss, so a
         // sentinel no copy can contain distinguishes "absent" from "present and
         // equal to the key".
@@ -155,19 +145,28 @@ enum Localized {
         return value == sentinel ? nil : value
     }
 
-    /// The copy for `key` with `arguments` substituted, formatted for
-    /// ``AppLocale/display``.
+    /// The copy for `key` with arguments substituted. Plural variations use
+    /// the text language; numeric formatting retains the user's region.
     ///
-    /// A separate name rather than an overload of ``text(_:)``: `text("k")`
+    /// A separate name rather than an overload of ``text(_:in:)``: `text("k")`
     /// would match both, and the rule that picks the non-variadic one is not
     /// something a reader should have to recall to be sure which ran.
     ///
     /// Formatting is skipped entirely when there is nothing to substitute, so a
     /// stray `%` in ordinary copy cannot be mistaken for a specifier.
     static func format(_ key: String, _ arguments: CVarArg...) -> String {
-        let template = optionalText(key) ?? key
+        formatted(template: optionalText(key) ?? key, arguments: arguments)
+    }
+
+    /// The same formatter for compiled templates in explicit language/region
+    /// scenarios, with no mutation of process-wide language state.
+    static func formatted(
+        template: String, arguments: [CVarArg],
+        textLocale: Locale = AppLocale.text, regionalLocale: Locale = AppLocale.display
+    ) -> String {
         guard !arguments.isEmpty else { return template }
-        return String(format: template, locale: AppLocale.display, arguments: arguments)
+        let locale = AppLocale.textFormattingLocale(textLocale: textLocale, regionalLocale: regionalLocale)
+        return String(format: template, locale: locale, arguments: arguments)
     }
 
     /// `key`'s copy with its **first** `specifier` — `%@` unless said
@@ -195,13 +194,9 @@ enum Localized {
     /// list rather than a sweep of the catalogue, so the cover is exactly as
     /// wide as the list: a call site added without its key going in has none.
     ///
-    /// Named and left open: every one of those assertions reads the template
-    /// through ``text(_:)``, which resolves it for ``AppLocale/display`` —
-    /// `Locale(identifier: "ru_RU")` until #569 lands a second catalogue. A
-    /// *translation* that grows a second specifier is invisible to them; only
-    /// the Russian template is ever counted. Closing that needs a check that
-    /// reads every localization of an entry rather than the displayed one,
-    /// which is not this method's to invent.
+    /// These screen assertions use the test scheme's explicit Russian language.
+    /// `LocalizationParityTests` separately checks compiled RU/EN specifier
+    /// parity; one displayed language alone cannot validate a translation.
     ///
     /// # `specifier` — the placeholder the template actually holds
     ///
@@ -274,9 +269,8 @@ enum Localized {
     ///     За эту неделю списано. Возможно, что-то пошло не так. Что хотите
     ///     сделать?−750 ₽
     ///
-    /// is an assertion over the *Russian* copy — and the entire point of #569
-    /// is that a second language is coming, whose broken template no `ru`
-    /// assertion can see.
+    /// is an assertion over one displayed language. Compiled RU/EN specifier
+    /// parity is checked separately by `LocalizationParityTests`.
     static func attributed(
         _ key: String,
         attributes: [NSAttributedString.Key: Any],
