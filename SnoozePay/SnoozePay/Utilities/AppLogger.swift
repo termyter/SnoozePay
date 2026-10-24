@@ -222,14 +222,10 @@ extension AppLogger {
     ///
     /// ⚠️ Nesting SHADOWS rather than chains: while an inner sink is installed
     /// the outer one sees nothing, and gets the lines back only after the inner
-    /// scope ends. That follows from there being ONE global, the same way
-    /// case-to-logger follows from the table — no test asserts it, and
-    /// `testWithTestSink_restoresThePreviousSink_evenWhenTheBodyThrows` pins
-    /// only the restoring half (its inner body emits nothing, so a chaining
-    /// implementation would pass it too). The consequence is worth knowing
-    /// anyway: a helper that quietly opens its own window inside someone
-    /// else's would make the outer `count ==` short by exactly the lines it
-    /// swallowed, with nothing red to say so.
+    /// scope ends. `AppLoggerConcurrencyTests` covers that shadowing and the
+    /// throwing restore from inside a reentrant callback; `AppLoggerSinkTests`
+    /// also checks nested async scopes. A helper that opens a nested window
+    /// intentionally hides those inner lines from its caller's collector.
     ///
     /// ⚠️ `perform` is SYNCHRONOUS and non-escaping, so the sink is gone the
     /// instant it returns. A line emitted from a completion handler — a
@@ -293,6 +289,8 @@ extension AppLogger {
     ///   emitting thread. Sink callbacks must not synchronously wait for another
     ///   thread that logs or changes the sink. Install scopes must remain serial:
     ///   overlapping independent scopes cannot restore a single global correctly.
+    ///   Read mutable collectors after the scope restores, or synchronize reads
+    ///   separately while background emitters are still running.
     /// - **The message is built eagerly.** `Logger.error(_:)` autoclosures its
     ///   interpolation and only materialises it when the level is enabled;
     ///   `emit` takes a `String` that is already built. Harmless at `.error`,
