@@ -118,8 +118,8 @@ jobs:
             -quiet \
             $FAST_BUILD
 
-      # Keep logic tests in this job; the same temporary UI flag also pauses the
-  # two window-driven UITour suites that live inside SnoozePayTests.
+          # The temporary UI flag pauses exactly two complete window-driven
+      # UITour suites here, including their non-presentation assertions.
       # -parallel-testing-enabled NO: параллельные клоны симулятора роняют
       # worker-процессы на 3-ядерном раннере (тесты «падают» за 0.000 с).
       # 1034 теста и так проходят за 22 с последовательно.
@@ -230,7 +230,8 @@ jobs:
   # ── Страховка от «ложного green». ─────────────────────────────────────────
   # Кэш DerivedData ускоряет PR, но инкрементальная сборка теоретически может
   # не заметить новый файл и дать зелёный прогон на непроверенном коде. Раз в
-  # сутки собираем с нуля без кэша: все unit tests, UI — только при opt-in выше.
+  # сутки собираем с нуля без кэша. Unit target исключает два UI-tour suites
+  # при выключенном флаге; UI target запускается только при opt-in выше.
   # Если ночной прогон
   # красный, а дневные зелёные — виноват кэш, а не код.
   clean-build:
