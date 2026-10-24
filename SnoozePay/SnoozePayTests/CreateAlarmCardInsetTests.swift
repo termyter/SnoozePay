@@ -6,12 +6,12 @@ import XCTest
 /// The canon does NOT build this form out of one component — an earlier
 /// version of this header said it did, and that was checkably wrong. Inside
 /// artboard `AlarmEdit`,
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:131-291` contains "function AlarmEdit",
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:130-290` contains "function AlarmEdit",
 /// three different rules land the content, and only two of them land it on
 /// 20: the screen gutter, `SPCard padding={20}`, and `SPCard padding={4}`
 /// for the Звук / Тема / Вибрация rows, where canon is 4 and the app
 /// deliberately holds 20 —
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:227` contains "SPCard padding={4}".
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:226` contains "SPCard padding={4}".
 /// The full mapping, with a reference per rule, lives on
 /// `AppSpacing.cardHorizontalPadding`.
 ///
@@ -46,7 +46,7 @@ final class CreateAlarmCardInsetTests: XCTestCase {
     /// "canon": `SoundCell`, `VibrationCell` and `ThemeRowCell` — three of the
     /// ten cells measured below — render the Звук / Тема / Вибрация card, which
     /// the canon sets to `padding={4}`,
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:227` contains "SPCard padding={4}".
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:226` contains "SPCard padding={4}".
     /// The app holds 20 there deliberately, against the canon rather than
     /// with it.
     ///

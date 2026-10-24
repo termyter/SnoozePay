@@ -11,7 +11,7 @@ import UIKit
 ///    size, which is exactly what the design audit flagged.
 ///
 /// Geometry comes from the prototype's preview block
-/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:346-349` contains "bottom: -40"):
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:345-348` contains "bottom: -40"):
 /// a 240pt circle whose bottom sits 40pt below a 180pt-tall block — i.e. a
 /// diameter of 1.33× and a centre inset of 0.44× the block's short side. Both
 /// ratios are expressed against `min(width, height)` so the same recipe scales
