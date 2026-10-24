@@ -186,14 +186,32 @@ extension AppLogger {
     #if DEBUG
     /// Test-only redirect for ``emit(_:_:_:)``.
     ///
-    /// `private(set)`, so installation goes through the scoped synchronous or
+    /// Read-only, so installation goes through the scoped synchronous or
     /// async helpers below. A direct assignment with no matching
     /// restore would absorb every later suite's lines while those suites assert
     /// on absence — green while observing nothing, which is the same defect one
     /// level up. Review asked for this: the doc used to merely ASK callers to
     /// go through the helper, and a rule nobody enforces is a rule that holds
     /// only while someone is reading it.
-    private(set) static var testSink: Sink?
+    static var testSink: Sink? {
+        sinkLock.lock()
+        defer { sinkLock.unlock() }
+        return installedSink
+    }
+
+    // Covers access AND callback delivery: existing collectors use plain arrays.
+    // Recursive because a sink may emit another line or open a nested scope.
+    // Never held across perform, an await, or the production logger call.
+    private static let sinkLock = NSRecursiveLock()
+    private static var installedSink: Sink?
+
+    private static func replaceTestSink(_ sink: Sink?) -> Sink? {
+        sinkLock.lock()
+        defer { sinkLock.unlock() }
+        let previous = installedSink
+        installedSink = sink
+        return previous
+    }
 
     /// Runs `perform` with `sink` installed, then puts back whatever was there.
     ///
@@ -230,9 +248,8 @@ extension AppLogger {
     /// `present` — before the completion runs — so a wait on that property
     /// samples the sink too early and passes or fails on timing.
     static func withTestSink<T>(_ sink: @escaping Sink, perform: () throws -> T) rethrows -> T {
-        let previous = testSink
-        testSink = sink
-        defer { testSink = previous }
+        let previous = replaceTestSink(sink)
+        defer { _ = replaceTestSink(previous) }
         return try perform()
     }
 
@@ -244,9 +261,8 @@ extension AppLogger {
         _ sink: @escaping Sink,
         perform: @MainActor () async throws -> T
     ) async rethrows -> T {
-        let previous = testSink
-        testSink = sink
-        defer { testSink = previous }
+        let previous = replaceTestSink(sink)
+        defer { _ = replaceTestSink(previous) }
         return try await perform()
     }
     #endif
@@ -270,11 +286,11 @@ extension AppLogger {
     ///
     /// ⚠️ Two properties a caller has to know before moving a line here:
     ///
-    /// - **Main thread only.** `testSink` is an unguarded mutable global. Every
-    ///   call site today is main-thread; the first `emit` from a StoreKit
-    ///   `async` context or a notification callback would race the install, and
-    ///   under `SWIFT_VERSION = 5.0` nothing warns. Serialise it before taking
-    ///   this seam off the main thread.
+    /// - **Serial sink scopes, concurrent emitters.** DEBUG sink access and
+    ///   callbacks are synchronized; a callback runs synchronously on the
+    ///   emitting thread. Sink callbacks must not synchronously wait for another
+    ///   thread that logs or changes the sink. Install scopes must remain serial:
+    ///   overlapping independent scopes cannot restore a single global correctly.
     /// - **The message is built eagerly.** `Logger.error(_:)` autoclosures its
     ///   interpolation and only materialises it when the level is enabled;
     ///   `emit` takes a `String` that is already built. Harmless at `.error`,
@@ -290,10 +306,13 @@ extension AppLogger {
     /// polling `OSLogStore`, which is what this PR set out to avoid.
     static func emit(_ category: AppLogCategory, _ level: OSLogType, _ message: String) {
         #if DEBUG
-        if let testSink {
-            testSink(category, level, message)
+        sinkLock.lock()
+        if let sink = installedSink {
+            defer { sinkLock.unlock() }
+            sink(category, level, message)
             return
         }
+        sinkLock.unlock()
         #endif
         category.logger.log(level: level, "\(message, privacy: .public)")
     }
