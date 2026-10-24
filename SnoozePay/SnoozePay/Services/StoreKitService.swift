@@ -570,13 +570,11 @@ final class StoreKitService {
         let key = Self.processedTxKey
         let idString = String(transactionID)
         guard var processed = defaults.array(forKey: key) as? [String] else {
-            // Dedup table missing or its plist type was reset. Without the mark,
-            // a replay of this transaction WILL re-enter `markProcessed` (no-op
-            // path) and credit normally — but we lose the audit trail. Logging
-            // so future divergence between StoreKit replays and our ledger is
-            // diagnosable in Console.
+            // No rollback was applied. A still-missing table allows a fresh mark;
+            // a corrupt table makes markProcessed refuse with `.degraded`.
+            // Neither condition alone predicts whether replay will credit or finish.
             AppLogger.storeKit.error(
-                "unmarkProcessed: dedup table missing/corrupt — replay will silently finish tx=\(transactionID, privacy: .private)"
+                "unmarkProcessed: dedup table missing/corrupt — rollback not applied tx=\(transactionID, privacy: .private)"
             )
             return
         }

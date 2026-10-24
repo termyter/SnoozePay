@@ -647,7 +647,7 @@ final class AlarmFiringViewModel {
         hasBeenDismissed = true
         do { try snoozeSessions?.finish(alarmID: alarm.id) } catch {
             let detail = String(describing: error)
-            AppLogger.ui.error("Snooze finish persistence failed: \(detail, privacy: .public)")
+            AppLogger.emit(.ui, .error, "Snooze finish persistence failed: \(detail)")
         }
         snoozeAnchor = nil
         confirmedSnoozeFireDate = nil
