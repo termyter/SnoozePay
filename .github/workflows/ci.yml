@@ -118,7 +118,7 @@ jobs:
             -quiet \
             $FAST_BUILD
 
-          # The temporary UI flag pauses exactly two complete window-driven
+      # The temporary UI flag pauses exactly two complete window-driven
       # UITour suites here, including their non-presentation assertions.
       # -parallel-testing-enabled NO: параллельные клоны симулятора роняют
       # worker-процессы на 3-ядерном раннере (тесты «падают» за 0.000 с).
