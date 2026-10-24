@@ -201,7 +201,9 @@ extension AppLogger {
 
     // Covers access AND callback delivery: existing collectors use plain arrays.
     // Recursive because a sink may emit another line or open a nested scope.
-    // Never held across perform, an await, or the production logger call.
+    // Scope helpers unlock their acquisition before perform/await; a scope
+    // nested inside a callback still runs under that callback's acquisition.
+    // The production logger call runs without the lock.
     private static let sinkLock = NSRecursiveLock()
     nonisolated(unsafe) private static var installedSink: Sink?
 
