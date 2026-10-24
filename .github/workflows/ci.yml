@@ -100,7 +100,7 @@ jobs:
 
       # The temporary UI flag pauses exactly two complete window-driven
       # UITour suites here, including their non-presentation assertions.
-      # One invocation builds only the target selected below and then runs it.
+      # One invocation builds and runs the selected unit tests.
       # Keep serial execution and report build timings for the combined step.
       - name: Build and run unit tests
         env:
