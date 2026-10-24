@@ -1,4 +1,5 @@
 import Foundation
+import os
 import XCTest
 @testable import SnoozePay
 
