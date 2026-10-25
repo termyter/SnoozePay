@@ -68,6 +68,8 @@ final class AppDelegateSnoozeDiagnosticTests: XCTestCase {
         XCTAssertEqual(lines.first?.level, level, file: file, line: line)
         XCTAssertEqual(lines.first?.message, message, file: file, line: line)
         XCTAssertTrue(poster.requests.isEmpty, "these outcomes do not post a failure banner", file: file, line: line)
-        XCTAssertTrue(warnings.pending.isEmpty, "these outcomes do not create critical warnings", file: file, line: line)
+        XCTAssertTrue(
+            warnings.pending.isEmpty, "these outcomes do not create critical warnings", file: file, line: line
+        )
     }
 }
