@@ -409,12 +409,12 @@ final class AudioService {
             return
         }
 
-        let player = resolveAlarmPlayer(soundID: soundID)
+        let player = resolvePlayerForPlayback(soundID: soundID)
 
         guard let player else {
             // Neither bundled file nor synthetic tone available — refuse to claim
             // playback. Vibration still runs so the user is at least woken.
-            AppLogger.audio.notice("startAlarmSound: no audio source available, vibration only")
+            AppLogger.emit(.audio, .default, "startAlarmSound: no audio source available, vibration only")
             _currentAlarmID = alarmID
             _state = .vibrationOnly
             startVibration()
@@ -436,8 +436,9 @@ final class AudioService {
         let prepared = player.prepareToPlay()
         let started = player.play()
         if !prepared || !started {
-            AppLogger.audio.error(
-                "AVAudioPlayer play() rejected (prepared=\(prepared, privacy: .public), started=\(started, privacy: .public))"
+            AppLogger.emit(
+                .audio, .error,
+                "AVAudioPlayer play() rejected (prepared=\(prepared), started=\(started))"
             )
             audioPlayer = nil
             _currentAlarmID = alarmID
@@ -449,6 +450,23 @@ final class AudioService {
         _currentAlarmID = alarmID
         _state = .playing
         startVibration()
+    }
+
+    #if DEBUG
+    private var alarmPlayerResolver: ((String) -> AVAudioPlayer?)?
+
+    /// Reach player refusal/no-source branches without changing bundled audio.
+    /// Installed and invoked on `queue`; nil restores the production resolver.
+    func overrideAlarmPlayerResolution(_ resolver: ((String) -> AVAudioPlayer?)?) {
+        queue.sync { alarmPlayerResolver = resolver }
+    }
+    #endif
+
+    private func resolvePlayerForPlayback(soundID: String) -> AVAudioPlayer? {
+        #if DEBUG
+        if let alarmPlayerResolver { return alarmPlayerResolver(soundID) }
+        #endif
+        return resolveAlarmPlayer(soundID: soundID)
     }
 
     /// Handle an `.startAlarmSound` call while the service is already in a
@@ -797,7 +815,7 @@ final class AudioService {
         // Mirror `startAlarmSoundLocked`'s play()==false branch and fall to
         // `.vibrationOnly` so the UI reflects the real state (#406).
         if !player.play() {
-            AppLogger.audio.error("resumePlaybackLocked: AVAudioPlayer.play() returned false")
+            AppLogger.emit(.audio, .error, "resumePlaybackLocked: AVAudioPlayer.play() returned false")
             _isPaused = false
             _state = .vibrationOnly
             startVibration()

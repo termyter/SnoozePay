@@ -26,7 +26,9 @@ extension AudioService {
     /// Returns an AVAudioPlayer over that buffer — looping is the caller's to
     /// set via `numberOfLoops` — or nil if AVAudioPlayer rejects the data,
     /// which is the only way this returns nil.
-    static func generateAlarmTone() -> AVAudioPlayer? {
+    static func generateAlarmTone(
+        makePlayer: (Data) throws -> AVAudioPlayer = { try AVAudioPlayer(data: $0) }
+    ) -> AVAudioPlayer? {
         let sampleRate: Double = 44100
         let duration: Double = 1.5 // seconds per loop cycle
         let frequency: Double = 880 // A5 — prominent alarm frequency
@@ -40,13 +42,13 @@ extension AudioService {
 
         let wavData = packWAV(samples: samples, totalSamples: totalSamples)
         do {
-            return try AVAudioPlayer(data: wavData)
+            return try makePlayer(wavData)
         } catch {
             // Last-resort fallback failed — the alarm fires with vibration
             // only. Log it so "why no tone" is diagnosable from Console
             // instead of requiring a source read (#210).
             let desc = String(describing: error)
-            AppLogger.audio.error("generateAlarmTone: AVAudioPlayer init failed: \(desc, privacy: .public)")
+            AppLogger.emit(.audio, .error, "generateAlarmTone: AVAudioPlayer init failed: \(desc)")
             return nil
         }
     }
