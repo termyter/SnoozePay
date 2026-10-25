@@ -495,16 +495,20 @@ class AlarmsListViewController: UIViewController {
 
     /// Deeplink into this app's page in iOS Settings — the one place the user
     /// can actually fix a decided-and-refused alarm/notification grant.
-    private static func openSystemSettings() {
+    static func openSystemSettings(
+        open: @MainActor (URL, @escaping @MainActor @Sendable (Bool) -> Void) -> Void = { url, completion in
+            UIApplication.shared.open(url, options: [:], completionHandler: completion)
+        }
+    ) {
         guard let url = URL(string: UIApplication.openSettingsURLString) else {
             AppLogger.ui.error("openSettingsURLString is not a valid URL — cannot route the user to Settings")
             return
         }
-        UIApplication.shared.open(url, options: [:]) { opened in
+        open(url) { opened in
             // Without this the tap is a no-op the user can only read as "the
             // banner is broken".
             if !opened {
-                AppLogger.ui.error("failed to open the Settings deeplink for the alarm-backend guard")
+                AppLogger.emit(.ui, .error, "failed to open the Settings deeplink for the alarm-backend guard")
             }
         }
     }

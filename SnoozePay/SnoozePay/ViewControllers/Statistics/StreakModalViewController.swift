@@ -452,6 +452,27 @@ final class StreakModalViewController: UIViewController {
         dismiss(animated: true)
     }
 
+    /// Configures the real share completion without presenting a system sheet.
+    static func makeShareActivity(
+        streakDays: Int, savedAmount: Decimal, currency: Currency
+    ) -> UIActivityViewController {
+        let activity = UIActivityViewController(
+            activityItems: [Self.shareText(streakDays: streakDays, savedAmount: savedAmount, currency: currency)],
+            applicationActivities: nil
+        )
+        activity.completionWithItemsHandler = { activityType, completed, _, error in
+            let channel = activityType?.rawValue ?? "unknown"
+            if let error {
+                let reason = error.localizedDescription
+                AppLogger.emit(.ui, .error, "streak share failed via \(channel): \(reason)")
+            } else {
+                let outcome = completed ? "completed" : "cancelled"
+                AppLogger.emit(.ui, .info, "streak share via \(channel) \(outcome)")
+            }
+        }
+        return activity
+    }
+
     @objc private func shareTapped() {
         guard case .savings(let amount) = mode else { return }
         // A double tap would otherwise present on top of the in-flight share
@@ -459,24 +480,7 @@ final class StreakModalViewController: UIViewController {
         // "the button is broken" (#347 review).
         guard presentedViewController == nil else { return }
 
-        let activity = UIActivityViewController(
-            activityItems: [Self.shareText(streakDays: streakDays, savedAmount: amount, currency: currency)],
-            applicationActivities: nil
-        )
-        activity.completionWithItemsHandler = { activityType, completed, _, error in
-            let channel = activityType?.rawValue ?? "unknown"
-            if let error {
-                let reason = error.localizedDescription
-                AppLogger.ui.error(
-                    "streak share failed via \(channel, privacy: .public): \(reason, privacy: .public)"
-                )
-            } else {
-                let outcome = completed ? "completed" : "cancelled"
-                AppLogger.ui.info(
-                    "streak share via \(channel, privacy: .public) \(outcome, privacy: .public)"
-                )
-            }
-        }
+        let activity = Self.makeShareActivity(streakDays: streakDays, savedAmount: amount, currency: currency)
         // iPad popover anchor — the system picker insists on a source view.
         activity.popoverPresentationController?.sourceView = shareButton
         activity.popoverPresentationController?.sourceRect = shareButton.bounds
