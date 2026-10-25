@@ -74,21 +74,37 @@ final class AlarmKitAdapterDiagnosticTests: XCTestCase {
         }
     }
 
-    func testRequest_decidedStateCompletesSynchronouslyWithoutRequestingAgain() {
+    func testRequest_decidedStateCompletesSynchronouslyWithoutRequestingAgain() async {
         let cases: [(AlarmManager.AuthorizationState, Bool)] = [(.authorized, true), (.denied, false)]
         for (state, granted) in cases {
+            let unexpectedRequest = expectation(description: "cached decision must not start a native request")
+            unexpectedRequest.isInverted = true
+            let completed = expectation(description: "cached authorization completion")
+            completed.assertForOverFulfill = true
             var requests = 0
             let backend = AlarmKitScheduler(
                 readAuthorization: { state },
-                requestNativeAuthorization: { requests += 1; return .notDetermined }
+                requestNativeAuthorization: {
+                    requests += 1
+                    unexpectedRequest.fulfill()
+                    return .notDetermined
+                }
             )
             var results: [Bool] = []
             var lines: [LoggedLine] = []
-            AppLogger.withTestSink({ lines.append(LoggedLine(category: $0, level: $1, message: $2)) }, perform: {
-                backend.requestAuthorization { results.append($0) }
+            await AppLogger.withAsyncTestSink({
+                lines.append(LoggedLine(category: $0, level: $1, message: $2))
+            }, perform: {
+                backend.requestAuthorization {
+                    MainActor.assertIsolated()
+                    results.append($0)
+                    completed.fulfill()
+                }
                 XCTAssertEqual(results, [granted], "cached decisions must complete before the call returns")
+                await fulfillment(of: [completed, unexpectedRequest], timeout: 2)
             })
             XCTAssertEqual(requests, 0)
+            XCTAssertEqual(results, [granted])
             XCTAssertTrue(lines.isEmpty)
         }
     }
