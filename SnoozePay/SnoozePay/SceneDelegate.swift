@@ -108,11 +108,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
-    private func transitionToMainApp() {
+    // Internal so the window-nil diagnostic can be tested without mounting a scene.
+    func transitionToMainApp() {
         guard let window = window else {
             // Permissions flow already flipped its "shown" flag — bailing out
             // here strands the user on a dead screen with no trace (#210).
-            AppLogger.appDelegate.error("transitionToMainApp: window nil — user stuck on onboarding")
+            AppLogger.emit(.appDelegate, .error, "transitionToMainApp: window nil — user stuck on onboarding")
             return
         }
         let tabBar = Self.makeMainTabBar()
