@@ -166,7 +166,7 @@ final class AudioPlayerFallbackDiagnosticTests: XCTestCase {
     }
 }
 
-private final class ControlledPlayer: AVAudioPlayer {
+nonisolated private final class ControlledPlayer: AVAudioPlayer {
     var prepareResult = true
     var playResults = [true]
     var onPlay: (() -> Void)?
