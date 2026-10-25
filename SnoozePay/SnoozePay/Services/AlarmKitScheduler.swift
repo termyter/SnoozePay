@@ -171,6 +171,9 @@ final class AlarmKitScheduler: AlarmKitScheduling {
 
     private let manager = AlarmManager.shared
     private let cancelAlarm: (UUID) throws -> Void
+    private let readAuthorization: () -> AlarmManager.AuthorizationState
+    private let requestNativeAuthorization: () async throws -> AlarmManager.AuthorizationState
+    private let readAlarms: () throws -> [AlarmKit.Alarm]
     typealias SnoozeConfiguration = AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
     var registerTracked: (UUID, SnoozeConfiguration) async throws -> AlarmSnoozeReceipt = { id, configuration in
         let registered = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
@@ -179,9 +182,20 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         return AlarmSnoozeReceipt(systemID: registered.id, fireDate: date)
     }
 
-    /// Cancellation and tracked registration seams retain actual pending-ID ownership in tests.
-    init(cancelAlarm: @escaping (UUID) throws -> Void = { try AlarmManager.shared.cancel(id: $0) }) {
+    /// Per-instance native operations keep adapter outcomes observable without
+    /// prompting for permission or scheduling an alarm in unit tests.
+    init(
+        cancelAlarm: @escaping (UUID) throws -> Void = { try AlarmManager.shared.cancel(id: $0) },
+        readAuthorization: @escaping () -> AlarmManager.AuthorizationState = { AlarmManager.shared.authorizationState },
+        requestNativeAuthorization: @escaping () async throws -> AlarmManager.AuthorizationState = {
+            try await AlarmManager.shared.requestAuthorization()
+        },
+        readAlarms: @escaping () throws -> [AlarmKit.Alarm] = { try AlarmManager.shared.alarms }
+    ) {
         self.cancelAlarm = cancelAlarm
+        self.readAuthorization = readAuthorization
+        self.requestNativeAuthorization = requestNativeAuthorization
+        self.readAlarms = readAlarms
     }
 
     var isAuthorized: Bool {
@@ -189,7 +203,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     }
 
     var authorization: AlarmKitAuthorization {
-        switch manager.authorizationState {
+        switch readAuthorization() {
         case .notDetermined:
             return .notDetermined
         case .authorized:
@@ -206,16 +220,19 @@ final class AlarmKitScheduler: AlarmKitScheduling {
 
     var alertingAlarmIDs: Set<UUID>? {
         do {
-            return Set(try manager.alarms.filter { $0.state == .alerting }.map(\.id))
+            return Set(try readAlarms().filter { $0.state == .alerting }.map(\.id))
         } catch {
-            AppLogger.scheduler.error("currency refresh skipped: AlarmKit state unreadable: \(error.localizedDescription, privacy: .public)")
+            AppLogger.emit(
+                .scheduler, .error,
+                "currency refresh skipped: AlarmKit state unreadable: \(error.localizedDescription)"
+            )
             return nil
         }
     }
 
     func requestAuthorization(completion: @escaping (Bool) -> Void) {
         // Already decided? Report synchronously without re-prompting.
-        switch manager.authorizationState {
+        switch readAuthorization() {
         case .authorized:
             completion(true)
             return
@@ -230,14 +247,14 @@ final class AlarmKitScheduler: AlarmKitScheduling {
 
         Task {
             do {
-                let state = try await manager.requestAuthorization()
-                AppLogger.scheduler.notice(
-                    "AlarmKit authorization resolved=\(String(describing: state), privacy: .public)"
+                let state = try await requestNativeAuthorization()
+                AppLogger.emit(
+                    .scheduler, .default, "AlarmKit authorization resolved=\(String(describing: state))"
                 )
                 await MainActor.run { completion(state == .authorized) }
             } catch {
-                AppLogger.scheduler.error(
-                    "AlarmKit authorization failed: \(error.localizedDescription, privacy: .public)"
+                AppLogger.emit(
+                    .scheduler, .error, "AlarmKit authorization failed: \(error.localizedDescription)"
                 )
                 await MainActor.run { completion(false) }
             }
