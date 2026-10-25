@@ -1,4 +1,5 @@
 import os
+import UIKit
 import XCTest
 @testable import SnoozePay
 
