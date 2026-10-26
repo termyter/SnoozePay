@@ -123,18 +123,23 @@ final class AlarmOccurrenceRecoveryTests: XCTestCase {
         defer { fixture.close() }
         let ticket = try fixture.recoveryTrackedTicket()
         let sessionBytes = fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key)
+        let corrupt = Data("corrupt".utf8)
         let invalid: [Any] = [
-            "not-data", Data("corrupt".utf8), try JSONEncoder().encode([fixture.alarm, fixture.alarm])
+            "not-data", corrupt, try JSONEncoder().encode([fixture.alarm, fixture.alarm])
         ]
         let service = fixture.recoveryService()
         for value in invalid {
             fixture.defaults.set(value, forKey: "stored_alarms")
-            let before = fixture.defaults.dictionaryRepresentation()
+            var expected = fixture.defaults.dictionaryRepresentation()
+            if let data = value as? Data, data == corrupt {
+                expected[AlarmRepository.corruptBackupKey] = corrupt
+            }
             XCTAssertThrowsError(try service.pendingFinishes())
             guard case .failure = service.resume(ticket) else { return XCTFail("Invalid snapshot must refuse") }
-            XCTAssertEqual(fixture.defaults.dictionaryRepresentation() as NSDictionary, before as NSDictionary)
+            XCTAssertEqual(fixture.defaults.dictionaryRepresentation() as NSDictionary, expected as NSDictionary)
             XCTAssertEqual(fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key), sessionBytes)
         }
+        XCTAssertEqual(fixture.defaults.data(forKey: AlarmRepository.corruptBackupKey), corrupt)
         XCTAssertTrue(fixture.backend.occurrenceVerificationRequests.isEmpty)
         XCTAssertTrue(fixture.wakes.wakeDays().isEmpty)
     }

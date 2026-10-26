@@ -84,6 +84,36 @@ final class AlarmOccurrenceRecoveryEntryTests: XCTestCase {
         XCTAssertFalse(descendants(try XCTUnwrap(table.tableHeaderView)).contains { $0 is AlarmFinishRecoveryPanel })
     }
 
+    func testOneShotQuietRetryRefreshesTheRenderedSwitchWithoutNativeCancellation() throws {
+        let fixture = try OccurrenceVMFixture(oneShot: true)
+        defer { fixture.close() }
+        let ticket = try fixture.recoveryTrackedTicket()
+        let screen = makeList(fixture, recovery: fixture.recoveryService(), center: NotificationCenter())
+        screen.loadViewIfNeeded()
+        let table = try table(in: screen)
+        let panel = try panel(in: table)
+        let index = IndexPath(row: 0, section: 0)
+        let before = try XCTUnwrap(screen.tableView(table, cellForRowAt: index) as? AlarmCell)
+        XCTAssertTrue(before.toggleSwitch.isOn)
+
+        panel.retryButtons.first?.sendActions(for: .touchUpInside)
+
+        XCTAssertFalse(try XCTUnwrap(fixture.repository.fetchChecked(id: ticket.alarmID)).enabled)
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: ticket.alarmID))
+        let after = try XCTUnwrap(screen.tableView(table, cellForRowAt: index) as? AlarmCell)
+        XCTAssertFalse(after.toggleSwitch.isOn)
+        XCTAssertNil(table.tableHeaderView)
+        XCTAssertEqual(fixture.backend.occurrenceVerificationRequests.count, 1)
+        XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty)
+        XCTAssertTrue(fixture.backend.cancelledOriginalIDs.isEmpty)
+        XCTAssertTrue(fixture.backend.stoppedIDs.isEmpty)
+        XCTAssertTrue(fixture.backend.finishOriginalStopIDs.isEmpty)
+        XCTAssertEqual(fixture.wallet.balance, 150)
+        XCTAssertEqual(try fixture.ledger.fetchAllChecked().filter { $0.type == .charge }.count, 1)
+        XCTAssertTrue(try fixture.ledger.fetchAllChecked().filter { $0.type == .refund }.isEmpty)
+        XCTAssertEqual(fixture.wakes.wakeDays().count, 1)
+    }
+
     func testUnreadableDiscoveryShowsReloadInsteadOfPretendingNoPendingRequest() throws {
         let fixture = try OccurrenceVMFixture()
         defer { fixture.close() }
@@ -156,6 +186,27 @@ final class AlarmOccurrenceRecoveryEntryTests: XCTestCase {
         XCTAssertEqual(AlarmFiringPresenter.shared.pendingPresentations, queue)
         XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty)
         XCTAssertEqual(fixture.wallet.balance, 150)
+    }
+
+    func testRecoveryRefreshCannotStackItsAlertOverANewRepositoryModal() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let ticket = try fixture.recoveryTrackedTicket()
+        fixture.backend.occurrenceVerificationResult = .failure(.inventoryUnavailable)
+        let screen = RecoveryFiringScreen(viewModel: fixture.model())
+        let repositoryAlert = UIAlertController(title: "Repository unavailable", message: nil, preferredStyle: .alert)
+
+        AlarmOccurrenceRecoveryAlerts.perform(
+            ticket, on: screen, recovery: fixture.recoveryService(),
+            onChange: { screen.stubPresented = repositoryAlert }
+        )
+
+        XCTAssertTrue(screen.presentedViewController === repositoryAlert)
+        XCTAssertTrue(screen.presentations.isEmpty)
+        XCTAssertEqual(screen.dismissals, 0)
+        XCTAssertEqual(fixture.backend.occurrenceVerificationRequests.count, 1)
+        XCTAssertEqual(try fixture.store().pendingOccurrenceFinish(alarmID: ticket.alarmID), ticket)
+        XCTAssertTrue(fixture.wakes.wakeTimes().isEmpty)
     }
 
     func testMatchingTrackedFiringDoesNotOfferToReplaceItsOwnFinishWithRecovery() throws {

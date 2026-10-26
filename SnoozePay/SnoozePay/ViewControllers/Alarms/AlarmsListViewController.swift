@@ -32,7 +32,7 @@ class AlarmsListViewController: UIViewController {
     private let recoveryNotificationCenter: NotificationCenter
     private lazy var recoveryUI = AlarmsOccurrenceRecoveryHeader(
         recovery: occurrenceRecovery, host: self
-    ) { [weak self] in self?.refreshOccurrenceRecovery() }
+    ) { [weak self] in self?.viewModel.loadData() }
 
     init(
         viewModel: AlarmsListViewModel = AlarmsListViewModel(),

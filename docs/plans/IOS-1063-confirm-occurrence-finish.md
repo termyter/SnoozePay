@@ -156,9 +156,9 @@ initializer wires it explicitly. Recovery alert callbacks verify exact alert
 and ticket ownership before dismissal/proof. Discovery also handles a checked
 missing alarm, and strict snapshots prevent wrong-type storage becoming absence.
 
-50 additional methods cover native5, facade8, storage16, VM1, use-case13 and
-entry7. Total122new relative to actual main; all2390baseline and72initial IDs
-retained, source2512 / expected2494selected, same18paused methods. The72initial
+52 additional methods cover native5, facade8, storage16, VM1, use-case13 and
+entry9. Total124new relative to actual main; all2390baseline and72initial IDs
+retained, source2514 / expected2496selected, same18paused methods. The72initial
 method bodies/timeouts are unchanged. Six additional RU/ENkeys preserve all496
 initial entries (502total). Full app and17changed test files lint with zero
 errors,109inherited app warnings and19test warnings (18inherited plus one
@@ -167,3 +167,13 @@ facade test-file length warning). No suppressions or test weakening.
 All author handoffs are source-only. Final independent exact-head review and
 the sole corrective CI remain required; no runtime success or UI/native-device
 acceptance is claimed by this checkpoint.
+
+The corrective source review caught and fixed a stale list row after one-shot
+success: recovery now reloads the list VM through its ordinary callbacks and a
+real retry-button→datasource/switch regression asserts OFF, no native cancel and
+unchanged money. The malformed-data fixture explicitly expects the existing
+exact corrupt backup while comparing the entire domain and preserving source
+alarm/session/ledger/wake evidence; backup behavior is not suppressed.
+Refresh can itself present a repository-error alert; quiet recovery rechecks
+the current modal afterward and a regression preserves that alert without
+stacking or dismissing it.

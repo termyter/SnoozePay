@@ -10,6 +10,7 @@ enum AlarmOccurrenceRecoveryAlerts {
         guard host.presentedViewController == nil else { return }
         let result = recovery.resume(ticket)
         onChange()
+        guard host.presentedViewController == nil else { return }
         let alert: UIAlertController
         switch result {
         case .success:
