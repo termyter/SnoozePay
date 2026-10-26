@@ -62,6 +62,10 @@ final class CardRowSectionMaskTests: XCTestCase {
                 let row = try fixture.row(index)
                 let actual = try crop(tableImage, to: row.convert(row.bounds, to: fixture.window))
                 let control = try unmaskedControl(for: row, position: index == 0 ? .first : .last, style: style)
+                try assertVisibleStraightRails(
+                    actual: actual, control: control, row: row, style: style,
+                    name: "negative-rail-\(index)-\(style.rawValue)"
+                )
                 let regions = cornerRegions(of: row.bounds, radius: 12, position: index == 0 ? .first : .last)
                 for region in regions {
                     let actualInk = try ink(in: actual, region: region)
@@ -115,7 +119,8 @@ final class CardRowSectionMaskTests: XCTestCase {
         try XCTUnwrap(row.layer.sublayers?.compactMap { $0 as? CAShapeLayer }.first { $0.strokeColor != nil })
     }
 
-    /// Colour and width amplify geometry only; the production-weight test runs before this fixture mutation.
+    /// Colour and width amplify geometry only in rendered-oracle fixtures.
+    /// A separate test inspects unmodified production-weight fixtures.
     private func installProbe(on row: CardRowBackgroundView) throws {
         let stroke = try outline(of: row)
         stroke.strokeColor = UIColor.red.cgColor
@@ -135,6 +140,28 @@ final class CardRowSectionMaskTests: XCTestCase {
         window.layoutIfNeeded()
         try installProbe(on: control)
         return try render(window)
+    }
+
+    /// An empty actual frame must fail calibration rather than look like a clipped negative-control arc.
+    private func assertVisibleStraightRails(
+        actual: UIImage, control: UIImage, row: UIView,
+        style: UIUserInterfaceStyle, name: String
+    ) throws {
+        let regions = [CGRect(x: 0, y: row.bounds.midY - 4, width: 3, height: 8),
+                       CGRect(x: row.bounds.width - 3, y: row.bounds.midY - 4, width: 3, height: 8)]
+        for region in regions {
+            let actualInk = try ink(in: actual, region: region)
+            let controlInk = try ink(in: control, region: region)
+            let ratio = actualInk / max(controlInk, 0.001)
+            let detail = measurement(row, style: style, actual: actualInk, control: controlInk, ratio: ratio)
+                + " region=\(region)"
+            if actualInk <= 1 || controlInk <= 1 || ratio < 0.90 {
+                attach(actual: actual, control: control, name: name)
+            }
+            XCTAssertGreaterThan(actualInk, 1, "actual table frame must show a straight rail: \(detail)")
+            XCTAssertGreaterThan(controlInk, 1, "unmasked control must show a straight rail: \(detail)")
+            XCTAssertGreaterThanOrEqual(ratio, 0.90, "straight-rail calibration failed: \(detail)")
+        }
     }
 
     private func cornerRegions(of bounds: CGRect, radius: CGFloat, position: CardRowPosition) -> [CGRect] {
