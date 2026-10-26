@@ -224,12 +224,8 @@ extension SettingsViewController {
         present(alert, animated: true)
     }
 
-    /// Clears the corrupt state and reloads the table so the now-unlocked
-    /// Settings refreshes and the recovery section collapses again. Only the
-    /// repository that ACTUALLY failed to load is wiped — `clearCorruptState()`
-    /// is unconditional (it removes the data key regardless of lock state), so
-    /// clearing a healthy store here would destroy valid data the user never
-    /// lost (e.g. transactions corrupt but alarms intact → don't nuke alarms).
+    /// Recover the wallet first, then erase corrupt alarm bytes only after checked
+    /// native cleanup. An alarm failure can follow a successful ledger recovery.
     func performRecovery(
         balanceService: BalanceService = .shared,
         alarmRepository: AlarmRepository = .shared
@@ -244,8 +240,16 @@ extension SettingsViewController {
             present(alert, animated: true)
             return
         }
-        if alarmRepository.lastLoadFailed {
-            alarmRepository.clearCorruptState()
+        if case .failure(let error) = alarmRepository.clearCorruptState() {
+            let alert = UIAlertController(
+                title: Localized.text("settings.recovery.alarms_failed_title"),
+                message: Localized.text(error == .busy
+                    ? "settings.recovery.alarms_busy" : "settings.recovery.alarms_cleanup_failed"),
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
+            present(alert, animated: true)
+            return
         }
         tableView.reloadData()
     }

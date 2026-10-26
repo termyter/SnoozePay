@@ -126,3 +126,18 @@ final class InertNotificationCenter: NotificationScheduling {
         completionHandler(false, nil)
     }
 }
+
+/// This fixture owns no native registrations. Recovery therefore has a known-empty inventory.
+final class KnownEmptyRecoveryScheduler: AlarmScheduling {
+    private let recoveryError: AlarmRecoveryError?
+    init(recoveryError: AlarmRecoveryError? = nil) { self.recoveryError = recoveryError }
+    func schedule(_ alarm: Alarm, completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?) {
+        completion?(.success(()))
+    }
+    func cancel(_ alarmID: UUID) {}
+    func recoverCorruptAlarms(commit: () -> Void) -> Result<Void, AlarmRecoveryError> {
+        if let recoveryError { return .failure(recoveryError) }
+        commit()
+        return .success(())
+    }
+}
