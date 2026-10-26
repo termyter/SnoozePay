@@ -178,6 +178,28 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
         XCTAssertEqual(fixture.wakes.wakeDays().count, 1)
     }
 
+    func testDisabledSnapshotCannotFinishAReenabledWeeklyOriginal() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        XCTAssertTrue(fixture.seedRepository.setEnabled(false, id: fixture.alarm.id))
+        let captured = try XCTUnwrap(fixture.seedRepository.fetchChecked(id: fixture.alarm.id))
+        XCTAssertFalse(captured.enabled)
+        let stale = fixture.model(captured)
+        XCTAssertTrue(fixture.seedRepository.setEnabled(true, id: fixture.alarm.id))
+        let alarmBytes = fixture.defaults.data(forKey: "stored_alarms")
+        let sessionBytes = fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key)
+
+        XCTAssertEqual(stale.dismiss(), .failure(.ownershipUnavailable))
+
+        XCTAssertEqual(fixture.defaults.data(forKey: "stored_alarms"), alarmBytes)
+        XCTAssertEqual(fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key), sessionBytes)
+        XCTAssertTrue(try XCTUnwrap(fixture.repository.fetchChecked(id: fixture.alarm.id)).enabled)
+        XCTAssertTrue(fixture.backend.occurrenceFinishRequests.isEmpty)
+        XCTAssertTrue(fixture.backend.finishOriginalStopIDs.isEmpty)
+        XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty)
+        XCTAssertTrue(fixture.wakes.wakeDays().isEmpty)
+    }
+
     func testOlderAttemptCannotFinishTheNewerAttemptOfTheSameSession() throws {
         let fixture = TrackedSessionFixture()
         defer { fixture.close() }
@@ -198,6 +220,43 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
         XCTAssertEqual(try store.resolve(second, alarmID: fixture.alarm.id).count, 2)
         XCTAssertTrue(backend.finishOriginalStopIDs.isEmpty)
         XCTAssertTrue(backend.occurrenceFinishRequests.isEmpty)
+    }
+
+    func testStopThenLateTrackedFailureKeepsTheExistingLinkedRefundAndRequiresConfirmedRetry() throws {
+        let fixture = TrackedSessionFixture()
+        defer { fixture.close() }
+        let backend = TrackedSessionBackend()
+        backend.schedule(fixture.alarm) { _ in }
+        let original = backend.registrations[fixture.alarm.id]
+        backend.deferred = true
+        backend.reject = true
+        let model = fixture.model(backend: backend)
+        var outcome: AlarmFiringViewModel.SnoozeScheduleOutcome?
+        XCTAssertTrue(model.snooze { outcome = $0 })
+        XCTAssertEqual(model.dismiss(), .failure(.busy))
+
+        backend.resolve()
+
+        guard case .scheduleFailed = outcome else { return XCTFail("The original failed schedule must refund") }
+        let rows = try fixture.ledger().fetchAllChecked()
+        let charges = rows.filter { $0.type == .charge }
+        let refunds = rows.filter { $0.type == .refund }
+        XCTAssertEqual(charges.count, 1)
+        XCTAssertEqual(refunds.count, 1)
+        XCTAssertEqual(refunds.first?.refundsTransactionID, charges.first?.id)
+        XCTAssertEqual(charges.first?.amount, 50)
+        XCTAssertEqual(refunds.first?.amount, 50)
+        XCTAssertEqual(BalanceService(defaults: fixture.defaults).balance, 2_000)
+        XCTAssertEqual(model.snoozeCount, 1, "Attempts retain their existing forward-price meaning")
+        XCTAssertNil(model.nextRingDate())
+        XCTAssertTrue(WakeEventStore(defaults: fixture.defaults).wakeDays().isEmpty)
+        XCTAssertFalse(fixture.model(backend: backend).snooze())
+        XCTAssertTrue(backend.cancelled.isEmpty)
+        XCTAssertEqual(backend.registrations[fixture.alarm.id], original)
+
+        XCTAssertEqual(model.dismiss(), .success(.completedNow))
+        XCTAssertEqual(WakeEventStore(defaults: fixture.defaults).wakeDays().count, 1)
+        XCTAssertEqual(try fixture.ledger().fetchAllChecked().map(\.id), rows.map(\.id))
     }
 }
 
@@ -226,15 +285,17 @@ final class OccurrenceVMFixture {
         )))
         alarm = Alarm(time: time, repeatDays: [0, 2], penaltyAmount: 50, repeatMode: oneShot ? .never : .weekly)
         ledger = TransactionRepository(defaults: defaults)
-        wallet = BalanceService(defaults: defaults, transactionRepository: ledger)
+        wallet = BalanceService(
+            defaults: defaults, transactionRepository: ledger, notificationCenter: NotificationCenter()
+        )
         wakes = WakeEventStore(defaults: defaults)
         XCTAssertTrue(seedRepository.save(alarm))
         XCTAssertTrue(wallet.topUp(amount: 200))
     }
 
-    func model() -> AlarmFiringViewModel {
+    func model(_ captured: Alarm? = nil) -> AlarmFiringViewModel {
         AlarmFiringViewModel(
-            alarm: alarm, balanceService: wallet, alarmRepository: repository,
+            alarm: captured ?? alarm, balanceService: wallet, alarmRepository: repository,
             scheduler: scheduler, wakeStore: wakes, ledger: ledger, snoozeSessions: store()
         )
     }

@@ -10,8 +10,8 @@ import os
 /// reproduced deterministically.
 ///
 /// Since #472 the app never SCHEDULES a notification; what is left of this seam
-/// serves the legacy sweep in `cancel(_:)`, which removes alarm notifications
-/// left pending by a pre-#472 build.
+/// serves legacy cleanup when cancelling an alarm or confirming its occurrence
+/// finished, removing notifications left by a pre-#472 build.
 protocol NotificationScheduling: AnyObject {
     // Sendable closures match `UNUserNotificationCenter`'s post-Swift-6
     // signature. Without them the implicit conformance is a warning
@@ -28,12 +28,25 @@ protocol NotificationScheduling: AnyObject {
     func getDeliveredNotifications(
         completionHandler: @escaping @Sendable ([UNNotification]) -> Void
     )
+    func getDeliveredNotificationIdentifiers(
+        completionHandler: @escaping @Sendable ([String]) -> Void
+    )
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
     func removeAllPendingNotificationRequests()
     func requestAuthorization(
         options: UNAuthorizationOptions,
         completionHandler: @escaping @Sendable (Bool, Error?) -> Void
     )
+}
+
+extension NotificationScheduling {
+    func getDeliveredNotificationIdentifiers(
+        completionHandler: @escaping @Sendable ([String]) -> Void
+    ) {
+        getDeliveredNotifications { notifications in
+            completionHandler(notifications.map { $0.request.identifier })
+        }
+    }
 }
 
 extension UNUserNotificationCenter: NotificationScheduling {}
@@ -452,8 +465,8 @@ final class AlarmScheduler: AlarmScheduling {
             }
             notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
         }
-        notificationCenter.getDeliveredNotifications { [notificationCenter] notifications in
-            let ids = notifications.map { $0.request.identifier }.filter(belongsToAlarm)
+        notificationCenter.getDeliveredNotificationIdentifiers { [notificationCenter] identifiers in
+            let ids = identifiers.filter(belongsToAlarm)
             guard !ids.isEmpty else { return }
             notificationCenter.removeDeliveredNotifications(withIdentifiers: ids)
         }
@@ -727,7 +740,9 @@ extension AlarmScheduler {
         do {
             let request = try occurrenceFinishRequest(for: alarm, ticket: ticket, preserveWeekly: preserveWeekly)
             guard let alarmKitScheduler else { return .failure(.unsupported) }
-            return alarmKitScheduler.finishOccurrence(request)
+            let result = alarmKitScheduler.finishOccurrence(request)
+            if case .success = result { cancelLegacyNotifications(alarm.id) }
+            return result
         } catch let error as AlarmOccurrenceFinishError {
             return .failure(error)
         } catch {

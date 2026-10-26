@@ -693,7 +693,7 @@ final class AlarmFiringViewModel {
             throw AlarmOccurrenceFinishError.persistenceFailed
         }
         if let current, current.enabled {
-            let changed = current.time != alarm.time || current.repeatMode != alarm.repeatMode
+            let changed = !alarm.enabled || current.time != alarm.time || current.repeatMode != alarm.repeatMode
                 || Set(current.repeatDays) != Set(alarm.repeatDays)
             guard !changed else { throw AlarmOccurrenceFinishError.ownershipUnavailable }
         }

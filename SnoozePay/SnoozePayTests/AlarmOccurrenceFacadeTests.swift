@@ -1,4 +1,5 @@
 import XCTest
+import UserNotifications
 @testable import SnoozePay
 
 @MainActor
@@ -220,6 +221,41 @@ final class AlarmOccurrenceFacadeTests: XCTestCase {
         XCTAssertEqual(try store.pendingOccurrenceFinish(alarmID: alarm.id), ticket)
     }
 
+    func testOnlyVerifiedWeeklyFinishRemovesOwnedLegacyPendingAndDeliveredNotifications() throws {
+        let alarm = weeklyAlarm()
+        let unrelatedID = UUID()
+        let owned = ["alarm_\(alarm.id)_day0", "alarm_\(alarm.id)_day6", "alarm_\(alarm.id)_once",
+                     "alarm_\(alarm.id)_old_burst91", "snooze_\(alarm.id)", "snooze_\(alarm.id)_burst37"]
+        let unrelated = ["alarm_\(unrelatedID)_once", "snooze_\(unrelatedID)_burst37",
+                         "snooze_\(alarm.id)unrelated", "calendar_event"]
+        let center = OccurrenceLegacyNotifications(identifiers: owned + unrelated)
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: backend, snoozeSessions: store)
+        let ticket = try store.beginOccurrenceFinish(alarmID: alarm.id, reference: nil)
+        let forged = AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarm.id, token: nil)
+        assertFailure(scheduler.finishOccurrence(for: alarm, ticket: forged), .ownershipUnavailable)
+        XCTAssertTrue(backend.finished.isEmpty)
+        backend.finishResult = .failure(.nativeUnconfirmed)
+        assertFailure(scheduler.finishOccurrence(for: alarm, ticket: ticket), .nativeUnconfirmed)
+        XCTAssertEqual(center.pendingIDs, Set(owned + unrelated))
+        XCTAssertEqual(center.deliveredIDs, Set(owned + unrelated))
+        XCTAssertEqual(center.pendingReads, 0)
+        XCTAssertEqual(center.deliveredReads, 0)
+
+        backend.finishResult = .success(())
+        assertSuccess(scheduler.finishOccurrence(for: alarm, ticket: ticket))
+        XCTAssertEqual(backend.finished.last?.weekly,
+                       NativeOccurrenceSnapshot.Weekly(hour: 7, minute: 15, mondayFirstDays: [0, 6]))
+        XCTAssertEqual(center.pendingReads, 1)
+        XCTAssertEqual(center.deliveredReads, 1)
+        XCTAssertTrue(center.pendingIDs.contains("alarm_\(alarm.id)_old_burst91"))
+        XCTAssertTrue(center.deliveredIDs.contains("snooze_\(alarm.id)_burst37"))
+        center.deliverInventoryReads()
+        XCTAssertEqual(center.pendingIDs, Set(unrelated))
+        XCTAssertEqual(center.deliveredIDs, Set(unrelated))
+        XCTAssertTrue(backend.cancelled.isEmpty, "Occurrence finish must preserve the weekly native original")
+        XCTAssertTrue(backend.originalCancels.isEmpty)
+    }
+
     func testOldBackendDefaultsCannotClaimOccurrenceSupport() {
         let alarm = weeklyAlarm()
         let request = AlarmOccurrenceFinishRequest(alarmID: alarm.id, weekly: nil,
@@ -265,6 +301,7 @@ private final class OccurrenceFacadeBackend: AlarmKitScheduling {
     var finished: [AlarmOccurrenceFinishRequest] = []
     var late: [AlarmOccurrenceFinishRequest] = []
     var cancelled: [UUID] = []
+    var originalCancels: [UUID] = []
     var stopped: [UUID] = []
     var originalStops: [UUID] = []
     var pending: [(Result<Void, Error>) -> Void] = []
@@ -276,7 +313,7 @@ private final class OccurrenceFacadeBackend: AlarmKitScheduling {
     func scheduleSnooze(_ alarm: Alarm, fireDate: Date, completion: @escaping (Result<Void, Error>) -> Void) {
         pending.append(completion)
     }
-    func cancelOriginal(_ alarmID: UUID) {}
+    func cancelOriginal(_ alarmID: UUID) { originalCancels.append(alarmID) }
     func cancel(_ alarmID: UUID) { cancelled.append(alarmID) }
     func stop(_ alarmID: UUID) { stopped.append(alarmID) }
     func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
@@ -290,6 +327,62 @@ private final class OccurrenceFacadeBackend: AlarmKitScheduling {
     func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
         originalStops.append(alarmID)
         return .failure(.nativeUnconfirmed)
+    }
+}
+
+@MainActor
+private final class OccurrenceLegacyNotifications: NotificationScheduling {
+    private var pending: [UNNotificationRequest]
+    private(set) var deliveredIDs: Set<String>
+    private(set) var pendingReads = 0
+    private(set) var deliveredReads = 0
+    private var pendingCompletion: (@Sendable ([UNNotificationRequest]) -> Void)?
+    private var deliveredCompletion: (@Sendable ([String]) -> Void)?
+    var pendingIDs: Set<String> { Set(pending.map(\.identifier)) }
+    init(identifiers: [String]) {
+        let content = UNMutableNotificationContent()
+        pending = identifiers.map { UNNotificationRequest(identifier: $0, content: content, trigger: nil) }
+        deliveredIDs = Set(identifiers)
+    }
+    func getPendingNotificationRequests(
+        completionHandler: @escaping @Sendable ([UNNotificationRequest]) -> Void
+    ) {
+        pendingReads += 1
+        pendingCompletion = completionHandler
+    }
+    func getDeliveredNotificationIdentifiers(completionHandler: @escaping @Sendable ([String]) -> Void) {
+        deliveredReads += 1
+        deliveredCompletion = completionHandler
+    }
+    func deliverInventoryReads() {
+        let pendingCallback = pendingCompletion
+        let deliveredCallback = deliveredCompletion
+        pendingCompletion = nil
+        deliveredCompletion = nil
+        pendingCallback?(pending)
+        deliveredCallback?(Array(deliveredIDs))
+    }
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        let removed = Set(identifiers)
+        pending.removeAll { removed.contains($0.identifier) }
+    }
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        deliveredIDs.subtract(identifiers)
+    }
+    func getDeliveredNotifications(completionHandler: @escaping @Sendable ([UNNotification]) -> Void) {
+        XCTFail("The framework-free fixture must use the delivered identifier projection")
+        completionHandler([])
+    }
+    func add(_ request: UNNotificationRequest, withCompletionHandler completion: (@Sendable (Error?) -> Void)?) {
+        XCTFail("Occurrence finish must not register notifications")
+        completion?(nil)
+    }
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {}
+    func removeAllPendingNotificationRequests() { XCTFail("Unrelated notifications must be retained") }
+    func requestAuthorization(options: UNAuthorizationOptions,
+                              completionHandler: @escaping @Sendable (Bool, Error?) -> Void) {
+        XCTFail("Legacy cleanup must not request notification authorization")
+        completionHandler(false, nil)
     }
 }
 

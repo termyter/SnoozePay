@@ -70,8 +70,8 @@ fixtures do not establish actual daemon readback timing or future audibility.
 
 ## Pre-publication source inventory
 
-69 new methods:18native adapter,17facade,20scoped store,11VM and3controller.
-Every2390baseline method ID remains; source2459 / expected selected2441, with
+72 new methods:18native adapter,18facade,20scoped store,13VM and3controller.
+Every2390baseline method ID remains; source2462 / expected selected2444, with
 the same18paused UITour methods. Catalog adds3keys, all493previous entries
 unchanged. No project/scheme/workflow/protected file changed. Local lint:
 app0errors/109warnings; changed tests0errors/18warnings at inherited sites,
@@ -85,3 +85,11 @@ error/no wake until explicit confirmed retry; full-cancel expectations become
 derived-only cleanup plus preserved weekly original. Diagnostic prefix/error
 level and corrupt bytes remain tested with the new typed failure. Old linked
 refund, amount/count/timeout and unrelated routing assertions remain.
+
+Independent source review before any CI found two P2 edges: verified weekly
+finish must still sweep obsolete UN notifications, and a disabled snapshot must
+not cancel a re-enabled weekly original. Both have dedicated regressions. The
+legacy-only sweep follows verified native success and preserves unrelated
+notifications and native recurrence. The stale enabled transition is refused
+before ticket/native mutation. An extra Stop→late failure consumer row verifies
+the existing linked refund and no wake until confirmed retry.
