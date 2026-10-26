@@ -510,7 +510,7 @@ struct Alarm: Identifiable, Equatable, Codable {
 
     /// The selected civil clock, or the legacy Date projected in the reader's
     /// calendar. A read never adopts a civil interpretation for legacy data.
-    func resolvedTimeOfDay(calendar: Calendar = .current) -> TimeOfDay? {
+    nonisolated func resolvedTimeOfDay(calendar: Calendar = .current) -> TimeOfDay? {
         clockTime ?? TimeOfDay(from: time, calendar: calendar)
     }
 

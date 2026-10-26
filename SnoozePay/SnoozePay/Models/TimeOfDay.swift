@@ -10,7 +10,7 @@ import Foundation
 /// `Alarm.clockTime` persists explicit selections (#1065). Legacy alarms keep
 /// their Date interpretation until retimed; `Alarm.resolvedTimeOfDay` is the
 /// shared authority boundary. Decoding validates the same ranges as construction.
-struct TimeOfDay: Equatable, Hashable, Codable {
+nonisolated struct TimeOfDay: Equatable, Hashable, Codable, Sendable {
 
     let hour: Int    // 0...23
     let minute: Int  // 0...59
