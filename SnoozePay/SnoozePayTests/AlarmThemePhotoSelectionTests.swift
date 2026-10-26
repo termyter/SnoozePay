@@ -103,12 +103,19 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
         XCTAssertEqual(harness.navigation.popCalls, 1)
     }
 
-    func testDismissingThePickerHostInvalidatesAnAlreadyQueuedPhotoCompletion() {
+    func testDismissingThePickerHostInvalidatesAnAlreadyQueuedPhotoCompletion() throws {
         let harness = makeHarness(modal: true)
         defer { harness.close() }
+        let host = try XCTUnwrap(harness.navigation.presentingViewController)
+        XCTAssertTrue(host === harness.window.rootViewController)
         harness.startPhoto(harness.firstImage)
         harness.finish(0, with: harness.firstImage)
-        harness.navigation.dismiss(animated: false)
+        let dismissed = expectation(description: "picker host dismissed")
+        harness.navigation.dismiss(animated: false) { dismissed.fulfill() }
+        wait(for: [dismissed], timeout: 5)
+        XCTAssertNil(harness.navigation.presentingViewController)
+        XCTAssertNil(host.presentedViewController)
+        XCTAssertTrue(harness.window.rootViewController === host)
         runMainQueueTurn()
 
         XCTAssertTrue(harness.savedImages.isEmpty)
@@ -265,7 +272,18 @@ private final class PhotoSelectionHarness {
         window.rootViewController = modal ? UIViewController() : navigation
         window.isHidden = false
         window.layoutIfNeeded()
-        if modal { window.rootViewController?.present(navigation, animated: false) }
+        if modal {
+            guard let host = window.rootViewController else {
+                return XCTFail("Modal harness requires a presenting host")
+            }
+            let presented = XCTestExpectation(description: "picker host presented")
+            host.present(navigation, animated: false) { presented.fulfill() }
+            XCTAssertEqual(XCTWaiter.wait(for: [presented], timeout: 5), .completed)
+            XCTAssertTrue(host.presentedViewController === navigation)
+            XCTAssertTrue(navigation.presentingViewController === host)
+            XCTAssertTrue(navigation.topViewController === controller)
+            XCTAssertTrue(controller.parent === navigation)
+        }
         controller.loadViewIfNeeded()
     }
 
