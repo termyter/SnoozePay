@@ -60,8 +60,11 @@ final class CardRowSectionMaskTests: XCTestCase {
             let tableImage = try render(fixture.window)
             for index in [0, 2] {
                 let row = try fixture.row(index)
-                let actual = try crop(tableImage, to: row.convert(row.bounds, to: fixture.window))
+                let actualCropRect = row.convert(row.bounds, to: fixture.window)
+                let actual = try crop(tableImage, to: actualCropRect)
                 let control = try unmaskedControl(for: row, position: index == 0 ? .first : .last, style: style)
+                logImageGeometry(actual: actual, control: control, cropRect: actualCropRect,
+                                 name: "negative-\(index)-\(style.rawValue)")
                 try assertVisibleStraightRails(
                     actual: actual, control: control, row: row, style: style,
                     name: "negative-rail-\(index)-\(style.rawValue)"
@@ -89,8 +92,11 @@ final class CardRowSectionMaskTests: XCTestCase {
         for index in 0..<rows {
             let row = try fixture.row(index)
             let position = CardRowPosition.resolve(row: index, totalRows: rows)
-            let actual = try crop(tableImage, to: row.convert(row.bounds, to: fixture.window))
+            let actualCropRect = row.convert(row.bounds, to: fixture.window)
+            let actual = try crop(tableImage, to: actualCropRect)
             let control = try unmaskedControl(for: row, position: position, style: style)
+            logImageGeometry(actual: actual, control: control, cropRect: actualCropRect,
+                             name: "\(position)-\(height)-\(style.rawValue)")
             var regions = cornerRegions(of: row.bounds, radius: row.layer.cornerRadius, position: position)
             regions += [CGRect(x: 0, y: height / 3, width: 3, height: height / 3),
                         CGRect(x: row.bounds.width - 3, y: height / 3, width: 3, height: height / 3)]
@@ -221,6 +227,16 @@ final class CardRowSectionMaskTests: XCTestCase {
                              actual: Double, control: Double, ratio: Double) -> String {
         "style=\(style.rawValue) bounds=\(row.bounds) radius=\(row.layer.cornerRadius) "
             + "actualInk=\(actual) controlInk=\(control) ratio=\(ratio)"
+    }
+
+    private func logImageGeometry(actual: UIImage, control: UIImage, cropRect: CGRect, name: String) {
+        let actualBitmap = actual.cgImage.map { "\($0.width)x\($0.height)" } ?? "nil"
+        let controlBitmap = control.cgImage.map { "\($0.width)x\($0.height)" } ?? "nil"
+        print(
+            "[#739] \(name): actualCropRectInWindow=\(cropRect) "
+                + "actualScale=\(actual.scale) actualBitmap=\(actualBitmap) "
+                + "controlScale=\(control.scale) controlBitmap=\(controlBitmap)"
+        )
     }
 
     private func attach(actual: UIImage, control: UIImage, name: String) {

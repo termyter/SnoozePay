@@ -296,13 +296,17 @@ final class CardRowBackgroundView: UIView {
 
     /// Stroke path covering only this row's share of the section outline.
     private func outlinePath(lineWidth: CGFloat, cornerRadius: CGFloat) -> CGPath {
-        let inset = lineWidth / 2
+        // Capsule rows leave one additional physical pixel between the outline
+        // and the host edge. This clearance is independent of the stroke width.
+        let fillsShortSide = cornerRadius >= min(bounds.width, bounds.height) / 2
+        let edgeGuard = position == .single && fillsShortSide ? hairlineWidth : 0
+        let inset = lineWidth / 2 + edgeGuard
         let left = bounds.minX + inset
         let right = bounds.maxX - inset
         let drawsTop = position == .first || position == .single
         let drawsBottom = position == .last || position == .single
         // Rails run flush to the cell edge where the neighbour continues them,
-        // and pull in by half a hairline where this row caps the section.
+        // and pull in by the outline inset where this row caps the section.
         let top = drawsTop ? bounds.minY + inset : bounds.minY
         let bottom = drawsBottom ? bounds.maxY - inset : bounds.maxY
         guard right > left, bottom > top else { return UIBezierPath().cgPath }
