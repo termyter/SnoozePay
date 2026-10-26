@@ -475,8 +475,9 @@ final class AlarmScheduler: AlarmScheduling {
         rescheduleAll(alarms.filter { !alerting.contains($0.id) }, completion: completion)
     }
 
-    /// Re-arm every enabled original schedule, preserving any paid pending
-    /// snooze under its separate AlarmKit ID and its original fire date (#935).
+    /// Re-arm future enabled originals, leaving currently alerting originals
+    /// untouched (#1061) and preserving paid pending snoozes under their separate
+    /// AlarmKit IDs and original fire dates (#935).
     /// Full cancellation remains reserved for explicit disable/delete/finish.
     ///
     /// Called when something that silently invalidates already-scheduled
@@ -495,7 +496,9 @@ final class AlarmScheduler: AlarmScheduling {
     ///   invisible.
     ///
     /// Disabled alarms are skipped: they hold nothing to re-arm and
-    /// `schedule(_:)` is already a no-op for them.
+    /// `schedule(_:)` is already a no-op for them. While authorized, an unreadable
+    /// alerting inventory skips re-arm without cancellation and counts every
+    /// enabled alarm as failed; unknown state is not evidence that none ring.
     /// - Parameter completion: invoked on the main queue once every re-arm has
     ///   resolved, carrying the number that FAILED to re-arm. Previously each
     ///   `schedule` was fired with a `nil` completion, so every typed
@@ -513,11 +516,25 @@ final class AlarmScheduler: AlarmScheduling {
             return
         }
 
+        let rearmable: [Alarm]
+        if usesAlarmKit {
+            guard let alerting = alarmKitScheduler?.alertingAlarmIDs else {
+                AppLogger.scheduler.error("rescheduleAll skipped: current AlarmKit state unavailable")
+                completion?(enabled.count)
+                return
+            }
+            rearmable = enabled.filter { !alerting.contains($0.id) }
+        } else {
+            // A revoked grant must still clean up originals and report the
+            // existing backendUnavailable schedule failures.
+            rearmable = enabled
+        }
+
         let group = DispatchGroup()
         let lock = NSLock()
         var failedCount = 0
 
-        for alarm in enabled {
+        for alarm in rearmable {
             // Cancel even after authorization changes, but never remove the
             // independently scheduled paid snooze or restart its deadline.
             alarmKitScheduler?.cancelOriginal(alarm.id)
@@ -535,7 +552,7 @@ final class AlarmScheduler: AlarmScheduling {
 
         group.notify(queue: .main) {
             if failedCount > 0 {
-                let total = enabled.count
+                let total = rearmable.count
                 AppLogger.scheduler.error(
                     "rescheduleAll failed: \(failedCount, privacy: .public)/\(total, privacy: .public)"
                 )
