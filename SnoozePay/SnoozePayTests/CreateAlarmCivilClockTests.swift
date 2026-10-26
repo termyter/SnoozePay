@@ -209,20 +209,31 @@ final class CreateAlarmCivilClockTests: XCTestCase {
         let local = calendar(offsetHours: 9)
         let instant = pickerDate(22, 15)
         var callbacks = 0
-        cell.onTimeChanged = { _ in callbacks += 1 }
+        var callbackDates: [Date] = []
+        cell.onTimeChanged = { date in
+            callbacks += 1
+            callbackDates.append(date)
+        }
         cell.configure(time: instant, calendar: local)
         let picker = try XCTUnwrap(views(in: cell).compactMap { $0 as? UIDatePicker }.first)
         XCTAssertEqual(callbacks, 0, "configuration must not adopt an editor clock")
         XCTAssertEqual(picker.timeZone?.secondsFromGMT(for: instant), 9 * 3_600)
-        XCTAssertEqual(picker.calendar.timeZone, local.timeZone)
-        let expected = WallClockFormatter.string(from: instant, style: .padded, calendar: local)
+        XCTAssertEqual(picker.calendar.identifier, local.identifier)
+        // UIDatePicker's explicit timeZone overrides its calendar's zone for display.
+        var effectiveCalendar = try XCTUnwrap(picker.calendar)
+        effectiveCalendar.timeZone = try XCTUnwrap(picker.timeZone)
+        let components = effectiveCalendar.dateComponents([.hour, .minute], from: picker.date)
+        XCTAssertEqual(components.hour, 7, "22:15 UTC must be 07:15 in GMT+9")
+        XCTAssertEqual(components.minute, 15)
         let strings = views(in: cell).compactMap { ($0 as? UILabel)?.attributedText?.string }
-        XCTAssertTrue(strings.contains(expected))
+        XCTAssertTrue(strings.contains("07:15"))
         picker.sendActions(for: .valueChanged)
         XCTAssertEqual(callbacks, 1)
+        XCTAssertEqual(callbackDates, [instant])
         cell.prepareForReuse()
         picker.sendActions(for: .valueChanged)
         XCTAssertEqual(callbacks, 1, "reuse must clear the previous editor callback")
+        XCTAssertEqual(callbackDates, [instant])
     }
 
     private func makeEditor(
