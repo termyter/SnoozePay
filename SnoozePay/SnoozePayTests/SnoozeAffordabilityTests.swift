@@ -289,4 +289,95 @@ final class SnoozeAffordabilityTests: XCTestCase {
         XCTAssertEqual(screens.list, "Хватит на ~0 откладываний")
         XCTAssertEqual(screens.wallet, "Хватит на ~0 откладываний")
     }
+
+    // MARK: - Display count bounds (#1059)
+
+    func testAffordableCountPreservesTheDoubleImmediatelyBelowIntLimit() {
+        let count = SnoozeAffordability.affordableCount(
+            balance: Double(Int.max).nextDown,
+            alarms: [Alarm(penaltyAmount: 1, enabled: true)]
+        )
+
+        // On the supported 64-bit targets, the Double below 2^63 is 2^63 - 1024.
+        XCTAssertEqual(count, 9_223_372_036_854_774_784)
+    }
+
+    func testAffordableCountCapsTheRoundedDoubleIntLimit() {
+        XCTAssertEqual(
+            SnoozeAffordability.affordableCount(
+                balance: Double(Int.max),
+                alarms: [Alarm(penaltyAmount: 1, enabled: true)]
+            ),
+            Int.max
+        )
+    }
+
+    func testAffordableCountCapsHugeFiniteBalances() {
+        XCTAssertEqual(
+            SnoozeAffordability.affordableCount(
+                balance: .greatestFiniteMagnitude,
+                alarms: [Alarm(penaltyAmount: 50, enabled: true)]
+            ),
+            Int.max
+        )
+    }
+
+    func testAffordableCountCapsAnOverflowingQuotientForAModelAcceptedPrice() throws {
+        let alarm = try XCTUnwrap(Alarm(validating: UUID(), penaltyAmount: .leastNonzeroMagnitude))
+
+        XCTAssertEqual(SnoozeAffordability.affordableCount(balance: 100, alarms: [alarm]), Int.max)
+    }
+
+    func testAffordableCountStillFloorsOrdinaryFractionalQuotients() {
+        let cases: [(balance: Double, expected: Int)] = [
+            (0.25, 0),
+            (0.5, 1),
+            (1, 2),
+            (1.25, 2),
+            (49.75, 99)
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                SnoozeAffordability.affordableCount(
+                    balance: testCase.balance,
+                    alarms: [Alarm(penaltyAmount: 0.5, enabled: true)]
+                ),
+                testCase.expected
+            )
+        }
+    }
+
+    func testAffordableCountStillRejectsNonpositiveAndNonfiniteBalances() {
+        for balance in [0, -1, Double.nan, .infinity, -.infinity] {
+            XCTAssertEqual(
+                SnoozeAffordability.affordableCount(
+                    balance: balance,
+                    alarms: [Alarm(penaltyAmount: 1, enabled: true)]
+                ),
+                0,
+                "Unexpected count for balance \(balance)"
+            )
+        }
+    }
+
+    func testBothScreensRenderTheCappedCountFromIsolatedStores() {
+        let cases: [(balance: Double, price: Double)] = [
+            (Double(Int.max), 1),
+            (.greatestFiniteMagnitude, 50),
+            (100, .leastNonzeroMagnitude)
+        ]
+
+        for testCase in cases {
+            let screens = renderBothScreens(
+                balance: testCase.balance,
+                alarms: [Alarm(penaltyAmount: testCase.price, enabled: true)]
+            )
+
+            XCTAssertEqual(screens.price, testCase.price)
+            XCTAssertEqual(screens.count, Int.max)
+            XCTAssertEqual(screens.list, "Хватит на ~9223372036854775807 откладываний")
+            XCTAssertEqual(screens.wallet, "Хватит на ~9223372036854775807 откладываний")
+        }
+    }
 }

@@ -49,7 +49,8 @@ enum SnoozeAffordability {
 
     /// Number of snoozes the balance currently buys. Floored — neither hint
     /// advertises a fractional snooze — and 0 when the user is out of money,
-    /// so the zero-balance / low-balance chrome can still fire.
+    /// so the zero-balance / low-balance chrome can still fire. Display counts
+    /// beyond the integer range saturate at `Int.max`.
     static func affordableCount(
         balance: Double,
         alarms: [Alarm],
@@ -57,7 +58,11 @@ enum SnoozeAffordability {
     ) -> Int {
         let price = currentPrice(alarms: alarms, defaults: defaults)
         guard price > 0, balance > 0, balance.isFinite else { return 0 }
-        return Int(floor(balance / price))
+        let count = floor(balance / price)
+        // Double(Int.max) rounds up on 64-bit targets. Require a strict bound
+        // before conversion; this also caps an overflowing positive quotient.
+        guard count < Double(Int.max) else { return Int.max }
+        return Int(count)
     }
 
     /// The shared hint copy: "Хватит на ~5 откладываний". Identical on both
