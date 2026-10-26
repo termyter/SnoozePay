@@ -43,8 +43,21 @@ enum AlarmDeletionCopy {
     /// - one-shot (`.never`) → `Единожды · Пн–Пт · 07:00` (compact day range,
     ///   no «Будни» expansion — three segments max)
     /// - no days selected → `Единожды · 07:00`
-    static func contextLine(repeatDays: [Int], repeatMode: AlarmRepeatMode, time: Date) -> String {
-        let timeString = AlarmFiringTimeFormatter.string(from: time)
+    static func contextLine(
+        repeatDays: [Int],
+        repeatMode: AlarmRepeatMode,
+        time: Date,
+        clockTime: TimeOfDay? = nil,
+        calendar: Calendar? = nil
+    ) -> String {
+        let timeString: String
+        if let clockTime {
+            timeString = WallClockFormatter.string(
+                minutesSinceMidnight: clockTime.hour * 60 + clockTime.minute, style: .padded
+            )
+        } else {
+            timeString = WallClockFormatter.string(from: time, style: .padded, calendar: calendar)
+        }
         let sorted = sanitizedSortedDays(repeatDays)
         guard !sorted.isEmpty else { return Localized.format("alarms.delete.once_at", timeString) }
         if repeatMode == .never {
