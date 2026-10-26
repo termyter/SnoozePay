@@ -145,7 +145,11 @@ final class AlarmThemeImageLifetimeTests: XCTestCase {
         DispatchQueue.global().async {
             XCTAssertEqual(deletionEntered.wait(timeout: .now() + 5), .success)
             writeAttempted.signal()
-            XCTAssertNoThrow(try controlledSession.write(bytes, to: picked))
+            do {
+                try controlledSession.write(bytes, to: picked)
+            } catch {
+                XCTFail("Image write failed: \(error)")
+            }
             written.fulfill()
         }
         AlarmThemeImageStore.reconcile(in: folder, referencedURLs: [], session: controlledSession)
