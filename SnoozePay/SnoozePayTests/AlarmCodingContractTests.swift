@@ -40,6 +40,7 @@ final class AlarmCodingContractTests: XCTestCase {
     private static let storedPropertyToPersistedKeys: [String: [String]] = [
         "id": ["id"],
         "time": ["time"],
+        "clockTime": ["clockTime"],
         "repeatDays": ["repeatDays"],
         "customName": ["name", "nameIsDefault"],
         "soundID": ["soundID"],
@@ -58,6 +59,12 @@ final class AlarmCodingContractTests: XCTestCase {
         Set(storedPropertyToPersistedKeys.values.flatMap { $0 })
     }
 
+    /// Only explicitly selected clocks carry the new key. Legacy records keep
+    /// the exact shipped key set rather than writing null or adopting a time.
+    private static var legacyPersistedKeys: Set<String> {
+        persistedKeys.subtracting(["clockTime"])
+    }
+
     private static let fixtureID = UUID(uuidString: "3F2504E0-4F89-11D3-9A0C-0305E82C3301")!
     /// 2023-11-14T22:13:20Z. Encoded as `timeIntervalSinceReferenceDate`
     /// (`JSONEncoder`'s default date strategy), i.e. `721692800`.
@@ -70,6 +77,7 @@ final class AlarmCodingContractTests: XCTestCase {
         Alarm(
             id: fixtureID,
             time: fixtureTime,
+            clockTime: TimeOfDay(hour: 6, minute: 43),
             repeatDays: [1, 3, 5],
             name: "Спорт",
             soundID: "morning_bells",
@@ -117,22 +125,29 @@ final class AlarmCodingContractTests: XCTestCase {
         )
     }
 
-    /// A default-named alarm writes the same key set as a user-named one:
+    /// A default-named civil alarm writes the same key set as a user-named one:
     /// `name`/`nameIsDefault` are unconditional, never `encodeIfPresent`. A
     /// record that omitted `name` would throw `keyNotFound` on any build,
     /// which `AlarmRepository` reports as a fatal decode failure that locks
     /// the whole store (#72 / #117).
     func testEncode_defaultNamedAlarm_writesTheSameKeys() throws {
-        XCTAssertEqual(Set(try encodedJSON(Alarm()).keys), Self.persistedKeys)
+        let alarm = Alarm(clockTime: Self.fullySpecifiedAlarm.clockTime)
+        XCTAssertEqual(Set(try encodedJSON(alarm).keys), Self.persistedKeys)
+    }
+
+    func testEncode_legacyAlarmOmitsClockTimeAndRetainsExactlyTheShippedKeys() throws {
+        let json = try encodedJSON(Alarm())
+        XCTAssertEqual(Set(json.keys), Self.legacyPersistedKeys)
+        XCTAssertNil(json["clockTime"])
     }
 
     // MARK: - The wire format itself
 
     /// Value-by-value pin of what lands in `UserDefaults`. These literals
     /// describe the format as it shipped BEFORE the encoder was rewritten;
-    /// the rewrite writes the same value under the same key, so the shape is
-    /// unchanged. Order is deliberately NOT asserted — key order in the
-    /// emitted JSON belongs to Foundation, not to us, and asserting it would
+    /// the old fields keep the same values and #1065 adds an explicit civil
+    /// clock only when selected. Order is deliberately NOT asserted — key order
+    /// in the emitted JSON belongs to Foundation, not to us, and asserting it would
     /// pin a guarantee that never existed.
     ///
     /// Every field here holds a DISTINCT non-default value on purpose: that is
@@ -144,6 +159,7 @@ final class AlarmCodingContractTests: XCTestCase {
 
         XCTAssertEqual(json["id"] as? String, "3F2504E0-4F89-11D3-9A0C-0305E82C3301")
         XCTAssertEqual(json["time"] as? Double, 721_692_800)
+        XCTAssertEqual(json["clockTime"] as? [String: Int], ["hour": 6, "minute": 43])
         XCTAssertEqual(json["repeatDays"] as? [Int], [1, 3, 5])
         XCTAssertEqual(json["name"] as? String, "Спорт")
         XCTAssertEqual(json["nameIsDefault"] as? Bool, false)
@@ -181,6 +197,7 @@ final class AlarmCodingContractTests: XCTestCase {
         XCTAssertEqual(decoded.volume, 0.4, accuracy: 0.0001)
         XCTAssertEqual(decoded.theme, .ocean)
         XCTAssertEqual(decoded.repeatMode, .never)
+        XCTAssertEqual(decoded.clockTime, TimeOfDay(hour: 6, minute: 43))
     }
 
     /// Saving a record that was just loaded must not change it. This is the
@@ -246,6 +263,7 @@ final class AlarmCodingContractTests: XCTestCase {
 
         XCTAssertEqual(alarm.id, Self.fixtureID)
         XCTAssertEqual(alarm.time, Self.fixtureTime)
+        XCTAssertNil(alarm.clockTime)
         XCTAssertEqual(alarm.repeatDays, [0, 1, 2, 3, 4])
         XCTAssertTrue(alarm.nameIsDefault, "The only default a pre-flag record can carry is the Russian one")
         XCTAssertNil(alarm.customName)
@@ -286,7 +304,8 @@ final class AlarmCodingContractTests: XCTestCase {
     func testDecodeLegacyThenEncode_upgradesTheRecordWithoutLosingAnything() throws {
         let upgraded = try encodedJSON(try decode(Self.preVolumePayload))
 
-        XCTAssertEqual(Set(upgraded.keys), Self.persistedKeys)
+        XCTAssertEqual(Set(upgraded.keys), Self.legacyPersistedKeys)
+        XCTAssertNil(upgraded["clockTime"])
         XCTAssertEqual(upgraded["name"] as? String, "Зал")
         XCTAssertEqual(upgraded["nameIsDefault"] as? Bool, false)
         XCTAssertEqual(upgraded["id"] as? String, "3F2504E0-4F89-11D3-9A0C-0305E82C3301")

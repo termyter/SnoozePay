@@ -37,10 +37,7 @@ enum TransactionAlarmContext {
 
     /// "Будни · 07:00" for a concrete alarm.
     static func caption(for alarm: Alarm, calendar: Calendar = .current) -> String {
-        "\(alarm.repeatDaysDescription) · \(timeString(for: alarm.time, calendar: calendar))"
-    }
-
-    private static func timeString(for date: Date, calendar: Calendar) -> String {
-        WallClockFormatter.string(from: date, style: .padded, calendar: calendar)
+        let time = WallClockFormatter.string(from: alarm, style: .padded, calendar: calendar)
+        return "\(alarm.repeatDaysDescription) · \(time)"
     }
 }

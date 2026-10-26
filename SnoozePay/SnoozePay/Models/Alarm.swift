@@ -10,13 +10,18 @@ import Foundation
 /// - `init(...)` — the historical default-arg initializer. Delegates to the
 ///   validating one and traps on garbage, so in-app call sites (which only
 ///   feed slider/toggle-bounded values) keep their non-optional ergonomics.
-/// - `init(from:)` — Codable decode. Sanitizes instead of rejecting, because
-///   throwing here would lock the entire persisted store (#72 / #117).
+/// - `init(from:)` — Codable decode. Sanitizes historical bounded fields;
+///   malformed present civil clocks throw to preserve the store (#72 / #117).
 ///
 /// Legitimate edits produce a new value via `with(...)`.
 struct Alarm: Identifiable, Equatable, Codable {
     let id: UUID
+    /// Historical instant retained on the wire. It remains authoritative only
+    /// for alarms whose time has not been explicitly selected since #1065.
     let time: Date
+    /// An explicit civil clock survives timezone changes. Absence preserves
+    /// the legacy Date interpretation until the user changes the time.
+    let clockTime: TimeOfDay?
     let repeatDays: [Int] // 0 = Monday, 6 = Sunday
     /// The name the user typed, or `nil` while the alarm still carries the
     /// auto-assigned default (#623). Storing the ABSENCE of a user name makes
@@ -121,6 +126,7 @@ struct Alarm: Identifiable, Equatable, Codable {
     init?(
         validating id: UUID,
         time: Date = Date(),
+        clockTime: TimeOfDay? = nil,
         repeatDays: [Int] = [],
         name: String? = nil,
         soundID: String = "radar",
@@ -141,6 +147,7 @@ struct Alarm: Identifiable, Equatable, Codable {
 
         self.id = id
         self.time = time
+        self.clockTime = clockTime
         self.repeatDays = repeatDays
         self.customName = name
         self.soundID = soundID
@@ -162,6 +169,7 @@ struct Alarm: Identifiable, Equatable, Codable {
     init(
         id: UUID = UUID(),
         time: Date = Date(),
+        clockTime: TimeOfDay? = nil,
         repeatDays: [Int] = [],
         name: String? = nil,
         soundID: String = "radar",
@@ -178,6 +186,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         guard let alarm = Alarm(
             validating: id,
             time: time,
+            clockTime: clockTime,
             repeatDays: repeatDays,
             name: name,
             soundID: soundID,
@@ -211,8 +220,12 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// user input for `repeatDays` / `snoozeMinutes` / `penaltyAmount` is a
     /// programmer error — sanitize first or construct via
     /// `Alarm(validating:...)`.
+    /// A supplied `clockTime` is authoritative. A changed Date establishes a
+    /// civil clock only when its hour/minute also changes in `calendar`;
+    /// identity/date-only copies and nil arguments retain the old authority.
     func with(
         time: Date? = nil,
+        clockTime: TimeOfDay? = nil,
         repeatDays: [Int]? = nil,
         name: String? = nil,
         soundID: String? = nil,
@@ -224,11 +237,23 @@ struct Alarm: Identifiable, Equatable, Codable {
         volume: Float? = nil,
         volumeFadeIn: Bool? = nil,
         theme: AlarmTheme? = nil,
-        repeatMode: AlarmRepeatMode? = nil
+        repeatMode: AlarmRepeatMode? = nil,
+        calendar: Calendar = .current
     ) -> Alarm {
-        Alarm(
+        let copiedClock: TimeOfDay?
+        if let clockTime {
+            copiedClock = clockTime
+        } else if let time, time != self.time,
+                  let changedClock = TimeOfDay(from: time, calendar: calendar),
+                  changedClock != TimeOfDay(from: self.time, calendar: calendar) {
+            copiedClock = changedClock
+        } else {
+            copiedClock = self.clockTime
+        }
+        return Alarm(
             id: id,
             time: time ?? self.time,
+            clockTime: copiedClock,
             repeatDays: repeatDays ?? self.repeatDays,
             // A name passed here is one the caller set, so it lands as a
             // custom name; omitting it preserves whichever state the alarm was
@@ -257,7 +282,9 @@ struct Alarm: Identifiable, Equatable, Codable {
     // throw `keyNotFound`, which `AlarmRepository.readAll()` propagates as
     // a fatal `decodeFailure` (issue #117 / #72 lock the entire store).
     // Adding a field MUST be backward-compatible — this initializer is the
-    // contract that ships safely on top of #143.
+    // contract that ships safely on top of #143. `clockTime` (#1065) is
+    // omitted for legacy records, while malformed PRESENT values throw:
+    // silently falling back would change the clock the user selected.
     //
     // Decode SANITIZES out-of-range legacy values instead of rejecting them
     // (#207): pre-validation installs may carry snoozeMinutes outside the
@@ -270,7 +297,7 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// decoration: `allCases` is what `encode(to:)` iterates, which is what
     /// makes a key impossible to declare and then forget to write.
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, time, repeatDays, name, nameIsDefault, soundID, vibrationEnabled
+        case id, time, clockTime, repeatDays, name, nameIsDefault, soundID, vibrationEnabled
         case snoozeMinutes, penaltyAmount, progressiveScale, enabled
         case volume, volumeFadeIn, theme, repeatMode
     }
@@ -296,9 +323,8 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// The `switch` has no `default`, so a new case — which anyone adding a
     /// field must write, since `init(from:)` needs the key to read it — stops
     /// this file from building until its value is encoded. The loop visits each
-    /// key exactly once and writes the same value under the same key as the
-    /// straight-line version did — same key SET, same values, so the shape on
-    /// disk is unchanged.
+    /// key exactly once. Legacy records retain their shipped key set and
+    /// values; explicit civil selections also encode optional `clockTime`.
     ///
     /// Not «same bytes»: key order in the emitted JSON is Foundation's, not
     /// ours, and always was — a keyed container is dictionary-backed without
@@ -314,18 +340,19 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// cannot see — a property that never got a key, and an arm that writes
     /// nothing.
     ///
-    /// Complexity is suppressed deliberately: fifteen arms performing one
-    /// `encode` each are a table, not branching logic, and the default
+    /// Complexity is suppressed deliberately: one encoding arm per key is
+    /// a table, not branching logic, and the default
     /// threshold would turn into a lint ERROR at 19 keys — complexity is
-    /// `cases + 1`, the default error threshold is 20, and we are at 15 cases
-    /// today. Past that, adding a field would start failing the linter instead
-    /// of the compiler, which is the opposite of the point of this PR.
+    /// `cases + 1`, while the default error threshold is 20. Adding a field
+    /// should enforce complete encoding through the exhaustive switch rather
+    /// than fail because the table grew.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases {
             switch key {
             case .id: try container.encode(id, forKey: .id)
             case .time: try container.encode(time, forKey: .time)
+            case .clockTime: try container.encodeIfPresent(clockTime, forKey: .clockTime)
             case .repeatDays: try container.encode(repeatDays, forKey: .repeatDays)
             case .name: try container.encode(name, forKey: .name)
             case .nameIsDefault: try container.encode(nameIsDefault, forKey: .nameIsDefault)
@@ -348,6 +375,11 @@ struct Alarm: Identifiable, Equatable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.time = try container.decode(Date.self, forKey: .time)
+        // decodeIfPresent would accept null as legacy. Only a missing key is
+        // legacy; null, partial and invalid clocks retain the repository's
+        // existing corrupt-store backup and write-lock path.
+        self.clockTime = container.contains(.clockTime)
+            ? try container.decode(TimeOfDay.self, forKey: .clockTime) : nil
         // Drop illegal weekday indices from corrupt legacy storage.
         let rawRepeatDays = try container.decode([Int].self, forKey: .repeatDays)
         self.repeatDays = rawRepeatDays.filter(Self.weekdayIndexRange.contains)
@@ -439,7 +471,8 @@ struct Alarm: Identifiable, Equatable, Codable {
             .joined(separator: ", ")
     }
 
-    /// Next trigger date for display purposes
+    /// Historical Date projection; not an AlarmKit next-occurrence calculator.
+    /// Selected clocks use resolvedTimeOfDay, and native recurrence owns firing dates.
     var nextTriggerDate: Date? {
         if repeatDays.isEmpty {
             let now = Date()
@@ -471,16 +504,19 @@ struct Alarm: Identifiable, Equatable, Codable {
 
     // MARK: - Typed views (phase 1 of #31)
     //
-    // The fields below are the typed-domain projections of the underlying
-    // primitive storage. They never mutate state — they're read-only views.
-    // Phase 2 will migrate the storage itself; until then, callers can adopt
-    // the typed view incrementally without invalidating persisted JSON.
+    // These read-only views share the model's authority. Clock selections may
+    // already use typed storage; legacy clocks, weekdays and money retain their
+    // compatible primitive representations until their explicit migration.
 
-    /// Wall-clock time-of-day projection of `time`. `nil` only if the
-    /// calendar refuses to extract hour/minute, which doesn't happen for
-    /// real `Date` values + `Calendar.current`.
+    /// The selected civil clock, or the legacy Date projected in the reader's
+    /// calendar. A read never adopts a civil interpretation for legacy data.
+    func resolvedTimeOfDay(calendar: Calendar = .current) -> TimeOfDay? {
+        clockTime ?? TimeOfDay(from: time, calendar: calendar)
+    }
+
+    /// Compatibility view over the same authority used by display/scheduling.
     var timeOfDay: TimeOfDay? {
-        TimeOfDay(from: time)
+        resolvedTimeOfDay()
     }
 
     /// Typed view over `repeatDays`. Since #207 the construction boundary

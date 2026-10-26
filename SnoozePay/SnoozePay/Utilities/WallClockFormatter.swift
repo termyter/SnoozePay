@@ -61,6 +61,20 @@ enum WallClockFormatter {
         cachedFormatter(style: style, locale: locale, calendar: calendar).string(from: date)
     }
 
+    /// Selected alarm clock. Only legacy records interpret the stored Date in
+    /// the reader's calendar; a chosen civil clock is independent of that zone.
+    static func string(
+        from alarm: Alarm,
+        style: HourStyle,
+        locale: Locale = AppLocale.display,
+        calendar: Calendar? = nil
+    ) -> String {
+        if let clock = alarm.clockTime {
+            return string(minutesSinceMidnight: clock.hour * 60 + clock.minute, style: style, locale: locale)
+        }
+        return string(from: alarm.time, style: style, locale: locale, calendar: calendar)
+    }
+
     /// Wall-clock time of a minutes-since-midnight offset, for aggregations
     /// that never had a `Date` to begin with (a median wake minute, say).
     ///

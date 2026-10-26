@@ -553,11 +553,14 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// Map the app's hour/minute + Monday-first repeat-day indices to an
     /// AlarmKit relative schedule. A non-repeating alarm uses `.never`
     /// recurrence so it fires once at the next occurrence of the time.
-    nonisolated static func makeSchedule(for alarm: Alarm) -> AlarmKit.Alarm.Schedule {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: alarm.time)
+    nonisolated static func makeSchedule(
+        for alarm: Alarm,
+        calendar: Calendar = .current
+    ) -> AlarmKit.Alarm.Schedule {
+        let clock = alarm.resolvedTimeOfDay(calendar: calendar)
         let time = AlarmKit.Alarm.Schedule.Relative.Time(
-            hour: components.hour ?? 0,
-            minute: components.minute ?? 0
+            hour: clock?.hour ?? 0,
+            minute: clock?.minute ?? 0
         )
         let recurrence: AlarmKit.Alarm.Schedule.Relative.Recurrence
         if alarm.repeatDays.isEmpty || alarm.repeatMode != .weekly {
