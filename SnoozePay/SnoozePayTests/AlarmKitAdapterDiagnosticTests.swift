@@ -171,6 +171,65 @@ final class AlarmKitAdapterDiagnosticTests: XCTestCase {
         assertLine(lines, level: .error, message: "AlarmKit authorization failed: injected native request failure")
     }
 
+    func testRecoveryCancelsEveryExactInventoryIDThenChecksAbsence() throws {
+        let original = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let derived = UUID(uuidString: "53000000-0000-0000-0000-000000000001")!
+        let orphan = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        var inventory: Set<UUID> = [original, derived, orphan]
+        var cancelled: [UUID] = []
+        var reads = 0
+        let backend = AlarmKitScheduler(cancelAlarm: {
+            MainActor.assertIsolated()
+            cancelled.append($0)
+            inventory.remove($0)
+        }, readRegisteredAlarmIDs: {
+            MainActor.assertIsolated()
+            reads += 1
+            return inventory
+        })
+        try backend.clearRegisteredAlarmsForRecovery().get()
+        XCTAssertEqual(Set(cancelled), [original, derived, orphan])
+        XCTAssertEqual(cancelled.count, 3, "exact inventory IDs are cancelled once, without derived-ID guessing")
+        XCTAssertTrue(inventory.isEmpty)
+        XCTAssertEqual(reads, 2)
+    }
+
+    func testRecoveryRequiresSuccessfulReadsAndEveryCancellationEvenIfReadbackIsEmpty() {
+        for scenario in 0..<4 {
+            let ids: Set<UUID> = [UUID(), UUID()]
+            var inventory = ids
+            var reads = 0
+            var cancellations = 0
+            let backend = AlarmKitScheduler(cancelAlarm: { id in
+                cancellations += 1
+                if scenario == 2 { throw NSError(domain: "CancelFixture", code: 1) }
+                if scenario == 3, cancellations == 1 { inventory.remove(id) }
+            }, readRegisteredAlarmIDs: {
+                reads += 1
+                if (scenario == 0 && reads == 1) || (scenario == 1 && reads == 2) {
+                    throw NSError(domain: "ReadFixture", code: 1)
+                }
+                return reads == 1 || scenario == 3 ? inventory : []
+            })
+            let expected: AlarmRecoveryError = scenario < 2 ? .inventoryUnavailable
+                : (scenario == 2 ? .cancellationFailed : .registrationsRemain)
+            XCTAssertThrowsError(try backend.clearRegisteredAlarmsForRecovery().get()) {
+                XCTAssertEqual($0 as? AlarmRecoveryError, expected)
+            }
+            XCTAssertEqual(cancellations, scenario == 0 ? 0 : 2, "a failed cancel must not skip other IDs")
+            XCTAssertEqual(reads, scenario == 0 ? 1 : 2)
+            if scenario == 3 { XCTAssertEqual(inventory.count, 1, "partial cleanup cannot authorize erasure") }
+        }
+    }
+
+    func testRecoveryProductionProjectionUsesBothCheckedNativeReads() throws {
+        var reads = 0
+        let backend = AlarmKitScheduler(cancelAlarm: { _ in XCTFail("empty inventory cannot cancel") },
+                                        readAlarms: { reads += 1; return [] })
+        try backend.clearRegisteredAlarmsForRecovery().get()
+        XCTAssertEqual(reads, 2)
+    }
+
     private func assertLine(
         _ lines: [LoggedLine], level: OSLogType, message: String,
         file: StaticString = #filePath, line: UInt = #line

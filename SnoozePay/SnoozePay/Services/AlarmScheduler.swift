@@ -38,6 +38,11 @@ protocol NotificationScheduling: AnyObject {
 
 extension UNUserNotificationCenter: NotificationScheduling {}
 
+/// Recovery is destructive only after a complete, checked native inventory sweep.
+enum AlarmRecoveryError: Error, Equatable {
+    case busy, unsupported, inventoryUnavailable, cancellationFailed, registrationsRemain
+}
+
 /// Subset of `AlarmScheduler` that `AlarmRepository` depends on. Extracted as
 /// a protocol so unit tests covering repository → scheduler error propagation
 /// (issue #129 — toggle on alarm with denied permission must surface the
@@ -46,6 +51,13 @@ extension UNUserNotificationCenter: NotificationScheduling {}
 protocol AlarmScheduling: AnyObject {
     func schedule(_ alarm: Alarm, completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?)
     func cancel(_ alarmID: UUID)
+    func recoverCorruptAlarms(commit: () -> Void) -> Result<Void, AlarmRecoveryError>
+}
+
+extension AlarmScheduling {
+    func recoverCorruptAlarms(commit: () -> Void) -> Result<Void, AlarmRecoveryError> {
+        .failure(.unsupported)
+    }
 }
 
 /// Schedules and cancels alarms through AlarmKit — the ONLY backend
@@ -80,6 +92,7 @@ final class AlarmScheduler: AlarmScheduling {
         /// would leave the user with a switch that reads "on" and an alarm that
         /// never rings — the worst outcome of the two (#472).
         case backendUnavailable
+        case recoveryInProgress
 
         var errorDescription: String? {
             switch self {
@@ -89,6 +102,8 @@ final class AlarmScheduler: AlarmScheduling {
                 return Localized.format("alarms.error.schedule_failed", message)
             case .backendUnavailable:
                 return Localized.text("alarms.error.backend_unavailable")
+            case .recoveryInProgress:
+                return Localized.text("settings.recovery.alarms_busy")
             }
         }
         // Equatable synthesis is automatic — `String` associated values
@@ -97,6 +112,10 @@ final class AlarmScheduler: AlarmScheduling {
 
     private let notificationCenter: NotificationScheduling
     private let snoozeSessions: AlarmSnoozeSessionStore?
+    private let recoveryLock = NSLock()
+    // False until the backend callback is claimed, true while its caller callback runs.
+    private var registrations: [UUID: Bool] = [:]
+    private var recovering = false
 
     /// The AlarmKit backend as wired by `init`. Non-nil in production;
     /// injectable (and omittable) in tests so the "no backend at all" refusal
@@ -288,19 +307,25 @@ final class AlarmScheduler: AlarmScheduling {
             return
         }
 
+        guard let registration = reserveRegistration() else {
+            completion?(.failure(.recoveryInProgress))
+            return
+        }
         alarmKitScheduler.schedule(alarm) { result in
-            switch result {
-            case .success:
-                AppLogger.scheduler.info(
-                    "scheduled via AlarmKit alarm=\(alarm.id, privacy: .private)"
-                )
-                completion?(.success(()))
-            case .failure(let error):
-                let desc = error.localizedDescription
-                AppLogger.scheduler.error(
-                    "AlarmKit schedule failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
-                )
-                completion?(.failure(.system(message: desc)))
+            self.finishRegistration(registration) {
+                switch result {
+                case .success:
+                    AppLogger.scheduler.info(
+                        "scheduled via AlarmKit alarm=\(alarm.id, privacy: .private)"
+                    )
+                    completion?(.success(()))
+                case .failure(let error):
+                    let desc = error.localizedDescription
+                    AppLogger.scheduler.error(
+                        "AlarmKit schedule failed alarm=\(alarm.id, privacy: .private): \(desc, privacy: .public)"
+                    )
+                    completion?(.failure(.system(message: desc)))
+                }
             }
         }
     }
@@ -333,24 +358,30 @@ final class AlarmScheduler: AlarmScheduling {
             return
         }
 
+        guard let registration = reserveRegistration() else {
+            completion?(.failure(.recoveryInProgress))
+            return
+        }
         let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
         alarmKitScheduler.stop(alarm.id)
         alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate) { result in
-            switch result {
-            case .success:
-                AppLogger.scheduler.info(
-                    "scheduled snooze via AlarmKit alarm=\(alarm.id, privacy: .private)"
-                )
-                completion?(.success(()))
-            case .failure(let error):
-                let desc = error.localizedDescription
-                AppLogger.scheduler.error(
-                    """
-                    AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \
-                    \(desc, privacy: .public)
-                    """
-                )
-                completion?(.failure(.system(message: desc)))
+            self.finishRegistration(registration) {
+                switch result {
+                case .success:
+                    AppLogger.scheduler.info(
+                        "scheduled snooze via AlarmKit alarm=\(alarm.id, privacy: .private)"
+                    )
+                    completion?(.success(()))
+                case .failure(let error):
+                    let desc = error.localizedDescription
+                    AppLogger.scheduler.error(
+                        """
+                        AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \
+                        \(desc, privacy: .public)
+                        """
+                    )
+                    completion?(.failure(.system(message: desc)))
+                }
             }
         }
     }
@@ -363,8 +394,12 @@ final class AlarmScheduler: AlarmScheduling {
             completion(.failure(SchedulingError.backendUnavailable))
             return
         }
+        guard let registration = reserveRegistration() else {
+            completion(.failure(SchedulingError.recoveryInProgress))
+            return
+        }
         guard let snoozeSessions, let count = try? snoozeSessions.pendingCount(token, alarmID: alarm.id) else {
-            completion(.failure(AlarmSnoozeContextError.unavailable))
+            finishRegistration(registration) { completion(.failure(AlarmSnoozeContextError.unavailable)) }
             return
         }
         alarmKitScheduler.stop(alarm.id)
@@ -373,7 +408,7 @@ final class AlarmScheduler: AlarmScheduling {
             token: token, attemptCount: count,
             isCurrent: { (try? snoozeSessions.pendingCount(token, alarmID: alarm.id)) == count }
         ) { result in
-            completion(result)
+            self.finishRegistration(registration) { completion(result) }
         }
     }
 
@@ -382,6 +417,48 @@ final class AlarmScheduler: AlarmScheduling {
     /// unit conversions (minutes vs seconds vs hours).
     static func scheduledFireDate(now: Date, snoozeMinutes: Int) -> Date {
         now.addingTimeInterval(TimeInterval(snoozeMinutes * 60))
+    }
+
+    // MARK: - Checked corrupt-store recovery
+
+    private func reserveRegistration() -> UUID? {
+        recoveryLock.lock()
+        defer { recoveryLock.unlock() }
+        guard !recovering else { return nil }
+        let id = UUID()
+        registrations[id] = false
+        return id
+    }
+
+    private func finishRegistration(_ id: UUID, deliver: () -> Void) {
+        recoveryLock.lock()
+        guard registrations[id] == false else { recoveryLock.unlock(); return }
+        registrations[id] = true
+        recoveryLock.unlock()
+        defer {
+            recoveryLock.lock()
+            registrations.removeValue(forKey: id)
+            recoveryLock.unlock()
+        }
+        deliver()
+    }
+
+    /// No lock spans native calls or the commit. The recovery flag blocks reentrant
+    /// registrations until the repository has synchronously removed its corrupt key.
+    func recoverCorruptAlarms(commit: () -> Void) -> Result<Void, AlarmRecoveryError> {
+        recoveryLock.lock()
+        guard !recovering, registrations.isEmpty else { recoveryLock.unlock(); return .failure(.busy) }
+        recovering = true
+        recoveryLock.unlock()
+        defer {
+            recoveryLock.lock()
+            recovering = false
+            recoveryLock.unlock()
+        }
+        guard let alarmKitScheduler else { return .failure(.unsupported) }
+        let result = alarmKitScheduler.clearRegisteredAlarmsForRecovery()
+        if case .success = result { commit() }
+        return result
     }
 
     // MARK: - Cancel

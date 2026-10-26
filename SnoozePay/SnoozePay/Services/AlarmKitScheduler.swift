@@ -127,6 +127,9 @@ protocol AlarmKitScheduling: AnyObject {
 
     /// Stop a currently-alerting system alarm (user tapped stop / snooze).
     func stop(_ alarmID: UUID)
+
+    /// Sweep this app's complete native inventory and verify absence; never derive IDs from corrupt JSON.
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError>
 }
 
 /// Default derivation for test doubles that only model the yes/no axis: they
@@ -134,6 +137,10 @@ protocol AlarmKitScheduling: AnyObject {
 /// The production `AlarmKitScheduler` overrides this with the real tri-state,
 /// which is the only place the distinction can actually be observed.
 extension AlarmKitScheduling {
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
+        .failure(.unsupported)
+    }
+
     func scheduleTrackedSnooze(
         _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
         isCurrent: @escaping () -> Bool,
@@ -174,6 +181,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     private let readAuthorization: () -> AlarmManager.AuthorizationState
     private let requestNativeAuthorization: () async throws -> AlarmManager.AuthorizationState
     private let readAlarms: () throws -> [AlarmKit.Alarm]
+    private let readRegisteredAlarmIDs: () throws -> Set<UUID>
     typealias SnoozeConfiguration = AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
     var registerTracked: (UUID, SnoozeConfiguration) async throws -> AlarmSnoozeReceipt = { id, configuration in
         let registered = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
@@ -190,12 +198,14 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         requestNativeAuthorization: @escaping () async throws -> AlarmManager.AuthorizationState = {
             try await AlarmManager.shared.requestAuthorization()
         },
-        readAlarms: @escaping () throws -> [AlarmKit.Alarm] = { try AlarmManager.shared.alarms }
+        readAlarms: @escaping () throws -> [AlarmKit.Alarm] = { try AlarmManager.shared.alarms },
+        readRegisteredAlarmIDs: (() throws -> Set<UUID>)? = nil
     ) {
         self.cancelAlarm = cancelAlarm
         self.readAuthorization = readAuthorization
         self.requestNativeAuthorization = requestNativeAuthorization
         self.readAlarms = readAlarms
+        self.readRegisteredAlarmIDs = readRegisteredAlarmIDs ?? { Set(try readAlarms().map(\.id)) }
     }
 
     var isAuthorized: Bool {
@@ -385,6 +395,22 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         } catch {
             completion(.failure(error))
         }
+    }
+
+    /// AlarmManager's inventory is scoped to this app, including orphaned snooze IDs.
+    /// Use the throwing exact-ID operation; normal cancel intentionally swallows errors.
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
+        let ids: Set<UUID>
+        do { ids = try readRegisteredAlarmIDs() } catch { return .failure(.inventoryUnavailable) }
+        var cancellationFailed = false
+        for id in ids {
+            do { try cancelAlarm(id) } catch { cancellationFailed = true }
+        }
+        let remaining: Set<UUID>
+        do { remaining = try readRegisteredAlarmIDs() } catch { return .failure(.inventoryUnavailable) }
+        guard !cancellationFailed else { return .failure(.cancellationFailed) }
+        guard remaining.isEmpty else { return .failure(.registrationsRemain) }
+        return .success(())
     }
 
     func cancelTrackedSnooze(_ alarmID: UUID) -> Bool {

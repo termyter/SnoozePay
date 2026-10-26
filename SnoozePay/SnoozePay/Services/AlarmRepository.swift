@@ -238,14 +238,20 @@ final class AlarmRepository {
 
     // MARK: - Recovery
 
-    /// Clears the lock and removes the corrupt blob. Used by a future
-    /// "стереть и начать заново" flow once the user has acknowledged the
-    /// data loss (issue #72). The diagnostic backup at `corruptBackupKey`
-    /// is intentionally left in place for support inspection.
-    func clearCorruptState() {
+    /// Recheck corruption inside the serial queue. Healthy data is never swept or
+    /// erased, even if Settings observed a stale failure flag. Keep the backup.
+    @discardableResult
+    func clearCorruptState() -> Result<Void, AlarmRecoveryError> {
         queue.sync {
-            _lastLoadFailed = false
-            defaults.removeObject(forKey: key)
+            do {
+                _ = try readAll()
+                return .success(())
+            } catch {
+                return scheduler.recoverCorruptAlarms {
+                    defaults.removeObject(forKey: key)
+                    _lastLoadFailed = false
+                }
+            }
         }
     }
 
