@@ -57,6 +57,7 @@ final class AlarmFiringViewModel {
             snoozeAnchor = nil
             AppLogger.emit(.ui, .error, "Snooze session unavailable — refusing paid continuation")
         }
+        if (try? store.pendingOccurrenceFinish(alarmID: alarm.id)) != nil { finishRequested = true }
     }
 
     // MARK: - State
@@ -84,6 +85,8 @@ final class AlarmFiringViewModel {
     /// Prevent another debit while the current scheduling result is unresolved.
     private(set) var isSnoozeScheduling = false
     private var hasBeenDismissed = false
+    private(set) var finishRequested = false
+    private var finishTicket: AlarmOccurrenceFinishTicket?
 
     /// Moment this firing session was mounted. Anchors the ledger window the
     /// billed-charge summary looks back over (`wakeWindow`), so charges from
@@ -126,6 +129,7 @@ final class AlarmFiringViewModel {
         self.ledger = ledger
         self.firingStartedAt = firingStartedAt
         self.snoozeSessions = snoozeSessions
+        if (try? snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id)) != nil { finishRequested = true }
     }
 
     // MARK: - Computed properties for UI
@@ -465,7 +469,7 @@ final class AlarmFiringViewModel {
     func snooze(
         scheduleCompletion: ((SnoozeScheduleOutcome) -> Void)? = nil
     ) -> Bool {
-        guard !hasBeenDismissed, !isSnoozeScheduling, canSnooze else { return false }
+        guard !finishRequested, !hasBeenDismissed, !isSnoozeScheduling, canSnooze else { return false }
         isSnoozeScheduling = true
 
         // Capture the penalty for this snooze BEFORE bumping the count so the
@@ -518,13 +522,7 @@ final class AlarmFiringViewModel {
             // Retain this operation until its refund/outcome resolves, even if the VC disappears.
             isSnoozeScheduling = false
             if case .success = result {
-                if hasBeenDismissed || !isProgressionAvailable {
-                    // Stop may have cancelled before the async backend created
-                    // this trigger. Cancel again so a late success cannot re-arm.
-                    if token == nil { scheduler.cancel(alarm.id) }
-                } else {
-                    snoozeAnchor = anchor
-                }
+                applyConfirmedSnooze(token: token, anchor: anchor)
             }
             handleScheduleResult(
                 result,
@@ -564,8 +562,12 @@ final class AlarmFiringViewModel {
             } catch {
                 isProgressionAvailable = false
                 snoozeSessions.operationEnded(token)
-                scheduler.cleanUpTrackedSnooze(alarm.id)
-                if hasBeenDismissed {
+                if finishRequested {
+                    cleanUpSnoozeAfterFinishRequest()
+                } else {
+                    scheduler.cleanUpTrackedSnooze(alarm.id)
+                }
+                if finishRequested || hasBeenDismissed {
                     finish(mapped.map { _ in () })
                 } else {
                     finish(.failure(.system(message: error.localizedDescription)))
@@ -631,37 +633,101 @@ final class AlarmFiringViewModel {
         }
     }
 
-    /// Dismiss the alarm without charge.
-    /// Non-repeating alarms — no selected days, or one-shot `repeatMode ==
-    /// .never` (#229) — are disabled after dismissal. Disabling a one-shot
-    /// alarm also drops its remaining per-day triggers via the
-    /// `scheduler.cancel` call above, so "ring once and switch off" holds
-    /// even when several weekdays were selected.
-    ///
-    /// `setEnabled` returns `false` when the alarm is no longer in the repository
-    /// (e.g. user deleted it from another screen while the firing UI was up).
-    /// In that case the desired end-state ("disabled") is already true, so we
-    /// only surface a diagnostic — no UI rollback or user-facing error needed
-    /// (issue #54 mirrors the silent-failure fix from #35 for the list path).
-    func dismiss() {
-        hasBeenDismissed = true
-        do { try snoozeSessions?.finish(alarmID: alarm.id) } catch {
-            let detail = String(describing: error)
-            AppLogger.emit(.ui, .error, "Snooze finish persistence failed: \(detail)")
-        }
+    /// Close paid continuation immediately; publish a wake only after native
+    /// proof and checked local commits. Retry retains the same scoped ticket.
+    @discardableResult
+    func dismiss() -> Result<AlarmOccurrenceFinishOutcome, AlarmOccurrenceFinishError> {
+        guard !hasBeenDismissed else { return .success(.alreadyCompleted) }
+        finishRequested = true
         snoozeAnchor = nil
         confirmedSnoozeFireDate = nil
-        // The user got up — feed the behavioural statistics heatmap (#235).
-        // Recorded per calendar day; the snooze count for the day comes from
-        // the charge ledger, so "встал сразу" = wake event + zero charges.
-        wakeStore.recordWake()
-        scheduler.cancel(alarm.id)
+        onStateChanged?()
 
-        if alarm.repeatDays.isEmpty || alarm.repeatMode == .never {
-            let didUpdate = alarmRepository.setEnabled(false, id: alarm.id)
-            if !didUpdate {
-                AppLogger.ui.notice("dismiss: alarm \(self.alarm.id, privacy: .private) already removed from repository")
+        let current: Alarm?
+        do { current = try checkedAlarmForFinish() } catch {
+            let mapped = (error as? AlarmOccurrenceFinishError) ?? .persistenceFailed
+            if mapped != .ownershipUnavailable { scheduler.stopOriginalAfterUnverifiedFinish(alarm.id) }
+            return .failure(mapped)
+        }
+        if finishTicket == nil {
+            do {
+                finishTicket = try snoozeSessions?.beginOccurrenceFinish(alarmID: alarm.id, reference: snoozeReference)
+                    ?? AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarm.id, token: nil)
+            } catch {
+                return finishContextFailed(error)
             }
+        }
+        guard let ticket = finishTicket else { return .failure(.sessionUnavailable) }
+        do {
+            let preserveWeekly = current?.enabled == true
+            guard !isSnoozeScheduling else {
+                scheduler.stopOriginalAfterUnverifiedFinish(alarm.id)
+                return .failure(.busy)
+            }
+            switch scheduler.finishOccurrence(for: alarm, ticket: ticket, preserveWeekly: preserveWeekly) {
+            case .failure(let error): return .failure(error)
+            case .success: break
+            }
+            if current?.enabled == true, alarm.repeatDays.isEmpty || alarm.repeatMode == .never {
+                alarmRepository.setEnabled(false, id: alarm.id)
+                if let stored = try alarmRepository.fetchChecked(id: alarm.id), stored.enabled {
+                    return .failure(.persistenceFailed)
+                }
+            }
+        } catch {
+            AppLogger.emit(.ui, .error, "Occurrence finish repository state unavailable")
+            scheduler.stopOriginalAfterUnverifiedFinish(alarm.id)
+            return .failure(.persistenceFailed)
+        }
+        do { try snoozeSessions?.commitOccurrenceFinish(ticket) } catch { return finishContextFailed(error) }
+        hasBeenDismissed = true
+        wakeStore.recordWake()
+        onStateChanged?()
+        return .success(.completedNow)
+    }
+
+    private func checkedAlarmForFinish() throws -> Alarm? {
+        let current: Alarm?
+        do { current = try alarmRepository.fetchChecked(id: alarm.id) } catch {
+            AppLogger.emit(.ui, .error, "Occurrence finish repository state unavailable")
+            throw AlarmOccurrenceFinishError.persistenceFailed
+        }
+        if let current, current.enabled {
+            let changed = current.time != alarm.time || current.repeatMode != alarm.repeatMode
+                || Set(current.repeatDays) != Set(alarm.repeatDays)
+            guard !changed else { throw AlarmOccurrenceFinishError.ownershipUnavailable }
+        }
+        return current
+    }
+
+    private func finishContextFailed(
+        _ error: Error
+    ) -> Result<AlarmOccurrenceFinishOutcome, AlarmOccurrenceFinishError> {
+        AppLogger.emit(.ui, .error, "Snooze finish persistence failed: \(String(describing: error))")
+        let mapped = (error as? AlarmOccurrenceFinishError) ?? .sessionUnavailable
+        if mapped != .ownershipUnavailable { scheduler.stopOriginalAfterUnverifiedFinish(alarm.id) }
+        return .failure(mapped)
+    }
+
+    private func cleanUpSnoozeAfterFinishRequest() {
+        snoozeAnchor = nil
+        confirmedSnoozeFireDate = nil
+        guard let ticket = finishTicket else {
+            scheduler.stopOriginalAfterUnverifiedFinish(alarm.id)
+            return
+        }
+        if case .failure = scheduler.cleanUpLateSnooze(for: alarm, ticket: ticket) {
+            AppLogger.emit(.ui, .error, "Late snooze cleanup remains unconfirmed; finish request retained")
+        }
+    }
+
+    private func applyConfirmedSnooze(token: AlarmSnoozeToken?, anchor: Date) {
+        if finishRequested {
+            cleanUpSnoozeAfterFinishRequest()
+        } else if hasBeenDismissed || !isProgressionAvailable {
+            if token == nil { scheduler.cancel(alarm.id) }
+        } else {
+            snoozeAnchor = anchor
         }
     }
 }

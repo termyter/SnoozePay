@@ -48,9 +48,31 @@ final class AlarmSnoozeSessionStore {
         var finished = false
         var attempts: [Attempt] = []
     }
+    private enum EnvelopeKeys: String, CodingKey { case version, sessions, finishRequests }
     private struct Envelope: Codable {
         var version = 1
         var sessions: [Session] = []
+        /// Absent in legacy envelopes. Reads never persist an implicit migration.
+        var finishRequests: [AlarmOccurrenceFinishTicket]?
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: EnvelopeKeys.self)
+            version = try container.decode(Int.self, forKey: .version)
+            sessions = try container.decode([Session].self, forKey: .sessions)
+            // Only absence means legacy empty. A present null is unknown safety
+            // metadata, not proof that no finish quarantine remains.
+            finishRequests = container.contains(.finishRequests)
+                ? try container.decode([AlarmOccurrenceFinishTicket].self, forKey: .finishRequests) : nil
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: EnvelopeKeys.self)
+            try container.encode(version, forKey: .version)
+            try container.encode(sessions, forKey: .sessions)
+            try container.encodeIfPresent(finishRequests, forKey: .finishRequests)
+        }
     }
 
     // Main-actor physical operations survive finish until their callback settles.
@@ -88,6 +110,9 @@ final class AlarmSnoozeSessionStore {
     /// Durable reservation BEFORE debit: a process death at the money boundary stays unknown.
     func reserve(alarmID: UUID, sessionID: UUID?, expectedCount: Int) throws -> AlarmSnoozeToken {
         var envelope = try read()
+        guard !(envelope.finishRequests ?? []).contains(where: { $0.alarmID == alarmID }) else {
+            throw AlarmSnoozeContextError.unavailable
+        }
         let id = sessionID ?? UUID()
         if sessionID == nil {
             envelope.sessions.append(Session(id: id, alarmID: alarmID, count: expectedCount))
@@ -135,7 +160,11 @@ final class AlarmSnoozeSessionStore {
     }
 
     func pendingCount(_ token: AlarmSnoozeToken, alarmID: UUID) throws -> Int {
-        let session = try find(token, alarmID: alarmID, in: read())
+        let envelope = try read()
+        guard !(envelope.finishRequests ?? []).contains(where: { $0.alarmID == alarmID }) else {
+            throw AlarmSnoozeContextError.unavailable
+        }
+        let session = try find(token, alarmID: alarmID, in: envelope)
         guard !session.finished, session.attempts.last?.id == token.attemptID,
               session.attempts.last?.phase == .charged else { throw AlarmSnoozeContextError.unavailable }
         return session.count
@@ -174,6 +203,110 @@ final class AlarmSnoozeSessionStore {
         }
         guard changed else { return }
         try write(envelope)
+    }
+
+    // MARK: - Scoped occurrence finish
+
+    func beginOccurrenceFinish(
+        alarmID: UUID, reference: AlarmSnoozeReference?
+    ) throws -> AlarmOccurrenceFinishTicket {
+        var envelope = try readForOccurrenceFinish()
+        let token: AlarmSnoozeToken?
+        switch reference {
+        case .token(let value)?: token = value
+        case .unavailable?: throw AlarmOccurrenceFinishError.ownershipUnavailable
+        case nil: token = nil
+        }
+        if let existing = envelope.finishRequests?.first(where: { $0.alarmID == alarmID }) {
+            guard existing.token == token else { throw AlarmOccurrenceFinishError.ownershipUnavailable }
+            _ = try finishSession(existing, in: envelope, allowFinished: true)
+            return existing
+        }
+        let ticket = AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarmID, token: token)
+        _ = try finishSession(ticket, in: envelope, allowFinished: false)
+        envelope.finishRequests = (envelope.finishRequests ?? []) + [ticket]
+        try writeForOccurrenceFinish(envelope)
+        return ticket
+    }
+
+    func pendingOccurrenceFinish(alarmID: UUID) throws -> AlarmOccurrenceFinishTicket? {
+        let envelope = try readForOccurrenceFinish()
+        guard let ticket = envelope.finishRequests?.first(where: { $0.alarmID == alarmID }) else { return nil }
+        _ = try finishSession(ticket, in: envelope, allowFinished: true)
+        return ticket
+    }
+
+    func validateOccurrenceFinish(_ ticket: AlarmOccurrenceFinishTicket) throws -> AlarmSnoozeReceipt? {
+        try validatedFinishReceipt(ticket, in: readForOccurrenceFinish())
+    }
+
+    func commitOccurrenceFinish(_ ticket: AlarmOccurrenceFinishTicket) throws {
+        var envelope = try readForOccurrenceFinish()
+        _ = try validatedFinishReceipt(ticket, in: envelope)
+        if let token = ticket.token {
+            guard let index = envelope.sessions.firstIndex(where: { $0.id == token.sessionID }) else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+            envelope.sessions[index].finished = true
+            // The caller confirmed native cleanup. Preserve attempt counts and
+            // receipts; only settle this session's no-longer-running uncertainty.
+            for attempt in envelope.sessions[index].attempts.indices {
+                switch envelope.sessions[index].attempts[attempt].phase {
+                case .charged: envelope.sessions[index].attempts[attempt].phase = .failed
+                case .reserved: envelope.sessions[index].attempts[attempt].phase = .rejected
+                case .scheduled, .failed, .rejected: break
+                }
+            }
+        }
+        let remaining = (envelope.finishRequests ?? []).filter { $0.id != ticket.id }
+        envelope.finishRequests = remaining.isEmpty ? nil : remaining
+        try writeForOccurrenceFinish(envelope)
+    }
+
+    private func validatedFinishReceipt(
+        _ ticket: AlarmOccurrenceFinishTicket, in envelope: Envelope
+    ) throws -> AlarmSnoozeReceipt? {
+        guard envelope.finishRequests?.first(where: { $0.id == ticket.id }) == ticket else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        let session = try finishSession(ticket, in: envelope, allowFinished: true)
+        // A live physical callback remains busy even after a session was finished.
+        // Durable pending without a live callback returns no receipt: the native
+        // finisher must prove derived absence, not delete an unconfirmed owner.
+        let busy = envelope.sessions.contains { value in
+            value.alarmID == ticket.alarmID && value.attempts.contains { attempt in
+                Self.running.contains(.init(sessionID: value.id, attemptID: attempt.id))
+            }
+        }
+        guard !busy else { throw AlarmOccurrenceFinishError.busy }
+        return session?.attempts.last?.receipt
+    }
+
+    private func finishSession(
+        _ ticket: AlarmOccurrenceFinishTicket, in envelope: Envelope, allowFinished: Bool
+    ) throws -> Session? {
+        let sameAlarm = envelope.sessions.filter { $0.alarmID == ticket.alarmID }
+        guard let token = ticket.token else {
+            guard !sameAlarm.contains(where: { !$0.finished }) else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+            return nil
+        }
+        guard let session = sameAlarm.first(where: { $0.id == token.sessionID }),
+              session.attempts.last?.id == token.attemptID,
+              allowFinished || !session.finished,
+              !sameAlarm.contains(where: { $0.id != session.id && !$0.finished }) else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        return session
+    }
+
+    private func readForOccurrenceFinish() throws -> Envelope {
+        do { return try read() } catch { throw AlarmOccurrenceFinishError.sessionUnavailable }
+    }
+
+    private func writeForOccurrenceFinish(_ envelope: Envelope) throws {
+        do { try write(envelope) } catch { throw AlarmOccurrenceFinishError.persistenceFailed }
     }
 
     private func mutate(
@@ -221,6 +354,16 @@ final class AlarmSnoozeSessionStore {
                           ($0.phase == .scheduled) == ($0.receipt != nil)
                               && ($0.receipt?.fireDate.timeIntervalSince1970.isFinite ?? true)
                       }
+              }) else { throw AlarmSnoozeContextError.unavailable }
+        let requests = envelope.finishRequests ?? []
+        guard Set(requests.map(\.id)).count == requests.count,
+              Set(requests.map(\.alarmID)).count == requests.count,
+              requests.allSatisfy({ request in
+                  let sameAlarm = envelope.sessions.filter { $0.alarmID == request.alarmID }
+                  guard let token = request.token else { return !sameAlarm.contains { !$0.finished } }
+                  return sameAlarm.contains {
+                      $0.id == token.sessionID && $0.attempts.last?.id == token.attemptID
+                  } && !sameAlarm.contains { $0.id != token.sessionID && !$0.finished }
               }) else { throw AlarmSnoozeContextError.unavailable }
         return envelope
     }

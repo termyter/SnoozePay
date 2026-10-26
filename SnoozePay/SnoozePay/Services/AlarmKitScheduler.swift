@@ -127,6 +127,10 @@ protocol AlarmKitScheduling: AnyObject {
 
     /// Stop a currently-alerting system alarm (user tapped stop / snooze).
     func stop(_ alarmID: UUID)
+
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError>
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError>
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError>
 }
 
 /// Default derivation for test doubles that only model the yes/no axis: they
@@ -147,6 +151,18 @@ extension AlarmKitScheduling {
 
     var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
     var alertingAlarmIDs: Set<UUID>? { nil }
+
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
 }
 
 #if canImport(AlarmKit)
@@ -174,6 +190,8 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     private let readAuthorization: () -> AlarmManager.AuthorizationState
     private let requestNativeAuthorization: () async throws -> AlarmManager.AuthorizationState
     private let readAlarms: () throws -> [AlarmKit.Alarm]
+    private let stopAlarm: (UUID) throws -> Void
+    private let readOccurrenceSnapshots: () throws -> [NativeOccurrenceSnapshot]
     typealias SnoozeConfiguration = AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
     var registerTracked: (UUID, SnoozeConfiguration) async throws -> AlarmSnoozeReceipt = { id, configuration in
         let registered = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
@@ -190,12 +208,16 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         requestNativeAuthorization: @escaping () async throws -> AlarmManager.AuthorizationState = {
             try await AlarmManager.shared.requestAuthorization()
         },
-        readAlarms: @escaping () throws -> [AlarmKit.Alarm] = { try AlarmManager.shared.alarms }
+        readAlarms: @escaping () throws -> [AlarmKit.Alarm] = { try AlarmManager.shared.alarms },
+        stopAlarm: @escaping (UUID) throws -> Void = { try AlarmManager.shared.stop(id: $0) },
+        readOccurrenceSnapshots: (() throws -> [NativeOccurrenceSnapshot])? = nil
     ) {
         self.cancelAlarm = cancelAlarm
         self.readAuthorization = readAuthorization
         self.requestNativeAuthorization = requestNativeAuthorization
         self.readAlarms = readAlarms
+        self.stopAlarm = stopAlarm
+        self.readOccurrenceSnapshots = readOccurrenceSnapshots ?? Self.occurrenceReader(readAlarms)
     }
 
     var isAuthorized: Bool {
@@ -391,7 +413,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         let id = Self.snoozeID(for: alarmID)
         do { try cancelAlarm(id); return true } catch {
             // A throw is not a successful cancellation; checked absence can still prove cleanup.
-            guard let alarms = try? manager.alarms else { return false }
+            guard let alarms = try? readAlarms() else { return false }
             return !alarms.contains { $0.id == id }
         }
     }
@@ -620,6 +642,160 @@ final class AlarmKitScheduler: AlarmKitScheduling {
             return .named(fileName)
         }
         return .default
+    }
+}
+
+@available(iOS 26.0, *)
+extension AlarmKitScheduler {
+
+    // MARK: - Checked occurrence finish
+
+    private static func occurrenceReader(
+        _ read: @escaping () throws -> [AlarmKit.Alarm]
+    ) -> () throws -> [NativeOccurrenceSnapshot] {
+        { try read().map { Self.occurrenceSnapshot(id: $0.id, schedule: $0.schedule, state: $0.state) } }
+    }
+
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        do {
+            let before = try checkedOccurrenceInventory()
+            let derivedID = Self.snoozeID(for: request.alarmID)
+            try validateDerived(in: before, request: request)
+            let original = before.first { $0.id == request.alarmID }
+            guard original?.phase != .unknown else { throw AlarmOccurrenceFinishError.nativeUnconfirmed }
+            if request.weekly != nil {
+                if let original, original.phase != .scheduled {
+                    attemptOccurrenceOperation { try stopAlarm(request.alarmID) }
+                }
+            } else if original != nil {
+                attemptOccurrenceOperation { try cancelAlarm(request.alarmID) }
+            }
+            if before.contains(where: { $0.id == derivedID }) {
+                attemptOccurrenceOperation { try cancelAlarm(derivedID) }
+            }
+
+            try verifyOccurrenceFinish(in: checkedOccurrenceInventory(), request: request)
+            return .success(())
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.nativeUnconfirmed)
+        }
+    }
+
+    /// A late registration owns only the derived ID; finishing its original is a separate operation.
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        do {
+            let before = try checkedOccurrenceInventory()
+            let derivedID = Self.snoozeID(for: request.alarmID)
+            try validateDerived(in: before, request: request)
+            if before.contains(where: { $0.id == derivedID }) {
+                attemptOccurrenceOperation { try cancelAlarm(derivedID) }
+            }
+            guard !(try checkedOccurrenceInventory()).contains(where: { $0.id == derivedID }) else {
+                throw AlarmOccurrenceFinishError.nativeUnconfirmed
+            }
+            return .success(())
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.nativeUnconfirmed)
+        }
+    }
+
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
+        do {
+            try stopAlarm(alarmID)
+            return .success(())
+        } catch {
+            return .failure(.nativeUnconfirmed)
+        }
+    }
+
+    private func checkedOccurrenceInventory() throws -> [NativeOccurrenceSnapshot] {
+        let snapshots: [NativeOccurrenceSnapshot]
+        do { snapshots = try readOccurrenceSnapshots() } catch { throw AlarmOccurrenceFinishError.inventoryUnavailable }
+        guard Set(snapshots.map(\.id)).count == snapshots.count else {
+            throw AlarmOccurrenceFinishError.nativeUnconfirmed
+        }
+        return snapshots
+    }
+
+    private func verifyOccurrenceFinish(
+        in snapshots: [NativeOccurrenceSnapshot], request: AlarmOccurrenceFinishRequest
+    ) throws {
+        guard !snapshots.contains(where: { $0.id == Self.snoozeID(for: request.alarmID) }) else {
+            throw AlarmOccurrenceFinishError.nativeUnconfirmed
+        }
+        if let expected = request.weekly {
+            let originals = snapshots.filter { $0.id == request.alarmID }
+            guard originals.count == 1, originals[0].phase == .scheduled,
+                  originals[0].fixedDate == nil, originals[0].weekly == expected else {
+                throw AlarmOccurrenceFinishError.nativeUnconfirmed
+            }
+        } else if snapshots.contains(where: { $0.id == request.alarmID }) {
+            throw AlarmOccurrenceFinishError.nativeUnconfirmed
+        }
+    }
+
+    private func validateDerived(
+        in snapshots: [NativeOccurrenceSnapshot], request: AlarmOccurrenceFinishRequest
+    ) throws {
+        if let expected = request.expectedDerivedFireDate, !expected.timeIntervalSince1970.isFinite {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        if let weekly = request.weekly {
+            guard (0...23).contains(weekly.hour), (0...59).contains(weekly.minute),
+                  !weekly.mondayFirstDays.isEmpty, weekly.mondayFirstDays.allSatisfy({ (0...6).contains($0) }) else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+        }
+        guard let derived = snapshots.first(where: { $0.id == Self.snoozeID(for: request.alarmID) }) else { return }
+        guard derived.phase != .unknown else { throw AlarmOccurrenceFinishError.nativeUnconfirmed }
+        if let expected = request.expectedDerivedFireDate {
+            guard derived.weekly == nil, derived.fixedDate == expected else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+        } else {
+            guard request.allowsUntrackedDerived, derived.weekly == nil,
+                  let fixedDate = derived.fixedDate, fixedDate.timeIntervalSince1970.isFinite else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+        }
+    }
+
+    /// Native errors require a fresh matching readback; they never independently mean success.
+    private func attemptOccurrenceOperation(_ operation: () throws -> Void) {
+        do { try operation() } catch {
+            AppLogger.emit(.scheduler, .error,
+                           "Occurrence operation failed: \(error.localizedDescription); checking native postcondition")
+        }
+    }
+
+    nonisolated static func occurrenceSnapshot(
+        id: UUID, schedule: AlarmKit.Alarm.Schedule?, state: AlarmKit.Alarm.State
+    ) -> NativeOccurrenceSnapshot {
+        let phase: NativeOccurrenceSnapshot.Phase
+        switch state {
+        case .scheduled: phase = .scheduled
+        case .countdown: phase = .countdown
+        case .paused: phase = .paused
+        case .alerting: phase = .alerting
+        @unknown default: phase = .unknown
+        }
+        let fixedDate: Date?
+        if case .fixed(let date)? = schedule { fixedDate = date } else { fixedDate = nil }
+        return NativeOccurrenceSnapshot(id: id, phase: phase, weekly: weeklyProjection(schedule), fixedDate: fixedDate)
+    }
+
+    nonisolated static func weeklyProjection(
+        _ schedule: AlarmKit.Alarm.Schedule?
+    ) -> NativeOccurrenceSnapshot.Weekly? {
+        guard case let .relative(relative)? = schedule,
+              case let .weekly(days) = relative.repeats else { return nil }
+        let indices = days.compactMap { day in (0..<7).first { weekday(forMondayFirstIndex: $0) == day } }
+        guard indices.count == days.count else { return nil }
+        return .init(hour: relative.time.hour, minute: relative.time.minute, mondayFirstDays: Set(indices))
     }
 }
 

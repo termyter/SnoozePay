@@ -91,7 +91,8 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         snoozedAt: Date? = nil
     ) -> ReadBackFiringScreen {
         let scheduler = AlarmScheduler(
-            notificationCenter: InertNotificationCenter(), alarmKit: alarmKit ? TestAlarmKitBackend() : nil
+            notificationCenter: InertNotificationCenter(),
+            alarmKit: TestAlarmKitBackend(authorization: alarmKit ? .authorized : .denied)
         )
         return ReadBackFiringScreen(viewModel: AlarmFiringViewModel(
             alarm: alarm, snoozeCount: snoozeCount, snoozeAnchor: snoozedAt,

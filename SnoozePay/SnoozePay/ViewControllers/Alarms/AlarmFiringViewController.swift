@@ -438,7 +438,7 @@ class AlarmFiringViewController: UIViewController {
                 minutes: viewModel.alarm.snoozeMinutes,
                 hint: snoozeHintText()
             )
-            snooze.isEnabled = viewModel.canSnooze && !viewModel.isSnoozeScheduling
+            snooze.isEnabled = viewModel.canSnooze && !viewModel.isSnoozeScheduling && !viewModel.finishRequested
             // The CTA stays GOLD on every progressive step (#288). Escalation
             // is carried by the background tone crossfade + the indicator pill,
             // never by reddening the button — so we no longer re-tone it here.
@@ -460,6 +460,10 @@ class AlarmFiringViewController: UIViewController {
         // (Apple Pay 500 ₽) stack based on affordability. `canSnooze` is
         // the single source of truth.
         refreshNoBalanceVisibility()
+        if viewModel.finishRequested {
+            applePayNoBalanceButton?.isEnabled = false
+            chooseAmountLink?.isEnabled = false
+        }
 
         // While the snoozed state is live (#226) re-render its chrome too — a
         // back-to-back snooze bumps the ladder rung / countdown / hero suffix.
@@ -611,15 +615,18 @@ class AlarmFiringViewController: UIViewController {
     /// `presentingViewController?.dismiss` on THIS firing VC, unwinding both
     /// screens back to the app.
     @objc func dismissTapped() {
-        // Read the summary BEFORE `dismiss()` so the numbers describe the wake
-        // that just ended. Both figures come from the ledger (#400) — a snooze
-        // whose trigger the scheduler rejected was refunded, so it must not
-        // inflate either the count or the sum the user is shown. When the
-        // ledger can't be read we say so rather than print a guessed total.
-        let summary = wokeMorningContent()
-        // Stop hands deferred feedback back to StoreKit before the summary covers this screen.
+        // Close deferred purchase feedback before requesting native finish.
         noBalancePurchase.finish()
-        viewModel.dismiss()
+        switch viewModel.dismiss() {
+        case .failure(let error):
+            presentOccurrenceFinishError(error)
+            return
+        case .success(.alreadyCompleted): return
+        case .success(.completedNow): break
+        }
+        // The successful finish includes settled late callbacks; use one fresh
+        // checked ledger snapshot rather than figures from before confirmation.
+        let summary = wokeMorningContent()
         isStoppedByUser = true
         onUserStop?()
         // Check and stop in one step (#880).
@@ -651,6 +658,28 @@ class AlarmFiringViewController: UIViewController {
         }
         wokeRef = woke
         present(woke, animated: true)
+    }
+
+    private func presentOccurrenceFinishError(_ error: AlarmOccurrenceFinishError) {
+        AppLogger.emit(.ui, .error, "Occurrence finish unconfirmed: \(String(describing: error))")
+        let alert = UIAlertController(
+            title: Localized.text("firing.finish.error.title"),
+            message: Localized.text("firing.finish.error.message"),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: Localized.text("firing.finish.retry"), style: .default) { [weak self] _ in
+            self?.retryOccurrenceFinish()
+        })
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.close"), style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func retryOccurrenceFinish() {
+        if let alert = presentedViewController as? UIAlertController {
+            alert.dismiss(animated: true) { [weak self] in self?.dismissTapped() }
+        } else {
+            dismissTapped()
+        }
     }
 
     /// Copy for the morning summary, chosen from what the ledger could confirm.
