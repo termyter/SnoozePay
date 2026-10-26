@@ -89,6 +89,26 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
         XCTAssertEqual(harness.completions.count, 1, "A departed picker must not start another load")
     }
 
+    func testAnotherNavigationOwnerRejectsTheQueuedPhotoWithoutPoppingThatScreen() {
+        let harness = makeHarness()
+        defer { harness.close() }
+        harness.startPhoto(harness.firstImage)
+        harness.finish(0, with: harness.firstImage)
+        let foreign = UIViewController()
+        harness.navigation.pushViewController(foreign, animated: false)
+        XCTAssertTrue(harness.navigation.topViewController === foreign)
+        runMainQueueTurn()
+
+        XCTAssertTrue(harness.savedImages.isEmpty)
+        XCTAssertEqual(harness.selectedThemes, [])
+        XCTAssertEqual(harness.navigation.popCalls, 0)
+        XCTAssertNil(harness.controller.presentedViewController)
+        XCTAssertNil(foreign.presentedViewController)
+        XCTAssertTrue(harness.navigation.topViewController === foreign)
+        harness.startPhoto(harness.secondImage)
+        XCTAssertEqual(harness.completions.count, 1, "Only the navigation owner may start a photo load")
+    }
+
     func testTemporaryPhotoPickerCoverDoesNotInvalidateTheCurrentLoad() {
         let harness = makeHarness()
         defer { harness.close() }

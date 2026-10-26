@@ -488,6 +488,7 @@ extension AlarmThemePickerViewController: PHPickerViewControllerDelegate {
     func loadSelectedPhoto(from provider: NSItemProvider?) {
         photoSelectionID = nil
         guard acceptsPhotoSelection, !isMovingFromParent, !isBeingDismissed,
+              navigationController?.topViewController === self,
               let provider, provider.canLoadObject(ofClass: UIImage.self) else { return }
         let selectionID = UUID()
         photoSelectionID = selectionID
@@ -495,6 +496,7 @@ extension AlarmThemePickerViewController: PHPickerViewControllerDelegate {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.acceptsPhotoSelection, self.photoSelectionID == selectionID,
                       !self.isMovingFromParent, !self.isBeingDismissed,
+                      self.navigationController?.topViewController === self,
                       self.navigationController?.isBeingDismissed != true else { return }
                 self.photoSelectionID = nil
                 guard let image = object as? UIImage else { return }
