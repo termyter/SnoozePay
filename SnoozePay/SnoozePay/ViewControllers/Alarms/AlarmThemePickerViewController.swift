@@ -178,8 +178,17 @@ final class AlarmThemePickerViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        // Presenting Photos only covers this screen; dismissing its host ends ownership.
-        if isBeingDismissed || navigationController?.isBeingDismissed == true {
+        // Photos keeps this navigation owner; a push, pop or host dismissal ends ownership.
+        let navigationChangedOwner = navigationController.map { $0.topViewController !== self } ?? false
+        if isMovingFromParent || navigationChangedOwner || isBeingDismissed
+            || navigationController?.isBeingDismissed == true {
+            endPhotoSelection()
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if let navigationController, navigationController.topViewController !== self {
             endPhotoSelection()
         }
     }
@@ -494,10 +503,13 @@ extension AlarmThemePickerViewController: PHPickerViewControllerDelegate {
         photoSelectionID = selectionID
         loadPhoto(provider) { [weak self] object in
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.acceptsPhotoSelection, self.photoSelectionID == selectionID,
-                      !self.isMovingFromParent, !self.isBeingDismissed,
+                guard let self, self.acceptsPhotoSelection, self.photoSelectionID == selectionID else { return }
+                guard !self.isMovingFromParent, !self.isBeingDismissed,
                       self.navigationController?.topViewController === self,
-                      self.navigationController?.isBeingDismissed != true else { return }
+                      self.navigationController?.isBeingDismissed != true else {
+                    self.photoSelectionID = nil
+                    return
+                }
                 self.photoSelectionID = nil
                 guard let image = object as? UIImage else { return }
                 guard let url = self.saveImage(image) else {

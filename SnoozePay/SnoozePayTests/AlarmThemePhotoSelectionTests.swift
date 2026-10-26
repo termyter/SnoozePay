@@ -105,8 +105,58 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
         XCTAssertNil(harness.controller.presentedViewController)
         XCTAssertNil(foreign.presentedViewController)
         XCTAssertTrue(harness.navigation.topViewController === foreign)
+        harness.navigation.popViewController(animated: false)
+        let manualPopCalls = harness.navigation.popCalls
+        XCTAssertEqual(manualPopCalls, 1)
+        XCTAssertTrue(harness.navigation.topViewController === harness.controller)
+        harness.finish(0, with: harness.firstImage)
+        runMainQueueTurn()
+
+        XCTAssertTrue(harness.savedImages.isEmpty)
+        XCTAssertEqual(harness.selectedThemes, [])
+        XCTAssertEqual(harness.navigation.popCalls, manualPopCalls)
+        XCTAssertNil(harness.controller.presentedViewController)
+        XCTAssertTrue(harness.navigation.topViewController === harness.controller)
+        harness.navigation.pushViewController(foreign, animated: false)
         harness.startPhoto(harness.secondImage)
         XCTAssertEqual(harness.completions.count, 1, "Only the navigation owner may start a photo load")
+    }
+
+    func testFirstPhotoCompletionAfterNavigationReturnsCannotReviveTheDepartedRequest() {
+        let harness = makeHarness()
+        defer {
+            harness.navigation.onDidShow = nil
+            harness.close()
+        }
+        XCTAssertTrue(harness.controller.view.window === harness.window)
+        harness.startPhoto(harness.firstImage)
+        harness.navigation.delegate = harness.navigation
+        let foreign = UIViewController()
+        let foreignShown = expectation(description: "foreign navigation owner shown")
+        harness.navigation.onDidShow = { shown in
+            if shown === foreign { foreignShown.fulfill() }
+        }
+        harness.navigation.pushViewController(foreign, animated: false)
+        wait(for: [foreignShown], timeout: 5)
+        XCTAssertTrue(harness.navigation.topViewController === foreign)
+
+        let pickerShown = expectation(description: "theme picker shown again")
+        harness.navigation.onDidShow = { [weak picker = harness.controller] shown in
+            if shown === picker { pickerShown.fulfill() }
+        }
+        harness.navigation.popViewController(animated: false)
+        wait(for: [pickerShown], timeout: 5)
+        XCTAssertTrue(harness.navigation.topViewController === harness.controller)
+        let manualPopCalls = harness.navigation.popCalls
+        XCTAssertEqual(manualPopCalls, 1)
+        harness.finish(0, with: harness.firstImage)
+        runMainQueueTurn()
+
+        XCTAssertTrue(harness.savedImages.isEmpty)
+        XCTAssertEqual(harness.selectedThemes, [])
+        XCTAssertEqual(harness.navigation.popCalls, manualPopCalls)
+        XCTAssertNil(harness.controller.presentedViewController)
+        XCTAssertTrue(harness.navigation.topViewController === harness.controller)
     }
 
     func testTemporaryPhotoPickerCoverDoesNotInvalidateTheCurrentLoad() {
@@ -325,11 +375,18 @@ private final class PhotoSelectionHarness {
 }
 
 @MainActor
-private final class PhotoSelectionNavigationController: UINavigationController {
+private final class PhotoSelectionNavigationController: UINavigationController, UINavigationControllerDelegate {
     private(set) var popCalls = 0
+    var onDidShow: ((UIViewController) -> Void)?
 
     override func popViewController(animated: Bool) -> UIViewController? {
         popCalls += 1
         return super.popViewController(animated: false)
+    }
+
+    func navigationController(
+        _ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool
+    ) {
+        onDidShow?(viewController)
     }
 }
