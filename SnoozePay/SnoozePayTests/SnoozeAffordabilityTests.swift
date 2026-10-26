@@ -367,6 +367,9 @@ final class SnoozeAffordabilityTests: XCTestCase {
             (.greatestFiniteMagnitude, 50),
             (100, .leastNonzeroMagnitude)
         ]
+        let expected = """
+        Хватит на ~9\u{00A0}223\u{00A0}372\u{00A0}036\u{00A0}854\u{00A0}775\u{00A0}807 откладываний
+        """
 
         for testCase in cases {
             let screens = renderBothScreens(
@@ -376,8 +379,8 @@ final class SnoozeAffordabilityTests: XCTestCase {
 
             XCTAssertEqual(screens.price, testCase.price)
             XCTAssertEqual(screens.count, Int.max)
-            XCTAssertEqual(screens.list, "Хватит на ~9223372036854775807 откладываний")
-            XCTAssertEqual(screens.wallet, "Хватит на ~9223372036854775807 откладываний")
+            XCTAssertEqual(screens.list, expected)
+            XCTAssertEqual(screens.wallet, expected)
         }
     }
 }

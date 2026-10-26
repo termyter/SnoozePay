@@ -70,20 +70,22 @@ enum SnoozeAffordability {
     /// цене", a claim it could not back while the price was hardcoded and one
     /// that adds nothing now that the number is derived from real alarms.
     ///
-    /// The whole phrase is one catalogue entry with a plural *variation*, not a
-    /// template plus a separately-pluralised noun (#598). That is the shape
-    /// `example.days_count` documents: because the number lives inside the
-    /// string, the catalogue picks the form under each language's own CLDR rule
-    /// and `Plural` drops out of the loop entirely. Assembling the sentence here
-    /// would freeze Russian word order — "N snoozes' worth" puts the count
-    /// somewhere else — into every future translation.
+    /// Ordinary counts use the whole-phrase catalogue plural variation (#598).
+    /// Above Double's consecutive integer range, a second whole-phrase template
+    /// takes an exact integer-formatted number and an integer-selected noun
+    /// (#1059). Both arguments are positional so translations retain control
+    /// over the sentence's word order.
     static func hint(
         balance: Double,
         alarms: [Alarm],
         defaults: AlarmDefaults = .shared
     ) -> String {
         let count = affordableCount(balance: balance, alarms: alarms, defaults: defaults)
-        return Localized.format("common.snooze_affordability", count)
+        guard count > 9_007_199_254_740_991 else {
+            return Localized.format("common.snooze_affordability", count)
+        }
+        let number = IntegerFormatStyle<Int>(locale: AppLocale.display).format(count)
+        return Localized.format("common.snooze_affordability_large", number, snoozeWord(for: count))
     }
 
     /// Pluralisation for "откладывание" in the nominative — `откладывание`
