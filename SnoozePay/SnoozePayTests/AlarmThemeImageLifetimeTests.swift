@@ -126,6 +126,39 @@ final class AlarmThemeImageLifetimeTests: XCTestCase {
         XCTAssertNotNil(AlarmThemeImageStore.loadImage(at: picked))
     }
 
+    func testWriteStartedDuringADeletionCompletesAndRemainsProtected() throws {
+        let folder = try XCTUnwrap(directory)
+        let orphan = try oldFile("orphan.jpg")
+        let picked = folder.appendingPathComponent("alarm-theme-during-cleanup.jpg")
+        let bytes = try XCTUnwrap(image().jpegData(compressionQuality: 0.85))
+        let deletionEntered = DispatchSemaphore(value: 0)
+        let writeAttempted = DispatchSemaphore(value: 0)
+        let written = expectation(description: "write completed")
+        let controlledSession = AlarmThemeImageStore.Session { url in
+            deletionEntered.signal()
+            guard writeAttempted.wait(timeout: .now() + 5) == .success else {
+                throw NSError(domain: "ThemeImageLifetime.deletionBarrier", code: 1)
+            }
+            try FileManager.default.removeItem(at: url)
+        }
+
+        DispatchQueue.global().async {
+            XCTAssertEqual(deletionEntered.wait(timeout: .now() + 5), .success)
+            writeAttempted.signal()
+            XCTAssertNoThrow(try controlledSession.write(bytes, to: picked))
+            written.fulfill()
+        }
+        AlarmThemeImageStore.reconcile(in: folder, referencedURLs: [], session: controlledSession)
+        wait(for: [written], timeout: 5)
+
+        XCTAssertFalse(exists(orphan))
+        XCTAssertEqual(try Data(contentsOf: picked), bytes)
+        writeAttempted.signal()
+        AlarmThemeImageStore.reconcile(in: folder, referencedURLs: [], session: controlledSession)
+        XCTAssertEqual(try Data(contentsOf: picked), bytes)
+        XCTAssertNotNil(AlarmThemeImageStore.loadImage(at: picked))
+    }
+
     private func saveImage() throws -> URL {
         try XCTUnwrap(AlarmThemeImageStore.saveImage(image(), in: directory, session: session))
     }

@@ -21,6 +21,11 @@ enum AlarmThemeImageStore {
     nonisolated final class Session: @unchecked Sendable {
         private let lock = NSLock()
         private var pickedURLs = Set<URL>()
+        private let remove: @Sendable (URL) throws -> Void
+
+        init(remove: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }) {
+            self.remove = remove
+        }
 
         func write(_ data: Data, to url: URL) throws {
             lock.lock()
@@ -33,7 +38,7 @@ enum AlarmThemeImageStore {
             lock.lock()
             defer { lock.unlock() }
             guard !pickedURLs.contains(url.standardizedFileURL) else { return }
-            try? FileManager.default.removeItem(at: url)
+            try? remove(url)
         }
     }
 
