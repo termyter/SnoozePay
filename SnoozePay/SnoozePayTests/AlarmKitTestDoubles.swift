@@ -11,7 +11,7 @@ import UserNotifications
 /// being re-implemented in six files.
 ///
 /// Defaults to authorized-and-succeeding: the common case is "the backend works,
-/// I'm testing something else".
+/// I'm testing something else". Inventory stays unknown unless explicitly supplied.
 final class TestAlarmKitBackend: AlarmKitScheduling {
 
     struct ScheduleRejected: LocalizedError {
@@ -19,6 +19,7 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     }
 
     var authorization: AlarmKitAuthorization
+    var alertingAlarmIDs: Set<UUID>?
     /// When true, `schedule` reports `.failure` — models an async AlarmKit
     /// reject (alarm limit, revoked auth, backend reject).
     var failSchedule: Bool
@@ -36,9 +37,11 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     init(
         authorization: AlarmKitAuthorization = .authorized,
         failSchedule: Bool = false,
-        failSnooze: Bool = false
+        failSnooze: Bool = false,
+        alertingAlarmIDs: Set<UUID>? = nil
     ) {
         self.authorization = authorization
+        self.alertingAlarmIDs = alertingAlarmIDs
         self.failSchedule = failSchedule
         self.failSnooze = failSnooze
     }
