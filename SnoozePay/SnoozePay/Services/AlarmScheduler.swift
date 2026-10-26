@@ -750,6 +750,26 @@ extension AlarmScheduler {
         }
     }
 
+    /// The caller supplies a checked current row or checked absence; no native mutation is permitted.
+    func verifyPendingOccurrenceFinish(
+        currentAlarm: Alarm?, ticket: AlarmOccurrenceFinishTicket
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        if let currentAlarm, currentAlarm.id != ticket.alarmID { return .failure(.ownershipUnavailable) }
+        guard legacySnoozeOperations[ticket.alarmID]?.isEmpty != false else { return .failure(.busy) }
+        guard snoozeSessions != nil else { return .failure(.sessionUnavailable) }
+        do {
+            let request = try occurrenceFinishRequest(for: currentAlarm, ticket: ticket)
+            guard let alarmKitScheduler else { return .failure(.unsupported) }
+            let result = alarmKitScheduler.verifyFinishedOccurrence(request)
+            if case .success = result { cancelLegacyNotifications(ticket.alarmID) }
+            return result
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.sessionUnavailable)
+        }
+    }
+
     func cleanUpLateSnooze(
         for alarm: Alarm, ticket: AlarmOccurrenceFinishTicket, receipt: AlarmSnoozeReceipt? = nil
     ) -> Result<Void, AlarmOccurrenceFinishError> {
@@ -773,10 +793,10 @@ extension AlarmScheduler {
     }
 
     private func occurrenceFinishRequest(
-        for alarm: Alarm, ticket: AlarmOccurrenceFinishTicket,
+        for alarm: Alarm?, ticket: AlarmOccurrenceFinishTicket,
         preserveWeekly: Bool = true, suppliedReceipt: AlarmSnoozeReceipt? = nil
     ) throws -> AlarmOccurrenceFinishRequest {
-        guard ticket.alarmID == alarm.id else { throw AlarmOccurrenceFinishError.ownershipUnavailable }
+        if let alarm, ticket.alarmID != alarm.id { throw AlarmOccurrenceFinishError.ownershipUnavailable }
         let receipt: AlarmSnoozeReceipt?
         if let snoozeSessions {
             receipt = try snoozeSessions.validateOccurrenceFinish(ticket)
@@ -786,14 +806,14 @@ extension AlarmScheduler {
             receipt = nil
         }
         if let receipt {
-            guard receipt.systemID == AlarmKitScheduler.snoozeID(for: alarm.id),
+            guard receipt.systemID == AlarmKitScheduler.snoozeID(for: ticket.alarmID),
                   receipt.fireDate.timeIntervalSince1970.isFinite else {
                 throw AlarmOccurrenceFinishError.ownershipUnavailable
             }
         }
         if let suppliedReceipt, suppliedReceipt != receipt { throw AlarmOccurrenceFinishError.ownershipUnavailable }
         let weekly: NativeOccurrenceSnapshot.Weekly?
-        if preserveWeekly, alarm.enabled, alarm.repeatMode == .weekly, !alarm.repeatDays.isEmpty {
+        if let alarm, preserveWeekly, alarm.enabled, alarm.repeatMode == .weekly, !alarm.repeatDays.isEmpty {
             guard let expected = AlarmKitScheduler.weeklyProjection(AlarmKitScheduler.makeSchedule(for: alarm)) else {
                 throw AlarmOccurrenceFinishError.ownershipUnavailable
             }
@@ -802,7 +822,7 @@ extension AlarmScheduler {
             weekly = nil
         }
         return AlarmOccurrenceFinishRequest(
-            alarmID: alarm.id, weekly: weekly, expectedDerivedFireDate: receipt?.fireDate,
+            alarmID: ticket.alarmID, weekly: weekly, expectedDerivedFireDate: receipt?.fireDate,
             allowsUntrackedDerived: ticket.token == nil
         )
     }

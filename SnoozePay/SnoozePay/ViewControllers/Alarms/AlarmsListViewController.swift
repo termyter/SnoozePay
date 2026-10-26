@@ -28,20 +28,31 @@ class AlarmsListViewController: UIViewController {
     private let viewModel: AlarmsListViewModel
     private var renderedPriceCurrency: Currency
     private let bannerStreakCount: () -> Int
+    private let occurrenceRecovery: AlarmOccurrenceRecovering
+    private let recoveryNotificationCenter: NotificationCenter
+    private lazy var recoveryUI = AlarmsOccurrenceRecoveryHeader(
+        recovery: occurrenceRecovery, host: self
+    ) { [weak self] in self?.refreshOccurrenceRecovery() }
 
     init(
         viewModel: AlarmsListViewModel = AlarmsListViewModel(),
-        bannerStreakCount: @escaping () -> Int = { TransactionRepository.shared.currentStreak() }
+        bannerStreakCount: @escaping () -> Int = { TransactionRepository.shared.currentStreak() },
+        occurrenceRecovery: AlarmOccurrenceRecovering = AlarmOccurrenceRecovery.shared,
+        recoveryNotificationCenter: NotificationCenter = .default
     ) {
         self.viewModel = viewModel
         self.renderedPriceCurrency = viewModel.walletCurrency
         self.bannerStreakCount = bannerStreakCount
+        self.occurrenceRecovery = occurrenceRecovery
+        self.recoveryNotificationCenter = recoveryNotificationCenter
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    deinit { recoveryNotificationCenter.removeObserver(self) }
 
     // MARK: - UI Elements
 
@@ -106,6 +117,11 @@ class AlarmsListViewController: UIViewController {
         setupLayout()
         setupCallbacks()
         bindViewModel()
+        recoveryNotificationCenter.addObserver(
+            self, selector: #selector(recoveryAppBecameActive(_:)),
+            name: UIApplication.didBecomeActiveNotification, object: nil
+        )
+        refreshOccurrenceRecovery()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -119,7 +135,7 @@ class AlarmsListViewController: UIViewController {
         AppNavigationBarStyle.hideBar(on: self, animated: animated)
         viewModel.loadData()
         tableView.reloadData()
-        refreshStreakBanner()
+        refreshOccurrenceRecovery()
         // Re-probe on every appearance; the VM's monitor additionally re-probes
         // on app activation, so a permission revoked in iOS Settings while the
         // screen stayed mounted still lands (#428).
@@ -296,7 +312,7 @@ class AlarmsListViewController: UIViewController {
             self.emptyStateView.isHidden = !isEmpty
             self.tableView.isHidden = isEmpty
             self.refreshHeader()
-            self.refreshStreakBanner()
+            self.refreshOccurrenceRecovery()
         }
 
         viewModel.onBalanceUpdated = { [weak self] _ in
@@ -365,6 +381,10 @@ class AlarmsListViewController: UIViewController {
     /// current streak is 0, the banner is removed entirely so the empty
     /// state column doesn't collide with a stale header view.
     private func refreshStreakBanner() {
+        defer {
+            recoveryUI.compose(on: tableView, emptyState: emptyStateView,
+                               hasAlarms: !viewModel.alarms.isEmpty, width: view.bounds.width)
+        }
         let streak = bannerStreakCount()
         guard streak > 0 else {
             tableView.tableHeaderView = nil
@@ -406,7 +426,16 @@ class AlarmsListViewController: UIViewController {
         // measure on every layout pass (rotation, split-view resize).
         if tableView.tableHeaderView === streakBanner {
             refreshStreakBanner()
+        } else if tableView.tableHeaderView === recoveryUI.header {
+            recoveryUI.sizeHeader(on: tableView, width: view.bounds.width)
         }
+    }
+
+    @objc private func recoveryAppBecameActive(_ notification: Notification) { refreshOccurrenceRecovery() }
+
+    func refreshOccurrenceRecovery() {
+        recoveryUI.refresh()
+        refreshStreakBanner()
     }
 
     private func presentRepositoryError(_ error: LocalizedError) {

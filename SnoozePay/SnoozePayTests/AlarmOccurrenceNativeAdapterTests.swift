@@ -199,6 +199,97 @@ final class AlarmOccurrenceNativeAdapterTests: XCTestCase {
         XCTAssertFalse(failed.cancelTrackedSnooze(alarmID))
     }
 
+    func testReadOnlyVerificationUsesFreshQuietWeeklyInventoryWithoutNativeOperations() {
+        let other = snapshot(UUID(), .scheduled, fixed: date)
+        let records = [snapshot(alarmID, .scheduled, weekly: weekly), other]
+        let fixture = FinishInventory(entries: records)
+        assertSuccess(fixture.backend.verifyFinishedOccurrence(request(untracked: false)))
+        XCTAssertEqual(fixture.entries, records)
+        XCTAssertEqual(fixture.reads, 1)
+        fixture.entries[0] = snapshot(alarmID, .alerting, weekly: weekly)
+        let activeRecords = fixture.entries
+        assertFailure(fixture.backend.verifyFinishedOccurrence(request()), .nativeUnconfirmed)
+        XCTAssertEqual(fixture.reads, 2)
+        XCTAssertEqual(fixture.entries, activeRecords)
+        XCTAssertTrue(fixture.stopped.isEmpty)
+        XCTAssertTrue(fixture.cancelled.isEmpty)
+    }
+
+    func testReadOnlyVerificationRefusesUnsafeWeeklyStatesWithoutChangingAnyRecord() {
+        let candidates = [[], [snapshot(alarmID, .scheduled)],
+                          [snapshot(alarmID, .scheduled, fixed: date)],
+                          [snapshot(alarmID, .scheduled, weekly: weekly, fixed: date)],
+                          [snapshot(alarmID, .scheduled, weekly: .init(hour: 8, minute: 15, mondayFirstDays: [0, 6]))],
+                          [snapshot(alarmID, .scheduled, weekly: .init(hour: 7, minute: 15, mondayFirstDays: [0]))],
+                          [snapshot(alarmID, .countdown, weekly: weekly)],
+                          [snapshot(alarmID, .paused, weekly: weekly)], [snapshot(alarmID, .unknown, weekly: weekly)],
+                          [snapshot(alarmID, .scheduled, weekly: weekly), snapshot(derivedID, .scheduled, fixed: date)]]
+        for records in candidates {
+            let fixture = FinishInventory(entries: records)
+            assertFailure(fixture.backend.verifyFinishedOccurrence(request()), .nativeUnconfirmed)
+            XCTAssertEqual(fixture.entries, records)
+            XCTAssertTrue(fixture.stopped.isEmpty)
+            XCTAssertTrue(fixture.cancelled.isEmpty)
+        }
+    }
+
+    func testReadOnlyOneShotVerificationRequiresBothIDsAbsentAndPreservesUnrelatedAlarm() {
+        let other = snapshot(UUID(), .alerting, fixed: date)
+        let absent = FinishInventory(entries: [other])
+        assertSuccess(absent.backend.verifyFinishedOccurrence(request(weekly: false)))
+        XCTAssertEqual(absent.entries, [other])
+        XCTAssertTrue(absent.stopped.isEmpty)
+        XCTAssertTrue(absent.cancelled.isEmpty)
+        for record in [snapshot(alarmID, .scheduled), snapshot(derivedID, .scheduled, fixed: date)] {
+            let fixture = FinishInventory(entries: [other, record])
+            assertFailure(fixture.backend.verifyFinishedOccurrence(request(weekly: false)), .nativeUnconfirmed)
+            XCTAssertEqual(fixture.entries, [other, record])
+            XCTAssertTrue(fixture.stopped.isEmpty)
+            XCTAssertTrue(fixture.cancelled.isEmpty)
+        }
+    }
+
+    func testReadOnlyVerificationRejectsUnreadableAndDuplicateInventoryWithoutNativeOperations() {
+        let record = snapshot(alarmID, .scheduled, weekly: weekly)
+        let failed = FinishInventory(entries: [record])
+        failed.failedRead = 1
+        assertFailure(failed.backend.verifyFinishedOccurrence(request()), .inventoryUnavailable)
+        XCTAssertEqual(failed.entries, [record])
+        XCTAssertTrue(failed.stopped.isEmpty)
+        XCTAssertTrue(failed.cancelled.isEmpty)
+        let other = snapshot(UUID(), .scheduled)
+        let duplicate = FinishInventory(entries: [record, other, other])
+        assertFailure(duplicate.backend.verifyFinishedOccurrence(request()), .nativeUnconfirmed)
+        XCTAssertEqual(duplicate.entries, [record, other, other])
+        XCTAssertTrue(duplicate.stopped.isEmpty)
+        XCTAssertTrue(duplicate.cancelled.isEmpty)
+    }
+
+    func testReadOnlyVerificationRejectsInvalidRequestMetadataEvenWhenInventoryMatches() {
+        let invalidWeekly = [NativeOccurrenceSnapshot.Weekly(hour: 24, minute: 15, mondayFirstDays: [0]),
+                             .init(hour: 7, minute: 60, mondayFirstDays: [0]),
+                             .init(hour: 7, minute: 15, mondayFirstDays: []),
+                             .init(hour: 7, minute: 15, mondayFirstDays: [-1, 7])]
+        for expected in invalidWeekly {
+            let record = snapshot(alarmID, .scheduled, weekly: expected)
+            let fixture = FinishInventory(entries: [record])
+            let invalid = AlarmOccurrenceFinishRequest(alarmID: alarmID, weekly: expected,
+                                                       expectedDerivedFireDate: nil, allowsUntrackedDerived: true)
+            assertFailure(fixture.backend.verifyFinishedOccurrence(invalid), .ownershipUnavailable)
+            XCTAssertEqual(fixture.entries, [record])
+            XCTAssertTrue(fixture.stopped.isEmpty)
+            XCTAssertTrue(fixture.cancelled.isEmpty)
+        }
+        let fixture = FinishInventory(entries: [])
+        let invalidDate = AlarmOccurrenceFinishRequest(alarmID: alarmID, weekly: nil,
+                                                       expectedDerivedFireDate: Date(timeIntervalSince1970: .infinity),
+                                                       allowsUntrackedDerived: false)
+        assertFailure(fixture.backend.verifyFinishedOccurrence(invalidDate), .ownershipUnavailable)
+        XCTAssertTrue(fixture.entries.isEmpty)
+        XCTAssertTrue(fixture.stopped.isEmpty)
+        XCTAssertTrue(fixture.cancelled.isEmpty)
+    }
+
     private var derivedID: UUID { AlarmKitScheduler.snoozeID(for: alarmID) }
 
     private func snapshot(

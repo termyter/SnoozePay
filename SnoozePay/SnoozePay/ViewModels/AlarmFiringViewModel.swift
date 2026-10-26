@@ -670,7 +670,8 @@ final class AlarmFiringViewModel {
             }
             if current?.enabled == true, alarm.repeatDays.isEmpty || alarm.repeatMode == .never {
                 alarmRepository.setEnabled(false, id: alarm.id)
-                if let stored = try alarmRepository.fetchChecked(id: alarm.id), stored.enabled {
+                if let stored = try alarmRepository.fetchOccurrenceFinishAlarms().first(where: { $0.id == alarm.id }),
+                   stored.enabled {
                     return .failure(.persistenceFailed)
                 }
             }
@@ -688,7 +689,7 @@ final class AlarmFiringViewModel {
 
     private func checkedAlarmForFinish() throws -> Alarm? {
         let current: Alarm?
-        do { current = try alarmRepository.fetchChecked(id: alarm.id) } catch {
+        do { current = try alarmRepository.fetchOccurrenceFinishAlarms().first(where: { $0.id == alarm.id }) } catch {
             AppLogger.emit(.ui, .error, "Occurrence finish repository state unavailable")
             throw AlarmOccurrenceFinishError.persistenceFailed
         }

@@ -4213,6 +4213,114 @@
         }
       }
     },
+    "firing.finish.recovery.confirmed" : {
+      "comment" : "Quiet acknowledgement only; does not reconstruct a historical morning or billing summary.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish Confirmed"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершение подтверждено"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.message" : {
+      "comment" : "Explains explicit confirmation-time wake semantics and that quiet retry never stops a new native occurrence.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can confirm the pending finish after restarting. A successful retry records a wake at the current time. It does not stop a new alarm."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "После перезапуска можно повторно подтвердить завершение. При успехе подъём отмечается текущим временем. Новое срабатывание не выключается."
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.previous" : {
+      "comment" : "Separate quiet recovery action in a newer firing error; does not finish or dismiss the current firing screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check Previous Finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверить предыдущую попытку"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.retry" : {
+      "comment" : "Explicit action for the exact persisted finish request; no new paid attempt.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm Pending Finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторить завершение"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.title" : {
+      "comment" : "Quiet heading for a persisted unconfirmed alarm finish; does not represent a new firing.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Незавершённая попытка"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.unavailable" : {
+      "comment" : "Unavailable durable finish discovery, distinct from having no pending requests.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not read pending finishes. Your data is preserved. Try again."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать незавершённые попытки. Данные сохранены. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
     "firing.finish.retry" : {
       "comment" : "Retry the same pending finish request, without another paid snooze (#1063).",
       "extractionState" : "manual",

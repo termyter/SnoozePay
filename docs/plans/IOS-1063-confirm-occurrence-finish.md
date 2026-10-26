@@ -93,3 +93,77 @@ legacy-only sweep follows verified native success and preserves unrelated
 notifications and native recurrence. The stale enabled transition is refused
 before ticket/native mutation. An extra Stop→late failure consumer row verifies
 the existing linked refund and no wake until confirmed retry.
+
+## Restart recovery correction after initial CI
+
+Initial CI40403898468 compiled and observed2444complete terminals:2442passed,
+one old fixture failure and one old skip; all72new passed. The old repeat-mode
+fixture used the real shared native scheduler. Local commit1de526a isolates
+both repository/VM with an explicit consumer outcome, preserves old assertions
+and adds success-result assertions. It is not pushed or runtime-proven yet.
+
+Independent post-publication source review found a separate blocking path:
+tracked finish ticket survives cold start but RAM presentation does not; a new
+original firing routes nil-token and correctly cannot resume the old ticket.
+The previous exact-head source APPROVE is superseded by REQUEST_CHANGES. Fix
+reachability without weakening ownership or linking the old token to a new ring.
+
+- Add checked durable ticket enumeration. Discovery validates exact ticket/
+  latest attempt and preserves bytes; it never creates a session or wake.
+- Use a scoped strict alarm snapshot for both normal finish and recovery:
+  distinguish missing from a non-Data value, reject duplicate IDs, preserve
+  corrupt evidence. Unknown storage must not become checked-missing permission.
+- Add native read-only confirmation plus a facade entry accepting the checked
+  current alarm or checked missing row and exact ticket. Require fresh complete
+  inventory, matching scheduled weekly original and absent derived; for explicit
+  one-shot/disabled/missing context require both IDs absent. Any active/unknown/
+  mismatched original, any derived, duplicate/read failure refuses. No native
+  stop/cancel/register/rearm or best-effort original stop on any resume branch.
+- Add a dedicated quiet recovery use case, not a firing VM/controller or queue
+  presentation. Validate exact persisted ticket, latest token, no other owner/
+  running callback; prove native state; recheck local model and use the existing
+  scoped ticket commit. For a confirmed one-shot use a checked persist-only
+  disable with exact captured-model/readback guards and no scheduler calls.
+- Render a persistent quiet action from the Alarms screen's normal load and
+  foreground refresh, including valid tickets whose alarm row is now missing.
+  Use existing list header/streak behavior unchanged when no pending state.
+  Error retains the action after restart. A new firing's error can expose the
+  separate previous-ticket retry without replacing its token, dismissing the
+  firing screen, touching audio or consuming a presenter queue record.
+- Explicit successful retry keeps current confirmation-time wake semantics.
+  No automatic/backdated wake or invented historical morning/billing summary.
+  A quiet confirmation acknowledges completion. New firing remains its own
+  flow. No new debit/refund/reset/count or #1007 identity policy.
+- Add meaningful store/repository/native/facade/use-case/entry regressions,
+  including cold-start enumeration with no alert, exact tracked resume,
+  active-new-original refusal with zero native/audio/queue mutations, corrupt/
+  stale/latest/busy and persistence refusal, missing/one-shot paths and repeats.
+  Preserve all prior IDs/assertions/timeouts and frozen scopes. Source review
+  must converge before the sole ordinary corrective push; initial evidence
+  remains attached and no naked rerun is allowed. Device/UI holds remain.
+
+The existing separate ticket-commit→wake-write crash window is not an atomic
+transaction; exactly-once wake across a second process death is not claimed.
+Future1071 integration still needs civil-clock ownership comparison before the
+normal finish ticket/native path; no combined source/runtime approval here.
+
+## Corrective source handoff
+
+Restart recovery is now implemented as the separate quiet use case/entry above,
+with explicit current-confirmation-time acknowledgement. The isolated firing
+initializer does not read shared recovery state; the production convenience
+initializer wires it explicitly. Recovery alert callbacks verify exact alert
+and ticket ownership before dismissal/proof. Discovery also handles a checked
+missing alarm, and strict snapshots prevent wrong-type storage becoming absence.
+
+50 additional methods cover native5, facade8, storage16, VM1, use-case13 and
+entry7. Total122new relative to actual main; all2390baseline and72initial IDs
+retained, source2512 / expected2494selected, same18paused methods. The72initial
+method bodies/timeouts are unchanged. Six additional RU/ENkeys preserve all496
+initial entries (502total). Full app and17changed test files lint with zero
+errors,109inherited app warnings and19test warnings (18inherited plus one
+facade test-file length warning). No suppressions or test weakening.
+
+All author handoffs are source-only. Final independent exact-head review and
+the sole corrective CI remain required; no runtime success or UI/native-device
+acceptance is claimed by this checkpoint.

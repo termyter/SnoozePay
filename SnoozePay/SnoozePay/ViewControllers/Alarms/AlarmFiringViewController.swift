@@ -22,6 +22,7 @@ class AlarmFiringViewController: UIViewController {
     /// `internal` so the +Audio and +Progressive extensions in sibling files
     /// can read VM state during their UI updates.
     let viewModel: AlarmFiringViewModel
+    var occurrenceRecovery: AlarmOccurrenceRecovering?
 
     // MARK: - Background
 
@@ -299,6 +300,7 @@ class AlarmFiringViewController: UIViewController {
 
     convenience init(alarm: Alarm, snoozeCount: Int = 0) {
         self.init(viewModel: AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount, snoozeSessions: .shared))
+        occurrenceRecovery = AlarmOccurrenceRecovery.shared
     }
 
     /// Designated initializer taking a pre-built view model, so tests can pin
@@ -658,28 +660,6 @@ class AlarmFiringViewController: UIViewController {
         }
         wokeRef = woke
         present(woke, animated: true)
-    }
-
-    private func presentOccurrenceFinishError(_ error: AlarmOccurrenceFinishError) {
-        AppLogger.emit(.ui, .error, "Occurrence finish unconfirmed: \(String(describing: error))")
-        let alert = UIAlertController(
-            title: Localized.text("firing.finish.error.title"),
-            message: Localized.text("firing.finish.error.message"),
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: Localized.text("firing.finish.retry"), style: .default) { [weak self] _ in
-            self?.retryOccurrenceFinish()
-        })
-        alert.addAction(UIAlertAction(title: Localized.text("common.button.close"), style: .cancel))
-        present(alert, animated: true)
-    }
-
-    private func retryOccurrenceFinish() {
-        if let alert = presentedViewController as? UIAlertController {
-            alert.dismiss(animated: true) { [weak self] in self?.dismissTapped() }
-        } else {
-            dismissTapped()
-        }
     }
 
     /// Copy for the morning summary, chosen from what the ledger could confirm.

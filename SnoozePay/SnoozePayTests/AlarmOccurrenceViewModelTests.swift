@@ -148,6 +148,22 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
         XCTAssertTrue(fixture.wakes.wakeDays().isEmpty)
     }
 
+    func testWrongTypeAlarmStoreCannotBecomeMissingAndCancelTheNativeOriginal() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        fixture.defaults.set("wrong-type-alarm-evidence", forKey: "stored_alarms")
+
+        XCTAssertEqual(fixture.model().dismiss(), .failure(.persistenceFailed))
+
+        XCTAssertEqual(fixture.defaults.string(forKey: "stored_alarms"), "wrong-type-alarm-evidence")
+        XCTAssertTrue(fixture.backend.occurrenceFinishRequests.isEmpty)
+        XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty)
+        XCTAssertTrue(fixture.backend.cancelledOriginalIDs.isEmpty)
+        XCTAssertEqual(fixture.backend.finishOriginalStopIDs, [fixture.alarm.id])
+        XCTAssertTrue(fixture.wakes.wakeDays().isEmpty)
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+    }
+
     func testChangedRepositoryScheduleRefusesStaleScreenWithoutStoppingAnotherOwner() throws {
         let fixture = try OccurrenceVMFixture()
         defer { fixture.close() }

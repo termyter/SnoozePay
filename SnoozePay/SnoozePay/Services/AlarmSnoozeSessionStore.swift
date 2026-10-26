@@ -236,6 +236,18 @@ final class AlarmSnoozeSessionStore {
         return ticket
     }
 
+    /// Discovery for an explicit recovery action, including after process death.
+    /// A live callback keeps its row discoverable; validation at retry remains busy.
+    /// Enumeration itself never creates a session, releases quarantine or writes bytes.
+    func pendingOccurrenceFinishes() throws -> [AlarmOccurrenceFinishTicket] {
+        let envelope = try readForOccurrenceFinish()
+        let tickets = envelope.finishRequests ?? []
+        for ticket in tickets {
+            _ = try finishSession(ticket, in: envelope, allowFinished: true)
+        }
+        return tickets.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
     func validateOccurrenceFinish(_ ticket: AlarmOccurrenceFinishTicket) throws -> AlarmSnoozeReceipt? {
         try validatedFinishReceipt(ticket, in: readForOccurrenceFinish())
     }

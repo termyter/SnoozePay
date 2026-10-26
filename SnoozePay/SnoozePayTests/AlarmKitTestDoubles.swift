@@ -35,6 +35,8 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     private(set) var authorizationRequests = 0
     var occurrenceFinishResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
     private(set) var occurrenceFinishRequests: [AlarmOccurrenceFinishRequest] = []
+    var occurrenceVerificationResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
+    private(set) var occurrenceVerificationRequests: [AlarmOccurrenceFinishRequest] = []
     private(set) var lateSnoozeCleanupRequests: [AlarmOccurrenceFinishRequest] = []
     private(set) var finishOriginalStopIDs: [UUID] = []
 
@@ -82,6 +84,11 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
         occurrenceFinishRequests.append(request)
         return occurrenceFinishResult
+    }
+
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        occurrenceVerificationRequests.append(request)
+        return occurrenceVerificationResult
     }
 
     func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {

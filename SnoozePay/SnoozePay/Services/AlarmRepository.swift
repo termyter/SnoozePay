@@ -93,6 +93,13 @@ final class AlarmRepository {
         try queue.sync { try readAll() }
     }
 
+    /// Strict inventory for occurrence completion. Unknown storage types or
+    /// duplicate identities cannot prove that an alarm is missing or disabled.
+    /// This does not change the older repository read/recovery contracts.
+    func fetchOccurrenceFinishAlarms() throws -> [Alarm] {
+        try queue.sync { try readOccurrenceFinishAlarms() }
+    }
+
     /// Lossy read: a decode failure is indistinguishable from "alarm doesn't
     /// exist" (#210). All production call sites moved to `fetchChecked(id:)`
     /// (#271); kept for the tests that pin the lossy contract.
@@ -236,6 +243,32 @@ final class AlarmRepository {
         return true
     }
 
+    /// Persist only after an explicit recovery has independently proved both
+    /// native IDs absent. Unlike a user toggle, this must not cancel a new ring.
+    /// The captured record and complete write readback are checked under the queue.
+    func persistFinishedOneShot(_ expected: Alarm) throws {
+        guard expected.enabled, expected.repeatMode == .never || expected.repeatDays.isEmpty else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        try queue.sync {
+            let alarms = try readOccurrenceFinishAlarms()
+            let matches = alarms.indices.filter { alarms[$0].id == expected.id }
+            guard matches.count == 1, let index = matches.first, alarms[index] == expected else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+            var updated = alarms
+            updated[index] = expected.with(enabled: false)
+            guard persist(updated) else { throw AlarmOccurrenceFinishError.persistenceFailed }
+            do {
+                guard try readOccurrenceFinishAlarms() == updated else {
+                    throw AlarmOccurrenceFinishError.persistenceFailed
+                }
+            } catch {
+                throw AlarmOccurrenceFinishError.persistenceFailed
+            }
+        }
+    }
+
     // MARK: - Recovery
 
     /// Clears the lock and removes the corrupt blob. Used by a future
@@ -250,6 +283,18 @@ final class AlarmRepository {
     }
 
     // MARK: - Private (must be called inside queue.sync)
+
+    private func readOccurrenceFinishAlarms() throws -> [Alarm] {
+        guard defaults.object(forKey: key) == nil || defaults.data(forKey: key) != nil else {
+            throw AlarmOccurrenceFinishError.persistenceFailed
+        }
+        let alarms: [Alarm]
+        do { alarms = try readAll() } catch { throw AlarmOccurrenceFinishError.persistenceFailed }
+        guard Set(alarms.map(\.id)).count == alarms.count else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        return alarms
+    }
 
     /// Returns persisted alarms.
     ///

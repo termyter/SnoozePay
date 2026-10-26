@@ -295,10 +295,186 @@ final class AlarmOccurrenceFacadeTests: XCTestCase {
     }
 }
 
+extension AlarmOccurrenceFacadeTests {
+    func testReadOnlyFacadeProvesQuietNativeStateAndRefusesNewFiringWithoutNativeMutation() throws {
+        let alarm = weeklyAlarm()
+        let (ticket, receipt) = try trackedTicket(alarm)
+        let weekly = NativeOccurrenceSnapshot.Weekly(hour: 7, minute: 15, mondayFirstDays: [0, 6])
+        let original = NativeOccurrenceSnapshot(id: alarm.id, phase: .scheduled, weekly: weekly, fixedDate: nil)
+        let other = NativeOccurrenceSnapshot(id: UUID(), phase: .alerting, weekly: nil, fixedDate: receipt.fireDate)
+        var records = [original, other]
+        var stops: [UUID] = []
+        var cancels: [UUID] = []
+        let native = AlarmKitScheduler(cancelAlarm: { cancels.append($0) }, readAuthorization: { .denied },
+                                       readAlarms: { XCTFail("Expected projected full inventory"); return [] },
+                                       stopAlarm: { stops.append($0) }, readOccurrenceSnapshots: { records })
+        let facade = AlarmScheduler(notificationCenter: InertNotificationCenter(),
+                                    alarmKit: native, snoozeSessions: store)
+        let bytes = defaults.data(forKey: AlarmSnoozeSessionStore.key)
+        assertSuccess(facade.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket))
+        XCTAssertEqual(records, [original, other])
+        records[0] = .init(id: alarm.id, phase: .alerting, weekly: weekly, fixedDate: nil)
+        let activeRecords = records
+        assertFailure(facade.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .nativeUnconfirmed)
+        XCTAssertEqual(records, activeRecords)
+        records = [original, other, .init(id: receipt.systemID, phase: .scheduled,
+                                          weekly: nil, fixedDate: receipt.fireDate)]
+        let derivedRecords = records
+        assertFailure(facade.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .nativeUnconfirmed)
+        XCTAssertEqual(records, derivedRecords)
+        XCTAssertTrue(stops.isEmpty)
+        XCTAssertTrue(cancels.isEmpty)
+        XCTAssertEqual(defaults.data(forKey: AlarmSnoozeSessionStore.key), bytes)
+        XCTAssertEqual(try store.pendingOccurrenceFinish(alarmID: alarm.id), ticket)
+    }
+
+    func testReadOnlyFacadeUsesCheckedCurrentClockAndMissingRowWithTheExactStoredReceipt() throws {
+        let alarm = weeklyAlarm()
+        let (ticket, receipt) = try trackedTicket(alarm)
+        let time = Calendar.current.date(bySettingHour: 8, minute: 30, second: 0, of: alarm.time)!
+        let current = alarm.with(time: time, repeatDays: [1, 4])
+        assertSuccess(scheduler.verifyPendingOccurrenceFinish(currentAlarm: current, ticket: ticket))
+        XCTAssertEqual(backend.verified.last?.weekly,
+                       NativeOccurrenceSnapshot.Weekly(hour: 8, minute: 30, mondayFirstDays: [1, 4]))
+        let candidates: [Alarm?] = [current.with(enabled: false), current.with(repeatMode: .never), nil]
+        for candidate in candidates {
+            assertSuccess(scheduler.verifyPendingOccurrenceFinish(currentAlarm: candidate, ticket: ticket))
+            let request = try XCTUnwrap(backend.verified.last)
+            XCTAssertEqual(request.alarmID, ticket.alarmID)
+            XCTAssertNil(request.weekly)
+            XCTAssertEqual(request.expectedDerivedFireDate, receipt.fireDate)
+            XCTAssertFalse(request.allowsUntrackedDerived)
+        }
+        XCTAssertEqual(backend.verified.count, 4)
+        XCTAssertTrue(backend.finished.isEmpty)
+        XCTAssertTrue(backend.cancelled.isEmpty)
+        XCTAssertTrue(backend.stopped.isEmpty)
+        XCTAssertTrue(backend.originalStops.isEmpty)
+    }
+
+    func testReadOnlyFacadeRefusesForgedWrongAlarmMissingStoreAndCorruptOwnership() throws {
+        let alarm = weeklyAlarm()
+        let ticket = try store.beginOccurrenceFinish(alarmID: alarm.id, reference: nil)
+        let forged = AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarm.id, token: nil)
+        let bytes = defaults.data(forKey: AlarmSnoozeSessionStore.key)
+        assertFailure(scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: forged),
+                      .ownershipUnavailable)
+        assertFailure(scheduler.verifyPendingOccurrenceFinish(currentAlarm: Alarm(), ticket: ticket),
+                      .ownershipUnavailable)
+        let isolated = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
+        assertFailure(isolated.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .sessionUnavailable)
+        XCTAssertEqual(defaults.data(forKey: AlarmSnoozeSessionStore.key), bytes)
+        let corrupt = Data("unreadable pending finish".utf8)
+        defaults.set(corrupt, forKey: AlarmSnoozeSessionStore.key)
+        assertFailure(scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .sessionUnavailable)
+        XCTAssertEqual(defaults.data(forKey: AlarmSnoozeSessionStore.key), corrupt)
+        XCTAssertTrue(backend.verified.isEmpty)
+        XCTAssertTrue(backend.finished.isEmpty)
+        XCTAssertTrue(backend.cancelled.isEmpty)
+        XCTAssertTrue(backend.stopped.isEmpty)
+        XCTAssertTrue(backend.originalStops.isEmpty)
+    }
+
+    func testReadOnlyFacadeRejectsStoredReceiptWithAnotherSystemIDBeforeNativeVerification() throws {
+        let alarm = weeklyAlarm()
+        let token = try store.reserve(alarmID: alarm.id, sessionID: nil, expectedCount: 0)
+        try store.recordCharge(token, alarmID: alarm.id)
+        let receipt = AlarmSnoozeReceipt(systemID: UUID(), fireDate: Date(timeIntervalSince1970: 1_800_000_037))
+        try store.complete(token, alarmID: alarm.id, receipt: receipt)
+        let ticket = try store.beginOccurrenceFinish(alarmID: alarm.id, reference: .token(token))
+        assertFailure(scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket),
+                      .ownershipUnavailable)
+        XCTAssertTrue(backend.verified.isEmpty)
+        XCTAssertTrue(backend.finished.isEmpty)
+        XCTAssertTrue(backend.cancelled.isEmpty)
+        XCTAssertTrue(backend.originalStops.isEmpty)
+        XCTAssertEqual(try store.pendingOccurrenceFinish(alarmID: alarm.id), ticket)
+    }
+
+    func testReadOnlyFacadeWaitsUntilLiveTrackedCallbackEndsWithoutClearingTheTicket() throws {
+        let alarm = weeklyAlarm()
+        let token = try store.reserve(alarmID: alarm.id, sessionID: nil, expectedCount: 0)
+        try store.recordCharge(token, alarmID: alarm.id)
+        let ticket = try store.beginOccurrenceFinish(alarmID: alarm.id, reference: .token(token))
+        assertFailure(scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .busy)
+        XCTAssertTrue(backend.verified.isEmpty)
+        try store.complete(token, alarmID: alarm.id, receipt: nil)
+        assertSuccess(scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket))
+        XCTAssertNil(backend.verified.last?.expectedDerivedFireDate)
+        XCTAssertEqual(backend.verified.last?.allowsUntrackedDerived, false)
+        XCTAssertEqual(try store.pendingOccurrenceFinish(alarmID: alarm.id), ticket)
+        XCTAssertTrue(backend.stopped.isEmpty)
+        XCTAssertTrue(backend.cancelled.isEmpty)
+    }
+
+    func testReadOnlyFacadeWaitsThroughLegacyCompletionBeforeVerifying() throws {
+        let alarm = weeklyAlarm()
+        var ticket: AlarmOccurrenceFinishTicket?
+        var completions = 0
+        scheduler.scheduleSnooze(for: alarm, snoozeCount: 1) { _ in
+            completions += 1
+            guard let ticket else { return XCTFail("Expected pending finish ticket") }
+            self.assertFailure(self.scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .busy)
+        }
+        ticket = try store.beginOccurrenceFinish(alarmID: alarm.id, reference: nil)
+        let activeTicket = try XCTUnwrap(ticket)
+        assertFailure(scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: activeTicket), .busy)
+        XCTAssertTrue(backend.verified.isEmpty)
+        backend.pending[0](.failure(NSError(domain: "ExpectedLegacyFailure", code: 1)))
+        XCTAssertEqual(completions, 1)
+        assertSuccess(scheduler.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: activeTicket))
+        XCTAssertEqual(backend.verified.count, 1)
+        XCTAssertTrue(backend.finished.isEmpty)
+        XCTAssertTrue(backend.cancelled.isEmpty)
+        XCTAssertEqual(backend.stopped, [alarm.id], "Only the original legacy schedule may stop the alarm")
+        XCTAssertTrue(backend.originalStops.isEmpty)
+    }
+
+    func testReadOnlyFacadeSweepsOnlyOwnedLegacyNotificationsAfterVerificationSuccess() throws {
+        let alarm = weeklyAlarm()
+        let owned = ["alarm_\(alarm.id)_once", "alarm_\(alarm.id)_old_burst91", "snooze_\(alarm.id)_burst37"]
+        let other = ["alarm_\(UUID())_once", "snooze_\(alarm.id)unrelated"]
+        let center = OccurrenceLegacyNotifications(identifiers: owned + other)
+        let facade = AlarmScheduler(notificationCenter: center, alarmKit: backend, snoozeSessions: store)
+        let ticket = try store.beginOccurrenceFinish(alarmID: alarm.id, reference: nil)
+        backend.verificationResult = .failure(.inventoryUnavailable)
+        assertFailure(facade.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .inventoryUnavailable)
+        XCTAssertEqual(center.pendingIDs, Set(owned + other))
+        XCTAssertEqual(center.deliveredIDs, Set(owned + other))
+        XCTAssertEqual(center.pendingReads, 0)
+        XCTAssertEqual(center.deliveredReads, 0)
+        backend.verificationResult = .success(())
+        assertSuccess(facade.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket))
+        center.deliverInventoryReads()
+        XCTAssertEqual(center.pendingIDs, Set(other))
+        XCTAssertEqual(center.deliveredIDs, Set(other))
+        XCTAssertTrue(backend.finished.isEmpty)
+        XCTAssertTrue(backend.cancelled.isEmpty)
+        XCTAssertTrue(backend.originalCancels.isEmpty)
+        XCTAssertTrue(backend.stopped.isEmpty)
+        XCTAssertTrue(backend.originalStops.isEmpty)
+    }
+
+    func testReadOnlyVerificationCannotUseAnUnsupportedBackend() throws {
+        let alarm = weeklyAlarm()
+        let ticket = try store.beginOccurrenceFinish(alarmID: alarm.id, reference: nil)
+        let candidates: [AlarmKitScheduling?] = [nil, UnsupportedOccurrenceBackend()]
+        for backend in candidates {
+            let facade = AlarmScheduler(notificationCenter: InertNotificationCenter(),
+                                        alarmKit: backend, snoozeSessions: store)
+            assertFailure(facade.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .unsupported)
+        }
+        let request = AlarmOccurrenceFinishRequest(alarmID: alarm.id, weekly: nil,
+                                                   expectedDerivedFireDate: nil, allowsUntrackedDerived: true)
+        assertFailure(UnsupportedOccurrenceBackend().verifyFinishedOccurrence(request), .unsupported)
+    }
+}
+
 @MainActor
 private final class OccurrenceFacadeBackend: AlarmKitScheduling {
     var isAuthorized = true
     var finished: [AlarmOccurrenceFinishRequest] = []
+    var verified: [AlarmOccurrenceFinishRequest] = []
     var late: [AlarmOccurrenceFinishRequest] = []
     var cancelled: [UUID] = []
     var originalCancels: [UUID] = []
@@ -306,6 +482,7 @@ private final class OccurrenceFacadeBackend: AlarmKitScheduling {
     var originalStops: [UUID] = []
     var pending: [(Result<Void, Error>) -> Void] = []
     var finishResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
+    var verificationResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
     var lateResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
 
     func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(isAuthorized) }
@@ -319,6 +496,10 @@ private final class OccurrenceFacadeBackend: AlarmKitScheduling {
     func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
         finished.append(request)
         return finishResult
+    }
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        verified.append(request)
+        return verificationResult
     }
     func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
         late.append(request)

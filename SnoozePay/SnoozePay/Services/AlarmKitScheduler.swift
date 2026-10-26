@@ -129,6 +129,7 @@ protocol AlarmKitScheduling: AnyObject {
     func stop(_ alarmID: UUID)
 
     func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError>
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError>
     func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError>
     func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError>
 }
@@ -153,6 +154,10 @@ extension AlarmKitScheduling {
     var alertingAlarmIDs: Set<UUID>? { nil }
 
     func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
         .failure(.unsupported)
     }
 
@@ -675,6 +680,20 @@ extension AlarmKitScheduler {
             }
 
             try verifyOccurrenceFinish(in: checkedOccurrenceInventory(), request: request)
+            return .success(())
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.nativeUnconfirmed)
+        }
+    }
+
+    /// Quiet recovery proves the existing postcondition without changing any native registration.
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        do {
+            let snapshots = try checkedOccurrenceInventory()
+            try validateDerived(in: snapshots, request: request)
+            try verifyOccurrenceFinish(in: snapshots, request: request)
             return .success(())
         } catch let error as AlarmOccurrenceFinishError {
             return .failure(error)
