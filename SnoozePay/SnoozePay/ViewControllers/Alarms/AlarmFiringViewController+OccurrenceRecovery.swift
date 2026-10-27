@@ -1,4 +1,5 @@
 import UIKit
+import os
 
 /// Quiet recovery stays separate from this screen's current firing identity.
 extension AlarmFiringViewController {

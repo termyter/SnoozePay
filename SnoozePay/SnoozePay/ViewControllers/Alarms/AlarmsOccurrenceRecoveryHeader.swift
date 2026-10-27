@@ -1,4 +1,5 @@
 import UIKit
+import os
 
 /// Composes durable retry actions with the existing list header. No pending
 /// state leaves the list's ordinary streak header and empty state unchanged.
