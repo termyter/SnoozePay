@@ -43,3 +43,16 @@ three failures at the post-presentation sourceView identity assertion:
   Forward real present once and log passive post-SDK fixture diagnostics.
 - Retain all IDs, identity/cache/payload/domain/money/mount oracles and timeouts.
   No production style, feature/apply/backend/policy change or bare CI rerun.
+
+Second corrective scope after run 40516891073 still found a missing captured
+source view at `e4fcb27`: keep every production byte unchanged and repair only
+the focused four-test harness. Require an actual active scene, key owned window,
+real navigation viewDidAppear and strict hierarchy readiness with new bounded
+five-second observations. Wait for real Share presentation/dismissal completion
+before another owned host; unwind hosts in reverse and restore prior key windows.
+Freeze a strong local actual getter's presence/identity/type/window/scene before
+real present, plus public sourceItem and seed/handoff popover identities; retain
+only weak object back-references. Log no nil/nil comparison as a positive match.
+Keep the wrong-anchor control, strict sourceView/rect/activity/presenter/count,
+data/domain/money assertions, all IDs and old timeouts. The scene deficiency is
+concrete; its causal relationship to the failure still needs new runtime evidence.

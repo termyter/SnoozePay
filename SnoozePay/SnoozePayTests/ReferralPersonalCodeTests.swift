@@ -18,17 +18,22 @@ final class ReferralPersonalCodeTests: XCTestCase {
         var domain: [String: Any] { defaults.persistentDomain(forName: name) ?? [:] }
     }
 
-    private var windows: [UIWindow] = []
+    private var hosts: [ReferralPersonalCodeHost] = []
     private var pasteboardNames: [UIPasteboard.Name] = []
     private var stores: [Store] = []
 
     override func tearDown() {
-        for window in windows {
-            window.rootViewController?.dismiss(animated: false)
-            window.isHidden = true
-            window.rootViewController = nil
+        for host in hosts.reversed() {
+            host.navigation.onDidAppear = nil
+            _ = dismissOwnedPresentation(in: host)
+            host.window.isHidden = true
+            host.window.rootViewController = nil
+            host.window.windowScene = nil
+            if let previous = host.previousKeyWindow, previous.windowScene === host.scene {
+                previous.makeKeyAndVisible()
+            }
         }
-        windows.removeAll()
+        hosts.removeAll()
         pasteboardNames.forEach { UIPasteboard.remove(withName: $0) }
         pasteboardNames.removeAll()
         stores.forEach { $0.defaults.removePersistentDomain(forName: $0.name) }
@@ -45,7 +50,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
             return providerCalls == 1 ? "ABCD23" : "XYZ789"
         }
         XCTAssertEqual(providerCalls, 0, "An unloaded screen must not mint an identity")
-        mount(screen.controller)
+        try mount(screen.controller)
         screen.controller.loadViewIfNeeded()
 
         try assertDisplayedCopyAndShare(screen, code: "ABCD23")
@@ -66,8 +71,8 @@ final class ReferralPersonalCodeTests: XCTestCase {
         XCTAssertEqual(firstCalls, 0)
         XCTAssertEqual(secondCalls, 0)
 
-        mount(first.controller)
-        mount(second.controller)
+        try mount(first.controller)
+        try mount(second.controller)
 
         XCTAssertTrue(labels(in: first.controller.view).contains("ABCD23"))
         XCTAssertFalse(labels(in: first.controller.view).contains("XYZ789"))
@@ -81,7 +86,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
         let store = try makeStore(code: "JKLM23")
         let before = store.domain
         let first = makeScreen { store.service.getMyCode() }
-        mount(first.controller)
+        try mount(first.controller)
         try assertDisplayedCopyAndShare(first, code: "JKLM23")
 
         let reopened = ReferralService(
@@ -89,7 +94,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
             balanceService: makeWallet(defaults: store.defaults)
         )
         let second = makeScreen { reopened.getMyCode() }
-        mount(second.controller)
+        try mount(second.controller)
         XCTAssertTrue(labels(in: second.controller.view).contains("JKLM23"))
         try button("referral.button.copy", in: second.controller).sendActions(for: .touchUpInside)
         XCTAssertEqual(second.pasteboard.string, "JKLM23")
@@ -101,7 +106,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
         let before = store.domain
         let screen = makeScreen { store.service.getMyCode() }
         XCTAssertNil(store.defaults.string(forKey: "referral_my_code"))
-        mount(screen.controller)
+        try mount(screen.controller)
         let stored = try XCTUnwrap(store.defaults.string(forKey: "referral_my_code"))
 
         XCTAssertEqual(stored.count, 6)
@@ -113,7 +118,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
             balanceService: makeWallet(defaults: store.defaults)
         )
         let second = makeScreen { reopened.getMyCode() }
-        mount(second.controller)
+        try mount(second.controller)
         XCTAssertTrue(labels(in: second.controller.view).contains(stored))
         var after = store.domain
         after.removeValue(forKey: "referral_my_code")
@@ -134,14 +139,56 @@ final class ReferralPersonalCodeTests: XCTestCase {
         return Screen(controller: controller, pasteboard: pasteboard, share: share)
     }
 
-    private func mount(_ controller: UIViewController) {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-        window.rootViewController = controller
-        windows.append(window)
-        window.isHidden = false
-        controller.loadViewIfNeeded()
+    private func mount(_ controller: UIViewController) throws {
+        if let previous = hosts.last {
+            _ = try XCTUnwrap(dismissOwnedPresentation(in: previous) ? previous : nil,
+                              "The owned Share presentation must close before another host opens")
+        }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }, "A real active test-host scene is required")
+        let previousKeyWindow = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
+        let navigation = ReferralPersonalCodeNavigationController(rootViewController: controller)
+        let host = ReferralPersonalCodeHost(window: window, scene: scene, navigation: navigation,
+                                           previousKeyWindow: previousKeyWindow)
+        hosts.append(host)
+        let appeared = expectation(description: "real Referral navigation host appeared")
+        navigation.onDidAppear = { appeared.fulfill() }
+        defer { navigation.onDidAppear = nil }
+        window.rootViewController = navigation
+        window.makeKeyAndVisible()
         window.layoutIfNeeded()
+        _ = try XCTUnwrap(XCTWaiter.wait(for: [appeared], timeout: 5) == .completed ? host : nil,
+                          "UIKit must deliver the owned navigation host's real viewDidAppear")
         controller.view.layoutIfNeeded()
+        XCTAssertEqual(scene.activationState, .foregroundActive)
+        XCTAssertTrue(window.windowScene === scene)
+        XCTAssertTrue(window.isKeyWindow)
+        XCTAssertFalse(window.isHidden)
+        XCTAssertGreaterThan(navigation.appearanceCount, 0)
+        XCTAssertTrue(navigation.topViewController === controller)
+        XCTAssertTrue(controller.parent === navigation)
+        XCTAssertTrue(navigation.viewIfLoaded?.window === window)
+        XCTAssertTrue(controller.viewIfLoaded?.window === window)
+        let ready = scene.activationState == .foregroundActive && window.windowScene === scene
+            && window.isKeyWindow && !window.isHidden && navigation.appearanceCount > 0
+            && navigation.topViewController === controller && controller.parent === navigation
+            && navigation.viewIfLoaded?.window === window && controller.viewIfLoaded?.window === window
+        _ = try XCTUnwrap(ready ? host : nil, "Do not share from an unready scene/navigation hierarchy")
+    }
+
+    private func dismissOwnedPresentation(in host: ReferralPersonalCodeHost) -> Bool {
+        guard let presented = host.navigation.presentedViewController
+            ?? host.navigation.topViewController?.presentedViewController else { return true }
+        let dismissed = expectation(description: "owned Share presentation dismissed")
+        presented.dismiss(animated: false) { dismissed.fulfill() }
+        let completed = XCTWaiter.wait(for: [dismissed], timeout: 5) == .completed
+        XCTAssertTrue(completed, "UIKit must finish dismissing the owned presentation")
+        let cleared = host.navigation.presentedViewController == nil
+            && host.navigation.topViewController?.presentedViewController == nil
+        XCTAssertTrue(cleared, "The old host must not retain a presented controller")
+        return completed && cleared
     }
 
     private func assertDisplayedCopyAndShare(_ screen: Screen, code: String) throws {
@@ -153,6 +200,9 @@ final class ReferralPersonalCodeTests: XCTestCase {
         let expectedRect = expectedView.bounds
         XCTAssertFalse(expectedView === screen.share.wrongAnchor)
         XCTAssertNotEqual(expectedRect, screen.share.wrongRect)
+        let presented = expectation(description: "real owned Share presentation completed")
+        screen.share.onPresentationCompleted = { presented.fulfill() }
+        defer { screen.share.onPresentationCompleted = nil }
         try button("referral.button.share", in: screen.controller).sendActions(for: .touchUpInside)
         XCTAssertEqual(screen.share.items.count, 1)
         let items = try XCTUnwrap(screen.share.items.first)
@@ -170,6 +220,10 @@ final class ReferralPersonalCodeTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(screen.share.sourceViewAtHandoff) === expectedView)
         XCTAssertEqual(try XCTUnwrap(screen.share.sourceRectAtHandoff), expectedRect)
         XCTAssertEqual(try XCTUnwrap(screen.share.presenterBoundsAtHandoff), expectedRect)
+        XCTAssertFalse(screen.share.sourceGetterWasNil)
+        XCTAssertTrue(screen.share.sourceGetterMatchedPresenter)
+        _ = try XCTUnwrap(XCTWaiter.wait(for: [presented], timeout: 5) == .completed ? activity : nil,
+                          "Real Share presentation must finish before another host or teardown")
     }
 
     private func button(_ key: String, in controller: UIViewController) throws -> SPButton {
@@ -221,6 +275,7 @@ private final class ReferralPersonalCodeShareCapture {
     private(set) var seededPopoverExists = false
     private(set) weak var seededSourceView: UIView?
     private(set) var seededSourceRect: CGRect?
+    private var seededPopoverID: ObjectIdentifier?
     private(set) var handoffCount = 0
     private(set) var hadPopoverAtHandoff = false
     private(set) weak var presenterAtHandoff: UIViewController?
@@ -228,6 +283,9 @@ private final class ReferralPersonalCodeShareCapture {
     private(set) weak var sourceViewAtHandoff: UIView?
     private(set) var sourceRectAtHandoff: CGRect?
     private(set) var presenterBoundsAtHandoff: CGRect?
+    private(set) var sourceGetterWasNil = true
+    private(set) var sourceGetterMatchedPresenter = false
+    var onPresentationCompleted: (() -> Void)?
 
     func makeController(items: [Any]) -> UIActivityViewController {
         self.items.append(items)
@@ -240,6 +298,7 @@ private final class ReferralPersonalCodeShareCapture {
             seededPopoverExists = true
             seededSourceView = popover.sourceView
             seededSourceRect = popover.sourceRect
+            seededPopoverID = ObjectIdentifier(popover)
         }
         self.controller = controller
         return controller
@@ -251,23 +310,87 @@ private final class ReferralPersonalCodeShareCapture {
         presenterAtHandoff = presenter
         activityAtHandoff = activity
         let popover = activity.popoverPresentationController
+        let observedSource = popover?.sourceView
+        let presenterView = presenter.viewIfLoaded
+        let sourceItem = popover?.sourceItem.map { $0 as AnyObject }
         hadPopoverAtHandoff = popover != nil
-        sourceViewAtHandoff = popover?.sourceView
+        sourceViewAtHandoff = observedSource
         sourceRectAtHandoff = popover?.sourceRect
-        presenterBoundsAtHandoff = presenter.viewIfLoaded?.bounds
-        let preMatchesPresenter = sourceViewAtHandoff === presenter.viewIfLoaded
+        presenterBoundsAtHandoff = presenterView?.bounds
+        sourceGetterWasNil = observedSource == nil
+        sourceGetterMatchedPresenter = observedSource != nil && presenterView != nil && observedSource === presenterView
+        let sourceID = observedSource.map { ObjectIdentifier($0) }
+        let weakAgrees = observedSource != nil && sourceViewAtHandoff != nil && observedSource === sourceViewAtHandoff
+        let preTrace = "sourceNil=\(sourceGetterWasNil) sourceMatch=\(sourceGetterMatchedPresenter) "
+            + "sourceID=\(String(describing: sourceID)) weakAgrees=\(weakAgrees) "
+            + "source={\(describe(view: observedSource))} "
+            + "presenter=\(describe(object: presenter)) presenterView={\(describe(view: presenterView))} "
+            + "activity=\(describe(object: activity)) style=\(activity.modalPresentationStyle.rawValue) "
+            + "seedPopover=\(String(describing: seededPopoverID)) "
+            + "handoffPopover=\(describe(object: popover)) sourceItem=\(describe(object: sourceItem)) "
+            + "rect=\(String(describing: sourceRectAtHandoff)) bounds=\(String(describing: presenterBoundsAtHandoff))"
 
-        presenter.present(activity, animated: true)
+        presenter.present(activity, animated: true) { [weak self] in
+            let completed = self?.onPresentationCompleted
+            self?.onPresentationCompleted = nil
+            completed?()
+        }
 
         let postPopover = activity.popoverPresentationController
         let postSource = postPopover?.sourceView
-        let postType = postSource.map { String(describing: type(of: $0)) } ?? "nil"
-        print("ReferralShareHandoff count=\(handoffCount) prePopover=\(hadPopoverAtHandoff) "
-              + "preSourceNil=\(sourceViewAtHandoff == nil) preMatchesPresenter=\(preMatchesPresenter) "
-              + "preRect=\(String(describing: sourceRectAtHandoff)) "
-              + "preBounds=\(String(describing: presenterBoundsAtHandoff)) "
-              + "postPopover=\(postPopover != nil) postSourceNil=\(postSource == nil) "
-              + "postSourceType=\(postType) postMatchesHandoff=\(postSource === sourceViewAtHandoff) "
+        let postHandoffSource = sourceViewAtHandoff
+        let postMatches = postHandoffSource != nil && postSource != nil && postHandoffSource === postSource
+        print("ReferralShareHandoff count=\(handoffCount) prePopover=\(hadPopoverAtHandoff) pre={\(preTrace)} "
+              + "postPopover=\(describe(object: postPopover)) postSource={\(describe(view: postSource))} "
+              + "postMatchesHandoff=\(postMatches) "
               + "postRect=\(String(describing: postPopover?.sourceRect))")
+    }
+
+    private func describe(object: AnyObject?) -> String {
+        object.map { "\(ObjectIdentifier($0)):\(String(describing: type(of: $0)))" } ?? "nil"
+    }
+
+    private func describe(view: UIView?) -> String {
+        guard let view else { return "nil" }
+        let window = view.window
+        let scene = window?.windowScene
+        let navigation = (presenterAtHandoff as? ReferralViewController)?.navigationController
+        let ownsPresenter = navigation?.topViewController != nil && presenterAtHandoff != nil
+            && navigation?.topViewController === presenterAtHandoff
+        return "view=\(describe(object: view)) window=\(describe(object: window)) "
+            + "scene=\(describe(object: scene)) active=\(scene?.activationState.rawValue ?? -1) "
+            + "key=\(window?.isKeyWindow ?? false) hidden=\(window?.isHidden ?? true) "
+            + "navOwnsPresenter=\(ownsPresenter) "
+            + "appearances=\((navigation as? ReferralPersonalCodeNavigationController)?.appearanceCount ?? 0)"
+    }
+}
+
+@MainActor
+private final class ReferralPersonalCodeHost {
+    let window: UIWindow
+    let scene: UIWindowScene
+    let navigation: ReferralPersonalCodeNavigationController
+    weak var previousKeyWindow: UIWindow?
+
+    init(window: UIWindow, scene: UIWindowScene, navigation: ReferralPersonalCodeNavigationController,
+         previousKeyWindow: UIWindow?) {
+        self.window = window
+        self.scene = scene
+        self.navigation = navigation
+        self.previousKeyWindow = previousKeyWindow
+    }
+}
+
+@MainActor
+private final class ReferralPersonalCodeNavigationController: UINavigationController {
+    private(set) var appearanceCount = 0
+    var onDidAppear: (() -> Void)?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        appearanceCount += 1
+        let appeared = onDidAppear
+        onDidAppear = nil
+        appeared?()
     }
 }
