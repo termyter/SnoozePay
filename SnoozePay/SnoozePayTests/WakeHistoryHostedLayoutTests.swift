@@ -266,7 +266,8 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         print(line)
         recordVisibilityTrace(WakeHistoryVisibilityTraceContext(
             label: label, scope: scope, fixture: fixture, phase: phase, frame: frame,
-            window: window, tolerance: tolerance, font: font, visibility: visibility
+            window: window, tolerance: tolerance, font: font, visibility: visibility,
+            windowSafe: windowSafe, controllerSafe: controllerSafe, scopeFrame: scopeFrame
         ))
         XCTAssertTrue(label.isDescendant(of: fixture.controller.view))
         XCTAssertTrue(valid(label.bounds), phase)
@@ -507,6 +508,9 @@ private struct WakeHistoryVisibilityTraceContext {
     let tolerance: CGFloat
     let font: UIFont
     let visibility: Bool
+    let windowSafe: CGRect
+    let controllerSafe: CGRect
+    let scopeFrame: CGRect
 }
 
 private extension WakeHistoryHostedLayoutTests {
@@ -606,14 +610,9 @@ private extension WakeHistoryHostedLayoutTests {
         let nodes = traceNodes(from: context.label, frame: context.frame,
                                window: window, tolerance: context.tolerance)
         let reached = (nodes.last?["objectID"] as? String) == viewID(window)
-        let windowContains = window.safeAreaLayoutGuide.layoutFrame
-            .insetBy(dx: -context.tolerance, dy: -context.tolerance).contains(context.frame)
-        let controllerContains = fixture.controller.viewIfLoaded.map {
-            $0.convert($0.safeAreaLayoutGuide.layoutFrame, to: window)
-                .insetBy(dx: -context.tolerance, dy: -context.tolerance).contains(context.frame)
-        } ?? false
-        let scopeContains = context.scope.convert(context.scope.bounds, to: window)
-            .insetBy(dx: -context.tolerance, dy: -context.tolerance).contains(context.frame)
+        let windowContains = context.windowSafe.contains(context.frame)
+        let controllerContains = context.controllerSafe.contains(context.frame)
+        let scopeContains = context.scopeFrame.contains(context.frame)
         let rejectedBar = visibilityObservation.bars.first { ($0["originalPredicateRejected"] as? Bool) == true }
         let firstFailure = originalVisibilityFailure(windowContains: windowContains,
                                                     controllerContains: controllerContains,
@@ -639,6 +638,9 @@ private extension WakeHistoryHostedLayoutTests {
             "firstActualAncestorRejection": visibilityObservation.ancestorRejection,
             "originalAncestorHelperReachedWindow": visibilityObservation.ancestorReachedWindow,
             "completeReadOnlyChainReachedWindow": reached, "firstActualPredicateFailure": firstFailure,
+            "originalWindowSafe": traceRect(context.windowSafe),
+            "originalControllerSafe": traceRect(context.controllerSafe),
+            "originalScopeFrame": traceRect(context.scopeFrame),
             "windowSafeContains": windowContains, "controllerSafeContains": controllerContains,
             "scopeContains": scopeContains, "barHelperVisited": visibilityObservation.barHelperVisited,
             "navigationMissingAtOriginalHelper": visibilityObservation.navigationMissing,
