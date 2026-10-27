@@ -78,6 +78,61 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         }
     }
 
+    func testBarOcclusionRequiresAttachmentAndRejectsVisiblePublicBars() throws {
+        let fixture = try makeFixture(style: .light, unreadableDays: false)
+        let window = try XCTUnwrap(fixture.window)
+        let navigation = try XCTUnwrap(fixture.navigation)
+        let prepared = fixture.domain
+        let middle = CGRect(x: window.bounds.midX - 5, y: window.bounds.midY - 5, width: 10, height: 10)
+        let detached = UIView(frame: window.bounds)
+        XCTAssertNil(detached.window)
+        XCTAssertFalse(detached.isHidden)
+        XCTAssertEqual(detached.alpha, 1)
+        let detachedRect = detached.convert(detached.bounds, to: window)
+        XCTAssertTrue(valid(detachedRect))
+        XCTAssertTrue(detachedRect.intersects(middle))
+        try assertBarCalibration(fixture, phase: "generic-detached-overlap", frame: middle,
+                                 expectedClear: true, subject: detached)
+        XCTAssertTrue(navigation.isNavigationBarHidden)
+        XCTAssertTrue(navigation.isToolbarHidden)
+        try assertBarCalibration(fixture, phase: "hidden-initial-center", frame: middle, expectedClear: true)
+
+        navigation.setNavigationBarHidden(false, animated: false)
+        layout(fixture)
+        let navigationBar = navigation.navigationBar
+        try assertAttachedVisibleBar(navigationBar, window: window)
+        XCTAssertFalse(navigation.isNavigationBarHidden)
+        let navigationOverlap = navigationBar.convert(navigationBar.bounds, to: window).intersection(window.bounds)
+        try assertBarCalibration(fixture, phase: "visible-navigation-overlap",
+                                 frame: navigationOverlap, expectedClear: false)
+
+        fixture.controller.toolbarItems = [UIBarButtonItem(title: "Owned QA", style: .plain, target: nil, action: nil)]
+        navigation.setToolbarHidden(false, animated: false)
+        layout(fixture)
+        let toolbar = try XCTUnwrap(navigation.toolbar)
+        try assertAttachedVisibleBar(toolbar, window: window)
+        try assertAttachedVisibleBar(navigationBar, window: window)
+        XCTAssertFalse(navigation.isToolbarHidden)
+        let toolbarOverlap = toolbar.convert(toolbar.bounds, to: window).intersection(window.bounds)
+        let visibleNavigationRect = navigationBar.convert(navigationBar.bounds, to: window)
+        XCTAssertFalse(visibleNavigationRect.intersects(toolbarOverlap))
+        try assertBarCalibration(fixture, phase: "visible-toolbar-overlap",
+                                 frame: toolbarOverlap, expectedClear: false)
+
+        XCTAssertFalse(visibleNavigationRect.intersects(middle))
+        XCTAssertFalse(toolbarOverlap.intersects(middle))
+        try assertBarCalibration(fixture, phase: "visible-middle-clear", frame: middle, expectedClear: true)
+
+        navigation.setNavigationBarHidden(true, animated: false)
+        navigation.setToolbarHidden(true, animated: false)
+        layout(fixture)
+        XCTAssertTrue(navigation.isNavigationBarHidden)
+        XCTAssertTrue(navigation.isToolbarHidden)
+        try assertBarCalibration(fixture, phase: "hidden-again-toolbar-overlap",
+                                 frame: toolbarOverlap, expectedClear: true)
+        XCTAssertEqual(fixture.domain, prepared, "Public bar calibration must not change owned model data")
+    }
+
     private func makeFixture(style: UIUserInterfaceStyle, unreadableDays: Bool) throws -> WakeHistoryLayoutFixture {
         let fixture = try WakeHistoryLayoutFixture(style: style)
         fixtures.append(fixture)
@@ -315,22 +370,13 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
             return false
         }
         let navigationBar: UIView = navigation.navigationBar
-        if observeVisibilityPredicate(!navigationBar.isHidden, node: viewID(navigationBar),
-                                      predicate: "navigationBar.visible")
-            && observeVisibilityPredicate(navigationBar.alpha > 0, node: viewID(navigationBar),
-                                          predicate: "navigationBar.alpha")
-            && observeVisibilityPredicate(navigationBar.convert(navigationBar.bounds, to: window).intersects(frame),
-                                          node: viewID(navigationBar), predicate: "navigationBar.intersects") {
+        if barOccludes(navigationBar, frame: frame, window: window, role: "navigationBar") {
             observeBar(navigationBar, role: "navigationBar", rejects: true, frame: frame, window: window)
             return false
         }
         observeBar(navigationBar, role: "navigationBar", rejects: false, frame: frame, window: window)
         let toolbar: UIToolbar? = navigation.toolbar
-        if let toolbar,
-           observeVisibilityPredicate(!toolbar.isHidden, node: viewID(toolbar), predicate: "toolbar.visible")
-            && observeVisibilityPredicate(toolbar.alpha > 0, node: viewID(toolbar), predicate: "toolbar.alpha")
-            && observeVisibilityPredicate(toolbar.convert(toolbar.bounds, to: window).intersects(frame),
-                                          node: viewID(toolbar), predicate: "toolbar.intersects") {
+        if let toolbar, barOccludes(toolbar, frame: frame, window: window, role: "toolbar") {
             observeBar(toolbar, role: "toolbar", rejects: true, frame: frame, window: window)
             return false
         }
@@ -514,6 +560,101 @@ private struct WakeHistoryVisibilityTraceContext {
 }
 
 private extension WakeHistoryHostedLayoutTests {
+    /// Shared operation for the real bars and the controlled ordinary detached UIView.
+    func barOccludes(_ bar: UIView, frame: CGRect, window: UIWindow, role: String) -> Bool {
+        observeVisibilityPredicate(!bar.isHidden, node: viewID(bar), predicate: role + ".visible")
+            && observeVisibilityPredicate(bar.alpha > 0, node: viewID(bar), predicate: role + ".alpha")
+            && observeVisibilityPredicate(barHasVisibleOwnedAncestors(bar, window: window),
+                                          node: viewID(bar), predicate: role + ".attachedVisibleAncestors")
+            && observeVisibilityPredicate(bar.convert(bar.bounds, to: window).intersects(frame),
+                                          node: viewID(bar), predicate: role + ".intersects")
+    }
+
+    /// A detached object, or a bar below a hidden ancestor, cannot paint over this owned window.
+    func barHasVisibleOwnedAncestors(_ bar: UIView, window: UIWindow) -> Bool {
+        guard bar.window === window else { return false }
+        var current = bar.superview
+        while let ancestor = current {
+            guard !ancestor.isHidden, ancestor.alpha > 0 else { return false }
+            if ancestor === window { return true }
+            current = ancestor.superview
+        }
+        return false
+    }
+
+    func assertAttachedVisibleBar(_ bar: UIView, window: UIWindow) throws {
+        let attachedWindow = try XCTUnwrap(bar.window, "The positive control needs a real attached public bar")
+        XCTAssertTrue(attachedWindow === window)
+        XCTAssertTrue(valid(bar.bounds))
+        XCTAssertTrue(bar.isDescendant(of: window))
+        var current: UIView? = bar
+        var reached = false
+        while let view = current {
+            XCTAssertFalse(view.isHidden)
+            XCTAssertGreaterThan(view.alpha, 0)
+            if view === window { reached = true; break }
+            current = view.superview
+        }
+        XCTAssertTrue(reached)
+    }
+
+    func assertBarCalibration(
+        _ fixture: WakeHistoryLayoutFixture, phase: String, frame: CGRect,
+        expectedClear: Bool, subject: UIView? = nil
+    ) throws {
+        try assertReady(fixture)
+        let window = try XCTUnwrap(fixture.window)
+        let navigation = try XCTUnwrap(fixture.navigation)
+        XCTAssertTrue(valid(frame))
+        XCTAssertTrue(window.bounds.contains(frame))
+        visibilityObservation = WakeHistoryVisibilityObservation()
+        let actualClear = subject.map {
+            !barOccludes($0, frame: frame, window: window, role: "detachedControl")
+        } ?? clearOfBars(frame, fixture: fixture, window: window)
+        // Explicit public component observations AFTER the helper; never used by H1/H2 tracing.
+        let publicBars: [[String: Any]]
+        if subject == nil {
+            let navigationBar: UIView = navigation.navigationBar
+            let toolbar = try XCTUnwrap(navigation.toolbar)
+            publicBars = [navigationBar, toolbar as UIView].map { bar in
+                ["objectID": viewID(bar), "runtimeClass": String(reflecting: type(of: bar)),
+                 "convertedRect": traceRect(bar.convert(bar.bounds, to: window)),
+                 "intersectsPotentialRect": bar.convert(bar.bounds, to: window).intersects(frame),
+                 "nodes": traceNodes(from: bar, frame: frame, window: window, tolerance: 0)] as [String: Any]
+            }
+        } else {
+            publicBars = []
+        }
+        let methodName = "testBarOcclusionRequiresAttachmentAndRejectsVisiblePublicBars"
+        let payload: [String: Any] = [
+            "schema": 1, "method": name.contains(methodName)
+                ? "WakeHistoryHostedLayoutTests/" + methodName : "UNRECOGNIZED_TEST_CASE",
+            "actualTestCaseName": name, "style": fixture.style.rawValue, "phase": phase,
+            "ownedWindowID": viewID(window), "windowBounds": traceRect(window.bounds),
+            "key": window.isKeyWindow, "active": window.windowScene?.activationState == .foregroundActive,
+            "potentialRect": traceRect(frame), "expectedClear": expectedClear, "actualClear": actualClear,
+            "operation": subject == nil ? "clearOfBars" : "shared-barOcclusion",
+            "controlledSubjectID": viewID(subject), "controlledSubjectNodes": subject.map {
+                traceNodes(from: $0, frame: frame, window: window, tolerance: 0)
+            } ?? [],
+            "navigationBarHiddenMode": navigation.isNavigationBarHidden,
+            "toolbarHiddenMode": navigation.isToolbarHidden,
+            "actualPredicateEvents": visibilityObservation.predicateEvents,
+            "naturallyObservedBars": visibilityObservation.bars, "controlledPublicBars": publicBars,
+            "navigationBarObservation": visibilityObservation.navigationBarStatus,
+            "toolbarObservation": visibilityObservation.toolbarStatus
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        let line = "WakeHistoryBarCalibration " + json
+        let attachment = XCTAttachment(string: line)
+        attachment.name = "Wake bar calibration \(phase)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print(line)
+        XCTAssertEqual(actualClear, expectedClear, "\(phase): public bar presence must determine occlusion")
+    }
+
     /// Identity observer: values are evaluated once by the original short-circuit expression.
     func observeVisibilityPredicate(_ value: Bool, node: String, predicate: String) -> Bool {
         visibilityObservation.predicateEvents.append([
@@ -590,6 +731,7 @@ private extension WakeHistoryHostedLayoutTests {
             "convertedRect": traceRect(bar.convert(bar.bounds, to: window)),
             "intersectsLabel": bar.convert(bar.bounds, to: window).intersects(frame),
             "originalPredicateRejected": rejects,
+            "attachedVisibleAncestorEligibilitySnapshot": barHasVisibleOwnedAncestors(bar, window: window),
             "effectiveAttachedAndAncestorVisible": bar.window === window && allAncestorsVisible,
             "clipTolerance": "0"
         ])
