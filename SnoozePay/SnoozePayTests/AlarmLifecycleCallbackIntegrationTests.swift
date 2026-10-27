@@ -72,8 +72,11 @@ final class AlarmLifecycleCallbackIntegrationTests: XCTestCase {
             XCTAssertTrue(backend.registered.isEmpty)
             attemptRegistration()
             self.assertBothBusy(scheduler, alarm: civil, ticket: pending)
-            XCTAssertThrowsError(try scheduler.recoverCorruptAlarms {}.get()) {
-                XCTAssertEqual($0 as? AlarmRecoveryError, .busy)
+            switch scheduler.recoverCorruptAlarms(commit: {}) {
+            case .success:
+                XCTFail("Recovery must remain busy through its synchronous commit")
+            case .failure(let error):
+                XCTAssertEqual(error, .busy)
             }
         }.get()
         XCTAssertEqual(commits, 1)
