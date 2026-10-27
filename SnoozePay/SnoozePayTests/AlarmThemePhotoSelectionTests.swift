@@ -122,15 +122,27 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
         XCTAssertEqual(harness.completions.count, 1, "Only the navigation owner may start a photo load")
     }
 
-    func testFirstPhotoCompletionAfterNavigationReturnsCannotReviveTheDepartedRequest() {
-        let harness = makeHarness(modal: true)
+    func testFirstPhotoCompletionAfterNavigationReturnsCannotReviveTheDepartedRequest() throws {
+        let scene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .first { $0.activationState == .foregroundActive },
+            "Navigation lifecycle requires the test host's active scene"
+        )
+        let harness = makeHarness(scene: scene)
         defer {
             harness.navigation.onDidShow = nil
             harness.close()
         }
         XCTAssertTrue(harness.controller.view.window === harness.window)
+        XCTAssertTrue(harness.window.windowScene === scene)
+        XCTAssertEqual(scene.activationState, .foregroundActive)
+        XCTAssertTrue(harness.window.isKeyWindow)
+        XCTAssertFalse(harness.window.isHidden)
+        XCTAssertTrue(harness.navigation.viewIfLoaded?.window === harness.window)
         harness.startPhoto(harness.firstImage)
         harness.navigation.delegate = harness.navigation
+        XCTAssertTrue(harness.navigation.delegate === harness.navigation)
+        harness.traceNavigation("before-push")
         let foreign = UIViewController()
         let foreignShown = expectation(description: "foreign navigation owner shown")
         harness.navigation.onDidShow = { shown in
@@ -138,6 +150,7 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
         }
         harness.navigation.pushViewController(foreign, animated: false)
         wait(for: [foreignShown], timeout: 5)
+        harness.traceNavigation("after-push-wait")
         XCTAssertTrue(harness.navigation.topViewController === foreign)
 
         let pickerShown = expectation(description: "theme picker shown again")
@@ -146,6 +159,7 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
         }
         harness.navigation.popViewController(animated: false)
         wait(for: [pickerShown], timeout: 5)
+        harness.traceNavigation("after-return-wait")
         XCTAssertTrue(harness.navigation.topViewController === harness.controller)
         let manualPopCalls = harness.navigation.popCalls
         XCTAssertEqual(manualPopCalls, 1)
@@ -292,9 +306,9 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
         XCTAssertNil(harness.controller.presentedViewController)
     }
 
-    private func makeHarness(modal: Bool = false) -> PhotoSelectionHarness {
+    private func makeHarness(modal: Bool = false, scene: UIWindowScene? = nil) -> PhotoSelectionHarness {
         let harness = PhotoSelectionHarness()
-        harness.mount(modal: modal)
+        harness.mount(modal: modal, scene: scene)
         return harness
     }
 
@@ -322,6 +336,8 @@ private final class PhotoSelectionHarness {
     var selectedThemes: [AlarmTheme] = []
     var presentedPickers: [PHPickerViewController] = []
     var rejectFirstSave = false
+    private weak var previousKeyWindow: UIWindow?
+    private var usesVisibleScene = false
 
     lazy var navigation = PhotoSelectionNavigationController(rootViewController: root)
     lazy var controller = AlarmThemePickerViewController(
@@ -337,10 +353,19 @@ private final class PhotoSelectionHarness {
         presentPhotoPicker: { [weak self] in self?.presentedPickers.append($0) }
     )
 
-    func mount(modal: Bool) {
+    func mount(modal: Bool, scene: UIWindowScene? = nil) {
+        let appeared = scene.map { _ in XCTestExpectation(description: "visible navigation host appeared") }
+        if let scene {
+            previousKeyWindow = scene.windows.first { $0.isKeyWindow }
+            window.windowScene = scene
+            window.frame = scene.coordinateSpace.bounds
+            usesVisibleScene = true
+            navigation.onTrace = { [weak self] in self?.traceNavigation($0) }
+            navigation.onDidAppear = { appeared?.fulfill() }
+        }
         navigation.setViewControllers([root, controller], animated: false)
         window.rootViewController = modal ? UIViewController() : navigation
-        window.isHidden = false
+        if usesVisibleScene { window.makeKeyAndVisible() } else { window.isHidden = false }
         window.layoutIfNeeded()
         if modal {
             guard let host = window.rootViewController else {
@@ -355,11 +380,42 @@ private final class PhotoSelectionHarness {
             XCTAssertTrue(controller.parent === navigation)
         }
         controller.loadViewIfNeeded()
+        if let appeared {
+            // UIKit must deliver the real appearance before a request exists.
+            // Hierarchy attachment and modal completion alone did not prove it.
+            XCTAssertEqual(XCTWaiter.wait(for: [appeared], timeout: 5), .completed)
+            navigation.onDidAppear = nil
+            traceNavigation("mounted")
+        }
     }
 
     func close() {
+        navigation.onDidAppear = nil
         window.isHidden = true
         window.rootViewController = nil
+        if usesVisibleScene {
+            window.windowScene = nil
+            previousKeyWindow?.makeKeyAndVisible()
+            previousKeyWindow = nil
+            traceNavigation("closed")
+            navigation.onTrace = nil
+        }
+    }
+
+    func traceNavigation(_ phase: String) {
+        guard usesVisibleScene else { return }
+        // Only fixture identities/lifecycle state; no user or image contents.
+        let activation = window.windowScene?.activationState.rawValue ?? -1
+        let mounted = navigation.viewIfLoaded?.window === window
+        let pickerOnTop = navigation.topViewController === controller
+        let ownsDelegate = navigation.delegate === navigation
+        let didShow = navigation.responds(to: #selector(
+            UINavigationControllerDelegate.navigationController(_:didShow:animated:)
+        ))
+        print("PhotoNavigation \(ObjectIdentifier(navigation)) \(phase) scene=\(activation) "
+              + "key=\(window.isKeyWindow) hidden=\(window.isHidden) mounted=\(mounted) "
+              + "pickerTop=\(pickerOnTop) delegate=\(ownsDelegate) respondsDidShow=\(didShow) "
+              + "transition=\(navigation.transitionCoordinator != nil)")
     }
 
     func startPhoto(_ image: UIImage) {
@@ -378,6 +434,19 @@ private final class PhotoSelectionHarness {
 private final class PhotoSelectionNavigationController: UINavigationController, UINavigationControllerDelegate {
     private(set) var popCalls = 0
     var onDidShow: ((UIViewController) -> Void)?
+    var onDidAppear: (() -> Void)?
+    var onTrace: ((String) -> Void)?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        onTrace?("viewDidAppear")
+        onDidAppear?()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        onTrace?("viewDidDisappear")
+    }
 
     override func popViewController(animated: Bool) -> UIViewController? {
         popCalls += 1
@@ -387,6 +456,13 @@ private final class PhotoSelectionNavigationController: UINavigationController, 
     func navigationController(
         _ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool
     ) {
+        onTrace?("didShow:\(ObjectIdentifier(viewController))")
         onDidShow?(viewController)
+    }
+
+    func navigationController(
+        _ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool
+    ) {
+        onTrace?("willShow:\(ObjectIdentifier(viewController))")
     }
 }
