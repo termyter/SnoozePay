@@ -31,3 +31,19 @@ Validation:
 Exclusions: #1064 historical-day semantics; #1007 original-occurrence/pricing; new money/refund/identity rules; physical acceptance; entitlements/signing/dependencies/workflows/publication; old explicitly frozen #728/#918/#997 and related scope. No main merge or superseding the original draft PRs is part of this engineering preparation.
 
 Authority: PM2026-10-27 unattended autopilot permits substantive fix/review/push/CI without per-round approval. This is a concrete composition task with confirmed text and semantic conflicts, not a duplicate scope for a frozen budget.
+
+## Full source candidate after renewed unattended request
+
+The three-core composition was verified at680a071 by CI40499005441:2578passed plus one existing skip; all199 additions, including15combined regressions, passed with complete literal ID/checkout evidence. Preserve that immutable evidence before advancing this existing draft.
+
+Compose two additional prepared inputs in the same PR, retaining their original drafts and acceptance holds:
+- #1075 Photos ownership:674e8014960f22d929ee008804b2860a556a4ccf, exact three-path delta fromd8347841c8365667f9d812e6bdb9d886315726b9.
+- #1069 shared card-row geometry:16881cf1e4f5ee095f56489becf15d9e0a180ae6, exact two-path delta from its actual older base7a1da86da6818fbbd25f64b469d615ca9ba49de3.
+
+Both modified preimages equal680a071 and all three added files are absent there. The five incoming paths are disjoint from the core delta and from each other. Apply only those exact deltas; do not import old branch project/model/history changes. All core production,15combined tests, old callback corrections, catalogue505 entries and existing assertions/timeouts stay unchanged.
+
+New useful evidence is the first run containing all five source inputs: Photos callback/editor/civil-clock persistence, shared card geometry on editor/recovery surfaces, and UIKit scene/key-window fixture lifetime in one host. No source defect at those boundaries is asserted in advance. Keep the real five-second waits and mask positive/negative pixel oracles; diagnose actual failures without weakening them.
+
+The two additions contribute17photo and4mask methods. The prospective full inventory is2618source /2600selected with the same18paused IDs and271test/support blobs. Freeze the final committed head/currentbase/blob inventory before normal push; bind actual runner checkout and audit every terminal after CI. No duplicate integration PR or rerun of unchanged individual heads is needed.
+
+All five original drafts and this full candidate remain subject to real iPhone/AlarmKit/Photos/UI/design/travel/DST/recovery acceptance. E2E remains paused by existing PM configuration; do not change the workflow, selector, or opt-in variable. Source CI is not physical acceptance. The explicit exclusions above remain unchanged.
