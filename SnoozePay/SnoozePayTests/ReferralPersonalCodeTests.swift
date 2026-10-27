@@ -139,9 +139,12 @@ final class ReferralPersonalCodeTests: XCTestCase {
         defer { attached.removeFromSuperview() }
         let detached = UIView(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
         let rect = CGRect(x: 7, y: 11, width: 13, height: 17)
+        let inputs = PopoverCalibrationInputs(root: root, window: window, scene: scene, available: available,
+                                              rootBounds: root.bounds, detached: detached, attached: attached)
         let inputChecks = [
             ("detached", detached.superview == nil && detached.window == nil && detached.bounds.contains(rect)),
             ("attached", attached.superview === root
+                && available.contains(attached.frame)
                 && PopoverCalibrationProbe.inputIsReady(attached, rect: rect, window: window, scene: scene)),
             ("host-root", PopoverCalibrationProbe.inputIsReady(root, rect: root.bounds, window: window, scene: scene))
         ]
@@ -153,7 +156,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
             PopoverCalibrationCell(id: "plain-host-root", kind: .plain, view: root, rect: root.bounds)
         ]
         let results = cells.flatMap { cell in
-            PopoverCalibrationOrder.allCases.map { PopoverCalibrationProbe.run(cell, order: $0) }
+            PopoverCalibrationOrder.allCases.map { PopoverCalibrationProbe.run(cell, order: $0, inputs: inputs) }
         }
         let lines = PopoverCalibrationProbe.traceLines(results, cellIDs: cells.map { $0.id })
         let attachment = XCTAttachment(string: lines.joined(separator: "\n"))
@@ -520,6 +523,17 @@ private struct PopoverCalibrationCell {
     let rect: CGRect
 }
 
+@MainActor
+private struct PopoverCalibrationInputs {
+    let root: UIView
+    let window: UIWindow
+    let scene: UIWindowScene
+    let available: CGRect
+    let rootBounds: CGRect
+    let detached: UIView
+    let attached: UIView
+}
+
 /// Values only: no source, presentation controller or getter graph survives a capture call.
 private struct PopoverCalibrationPhase {
     let stage: String
@@ -535,12 +549,13 @@ private struct PopoverCalibrationResult {
     let cell: String
     let order: PopoverCalibrationOrder
     let controllerIdentity: String
+    let inputReady: Bool
     let first: PopoverCalibrationPhase
     let configured: PopoverCalibrationPhase
     let refreshed: PopoverCalibrationPhase
 
     var phases: [PopoverCalibrationPhase] { [first, configured, refreshed] }
-    var works: Bool { configured.exactPair && refreshed.exactPair }
+    var works: Bool { inputReady && configured.exactPair && refreshed.exactPair }
 }
 
 @MainActor
@@ -550,10 +565,11 @@ private enum PopoverCalibrationProbe {
         for result in results {
             for phase in result.phases {
                 lines.append("PopoverCalibrationPhase cell=\(result.cell) order=\(result.order.rawValue) "
-                             + "stage=\(phase.stage) controller=\(result.controllerIdentity) \(phase.trace)")
+                             + "stage=\(phase.stage) inputReady=\(result.inputReady) "
+                             + "controller=\(result.controllerIdentity) \(phase.trace)")
             }
             lines.append("PopoverCalibrationOrder cell=\(result.cell) order=\(result.order.rawValue) "
-                         + "configuredExact=\(result.configured.exactPair) "
+                         + "inputReady=\(result.inputReady) configuredExact=\(result.configured.exactPair) "
                          + "refreshedExact=\(result.refreshed.exactPair) works=\(result.works)")
         }
         for cell in cellIDs {
@@ -563,7 +579,9 @@ private enum PopoverCalibrationProbe {
         return lines
     }
 
-    static func run(_ cell: PopoverCalibrationCell, order: PopoverCalibrationOrder) -> PopoverCalibrationResult {
+    static func run(_ cell: PopoverCalibrationCell, order: PopoverCalibrationOrder,
+                    inputs: PopoverCalibrationInputs) -> PopoverCalibrationResult {
+        let inputReady = orderInputIsReady(cell, inputs: inputs)
         let controller: UIViewController
         switch cell.kind {
         case .activity:
@@ -591,10 +609,12 @@ private enum PopoverCalibrationProbe {
             configured = capture(popover, input: cell.view, rect: cell.rect,
                                  stage: "after-second-write", write: "sourceView")
         }
-        let refreshed = capture(controller.popoverPresentationController, input: cell.view, rect: cell.rect,
-                                stage: "fresh-getter", write: "none")
+        let refreshed = withExtendedLifetime(popover) {
+            capture(controller.popoverPresentationController, input: cell.view, rect: cell.rect,
+                    stage: "fresh-getter", write: "none")
+        }
         return PopoverCalibrationResult(
-            cell: cell.id, order: order, controllerIdentity: describe(controller),
+            cell: cell.id, order: order, controllerIdentity: describe(controller), inputReady: inputReady,
             first: first, configured: configured, refreshed: refreshed
         )
     }
@@ -626,6 +646,29 @@ private enum PopoverCalibrationProbe {
             && view.bounds.contains(rect) && view.window === window && window.windowScene === scene
             && scene.activationState == .foregroundActive && window.isKeyWindow && !window.isHidden
             && window.bounds.contains(view.convert(view.bounds, to: window))
+    }
+
+    private static func orderInputIsReady(_ cell: PopoverCalibrationCell, inputs: PopoverCalibrationInputs) -> Bool {
+        guard inputs.root.bounds == inputs.rootBounds,
+              inputIsReady(inputs.root, rect: inputs.rootBounds, window: inputs.window, scene: inputs.scene)
+        else { return false }
+        let view = cell.view
+        if view === inputs.detached {
+            let values = [view.frame.minX, view.frame.minY, view.frame.width, view.frame.height,
+                          view.bounds.minX, view.bounds.minY, view.bounds.width, view.bounds.height,
+                          cell.rect.minX, cell.rect.minY, cell.rect.width, cell.rect.height]
+            return view.superview == nil && view.window == nil
+                && view.frame.size == CGSize(width: 40, height: 40) && view.bounds.size == CGSize(width: 40, height: 40)
+                && values.allSatisfy { $0.isFinite } && !cell.rect.isEmpty && view.bounds.contains(cell.rect)
+        }
+        if view === inputs.attached {
+            return view.superview === inputs.root && view.bounds.size == CGSize(width: 40, height: 40)
+                && view.frame.size == CGSize(width: 40, height: 40)
+                && inputs.available.contains(view.frame)
+                && inputIsReady(view, rect: cell.rect, window: inputs.window, scene: inputs.scene)
+        }
+        return view === inputs.root && cell.rect == inputs.rootBounds
+            && inputIsReady(view, rect: cell.rect, window: inputs.window, scene: inputs.scene)
     }
 
     private static func describe(_ object: AnyObject?) -> String {

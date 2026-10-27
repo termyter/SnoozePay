@@ -79,3 +79,8 @@ its setter order and old weak identity assertion stay. No production lifetime,
 sourceItem, traits, timing, device or broader matrix change is part of calibration.
 Store the identical value-only phase/order/cell trace as a keepAlways XCTAttachment
 before assertions as well as literal stdout, so XPC interleaving cannot erase it.
+Keep each captured calibration PC alive through its fresh getter, and qualify the
+actual intended detached/attached/root input against the frozen owned host before
+each order. Record inputReady without repairing/skipping invalid input; a working
+order additionally requires inputReady. Attached frames must stay inside the
+computed available safe-root intersection. These are test-control validity only.
