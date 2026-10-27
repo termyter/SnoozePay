@@ -1117,24 +1117,6 @@
         }
       }
     },
-    "alarms.error.data_title" : {
-      "comment" : "Alarms list: title of the alert shown when the alarm store cannot be read.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
-          }
-        }
-      }
-    },
     "alarms.error.load_failed" : {
       "comment" : "Alert body when the stored alarms JSON cannot be decoded (AlarmRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
@@ -1509,6 +1491,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "БАЛАНС"
+          }
+        }
+      }
+    },
+    "common.error.data_title" : {
+      "comment" : "Shared title for alarm-list and statistics data-load errors. Each alert message identifies the affected domain.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data Error"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ошибка данных"
           }
         }
       }
@@ -7161,24 +7161,6 @@
         }
       }
     },
-    "statistics.error.title" : {
-      "comment" : "Title of the alert shown when the statistics repository fails to load. Byte for byte the value of alarms.error.data_title, and knowingly so rather than by oversight: both alerts are title + errorDescription-or-fallback + OK, the domain lives in the message (statistics.error.message vs alarms.error.load_failed_fallback) and not in the title, so by the common.* rule in Localized.swift this is a candidate for one shared common.error.data_title. Not merged in this slice because dropping a key is precisely the case merge-xcstrings.py refuses to resolve, and the #599 lane is editing this same file in parallel. alarms.error.data_title itself came from #601, which is closed and already on main — it is not what #599 is holding. Consolidate-or-justify-forever is #724. This is not the streak.behavioral.caps situation: there the two entries have different shapes behind them, here they do not.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
-          }
-        }
-      }
-    },
     "statistics.last_slip" : {
       "comment" : "Hero meta line; %@ is a day-and-month date («8 января»).",
       "extractionState" : "manual",
@@ -7593,6 +7575,24 @@
         }
       }
     },
+    "statistics.wake_time.calculation_unavailable" : {
+      "comment" : "Wake-time card when enough history exists but its median cannot be published. No recovery promise.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up time couldn’t be calculated from the recorded history."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось рассчитать время подъёма по записанной истории."
+          }
+        }
+      }
+    },
     "statistics.wake_time.caps" : {
       "comment" : "Caps title of the wake-time card (SPWakeTimeCard).",
       "extractionState" : "manual",
@@ -7607,6 +7607,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ВРЕМЯ ПОДЪЁМА"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.comparison_unavailable" : {
+      "comment" : "Wake-time card comparison when the baseline result was refused; the recent median remains visible.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The wake-up time comparison is unavailable."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сравнение времени подъёма недоступно."
           }
         }
       }
@@ -7715,6 +7733,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Копим историю: нужно ещё %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.unreadable" : {
+      "comment" : "Wake history could not be read. Used by the wake-time card or the statistics unavailable state; no repair action.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up history couldn’t be read."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать историю подъёмов."
           }
         }
       }

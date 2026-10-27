@@ -14,7 +14,7 @@ final class AlarmLifecycleLocaleIntegrationTests: XCTestCase {
             "plural.days.few", "plural.mornings.few",
             "plural.snoozes.few", "plural.snoozes_after.few"
         ]
-        XCTAssertEqual(russianKeys.count, 505, "Keep the complete frozen full-candidate resource set")
+        XCTAssertEqual(russianKeys.count, 507, "Keep the complete frozen full-candidate resource set")
         XCTAssertTrue(optionalEnglishFew.isSubset(of: russianKeys))
         XCTAssertEqual(englishKeys, russianKeys.subtracting(optionalEnglishFew))
         for (language, bundle) in [("ru", russian), ("en", english)] {
@@ -42,7 +42,15 @@ final class AlarmLifecycleLocaleIntegrationTests: XCTestCase {
              "Восстановление будильников не завершено", "Alarm Recovery Incomplete"),
             ("create_alarm.theme_picker.error.title", "Не удалось сохранить фото", "Couldn’t Save Photo"),
             ("create_alarm.theme_picker.error.message",
-             "Попробуйте выбрать другое изображение.", "Try choosing a different image.")
+             "Попробуйте выбрать другое изображение.", "Try choosing a different image."),
+            ("common.error.data_title", "Ошибка данных", "Data Error"),
+            ("statistics.wake_time.unreadable",
+             "Не удалось прочитать историю подъёмов.", "Your wake-up history couldn’t be read."),
+            ("statistics.wake_time.calculation_unavailable",
+             "Не удалось рассчитать время подъёма по записанной истории.",
+             "Your wake-up time couldn’t be calculated from the recorded history."),
+            ("statistics.wake_time.comparison_unavailable",
+             "Сравнение времени подъёма недоступно.", "The wake-up time comparison is unavailable.")
         ]
         for language in ["ru", "en"] {
             let bundle = Localized.localizedBundle(for: ["de", language])

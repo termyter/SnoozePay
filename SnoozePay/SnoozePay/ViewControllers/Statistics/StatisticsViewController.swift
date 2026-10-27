@@ -430,7 +430,7 @@ final class StatisticsViewController: UIViewController {
         }
 
         let alert = UIAlertController(
-            title: Localized.text("statistics.error.title"),
+            title: Localized.text("common.error.data_title"),
             message: message,
             preferredStyle: .alert
         )
@@ -464,11 +464,9 @@ final class StatisticsViewController: UIViewController {
     }
 
     private func refresh() {
-        // The shared state column has two honest modes: a new account gets
-        // the no-data copy from `SPMore.jsx` (`EmptyStats`, #289), while an
-        // unreadable or partially read ledger names that failure and withholds
-        // every ledger-derived card (#459).
-        let unavailableReason = viewModel.ledgerUnavailableReason
+        // A read/calculation failure must beat the healthy empty-state path;
+        // otherwise an unreadable wake history would look like a new install.
+        let unavailableReason = viewModel.overviewUnavailableReason
         let isEmpty = unavailableReason != nil || (viewModel.charges.isEmpty && viewModel.wakeDays.isEmpty)
         emptyState.isHidden = !isEmpty
         if let unavailableReason {
@@ -477,6 +475,13 @@ final class StatisticsViewController: UIViewController {
             emptyState.setStreak(viewModel.streak)
         }
         scrollView.isHidden = isEmpty
+        let wakeAvailability = viewModel.wakeTimeAvailability
+        if case .noRecentHistory = wakeAvailability {
+            wakeTimeCard.isHidden = true
+        } else {
+            wakeTimeCard.isHidden = false
+        }
+        wakeTimeCard.apply(wakeAvailability)
         if isEmpty { return }
 
         // Hero streak card.
@@ -487,20 +492,14 @@ final class StatisticsViewController: UIViewController {
         heatmapView.days = viewModel.heatmapDays
 
         // "Эта неделя" money summary + "Время подъёма" (#348). The enclosing
-        // state column already withheld this whole content for an unavailable
-        // ledger; wake time alone is dropped when no exact instants exist.
+        // state column already withheld content whose day/ledger inputs are
+        // unreadable. Time-only failures explain themselves inside their card.
         weekMoneyCard.apply(
             days: viewModel.weekMoneyDays,
             summary: viewModel.weekMoneySummary,
             currency: viewModel.walletCurrency,
             savingsNote: viewModel.savingsNote
         )
-        if let wakeStats = viewModel.wakeTimeStats {
-            wakeTimeCard.isHidden = false
-            wakeTimeCard.apply(wakeStats)
-        } else {
-            wakeTimeCard.isHidden = true
-        }
 
         // Weekday distribution.
         weekdayHeadlineLabel.attributedText = Self.weekdayHeadline(
