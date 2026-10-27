@@ -84,3 +84,5 @@ actual intended detached/attached/root input against the frozen owned host befor
 each order. Record inputReady without repairing/skipping invalid input; a working
 order additionally requires inputReady. Attached frames must stay inside the
 computed available safe-root intersection. These are test-control validity only.
+After all phases/results and their attachment are captured, assert inputReady for
+every order independently; one working order must not bless an invalid comparison.

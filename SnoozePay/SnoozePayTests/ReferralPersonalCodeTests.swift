@@ -165,6 +165,10 @@ final class ReferralPersonalCodeTests: XCTestCase {
         add(attachment)
         lines.forEach { print($0) }
         for (input, ready) in inputChecks { XCTAssertTrue(ready, "Invalid calibration input: \(input)") }
+        for result in results {
+            XCTAssertTrue(result.inputReady,
+                          "Invalid calibration order input: \(result.cell)/\(result.order.rawValue)")
+        }
         for cell in cells {
             let orders = results.filter { $0.cell == cell.id }
             let working = orders.filter { $0.works }.map { $0.order.rawValue }
