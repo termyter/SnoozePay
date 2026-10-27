@@ -430,7 +430,7 @@ final class StatisticsViewController: UIViewController {
         }
 
         let alert = UIAlertController(
-            title: Localized.text("statistics.error.title"),
+            title: Localized.text("common.error.data_title"),
             message: message,
             preferredStyle: .alert
         )
