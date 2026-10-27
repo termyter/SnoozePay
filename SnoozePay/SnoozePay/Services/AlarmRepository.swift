@@ -93,6 +93,14 @@ final class AlarmRepository {
         try queue.sync { try readAll() }
     }
 
+    /// Strict inventory for occurrence completion. Unknown storage types or
+    /// duplicate identities cannot prove that an alarm is missing or disabled.
+    /// Recovery shares this strict validity check before reporting healthy data;
+    /// legacy lossy and checked repository reads retain their prior contracts.
+    func fetchOccurrenceFinishAlarms() throws -> [Alarm] {
+        try queue.sync { try readOccurrenceFinishAlarms() }
+    }
+
     /// Lossy read: a decode failure is indistinguishable from "alarm doesn't
     /// exist" (#210). All production call sites moved to `fetchChecked(id:)`
     /// (#271); kept for the tests that pin the lossy contract.
@@ -236,20 +244,73 @@ final class AlarmRepository {
         return true
     }
 
+    /// Persist only after an explicit recovery has independently proved both
+    /// native IDs absent. Unlike a user toggle, this must not cancel a new ring.
+    /// The captured record and complete write readback are checked under the queue.
+    func persistFinishedOneShot(_ expected: Alarm) throws {
+        guard expected.enabled, expected.repeatMode == .never || expected.repeatDays.isEmpty else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        try queue.sync {
+            let alarms = try readOccurrenceFinishAlarms()
+            let matches = alarms.indices.filter { alarms[$0].id == expected.id }
+            guard matches.count == 1, let index = matches.first, alarms[index] == expected else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+            var updated = alarms
+            updated[index] = expected.with(enabled: false)
+            guard persist(updated) else { throw AlarmOccurrenceFinishError.persistenceFailed }
+            do {
+                guard try readOccurrenceFinishAlarms() == updated else {
+                    throw AlarmOccurrenceFinishError.persistenceFailed
+                }
+            } catch {
+                throw AlarmOccurrenceFinishError.persistenceFailed
+            }
+        }
+    }
+
     // MARK: - Recovery
 
-    /// Clears the lock and removes the corrupt blob. Used by a future
-    /// "стереть и начать заново" flow once the user has acknowledged the
-    /// data loss (issue #72). The diagnostic backup at `corruptBackupKey`
-    /// is intentionally left in place for support inspection.
-    func clearCorruptState() {
+    /// Recheck corruption inside the serial queue. Healthy data is never swept or
+    /// erased, even if Settings observed a stale failure flag. Ambiguous storage
+    /// that legacy reads accept remains unavailable, without a destructive sweep.
+    /// Keep the backup and any prior corruption lock on that refusal.
+    @discardableResult
+    func clearCorruptState() -> Result<Void, AlarmRecoveryError> {
         queue.sync {
-            _lastLoadFailed = false
-            defaults.removeObject(forKey: key)
+            let wasLoadFailed = _lastLoadFailed
+            do {
+                _ = try readAll()
+            } catch {
+                return scheduler.recoverCorruptAlarms {
+                    defaults.removeObject(forKey: key)
+                    _lastLoadFailed = false
+                }
+            }
+            do {
+                _ = try readOccurrenceFinishAlarms()
+                return .success(())
+            } catch {
+                _lastLoadFailed = wasLoadFailed || _lastLoadFailed
+                return .failure(.alarmDataUnavailable)
+            }
         }
     }
 
     // MARK: - Private (must be called inside queue.sync)
+
+    private func readOccurrenceFinishAlarms() throws -> [Alarm] {
+        guard defaults.object(forKey: key) == nil || defaults.data(forKey: key) != nil else {
+            throw AlarmOccurrenceFinishError.persistenceFailed
+        }
+        let alarms: [Alarm]
+        do { alarms = try readAll() } catch { throw AlarmOccurrenceFinishError.persistenceFailed }
+        guard Set(alarms.map(\.id)).count == alarms.count else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        return alarms
+    }
 
     /// Returns persisted alarms.
     ///
@@ -273,13 +334,13 @@ final class AlarmRepository {
             _lastLoadFailed = false
             let calendar = Calendar.current
             return alarms.sorted { lhs, rhs in
-                let lhsClock = calendar.dateComponents([.hour, .minute], from: lhs.time)
-                let rhsClock = calendar.dateComponents([.hour, .minute], from: rhs.time)
-                // Creation dates can differ; sort by displayed local time first.
+                let lhsClock = lhs.resolvedTimeOfDay(calendar: calendar)
+                let rhsClock = rhs.resolvedTimeOfDay(calendar: calendar)
+                // Creation dates can differ; sort by the displayed clock first.
                 // Missing clock components sort last without trapping. Date keeps
                 // the prior tie order; exact-date ties retain the persisted order.
-                let lhsKey = (lhsClock.hour ?? Int.max, lhsClock.minute ?? Int.max, lhs.time)
-                let rhsKey = (rhsClock.hour ?? Int.max, rhsClock.minute ?? Int.max, rhs.time)
+                let lhsKey = (lhsClock?.hour ?? Int.max, lhsClock?.minute ?? Int.max, lhs.time)
+                let rhsKey = (rhsClock?.hour ?? Int.max, rhsClock?.minute ?? Int.max, rhs.time)
                 return lhsKey < rhsKey
             }
         } catch {

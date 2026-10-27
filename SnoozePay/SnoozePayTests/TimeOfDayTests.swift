@@ -78,4 +78,24 @@ final class TimeOfDayTests: XCTestCase {
         let decoded = try JSONDecoder().decode(TimeOfDay.self, from: data)
         XCTAssertEqual(decoded, original)
     }
+
+    func testLiteralDecodeRejectsInvalidCivilComponents() {
+        let invalid = [
+            "{\"hour\":24,\"minute\":0}", "{\"hour\":-1,\"minute\":0}",
+            "{\"hour\":7,\"minute\":60}", "{\"hour\":7,\"minute\":-1}",
+            "{\"hour\":7}", "{\"hour\":null,\"minute\":0}"
+        ]
+        for literal in invalid {
+            XCTAssertThrowsError(try JSONDecoder().decode(TimeOfDay.self, from: Data(literal.utf8)), literal)
+        }
+    }
+
+    func testLiteralDecodeAcceptsBoundariesAndIgnoresUnknownMetadata() throws {
+        for (literal, expected) in [
+            ("{\"hour\":0,\"minute\":0}", TimeOfDay(hour: 0, minute: 0)),
+            ("{\"hour\":23,\"minute\":59,\"timezone\":null}", TimeOfDay(hour: 23, minute: 59))
+        ] {
+            XCTAssertEqual(try JSONDecoder().decode(TimeOfDay.self, from: Data(literal.utf8)), expected)
+        }
+    }
 }
