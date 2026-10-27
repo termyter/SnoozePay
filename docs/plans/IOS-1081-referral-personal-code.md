@@ -30,3 +30,16 @@ compiler/build/XCTest/Simulator. Commit normally without hook bypass; root perfo
 independent review and any push/PR/CI. This is source preparation, not full #701
 completion, backend acceptance or permission to enable the programme. Old explicit
 #728/#918/#997 freezes and all PM/no-touch/device holds remain.
+
+Corrective scope after the initial committed head `fdfee0f` ran 2386 cases with
+three failures at the post-presentation sourceView identity assertion:
+
+- Keep the production anchor assignments and original animated presentation;
+  inject a main-actor presenter/activity forwarder solely to observe their handoff.
+- The real activity factory in tests explicitly uses popover style and seeds an
+  owned wrong anchor/rect. Require the app to overwrite both before real present.
+- Record actual weak presenter/activity/sourceView, value rect and call count;
+  require strict presence/identity/rect/count outside nonthrowing callbacks.
+  Forward real present once and log passive post-SDK fixture diagnostics.
+- Retain all IDs, identity/cache/payload/domain/money/mount oracles and timeouts.
+  No production style, feature/apply/backend/policy change or bare CI rerun.

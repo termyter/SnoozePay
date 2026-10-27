@@ -27,6 +27,7 @@ final class ReferralViewController: UIViewController {
     private let personalCodeProvider: () -> String
     private let pasteboard: UIPasteboard
     private let activityControllerFactory: @MainActor ([Any]) -> UIActivityViewController
+    private let presentActivityController: @MainActor (UIViewController, UIActivityViewController) -> Void
     /// Resolve once on first use; constructing an unloaded screen must not mint a code.
     private lazy var personalCode = personalCodeProvider()
 
@@ -35,11 +36,17 @@ final class ReferralViewController: UIViewController {
         pasteboard: UIPasteboard = .general,
         activityControllerFactory: @escaping @MainActor ([Any]) -> UIActivityViewController = { items in
             UIActivityViewController(activityItems: items, applicationActivities: nil)
+        },
+        presentActivityController: @escaping @MainActor (
+            UIViewController, UIActivityViewController
+        ) -> Void = { presenter, activity in
+            presenter.present(activity, animated: true)
         }
     ) {
         self.personalCodeProvider = personalCodeProvider
         self.pasteboard = pasteboard
         self.activityControllerFactory = activityControllerFactory
+        self.presentActivityController = presentActivityController
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -437,6 +444,6 @@ final class ReferralViewController: UIViewController {
         let activity = activityControllerFactory([text])
         activity.popoverPresentationController?.sourceView = view
         activity.popoverPresentationController?.sourceRect = view.bounds
-        present(activity, animated: true)
+        presentActivityController(self, activity)
     }
 }

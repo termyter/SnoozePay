@@ -128,7 +128,8 @@ final class ReferralPersonalCodeTests: XCTestCase {
         let controller = ReferralViewController(
             personalCodeProvider: provider,
             pasteboard: pasteboard,
-            activityControllerFactory: { share.makeController(items: $0) }
+            activityControllerFactory: { share.makeController(items: $0) },
+            presentActivityController: { share.present(presenter: $0, activity: $1) }
         )
         return Screen(controller: controller, pasteboard: pasteboard, share: share)
     }
@@ -148,6 +149,10 @@ final class ReferralPersonalCodeTests: XCTestCase {
         XCTAssertFalse(labels(in: screen.controller.view).contains("WAKEUP-7K2"))
         try button("referral.button.copy", in: screen.controller).sendActions(for: .touchUpInside)
         XCTAssertEqual(screen.pasteboard.string, code)
+        let expectedView = try XCTUnwrap(screen.controller.viewIfLoaded)
+        let expectedRect = expectedView.bounds
+        XCTAssertFalse(expectedView === screen.share.wrongAnchor)
+        XCTAssertNotEqual(expectedRect, screen.share.wrongRect)
         try button("referral.button.share", in: screen.controller).sendActions(for: .touchUpInside)
         XCTAssertEqual(screen.share.items.count, 1)
         let items = try XCTUnwrap(screen.share.items.first)
@@ -155,10 +160,16 @@ final class ReferralPersonalCodeTests: XCTestCase {
         XCTAssertEqual(items.first as? String,
                        Localized.format("referral.share.message", code, MoneyFormatter.string(200)))
         let activity = try XCTUnwrap(screen.share.controller)
-        if let popover = activity.popoverPresentationController {
-            XCTAssertTrue(popover.sourceView === screen.controller.view)
-            XCTAssertEqual(popover.sourceRect, screen.controller.view.bounds)
-        }
+        XCTAssertTrue(screen.share.seededPopoverExists)
+        XCTAssertTrue(screen.share.seededSourceView === screen.share.wrongAnchor)
+        XCTAssertEqual(try XCTUnwrap(screen.share.seededSourceRect), screen.share.wrongRect)
+        XCTAssertEqual(screen.share.handoffCount, 1)
+        XCTAssertTrue(screen.share.hadPopoverAtHandoff)
+        XCTAssertTrue(try XCTUnwrap(screen.share.presenterAtHandoff) === screen.controller)
+        XCTAssertTrue(try XCTUnwrap(screen.share.activityAtHandoff) === activity)
+        XCTAssertTrue(try XCTUnwrap(screen.share.sourceViewAtHandoff) === expectedView)
+        XCTAssertEqual(try XCTUnwrap(screen.share.sourceRectAtHandoff), expectedRect)
+        XCTAssertEqual(try XCTUnwrap(screen.share.presenterBoundsAtHandoff), expectedRect)
     }
 
     private func button(_ key: String, in controller: UIViewController) throws -> SPButton {
@@ -205,11 +216,58 @@ final class ReferralPersonalCodeTests: XCTestCase {
 private final class ReferralPersonalCodeShareCapture {
     private(set) var items: [[Any]] = []
     private(set) var controller: UIActivityViewController?
+    let wrongAnchor = UIView(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
+    let wrongRect = CGRect(x: 7, y: 11, width: 13, height: 17)
+    private(set) var seededPopoverExists = false
+    private(set) weak var seededSourceView: UIView?
+    private(set) var seededSourceRect: CGRect?
+    private(set) var handoffCount = 0
+    private(set) var hadPopoverAtHandoff = false
+    private(set) weak var presenterAtHandoff: UIViewController?
+    private(set) weak var activityAtHandoff: UIActivityViewController?
+    private(set) weak var sourceViewAtHandoff: UIView?
+    private(set) var sourceRectAtHandoff: CGRect?
+    private(set) var presenterBoundsAtHandoff: CGRect?
 
     func makeController(items: [Any]) -> UIActivityViewController {
         self.items.append(items)
         let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        // A real popover makes the app's optional anchor branch mandatory on the phone runner.
+        controller.modalPresentationStyle = .popover
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = wrongAnchor
+            popover.sourceRect = wrongRect
+            seededPopoverExists = true
+            seededSourceView = popover.sourceView
+            seededSourceRect = popover.sourceRect
+        }
         self.controller = controller
         return controller
+    }
+
+    /// Observe the actual app-owned handoff, then forward the original presentation unchanged.
+    func present(presenter: UIViewController, activity: UIActivityViewController) {
+        handoffCount += 1
+        presenterAtHandoff = presenter
+        activityAtHandoff = activity
+        let popover = activity.popoverPresentationController
+        hadPopoverAtHandoff = popover != nil
+        sourceViewAtHandoff = popover?.sourceView
+        sourceRectAtHandoff = popover?.sourceRect
+        presenterBoundsAtHandoff = presenter.viewIfLoaded?.bounds
+        let preMatchesPresenter = sourceViewAtHandoff === presenter.viewIfLoaded
+
+        presenter.present(activity, animated: true)
+
+        let postPopover = activity.popoverPresentationController
+        let postSource = postPopover?.sourceView
+        let postType = postSource.map { String(describing: type(of: $0)) } ?? "nil"
+        print("ReferralShareHandoff count=\(handoffCount) prePopover=\(hadPopoverAtHandoff) "
+              + "preSourceNil=\(sourceViewAtHandoff == nil) preMatchesPresenter=\(preMatchesPresenter) "
+              + "preRect=\(String(describing: sourceRectAtHandoff)) "
+              + "preBounds=\(String(describing: presenterBoundsAtHandoff)) "
+              + "postPopover=\(postPopover != nil) postSourceNil=\(postSource == nil) "
+              + "postSourceType=\(postType) postMatchesHandoff=\(postSource === sourceViewAtHandoff) "
+              + "postRect=\(String(describing: postPopover?.sourceRect))")
     }
 }
