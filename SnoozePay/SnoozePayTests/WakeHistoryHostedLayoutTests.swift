@@ -303,8 +303,14 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
 
     private func clearOfBars(_ frame: CGRect, fixture: WakeHistoryLayoutFixture, window: UIWindow) -> Bool {
         guard let navigation = fixture.navigation else { return false }
-        for bar in [navigation.navigationBar as UIView, navigation.toolbar] where !bar.isHidden && bar.alpha > 0 {
-            if bar.convert(bar.bounds, to: window).intersects(frame) { return false }
+        let navigationBar: UIView = navigation.navigationBar
+        if !navigationBar.isHidden && navigationBar.alpha > 0
+            && navigationBar.convert(navigationBar.bounds, to: window).intersects(frame) {
+            return false
+        }
+        if let toolbar = navigation.toolbar, !toolbar.isHidden && toolbar.alpha > 0
+            && toolbar.convert(toolbar.bounds, to: window).intersects(frame) {
+            return false
         }
         return true
     }
