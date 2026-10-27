@@ -406,6 +406,11 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// wrong action — or to nothing — is caught here rather than nowhere.
     func testTappingTheStatisticsShortcutOpensTheReferralScreen() throws {
         let sut = StatisticsViewController()
+        var factoryCalls = 0
+        sut.referralControllerFactory = {
+            factoryCalls += 1
+            return ReferralViewController(personalCodeProvider: { "ABCD23" })
+        }
         sut.referralShortcutEnabled = true
         let stack = UINavigationController(rootViewController: sut)
         let window = makeHostWindow()
@@ -419,6 +424,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
             "the hosted screen has no referral shortcut to tap"
         )
         button.sendActions(for: .touchUpInside)
+        XCTAssertEqual(factoryCalls, 1)
 
         XCTAssertTrue(
             stack.topViewController is ReferralViewController,
@@ -455,8 +461,14 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
 
     private func debugRowLabels(referralShortcutEnabled: Bool) throws -> [String] {
         let sut = StatisticsViewController()
+        var factoryCalls = 0
+        sut.referralControllerFactory = {
+            factoryCalls += 1
+            return ReferralViewController(personalCodeProvider: { "ABCD23" })
+        }
         sut.referralShortcutEnabled = referralShortcutEnabled
         let stack = try XCTUnwrap(sut.makeDebugButtonsRow() as? UIStackView)
+        XCTAssertEqual(factoryCalls, 0, "Building the row must not create a referral identity")
         return stack.arrangedSubviews.compactMap { $0.accessibilityLabel }
     }
 

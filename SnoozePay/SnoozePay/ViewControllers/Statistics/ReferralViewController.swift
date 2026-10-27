@@ -18,15 +18,36 @@ import UIKit
 ///   5. Bottom primary CTA — `SPButton(.money, .lg, fullWidth: true)`
 ///      «Поделиться кодом» that pops a `UIActivityViewController`.
 ///
-/// Until a real referral backend exists the data is hard-coded (matching
-/// the JSX placeholders) so the screen still tells the V2 story end-to-end.
+/// The personal code comes from the existing local referral identity. Friend
+/// rows and the apply confirmation remain placeholders until a backend exists.
 final class ReferralViewController: UIViewController {
 
-    // MARK: - Constants
+    // MARK: - Dependencies
 
-    /// Placeholder personal code rendered until the referral backend lands.
-    /// Mono-spaced + uppercase per the JSX `font: var(--sp-font-mono)` recipe.
-    private static let personalCode = "WAKEUP-7K2"
+    private let personalCodeProvider: () -> String
+    private let pasteboard: UIPasteboard
+    private let activityControllerFactory: @MainActor ([Any]) -> UIActivityViewController
+    /// Resolve once on first use; constructing an unloaded screen must not mint a code.
+    private lazy var personalCode = personalCodeProvider()
+
+    init(
+        personalCodeProvider: @escaping () -> String = { ReferralService.shared.getMyCode() },
+        pasteboard: UIPasteboard = .general,
+        activityControllerFactory: @escaping @MainActor ([Any]) -> UIActivityViewController = { items in
+            UIActivityViewController(activityItems: items, applicationActivities: nil)
+        }
+    ) {
+        self.personalCodeProvider = personalCodeProvider
+        self.pasteboard = pasteboard
+        self.activityControllerFactory = activityControllerFactory
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Constants
 
     /// Avatar diameter in the «Друзья» list — 36pt per the JSX
     /// (`width: 36, height: 36, borderRadius: 18`). Deliberately off the 4pt
@@ -119,7 +140,7 @@ final class ReferralViewController: UIViewController {
         let codeLabel = UILabel()
         codeLabel.font = AppFonts.mono(.bold, 20)
         codeLabel.textColor = AppColors.fg1
-        codeLabel.text = Self.personalCode
+        codeLabel.text = personalCode
         codeLabel.adjustsFontSizeToFitWidth = true
         codeLabel.minimumScaleFactor = 0.7
         codeLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -376,7 +397,7 @@ final class ReferralViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func copyCodeTapped(_ sender: SPButton) {
-        UIPasteboard.general.string = Self.personalCode
+        pasteboard.string = personalCode
         // Tiny in-place success cue — flip the title for ~1.4 s.
         // (SPButton has no public title setter post-init; recreate trivially
         //  via a one-shot UIView animation on the existing instance would
@@ -410,10 +431,10 @@ final class ReferralViewController: UIViewController {
     @objc private func shareTapped() {
         let text = Localized.format(
             "referral.share.message",
-            Self.personalCode,
+            personalCode,
             MoneyFormatter.string(200)
         )
-        let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        let activity = activityControllerFactory([text])
         activity.popoverPresentationController?.sourceView = view
         activity.popoverPresentationController?.sourceRect = view.bounds
         present(activity, animated: true)
