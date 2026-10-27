@@ -10,8 +10,8 @@ import os
 /// reproduced deterministically.
 ///
 /// Since #472 the app never SCHEDULES a notification; what is left of this seam
-/// serves the legacy sweep in `cancel(_:)`, which removes alarm notifications
-/// left pending by a pre-#472 build.
+/// serves legacy cleanup when cancelling an alarm or confirming its occurrence
+/// finished, removing notifications left by a pre-#472 build.
 protocol NotificationScheduling: AnyObject {
     // Sendable closures match `UNUserNotificationCenter`'s post-Swift-6
     // signature. Without them the implicit conformance is a warning
@@ -28,12 +28,25 @@ protocol NotificationScheduling: AnyObject {
     func getDeliveredNotifications(
         completionHandler: @escaping @Sendable ([UNNotification]) -> Void
     )
+    func getDeliveredNotificationIdentifiers(
+        completionHandler: @escaping @Sendable ([String]) -> Void
+    )
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
     func removeAllPendingNotificationRequests()
     func requestAuthorization(
         options: UNAuthorizationOptions,
         completionHandler: @escaping @Sendable (Bool, Error?) -> Void
     )
+}
+
+extension NotificationScheduling {
+    func getDeliveredNotificationIdentifiers(
+        completionHandler: @escaping @Sendable ([String]) -> Void
+    ) {
+        getDeliveredNotifications { notifications in
+            completionHandler(notifications.map { $0.request.identifier })
+        }
+    }
 }
 
 extension UNUserNotificationCenter: NotificationScheduling {}
@@ -97,6 +110,8 @@ final class AlarmScheduler: AlarmScheduling {
 
     private let notificationCenter: NotificationScheduling
     private let snoozeSessions: AlarmSnoozeSessionStore?
+    private enum LegacySnoozeOperation: Equatable { case awaitingCallback, completing }
+    private var legacySnoozeOperations: [UUID: [UUID: LegacySnoozeOperation]] = [:]
 
     /// The AlarmKit backend as wired by `init`. Non-nil in production;
     /// injectable (and omittable) in tests so the "no backend at all" refusal
@@ -333,25 +348,21 @@ final class AlarmScheduler: AlarmScheduling {
             return
         }
 
+        do {
+            if try snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id) != nil {
+                completion?(.failure(.system(message: AlarmSnoozeContextError.finished.localizedDescription)))
+                return
+            }
+        } catch {
+            completion?(.failure(.system(message: AlarmSnoozeContextError.unavailable.localizedDescription)))
+            return
+        }
+        let operationID = UUID()
+        legacySnoozeOperations[alarm.id, default: [:]][operationID] = .awaitingCallback
         let fireDate = Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes)
         alarmKitScheduler.stop(alarm.id)
-        alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate) { result in
-            switch result {
-            case .success:
-                AppLogger.scheduler.info(
-                    "scheduled snooze via AlarmKit alarm=\(alarm.id, privacy: .private)"
-                )
-                completion?(.success(()))
-            case .failure(let error):
-                let desc = error.localizedDescription
-                AppLogger.scheduler.error(
-                    """
-                    AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \
-                    \(desc, privacy: .public)
-                    """
-                )
-                completion?(.failure(.system(message: desc)))
-            }
+        alarmKitScheduler.scheduleSnooze(alarm, fireDate: fireDate) { [self] result in
+            completeLegacySnooze(alarm, operationID: operationID, result: result, completion: completion)
         }
     }
 
@@ -454,8 +465,8 @@ final class AlarmScheduler: AlarmScheduling {
             }
             notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
         }
-        notificationCenter.getDeliveredNotifications { [notificationCenter] notifications in
-            let ids = notifications.map { $0.request.identifier }.filter(belongsToAlarm)
+        notificationCenter.getDeliveredNotificationIdentifiers { [notificationCenter] identifiers in
+            let ids = identifiers.filter(belongsToAlarm)
             guard !ids.isEmpty else { return }
             notificationCenter.removeDeliveredNotifications(withIdentifiers: ids)
         }
@@ -671,5 +682,148 @@ final class AlarmScheduler: AlarmScheduling {
             """
         )
         return nil
+    }
+}
+
+extension AlarmScheduler {
+
+    private func completeLegacySnooze(
+        _ alarm: Alarm, operationID: UUID, result: Result<Void, Error>,
+        completion: ((Result<Void, SchedulingError>) -> Void)?
+    ) {
+        guard legacySnoozeOperations[alarm.id]?[operationID] == .awaitingCallback else { return }
+        legacySnoozeOperations[alarm.id]?[operationID] = .completing
+        defer {
+            legacySnoozeOperations[alarm.id]?.removeValue(forKey: operationID)
+            if legacySnoozeOperations[alarm.id]?.isEmpty == true {
+                legacySnoozeOperations.removeValue(forKey: alarm.id)
+            }
+        }
+        switch result {
+        case .success:
+            cleanUpFinishedLegacyRegistration(for: alarm)
+            AppLogger.scheduler.info(
+                "scheduled snooze via AlarmKit alarm=\(alarm.id, privacy: .private)"
+            )
+            completion?(.success(()))
+        case .failure(let error):
+            let desc = error.localizedDescription
+            AppLogger.scheduler.error(
+                """
+                AlarmKit snooze schedule failed alarm=\(alarm.id, privacy: .private): \
+                \(desc, privacy: .public)
+                """
+            )
+            completion?(.failure(.system(message: desc)))
+        }
+    }
+
+    /// Cleanup does not change the physical schedule's genuine charge/refund result.
+    private func cleanUpFinishedLegacyRegistration(for alarm: Alarm) {
+        do {
+            guard let ticket = try snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id) else { return }
+            if case .failure = cleanUpLateSnooze(for: alarm, ticket: ticket) {
+                AppLogger.emit(.scheduler, .error, "Late legacy snooze cleanup remains unconfirmed")
+            }
+        } catch {
+            AppLogger.emit(.scheduler, .error, "Late legacy snooze ownership is unavailable")
+        }
+    }
+
+    // MARK: - Scoped occurrence finish
+
+    func finishOccurrence(
+        for alarm: Alarm, ticket: AlarmOccurrenceFinishTicket, preserveWeekly: Bool = true
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        guard ticket.alarmID == alarm.id else { return .failure(.ownershipUnavailable) }
+        guard legacySnoozeOperations[alarm.id]?.isEmpty != false else { return .failure(.busy) }
+        do {
+            let request = try occurrenceFinishRequest(for: alarm, ticket: ticket, preserveWeekly: preserveWeekly)
+            guard let alarmKitScheduler else { return .failure(.unsupported) }
+            let result = alarmKitScheduler.finishOccurrence(request)
+            if case .success = result { cancelLegacyNotifications(alarm.id) }
+            return result
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.sessionUnavailable)
+        }
+    }
+
+    /// The caller supplies a checked current row or checked absence; no native mutation is permitted.
+    func verifyPendingOccurrenceFinish(
+        currentAlarm: Alarm?, ticket: AlarmOccurrenceFinishTicket
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        if let currentAlarm, currentAlarm.id != ticket.alarmID { return .failure(.ownershipUnavailable) }
+        guard legacySnoozeOperations[ticket.alarmID]?.isEmpty != false else { return .failure(.busy) }
+        guard snoozeSessions != nil else { return .failure(.sessionUnavailable) }
+        do {
+            let request = try occurrenceFinishRequest(for: currentAlarm, ticket: ticket)
+            guard let alarmKitScheduler else { return .failure(.unsupported) }
+            let result = alarmKitScheduler.verifyFinishedOccurrence(request)
+            if case .success = result { cancelLegacyNotifications(ticket.alarmID) }
+            return result
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.sessionUnavailable)
+        }
+    }
+
+    func cleanUpLateSnooze(
+        for alarm: Alarm, ticket: AlarmOccurrenceFinishTicket, receipt: AlarmSnoozeReceipt? = nil
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        do {
+            let request = try occurrenceFinishRequest(for: alarm, ticket: ticket, suppliedReceipt: receipt)
+            guard let alarmKitScheduler else { return .failure(.unsupported) }
+            return alarmKitScheduler.cleanUpLateSnooze(request)
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.sessionUnavailable)
+        }
+    }
+
+    /// On unsafe context only the known original may be silenced; this never confirms UI success.
+    func stopOriginalAfterUnverifiedFinish(_ alarmID: UUID) {
+        guard let alarmKitScheduler else { return }
+        if case .failure = alarmKitScheduler.stopOriginalForFinish(alarmID) {
+            AppLogger.emit(.scheduler, .error, "Original occurrence stop remains unconfirmed")
+        }
+    }
+
+    private func occurrenceFinishRequest(
+        for alarm: Alarm?, ticket: AlarmOccurrenceFinishTicket,
+        preserveWeekly: Bool = true, suppliedReceipt: AlarmSnoozeReceipt? = nil
+    ) throws -> AlarmOccurrenceFinishRequest {
+        if let alarm, ticket.alarmID != alarm.id { throw AlarmOccurrenceFinishError.ownershipUnavailable }
+        let receipt: AlarmSnoozeReceipt?
+        if let snoozeSessions {
+            receipt = try snoozeSessions.validateOccurrenceFinish(ticket)
+        } else {
+            // Only the isolated initializer can omit the durable store.
+            guard ticket.token == nil else { throw AlarmOccurrenceFinishError.ownershipUnavailable }
+            receipt = nil
+        }
+        if let receipt {
+            guard receipt.systemID == AlarmKitScheduler.snoozeID(for: ticket.alarmID),
+                  receipt.fireDate.timeIntervalSince1970.isFinite else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+        }
+        if let suppliedReceipt, suppliedReceipt != receipt { throw AlarmOccurrenceFinishError.ownershipUnavailable }
+        let weekly: NativeOccurrenceSnapshot.Weekly?
+        if let alarm, preserveWeekly, alarm.enabled, alarm.repeatMode == .weekly, !alarm.repeatDays.isEmpty {
+            guard let expected = AlarmKitScheduler.weeklyProjection(AlarmKitScheduler.makeSchedule(for: alarm)) else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+            weekly = expected
+        } else {
+            weekly = nil
+        }
+        return AlarmOccurrenceFinishRequest(
+            alarmID: ticket.alarmID, weekly: weekly, expectedDerivedFireDate: receipt?.fireDate,
+            allowsUntrackedDerived: ticket.token == nil
+        )
     }
 }

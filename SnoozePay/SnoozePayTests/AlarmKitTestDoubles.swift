@@ -33,6 +33,12 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     private(set) var cancelledIDs: [UUID] = []
     private(set) var stoppedIDs: [UUID] = []
     private(set) var authorizationRequests = 0
+    var occurrenceFinishResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
+    private(set) var occurrenceFinishRequests: [AlarmOccurrenceFinishRequest] = []
+    var occurrenceVerificationResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
+    private(set) var occurrenceVerificationRequests: [AlarmOccurrenceFinishRequest] = []
+    private(set) var lateSnoozeCleanupRequests: [AlarmOccurrenceFinishRequest] = []
+    private(set) var finishOriginalStopIDs: [UUID] = []
 
     init(
         authorization: AlarmKitAuthorization = .authorized,
@@ -73,6 +79,27 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     func cancel(_ alarmID: UUID) { cancelledIDs.append(alarmID) }
 
     func stop(_ alarmID: UUID) { stoppedIDs.append(alarmID) }
+
+    /// Configured outcome for tests of consumers; native proof has stateful adapter fixtures.
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        occurrenceFinishRequests.append(request)
+        return occurrenceFinishResult
+    }
+
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        occurrenceVerificationRequests.append(request)
+        return occurrenceVerificationResult
+    }
+
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        lateSnoozeCleanupRequests.append(request)
+        return .success(())
+    }
+
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
+        finishOriginalStopIDs.append(alarmID)
+        return .success(())
+    }
 }
 
 /// Inert `NotificationScheduling` double.

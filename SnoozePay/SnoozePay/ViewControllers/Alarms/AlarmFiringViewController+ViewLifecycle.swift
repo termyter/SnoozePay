@@ -73,6 +73,7 @@ extension AlarmFiringViewController {
     // MARK: Actions
 
     func snoozeTapped() {
+        guard !viewModel.finishRequested else { return }
         let warnings = criticalWarnings
         let alarmID = viewModel.alarm.id
         // The Boolean confirms only a debit. A synchronous refusal must never
@@ -82,7 +83,7 @@ extension AlarmFiringViewController {
             guard let self else { return }
             switch outcome {
             case .scheduled:
-                guard !self.isStoppedByUser else { return }
+                guard !self.isStoppedByUser, !self.viewModel.finishRequested else { return }
                 self.dismissAfterAlarmKitSnooze()
             case .scheduleFailed, .scheduleFailedAndRefundFailed:
                 self.exitSnoozedState()
@@ -126,7 +127,7 @@ extension AlarmFiringViewController {
     /// escalation is owned by the sheet itself via `AlarmFiringCoordinator
     /// .pauseEscalation()`, so callers don't need to coordinate audio state.
     func presentTopUpSheet() {
-        guard !noBalancePurchaseInFlight else { return }
+        guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         // Recommend an actual compatible offer for the next progressive charge.
         // The sheet reads its live wallet; package copy makes no snooze forecasts.
         let sheet = FiringTopUpBottomSheetViewController(
