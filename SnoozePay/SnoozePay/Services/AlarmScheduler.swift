@@ -628,7 +628,7 @@ final class AlarmScheduler: AlarmScheduling {
         let rearmable: [Alarm]
         if usesAlarmKit {
             guard let alerting = alarmKitScheduler?.alertingAlarmIDs else {
-                AppLogger.scheduler.error("rescheduleAll skipped: current AlarmKit state unavailable")
+                AppLogger.emit(.scheduler, .error, "rescheduleAll skipped: current AlarmKit state unavailable")
                 completion?(enabled.count)
                 return
             }
