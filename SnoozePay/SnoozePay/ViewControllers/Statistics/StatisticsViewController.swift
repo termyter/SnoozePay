@@ -62,6 +62,9 @@ final class StatisticsViewController: UIViewController {
     /// Read once in `setupLayout()`, so set it before the view loads —
     /// unlike Settings there is no table to reload, the row is built once.
     var referralShortcutEnabled = AppFeatureFlags.referralEnabled
+
+    /// Tests mounting this child must not mint an identity in shared defaults.
+    var referralControllerFactory: @MainActor () -> ReferralViewController = { ReferralViewController() }
     #endif
 
     // MARK: - Layout containers
@@ -598,7 +601,7 @@ final class StatisticsViewController: UIViewController {
         // screen no back button, no title and no #508 chrome, with its content
         // running under the status bar (#517). The two sibling tabs already
         // restored the bar before their pushes; this one had not.
-        AppNavigationBarStyle.pushRestoringBar(ReferralViewController(), from: self)
+        AppNavigationBarStyle.pushRestoringBar(referralControllerFactory(), from: self)
     }
 
     @objc func debugAlarmOffTapped() {

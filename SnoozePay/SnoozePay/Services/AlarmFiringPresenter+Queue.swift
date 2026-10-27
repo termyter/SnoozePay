@@ -36,6 +36,7 @@ extension AlarmFiringPresenter {
     struct PendingPresentation: Equatable {
         let alarmID: UUID
         let snoozeCount: Int
+        var snoozeReference: AlarmSnoozeReference? = nil
 
         /// Names the request in a presenter line (#835): the first eight hex
         /// digits of the id, and the count. `AppLogger.emit` writes `.public`,
@@ -105,6 +106,8 @@ extension AlarmFiringPresenter {
             raisedFromQueue = nil
             return
         }
+        mountingSnoozeReference = pending.snoozeReference
+        defer { mountingSnoozeReference = nil }
         guard mount(pending.alarmID, pending.snoozeCount) else {
             raisedFromQueue = nil
             return
@@ -323,6 +326,7 @@ extension AlarmFiringPresenter {
         let current = now()
         pendingQueue.removeAll {
             $0.request.alarmID == shown.alarmID
+                && ($0.request.snoozeReference == nil || $0.request.snoozeReference == shown.snoozeReference)
                 && ($0.request.snoozeCount <= shown.snoozeCount || isExpired($0, at: current))
         }
     }
@@ -359,9 +363,13 @@ extension AlarmFiringPresenter {
             index = nil
         }
         let parked = index.map { pendingQueue[$0].request }
-        let outranked = parked.map { $0.snoozeCount > retry.snoozeCount } ?? false
+        let outranked = parked.map {
+            retry.snoozeReference == nil && ($0.snoozeReference != nil || $0.snoozeCount > retry.snoozeCount)
+        } ?? false
         let queued = QueuedPresentation(request: retry, parkedAt: current)
-        if let index, let parked, parked.snoozeCount < retry.snoozeCount {
+        if let index, let parked, !outranked,
+           parked.snoozeCount < retry.snoozeCount
+               || (retry.snoozeReference != nil && parked.snoozeReference != retry.snoozeReference) {
             pendingQueue[index] = queued
         } else if index == nil {
             pendingQueue.append(queued)
@@ -402,6 +410,9 @@ extension AlarmFiringPresenter.PendingPresentation {
     /// The record `screen` stands for: its alarm at the count it shows.
     @MainActor
     init(on screen: AlarmFiringViewController) {
-        self.init(alarmID: screen.viewModel.alarm.id, snoozeCount: screen.viewModel.snoozeCount)
+        self.init(
+            alarmID: screen.viewModel.alarm.id, snoozeCount: screen.viewModel.snoozeCount,
+            snoozeReference: screen.viewModel.snoozeReference
+        )
     }
 }

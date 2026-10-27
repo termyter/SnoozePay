@@ -73,15 +73,18 @@ enum CalendarDateFormatter {
     /// zone, which decides *which day* an instant falls on and is therefore
     /// not optional detail for a date. Without one the formatter uses the
     /// current calendar, as the hand-rolled formatters it replaces did.
+    /// `render` is synchronous and nonescaping; its default uses the configured
+    /// formatter. Tests can inject an empty result without depending on an ICU failure.
     static func string(
         from date: Date,
         style: Style,
         locale: Locale = AppLocale.display,
-        calendar: Calendar? = nil
+        calendar: Calendar? = nil,
+        render: (DateFormatter, Date) -> String = { $0.string(from: $1) }
     ) -> String {
-        let rendered = makeFormatter(
+        let rendered = render(makeFormatter(
             style: style, locale: locale, calendar: calendar
-        ).string(from: date)
+        ), date)
         // Checked on the RESULT, not on `dateFormat`. The pattern is a proxy
         // for the symptom, and the proxy is loose in both directions: a
         // locale with no CLDR data (`root`, `""`) resolves `dMMMM` to a
@@ -95,11 +98,9 @@ enum CalendarDateFormatter {
         // here would SIGTRAP the test host — the 1034-test suite would report a
         // nameless crash instead of naming the locale that broke.
         if rendered.isEmpty {
-            AppLogger.ui.fault(
-                """
-                CalendarDateFormatter: \(style.skeleton, privacy: .public) rendered \
-                nothing for \(locale.identifier, privacy: .public)
-                """
+            AppLogger.emit(
+                .ui, .fault,
+                "CalendarDateFormatter: \(style.skeleton) rendered nothing for \(locale.identifier)"
             )
         }
         return rendered

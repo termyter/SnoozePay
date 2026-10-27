@@ -315,12 +315,12 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         // that shorthand occurs exactly once, and not on a row: it is
         // `padding: "4px 20px 12px"` on a theme block inside a settings card
         // on another artboard,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:209` contains "4px 20px 12px".
         // A plain substring grep for `4px 20px` looks like five hits because
         // four screen-section containers read `padding: "24px 20px 0"`:
         // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:581` contains "24px 20px 0",
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:196` contains "24px 20px 0",
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:412` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:195` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:411` contains "24px 20px 0",
         // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:193` contains "24px 20px 0".
         // One of those with its leading `2` dropped is the likeliest origin
         // of the invented rule. None of the five is a row inset (#685).
@@ -671,14 +671,14 @@ extension SoundPickerViewController {
             // The earlier «padding "4px 20px"» citation was
             // wrong twice over: no such row rule exists in the prototype — as
             // a standalone value that shorthand appears once, on a theme block
-            // (`docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px");
+            // (`docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:209` contains "4px 20px 12px");
             // see the note in `setupContent()` for why a
             // grep makes it look like five — and the sound rows it claimed to
             // match use a different inset (#685).
             //
             // Canon for a row card of this family is `<SPCard padding={4}>`
             // (`docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:266` contains "SPCard padding={4}",
-            // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:420` contains "SPCard padding={4}")
+            // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:419` contains "SPCard padding={4}")
             // wrapping `.sp-row`, which
             // has `padding: 14px 0` (`components.css:86-88`) — 4pt, not 20.
             // The 20 is kept because it is the same number the rest of the app

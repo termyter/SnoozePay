@@ -77,6 +77,9 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         let indexPath = priceIndexPath(in: sut)
         let initial = try XCTUnwrap(sut.tableView.cellForRow(at: indexPath))
         XCTAssertTrue(labels(in: initial).contains { $0.text == MoneyFormatter.string(49.5, currency: .rub) })
+        let initialRules = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
+        XCTAssertEqual(try previewLabel(in: initialRules).text,
+                       formattedChain([49.5, 99, 198, 396], currency: .rub))
         let usd = try XCTUnwrap(Currency(code: "USD"))
         XCTAssertEqual(sut.walletCurrencyStore.freeze(usd), .frozen(usd))
         let before = defaults.dictionaryRepresentation() as NSDictionary
@@ -85,8 +88,139 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         let refreshed = try XCTUnwrap(sut.tableView.cellForRow(at: indexPath))
         XCTAssertTrue(labels(in: refreshed).contains { $0.text == MoneyFormatter.string(49.5, currency: usd) })
         XCTAssertFalse(labels(in: refreshed).contains { ($0.text ?? "").contains("₽") })
+        let refreshedRules = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
+        XCTAssertEqual(try previewLabel(in: refreshedRules).text,
+                       formattedChain([49.5, 99, 198, 396], currency: usd))
         XCTAssertEqual(sut.makeDefaultPricePicker().actions.first?.title, MoneyFormatter.string(20.0, currency: usd))
         XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, before)
+    }
+
+    private let progressiveCases: [(base: Double, steps: [Double])] = [
+        (20, [20, 40, 80, 160]),
+        (50, [50, 100, 200, 400]),
+        (100, [100, 200, 400, 800]),
+        (200, [200, 400, 800, 1600]),
+        (500, [500, 1000, 2000, 4000])
+    ]
+
+    func testRulesPreviewUsesSelectedBaseAndWalletCurrencyWithoutWritingDefaults() throws {
+        for code in ["RUB", "USD", "KWD"] {
+            let currency = try XCTUnwrap(Currency(code: code))
+            for item in progressiveCases {
+                let (sut, defaults) = makeSUT(currency: currency, amount: item.base)
+                sut.alarmDefaults.progressiveScale = true
+                let before = defaults.dictionaryRepresentation() as NSDictionary
+                let cell = sut.makeRulesCell(at: rulesIndexPath(in: sut))
+                XCTAssertEqual(try previewLabel(in: cell).text, formattedChain(item.steps, currency: currency))
+                XCTAssertEqual(try previewLabel(in: cell).text?.components(separatedBy: " → ").count, 4)
+                XCTAssertEqual(sut.alarmDefaults.penaltyAmount, item.base)
+                XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, before)
+            }
+        }
+    }
+
+    func testRulesPreviewPreservesThreeMinorUnits() throws {
+        let currency = try XCTUnwrap(Currency(code: "KWD"))
+        let (sut, _) = makeSUT(currency: currency, amount: 1.001)
+        let cell = sut.makeRulesCell(at: rulesIndexPath(in: sut))
+        XCTAssertEqual(try previewLabel(in: cell).text,
+                       formattedChain([1.001, 2.002, 4.004, 8.008], currency: currency))
+        XCTAssertTrue(try XCTUnwrap(previewLabel(in: cell).text).contains("1,001"))
+    }
+
+    func testSelectingDefaultPriceImmediatelyReloadsBothMountedRows() throws {
+        let currency = try XCTUnwrap(Currency(code: "USD"))
+        let (sut, _) = makeSUT(currency: currency, amount: 50)
+        sut.alarmDefaults.progressiveScale = true
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = sut
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        window.layoutIfNeeded()
+        sut.tableView.layoutIfNeeded()
+        let initial = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
+        XCTAssertEqual(try previewLabel(in: initial).text, formattedChain([50, 100, 200, 400], currency: currency))
+
+        for item in progressiveCases {
+            // This is the production picker action's commit, not a test-only
+            // defaults write followed by a reload supplied by the test.
+            sut.applyDefaultPrice(item.base)
+            sut.tableView.layoutIfNeeded()
+            let price = try XCTUnwrap(sut.tableView.cellForRow(at: priceIndexPath(in: sut)))
+            XCTAssertTrue(labels(in: price).contains {
+                $0.text == MoneyFormatter.string(item.base, currency: currency)
+            })
+            let rules = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
+            XCTAssertEqual(try previewLabel(in: rules).text, formattedChain(item.steps, currency: currency))
+            XCTAssertEqual(sut.alarmDefaults.penaltyAmount, item.base)
+            XCTAssertTrue(sut.alarmDefaults.progressiveScale)
+        }
+    }
+
+    func testDisabledProgressiveRuleStillExplainsTheLadderAndToggleOnlyChangesItsFlag() throws {
+        let (sut, _) = makeSUT(currency: .rub, amount: 200)
+        let cell = sut.makeRulesCell(at: rulesIndexPath(in: sut))
+        let toggle = try XCTUnwrap(descendants(in: cell).compactMap { $0 as? SPSwitch }.first)
+        XCTAssertFalse(toggle.isOn)
+        XCTAssertTrue(toggle.isEnabled)
+        XCTAssertFalse(try previewLabel(in: cell).isHidden)
+        let expected = formattedChain([200, 400, 800, 1600], currency: .rub)
+        XCTAssertEqual(try previewLabel(in: cell).text, expected)
+
+        for enabled in [true, false] {
+            toggle.isOn = enabled
+            toggle.sendActions(for: .valueChanged)
+            XCTAssertEqual(sut.alarmDefaults.progressiveScale, enabled)
+            XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 200)
+            XCTAssertEqual(try previewLabel(in: cell).text, expected)
+            XCTAssertFalse(try previewLabel(in: cell).isHidden)
+        }
+    }
+
+    func testLongCurrencyPreviewFitsTheSelfSizingRowInBothThemes() throws {
+        for code in ["RUB", "USD", "KWD"] {
+            let currency = try XCTUnwrap(Currency(code: code))
+            for style in [UIUserInterfaceStyle.light, .dark] {
+                let (sut, _) = makeSUT(currency: currency, amount: 500)
+                let indexPath = rulesIndexPath(in: sut)
+                XCTAssertEqual(sut.tableView(sut.tableView, heightForRowAt: indexPath), UITableView.automaticDimension)
+                let cell = sut.makeRulesCell(at: indexPath)
+                cell.overrideUserInterfaceStyle = style
+                cell.frame = CGRect(x: 0, y: 0, width: 320, height: SettingsIconRowCell.minimumRowHeight)
+                cell.layoutIfNeeded()
+                cell.frame.size.height = cell.contentView.systemLayoutSizeFitting(
+                    CGSize(width: 320, height: UIView.layoutFittingCompressedSize.height),
+                    withHorizontalFittingPriority: .required,
+                    verticalFittingPriority: .fittingSizeLevel
+                ).height
+                cell.setNeedsLayout()
+                cell.layoutIfNeeded()
+                let preview = try previewLabel(in: cell)
+                let needed = preview.sizeThatFits(CGSize(width: preview.bounds.width, height: .greatestFiniteMagnitude))
+                XCTAssertGreaterThan(preview.bounds.width, 0)
+                XCTAssertGreaterThanOrEqual(preview.bounds.height, needed.height - 0.5)
+                XCTAssertLessThanOrEqual(preview.convert(preview.bounds, to: cell.contentView).maxY,
+                                         cell.contentView.bounds.height + 0.5)
+                XCTAssertFalse(preview.isHidden)
+                XCTAssertEqual(preview.textColor.resolvedColor(with: preview.traitCollection),
+                               AppColors.fg3.resolvedColor(with: preview.traitCollection))
+            }
+        }
+    }
+
+    private func formattedChain(_ amounts: [Double], currency: Currency) -> String {
+        amounts.map { MoneyFormatter.string($0, currency: currency) }.joined(separator: " → ")
+    }
+
+    private func rulesIndexPath(in sut: SettingsViewController) -> IndexPath {
+        IndexPath(row: 0, section: sut.visibleSections.firstIndex(of: .rules)!)
+    }
+
+    private func previewLabel(in view: UIView) throws -> UILabel {
+        try XCTUnwrap(labels(in: view).first { $0.text?.contains(" → ") == true })
     }
 
     private func makeSUT(

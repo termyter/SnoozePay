@@ -2,7 +2,7 @@ import UIKit
 
 /// Single grid tile rendered by `AlarmThemePickerViewController` (V3 — #285).
 ///
-/// Per `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:363-385` contains "aspectRatio":
+/// Per `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:362-384` contains "aspectRatio":
 /// the whole tile is the theme preview (135° gradient
 /// for built-ins, photo / "+" for `.custom`). The name + subtitle are overlaid
 /// bottom-left with a text shadow (no opaque footer band); a 22pt money-gradient
@@ -219,7 +219,7 @@ final class AlarmThemeTileCell: UICollectionViewCell {
 
         checkmarkBadge.isHidden = !isSelected
         // Money outline + 2pt offset on the selected tile
-        // (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:367-368` contains "outlineOffset").
+        // (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:366-367` contains "outlineOffset").
         if isSelected {
             card.layer.borderColor = AppColors.money500.cgColor
             card.layer.borderWidth = 2

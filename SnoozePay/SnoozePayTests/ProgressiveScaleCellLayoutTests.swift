@@ -5,7 +5,7 @@ import XCTest
 ///
 /// The canon puts the title, subtitle and doubling chain in a `flex: 1` column
 /// beside the switch,
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:260-263` contains "Прогрессивный режим".
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:259-262` contains "Прогрессивный режим".
 /// The app matched that structurally but the column never CLAIMED its width:
 /// `alignment = .leading` left every row at its intrinsic size, and for a
 /// `numberOfLines = 0` label that is the single-line width, so the column had

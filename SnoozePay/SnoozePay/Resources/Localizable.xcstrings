@@ -1603,6 +1603,24 @@
         }
       }
     },
+    "common.snooze_affordability_large" : {
+      "comment" : "Whole balance hint for very large snooze counts on the alarms list and wallet. %1$@ is the exact, locale-grouped integer count; %2$@ is its localized snooze noun selected with integer arithmetic. Positional string arguments preserve integer precision and allow translations to reorder the whole phrase.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enough for ~%1$@ %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хватит на ~%1$@ %2$@"
+          }
+        }
+      }
+    },
     "common.sound.name.bell" : {
       "comment" : "Display name of the «bell» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -4281,6 +4299,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Баланс"
+          }
+        }
+      }
+    },
+    "firing.progression.unavailable" : {
+      "comment" : "Tracked snooze-session state cannot establish a safe next price. Paid continuation is refused; the normal free finish remains available.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze price can’t be verified. Finish this alarm for free."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось проверить цену откладывания. Выключите будильник бесплатно."
           }
         }
       }

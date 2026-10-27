@@ -713,19 +713,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     private func logSnoozeOutcome(_ outcome: AlarmFiringCoordinator.SnoozeOutcome) {
         switch outcome {
         case .invalidPayload:
-            AppLogger.appDelegate.error("SNOOZE_ACTION: invalid payload, snooze skipped")
+            AppLogger.emit(.appDelegate, .error, "SNOOZE_ACTION: invalid payload, snooze skipped")
         case .alarmNotFound:
-            AppLogger.appDelegate.notice("SNOOZE_ACTION: alarm not found, snooze skipped")
+            AppLogger.emit(.appDelegate, .default, "SNOOZE_ACTION: alarm not found, snooze skipped")
         case .alarmLoadFailed:
             // The coordinator wrote the cause with its error id and handle.
             AppLogger.appDelegate.error("SNOOZE_ACTION: alarm failed to load, snooze skipped — posting fallback banner")
         case .insufficientFunds:
-            AppLogger.appDelegate.notice(
+            AppLogger.emit(
+                .appDelegate, .default,
                 "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
             )
         case let .scheduled(newSnoozeCount, charged):
-            AppLogger.appDelegate.info(
-                "SNOOZE_ACTION: scheduled #\(newSnoozeCount, privacy: .public) charged=\(charged, privacy: .public)"
+            AppLogger.emit(
+                .appDelegate, .info, "SNOOZE_ACTION: scheduled #\(newSnoozeCount) charged=\(charged)"
             )
         case let .scheduleFailed(error):
             // Penalty was refunded inside the coordinator. We log the cause
