@@ -69,19 +69,77 @@ final class AlarmOccurrenceRecoveryEntryTests: XCTestCase {
         let fixture = try OccurrenceVMFixture()
         defer { fixture.close() }
         _ = try fixture.recoveryTrackedTicket()
-        let screen = makeList(fixture, recovery: fixture.recoveryService(), center: NotificationCenter(), streak: 3)
+        let center = NotificationCenter()
+        let screen = makeList(fixture, recovery: fixture.recoveryService(), center: center, streak: 3)
         screen.loadViewIfNeeded()
+        screen.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        screen.view.layoutIfNeeded()
         let table = try table(in: screen)
         let panel = try panel(in: table)
         let header = try XCTUnwrap(table.tableHeaderView)
         XCTAssertEqual(descendants(header).filter { $0 is AlarmsStreakBannerView }.count, 1)
+        let banner = try XCTUnwrap(descendants(header).compactMap { $0 as? AlarmsStreakBannerView }.first)
+        try assertSingleMountedBanner(banner, in: table)
         XCTAssertEqual(panel.retryButtons.count, 1)
+
+        for _ in 0..<2 {
+            screen.refreshOccurrenceRecovery()
+            center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+            screen.view.layoutIfNeeded()
+            try assertSingleMountedBanner(banner, in: table)
+            XCTAssertTrue(try self.panel(in: table) === panel)
+            XCTAssertEqual(panel.retryButtons.count, 1)
+        }
 
         panel.retryButtons.first?.sendActions(for: .touchUpInside)
 
         XCTAssertTrue(table.tableHeaderView is AlarmsStreakBannerView)
+        XCTAssertTrue(table.tableHeaderView === banner)
         XCTAssertFalse(table.isHidden)
         XCTAssertFalse(descendants(try XCTUnwrap(table.tableHeaderView)).contains { $0 is AlarmFinishRecoveryPanel })
+        for _ in 0..<2 {
+            center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+            screen.view.layoutIfNeeded()
+            try assertSingleMountedBanner(banner, in: table)
+            XCTAssertTrue(table.tableHeaderView === banner)
+            XCTAssertFalse(banner.isDescendant(of: header))
+        }
+    }
+
+    func testRepeatedHeaderCompositionPreservesItsOrdinaryChildAndRestoresItAfterRecovery() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let ticket = try fixture.recoveryTrackedTicket()
+        let recovery = fixture.recoveryService()
+        let host = UIViewController()
+        let composer = AlarmsOccurrenceRecoveryHeader(recovery: recovery, host: host, onChange: {})
+        let table = UITableView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let ordinary = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 84))
+        let emptyState = UIView()
+        table.tableHeaderView = ordinary
+        composer.refresh()
+
+        for _ in 0..<3 {
+            composer.compose(on: table, emptyState: emptyState, hasAlarms: true, width: 390)
+            table.layoutIfNeeded()
+            XCTAssertTrue(table.tableHeaderView === composer.header)
+            XCTAssertTrue(ordinary.superview === composer.header)
+            XCTAssertTrue(ordinary.isDescendant(of: table))
+            XCTAssertEqual(composer.header.arrangedSubviews.filter { $0 === ordinary }.count, 1)
+            XCTAssertEqual(descendants(table).filter { $0 is AlarmFinishRecoveryPanel }.count, 1)
+        }
+        XCTAssertTrue(fixture.backend.occurrenceVerificationRequests.isEmpty)
+        XCTAssertTrue(fixture.wakes.wakeTimes().isEmpty)
+        XCTAssertEqual(recovery.resume(ticket), .success(.completedNow))
+        composer.refresh()
+        composer.compose(on: table, emptyState: emptyState, hasAlarms: true, width: 390)
+        table.layoutIfNeeded()
+
+        XCTAssertTrue(table.tableHeaderView === ordinary)
+        XCTAssertTrue(ordinary.isDescendant(of: table))
+        XCTAssertTrue(composer.header.arrangedSubviews.isEmpty)
+        XCTAssertFalse(ordinary.isDescendant(of: composer.header))
+        XCTAssertFalse(descendants(table).contains { $0 is AlarmFinishRecoveryPanel })
     }
 
     func testOneShotQuietRetryRefreshesTheRenderedSwitchWithoutNativeCancellation() throws {
@@ -274,6 +332,15 @@ final class AlarmOccurrenceRecoveryEntryTests: XCTestCase {
     private func panel(in table: UITableView) throws -> AlarmFinishRecoveryPanel {
         let header = try XCTUnwrap(table.tableHeaderView)
         return try XCTUnwrap(descendants(header).compactMap { $0 as? AlarmFinishRecoveryPanel }.first)
+    }
+    private func assertSingleMountedBanner(
+        _ banner: AlarmsStreakBannerView, in table: UITableView,
+        file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        let header = try XCTUnwrap(table.tableHeaderView, file: file, line: line)
+        XCTAssertTrue(banner.isDescendant(of: table), file: file, line: line)
+        XCTAssertTrue(header === banner || banner.isDescendant(of: header), file: file, line: line)
+        XCTAssertEqual(descendants(table).filter { $0 is AlarmsStreakBannerView }.count, 1, file: file, line: line)
     }
     private func descendants(_ view: UIView) -> [UIView] {
         [view] + view.subviews.flatMap(descendants)

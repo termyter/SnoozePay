@@ -172,6 +172,12 @@ final class AlarmEditorCopyTests: XCTestCase {
         // No direct catalogue reads. FiringDirectPurchaseTerminalTests checks
         // the delegated failure alert; FiringCopyTests pins its catalogue strings.
         "AlarmFiringNoBalancePurchase.swift",
+        // AlarmOccurrenceRecoveryCopyTests scans and renders the finish alerts
+        // and their delegated recovery panel. The header has no direct keys;
+        // the same suite scans it so introducing one cannot go unpinned.
+        "AlarmOccurrenceRecoveryAlerts.swift",
+        "AlarmFiringViewController+OccurrenceRecovery.swift",
+        "AlarmsOccurrenceRecoveryHeader.swift",
         // FiringCopyTests
         "AlarmFiringViewController.swift",
         "AlarmFiringViewController+Audio.swift",

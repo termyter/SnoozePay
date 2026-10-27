@@ -39,19 +39,44 @@ final class AlarmsOccurrenceRecoveryHeader {
         emptyState.isHidden = hasRecovery || hasAlarms
         table.isHidden = !hasRecovery && !hasAlarms
         guard hasRecovery else {
-            header.arrangedSubviews.forEach { header.removeArrangedSubview($0); $0.removeFromSuperview() }
+            if table.tableHeaderView === header {
+                let ordinary = ordinaryHeader
+                table.tableHeaderView = nil
+                removeArrangedSubviews()
+                ordinary?.translatesAutoresizingMaskIntoConstraints = true
+                table.tableHeaderView = ordinary
+            } else {
+                removeArrangedSubviews()
+            }
             return
         }
         let existing = table.tableHeaderView
-        header.arrangedSubviews.forEach { header.removeArrangedSubview($0); $0.removeFromSuperview() }
+        let ordinary = existing === header ? ordinaryHeader : existing
+        // Release UITableView's ownership before moving its old header into the
+        // stack. Otherwise replacing tableHeaderView can detach the adopted view.
+        if existing !== header { table.tableHeaderView = nil }
+        removeArrangedSubviews()
         header.addArrangedSubview(panel)
-        if let existing, existing !== header {
-            existing.translatesAutoresizingMaskIntoConstraints = false
-            header.addArrangedSubview(existing)
+        if let ordinary {
+            ordinary.translatesAutoresizingMaskIntoConstraints = false
+            header.addArrangedSubview(ordinary)
         }
         header.translatesAutoresizingMaskIntoConstraints = true
-        table.tableHeaderView = header
+        if table.tableHeaderView !== header { table.tableHeaderView = header }
         sizeHeader(on: table, width: width)
+    }
+
+    private var ordinaryHeader: UIView? {
+        header.arrangedSubviews.first { $0 !== panel && $0.superview === header }
+    }
+
+    private func removeArrangedSubviews() {
+        header.arrangedSubviews.forEach { child in
+            header.removeArrangedSubview(child)
+            // The list can already have restored its banner to UITableView.
+            // Clearing this stack must not detach a child from its new owner.
+            if child.superview === header { child.removeFromSuperview() }
+        }
     }
 
     func sizeHeader(on table: UITableView, width fallbackWidth: CGFloat) {
