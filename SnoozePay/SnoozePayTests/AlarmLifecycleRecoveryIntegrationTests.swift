@@ -170,7 +170,9 @@ final class AlarmLifecycleRecoveryIntegrationTests: XCTestCase {
         let corrupt = Data("concurrent alarm-store corruption".utf8)
         verifier.onVerify = {
             fixture.defaults.set(corrupt, forKey: "stored_alarms")
-            XCTAssertNoThrow(try repository.clearCorruptState().get())
+            if case .failure(let error) = repository.clearCorruptState() {
+                XCTFail("Expected checked native recovery to commit before verification returns: \(error)")
+            }
         }
         let service = AlarmOccurrenceRecovery(repository: repository, scheduler: verifier,
                                               sessions: fixture.store(), wakes: fixture.wakes)
