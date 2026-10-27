@@ -33,13 +33,12 @@ function Permissions() {
           Чтобы будильник работал
         </div>
         <div className="sp-body-lg" style={{ color: "var(--sp-fg-2)", marginTop: 12, maxWidth: 320 }}>
-          Без этих разрешений iOS не разбудит вас в нужное время — даже если телефон беззвучный.
+          Эти разрешения нужны, чтобы будильник прозвенел даже на беззвучном режиме.
         </div>
         <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
           {[
-            { i: <IconBell size={20}/>, t: "Уведомления", s: "Чтобы показать будильник на экране", on: true },
-            { i: <IconSound size={20}/>, t: "Critical Alerts", s: "Чтобы звук прошёл через беззвучный режим", on: true },
-            { i: <IconClock size={20}/>, t: "Фоновый режим", s: "Чтобы таймеры не убивались системой", on: false },
+            { i: <IconBell size={20}/>, t: "Будильники", s: "Чтобы будильник мог звонить и появляться на экране", on: true },
+            { i: <IconClock size={20}/>, t: "Фоновое аудио", s: "Чтобы звук будильника продолжал играть при блокировке экрана", on: true },
           ].map((r, i) => (
             <SPCard key={i} padding={16} radius={16}>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -418,8 +417,7 @@ function VolumeSetting() {
         </div>
         <div style={{ padding: "32px 20px 0", flex: 1 }}>
           <SPCard padding={4} radius={20}>
-            <SPRow leading={<IconClock size={20} style={{ color: "var(--sp-fg-3)" }}/>} title="Нарастает за 30 сек" subtitle="Начинает тихо и доходит до уровня" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
-            <SPRow divider={false} leading={<IconBell size={20} style={{ color: "var(--sp-fg-3)" }}/>} title="Игнорировать беззвучный режим" subtitle="Critical Alerts" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
+            <SPRow divider={false} leading={<IconClock size={20} style={{ color: "var(--sp-fg-3)" }}/>} title="Постепенно нарастает" subtitle="За 30 секунд" trailing={<SPSwitch checked={true} onChange={()=>{}}/>}/>
           </SPCard>
         </div>
       </div>

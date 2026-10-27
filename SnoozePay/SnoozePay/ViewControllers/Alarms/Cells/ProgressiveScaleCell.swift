@@ -58,7 +58,7 @@ final class ProgressiveScaleCell: UITableViewCell {
 
     /// The canon's `flex: 1` column — title row, subtitle and chain sit beside
     /// the switch, not under it,
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:260-263` contains "Прогрессивный режим".
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:259-262` contains "Прогрессивный режим".
     ///
     /// `.fill`, not `.leading`: under `.leading` every row kept its intrinsic
     /// width, which for a `numberOfLines = 0` label is its SINGLE-LINE width.

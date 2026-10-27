@@ -96,6 +96,7 @@ final class AlarmScheduler: AlarmScheduling {
     }
 
     private let notificationCenter: NotificationScheduling
+    private let snoozeSessions: AlarmSnoozeSessionStore?
 
     /// The AlarmKit backend as wired by `init`. Non-nil in production;
     /// injectable (and omittable) in tests so the "no backend at all" refusal
@@ -169,6 +170,7 @@ final class AlarmScheduler: AlarmScheduling {
         self.notificationCenter = UNUserNotificationCenter.current()
         self.wiredAlarmKitScheduler = AlarmKitScheduler()
         self.honoursTourOverride = true
+        self.snoozeSessions = .shared
     }
 
     /// Test-only initializer that swaps the notification-center seam and,
@@ -178,7 +180,8 @@ final class AlarmScheduler: AlarmScheduling {
     /// models "no backend authorized", which must refuse rather than schedule.
     init(
         notificationCenter: NotificationScheduling,
-        alarmKit: AlarmKitScheduling? = nil
+        alarmKit: AlarmKitScheduling? = nil,
+        snoozeSessions: AlarmSnoozeSessionStore? = nil
     ) {
         self.notificationCenter = notificationCenter
         self.wiredAlarmKitScheduler = alarmKit
@@ -186,6 +189,7 @@ final class AlarmScheduler: AlarmScheduling {
         // tour override leaked from another test — same rule as
         // `AlarmBackendMonitor`, where an injected probe always wins (#545).
         self.honoursTourOverride = false
+        self.snoozeSessions = snoozeSessions
     }
 
     // MARK: - Permission
@@ -351,6 +355,28 @@ final class AlarmScheduler: AlarmScheduling {
         }
     }
 
+    func scheduleTrackedSnooze(
+        for alarm: Alarm, token: AlarmSnoozeToken,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        guard usesAlarmKit, let alarmKitScheduler else {
+            completion(.failure(SchedulingError.backendUnavailable))
+            return
+        }
+        guard let snoozeSessions, let count = try? snoozeSessions.pendingCount(token, alarmID: alarm.id) else {
+            completion(.failure(AlarmSnoozeContextError.unavailable))
+            return
+        }
+        alarmKitScheduler.stop(alarm.id)
+        alarmKitScheduler.scheduleTrackedSnooze(
+            alarm, fireDate: Self.scheduledFireDate(now: Date(), snoozeMinutes: alarm.snoozeMinutes),
+            token: token, attemptCount: count,
+            isCurrent: { (try? snoozeSessions.pendingCount(token, alarmID: alarm.id)) == count }
+        ) { result in
+            completion(result)
+        }
+    }
+
     /// Pure factory for the snooze fire date — extracted so unit tests can pin the
     /// arithmetic without touching the backend. Bug guard for mistaken
     /// unit conversions (minutes vs seconds vs hours).
@@ -369,6 +395,10 @@ final class AlarmScheduler: AlarmScheduling {
     /// (`once`) alarm kept ringing after deletion because its identifier was
     /// missing from the cancel set.
     func cancel(_ alarmID: UUID) {
+        do { try snoozeSessions?.finish(alarmID: alarmID) } catch {
+            let detail = String(describing: error)
+            AppLogger.scheduler.error("Snooze session invalidation failed: \(detail, privacy: .public)")
+        }
         // Always attempt the AlarmKit cancel regardless of `usesAlarmKit` so an
         // alarm scheduled while authorized is still cancellable if the
         // authorization later changed.
@@ -376,7 +406,16 @@ final class AlarmScheduler: AlarmScheduling {
             alarmKitScheduler.cancel(alarmID)
         }
 
+        cleanUpTrackedSnooze(alarmID)
         cancelLegacyNotifications(alarmID)
+    }
+
+    /// Keeps unresolved reservations blocked unless physical absence is confirmed.
+    func cleanUpTrackedSnooze(_ alarmID: UUID) {
+        guard snoozeSessions != nil, alarmKitScheduler?.cancelTrackedSnooze(alarmID) == true else { return }
+        do { try snoozeSessions?.settleCancelled(alarmID: alarmID) } catch {
+            AppLogger.emit(.scheduler, .error, "Snooze cancellation context remains unavailable")
+        }
     }
 
     private func cancelLegacyNotifications(_ alarmID: UUID) {
@@ -436,8 +475,9 @@ final class AlarmScheduler: AlarmScheduling {
         rescheduleAll(alarms.filter { !alerting.contains($0.id) }, completion: completion)
     }
 
-    /// Re-arm every enabled original schedule, preserving any paid pending
-    /// snooze under its separate AlarmKit ID and its original fire date (#935).
+    /// Re-arm future enabled originals, leaving currently alerting originals
+    /// untouched (#1061) and preserving paid pending snoozes under their separate
+    /// AlarmKit IDs and original fire dates (#935).
     /// Full cancellation remains reserved for explicit disable/delete/finish.
     ///
     /// Called when something that silently invalidates already-scheduled
@@ -456,7 +496,9 @@ final class AlarmScheduler: AlarmScheduling {
     ///   invisible.
     ///
     /// Disabled alarms are skipped: they hold nothing to re-arm and
-    /// `schedule(_:)` is already a no-op for them.
+    /// `schedule(_:)` is already a no-op for them. While authorized, an unreadable
+    /// alerting inventory skips re-arm without cancellation and counts every
+    /// enabled alarm as failed; unknown state is not evidence that none ring.
     /// - Parameter completion: invoked on the main queue once every re-arm has
     ///   resolved, carrying the number that FAILED to re-arm. Previously each
     ///   `schedule` was fired with a `nil` completion, so every typed
@@ -474,11 +516,25 @@ final class AlarmScheduler: AlarmScheduling {
             return
         }
 
+        let rearmable: [Alarm]
+        if usesAlarmKit {
+            guard let alerting = alarmKitScheduler?.alertingAlarmIDs else {
+                AppLogger.scheduler.error("rescheduleAll skipped: current AlarmKit state unavailable")
+                completion?(enabled.count)
+                return
+            }
+            rearmable = enabled.filter { !alerting.contains($0.id) }
+        } else {
+            // A revoked grant must still clean up originals and report the
+            // existing backendUnavailable schedule failures.
+            rearmable = enabled
+        }
+
         let group = DispatchGroup()
         let lock = NSLock()
         var failedCount = 0
 
-        for alarm in enabled {
+        for alarm in rearmable {
             // Cancel even after authorization changes, but never remove the
             // independently scheduled paid snooze or restart its deadline.
             alarmKitScheduler?.cancelOriginal(alarm.id)
@@ -496,7 +552,7 @@ final class AlarmScheduler: AlarmScheduling {
 
         group.notify(queue: .main) {
             if failedCount > 0 {
-                let total = enabled.count
+                let total = rearmable.count
                 AppLogger.scheduler.error(
                     "rescheduleAll failed: \(failedCount, privacy: .public)/\(total, privacy: .public)"
                 )

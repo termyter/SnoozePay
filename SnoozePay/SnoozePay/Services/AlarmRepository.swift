@@ -220,7 +220,7 @@ final class AlarmRepository {
 
         guard let alarm = updated else {
             os_log(
-                "setEnabled: no alarm with id %{public}@ (or store locked)",
+                "setEnabled: no alarm with id %{private}@ (or store locked)",
                 log: Self.log, type: .info, id.uuidString
             )
             return false
@@ -271,7 +271,17 @@ final class AlarmRepository {
         do {
             let alarms = try JSONDecoder().decode([Alarm].self, from: data)
             _lastLoadFailed = false
-            return alarms.sorted { $0.time < $1.time }
+            let calendar = Calendar.current
+            return alarms.sorted { lhs, rhs in
+                let lhsClock = calendar.dateComponents([.hour, .minute], from: lhs.time)
+                let rhsClock = calendar.dateComponents([.hour, .minute], from: rhs.time)
+                // Creation dates can differ; sort by displayed local time first.
+                // Missing clock components sort last without trapping. Date keeps
+                // the prior tie order; exact-date ties retain the persisted order.
+                let lhsKey = (lhsClock.hour ?? Int.max, lhsClock.minute ?? Int.max, lhs.time)
+                let rhsKey = (rhsClock.hour ?? Int.max, rhsClock.minute ?? Int.max, rhs.time)
+                return lhsKey < rhsKey
+            }
         } catch {
             // Case 3: stored bytes can't be decoded.
             _lastLoadFailed = true

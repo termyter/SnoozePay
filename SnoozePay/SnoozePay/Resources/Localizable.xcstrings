@@ -1117,24 +1117,6 @@
         }
       }
     },
-    "alarms.error.data_title" : {
-      "comment" : "Alarms list: title of the alert shown when the alarm store cannot be read.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
-          }
-        }
-      }
-    },
     "alarms.error.load_failed" : {
       "comment" : "Alert body when the stored alarms JSON cannot be decoded (AlarmRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
@@ -1513,6 +1495,24 @@
         }
       }
     },
+    "common.error.data_title" : {
+      "comment" : "Shared title for alarm-list and statistics data-load errors. Each alert message identifies the affected domain.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data Error"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ошибка данных"
+          }
+        }
+      }
+    },
     "common.purchase_failed.message" : {
       "comment" : "Fallback body of the purchase-failure alert, used when StoreKit supplies no message of its own.",
       "extractionState" : "manual",
@@ -1599,6 +1599,24 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "common.snooze_affordability_large" : {
+      "comment" : "Whole balance hint for very large snooze counts on the alarms list and wallet. %1$@ is the exact, locale-grouped integer count; %2$@ is its localized snooze noun selected with integer arithmetic. Positional string arguments preserve integer precision and allow translations to reorder the whole phrase.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enough for ~%1$@ %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хватит на ~%1$@ %2$@"
           }
         }
       }
@@ -4285,6 +4303,24 @@
         }
       }
     },
+    "firing.progression.unavailable" : {
+      "comment" : "Tracked snooze-session state cannot establish a safe next price. Paid continuation is refused; the normal free finish remains available.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze price can’t be verified. Finish this alarm for free."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось проверить цену откладывания. Выключите будильник бесплатно."
+          }
+        }
+      }
+    },
     "firing.progressive.pill" : {
       "comment" : "Pain-toned pill in the firing hero on a progressive alarm; %lld is the ordinal of the snooze about to be bought (snoozeCount + 1).",
       "extractionState" : "manual",
@@ -6905,24 +6941,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Не удалось загрузить статистику."
-          }
-        }
-      }
-    },
-    "statistics.error.title" : {
-      "comment" : "Title of the alert shown when the statistics repository fails to load. Byte for byte the value of alarms.error.data_title, and knowingly so rather than by oversight: both alerts are title + errorDescription-or-fallback + OK, the domain lives in the message (statistics.error.message vs alarms.error.load_failed_fallback) and not in the title, so by the common.* rule in Localized.swift this is a candidate for one shared common.error.data_title. Not merged in this slice because dropping a key is precisely the case merge-xcstrings.py refuses to resolve, and the #599 lane is editing this same file in parallel. alarms.error.data_title itself came from #601, which is closed and already on main — it is not what #599 is holding. Consolidate-or-justify-forever is #724. This is not the streak.behavioral.caps situation: there the two entries have different shapes behind them, here they do not.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
           }
         }
       }

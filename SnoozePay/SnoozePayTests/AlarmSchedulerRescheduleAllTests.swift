@@ -5,8 +5,8 @@ import XCTest
 /// a reboot, or an authorization change, so they could fire at the wrong
 /// wall-clock time or stop firing entirely. `rescheduleAll` is the re-arm
 /// primitive AppDelegate calls from the relevant system signals. It must
-/// `cancelOriginal` + `schedule` every **enabled** alarm and leave **disabled** ones
-/// untouched (they hold nothing to re-arm).
+/// `cancelOriginal` + `schedule` every future **enabled** alarm and leave alerting
+/// originals and **disabled** alarms untouched.
 ///
 /// Since #472 the re-arm goes to AlarmKit and nowhere else, so the assertions
 /// read the AlarmKit backend rather than a notification center.
@@ -23,7 +23,7 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
     }
 
     func testRescheduleAll_reschedulesEnabled_skipsDisabled() {
-        let backend = TestAlarmKitBackend()
+        let backend = TestAlarmKitBackend(alertingAlarmIDs: [])
         let scheduler = makeScheduler(backend)
 
         let on = dailyAlarm(name: "On", enabled: true)
@@ -39,6 +39,22 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
         XCTAssertEqual(backend.cancelledOriginalIDs, [on.id],
                        "Only the original enabled alarm is cancelled before being re-scheduled; "
                        + "a disabled one is not touched at all")
+    }
+
+    func testRescheduleAll_allEnabledAlerting_reportsZeroWithoutCancellation() {
+        let alarms = [dailyAlarm(name: "A", enabled: true), dailyAlarm(name: "B", enabled: true)]
+        let backend = TestAlarmKitBackend(alertingAlarmIDs: Set(alarms.map(\.id)))
+        let scheduler = makeScheduler(backend)
+        let exp = expectation(description: "completion")
+        var reported: Int?
+
+        scheduler.rescheduleAll(alarms) { reported = $0; exp.fulfill() }
+
+        wait(for: [exp], timeout: 5)
+        XCTAssertEqual(reported, 0, "Preserving an already alerting alarm is a successful no-op")
+        XCTAssertTrue(backend.cancelledOriginalIDs.isEmpty)
+        XCTAssertTrue(backend.scheduledIDs.isEmpty)
+        XCTAssertTrue(backend.cancelledIDs.isEmpty)
     }
 
     func testRescheduleAll_allDisabled_doesNothing() {
@@ -74,7 +90,7 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
     // MARK: - Failure aggregation (#442)
 
     func testRescheduleAll_allSchedulesSucceed_reportsZeroFailed() {
-        let scheduler = makeScheduler(TestAlarmKitBackend())
+        let scheduler = makeScheduler(TestAlarmKitBackend(alertingAlarmIDs: []))
 
         let exp = expectation(description: "completion")
         var reported: Int?
@@ -88,7 +104,7 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
     }
 
     func testRescheduleAll_scheduleFailures_reportsFailedCount() {
-        let scheduler = makeScheduler(TestAlarmKitBackend(failSchedule: true))
+        let scheduler = makeScheduler(TestAlarmKitBackend(failSchedule: true, alertingAlarmIDs: []))
 
         let exp = expectation(description: "completion")
         var reported: Int?
@@ -108,17 +124,20 @@ final class AlarmSchedulerRescheduleAllTests: XCTestCase {
     /// zero failures. Now every enabled alarm counts as failed, which is what
     /// makes `AppDelegate.handleRescheduleOutcome` able to warn.
     func testRescheduleAll_unauthorizedBackend_countsEveryEnabledAlarmAsFailed() {
-        let scheduler = makeScheduler(TestAlarmKitBackend(authorization: .denied))
+        let backend = TestAlarmKitBackend(authorization: .denied)
+        let scheduler = makeScheduler(backend)
+        let alarms = [dailyAlarm(name: "A", enabled: true), dailyAlarm(name: "B", enabled: true)]
 
         let exp = expectation(description: "completion")
         var reported: Int?
-        scheduler.rescheduleAll([
-            dailyAlarm(name: "A", enabled: true),
-            dailyAlarm(name: "B", enabled: true)
-        ]) { reported = $0; exp.fulfill() }
+        scheduler.rescheduleAll(alarms) { reported = $0; exp.fulfill() }
 
         wait(for: [exp], timeout: 5)
         XCTAssertEqual(reported, 2, "Without a grant nothing is armed — and it must be reported")
+        XCTAssertEqual(backend.cancelledOriginalIDs, alarms.map(\.id),
+                       "Revoked authorization must still clean up originals even when inventory is unknown")
+        XCTAssertTrue(backend.scheduledIDs.isEmpty, "The unavailable backend must not receive a schedule")
+        XCTAssertTrue(backend.cancelledIDs.isEmpty, "Cleanup must preserve independently scheduled paid snoozes")
     }
 
     func testRescheduleAll_emptyEnabled_reportsZeroImmediately() {

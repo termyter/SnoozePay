@@ -329,6 +329,31 @@ final class StoreKitServiceTests: XCTestCase {
         XCTAssertNil(defaults.array(forKey: "storekit.processed_tx_ids") as? [String])
     }
 
+    func testUnmarkProcessed_missingTableDoesNotInventAMarkerAndReplayCanRecord() {
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: LocalNotificationPosterSpy(), defaults: defaults)
+
+        service.unmarkProcessed(transactionID: 42)
+
+        XCTAssertNil(defaults.object(forKey: "storekit.processed_tx_ids"))
+        XCTAssertEqual(service.markProcessed(transactionID: 42), .recorded)
+    }
+
+    func testUnmarkProcessed_corruptTableIsPreservedAndReplayStaysDegraded() {
+        let (defaults, name) = makeSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let service = makeService(poster: LocalNotificationPosterSpy(), defaults: defaults)
+        let corrupt = ["unexpected": 1]
+        defaults.set(corrupt, forKey: "storekit.processed_tx_ids")
+
+        service.unmarkProcessed(transactionID: 42)
+
+        XCTAssertEqual(defaults.dictionary(forKey: "storekit.processed_tx_ids") as? [String: Int], corrupt)
+        XCTAssertEqual(service.markProcessed(transactionID: 42), .degraded)
+        XCTAssertEqual(defaults.dictionary(forKey: "storekit.processed_tx_ids") as? [String: Int], corrupt)
+    }
+
     // MARK: - Verified paid amount (#939)
 
     func testCreditAmount_knownProduct_prefersVerifiedPrice() {

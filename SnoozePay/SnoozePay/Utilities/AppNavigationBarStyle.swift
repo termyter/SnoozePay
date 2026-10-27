@@ -110,7 +110,7 @@ enum AppNavigationBarStyle {
     /// ring on any of the three. Two put a bare
     /// `SPButton variant="quiet" size="sm"` in the picker headers —
     /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:313` contains "quiet" and
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet" —
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:339` contains "quiet" —
     /// and the alarm form puts an equally bare pill,
     /// `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:525` contains "Готово</SPButton>",
     /// in the `money` variant, not `quiet`. What the three share is the absence of
