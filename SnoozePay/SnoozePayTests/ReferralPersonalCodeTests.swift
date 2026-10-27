@@ -241,12 +241,14 @@ final class ReferralPersonalCodeTests: XCTestCase {
         share.wrongAnchor.frame = CGRect(x: available.midX - 20, y: available.midY - 20, width: 40, height: 40)
         share.wrongAnchor.isHidden = false
         share.wrongAnchor.alpha = 1
+        share.wrongAnchor.isUserInteractionEnabled = false
         expectedView.addSubview(share.wrongAnchor)
         XCTAssertTrue(share.wrongAnchor.superview === expectedView)
         XCTAssertTrue(share.wrongAnchor.window === window)
         XCTAssertTrue(share.wrongAnchor.window?.windowScene === scene)
         XCTAssertEqual(scene.activationState, .foregroundActive)
         XCTAssertTrue(available.contains(share.wrongAnchor.frame))
+        XCTAssertTrue(window.bounds.contains(share.wrongAnchor.convert(share.wrongAnchor.bounds, to: window)))
         XCTAssertTrue(share.wrongAnchorIsReady)
         _ = try XCTUnwrap(share.wrongAnchorIsReady ? share.wrongAnchor : nil,
                           "The wrong-source control must be valid on-window before the factory sees it")
@@ -331,6 +333,7 @@ private final class ReferralPersonalCodeShareCapture {
         return components.allSatisfy { $0.isFinite } && frame.size == CGSize(width: 40, height: 40)
             && !frame.isEmpty && parent.bounds.contains(frame) && !wrongRect.isEmpty
             && wrongAnchor.bounds.contains(wrongRect)
+            && window.bounds.contains(wrongAnchor.convert(wrongAnchor.bounds, to: window))
     }
 
     func makeController(items: [Any]) -> UIActivityViewController {
