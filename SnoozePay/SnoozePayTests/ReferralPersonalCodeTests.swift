@@ -155,20 +155,16 @@ final class ReferralPersonalCodeTests: XCTestCase {
         let results = cells.flatMap { cell in
             PopoverCalibrationOrder.allCases.map { PopoverCalibrationProbe.run(cell, order: $0) }
         }
-        for result in results {
-            for phase in result.phases {
-                print("PopoverCalibrationPhase cell=\(result.cell) order=\(result.order.rawValue) "
-                      + "stage=\(phase.stage) controller=\(result.controllerIdentity) \(phase.trace)")
-            }
-            print("PopoverCalibrationOrder cell=\(result.cell) order=\(result.order.rawValue) "
-                  + "configuredExact=\(result.configured.exactPair) refreshedExact=\(result.refreshed.exactPair) "
-                  + "works=\(result.works)")
-        }
+        let lines = PopoverCalibrationProbe.traceLines(results, cellIDs: cells.map { $0.id })
+        let attachment = XCTAttachment(string: lines.joined(separator: "\n"))
+        attachment.name = "Popover anchor calibration phases"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        lines.forEach { print($0) }
         for (input, ready) in inputChecks { XCTAssertTrue(ready, "Invalid calibration input: \(input)") }
         for cell in cells {
             let orders = results.filter { $0.cell == cell.id }
             let working = orders.filter { $0.works }.map { $0.order.rawValue }
-            print("PopoverCalibrationCell cell=\(cell.id) workingOrders=\(working)")
             XCTAssertEqual(orders.count, 2)
             XCTAssertFalse(working.isEmpty, "No complete exact retaining order for \(cell.id)")
         }
@@ -549,6 +545,24 @@ private struct PopoverCalibrationResult {
 
 @MainActor
 private enum PopoverCalibrationProbe {
+    static func traceLines(_ results: [PopoverCalibrationResult], cellIDs: [String]) -> [String] {
+        var lines: [String] = []
+        for result in results {
+            for phase in result.phases {
+                lines.append("PopoverCalibrationPhase cell=\(result.cell) order=\(result.order.rawValue) "
+                             + "stage=\(phase.stage) controller=\(result.controllerIdentity) \(phase.trace)")
+            }
+            lines.append("PopoverCalibrationOrder cell=\(result.cell) order=\(result.order.rawValue) "
+                         + "configuredExact=\(result.configured.exactPair) "
+                         + "refreshedExact=\(result.refreshed.exactPair) works=\(result.works)")
+        }
+        for cell in cellIDs {
+            let working = results.filter { $0.cell == cell && $0.works }.map { $0.order.rawValue }
+            lines.append("PopoverCalibrationCell cell=\(cell) workingOrders=\(working)")
+        }
+        return lines
+    }
+
     static func run(_ cell: PopoverCalibrationCell, order: PopoverCalibrationOrder) -> PopoverCalibrationResult {
         let controller: UIViewController
         switch cell.kind {

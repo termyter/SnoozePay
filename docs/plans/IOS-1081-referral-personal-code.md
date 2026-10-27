@@ -77,3 +77,5 @@ Keep the original four method bodies, all old oracles and waits untouched. The
 factory only gains immediate value-only seed afterView/afterRect observations;
 its setter order and old weak identity assertion stay. No production lifetime,
 sourceItem, traits, timing, device or broader matrix change is part of calibration.
+Store the identical value-only phase/order/cell trace as a keepAlways XCTAttachment
+before assertions as well as literal stdout, so XPC interleaving cannot erase it.
