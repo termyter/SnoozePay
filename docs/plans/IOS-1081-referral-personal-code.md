@@ -56,3 +56,13 @@ only weak object back-references. Log no nil/nil comparison as a positive match.
 Keep the wrong-anchor control, strict sourceView/rect/activity/presenter/count,
 data/domain/money assertions, all IDs and old timeouts. The scene deficiency is
 concrete; its causal relationship to the failure still needs new runtime evidence.
+
+Valid-scene run 40523614366 still observed an actual nil source getter, so scene,
+weak-capture and post-read-only explanations do not explain that run. Independent
+QA found that the wrong source control was still detached when the factory first
+configured it. Keep production entirely unchanged: attach the SAME owned 40×40
+wrongAnchor inside the appeared root before Share, require its exact window/scene,
+nonhidden finite geometry and contained unchanged wrongRect, and record valid
+factory input. Keep it through actual completion and defer-remove only that view.
+All strict root/rect/controller/count and data/store assertions, IDs and waits stay.
+This repairs a seed-context difference; its causality/success remain unproven.

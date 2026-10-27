@@ -198,8 +198,12 @@ final class ReferralPersonalCodeTests: XCTestCase {
         XCTAssertEqual(screen.pasteboard.string, code)
         let expectedView = try XCTUnwrap(screen.controller.viewIfLoaded)
         let expectedRect = expectedView.bounds
+        let expectedWindow = try XCTUnwrap(expectedView.window)
+        let expectedScene = try XCTUnwrap(expectedWindow.windowScene)
         XCTAssertFalse(expectedView === screen.share.wrongAnchor)
         XCTAssertNotEqual(expectedRect, screen.share.wrongRect)
+        defer { screen.share.wrongAnchor.removeFromSuperview() }
+        try attachWrongAnchor(screen.share, to: expectedView)
         let presented = expectation(description: "real owned Share presentation completed")
         screen.share.onPresentationCompleted = { presented.fulfill() }
         defer { screen.share.onPresentationCompleted = nil }
@@ -213,6 +217,10 @@ final class ReferralPersonalCodeTests: XCTestCase {
         XCTAssertTrue(screen.share.seededPopoverExists)
         XCTAssertTrue(screen.share.seededSourceView === screen.share.wrongAnchor)
         XCTAssertEqual(try XCTUnwrap(screen.share.seededSourceRect), screen.share.wrongRect)
+        XCTAssertTrue(screen.share.seededSourceWasValid)
+        XCTAssertTrue(screen.share.seededSourceSuperview === expectedView)
+        XCTAssertTrue(screen.share.seededSourceWindow === expectedWindow)
+        XCTAssertTrue(screen.share.seededSourceScene === expectedScene)
         XCTAssertEqual(screen.share.handoffCount, 1)
         XCTAssertTrue(screen.share.hadPopoverAtHandoff)
         XCTAssertTrue(try XCTUnwrap(screen.share.presenterAtHandoff) === screen.controller)
@@ -224,6 +232,24 @@ final class ReferralPersonalCodeTests: XCTestCase {
         XCTAssertTrue(screen.share.sourceGetterMatchedPresenter)
         _ = try XCTUnwrap(XCTWaiter.wait(for: [presented], timeout: 5) == .completed ? activity : nil,
                           "Real Share presentation must finish before another host or teardown")
+    }
+
+    private func attachWrongAnchor(_ share: ReferralPersonalCodeShareCapture, to expectedView: UIView) throws {
+        let window = try XCTUnwrap(expectedView.window)
+        let scene = try XCTUnwrap(window.windowScene)
+        let available = expectedView.safeAreaLayoutGuide.layoutFrame.intersection(expectedView.bounds)
+        share.wrongAnchor.frame = CGRect(x: available.midX - 20, y: available.midY - 20, width: 40, height: 40)
+        share.wrongAnchor.isHidden = false
+        share.wrongAnchor.alpha = 1
+        expectedView.addSubview(share.wrongAnchor)
+        XCTAssertTrue(share.wrongAnchor.superview === expectedView)
+        XCTAssertTrue(share.wrongAnchor.window === window)
+        XCTAssertTrue(share.wrongAnchor.window?.windowScene === scene)
+        XCTAssertEqual(scene.activationState, .foregroundActive)
+        XCTAssertTrue(available.contains(share.wrongAnchor.frame))
+        XCTAssertTrue(share.wrongAnchorIsReady)
+        _ = try XCTUnwrap(share.wrongAnchorIsReady ? share.wrongAnchor : nil,
+                          "The wrong-source control must be valid on-window before the factory sees it")
     }
 
     private func button(_ key: String, in controller: UIViewController) throws -> SPButton {
@@ -275,6 +301,10 @@ private final class ReferralPersonalCodeShareCapture {
     private(set) var seededPopoverExists = false
     private(set) weak var seededSourceView: UIView?
     private(set) var seededSourceRect: CGRect?
+    private(set) var seededSourceWasValid = false
+    private(set) weak var seededSourceSuperview: UIView?
+    private(set) weak var seededSourceWindow: UIWindow?
+    private(set) weak var seededSourceScene: UIWindowScene?
     private var seededPopoverID: ObjectIdentifier?
     private(set) var handoffCount = 0
     private(set) var hadPopoverAtHandoff = false
@@ -287,12 +317,32 @@ private final class ReferralPersonalCodeShareCapture {
     private(set) var sourceGetterMatchedPresenter = false
     var onPresentationCompleted: (() -> Void)?
 
+    var wrongAnchorIsReady: Bool {
+        guard let parent = wrongAnchor.superview, let window = wrongAnchor.window,
+              window.windowScene?.activationState == .foregroundActive else { return false }
+        var ancestor: UIView? = wrongAnchor
+        while let view = ancestor {
+            if view.isHidden || view.alpha <= 0 { return false }
+            ancestor = view.superview
+        }
+        let frame = wrongAnchor.frame
+        let components = [frame.minX, frame.minY, frame.width, frame.height,
+                          wrongRect.minX, wrongRect.minY, wrongRect.width, wrongRect.height]
+        return components.allSatisfy { $0.isFinite } && frame.size == CGSize(width: 40, height: 40)
+            && !frame.isEmpty && parent.bounds.contains(frame) && !wrongRect.isEmpty
+            && wrongAnchor.bounds.contains(wrongRect)
+    }
+
     func makeController(items: [Any]) -> UIActivityViewController {
         self.items.append(items)
         let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
         // A real popover makes the app's optional anchor branch mandatory on the phone runner.
         controller.modalPresentationStyle = .popover
         if let popover = controller.popoverPresentationController {
+            seededSourceWasValid = wrongAnchorIsReady
+            seededSourceSuperview = wrongAnchor.superview
+            seededSourceWindow = wrongAnchor.window
+            seededSourceScene = wrongAnchor.window?.windowScene
             popover.sourceView = wrongAnchor
             popover.sourceRect = wrongRect
             seededPopoverExists = true
@@ -327,6 +377,7 @@ private final class ReferralPersonalCodeShareCapture {
             + "presenter=\(describe(object: presenter)) presenterView={\(describe(view: presenterView))} "
             + "activity=\(describe(object: activity)) style=\(activity.modalPresentationStyle.rawValue) "
             + "seedPopover=\(String(describing: seededPopoverID)) "
+            + "seedSourceValid=\(seededSourceWasValid) "
             + "handoffPopover=\(describe(object: popover)) sourceItem=\(describe(object: sourceItem)) "
             + "rect=\(String(describing: sourceRectAtHandoff)) bounds=\(String(describing: presenterBoundsAtHandoff))"
 
