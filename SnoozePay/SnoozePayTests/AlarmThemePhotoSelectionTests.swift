@@ -123,7 +123,7 @@ final class AlarmThemePhotoSelectionTests: XCTestCase {
     }
 
     func testFirstPhotoCompletionAfterNavigationReturnsCannotReviveTheDepartedRequest() {
-        let harness = makeHarness()
+        let harness = makeHarness(modal: true)
         defer {
             harness.navigation.onDidShow = nil
             harness.close()
