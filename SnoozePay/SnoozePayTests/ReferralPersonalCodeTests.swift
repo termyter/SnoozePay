@@ -202,7 +202,12 @@ final class ReferralPersonalCodeTests: XCTestCase {
         let expectedScene = try XCTUnwrap(expectedWindow.windowScene)
         XCTAssertFalse(expectedView === screen.share.wrongAnchor)
         XCTAssertNotEqual(expectedRect, screen.share.wrongRect)
-        defer { screen.share.wrongAnchor.removeFromSuperview() }
+        defer {
+            if let host = hosts.last(where: { $0.navigation.topViewController === screen.controller }) {
+                _ = dismissOwnedPresentation(in: host)
+            }
+            screen.share.wrongAnchor.removeFromSuperview()
+        }
         try attachWrongAnchor(screen.share, to: expectedView)
         let presented = expectation(description: "real owned Share presentation completed")
         screen.share.onPresentationCompleted = { presented.fulfill() }
