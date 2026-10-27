@@ -86,3 +86,24 @@ order additionally requires inputReady. Attached frames must stay inside the
 computed available safe-root intersection. These are test-control validity only.
 After all phases/results and their attachment are captured, assert inputReady for
 every order independently; one working order must not bless an invalid comparison.
+
+Run 40539202610 at 72e4cf7 captured every calibrated phase and ten valid inputs:
+Activity attached/root source getters were nil immediately after assignment in
+both orders, while ordinary real popovers retained the pair. Root and independent
+QA/test accepted a bounded correction of that invalid app-test oracle. Archive
+the red matrix evidence; explicitly replace only its temporary unmerged test ID
+with testDefaultSharePopoverConfigurationOverwritesRealPopoverAnchor.
+Extract the SAME two optional sourceView then sourceRect setter expressions into
+one unconditional default operation. A nullable passive observer records actual
+operands/events only; it cannot replace writes, repair state or add default reads.
+Real Share tests keep all four method bodies, data/store/keyset/money assertions,
+waits and five old mounts. Replace only disproved Activity sourceView/seed-view
+identity oracles with exact operation target/root/rect/count/order observations.
+Keep real Activity popover presence, exact nonnil sourceRect/presenter bounds,
+controller/presenter/count, valid seed rect and real presentation/dismissal.
+Exercise the SAME operation on two fresh ordinary real popovers, with observer
+omitted and passive: strict valid wrong seed, exact root after source event,
+exact root/rect after completion and fresh getter. Observe partial rect without
+assuming it survives a sourceView change. Hold test receivers through fresh reads.
+No production workaround, style/order/traits/sourceItem/lifetime or policy change;
+actual Activity getters remain diagnostics and physical acceptance stays external.

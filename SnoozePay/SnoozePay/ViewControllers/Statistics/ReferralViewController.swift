@@ -24,10 +24,18 @@ final class ReferralViewController: UIViewController {
 
     // MARK: - Dependencies
 
+    enum PopoverConfigurationStep {
+        case sourceView(target: UIViewController, value: UIView)
+        case sourceRect(target: UIViewController, value: CGRect)
+    }
+
+    typealias PopoverConfigurationObserver = @MainActor (PopoverConfigurationStep) -> Void
+
     private let personalCodeProvider: () -> String
     private let pasteboard: UIPasteboard
     private let activityControllerFactory: @MainActor ([Any]) -> UIActivityViewController
     private let presentActivityController: @MainActor (UIViewController, UIActivityViewController) -> Void
+    private let popoverConfigurationObserver: PopoverConfigurationObserver?
     /// Resolve once on first use; constructing an unloaded screen must not mint a code.
     private lazy var personalCode = personalCodeProvider()
 
@@ -41,12 +49,14 @@ final class ReferralViewController: UIViewController {
             UIViewController, UIActivityViewController
         ) -> Void = { presenter, activity in
             presenter.present(activity, animated: true)
-        }
+        },
+        popoverConfigurationObserver: PopoverConfigurationObserver? = nil
     ) {
         self.personalCodeProvider = personalCodeProvider
         self.pasteboard = pasteboard
         self.activityControllerFactory = activityControllerFactory
         self.presentActivityController = presentActivityController
+        self.popoverConfigurationObserver = popoverConfigurationObserver
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -435,6 +445,20 @@ final class ReferralViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    /// The observer sees actual setter operands; it cannot replace configuration.
+    @MainActor
+    static func configureSharePopover(
+        target: UIViewController,
+        sourceView: UIView,
+        sourceRect: CGRect,
+        observer: PopoverConfigurationObserver? = nil
+    ) {
+        target.popoverPresentationController?.sourceView = sourceView
+        observer?(.sourceView(target: target, value: sourceView))
+        target.popoverPresentationController?.sourceRect = sourceRect
+        observer?(.sourceRect(target: target, value: sourceRect))
+    }
+
     @objc private func shareTapped() {
         let text = Localized.format(
             "referral.share.message",
@@ -442,8 +466,8 @@ final class ReferralViewController: UIViewController {
             MoneyFormatter.string(200)
         )
         let activity = activityControllerFactory([text])
-        activity.popoverPresentationController?.sourceView = view
-        activity.popoverPresentationController?.sourceRect = view.bounds
+        Self.configureSharePopover(target: activity, sourceView: view, sourceRect: view.bounds,
+                                   observer: popoverConfigurationObserver)
         presentActivityController(self, activity)
     }
 }
