@@ -66,3 +66,14 @@ nonhidden finite geometry and contained unchanged wrongRect, and record valid
 factory input. Keep it through actual completion and defer-remove only that view.
 All strict root/rect/controller/count and data/store assertions, IDs and waits stay.
 This repairs a seed-context difference; its causality/success remain unproven.
+
+Attached-seed b0 run 40528696327 still failed its seed and final source identities.
+Calibrate separately before changing production: add one pure-UIKit test with a
+generic real host, five fixed view/controller cells and two fresh fixed write
+orders each. Freeze value-only phases after each write and a fresh getter before
+assertions. A cell requires one entire exact nonnil view/rect configuration on
+both configured receiver and fresh getter; log every order/stage and working list.
+Keep the original four method bodies, all old oracles and waits untouched. The
+factory only gains immediate value-only seed afterView/afterRect observations;
+its setter order and old weak identity assertion stay. No production lifetime,
+sourceItem, traits, timing, device or broader matrix change is part of calibration.

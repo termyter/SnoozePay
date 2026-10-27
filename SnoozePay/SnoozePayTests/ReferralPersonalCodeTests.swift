@@ -126,6 +126,54 @@ final class ReferralPersonalCodeTests: XCTestCase {
                        "Reading/copying/sharing must not apply a code or mutate money")
     }
 
+    func testPublicPopoverAnchorSetterReadbackCalibration() throws {
+        let host = UIViewController()
+        try mount(host)
+        let root = try XCTUnwrap(host.viewIfLoaded)
+        let window = try XCTUnwrap(root.window)
+        let scene = try XCTUnwrap(window.windowScene)
+        let available = root.safeAreaLayoutGuide.layoutFrame.intersection(root.bounds)
+        let attached = UIView(frame: CGRect(x: available.midX - 20, y: available.midY - 20, width: 40, height: 40))
+        attached.isUserInteractionEnabled = false
+        root.addSubview(attached)
+        defer { attached.removeFromSuperview() }
+        let detached = UIView(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
+        let rect = CGRect(x: 7, y: 11, width: 13, height: 17)
+        let inputChecks = [
+            ("detached", detached.superview == nil && detached.window == nil && detached.bounds.contains(rect)),
+            ("attached", attached.superview === root
+                && PopoverCalibrationProbe.inputIsReady(attached, rect: rect, window: window, scene: scene)),
+            ("host-root", PopoverCalibrationProbe.inputIsReady(root, rect: root.bounds, window: window, scene: scene))
+        ]
+        let cells = [
+            PopoverCalibrationCell(id: "activity-detached", kind: .activity, view: detached, rect: rect),
+            PopoverCalibrationCell(id: "activity-attached", kind: .activity, view: attached, rect: rect),
+            PopoverCalibrationCell(id: "activity-host-root", kind: .activity, view: root, rect: root.bounds),
+            PopoverCalibrationCell(id: "plain-attached", kind: .plain, view: attached, rect: rect),
+            PopoverCalibrationCell(id: "plain-host-root", kind: .plain, view: root, rect: root.bounds)
+        ]
+        let results = cells.flatMap { cell in
+            PopoverCalibrationOrder.allCases.map { PopoverCalibrationProbe.run(cell, order: $0) }
+        }
+        for result in results {
+            for phase in result.phases {
+                print("PopoverCalibrationPhase cell=\(result.cell) order=\(result.order.rawValue) "
+                      + "stage=\(phase.stage) controller=\(result.controllerIdentity) \(phase.trace)")
+            }
+            print("PopoverCalibrationOrder cell=\(result.cell) order=\(result.order.rawValue) "
+                  + "configuredExact=\(result.configured.exactPair) refreshedExact=\(result.refreshed.exactPair) "
+                  + "works=\(result.works)")
+        }
+        for (input, ready) in inputChecks { XCTAssertTrue(ready, "Invalid calibration input: \(input)") }
+        for cell in cells {
+            let orders = results.filter { $0.cell == cell.id }
+            let working = orders.filter { $0.works }.map { $0.order.rawValue }
+            print("PopoverCalibrationCell cell=\(cell.id) workingOrders=\(working)")
+            XCTAssertEqual(orders.count, 2)
+            XCTAssertFalse(working.isEmpty, "No complete exact retaining order for \(cell.id)")
+        }
+    }
+
     private func makeScreen(provider: @escaping () -> String) -> Screen {
         let pasteboard = UIPasteboard.withUniqueName()
         pasteboardNames.append(pasteboard.name)
@@ -352,7 +400,15 @@ private final class ReferralPersonalCodeShareCapture {
             seededSourceWindow = wrongAnchor.window
             seededSourceScene = wrongAnchor.window?.windowScene
             popover.sourceView = wrongAnchor
+            let afterView = PopoverCalibrationProbe.capture(
+                popover, input: wrongAnchor, rect: wrongRect, stage: "after-view", write: "sourceView"
+            )
+            print("ReferralPopoverSeed stage=after-view \(afterView.trace)")
             popover.sourceRect = wrongRect
+            let afterRect = PopoverCalibrationProbe.capture(
+                popover, input: wrongAnchor, rect: wrongRect, stage: "after-rect", write: "sourceRect"
+            )
+            print("ReferralPopoverSeed stage=after-rect \(afterRect.trace)")
             seededPopoverExists = true
             seededSourceView = popover.sourceView
             seededSourceRect = popover.sourceRect
@@ -451,5 +507,123 @@ private final class ReferralPersonalCodeNavigationController: UINavigationContro
         let appeared = onDidAppear
         onDidAppear = nil
         appeared?()
+    }
+}
+
+private enum PopoverCalibrationOrder: String, CaseIterable {
+    case viewThenRect = "view-then-rect"
+    case rectThenView = "rect-then-view"
+}
+
+@MainActor
+private struct PopoverCalibrationCell {
+    enum Kind { case activity, plain }
+    let id: String
+    let kind: Kind
+    let view: UIView
+    let rect: CGRect
+}
+
+/// Values only: no source, presentation controller or getter graph survives a capture call.
+private struct PopoverCalibrationPhase {
+    let stage: String
+    let receiverAvailable: Bool
+    let exactView: Bool
+    let exactRect: Bool
+    let trace: String
+
+    var exactPair: Bool { receiverAvailable && exactView && exactRect }
+}
+
+private struct PopoverCalibrationResult {
+    let cell: String
+    let order: PopoverCalibrationOrder
+    let controllerIdentity: String
+    let first: PopoverCalibrationPhase
+    let configured: PopoverCalibrationPhase
+    let refreshed: PopoverCalibrationPhase
+
+    var phases: [PopoverCalibrationPhase] { [first, configured, refreshed] }
+    var works: Bool { configured.exactPair && refreshed.exactPair }
+}
+
+@MainActor
+private enum PopoverCalibrationProbe {
+    static func run(_ cell: PopoverCalibrationCell, order: PopoverCalibrationOrder) -> PopoverCalibrationResult {
+        let controller: UIViewController
+        switch cell.kind {
+        case .activity:
+            controller = UIActivityViewController(activityItems: ["Popover calibration"], applicationActivities: nil)
+        case .plain:
+            controller = UIViewController()
+        }
+        controller.modalPresentationStyle = .popover
+        let popover = controller.popoverPresentationController
+        let first: PopoverCalibrationPhase
+        let configured: PopoverCalibrationPhase
+        switch order {
+        case .viewThenRect:
+            popover?.sourceView = cell.view
+            first = capture(popover, input: cell.view, rect: cell.rect,
+                            stage: "after-first-write", write: "sourceView")
+            popover?.sourceRect = cell.rect
+            configured = capture(popover, input: cell.view, rect: cell.rect,
+                                 stage: "after-second-write", write: "sourceRect")
+        case .rectThenView:
+            popover?.sourceRect = cell.rect
+            first = capture(popover, input: cell.view, rect: cell.rect,
+                            stage: "after-first-write", write: "sourceRect")
+            popover?.sourceView = cell.view
+            configured = capture(popover, input: cell.view, rect: cell.rect,
+                                 stage: "after-second-write", write: "sourceView")
+        }
+        let refreshed = capture(controller.popoverPresentationController, input: cell.view, rect: cell.rect,
+                                stage: "fresh-getter", write: "none")
+        return PopoverCalibrationResult(
+            cell: cell.id, order: order, controllerIdentity: describe(controller),
+            first: first, configured: configured, refreshed: refreshed
+        )
+    }
+
+    static func capture(_ receiver: UIPopoverPresentationController?, input: UIView, rect: CGRect,
+                        stage: String, write: String) -> PopoverCalibrationPhase {
+        let observedSource = receiver?.sourceView
+        let observedItem = receiver?.sourceItem.map { $0 as AnyObject }
+        let observedRect = receiver?.sourceRect
+        let exactView = observedSource != nil && observedSource === input
+        let exactRect = observedRect.map { $0 == rect } ?? false
+        let trace = "write=\(write) receiverAvailable=\(receiver != nil) receiver=\(describe(receiver)) "
+            + "sourcePresent=\(observedSource != nil) exactView=\(exactView) source={\(describeView(observedSource))} "
+            + "input={\(describeView(input))} actualRect=\(String(describing: observedRect)) "
+            + "expectedRect=\(rect) exactRect=\(exactRect) sourceItem=\(describe(observedItem))"
+        return PopoverCalibrationPhase(stage: stage, receiverAvailable: receiver != nil,
+                                        exactView: exactView, exactRect: exactRect, trace: trace)
+    }
+
+    static func inputIsReady(_ view: UIView, rect: CGRect, window: UIWindow, scene: UIWindowScene) -> Bool {
+        var ancestor: UIView? = view
+        while let current = ancestor {
+            if current.isHidden || current.alpha <= 0 { return false }
+            ancestor = current.superview
+        }
+        let values = [view.bounds.minX, view.bounds.minY, view.bounds.width, view.bounds.height,
+                      rect.minX, rect.minY, rect.width, rect.height]
+        return values.allSatisfy { $0.isFinite } && !view.bounds.isEmpty && !rect.isEmpty
+            && view.bounds.contains(rect) && view.window === window && window.windowScene === scene
+            && scene.activationState == .foregroundActive && window.isKeyWindow && !window.isHidden
+            && window.bounds.contains(view.convert(view.bounds, to: window))
+    }
+
+    private static func describe(_ object: AnyObject?) -> String {
+        object.map { "\(ObjectIdentifier($0)):\(String(describing: type(of: $0)))" } ?? "nil"
+    }
+
+    private static func describeView(_ view: UIView?) -> String {
+        guard let view else { return "nil" }
+        let window = view.window
+        let scene = window?.windowScene
+        return "view=\(describe(view)) window=\(describe(window)) scene=\(describe(scene)) "
+            + "active=\(scene?.activationState.rawValue ?? -1) key=\(window?.isKeyWindow ?? false) "
+            + "hidden=\(view.isHidden) alpha=\(view.alpha) bounds=\(view.bounds)"
     }
 }
