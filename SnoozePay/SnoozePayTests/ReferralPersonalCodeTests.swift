@@ -139,8 +139,9 @@ final class ReferralPersonalCodeTests: XCTestCase {
     private func assertDefaultPopoverOperation(
         root: UIView, window: UIWindow, scene: UIWindowScene, observing: Bool
     ) throws {
-        let expectedRect = root.bounds
-        let available = root.safeAreaLayoutGuide.layoutFrame.intersection(expectedRect)
+        let rootBounds = root.bounds
+        let expectedRect = CGRect(x: 2, y: 3, width: 5, height: 7)
+        let available = root.safeAreaLayoutGuide.layoutFrame.intersection(rootBounds)
         let wrongAnchor = UIView(frame: CGRect(x: available.midX - 20, y: available.midY - 20, width: 40, height: 40))
         let wrongRect = CGRect(x: 7, y: 11, width: 13, height: 17)
         wrongAnchor.isUserInteractionEnabled = false
@@ -148,6 +149,9 @@ final class ReferralPersonalCodeTests: XCTestCase {
         defer { wrongAnchor.removeFromSuperview() }
         XCTAssertFalse(wrongAnchor === root)
         XCTAssertNotEqual(wrongRect, expectedRect)
+        XCTAssertNotEqual(rootBounds, expectedRect)
+        XCTAssertTrue(rootBounds.contains(expectedRect))
+        XCTAssertTrue(wrongAnchor.bounds.contains(expectedRect))
         XCTAssertTrue(wrongAnchor.superview === root)
         XCTAssertTrue(available.contains(wrongAnchor.frame))
         XCTAssertTrue(PopoverAnchorProbe.inputIsReady(wrongAnchor, rect: wrongRect, window: window, scene: scene))

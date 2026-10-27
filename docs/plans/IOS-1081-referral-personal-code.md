@@ -107,3 +107,8 @@ exact root/rect after completion and fresh getter. Observe partial rect without
 assuming it survives a sourceView change. Hold test receivers through fresh reads.
 No production workaround, style/order/traits/sourceItem/lifetime or policy change;
 actual Activity getters remain diagnostics and physical acceptance stays external.
+The ordinary companion requests a contained finite custom rect (2/3/5/7), distinct
+from both its wrong seed and root bounds, to detect an omitted sourceRect write
+even if a sourceView assignment supplies a full-view default. Require containment
+in both root and wrong-view bounds. Real Activity requests still use root bounds;
+the passive first-stage rect stays diagnostic, without an independence assertion.
