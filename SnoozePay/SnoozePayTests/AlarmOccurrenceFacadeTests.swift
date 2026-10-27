@@ -3,6 +3,8 @@ import XCTest
 import UserNotifications
 @testable import SnoozePay
 
+private typealias Alarm = SnoozePay.Alarm
+
 @MainActor
 final class AlarmOccurrenceFacadeTests: XCTestCase {
     private var suite: String!
