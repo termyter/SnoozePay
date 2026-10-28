@@ -88,10 +88,10 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         XCTAssertNil(detached.window)
         XCTAssertFalse(detached.isHidden)
         XCTAssertEqual(detached.alpha, 1)
-        let detachedRect = detached.convert(detached.bounds, to: window)
-        XCTAssertTrue(valid(detachedRect))
-        XCTAssertTrue(detachedRect.intersects(middle))
-        try assertBarCalibration(fixture, phase: "generic-detached-overlap", frame: middle,
+        XCTAssertTrue(valid(detached.bounds))
+        XCTAssertEqual(detached.frame, window.bounds)
+        XCTAssertEqual(detached.bounds.size, window.bounds.size)
+        try assertBarCalibration(fixture, phase: "generic-detached-no-conversion", frame: middle,
                                  expectedClear: true, subject: detached)
         XCTAssertTrue(navigation.isNavigationBarHidden)
         XCTAssertTrue(navigation.isToolbarHidden)
@@ -585,6 +585,8 @@ private extension WakeHistoryHostedLayoutTests {
     func assertAttachedVisibleBar(_ bar: UIView, window: UIWindow) throws {
         let attachedWindow = try XCTUnwrap(bar.window, "The positive control needs a real attached public bar")
         XCTAssertTrue(attachedWindow === window)
+        _ = try XCTUnwrap(attachedWindow === window ? attachedWindow : nil,
+                          "Stop before coordinate conversion unless this is the owned window")
         XCTAssertTrue(valid(bar.bounds))
         XCTAssertTrue(bar.isDescendant(of: window))
         var current: UIView? = bar
@@ -611,15 +613,26 @@ private extension WakeHistoryHostedLayoutTests {
         let actualClear = subject.map {
             !barOccludes($0, frame: frame, window: window, role: "detachedControl")
         } ?? clearOfBars(frame, fixture: fixture, window: window)
+        if subject != nil {
+            let predicates = visibilityObservation.predicateEvents.map {
+                $0["predicate"] as? String ?? "INVALID_PREDICATE"
+            }
+            let values = visibilityObservation.predicateEvents.map { $0["value"] as? Bool }
+            XCTAssertEqual(predicates, ["detachedControl.visible", "detachedControl.alpha",
+                                        "detachedControl.attachedVisibleAncestors"])
+            XCTAssertEqual(values, [true, true, false].map { Optional($0) })
+        }
         // Explicit public component observations AFTER the helper; never used by H1/H2 tracing.
         let publicBars: [[String: Any]]
         if subject == nil {
             let navigationBar: UIView = navigation.navigationBar
             let toolbar = try XCTUnwrap(navigation.toolbar)
             publicBars = [navigationBar, toolbar as UIView].map { bar in
-                ["objectID": viewID(bar), "runtimeClass": String(reflecting: type(of: bar)),
-                 "convertedRect": traceRect(bar.convert(bar.bounds, to: window)),
-                 "intersectsPotentialRect": bar.convert(bar.bounds, to: window).intersects(frame),
+                let converted = projectedRect(bar.bounds, from: bar, window: window)
+                return ["objectID": viewID(bar), "runtimeClass": String(reflecting: type(of: bar)),
+                 "windowSpaceStatus": projectionStatus(converted, view: bar, window: window),
+                 "convertedRect": rectJSON(converted),
+                 "intersectsPotentialRect": boolJSON(converted.map { $0.intersects(frame) }),
                  "nodes": traceNodes(from: bar, frame: frame, window: window, tolerance: 0)] as [String: Any]
             }
         } else {
@@ -627,7 +640,7 @@ private extension WakeHistoryHostedLayoutTests {
         }
         let methodName = "testBarOcclusionRequiresAttachmentAndRejectsVisiblePublicBars"
         let payload: [String: Any] = [
-            "schema": 1, "method": name.contains(methodName)
+            "schema": 2, "method": name.contains(methodName)
                 ? "WakeHistoryHostedLayoutTests/" + methodName : "UNRECOGNIZED_TEST_CASE",
             "actualTestCaseName": name, "style": fixture.style.rawValue, "phase": phase,
             "ownedWindowID": viewID(window), "windowBounds": traceRect(window.bounds),
@@ -637,6 +650,10 @@ private extension WakeHistoryHostedLayoutTests {
             "controlledSubjectID": viewID(subject), "controlledSubjectNodes": subject.map {
                 traceNodes(from: $0, frame: frame, window: window, tolerance: 0)
             } ?? [],
+            "controlledSubjectIntersectsLeaf": subject == nil ? "NOT_APPLICABLE"
+                : (visibilityObservation.predicateEvents.contains {
+                    ($0["predicate"] as? String) == "detachedControl.intersects"
+                } ? "VISITED" : "UNVISITED"),
             "navigationBarHiddenMode": navigation.isNavigationBarHidden,
             "toolbarHiddenMode": navigation.isToolbarHidden,
             "actualPredicateEvents": visibilityObservation.predicateEvents,
@@ -676,32 +693,59 @@ private extension WakeHistoryHostedLayoutTests {
         [rect.origin.x, rect.origin.y, rect.width, rect.height].map { String(describing: $0) }
     }
 
+    /// UIKit requires a common window for nonnil conversion targets. Self needs no conversion.
+    func projectedRect(_ rect: CGRect, from view: UIView, window: UIWindow) -> CGRect? {
+        if view === window { return rect }
+        guard view.window === window else { return nil }
+        return view.convert(rect, to: window)
+    }
+
+    func projectionStatus(_ rect: CGRect?, view: UIView, window: UIWindow) -> String {
+        if view === window { return "OWNED_WINDOW_IDENTITY" }
+        return rect == nil ? "NO_COMMON_WINDOW" : "COMMON_WINDOW"
+    }
+
+    func rectJSON(_ rect: CGRect?) -> Any {
+        if let rect { return traceRect(rect) }
+        return NSNull()
+    }
+
+    func boolJSON(_ value: Bool?) -> Any {
+        if let value { return value }
+        return NSNull()
+    }
+
     func traceNode(
         _ view: UIView, index: Int, frame: CGRect, window: UIWindow, tolerance: CGFloat
     ) -> [String: Any] {
-        let converted = view.convert(view.bounds, to: window)
-        let clip = converted.insetBy(dx: -tolerance, dy: -tolerance)
+        let converted = projectedRect(view.bounds, from: view, window: window)
+        let clip = converted.map { $0.insetBy(dx: -tolerance, dy: -tolerance) }
         var roles = [index == 0 ? "subject" : "ancestor"]
         if view === window { roles.append("ownedWindow") }
         if view is UIScrollView { roles.append("scrollView") }
         var value: [String: Any] = [
             "index": index, "roles": roles, "runtimeClass": String(reflecting: type(of: view)),
             "objectID": viewID(view), "bounds": traceRect(view.bounds), "frame": traceRect(view.frame),
-            "convertedBounds": traceRect(converted), "convertedClip": traceRect(clip),
+            "windowSpaceStatus": projectionStatus(converted, view: view, window: window),
+            "convertedBounds": rectJSON(converted), "convertedClip": rectJSON(clip),
             "alpha": String(describing: view.alpha), "hidden": view.isHidden,
             "clips": view.clipsToBounds, "masks": view.layer.masksToBounds,
             "windowID": viewID(view.window), "attachedToOwnedWindow": view.window === window,
             "superviewID": viewID(view.superview), "validBounds": valid(view.bounds),
             "clipApplies": view.clipsToBounds || view.layer.masksToBounds || view === window,
-            "validClip": valid(clip), "clipContainsLabel": clip.contains(frame),
+            "validClip": boolJSON(clip.map { valid($0) }),
+            "clipContainsLabel": boolJSON(clip.map { $0.contains(frame) }),
             "visitedByOriginalAncestorHelper": visibilityObservation.visitedAncestorIDs.contains(viewID(view))
         ]
         if let scroll = view as? UIScrollView {
             let viewport = scroll.bounds.inset(by: scroll.adjustedContentInset)
-            let scrollClip = scroll.convert(viewport, to: window).insetBy(dx: -tolerance, dy: -tolerance)
+            let scrollClip = projectedRect(viewport, from: scroll, window: window)
+                .map { $0.insetBy(dx: -tolerance, dy: -tolerance) }
             value["scroll"] = [
-                "viewport": traceRect(viewport), "convertedClip": traceRect(scrollClip),
-                "validClip": valid(scrollClip), "containsLabel": scrollClip.contains(frame),
+                "viewport": traceRect(viewport), "convertedClip": rectJSON(scrollClip),
+                "windowSpaceStatus": projectionStatus(scrollClip, view: scroll, window: window),
+                "validClip": boolJSON(scrollClip.map { valid($0) }),
+                "containsLabel": boolJSON(scrollClip.map { $0.contains(frame) }),
                 "adjustedInsets": String(describing: scroll.adjustedContentInset),
                 "contentOffset": String(describing: scroll.contentOffset)
             ] as [String: Any]
@@ -722,14 +766,16 @@ private extension WakeHistoryHostedLayoutTests {
 
     /// Called only AFTER the original bar predicate naturally reads this bar.
     func observeBar(_ bar: UIView, role: String, rejects: Bool, frame: CGRect, window: UIWindow) {
+        let converted = projectedRect(bar.bounds, from: bar, window: window)
         let nodes = traceNodes(from: bar, frame: frame, window: window, tolerance: 0)
         let allAncestorsVisible = nodes.allSatisfy { ($0["hidden"] as? Bool) == false
             && Double($0["alpha"] as? String ?? "nan").map { $0 > 0 } == true }
         visibilityObservation.bars.append([
             "role": role, "objectID": viewID(bar), "nodes": nodes,
             "consideredByOriginalPredicate": !bar.isHidden && bar.alpha > 0,
-            "convertedRect": traceRect(bar.convert(bar.bounds, to: window)),
-            "intersectsLabel": bar.convert(bar.bounds, to: window).intersects(frame),
+            "windowSpaceStatus": projectionStatus(converted, view: bar, window: window),
+            "convertedRect": rectJSON(converted),
+            "intersectsLabel": boolJSON(converted.map { $0.intersects(frame) }),
             "originalPredicateRejected": rejects,
             "attachedVisibleAncestorEligibilitySnapshot": barHasVisibleOwnedAncestors(bar, window: window),
             "effectiveAttachedAndAncestorVisible": bar.window === window && allAncestorsVisible,
@@ -768,7 +814,7 @@ private extension WakeHistoryHostedLayoutTests {
              "nodes": traceNodes(from: $0, frame: context.frame, window: window, tolerance: 0)] as [String: Any]
         }
         let payload: [String: Any] = [
-            "schema": 1, "method": method, "actualTestCaseName": name,
+            "schema": 2, "method": method, "actualTestCaseName": name,
             "style": fixture.style.rawValue, "phase": context.phase,
             "labelID": viewID(context.label), "scopeID": viewID(context.scope),
             "controllerRootID": viewID(fixture.controller.viewIfLoaded),
