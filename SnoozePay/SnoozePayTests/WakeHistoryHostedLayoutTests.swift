@@ -107,7 +107,9 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         try assertBarCalibration(fixture, phase: "visible-navigation-overlap",
                                  frame: navigationOverlap, expectedClear: false)
 
-        fixture.controller.toolbarItems = [UIBarButtonItem(title: "Owned QA", style: .plain, target: nil, action: nil)]
+        fixture.controller.setToolbarItems(
+            [UIBarButtonItem(title: "Owned QA", style: .plain, target: nil, action: nil)], animated: false
+        )
         navigation.setToolbarHidden(false, animated: false)
         layout(fixture)
         let toolbar = try XCTUnwrap(navigation.toolbar)
