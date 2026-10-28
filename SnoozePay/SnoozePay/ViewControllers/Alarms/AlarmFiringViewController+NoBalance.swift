@@ -119,7 +119,7 @@ extension AlarmFiringViewController {
         )
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityIdentifier = "firing.noBalance.topUpButton"
-        button.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight
+        button.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight && !viewModel.finishRequested
         button.addTarget(
             self,
             action: #selector(noBalanceApplePayTapped),
@@ -218,7 +218,7 @@ extension AlarmFiringViewController {
 
     /// Revalidate the offer and this VM's wallet before dispatching the fixed SKU.
     @objc func noBalanceApplePayTapped() {
-        guard !noBalancePurchaseInFlight else { return }
+        guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         let purchase = noBalancePurchase
         guard let offer = purchase.offer else {
             refreshNoBalanceCatalog()
@@ -255,12 +255,13 @@ extension AlarmFiringViewController {
             stack.insertArrangedSubview(button, at: 1)
             applePayNoBalanceButton = button
         }
-        applePayNoBalanceButton?.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight
+        applePayNoBalanceButton?.isEnabled = displayPrice != nil
+            && !noBalancePurchaseInFlight && !viewModel.finishRequested
     }
 
     /// «Выбрать другую сумму» tap. Routes to the presets bottom sheet.
     @objc func noBalanceChooseAmountTapped() {
-        guard !noBalancePurchaseInFlight else { return }
+        guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         presentTopUpSheet()
     }
 

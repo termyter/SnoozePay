@@ -182,7 +182,7 @@
       }
     },
     "alarm_kit.action.snooze" : {
-      "comment" : "Name of SnoozeAlarmIntent, the intent wired to the AlarmKit alert's secondary action (AlarmConfiguration.secondaryIntent). Shortcuts and Siri show it. This is NOT the text of the alert's snooze button — that is alarm_kit.action.snooze.priced, set explicitly via AlarmButton(text:). Byte-identical to firing.action.snooze and still a separate entry. The reason is not that the words might diverge (they need not) but that firing.action.snooze titles the pre-#472 UNNotification category that nothing schedules any more (AlarmScheduler.registerCategories) and is expected to be deleted with it: one shared key would make that cleanup silently take a live intent name with it, and the person deleting legacy notification copy has no way to see that from where they stand. Since the words are identical either way, no user sees a difference — this is a namespace choice, not a copy one. #712's precedent points the other way (it merged byte-identical literals reached from two code paths) and is overridden here only by the pending deletion; #711 is not a precedent for this at all, having separated strings whose words differ. NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
+      "comment" : "Name of SnoozeAlarmIntent, the intent wired to the AlarmKit alert's secondary action (AlarmConfiguration.secondaryIntent). Shortcuts and Siri show it. It is also the unpriced runtime alarm-button label until the wallet establishes currency. The priced alarm-button text uses the separate alarm_kit.action.snooze.priced entry, set explicitly via AlarmButton(text:). Byte-identical to firing.action.snooze and still a separate entry. The reason is not that the words might diverge (they need not) but that firing.action.snooze titles the pre-#472 UNNotification category that nothing schedules any more (AlarmScheduler.registerCategories) and is expected to be deleted with it: one shared key would make that cleanup silently take a live intent name with it, and the person deleting legacy notification copy has no way to see that from where they stand. Since the words are identical either way, no user sees a difference — this is a namespace choice, not a copy one. #712's precedent points the other way (it merged byte-identical literals reached from two code paths) and is overridden here only by the pending deletion; #711 is not a precedent for this at all, having separated strings whose words differ. AppIntents exports this title from a statically extractable LocalizedStringResource key in the main bundle with table Localizable. The compiled RU and EN tables provide the title when the system resolves the resource; Siri's locale can differ from the app's UI language. AlarmKitCopyTests checks the actual title resource in both languages. Physical Shortcuts/Siri and armed-alarm presentation remain acceptance items in #727. The alert's priced secondary-button label is a separate resource resolved at schedule time.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -218,7 +218,7 @@
       }
     },
     "alarm_kit.action.stop" : {
-      "comment" : "Name of StopAlarmIntent, the intent wired to the AlarmKit alert's stop action (AlarmConfiguration.stopIntent). Shortcuts and Siri show it. Whether the system also paints it on the alert itself is NOT established: AlarmPresentation.Alert.stopButton is deprecated in iOS 26.1 as \"not used anymore\", and AlarmKitScheduler uses the 26.1 initializer, which has no stop button parameter — so the app sets no stop button text anywhere. Kept apart from the two other ways the app says «stop»: firing.action.dismiss («Выключить») titles the pre-#472 UNNotification category that nothing schedules any more, and firing.button.dismiss («Я встал — выключить») is the in-app firing screen's CTA. #712 merged two literals because they were byte-identical, reached through two different code paths; that criterion does not apply here, because these three say different words. Merging any pair would rewrite what a user reads somewhere — a copy decision for the PM, not part of moving a literal into the catalogue (#723). NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
+      "comment" : "Name of StopAlarmIntent, the intent wired to the AlarmKit alert's stop action (AlarmConfiguration.stopIntent). Shortcuts and Siri show it. Whether the system also paints it on the alert itself is NOT established: AlarmPresentation.Alert.stopButton is deprecated in iOS 26.1 as \"not used anymore\", and AlarmKitScheduler uses the 26.1 initializer, which has no stop button parameter — so the app sets no stop button text anywhere. Kept apart from the two other ways the app says «stop»: firing.action.dismiss («Выключить») titles the pre-#472 UNNotification category that nothing schedules any more, and firing.button.dismiss («Я встал — выключить») is the in-app firing screen's CTA. #712 merged two literals because they were byte-identical, reached through two different code paths; that criterion does not apply here, because these three say different words. Merging any pair would rewrite what a user reads somewhere — a copy decision for the PM, not part of moving a literal into the catalogue (#723). AppIntents exports this title from a statically extractable LocalizedStringResource key in the main bundle with table Localizable. The compiled RU and EN tables provide the title when the system resolves the resource; Siri's locale can differ from the app's UI language. AlarmKitCopyTests checks the actual title resource in both languages. Physical Shortcuts/Siri and armed-alarm presentation remain acceptance items in #727. The system-owned stop-button label remains outside this entry's contract.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -4177,6 +4177,168 @@
         }
       }
     },
+    "firing.finish.error.message" : {
+      "comment" : "Unconfirmed occurrence finish: keep the screen and paid-continuation guard until retry succeeds (#1063).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not confirm that the alarm stopped. Try again. Paid snoozing is temporarily unavailable."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось подтвердить выключение будильника. Попробуйте ещё раз. Платное откладывание пока недоступно."
+          }
+        }
+      }
+    },
+    "firing.finish.error.title" : {
+      "comment" : "Do not claim that the alarm is still ringing or already stopped when native finish is unconfirmed (#1063).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish not confirmed"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершение не подтверждено"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.confirmed" : {
+      "comment" : "Quiet acknowledgement only; does not reconstruct a historical morning or billing summary.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish Confirmed"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершение подтверждено"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.message" : {
+      "comment" : "Explains explicit confirmation-time wake semantics and that quiet retry never stops a new native occurrence.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can confirm the pending finish after restarting. A successful retry records a wake at the current time. It does not stop a new alarm."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "После перезапуска можно повторно подтвердить завершение. При успехе подъём отмечается текущим временем. Новое срабатывание не выключается."
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.previous" : {
+      "comment" : "Separate quiet recovery action in a newer firing error; does not finish or dismiss the current firing screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check Previous Finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверить предыдущую попытку"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.retry" : {
+      "comment" : "Explicit action for the exact persisted finish request; no new paid attempt.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm Pending Finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторить завершение"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.title" : {
+      "comment" : "Quiet heading for a persisted unconfirmed alarm finish; does not represent a new firing.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Незавершённая попытка"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.unavailable" : {
+      "comment" : "Unavailable durable finish discovery, distinct from having no pending requests.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not read pending finishes. Your data is preserved. Try again."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать незавершённые попытки. Данные сохранены. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "firing.finish.retry" : {
+      "comment" : "Retry the same pending finish request, without another paid snooze (#1063).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Again"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторить"
+          }
+        }
+      }
+    },
     "firing.hint.max_price" : {
       "comment" : "Replaces firing.hint.next_price once the progressive ladder hits its ceiling and there is no higher price to quote.",
       "extractionState" : "manual",
@@ -6401,6 +6563,60 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld мин"
+          }
+        }
+      }
+    },
+    "settings.recovery.alarms_busy": {
+      "comment": "Alarm recovery refused while an alarm registration or recovery is in progress.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alarm recovery is busy. Wait for the current alarm operation to finish, then try again. Damaged alarm data remains locked."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Восстановление будильников занято. Дождитесь завершения текущей операции с будильником и повторите попытку. Повреждённые данные будильников остаются заблокированными."
+          }
+        }
+      }
+    },
+    "settings.recovery.alarms_cleanup_failed": {
+      "comment": "Alarm cleanup could not be verified. Wallet recovery may already have completed.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not confirm that all system alarms were cancelled. Some system alarms may already have been cancelled. Damaged alarm data was not erased and remains locked. Transaction history recovery may already have completed."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подтвердить отмену всех системных будильников. Часть системных будильников уже могла быть отменена. Повреждённые данные будильников не удалены и остаются заблокированными. Восстановление истории операций могло уже завершиться."
+          }
+        }
+      }
+    },
+    "settings.recovery.alarms_failed_title": {
+      "comment": "Title when verified corrupt-alarm recovery cannot complete.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alarm Recovery Incomplete"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Восстановление будильников не завершено"
           }
         }
       }

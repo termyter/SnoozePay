@@ -33,6 +33,12 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     private(set) var cancelledIDs: [UUID] = []
     private(set) var stoppedIDs: [UUID] = []
     private(set) var authorizationRequests = 0
+    var occurrenceFinishResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
+    private(set) var occurrenceFinishRequests: [AlarmOccurrenceFinishRequest] = []
+    var occurrenceVerificationResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
+    private(set) var occurrenceVerificationRequests: [AlarmOccurrenceFinishRequest] = []
+    private(set) var lateSnoozeCleanupRequests: [AlarmOccurrenceFinishRequest] = []
+    private(set) var finishOriginalStopIDs: [UUID] = []
 
     init(
         authorization: AlarmKitAuthorization = .authorized,
@@ -73,6 +79,27 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     func cancel(_ alarmID: UUID) { cancelledIDs.append(alarmID) }
 
     func stop(_ alarmID: UUID) { stoppedIDs.append(alarmID) }
+
+    /// Configured outcome for tests of consumers; native proof has stateful adapter fixtures.
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        occurrenceFinishRequests.append(request)
+        return occurrenceFinishResult
+    }
+
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        occurrenceVerificationRequests.append(request)
+        return occurrenceVerificationResult
+    }
+
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        lateSnoozeCleanupRequests.append(request)
+        return .success(())
+    }
+
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
+        finishOriginalStopIDs.append(alarmID)
+        return .success(())
+    }
 }
 
 /// Inert `NotificationScheduling` double.
@@ -124,5 +151,20 @@ final class InertNotificationCenter: NotificationScheduling {
         completionHandler: @escaping (Bool, Error?) -> Void
     ) {
         completionHandler(false, nil)
+    }
+}
+
+/// This fixture owns no native registrations. Recovery therefore has a known-empty inventory.
+final class KnownEmptyRecoveryScheduler: AlarmScheduling {
+    private let recoveryError: AlarmRecoveryError?
+    init(recoveryError: AlarmRecoveryError? = nil) { self.recoveryError = recoveryError }
+    func schedule(_ alarm: Alarm, completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?) {
+        completion?(.success(()))
+    }
+    func cancel(_ alarmID: UUID) {}
+    func recoverCorruptAlarms(commit: () -> Void) -> Result<Void, AlarmRecoveryError> {
+        if let recoveryError { return .failure(recoveryError) }
+        commit()
+        return .success(())
     }
 }

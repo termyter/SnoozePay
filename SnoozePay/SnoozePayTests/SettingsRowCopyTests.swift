@@ -42,16 +42,8 @@ import XCTest
 @MainActor
 final class SettingsRowCopyTests: XCTestCase {
 
-    /// Recovery fixtures must never schedule or cancel real system alarms.
-    private final class NoopScheduler: AlarmScheduling {
-        func schedule(
-            _ alarm: Alarm,
-            completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?
-        ) {
-            completion?(.success(()))
-        }
-        func cancel(_ alarmID: UUID) {}
-    }
+    /// Explicitly owns a known-empty native inventory; no generic backend defaults to success.
+    private typealias NoopScheduler = KnownEmptyRecoveryScheduler
 
     // MARK: - Layer 1 + 2: the catalogue and its words
 
@@ -129,6 +121,79 @@ final class SettingsRowCopyTests: XCTestCase {
             XCTAssertEqual(wallet.balance, 149)
             XCTAssertFalse(ledger.lastLoadFailed)
             XCTAssertFalse(alarms.lastLoadFailed)
+        }
+    }
+
+    @available(iOS 26.0, *)
+    func testRecoverySettingsRouteRequiresNativeCleanupAndPreservesWalletOnFailure() throws {
+        for cleanupFails in [false, true] {
+            let suite = "test.settings.nativeRecovery.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let ledger = TransactionRepository(defaults: defaults)
+            let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
+                                        notificationCenter: NotificationCenter())
+            XCTAssertTrue(wallet.topUp(amount: 149))
+            let id = UUID()
+            var inventory: Set<UUID> = [id]
+            let native = AlarmKitScheduler(cancelAlarm: {
+                if cleanupFails { throw NSError(domain: "CancelFixture", code: 1) }
+                inventory.remove($0)
+            }, readRegisteredAlarmIDs: { inventory })
+            let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: native)
+            let alarms = AlarmRepository(defaults: defaults, scheduler: scheduler)
+            let corrupt = Data("corrupt".utf8)
+            defaults.set(corrupt, forKey: "stored_alarms")
+            defaults.set(corrupt, forKey: "stored_transactions")
+            XCTAssertThrowsError(try alarms.fetchAllChecked())
+            XCTAssertThrowsError(try ledger.fetchAllChecked())
+            let sut = RecoverySettingsSpy(alarmDefaults: AlarmDefaults(defaults: defaults))
+            sut.loadViewIfNeeded()
+            sut.performRecovery(balanceService: wallet, alarmRepository: alarms)
+            XCTAssertEqual(wallet.balance, 149)
+            XCTAssertNil(defaults.object(forKey: "stored_transactions"), "wallet recovery still runs first")
+            XCTAssertFalse(ledger.lastLoadFailed)
+            XCTAssertEqual(defaults.data(forKey: AlarmRepository.corruptBackupKey), corrupt)
+            if cleanupFails {
+                XCTAssertEqual(inventory, [id])
+                XCTAssertEqual(defaults.data(forKey: "stored_alarms"), corrupt)
+                XCTAssertTrue(alarms.lastLoadFailed)
+                XCTAssertEqual(sut.alert?.title, Localized.text("settings.recovery.alarms_failed_title"))
+                XCTAssertEqual(sut.alert?.message, Localized.text("settings.recovery.alarms_cleanup_failed"))
+            } else {
+                XCTAssertTrue(inventory.isEmpty)
+                XCTAssertNil(defaults.object(forKey: "stored_alarms"))
+                XCTAssertFalse(alarms.lastLoadFailed)
+                XCTAssertNil(sut.alert)
+            }
+        }
+    }
+
+    func testBusyRecoveryShowsRetryCopyAndKeepsAlarmBytesLocked() throws {
+        let suite = "test.settings.busyRecovery.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let ledger = TransactionRepository(defaults: defaults)
+        let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
+                                    notificationCenter: NotificationCenter())
+        let alarms = AlarmRepository(defaults: defaults, scheduler: NoopScheduler(recoveryError: .busy))
+        let corrupt = Data("corrupt".utf8)
+        defaults.set(corrupt, forKey: "stored_alarms")
+        let sut = RecoverySettingsSpy(alarmDefaults: AlarmDefaults(defaults: defaults))
+        sut.loadViewIfNeeded()
+        sut.performRecovery(balanceService: wallet, alarmRepository: alarms)
+        XCTAssertEqual(sut.alert?.message, Localized.text("settings.recovery.alarms_busy"))
+        XCTAssertEqual(defaults.data(forKey: "stored_alarms"), corrupt)
+        XCTAssertTrue(alarms.lastLoadFailed)
+        XCTAssertNotEqual(Localized.text("settings.recovery.alarms_busy"), "settings.recovery.alarms_busy")
+    }
+
+    private final class RecoverySettingsSpy: SettingsViewController {
+        var alert: UIAlertController?
+        override func present(_ viewControllerToPresent: UIViewController, animated flag: Bool,
+                              completion: (() -> Void)? = nil) {
+            alert = viewControllerToPresent as? UIAlertController
+            completion?()
         }
     }
 
