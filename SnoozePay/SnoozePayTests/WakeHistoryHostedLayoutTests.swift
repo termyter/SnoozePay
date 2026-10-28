@@ -100,7 +100,8 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         navigation.setNavigationBarHidden(false, animated: false)
         layout(fixture)
         let navigationBar = navigation.navigationBar
-        try assertAttachedVisibleBar(navigationBar, window: window)
+        try assertAttachedVisibleBar(navigationBar, window: window, fixture: fixture,
+                                     stage: "navbar-after-show", role: "navigationBar")
         XCTAssertFalse(navigation.isNavigationBarHidden)
         let navigationOverlap = navigationBar.convert(navigationBar.bounds, to: window).intersection(window.bounds)
         try assertBarCalibration(fixture, phase: "visible-navigation-overlap",
@@ -110,8 +111,10 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         navigation.setToolbarHidden(false, animated: false)
         layout(fixture)
         let toolbar = try XCTUnwrap(navigation.toolbar)
-        try assertAttachedVisibleBar(toolbar, window: window)
-        try assertAttachedVisibleBar(navigationBar, window: window)
+        try assertAttachedVisibleBar(toolbar, window: window, fixture: fixture,
+                                     stage: "toolbar-after-show", role: "toolbar")
+        try assertAttachedVisibleBar(navigationBar, window: window, fixture: fixture,
+                                     stage: "navbar-after-toolbar-show", role: "navigationBar")
         XCTAssertFalse(navigation.isToolbarHidden)
         let toolbarOverlap = toolbar.convert(toolbar.bounds, to: window).intersection(window.bounds)
         let visibleNavigationRect = navigationBar.convert(navigationBar.bounds, to: window)
@@ -559,6 +562,16 @@ private struct WakeHistoryVisibilityTraceContext {
     let scopeFrame: CGRect
 }
 
+@MainActor
+private struct WakeHistoryBarReadinessContext {
+    let bar: UIView
+    let actualWindow: UIWindow?
+    let window: UIWindow
+    let fixture: WakeHistoryLayoutFixture
+    let stage: String
+    let role: String
+}
+
 private extension WakeHistoryHostedLayoutTests {
     /// Shared operation for the real bars and the controlled ordinary detached UIView.
     func barOccludes(_ bar: UIView, frame: CGRect, window: UIWindow, role: String) -> Bool {
@@ -582,8 +595,14 @@ private extension WakeHistoryHostedLayoutTests {
         return false
     }
 
-    func assertAttachedVisibleBar(_ bar: UIView, window: UIWindow) throws {
-        let attachedWindow = try XCTUnwrap(bar.window, "The positive control needs a real attached public bar")
+    func assertAttachedVisibleBar(
+        _ bar: UIView, window: UIWindow, fixture: WakeHistoryLayoutFixture, stage: String, role: String
+    ) throws {
+        let actualWindow = bar.window
+        recordBarReadiness(WakeHistoryBarReadinessContext(
+            bar: bar, actualWindow: actualWindow, window: window, fixture: fixture, stage: stage, role: role
+        ))
+        let attachedWindow = try XCTUnwrap(actualWindow, "The positive control needs a real attached public bar")
         XCTAssertTrue(attachedWindow === window)
         _ = try XCTUnwrap(attachedWindow === window ? attachedWindow : nil,
                           "Stop before coordinate conversion unless this is the owned window")
@@ -843,6 +862,78 @@ private extension WakeHistoryHostedLayoutTests {
             "numberOfLines": context.label.numberOfLines, "lineBreakMode": context.label.lineBreakMode.rawValue
         ]
         emitVisibilityTrace(payload, method: method, style: fixture.style.rawValue, phase: context.phase)
+    }
+
+    func controllerID(_ controller: UIViewController?) -> String {
+        controller.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+    }
+
+    func controllerReadiness(_ controller: UIViewController?) -> [String: Any] {
+        guard let controller else { return ["present": false, "objectID": "nil"] }
+        let view = controller.viewIfLoaded
+        let presented = controller.presentedViewController
+        return [
+            "present": true, "objectID": controllerID(controller),
+            "runtimeClass": String(reflecting: type(of: controller)),
+            "loadedViewID": viewID(view), "loadedViewWindowID": viewID(view?.window),
+            "parentID": controllerID(controller.parent), "navigationID": controllerID(controller.navigationController),
+            "hidesBottomBarWhenPushed": controller.hidesBottomBarWhenPushed,
+            "toolbarItemsCount": controller.toolbarItems.map { String($0.count) } ?? "nil",
+            "presentedID": controllerID(presented),
+            "presentedClass": presented.map { String(reflecting: type(of: $0)) } ?? "nil"
+        ]
+    }
+
+    /// Later snapshots never replace the single window value consumed by the original guard.
+    func recordBarReadiness(_ context: WakeHistoryBarReadinessContext) {
+        let navigation = context.fixture.navigation
+        let methodName = "testBarOcclusionRequiresAttachmentAndRejectsVisiblePublicBars"
+        let method = name.contains(methodName) ? "WakeHistoryHostedLayoutTests/" + methodName : "UNRECOGNIZED_TEST_CASE"
+        var suppliedItems = "NOT_APPLICABLE"
+        if let toolbar = context.bar as? UIToolbar { suppliedItems = toolbar.items.map { String($0.count) } ?? "nil" }
+        let existing = existingBars(in: navigation?.viewIfLoaded).map {
+            traceNodes(from: $0, frame: context.window.bounds, window: context.window, tolerance: 0)
+        }
+        let payload: [String: Any] = [
+            "schema": 1, "nodeSchema": 2, "method": method, "actualTestCaseName": name,
+            "style": context.fixture.style.rawValue, "stage": context.stage, "role": context.role,
+            "actualPublicRole": context.bar is UIToolbar ? "toolbar"
+                : (context.bar is UINavigationBar ? "navigationBar" : "OTHER_UIVIEW"),
+            "argumentID": viewID(context.bar), "argumentClass": String(reflecting: type(of: context.bar)),
+            "guardWindowID": viewID(context.actualWindow),
+            "guardMatchesOwnedWindow": context.actualWindow === context.window,
+            "laterSnapshotTiming": "AFTER_CAPTURE_DRIFT_UNKNOWN",
+            "argumentNodes": traceNodes(from: context.bar, frame: context.window.bounds,
+                                         window: context.window, tolerance: 0),
+            "snapshotReferenceRect": traceRect(context.window.bounds),
+            "snapshotReferenceMeaning": "OWNED_WINDOW_BOUNDS_ONLY_NOT_AN_OCCLUSION_ORACLE",
+            "ownedWindowID": viewID(context.window), "ownedWindowKey": context.window.isKeyWindow,
+            "ownedWindowActive": context.window.windowScene?.activationState == .foregroundActive,
+            "ownedRoot": controllerReadiness(context.window.rootViewController),
+            "navigation": controllerReadiness(navigation),
+            "controller": controllerReadiness(context.fixture.controller),
+            "top": controllerReadiness(navigation?.topViewController),
+            "visible": controllerReadiness(navigation?.visibleViewController),
+            "navigationBarHiddenMode": navigation.map { String($0.isNavigationBarHidden) } ?? "nil",
+            "toolbarHiddenMode": navigation.map { String($0.isToolbarHidden) } ?? "nil",
+            "navigationAppearanceCount": navigation.map { String($0.appearanceCount) } ?? "nil",
+            "suppliedToolbarItemsCount": suppliedItems, "existingPublicBarNodes": existing
+        ]
+        let invalidJSON = "{\"encodingError\":true,\"schema\":1,\"method\":\"\(method)\","
+            + "\"stage\":\"\(context.stage)\",\"role\":\"\(context.role)\"}"
+        let json: String
+        do {
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            json = String(data: data, encoding: .utf8) ?? invalidJSON
+        } catch {
+            json = invalidJSON
+        }
+        let line = "WakeHistoryBarReadiness " + json
+        let attachment = XCTAttachment(string: line)
+        attachment.name = "Wake bar readiness \(context.stage) \(context.role)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print(line)
     }
 
     func originalVisibilityFailure(
