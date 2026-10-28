@@ -79,7 +79,9 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
     }
 
     func testBarOcclusionRequiresAttachmentAndRejectsVisiblePublicBars() throws {
-        let fixture = try makeFixture(style: .light, unreadableDays: false)
+        let initialToolbarItems = [UIBarButtonItem(title: "Owned QA", style: .plain, target: nil, action: nil)]
+        let fixture = try makeFixture(style: .light, unreadableDays: false,
+                                      initialToolbarItems: initialToolbarItems)
         let window = try XCTUnwrap(fixture.window)
         let navigation = try XCTUnwrap(fixture.navigation)
         let prepared = fixture.domain
@@ -107,9 +109,6 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         try assertBarCalibration(fixture, phase: "visible-navigation-overlap",
                                  frame: navigationOverlap, expectedClear: false)
 
-        fixture.controller.setToolbarItems(
-            [UIBarButtonItem(title: "Owned QA", style: .plain, target: nil, action: nil)], animated: false
-        )
         navigation.setToolbarHidden(false, animated: false)
         layout(fixture)
         let toolbar = try XCTUnwrap(navigation.toolbar)
@@ -138,13 +137,18 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         XCTAssertEqual(fixture.domain, prepared, "Public bar calibration must not change owned model data")
     }
 
-    private func makeFixture(style: UIUserInterfaceStyle, unreadableDays: Bool) throws -> WakeHistoryLayoutFixture {
+    private func makeFixture(
+        style: UIUserInterfaceStyle, unreadableDays: Bool, initialToolbarItems: [UIBarButtonItem]? = nil
+    ) throws -> WakeHistoryLayoutFixture {
         let fixture = try WakeHistoryLayoutFixture(style: style)
         fixtures.append(fixture)
         try fixture.seedHealthyHistory()
         fixture.defaults.set(Data("unreadable owned wake history".utf8),
                              forKey: unreadableDays ? "wake_days" : "wake_times")
         let prepared = fixture.domain
+        if let initialToolbarItems {
+            fixture.controller.setToolbarItems(initialToolbarItems, animated: false)
+        }
         try mount(fixture)
         XCTAssertEqual(fixture.domain, prepared, "Owned high best_streak makes this read-only load stable")
         return fixture
