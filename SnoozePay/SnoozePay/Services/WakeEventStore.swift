@@ -58,6 +58,33 @@ final class WakeEventStore {
         self.init(defaults: .standard)
     }
 
+    enum ReadResult: Equatable {
+        case missing
+        case value([Date])
+        case unreadable
+
+        var dates: [Date]? {
+            switch self {
+            case .missing: return []
+            case .value(let dates): return dates
+            case .unreadable: return nil
+            }
+        }
+
+        var isUnreadable: Bool { self == .unreadable }
+    }
+
+    struct Snapshot: Equatable {
+        let days: ReadResult
+        let times: ReadResult
+    }
+
+    /// One read boundary for statistics; a missing legacy timestamp key is
+    /// healthy, while a damaged key remains distinguishable from no history.
+    func readSnapshot() -> Snapshot {
+        queue.sync { Snapshot(days: readResult(forKey: key), times: readResult(forKey: timesKey)) }
+    }
+
     // MARK: - Write
 
     /// Records that the user woke up (dismissed an alarm) on the given date.
@@ -92,10 +119,8 @@ final class WakeEventStore {
 
     // MARK: - Read
 
-    /// All recorded wake days as `startOfDay` dates. Decode failures collapse
-    /// to an empty set — wake days are a display-only signal (heatmap "встал
-    /// сразу" cells), so the corrupt-blob ceremony of the financial ledger
-    /// would be overkill here; the heatmap degrades to "не было будильника".
+    /// Compatibility read for existing callers. Statistics uses the typed
+    /// snapshot so an unreadable history cannot masquerade as a fresh install.
     func wakeDays() -> Set<Date> {
         queue.sync { readAll() }
     }
@@ -111,28 +136,26 @@ final class WakeEventStore {
     // MARK: - Private (must be called inside queue.sync)
 
     private func readAll() -> Set<Date> {
-        guard let data = defaults.data(forKey: key) else { return [] }
-        do {
-            return Set(try JSONDecoder().decode([Date].self, from: data))
-        } catch {
-            os_log(
-                "Decode failed, wake history degrades to empty: %{public}@",
-                log: Self.log, type: .error, String(describing: error)
-            )
-            return []
-        }
+        Set(readResult(forKey: key).dates ?? [])
     }
 
     private func readAllTimes() -> [Date] {
-        guard let data = defaults.data(forKey: timesKey) else { return [] }
+        readResult(forKey: timesKey).dates ?? []
+    }
+
+    private func readResult(forKey storageKey: String) -> ReadResult {
+        guard let raw = defaults.object(forKey: storageKey) else { return .missing }
+        guard let data = raw as? Data else {
+            os_log("[WAKE-669-UNREADABLE] %{public}@: stored value is not Data",
+                   log: Self.log, type: .error, storageKey)
+            return .unreadable
+        }
         do {
-            return try JSONDecoder().decode([Date].self, from: data)
+            return .value(try JSONDecoder().decode([Date].self, from: data).sorted())
         } catch {
-            os_log(
-                "Decode failed, wake times degrade to empty: %{public}@",
-                log: Self.log, type: .error, String(describing: error)
-            )
-            return []
+            os_log("[WAKE-669-UNREADABLE] %{public}@: %{public}@",
+                   log: Self.log, type: .error, storageKey, String(describing: error))
+            return .unreadable
         }
     }
 

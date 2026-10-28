@@ -157,7 +157,9 @@ final class StatisticsViewModel {
     /// aggregation twice per `viewWillAppear` (#348 review, finding 6).
     private(set) var weekMoneyDays: [WeekMoneyDay] = []
     private(set) var weekMoneySummary = MoneySummary.empty
-    private(set) var wakeTimeStats: WakeTimeStats?
+    private(set) var wakeTimeAvailability: WakeTimeAvailability = .noRecentHistory
+    private(set) var wakeHistorySnapshot = WakeEventStore.Snapshot(days: .missing, times: .missing)
+    var wakeTimeStats: WakeTimeStats? { wakeTimeAvailability.stats }
     /// Every behavioural aggregate is published from the same `loadData()`
     /// snapshot as the money summary. Keeping these stored avoids a midnight
     /// split where one card asks `Date()` before the boundary and another
@@ -223,8 +225,9 @@ final class StatisticsViewModel {
         // midnight or a new dismissal lands while the ledger is decoding.
         let now = Date()
         walletCurrency = currencyStore.currency
-        let capturedWakeDays = wakeStore.wakeDays()
-        let capturedWakeTimes = wakeStore.wakeTimes()
+        wakeHistorySnapshot = wakeStore.readSnapshot()
+        let capturedWakeDays = Set(wakeHistorySnapshot.days.dates ?? [])
+        let capturedWakeTimes = wakeHistorySnapshot.times.dates ?? []
 
         // Checked read so a corrupt ledger surfaces an alert instead of a
         // deceptive zero-state (issue #72). Streak shares the same in-memory
@@ -249,12 +252,12 @@ final class StatisticsViewModel {
             let unknownTokens = transactionRepository.lastLoadUnrecognizedTypes
             if unknownTokens.isEmpty {
                 ledgerUnavailableReason = nil
-                streak = StreakCalculator.currentStreak(
+                streak = wakeDaysReadable ? StreakCalculator.currentStreak(
                     transactions: allTransactions,
                     wakeDays: capturedWakeDays,
                     now: now,
                     calendar: calendar
-                )
+                ) : 0
             } else {
                 ledgerUnavailableReason = .ledgerPartiallyRead
                 // An unrecognised row might be a skipped charge. Do not
@@ -290,7 +293,7 @@ final class StatisticsViewModel {
 
         // Bump persisted best streak only forward — never reset on streak = 0,
         // so the user's all-time record survives a slip-up.
-        if ledgerReadable, streak > defaults.integer(forKey: Self.bestStreakKey) {
+        if ledgerReadable, wakeDaysReadable, streak > defaults.integer(forKey: Self.bestStreakKey) {
             defaults.set(streak, forKey: Self.bestStreakKey)
         }
         recomputeSnapshots(today: now)
@@ -401,7 +404,9 @@ final class StatisticsViewModel {
     /// and `StatisticsSnapshotTests`, which drive different days through this
     /// method to prove every visible aggregate moves together.
     func recomputeSnapshots(today: Date) {
-        guard ledgerReadable else {
+        wakeTimeAvailability = wakeHistorySnapshot.times.isUnreadable ? .unavailable(.historyUnreadable)
+            : Self.wakeTimeAvailability(today: today, wakeTimes: wakeTimes, calendar: calendar)
+        guard ledgerReadable, wakeDaysReadable else {
             weekMoneyDays = []
             weekMoneySummary = .empty
             heatmapDays = []
@@ -409,9 +414,6 @@ final class StatisticsViewModel {
             worstWeekdayNames = []
             weeklyTrend = []
             trendDiff = 0
-            wakeTimeStats = Self.wakeTimeStats(
-                today: today, wakeTimes: wakeTimes, calendar: calendar
-            )
             return
         }
 
@@ -427,9 +429,6 @@ final class StatisticsViewModel {
             calendar: calendar
         )
         weekMoneySummary = Self.moneySummary(days: weekMoneyDays)
-        wakeTimeStats = Self.wakeTimeStats(
-            today: today, wakeTimes: wakeTimes, calendar: calendar
-        )
 
         let snoozesByDay = Self.snoozesByDay(charges: charges, calendar: calendar)
         heatmapDays = makeHeatmapSnapshot(today: today, snoozesByDay: snoozesByDay)
