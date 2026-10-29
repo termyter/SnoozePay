@@ -130,6 +130,9 @@ private nonisolated struct PublicWriterQuery: Sendable {
     var started: Double?
     var storeCompleted: Double?
     var positionCompleted: Double?
+    var predicateStarted: Double?
+    var predicateCreated: Double?
+    var getEntriesEntered: Double?
     var queryCreated: Double?
     var iteratorCreated: Double?
     var lastNextCompleted: Double?
@@ -148,6 +151,9 @@ private nonisolated struct PublicWriterQuery: Sendable {
         ["attempt": attempt, "phase": phase, "status": status,
          "started": PublicWriterObserver.time(started), "storeCompleted": PublicWriterObserver.time(storeCompleted),
          "positionCompleted": PublicWriterObserver.time(positionCompleted),
+         "predicateStarted": PublicWriterObserver.time(predicateStarted),
+         "predicateCreated": PublicWriterObserver.time(predicateCreated),
+         "getEntriesEntered": PublicWriterObserver.time(getEntriesEntered),
          "queryCreated": PublicWriterObserver.time(queryCreated),
          "iteratorCreated": PublicWriterObserver.time(iteratorCreated),
          "lastNextCompleted": PublicWriterObserver.time(lastNextCompleted),
@@ -194,7 +200,7 @@ private nonisolated struct PublicWriterProof: Sendable {
     var workerCancelledAtFinish: Bool?
 
     func payload() -> [String: Any] {
-        ["schema": 1, "kind": "realCurrentProcessWriterObservation",
+        ["schema": 2, "kind": "realCurrentProcessWriterObservation",
          "method": "AppLoggerPublicWriterObservationTests/"
             + "testRealSchedulerErrorEmissionIsObservedInCurrentProcessWithoutSink",
          "status": status, "phase": phase, "budgetSeconds": 5, "minimumPollGapSeconds": 0.25,
@@ -359,10 +365,26 @@ private nonisolated enum PublicWriterObserver {
             let position = store.position(date: Date(timeIntervalSince1970: context.wallLower))
             query.positionCompleted = context.elapsed
             try check(context, afterCall: true)
-            query.phase = "getEntries"
+            query.phase = "predicate"
             try check(context, afterCall: false)
-            let entries = try store.getEntries(with: [], at: position,
-                matching: NSPredicate(format: "eventMessage == %@", context.input.nonce))
+            let predicateStarted = context.elapsed
+            guard predicateStarted.isFinite && predicateStarted >= 0 else {
+                throw PublicWriterStop(status: "INVALID_CLOCK")
+            }
+            guard predicateStarted < 5 else { throw PublicWriterStop(status: "NOT_OBSERVED_WITHIN_BUDGET") }
+            query.predicateStarted = predicateStarted
+            let predicate = NSPredicate(format: "eventMessage == %@", context.input.nonce)
+            query.predicateCreated = context.elapsed
+            try check(context, afterCall: true)
+            query.phase = "getEntries"
+            let getEntriesEntered = context.elapsed
+            guard getEntriesEntered.isFinite && getEntriesEntered >= 0 else {
+                throw PublicWriterStop(status: "INVALID_CLOCK")
+            }
+            guard getEntriesEntered < 5 else { throw PublicWriterStop(status: "NOT_OBSERVED_WITHIN_BUDGET") }
+            try check(context, afterCall: false)
+            query.getEntriesEntered = getEntriesEntered
+            let entries = try store.getEntries(with: [], at: position, matching: predicate)
             query.queryCreated = context.elapsed
             try check(context, afterCall: true)
             query.phase = "makeIterator"
