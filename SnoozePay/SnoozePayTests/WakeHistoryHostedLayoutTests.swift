@@ -181,7 +181,10 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
         window.rootViewController = navigation
         window.makeKeyAndVisible()
         window.layoutIfNeeded()
-        _ = try XCTUnwrap(XCTWaiter.wait(for: [appeared], timeout: 5) == .completed ? window : nil,
+        // Cold no-cache clean-build runners can defer this first appearance past 5 s
+        // (nightly run 43701301552, job 132772814399); the deadline only bounds real
+        // appearance, it is not an occlusion oracle.
+        _ = try XCTUnwrap(XCTWaiter.wait(for: [appeared], timeout: 15) == .completed ? window : nil,
                           "Real UIKit appearance must complete within this fresh fixture's deadline")
         layout(fixture)
         try assertReady(fixture)
