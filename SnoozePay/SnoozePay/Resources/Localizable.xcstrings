@@ -1621,6 +1621,24 @@
         }
       }
     },
+    "common.sound.name.badinerie" : {
+      "comment" : "Display name of the «badinerie» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bach's Badinerie"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шутка Баха"
+          }
+        }
+      }
+    },
     "common.sound.name.bell" : {
       "comment" : "Display name of the «bell» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1765,6 +1783,24 @@
         }
       }
     },
+    "common.sound.name.marimba" : {
+      "comment" : "Display name of the «marimba» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marimba"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маримба"
+          }
+        }
+      }
+    },
     "common.sound.name.morning" : {
       "comment" : "Display name of the «morning» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1819,6 +1855,24 @@
         }
       }
     },
+    "common.sound.name.reflection" : {
+      "comment" : "Display name of the «reflection» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reflection"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Размышление"
+          }
+        }
+      }
+    },
     "common.sound.name.sirena" : {
       "comment" : "Display name of the «sirena» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1851,6 +1905,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Космолёт"
+          }
+        }
+      }
+    },
+    "common.sound.name.strum" : {
+      "comment" : "Display name of the «strum» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strum"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перебор"
+          }
+        }
+      }
+    },
+    "common.sound.name.vibraphone" : {
+      "comment" : "Display name of the «vibraphone» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibraphone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрафон"
           }
         }
       }
@@ -2413,6 +2503,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.badinerie" : {
+      "comment" : "Sound picker: the descriptive line under «Шутка Баха». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bach in 8-bit"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бах в 8-битной обработке"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.bell" : {
       "comment" : "Sound picker: the descriptive line under «Колокольчик». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2575,6 +2683,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.marimba" : {
+      "comment" : "Sound picker: the descriptive line under «Маримба». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Morning marimba chime"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Утренний перезвон маримбы"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.morning" : {
       "comment" : "Sound picker: the descriptive line under «Утро». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2629,6 +2755,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.reflection" : {
+      "comment" : "Sound picker: the descriptive line under «Размышление». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A quiet melody for a gentle morning"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тихая мелодия для лёгкого утра"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.sirena" : {
       "comment" : "Sound picker: the descriptive line under «Сирена». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2661,6 +2805,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Гул космического корабля"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.strum" : {
+      "comment" : "Sound picker: the descriptive line under «Перебор». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soft plucked guitar chords"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мягкие гитарные аккорды"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.vibraphone" : {
+      "comment" : "Sound picker: the descriptive line under «Вибрафон». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bright, airy vibraphone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонкий воздушный вибрафон"
           }
         }
       }

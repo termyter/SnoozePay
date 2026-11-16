@@ -111,7 +111,13 @@ final class AlarmsListSoundNameTests: XCTestCase {
         "hawk": "Ястреб",
         "morning": "Утро",
         "sirena": "Сирена",
-        "spaceship": "Космолёт"
+        "spaceship": "Космолёт",
+        // #1092 appended the melodic five, same reason as #850's four above.
+        "marimba": "Маримба",
+        "badinerie": "Шутка Баха",
+        "vibraphone": "Вибрафон",
+        "strum": "Перебор",
+        "reflection": "Размышление"
     ]
 
     private var suiteName: String!
