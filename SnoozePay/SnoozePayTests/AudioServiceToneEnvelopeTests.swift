@@ -75,8 +75,11 @@ final class AudioServiceToneEnvelopeTests: XCTestCase {
     }
 
     /// The opening ramp is what keeps the head of the buffer from clicking.
-    /// Over the first 2 ms it allows at most 10% of the 1.096 peak (~0.11 of
-    /// full scale); an unramped start reaches full scale there.
+    /// Over the first 2 ms it allows at most 10% of the 0.979 peak (~0.10 of
+    /// full scale); an unramped start reaches full pulse level there.
+    /// The opening ramp is what keeps the head of the buffer from clicking.
+    /// Over the first 2 ms it allows at most 10% of the 0.979 peak (~0.10 of
+    /// full scale); an unramped start reaches full pulse level there.
     func testOpeningRamp_startsFromSilence() throws {
         let tone = try renderedTone()
         let twoMs = Int(tone.sampleRate * 0.002)
@@ -85,5 +88,19 @@ final class AudioServiceToneEnvelopeTests: XCTestCase {
             tone.peak(from: 0, to: twoMs), 0.15,
             "the first 2 ms must still be on the 20 ms opening ramp, not at full pulse level"
         )
+    }
+
+    /// PM decision (2026-11-16, #820): the gain is 0.625, which leaves the
+    /// summed partials' 1.566 crest at 0.979 of full scale. At the previous
+    /// 0.7 the buffer peaked at 1.096 and `Int16(clamping:)` clipped 2816 of
+    /// the 66150 samples — that buzz on top of the two tones is what this
+    /// guards against coming back.
+    func testGainLeavesHeadroomInsteadOfClipping() throws {
+        let tone = try renderedTone()
+        let peak = tone.peak(from: 0, to: tone.samples.count)
+
+        XCTAssertLessThan(peak, 1.0, "a single clamped sample would sit exactly at full scale")
+        XCTAssertGreaterThan(peak, 0.9, "the fallback tone must stay near full scale to remain audible")
+        XCTAssertEqual(peak, 0.979, accuracy: 0.01, "0.625 × the 1.566 crest")
     }
 }
