@@ -22,12 +22,22 @@ final class WakeEventStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRecordWake_storesStartOfDay() {
-        let noon = calendar.date(
-            bySettingHour: 12, minute: 30, second: 0, of: Date()
-        )!
-        store.recordWake(on: noon, calendar: calendar)
-        XCTAssertEqual(store.wakeDays(), [calendar.startOfDay(for: noon)])
+    func testRecordWake_storesCanonicalDayIdentity() {
+        var moscow = Calendar(identifier: .gregorian)
+        moscow.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let instant = moscow.date(from: DateComponents(
+            year: 2026, month: 10, day: 25, hour: 7, minute: 30
+        ))!
+        store.recordWake(on: instant, calendar: moscow)
+
+        // #1064: the row is the civil day's UTC midnight — 2026-10-25T00:00Z —
+        // not a `startOfDay` carrying this device's offset (21:00Z here).
+        let expected = WakeDayIdentity(year: 2026, month: 10, day: 25).canonicalStoredDay!
+        XCTAssertEqual(store.wakeDays(), [expected])
+        XCTAssertEqual(
+            store.wakeDays().map(WakeDayIdentity.init(storedDay:)),
+            [WakeDayIdentity(year: 2026, month: 10, day: 25)]
+        )
     }
 
     func testRecordWake_sameDayTwice_dedupes() {
@@ -59,8 +69,8 @@ final class WakeEventStoreTests: XCTestCase {
         // entry is dropped before it ever hits the blob.
         store.recordWake(on: ancient, calendar: calendar)
         store.recordWake(on: Date(), calendar: calendar)
-        let today = calendar.startOfDay(for: Date())
-        XCTAssertEqual(store.wakeDays(), [today],
+        let today = WakeDayIdentity(date: Date(), calendar: calendar)
+        XCTAssertEqual(store.wakeDays().map(WakeDayIdentity.init(storedDay:)), [today],
                        "Entries older than the retention window must be pruned")
     }
 

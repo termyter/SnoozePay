@@ -232,8 +232,8 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
         XCTAssertTrue(wakeStore.wakeDays().isEmpty, "Precondition: isolated store starts empty")
         vm.dismiss()
 
-        let today = Calendar.current.startOfDay(for: Date())
-        XCTAssertEqual(wakeStore.wakeDays(), [today],
+        let today = WakeDayIdentity(date: Date(), calendar: Calendar.current)
+        XCTAssertEqual(wakeStore.wakeDays().map(WakeDayIdentity.init(storedDay:)), [today],
                        "Dismiss should record exactly today's wake day")
     }
 

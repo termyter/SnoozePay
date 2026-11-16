@@ -556,12 +556,17 @@ final class StatisticsViewModel {
 
     /// Builds the month-calendar grid for the month containing `today`.
     /// Pads to full Monday-first weeks; padding / future days are `.empty`.
+    ///
+    /// `wakeDays` holds the stored day rows; each cell is matched through
+    /// ``WakeDayIdentity`` so a timezone change between write and read cannot
+    /// darken a morning the user actually got up on (#1064).
     static func monthGrid(
         today: Date,
         snoozesByDay: [Date: (count: Int, spent: Double)],
         wakeDays: Set<Date>,
         calendar: Calendar
     ) -> [HeatmapDay] {
+        let wakeDayIdentities = Set(wakeDays.map(WakeDayIdentity.init(storedDay:)))
         let todayStart = calendar.startOfDay(for: today)
         guard
             let monthInterval = calendar.dateInterval(of: .month, for: todayStart),
@@ -581,7 +586,10 @@ final class StatisticsViewModel {
             let isPastOrToday = day <= todayStart
             let status: DayStatus
             if isInMonth && isPastOrToday {
-                status = dayStatus(snoozes: data.count, woke: wakeDays.contains(day))
+                status = dayStatus(
+                    snoozes: data.count,
+                    woke: wakeDayIdentities.contains(WakeDayIdentity(date: day, calendar: calendar))
+                )
             } else {
                 status = .empty
             }
