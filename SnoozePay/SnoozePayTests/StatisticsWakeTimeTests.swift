@@ -475,7 +475,11 @@ final class StatisticsWakeTimeTests: XCTestCase {
         wakeStore.recordWake(on: instant, calendar: calendar)
 
         XCTAssertEqual(wakeStore.wakeTimes(), [instant])
-        XCTAssertEqual(wakeStore.wakeDays(), [day(instant)], "Legacy day granularity is preserved")
+        XCTAssertEqual(
+            wakeStore.wakeDays().map(WakeDayIdentity.init(storedDay:)),
+            [WakeDayIdentity(date: instant, calendar: calendar)],
+            "One day row per morning — day granularity, not the exact instant"
+        )
     }
 
     func testWakeStore_repeatDismissalSameDayKeepsFirstInstant() {

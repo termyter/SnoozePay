@@ -20,8 +20,16 @@ final class WakeEventStore {
 
     static let shared = WakeEventStore()
 
-    /// UserDefaults key holding the JSON-encoded `[Date]` of wake days
-    /// (each normalised to `startOfDay`).
+    /// UserDefaults key holding the JSON-encoded `[Date]` of wake days.
+    ///
+    /// Since #1064 each row is the canonical UTC midnight of the local civil
+    /// day the user woke on (``WakeDayIdentity/canonicalStoredDay``), not a
+    /// `startOfDay` in whatever zone the device happened to report. Rows
+    /// written before that change remain raw `startOfDay` instants; readers
+    /// resolve both through ``WakeDayIdentity(storedDay:)``, whose docstring
+    /// explains how a legacy value's writing offset is recovered from the
+    /// instant itself. Keeping the blob a `[Date]` preserved the pruning and
+    /// sorting semantics, and the exact instants stay in `wake_times`.
     private let key = "wake_days"
 
     /// UserDefaults key holding the JSON-encoded `[Date]` of the *exact*
@@ -92,13 +100,27 @@ final class WakeEventStore {
     /// so the persisted timestamp is the *first* dismissal of that morning
     /// (the actual "подъём"; later dismissals are naps / other alarms).
     ///
-    /// Callers keep passing a plain `Date` — the exact instant is captured
-    /// here, which is why no firing-flow call site had to change for #348.
+    /// Callers keep passing a plain `Date` and the zone they read it in — the
+    /// exact instant is captured here, which is why no firing-flow call site
+    /// had to change for #348. What changed in #1064 is the *day* row: it is
+    /// written as the canonical UTC midnight of the local civil day, so later
+    /// reads no longer depend on the device's timezone.
     func recordWake(on date: Date = Date(), calendar: Calendar = .current) {
-        let day = calendar.startOfDay(for: date)
+        let identity = WakeDayIdentity(date: date, calendar: calendar)
+        guard let day = identity.canonicalStoredDay else {
+            // Unreachable for any Gregorian date. Logged rather than asserted so
+            // a future calendar change cannot silently swallow a morning.
+            os_log("[WAKE-1064-CANONICAL] could not build %{public}@ — wake not recorded",
+                   log: Self.log, type: .error, identity.description)
+            return
+        }
         queue.sync {
             var days = readAll()
-            guard !days.contains(day) else { return }
+            // Dedupe by civil day rather than by instant: a row written
+            // before #1064 is a raw `startOfDay`, which is never equal to the
+            // canonical value for the same day — comparing instants would let
+            // one morning land in the set twice across the upgrade.
+            guard !days.contains(where: { WakeDayIdentity(storedDay: $0) == identity }) else { return }
             days.insert(day)
 
             var times = readAllTimes()
@@ -121,6 +143,11 @@ final class WakeEventStore {
 
     /// Compatibility read for existing callers. Statistics uses the typed
     /// snapshot so an unreadable history cannot masquerade as a fresh install.
+    ///
+    /// Values are the stored day rows — canonical UTC midnights for rows
+    /// written since #1064, raw `startOfDay`s for older ones. Consumers that
+    /// need to answer "was the user awake on *this* day" must compare through
+    /// ``WakeDayIdentity`` rather than these instants.
     func wakeDays() -> Set<Date> {
         queue.sync { readAll() }
     }

@@ -473,7 +473,7 @@ extension StatisticsViewModel {
         calendar: Calendar
     ) -> [WeekMoneyDay] {
         let charges = inputs.charges.filter { $0.currency == currency }
-        let wakeDays = inputs.wakeDays
+        let wakeDayIdentities = Set(inputs.wakeDays.map(WakeDayIdentity.init(storedDay:)))
         let attemptedSnoozeDays = inputs.attemptedSnoozeDays
         let snoozePrice = inputs.snoozePrice
         let todayStart = calendar.startOfDay(for: today)
@@ -493,7 +493,7 @@ extension StatisticsViewModel {
             let data = byDay[dayStart] ?? (count: 0, spent: 0)
             let isClean = data.count == 0
                 && !attemptedSnoozeDays.contains(dayStart)
-                && wakeDays.contains(dayStart)
+                && wakeDayIdentities.contains(WakeDayIdentity(date: dayStart, calendar: calendar))
             return WeekMoneyDay(
                 label: label,
                 saved: isClean ? snoozePrice : nil,

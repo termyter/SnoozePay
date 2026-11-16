@@ -22,12 +22,17 @@ final class WakeEventStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRecordWake_storesStartOfDay() {
+    func testRecordWake_storesCanonicalDayIdentity() {
         let noon = calendar.date(
             bySettingHour: 12, minute: 30, second: 0, of: Date()
         )!
         store.recordWake(on: noon, calendar: calendar)
-        XCTAssertEqual(store.wakeDays(), [calendar.startOfDay(for: noon)])
+        // #1064: the row is the civil day's UTC midnight, not this device's
+        // `startOfDay`, so the identity survives a later timezone change.
+        XCTAssertEqual(
+            store.wakeDays().map(WakeDayIdentity.init(storedDay:)),
+            [WakeDayIdentity(date: noon, calendar: calendar)]
+        )
     }
 
     func testRecordWake_sameDayTwice_dedupes() {
@@ -59,8 +64,8 @@ final class WakeEventStoreTests: XCTestCase {
         // entry is dropped before it ever hits the blob.
         store.recordWake(on: ancient, calendar: calendar)
         store.recordWake(on: Date(), calendar: calendar)
-        let today = calendar.startOfDay(for: Date())
-        XCTAssertEqual(store.wakeDays(), [today],
+        let today = WakeDayIdentity(date: Date(), calendar: calendar)
+        XCTAssertEqual(store.wakeDays().map(WakeDayIdentity.init(storedDay:)), [today],
                        "Entries older than the retention window must be pruned")
     }
 
