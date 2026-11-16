@@ -23,15 +23,20 @@ final class WakeEventStoreTests: XCTestCase {
     }
 
     func testRecordWake_storesCanonicalDayIdentity() {
-        let noon = calendar.date(
-            bySettingHour: 12, minute: 30, second: 0, of: Date()
-        )!
-        store.recordWake(on: noon, calendar: calendar)
-        // #1064: the row is the civil day's UTC midnight, not this device's
-        // `startOfDay`, so the identity survives a later timezone change.
+        var moscow = Calendar(identifier: .gregorian)
+        moscow.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let instant = moscow.date(from: DateComponents(
+            year: 2026, month: 10, day: 25, hour: 7, minute: 30
+        ))!
+        store.recordWake(on: instant, calendar: moscow)
+
+        // #1064: the row is the civil day's UTC midnight — 2026-10-25T00:00Z —
+        // not a `startOfDay` carrying this device's offset (21:00Z here).
+        let expected = WakeDayIdentity(year: 2026, month: 10, day: 25).canonicalStoredDay!
+        XCTAssertEqual(store.wakeDays(), [expected])
         XCTAssertEqual(
             store.wakeDays().map(WakeDayIdentity.init(storedDay:)),
-            [WakeDayIdentity(date: noon, calendar: calendar)]
+            [WakeDayIdentity(year: 2026, month: 10, day: 25)]
         )
     }
 

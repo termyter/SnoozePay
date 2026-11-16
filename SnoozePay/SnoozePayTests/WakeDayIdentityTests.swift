@@ -117,10 +117,10 @@ final class WakeDayIdentityTests: XCTestCase {
     }
 
     func testStoredIdentityIsNotTheReaderZoneFlooring() {
-        // The stored value is a Moscow/Europe morning (20:00Z of the day
-        // before, i.e. 00:00 +04). Re-flooring that instant in New York would
-        // invent 2026-10-24 — the westbound defect #1064 warns about. The
-        // identity must stay on the civil day the row was written for.
+        // A stored midnight from a UTC+04 zone (00:00 local = 20:00Z). Re-
+        // flooring that instant in New York would invent 2026-10-24 — the
+        // westbound defect #1064 warns about. The identity must stay on the
+        // civil day the row was written for.
         let stored = date(2026, 10, 24, 20, 0, in: calendar("UTC"))
         let newYork = calendar("America/New_York")
 
@@ -164,6 +164,54 @@ final class WakeDayIdentityTests: XCTestCase {
 
         XCTAssertEqual(store.wakeDays().count, 1)
         XCTAssertEqual(store.wakeTimes().count, 1)
+    }
+
+    func testIdentityIsGregorianEvenWhenThePreferredCalendarIsNot() {
+        // Settings → Calendar can be Buddhist; `Calendar.current` then reports
+        // year 2569 where the walk says 2026. The identity must stay Gregorian,
+        // otherwise the store writes a year no Gregorian reader ever visits —
+        // the #1064 defect back under a different name.
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let wakeInstant = buddhist.date(
+            from: DateComponents(year: 2569, month: 10, day: 25, hour: 7)
+        )!
+
+        XCTAssertEqual(
+            WakeDayIdentity(date: wakeInstant, calendar: buddhist),
+            WakeDayIdentity(year: 2026, month: 10, day: 25)
+        )
+
+        let store = WakeEventStore(defaults: defaults)
+        store.recordWake(on: wakeInstant, calendar: buddhist)
+        XCTAssertEqual(
+            store.wakeDays(),
+            [date(2026, 10, 25, in: calendar("UTC"))],
+            "Storage must use the Gregorian civil day, not the preferred calendar's era"
+        )
+    }
+
+    func testRecordWakeKeepsTheMorningWhenALegacyRowReconstructsToIt() throws {
+        // A pre-#1064 row written at UTC+14 for 2026-10-25 stores
+        // 2026-10-24 10:00Z, which the ambiguous window reconstructs to
+        // 2026-10-25 — the same identity a real 2026-10-25 wake produces. The
+        // new morning must still be recorded (canonical row + exact instant),
+        // not swallowed by an identity-based duplicate check.
+        let legacyStored = date(2026, 10, 24, 10, 0, in: calendar("UTC"))
+        defaults.set(try JSONEncoder().encode([legacyStored]), forKey: "wake_days")
+
+        let moscow = calendar("Europe/Moscow")
+        let wakeInstant = date(2026, 10, 25, 7, 0, in: moscow)
+        let store = WakeEventStore(defaults: defaults)
+        store.recordWake(on: wakeInstant, calendar: moscow)
+
+        XCTAssertEqual(store.wakeDays().count, 2, "The legacy row stays; the canonical row is added")
+        XCTAssertEqual(
+            Set(store.wakeDays().map(WakeDayIdentity.init(storedDay:))),
+            [WakeDayIdentity(year: 2026, month: 10, day: 25)],
+            "One civil day, one identity — the displaced legacy row resolves to the same day"
+        )
+        XCTAssertEqual(store.wakeTimes(), [wakeInstant], "The exact instant is preserved, not swallowed")
     }
 
     // MARK: - Streak oracle

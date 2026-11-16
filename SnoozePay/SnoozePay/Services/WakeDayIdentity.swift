@@ -25,7 +25,9 @@ import Foundation
 ///   −12…+14 h, which normally leaves exactly one candidate. When the stored
 ///   clock reads 10:00–12:00 UTC, the western (−10…−12) and eastern (+10…+14)
 ///   readings both fit; that window resolves east, because the app's audience
-///   sits at UTC+3…UTC+12 — the west reading would mislabel more rows. Such
+///   sits at UTC+3…UTC+12 — the west reading would mislabel more rows. A
+///   legacy row written west of −10 is therefore labelled one day **later**
+///   than the morning it recorded (D → D+1). Such
 ///   rows age out with the store's 400-day retention.
 ///
 /// Deliberately absent: re-flooring a stored midnight into the reader's
@@ -43,8 +45,18 @@ struct WakeDayIdentity: Hashable, Comparable, CustomStringConvertible {
     /// Used for every day the UI walks (streak step, heatmap cell, money
     /// column): each of them is a local midnight, which maps to its own
     /// year/month/day no matter what zone the reader is in.
+    ///
+    /// The *calendar system* is always Gregorian here, while the timezone is
+    /// the caller's. `Calendar.current` is also the user's preferred calendar
+    /// (Settings → Calendar can be Buddhist, Islamic, Hebrew…), and letting
+    /// that era through would store 2569-10-25 for 2026-10-25 — every reader
+    /// walks a Gregorian year the store never recorded, and the whole defect
+    /// this type fixes would come back under a different name. The timezone is
+    /// what actually defines the civil day; the system must stay fixed so the
+    /// writer and every reader agree.
     init(date: Date, calendar: Calendar) {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        let components = Self.gregorian(in: calendar.timeZone)
+            .dateComponents([.year, .month, .day], from: date)
         self.init(
             year: components.year ?? 0,
             month: components.month ?? 0,
@@ -102,11 +114,19 @@ struct WakeDayIdentity: Hashable, Comparable, CustomStringConvertible {
 
     /// Gregorian calendar pinned to UTC — the zone stored instants are read
     /// in, never the reader's.
-    private static let utcCalendar: Calendar = {
+    private static let utcCalendar = gregorian(in: TimeZone(secondsFromGMT: 0)
+        ?? TimeZone(identifier: "GMT")!)
+
+    /// Gregorian system carrying `timeZone`'s civil-day boundaries.
+    ///
+    /// The identity's year/month/day must never come from a non-Gregorian
+    /// preference (see ``init(date:calendar:)``), so every conversion goes
+    /// through here instead of trusting the caller's calendar identifier.
+    private static func gregorian(in timeZone: TimeZone) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone(identifier: "GMT")!
+        calendar.timeZone = timeZone
         return calendar
-    }()
+    }
 
     /// Chronological key — 2026-10-25 sorts after 2026-10-24.
     private var sortKey: Int { year * 10_000 + month * 100 + day }

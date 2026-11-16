@@ -28,8 +28,10 @@ final class WakeEventStore {
     /// written before that change remain raw `startOfDay` instants; readers
     /// resolve both through ``WakeDayIdentity(storedDay:)``, whose docstring
     /// explains how a legacy value's writing offset is recovered from the
-    /// instant itself. Keeping the blob a `[Date]` preserved the pruning and
-    /// sorting semantics, and the exact instants stay in `wake_times`.
+    /// instant itself. Keeping the blob a `[Date]` preserved the sorting; the
+    /// 400-day prune now compares civil identities so the window does not
+    /// shift by a day for readers west of UTC. The exact instants stay in
+    /// `wake_times`.
     private let key = "wake_days"
 
     /// UserDefaults key holding the JSON-encoded `[Date]` of the *exact*
@@ -100,11 +102,13 @@ final class WakeEventStore {
     /// so the persisted timestamp is the *first* dismissal of that morning
     /// (the actual "подъём"; later dismissals are naps / other alarms).
     ///
-    /// Callers keep passing a plain `Date` and the zone they read it in — the
-    /// exact instant is captured here, which is why no firing-flow call site
-    /// had to change for #348. What changed in #1064 is the *day* row: it is
-    /// written as the canonical UTC midnight of the local civil day, so later
-    /// reads no longer depend on the device's timezone.
+    /// Callers keep passing a plain `Date`; `calendar` defaults to the
+    /// device's current one and supplies the timezone the civil day is read
+    /// in — never the calendar system (see ``WakeDayIdentity``). The exact
+    /// instant is captured here, which is why no firing-flow call site had to
+    /// change for #348. What changed in #1064 is the *day* row: it is written
+    /// as the canonical UTC midnight of that day, so later reads no longer
+    /// depend on the device's timezone.
     func recordWake(on date: Date = Date(), calendar: Calendar = .current) {
         let identity = WakeDayIdentity(date: date, calendar: calendar)
         guard let day = identity.canonicalStoredDay else {
@@ -116,11 +120,14 @@ final class WakeEventStore {
         }
         queue.sync {
             var days = readAll()
-            // Dedupe by civil day rather than by instant: a row written
-            // before #1064 is a raw `startOfDay`, which is never equal to the
-            // canonical value for the same day — comparing instants would let
-            // one morning land in the set twice across the upgrade.
-            guard !days.contains(where: { WakeDayIdentity(storedDay: $0) == identity }) else { return }
+            // The row is already present for *this* day — a repeat dismissal,
+            // or a canonical row written earlier today. Deliberately not an
+            // identity match: a pre-#1064 row can reconstruct to a displaced
+            // day (the ambiguous 10:00–12:00 window), and treating it as
+            // "already recorded" would swallow this morning's canonical row
+            // and its exact instant. Two rows for one civil day are harmless —
+            // every reader keys on the identity set — a dropped wake is not.
+            guard !days.contains(day) else { return }
             days.insert(day)
 
             var times = readAllTimes()
@@ -129,9 +136,16 @@ final class WakeEventStore {
             // Prune anything beyond the retention window so the blob stays
             // bounded. Pruning keys off "now", not the recorded date, so a
             // backdated test fixture can still round-trip recent history.
+            //
+            // Days compare by civil identity rather than instant: canonical
+            // rows are UTC midnights, so comparing them to a local cutoff
+            // would shift the window by up to a day for readers west of UTC.
+            // `wake_times` keeps the instant comparison — it is raw history,
+            // and a one-day boundary nuance there costs nothing displayed.
             if let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: Date()) {
                 let cutoffDay = calendar.startOfDay(for: cutoff)
-                days = days.filter { $0 >= cutoffDay }
+                let cutoffIdentity = WakeDayIdentity(date: cutoffDay, calendar: calendar)
+                days = days.filter { WakeDayIdentity(storedDay: $0) >= cutoffIdentity }
                 times = times.filter { $0 >= cutoffDay }
             }
             persist(days)
