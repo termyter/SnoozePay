@@ -97,8 +97,9 @@ extension AudioService {
                 Double(totalSamples - sampleIndex) / fadeFrames
             )
             let envelope = pulse * edgeRamp
-            // 0.625 = 1/1.6 of the 1.566 crest — the loudest setting that keeps
-            // the buffer unclipped (#820). The headroom arithmetic is above.
+            // 0.625 = 1/1.6 of the 1.566 crest — the PM-chosen setting, one
+            // rounding step below the 0.6387 clip-free maximum (#820). The
+            // headroom arithmetic is above.
             let amplitude = wave * envelope * 0.625
             let sample = Int16(clamping: Int(amplitude * Double(Int16.max)))
             samples.append(sample)
