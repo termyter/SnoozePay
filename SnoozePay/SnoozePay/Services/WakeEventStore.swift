@@ -131,7 +131,18 @@ final class WakeEventStore {
             days.insert(day)
 
             var times = readAllTimes()
-            times.append(date)
+            // Keep "one instant per morning": a pre-#1064 row can already
+            // carry this day's first dismissal (the day and the instant were
+            // written together since #348), and appending this later one would
+            // make `wakeTimes()` report two rows for one morning. The card
+            // takes the earliest per day, so the UI hid it — the contract did
+            // not.
+            let hasInstantForMorning = times.contains {
+                WakeDayIdentity(date: $0, calendar: calendar) == identity
+            }
+            if !hasInstantForMorning {
+                times.append(date)
+            }
 
             // Prune anything beyond the retention window so the blob stays
             // bounded. Pruning keys off "now", not the recorded date, so a

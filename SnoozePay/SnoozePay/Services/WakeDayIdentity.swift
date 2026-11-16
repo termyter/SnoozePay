@@ -26,8 +26,9 @@ import Foundation
 ///   clock reads 10:00–12:00 UTC, the western (−10…−12) and eastern (+10…+14)
 ///   readings both fit; that window resolves east, because the app's audience
 ///   sits at UTC+3…UTC+12 — the west reading would mislabel more rows. A
-///   legacy row written west of −10 is therefore labelled one day **later**
-///   than the morning it recorded (D → D+1). Such
+///   legacy row written at or west of −10 (Hawaii, Samoa, Baker) is
+///   therefore labelled one day **later** than the morning it recorded
+///   (D → D+1). Such
 ///   rows age out with the store's 400-day retention.
 ///
 /// Deliberately absent: re-flooring a stored midnight into the reader's
@@ -102,9 +103,10 @@ struct WakeDayIdentity: Hashable, Comparable, CustomStringConvertible {
     }
 
     /// Canonical storage form: UTC midnight of this civil day. Encoding the
-    /// identity as an instant keeps `wake_days` a `[Date]` blob — the same
-    /// pruning and sorting as before — while removing the timezone from the
-    /// value's meaning.
+    /// identity as an instant keeps `wake_days` a `[Date]` blob — still sorted
+    /// and pruned in place — while removing the timezone from the value's
+    /// meaning. Pruning compares identities, so the 400-day window no longer
+    /// depends on the reader's offset either.
     var canonicalStoredDay: Date? {
         Self.utcCalendar.date(from: DateComponents(year: year, month: month, day: day))
     }

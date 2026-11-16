@@ -214,6 +214,43 @@ final class WakeDayIdentityTests: XCTestCase {
         XCTAssertEqual(store.wakeTimes(), [wakeInstant], "The exact instant is preserved, not swallowed")
     }
 
+    func testRecordWakeDoesNotAddASecondInstantForTheSameMorning() throws {
+        // A pre-#1064 row that already carries the morning's first dismissal,
+        // then a later same-day dismissal after the upgrade: the day row and
+        // the canonical encoding may change, the "one instant per morning"
+        // contract must not.
+        let legacyDay = date(2026, 10, 24, 21, 0, in: calendar("UTC")) // Moscow 00:00
+        let firstInstant = date(2026, 10, 25, 7, 0, in: calendar("Europe/Moscow"))
+        defaults.set(try JSONEncoder().encode([legacyDay]), forKey: "wake_days")
+        defaults.set(try JSONEncoder().encode([firstInstant]), forKey: "wake_times")
+
+        let moscow = calendar("Europe/Moscow")
+        let store = WakeEventStore(defaults: defaults)
+        store.recordWake(on: date(2026, 10, 25, 9, 10, in: moscow), calendar: moscow)
+
+        XCTAssertEqual(store.wakeTimes(), [firstInstant], "The first dismissal stays the morning's instant")
+    }
+
+    func testStreakWalkWithANonGregorianPreferredCalendar() {
+        // Settings → Calendar set to Buddhist: the walk runs on that calendar's
+        // days, and its era must not leak into the comparison with the store.
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let moscow = calendar("Europe/Moscow")
+
+        let store = WakeEventStore(defaults: defaults)
+        store.recordWake(on: date(2026, 10, 25, 7, 0, in: moscow), calendar: moscow)
+
+        let streak = StreakCalculator.currentStreak(
+            transactions: [],
+            wakeDays: store.wakeDays(),
+            now: date(2026, 10, 25, 8, 0, in: moscow),
+            calendar: buddhist
+        )
+
+        XCTAssertEqual(streak, 1, "A preferred calendar must not hide a recorded morning either")
+    }
+
     // MARK: - Streak oracle
 
     func testStreakSurvivesTimezoneChange_legacyRawRow() {
