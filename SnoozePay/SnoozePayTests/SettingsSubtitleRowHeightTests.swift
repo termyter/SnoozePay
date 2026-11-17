@@ -21,14 +21,6 @@ final class SettingsSubtitleRowHeightTests: XCTestCase {
     /// brand faces being registered in the test host.
     private let rowWidth: CGFloat = 320
 
-    private var suites: [(name: String, defaults: UserDefaults)] = []
-
-    override func tearDown() {
-        suites.forEach { $0.defaults.removePersistentDomain(forName: $0.name) }
-        suites.removeAll()
-        super.tearDown()
-    }
-
     /// Every store this screen touches is pinned to one throwaway suite —
     /// including the referral service.
     ///
@@ -40,9 +32,7 @@ final class SettingsSubtitleRowHeightTests: XCTestCase {
     /// six lines; relying on which delegate method a test happens to call
     /// costs the next author the same afternoon.
     private func makeSUT() -> SettingsViewController {
-        let suite = "test.settings.subtitle.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        suites.append((name: suite, defaults: defaults))
+        let defaults = makeIsolatedDefaults()
         let sut = SettingsViewController(
             alarmDefaults: AlarmDefaults(defaults: defaults),
             referralService: ReferralService(

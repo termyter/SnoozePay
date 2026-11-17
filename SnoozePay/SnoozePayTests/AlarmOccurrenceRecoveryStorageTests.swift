@@ -271,7 +271,7 @@ final class AlarmOccurrenceRecoveryStorageTests: XCTestCase {
 
 @MainActor
 private final class RecoveryStorageFixture {
-    let slot: Int
+    private let lease: IsolatedDefaultsLease<RecoveryStorageDefaults>
     let suite: String
     let defaults: RecoveryStorageDefaults
     let scheduler = RecoveryStorageScheduler()
@@ -288,12 +288,11 @@ private final class RecoveryStorageFixture {
     }
 
     init() throws {
-        let lease = IsolatedDefaultsPool.checkOut(as: RecoveryStorageDefaults.self)
-        slot = lease.slot
+        lease = IsolatedDefaultsPool.checkOut(as: RecoveryStorageDefaults.self)
         defaults = lease.defaults
-        suite = IsolatedDefaultsPool.suiteName(slot)
+        suite = lease.name
     }
-    func close() { IsolatedDefaultsPool.checkIn(slot) }
+    func close() { IsolatedDefaultsPool.checkIn(lease) }
     func store() -> AlarmSnoozeSessionStore { AlarmSnoozeSessionStore(defaults: defaults) }
     func writeAlarms(_ alarms: [Alarm]) throws {
         defaults.set(try JSONEncoder().encode(alarms), forKey: "stored_alarms")

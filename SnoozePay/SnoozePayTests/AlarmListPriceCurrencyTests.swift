@@ -212,9 +212,7 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
     }
 
     private func hostedList(initialPaidCurrency: Currency? = nil) throws -> HostedCurrencyList {
-        let suite = "test.alarmListFirstPaid.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        cleanups.append { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         // A cached USD scale without a last storefront: the pristine wallet
         // still resolves roubles, a USD wallet resolves this scale (#1147).
@@ -255,9 +253,7 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
     private func withPrice(
         _ amount: Double, currency: Currency, scale: [String]? = nil, body: (AlarmsListViewModel) -> Void
     ) {
-        let suite = "test.alarmListPrice.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         let balance = BalanceService(defaults: defaults, notificationCenter: center)
         _ = balance.freezeCurrency(currency)

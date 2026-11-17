@@ -21,7 +21,6 @@ import XCTest
 /// synchronously.
 final class AppLoggerSinkTests: XCTestCase {
 
-    private var suiteName: String!
     private var testDefaults: UserDefaults!
     private var txRepo: TransactionRepository!
     private var wakeStore: WakeEventStore!
@@ -29,8 +28,7 @@ final class AppLoggerSinkTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.appLoggerSink.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         wakeStore = WakeEventStore(defaults: testDefaults)
         txRepo = TransactionRepository(defaults: testDefaults, wakeStore: wakeStore)
         // Injected rather than left on `.shared`: the ledger side is isolated to
@@ -38,11 +36,6 @@ final class AppLoggerSinkTests: XCTestCase {
         // would leave `lines.count == 1` protected only by the accident that
         // `loadSnoozePrice()`'s catch has not been migrated to the seam yet.
         alarmRepo = AlarmRepository(defaults: testDefaults)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     /// A ledger blob that cannot decode — the same one-liner the sibling trace

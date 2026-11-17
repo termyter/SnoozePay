@@ -332,8 +332,10 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         var ends = 0
     }
 
+    @MainActor
     private final class Fixture {
-        let suite = "firing-direct-purchase-\(UUID().uuidString)"
+        private let lease: IsolatedDefaultsLease<UserDefaults>
+        var suite: String { lease.name }
         let center = TrackingCenter()
         let calls = Calls()
         let backend = TestAlarmKitBackend()
@@ -349,7 +351,8 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             available: Bool = true, penalty: Double = 50,
             beforeRing: ((BalanceService, UserDefaults) -> Void)? = nil
         ) {
-            defaults = UserDefaults(suiteName: suite)!
+            lease = IsolatedDefaultsPool.checkOut()
+            defaults = lease.defaults
             wallet = BalanceService(defaults: defaults, notificationCenter: center)
             beforeRing?(wallet, defaults)
             store = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
@@ -374,7 +377,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             controller.observeBalanceForNoBalanceState()
         }
 
-        deinit { defaults.removePersistentDomain(forName: suite) }
+        isolated deinit { IsolatedDefaultsPool.checkIn(lease) }
 
         func post(_ name: Notification.Name, message: String? = nil) {
             center.post(name: name, object: nil, userInfo: message.map { [StoreKitService.messageUserInfoKey: $0] })

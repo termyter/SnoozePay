@@ -8,7 +8,7 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     func testSlotLeftDirtyIsEmptiedWhenHandedOut() {
         // The pool hands out the lowest free slot, so this is the one we get next.
         let peek = IsolatedDefaultsPool.checkOut()
-        IsolatedDefaultsPool.checkIn(peek.slot)
+        IsolatedDefaultsPool.checkIn(peek)
         let stale = reopenIsolatedDefaults(named: IsolatedDefaultsPool.suiteName(peek.slot))
         stale.set(1, forKey: "stale")
         XCTAssertNotNil(stale.object(forKey: "stale"), "pollution did not land — the check below would be vacuous")
@@ -23,10 +23,10 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         let first = IsolatedDefaultsPool.checkOut()
         first.defaults.set(1, forKey: "probe")
         XCTAssertNotNil(first.defaults.object(forKey: "probe"))
-        IsolatedDefaultsPool.checkIn(first.slot)
+        IsolatedDefaultsPool.checkIn(first)
 
         let second = IsolatedDefaultsPool.checkOut()
-        defer { IsolatedDefaultsPool.checkIn(second.slot) }
+        defer { IsolatedDefaultsPool.checkIn(second) }
 
         let name = IsolatedDefaultsPool.suiteName(second.slot)
         XCTAssertEqual(name, IsolatedDefaultsPool.suiteName(first.slot), "a new name per hand-out is the #1118 leak")
@@ -72,17 +72,34 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     /// A slot nobody holds is not wiped or "freed" by a stray check-in.
     func testCheckInOfASlotNotHandedOutLeavesItAlone() {
         let peek = IsolatedDefaultsPool.checkOut()
-        IsolatedDefaultsPool.checkIn(peek.slot)
+        IsolatedDefaultsPool.checkIn(peek)
         let name = IsolatedDefaultsPool.suiteName(peek.slot)
         let outside = reopenIsolatedDefaults(named: name)
         defer { outside.removePersistentDomain(forName: name) }
         outside.set(1, forKey: "probe")
         let slotsBefore = IsolatedDefaultsPool.slotsInUse
 
-        IsolatedDefaultsPool.checkIn(peek.slot)
+        IsolatedDefaultsPool.checkIn(peek)
 
         XCTAssertEqual(outside.integer(forKey: "probe"), 1, "a check-in of a free slot wiped it")
         XCTAssertEqual(IsolatedDefaultsPool.slotsInUse, slotsBefore)
+    }
+
+    /// A fixture that checks in late, after its slot went to the next owner,
+    /// must not free the slot or wipe what the new owner wrote.
+    func testStaleCheckInLeavesTheSlotsNextOwnerAlone() {
+        let stale = IsolatedDefaultsPool.checkOut()
+        IsolatedDefaultsPool.checkIn(stale)
+        let current = IsolatedDefaultsPool.checkOut()
+        defer { IsolatedDefaultsPool.checkIn(current) }
+        XCTAssertEqual(current.slot, stale.slot, "the slot was not reused — the check below would be vacuous")
+        current.defaults.set(1, forKey: "probe")
+        let slotsBefore = IsolatedDefaultsPool.slotsInUse
+
+        IsolatedDefaultsPool.checkIn(stale)
+
+        XCTAssertEqual(current.defaults.integer(forKey: "probe"), 1, "a stale check-in wiped the new owner's suite")
+        XCTAssertEqual(IsolatedDefaultsPool.slotsInUse, slotsBefore, "a stale check-in freed the new owner's slot")
     }
 
     func testOnlyPoolSuitesCountAsPoolNames() {
@@ -139,12 +156,26 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
                 let three = StrictDefaults
                     (\(key): c)
                 let none = NotADefaults(\(key): d)
+                let alsoNone = NotStrictDefaults(\(key): e)
                 override init?(\(key) name: String?) { super.init(\(key): name) }
                 """
         ]
         let subclasses = Self.defaultsSubclasses(in: sources)
         XCTAssertEqual(subclasses, ["LogDefaults", "StrictDefaults", "StricterDefaults"])
+        // `NotStrictDefaults` is not a subclass: without `\b` it would count as `StrictDefaults`.
         XCTAssertEqual(Self.rawSuiteSites(in: sources["b.swift"] ?? "", subclasses: subclasses), 3)
+    }
+
+    /// Only `super.init` forwards; `Self.init` and `type.init` build a suite and count.
+    /// A skip widened from `super` to any word before `.init` would miss both.
+    func testRatchetCountsInitThroughSelfAndAMetatype() {
+        let key = "suite" + "Name"
+        let source = """
+            static func make() -> Self? { Self.init(\(key): "a") }
+            func make(_ type: UserDefaults.Type) -> UserDefaults? { type.init(\(key): "b") }
+            override init?(\(key) name: String?) { super.init(\(key): name) }
+            """
+        XCTAssertEqual(Self.rawSuiteSites(in: source), 2)
     }
 
     /// The real subclasses are found, so the scan above is not vacuous on this checkout.
@@ -163,37 +194,21 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     /// is a fresh suite name per test, and cfprefsd holds a descriptor for
     /// every such name until the whole run ends. `//` lines and `/* */` blocks don't count.
     private static let handRolled: [String: Int] = [
-        "AlarmCorruptRecoveryTests.swift": 1,
-        "AlarmFiringBalanceCurrencyTests.swift": 2,
         "AlarmFiringChargeFlyUpTests.swift": 1,
         "AlarmFiringPresenterMissRuleTests.swift": 1,
-        "AlarmFiringPresenterMissTests.swift": 1,
         "AlarmFiringPresenterQueueTests.swift": 1,
         "AlarmFiringPresenterSlotTests.swift": 1,
         "AlarmFiringPresenterTransitionTests.swift": 1,
         "AlarmFiringSnoozeHandoffTests.swift": 1,
-        "AlarmFiringSnoozeRefundTests.swift": 1,
         "AlarmKitRouterAudioOwnerTests.swift": 1,
-        "AlarmKitSnoozeIdentityTests.swift": 1,
         "AlarmKitSnoozeLoadFailureTests.swift": 1,
-        "AlarmListPriceCurrencyTests.swift": 2,
         "AlarmRecoveryAcceptanceTests.swift": 2,
-        "AlarmRecoveryGuardTests.swift": 1,
         "AlarmsListIndexTests.swift": 1,
-        "AppDelegateSnoozeDiagnosticTests.swift": 1,
-        "AppLoggerSinkTests.swift": 1,
-        "BalanceLedgerDecimalTests.swift": 1,
         "CreateAlarmViewModelPreviewTests.swift": 1,
-        "DepositCatalogCurrencyTests.swift": 1,
-        "EditorPriceCurrencyTests.swift": 1,
-        "FiringDirectPurchaseTerminalTests.swift": 1,
-        "FiringTopUpCatalogTests.swift": 1,
-        "MissingAlarmNotificationAudioTests.swift": 1,
         "PenaltyDisplayColorTests.swift": 1,
         "ReferralPersonalCodeTests.swift": 1,
         "ReferralServiceTests.swift": 1,
         "SettingsReferralIsolationTests.swift": 1,
-        "SettingsSubtitleRowHeightTests.swift": 1,
         "StatisticsSnapshotTests.swift": 1,
         "StoreKitPurchaseCancellationTests.swift": 1,
         "TopUpDisplayAmountTests.swift": 1,
@@ -211,7 +226,7 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     private static func rawSitePattern(subclasses: Set<String>) -> NSRegularExpression? {
         let names = (["UserDefaults"] + subclasses.sorted()).joined(separator: "|")
         return try? NSRegularExpression(
-            pattern: #"(?:"# + names + #")\s*(?:\.init)?\s*\(\s*suiteName|(?<!super)\.init\s*\(\s*suiteName"#
+            pattern: #"\b(?:"# + names + #")\s*(?:\.init)?\s*\(\s*suiteName|(?<!super)\.init\s*\(\s*suiteName"#
         )
     }
 
