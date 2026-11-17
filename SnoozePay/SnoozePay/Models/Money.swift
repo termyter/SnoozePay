@@ -21,7 +21,7 @@ import os
 /// Phase 1 of #31: introduced as a parallel API alongside the existing
 /// `Double`-based API on `BalanceService` / `Alarm` / `Transaction`. Callers
 /// will be migrated over a follow-up PR (phase 2).
-struct Money: Equatable, Hashable, Codable {
+nonisolated struct Money: Equatable, Hashable, Codable, Sendable {
 
     /// The non-negative monetary amount, denominated in `currency`.
     let amount: Decimal

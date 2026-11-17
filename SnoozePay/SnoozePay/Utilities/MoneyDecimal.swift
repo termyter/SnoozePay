@@ -10,7 +10,7 @@ import Foundation
 /// When an operand cannot be bridged (beyond `Decimal`'s 38 digits or its
 /// exponent range) the operation falls back to plain `Double` arithmetic —
 /// the behaviour before this type existed — rather than inventing a value.
-enum MoneyDecimal {
+nonisolated enum MoneyDecimal {
 
     /// Signed exact bridge. `.nan` when `amount` is non-finite or has no exact
     /// `Decimal` text; never a silently rounded neighbour.

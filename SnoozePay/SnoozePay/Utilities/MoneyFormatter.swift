@@ -220,7 +220,7 @@ enum MoneyFormatter {
     /// Exact display value of a stored non-negative amount. The bridge itself
     /// lives in `MoneyDecimal.exact`, so ledger maths uses the same one (#1119).
     /// Negative and unrepresentable values stay unknown instead of becoming zero.
-    static func decimalForDisplay(_ amount: Double) -> Decimal {
+    nonisolated static func decimalForDisplay(_ amount: Double) -> Decimal {
         guard amount.isFinite, amount >= 0 else { return .nan }
         return MoneyDecimal.exact(amount)
     }
