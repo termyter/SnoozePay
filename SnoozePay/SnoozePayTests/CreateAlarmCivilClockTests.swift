@@ -240,8 +240,15 @@ final class CreateAlarmCivilClockTests: XCTestCase {
         alarm: Alarm? = nil, calendar: Calendar,
         now: Date = Date(timeIntervalSince1970: 1_793_001_600)
     ) -> CreateAlarmViewModel {
+        // New-alarm saves pass #594's permission gate only with AlarmKit available;
+        // the CI simulator is never authorised, so grant it explicitly.
         CreateAlarmViewModel(alarm: alarm, repository: repository, defaults: AlarmDefaults(defaults: defaults),
-                             balanceService: wallet, calendar: calendar, now: now)
+                             balanceService: wallet,
+                             backendMonitor: AlarmBackendMonitor(
+                                 probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+                                 notificationCenter: NotificationCenter()
+                             ),
+                             calendar: calendar, now: now)
     }
 
     private func legacyAlarm() -> Alarm {
