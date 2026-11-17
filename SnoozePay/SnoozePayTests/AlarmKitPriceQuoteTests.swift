@@ -77,6 +77,15 @@ final class AlarmKitPriceQuoteTests: XCTestCase {
         XCTAssertNil(balance.alarmQuoteContext)
     }
 
+    /// Intended change (#1138): a pristine wallet on a rouble storefront quotes
+    /// «−50 ₽» (was unpriced before the first purchase).
+    func testPristineWalletOnACachedRoubleStorefront_quotesRoubles() {
+        XCTAssertTrue(scaleStore.record(.rouble))
+        XCTAssertTrue(balance.walletIsPristine)
+        XCTAssertEqual(balance.alarmQuoteContext, .scale(.rouble))
+        XCTAssertEqual(title(AppAlarm(penaltyAmount: 50), balance.alarmQuoteContext), priced("50", .rub))
+    }
+
     func testLegacyRoubleWalletWithHistory_quotesRoubles() {
         balance.topUp(amount: 5)
         XCTAssertEqual(balance.alarmQuoteContext, .scale(.rouble))
@@ -133,6 +142,31 @@ final class AlarmKitPriceQuoteTests: XCTestCase {
         }
         XCTAssertEqual(titles, today)
         XCTAssertEqual(title(AppAlarm(penaltyAmount: 20), .scale(.rouble)), AlarmKitCopy.pricedSnooze(penalty: 20))
+    }
+
+    // MARK: - Tracked snooze (token branch)
+
+    private func trackedSnoozeTitle(_ quote: SnoozePriceContext?) throws -> String? {
+        let alarm = AppAlarm(penaltyAmount: 50, progressiveScale: true)
+        var title: String?
+        _ = try AlarmKitScheduler.makeSnoozeConfiguration(
+            for: alarm, fireDate: Date().addingTimeInterval(60), quote: quote,
+            token: AlarmSnoozeToken(sessionID: UUID(), attemptID: UUID()), attemptCount: 1,
+            construct: { schedule, attributes, stop, snooze, sound in
+                title = attributes.presentation.alert.secondaryButton.map { String(localized: $0.text) }
+                return .alarm(schedule: schedule, attributes: attributes,
+                              stopIntent: stop, secondaryIntent: snooze, sound: sound)
+            }
+        )
+        return title
+    }
+
+    func testTrackedSnooze_inAUSDScale_quotesTheNextProgressiveStep() throws {
+        XCTAssertEqual(try trackedSnoozeTitle(.scale(usdScale)), priced("1.98", usd))
+    }
+
+    func testTrackedSnooze_withoutAQuote_isUnpriced() throws {
+        XCTAssertEqual(try trackedSnoozeTitle(nil), unpriced)
     }
 
     func testFreeAlarm_staysFreeOutsideRoubles() {

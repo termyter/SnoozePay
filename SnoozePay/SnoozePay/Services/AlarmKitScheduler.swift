@@ -492,7 +492,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// snooze buttons), the stop / snooze intents, and the alarm sound.
     static func makeConfiguration(
         for alarm: Alarm,
-        quote: SnoozePriceContext? = .scale(.rouble),
+        quote: SnoozePriceContext?,
         presentation buildPresentation: (Alarm, SnoozePriceContext?) -> AlarmPresentation
             = AlarmKitScheduler.makePresentation
     ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
@@ -519,7 +519,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     static func makeSnoozeConfiguration(
         for alarm: Alarm,
         fireDate: Date,
-        quote: SnoozePriceContext? = .scale(.rouble),
+        quote: SnoozePriceContext?,
         token: AlarmSnoozeToken? = nil,
         attemptCount: Int = 0,
         presentation buildPresentation: (Alarm, SnoozePriceContext?) -> AlarmPresentation
@@ -658,9 +658,11 @@ final class AlarmKitScheduler: AlarmKitScheduling {
                 alarm.price, snoozeCount: nextSnoozeCount, isProgressive: alarm.progressiveScale, in: $0
             )
         }
-        // Through `Double` so the rouble path formats exactly as before.
+        // Through `Double` so the rouble path formats exactly as before; the
+        // bridge is the one the charge path uses. Unbridgeable → unpriced.
+        let penalty = price.flatMap { MoneyDecimal.double($0.amount) }
         let snoozeTitle = AlarmKitCopy.pricedSnoozeTitle(
-            penalty: price.map { NSDecimalNumber(decimal: $0.amount).doubleValue } ?? 0, currency: price?.currency
+            penalty: penalty ?? 0, currency: penalty == nil ? nil : price?.currency
         )
         let snoozeButton = AlarmButton(
             text: snoozeTitle,
