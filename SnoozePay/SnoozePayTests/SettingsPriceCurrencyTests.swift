@@ -25,6 +25,17 @@ final class SettingsPriceCurrencyTests: XCTestCase {
 
             let picker = sut.makeDefaultPricePicker()
             XCTAssertEqual(picker.preferredStyle, .actionSheet)
+            // Outside roubles the sheet offers the cached scale's three tiers,
+            // 49.5 checked as `low`; the presets below are roubles only (#1147).
+            if currency != .rub {
+                XCTAssertEqual(picker.actions.dropLast().map(\.title),
+                               (0..<3).map { MoneyFormatter.string(tierPrice($0, currency), currency: currency) })
+                XCTAssertEqual(picker.actions.last?.style, .cancel)
+                XCTAssertTrue(picker.preferredAction === picker.actions.first, code)
+                XCTAssertEqual(picker.message, Localized.text("settings.picker.applies_to_new_alarms"))
+                XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, before)
+                continue
+            }
             XCTAssertEqual(picker.actions.count, 6)
             XCTAssertEqual(picker.actions.prefix(5).map(\.title), [20, 50, 100, 200, 500].map {
                 MoneyFormatter.string(Double($0), currency: currency)
@@ -103,7 +114,9 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         XCTAssertFalse(labels(in: refreshed).contains { ($0.text ?? "").contains("₽") })
         let refreshedRules = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
         XCTAssertEqual(try previewLabel(in: refreshedRules).text, tierChain(0, usd))
-        XCTAssertEqual(sut.makeDefaultPricePicker().actions.first?.title, MoneyFormatter.string(20.0, currency: usd))
+        // The picker re-quotes with the row: the scale's `low` tier, not a rouble preset (#1147).
+        XCTAssertEqual(sut.makeDefaultPricePicker().actions.first?.title,
+                       MoneyFormatter.string(tierPrice(0, usd), currency: usd))
         XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, before)
     }
 

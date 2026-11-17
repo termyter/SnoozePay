@@ -225,7 +225,7 @@ class AlarmsListViewController: UIViewController {
         // bar is hidden on this root (#280), so the helper restores it before
         // the push and the Settings screen keeps its standard back arrow +
         // title; this VC re-hides it in `viewWillAppear` on the way back.
-        AppNavigationBarStyle.pushRestoringBar(SettingsViewController(), from: self)
+        AppNavigationBarStyle.pushRestoringBar(SettingsViewController(priceContextSource: { BalanceService.shared.priceContext }), from: self)
     }
 
     #if DEBUG

@@ -25,6 +25,10 @@ extension SettingsViewController {
     /// chevron signals the affordance, symmetric with the snooze-duration row
     /// (design `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:151` contains "по умолчанию").
     /// Existing alarms keep their own saved price.
+    ///
+    /// With the scale unavailable the row is inert (#1147): no chevron, no
+    /// highlight, and `presentDefaultPricePicker()` refuses — there is no price
+    /// it could offer in that currency.
     func makeDefaultPriceRow(at indexPath: IndexPath) -> UITableViewCell {
         let cell = dequeueIconRowCell(at: indexPath)
         cell.configure(
@@ -33,10 +37,17 @@ extension SettingsViewController {
             title: Localized.text("settings.row.default_price"),
             trailingText: Self.defaultPriceText(alarmDefaults.penaltyAmount, in: priceContext),
             trailingColor: AppColors.snoozePriceInk,
-            accessory: .disclosureIndicator,
-            selectionStyle: .default
+            accessory: isDefaultPricePickerEnabled ? .disclosureIndicator : .none,
+            selectionStyle: isDefaultPricePickerEnabled ? .default : .none
         )
         return cell
+    }
+
+    /// `false` while the price context is unavailable: nothing can be priced,
+    /// so the default-price picker has nothing honest to offer (#1147).
+    var isDefaultPricePickerEnabled: Bool {
+        if case .unavailable = priceContext { return false }
+        return true
     }
 
     /// The stored default (a legacy rouble amount, #1147) as the first snooze
@@ -330,23 +341,57 @@ extension SettingsViewController {
     /// `presentSnoozeDurationPicker()` with the canonical price chips. Writing
     /// the global default never rewrites existing alarms — only new ones inherit.
     func presentDefaultPricePicker() {
+        guard isDefaultPricePickerEnabled else { return }
         present(makeDefaultPricePicker(), animated: true)
     }
 
-    /// Still the rouble presets labelled in the wallet currency: choosing a
-    /// tier outside roubles is part 2b of #1147, after the editor's tiers land.
+    /// One option of the default-price sheet; `commit` is what its tap does.
+    struct DefaultPriceChoice {
+        let title: String
+        let isCurrent: Bool
+        let commit: () -> Void
+    }
+
+    /// Roubles: the 20…500 presets labelled in the wallet currency, as before.
+    /// Another cached scale: its three tiers, priced like the row (#1147), the
+    /// current one being the tier the editor would light for a new alarm
+    /// (`CreateAlarmViewModel.openingTier`). Unavailable: none at all.
+    func defaultPriceChoices() -> [DefaultPriceChoice] {
+        switch priceContext {
+        case .scale(let scale) where scale == .rouble:
+            let currency = walletCurrencyStore.currency
+            return [20, 50, 100, 200, 500].map { amount in
+                let title = MoneyFormatter.string(Double(amount), currency: currency)
+                return DefaultPriceChoice(title: title, isCurrent: false) { [weak self] in
+                    self?.applyDefaultPrice(Double(amount))
+                }
+            }
+        case .scale(let scale):
+            let current = defaultPriceTier
+            return SnoozePriceTier.allCases.compactMap { tier in
+                guard let price = scale.price(for: tier) else { return nil }
+                let title = MoneyFormatter.string(price.amount, currency: price.currency)
+                return DefaultPriceChoice(title: title, isCurrent: tier == current) { [weak self] in
+                    self?.applyDefaultTier(tier)
+                }
+            }
+        case .unavailable:
+            return []
+        }
+    }
+
+    /// `defaultPriceChoices()` as an action sheet; the current choice is the
+    /// sheet's `preferredAction`, which an action sheet sets in semibold.
     func makeDefaultPricePicker() -> UIAlertController {
-        let currency = walletCurrencyStore.currency
         let sheet = UIAlertController(
             title: Localized.text("settings.row.default_price"),
             message: Localized.text("settings.picker.applies_to_new_alarms"),
             preferredStyle: .actionSheet
         )
-        for amount in [20, 50, 100, 200, 500] {
-            let title = MoneyFormatter.string(Double(amount), currency: currency)
-            sheet.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
-                self?.applyDefaultPrice(Double(amount))
-            })
+        for choice in defaultPriceChoices() {
+            let action = UIAlertAction(title: choice.title, style: .default) { _ in choice.commit() }
+            sheet.addAction(action)
+            if choice.isCurrent { sheet.preferredAction = action }
         }
         sheet.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
         // iPad: anchor the popover to the tapped row.
@@ -367,6 +412,23 @@ extension SettingsViewController {
     /// immediately after the picker commits a new default.
     func applyDefaultPrice(_ amount: Double) {
         alarmDefaults.penaltyAmount = amount
+        tableView.reloadData()
+    }
+
+    /// The tier the stored default reads as in the current context; `nil` in
+    /// roubles and while unavailable.
+    var defaultPriceTier: SnoozePriceTier? {
+        CreateAlarmViewModel.openingTier(tier: nil, amount: alarmDefaults.penaltyAmount, context: priceContext)
+    }
+
+    /// Stores `tier` as its rouble equivalent (50 / 100 / 200) — the legacy
+    /// amount the editor and `SnoozePriceResolver` read back as that same tier,
+    /// so no new key is needed. The already-current tier keeps the stored
+    /// amount as it is (a 137 stays 137). Both mounted rows reload either way.
+    func applyDefaultTier(_ tier: SnoozePriceTier) {
+        if tier != defaultPriceTier, let rouble = SnoozePriceScale.rouble.price(for: tier) {
+            alarmDefaults.penaltyAmount = NSDecimalNumber(decimal: rouble.amount).doubleValue
+        }
         tableView.reloadData()
     }
 
