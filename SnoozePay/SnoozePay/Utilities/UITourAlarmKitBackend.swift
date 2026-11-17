@@ -39,10 +39,20 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
     /// pointing at Settings.
     var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
 
-    /// Unknown, not empty: the tour has no system inventory to read, and nil
-    /// is the value that keeps a refresh from cancelling anything blindly.
-    /// Spelled out since #1125 - it used to be an inherited protocol default.
-    var alertingAlarmIDs: Set<UUID>? { nil }
+    /// Known and empty, in both states (#1135). `schedule` registers no
+    /// original that could be alerting, so there is nothing to protect from a
+    /// re-arm, and this fake's inventory is in memory, so it can always be
+    /// read. Nil ("unknown") made a granted tour hit the unreadable-inventory
+    /// guard in `AlarmScheduler.rescheduleAll` and count every enabled alarm
+    /// as failed: a false "N alarms failed to re-arm" banner and fault log on
+    /// every foreground of an E2E run or screenshot audit.
+    ///
+    /// Not gated on `isAuthorized`, like the production adapter, which reads
+    /// the inventory regardless of the grant. A denied tour still reports
+    /// failures, but for the honest reason: `rescheduleAll` never consults
+    /// this when unauthorized and lets every schedule refuse with
+    /// `.backendUnavailable`, the revoked-grant contract (#427).
+    var alertingAlarmIDs: Set<UUID>? { [] }
 
     /// Answers with the pinned decision instead of prompting. The tour must
     /// never put a system dialog on screen — an unexpected SpringBoard alert
