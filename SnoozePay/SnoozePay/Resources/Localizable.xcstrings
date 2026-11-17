@@ -1838,7 +1838,7 @@
       }
     },
     "common.sound.name.radar" : {
-      "comment" : "Display name of the «radar» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "comment" : "Display name of the retired «radar» alarm sound (#861). No longer a picker row; still shown on the alarms-list cell of alarms saved with it, which keep ringing the default sound.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -2733,24 +2733,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Спокойные клавиши"
-          }
-        }
-      }
-    },
-    "create_alarm.sound.subtitle.radar" : {
-      "comment" : "Sound picker: the descriptive line under «Радар». Picker-only, unlike the name above it.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A rising alert signal"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Нарастающий сигнал тревоги"
           }
         }
       }

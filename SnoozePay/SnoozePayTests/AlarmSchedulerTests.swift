@@ -87,8 +87,8 @@ final class AlarmSchedulerTests: XCTestCase {
         let first = Self.supportedExtensionsInProbeOrder[0]
 
         XCTAssertEqual(
-            scheduler.alarmSoundFileName(for: "radar") { name, _ in name == "radar" },
-            "radar.\(first)",
+            scheduler.alarmSoundFileName(for: "bell") { name, _ in name == "bell" },
+            "bell.\(first)",
             "the requested sound must be probed as .\(first) before anything else — it is the "
             + "format the app ships, so the common case has to resolve on the first probe"
         )
@@ -134,10 +134,10 @@ final class AlarmSchedulerTests: XCTestCase {
     func testAlarmSoundFileName_searchesEverySupportedExtensionInBothLookups() {
         for ext in Self.supportedExtensionsInProbeOrder {
             XCTAssertEqual(
-                scheduler.alarmSoundFileName(for: "radar") { name, candidate in
-                    name == "radar" && candidate == ext
+                scheduler.alarmSoundFileName(for: "bell") { name, candidate in
+                    name == "bell" && candidate == ext
                 },
-                "radar.\(ext)",
+                "bell.\(ext)",
                 "a sound bundled only as .\(ext) must resolve, not downgrade to the fallback"
             )
 
@@ -259,10 +259,10 @@ final class AlarmSchedulerTests: XCTestCase {
     func testAlarmSoundFileName_soundPresent_logsNothing() {
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
         let result = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
-            scheduler.alarmSoundFileName(for: "radar") { name, ext in name == "radar" && ext == "caf" }
+            scheduler.alarmSoundFileName(for: "bell") { name, ext in name == "bell" && ext == "caf" }
         })
 
-        XCTAssertEqual(result, "radar.caf")
+        XCTAssertEqual(result, "bell.caf")
         XCTAssertTrue(lines.isEmpty, "a resolved lookup must stay silent; the sink saw \(lines.map(\.message))")
     }
 

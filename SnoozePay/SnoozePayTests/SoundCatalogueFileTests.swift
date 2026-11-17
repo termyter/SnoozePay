@@ -21,8 +21,8 @@ final class SoundCatalogueFileTests: XCTestCase {
     /// `SoundCatalogue.fileDuration(for:)`, so a wrong reader cannot agree with
     /// itself. It is also how long the picker's preview rail now runs.
     private static let durationsBySoundID: [String: TimeInterval] = [
-        "dawn": 10.81, "radar": 2.00, "drops": 2.14, "piano": 2.14, "guitar": 5.09,
-        "bell": 48.13, "waves": 2.55, "birds": 2.22, "classic": 9.87, "jazz": 23.34,
+        "dawn": 10.81, "drops": 2.14, "piano": 2.14, "guitar": 5.09,
+        "bell": 28.57, "waves": 2.55, "birds": 2.22, "classic": 9.87, "jazz": 23.34,
         "hawk": 2.67, "morning": 4.11, "sirena": 17.99, "spaceship": 25.76,
         // #1092: the melodic five.
         "marimba": 16.55, "badinerie": 16.27, "vibraphone": 10.11,
