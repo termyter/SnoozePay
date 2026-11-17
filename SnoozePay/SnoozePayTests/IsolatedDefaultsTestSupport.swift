@@ -47,6 +47,11 @@ extension XCTestCase {
     /// A second, independent instance on a suite from ``makeIsolatedSuite()``,
     /// standing in for the app after a relaunch. Cleanup stays with the lease.
     func reopenIsolatedDefaults(named name: String) -> UserDefaults {
+        // A hand-rolled name here would be the per-test leak again, under a new spelling.
+        precondition(
+            IsolatedDefaultsPool.isPoolName(name),
+            "\(name) is not a pool suite — take it from makeIsolatedSuite()"
+        )
         guard let defaults = UserDefaults(suiteName: name) else {
             preconditionFailure("UserDefaults refused suite name \(name)")
         }
@@ -61,7 +66,15 @@ enum IsolatedDefaultsPool {
 
     static var slotsInUse: Int { inUse.count }
 
-    static func suiteName(_ slot: Int) -> String { "SnoozePayTests.isolated.\(slot)" }
+    private static let namePrefix = "SnoozePayTests.isolated."
+
+    static func suiteName(_ slot: Int) -> String { namePrefix + "\(slot)" }
+
+    /// Whether `name` is one of the pool's own suites, `suiteName(n)` for some `n >= 0`.
+    static func isPoolName(_ name: String) -> Bool {
+        guard name.hasPrefix(namePrefix), let slot = Int(name.dropFirst(namePrefix.count)) else { return false }
+        return slot >= 0 && suiteName(slot) == name
+    }
 
     /// The lowest free slot, emptied of whatever a previous test left in it.
     static func checkOut() -> (slot: Int, defaults: UserDefaults) {
@@ -77,9 +90,11 @@ enum IsolatedDefaultsPool {
     }
 
     /// Empties the slot's suite and frees the slot for the next hand-out.
+    /// A slot that is not handed out is left alone: a second check-in must not
+    /// wipe whatever the slot's next owner, or a test peeking at it, put there.
     static func checkIn(_ slot: Int) {
+        guard inUse.remove(slot) != nil else { return }
         let name = suiteName(slot)
         UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
-        inUse.remove(slot)
     }
 }

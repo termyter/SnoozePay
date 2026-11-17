@@ -155,17 +155,11 @@ final class StoreKitServiceTests: XCTestCase {
         StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
     }
 
-    private func makeSuite() -> (UserDefaults, String) {
-        let name = "test_storekit_\(UUID().uuidString)"
-        return (UserDefaults(suiteName: name)!, name)
-    }
-
     /// With no screen mounted, a completed purchase posts a local notification
     /// (option B) instead of broadcasting into the void.
     func testPurchaseCompleted_noSubscriber_postsLocalNotification() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         XCTAssertFalse(service.hasPurchaseFeedbackSubscriber)
@@ -189,8 +183,7 @@ final class StoreKitServiceTests: XCTestCase {
     /// NotificationCenter and does NOT post a local notification (no double-notify).
     func testPurchaseCompleted_withSubscriber_doesNotPostLocalNotification() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         service.beginObservingPurchaseFeedback()
@@ -204,8 +197,7 @@ final class StoreKitServiceTests: XCTestCase {
     /// local notification carrying the message so it's never silently lost.
     func testPurchaseFailed_noSubscriber_postsLocalNotificationWithMessage() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         service.postPurchaseFailed("Покупка отменена и возвращена.")
@@ -223,8 +215,7 @@ final class StoreKitServiceTests: XCTestCase {
             domain: "UNErrorDomain", code: 1,
             userInfo: [NSLocalizedDescriptionKey: "Notifications are not allowed"]
         )
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         let faults = storeKitFaults { service.postPurchaseCompleted(149, currency: .rub) }
@@ -237,8 +228,7 @@ final class StoreKitServiceTests: XCTestCase {
     /// whatever the outcome.
     func testFeedbackBanner_acceptedAdd_logsNoFault() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         let faults = storeKitFaults { service.postPurchaseCompleted(149, currency: .rub) }
@@ -261,8 +251,7 @@ final class StoreKitServiceTests: XCTestCase {
     /// extra `end` can't suppress the fallback forever.
     func testSubscriberTracking_balancesAndClampsAtZero() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         service.beginObservingPurchaseFeedback()
@@ -281,8 +270,7 @@ final class StoreKitServiceTests: XCTestCase {
 
     func testMarkProcessed_freshTable_recordsAndDedupes() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         XCTAssertEqual(service.markProcessed(transactionID: 42), .recorded)
@@ -295,8 +283,7 @@ final class StoreKitServiceTests: XCTestCase {
     /// is backed up, and the call returns `.degraded` so the caller refuses to credit.
     func testMarkProcessed_corruptBlob_refusesAndBacksUpWithoutWiping() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         // Plant a type-drifted blob (a dictionary where `[String]` is expected).
@@ -319,8 +306,7 @@ final class StoreKitServiceTests: XCTestCase {
     /// attempts — every call refuses rather than double-crediting.
     func testMarkProcessed_corruptBlob_repeatedCallsStayDegraded() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: poster, defaults: defaults)
 
         defaults.set(["bad": true], forKey: "storekit.processed_tx_ids")
@@ -330,8 +316,7 @@ final class StoreKitServiceTests: XCTestCase {
     }
 
     func testIsProcessed_missingTableIsFalseAndWritesNothing() {
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: LocalNotificationPosterSpy(), defaults: defaults)
 
         XCTAssertEqual(service.isProcessed(transactionID: 42), false)
@@ -342,8 +327,7 @@ final class StoreKitServiceTests: XCTestCase {
 
     /// An unreadable table is "unknown", never "not processed" (#1011).
     func testIsProcessed_corruptTableIsUnknownAndPreserved() {
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = makeService(poster: LocalNotificationPosterSpy(), defaults: defaults)
         let corrupt = ["unexpected": 1]
         defaults.set(corrupt, forKey: "storekit.processed_tx_ids")

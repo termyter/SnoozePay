@@ -343,9 +343,7 @@ final class SoundCatalogueCopyTests: XCTestCase {
     func testEntriesAndTheEditorPickerRenderInThatSameOrder() {
         XCTAssertEqual(SoundCatalogue.entries.map { $0.id }, Self.idsInCatalogueOrder)
 
-        let suite = "test.soundCopy.order.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
 
         let viewModel = CreateAlarmViewModel(repository: AlarmRepository(defaults: defaults))
         XCTAssertEqual(
@@ -430,9 +428,7 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// The editor's picker is fed from `availableSounds`, so a broken key would
     /// surface there as a row reading `common.sound.name.piano`.
     func testEditorPickerDataIsCatalogueCopy() {
-        let suite = "test.soundCopy.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
 
         let viewModel = CreateAlarmViewModel(repository: AlarmRepository(defaults: defaults))
         XCTAssertEqual(viewModel.availableSounds.map { $0.name }, SoundCatalogue.entries.map { $0.name })
@@ -461,9 +457,7 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// which holds the Russian as literals rather than reading it back out of
     /// the catalogue both sides now share.
     func testAlarmsListStillRendersTheSameWordsAsTheCatalogue() {
-        let suite = "test.soundCopy.list.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
 
         for soundID in SoundCatalogue.ids {

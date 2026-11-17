@@ -87,9 +87,7 @@ final class WalletLedgerLoadTests: XCTestCase {
     // MARK: - Real repository: corrupt blob → failed
 
     func testLoad_realRepository_withCorruptBlob_isFailed() {
-        let suiteName = "test.walletLedger.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = makeIsolatedDefaults()
 
         // Write bytes that can't decode into `[Transaction]` — the exact
         // corruption mode `fetchAllChecked()` is meant to catch (#72/#210).
@@ -103,9 +101,7 @@ final class WalletLedgerLoadTests: XCTestCase {
     }
 
     func testLoad_realRepository_withValidLedger_isLoaded() {
-        let suiteName = "test.walletLedger.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = makeIsolatedDefaults()
 
         let repo = TransactionRepository(defaults: defaults)
         repo.record(Transaction(type: .topup, amount: 300))
@@ -124,17 +120,10 @@ final class WalletLedgerLoadTests: XCTestCase {
 final class DepositCorruptionGateTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.depositGate.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
+        testDefaults = makeIsolatedDefaults()
     }
 
     func testCorruptBalance_isDetected_andTopUpStaysGated() {

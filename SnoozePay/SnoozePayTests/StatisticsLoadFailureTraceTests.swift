@@ -33,7 +33,6 @@ final class StatisticsLoadFailureTraceTests: XCTestCase {
     /// exactly why it stayed empty for a year.
     private struct StubFailure: Error {}
 
-    private var suiteName: String!
     private var testDefaults: UserDefaults!
     private var txRepo: TransactionRepository!
     private var wakeStore: WakeEventStore!
@@ -42,15 +41,9 @@ final class StatisticsLoadFailureTraceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.statsFailureTrace.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         wakeStore = WakeEventStore(defaults: testDefaults)
         txRepo = TransactionRepository(defaults: testDefaults, wakeStore: wakeStore)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     private func makeVM() -> StatisticsViewModel {
@@ -297,15 +290,8 @@ final class StatisticsLoadErrorAlertTests: XCTestCase {
         window = nil
         previousKeyWindow?.makeKeyAndVisible()
         previousKeyWindow = nil
-        for name in ledgerSuiteNames {
-            UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
-        }
-        ledgerSuiteNames = []
         super.tearDown()
     }
-
-    /// Suites made by `makeStatsOnOwnLedger(corrupt:)`, removed in `tearDown`.
-    private var ledgerSuiteNames: [String] = []
 
     private func makeMountedController() -> StatisticsViewController {
         let controller = StatisticsViewController()
@@ -919,9 +905,7 @@ extension StatisticsLoadErrorAlertTests {
     /// `viewWillAppear` fails the same way `corruptTheLedger()` makes it fail
     /// in `StatisticsLoadFailureTraceTests` (#825).
     private func makeStatsOnOwnLedger(corrupt: Bool) -> (StatisticsViewController, UserDefaults) {
-        let name = "test.statsAlertLedger.\(UUID().uuidString)"
-        ledgerSuiteNames.append(name)
-        let ledger = UserDefaults(suiteName: name)!
+        let ledger = makeIsolatedDefaults()
         if corrupt {
             ledger.set(Data("not json".utf8), forKey: "stored_transactions")
         }

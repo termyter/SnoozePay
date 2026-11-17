@@ -69,12 +69,53 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         XCTAssertNil(second.defaults.object(forKey: "probe"))
     }
 
+    /// A slot nobody holds is not wiped or "freed" by a stray check-in.
+    func testCheckInOfASlotNotHandedOutLeavesItAlone() {
+        let peek = IsolatedDefaultsPool.checkOut()
+        IsolatedDefaultsPool.checkIn(peek.slot)
+        let name = IsolatedDefaultsPool.suiteName(peek.slot)
+        let outside = reopenIsolatedDefaults(named: name)
+        defer { outside.removePersistentDomain(forName: name) }
+        outside.set(1, forKey: "probe")
+        let slotsBefore = IsolatedDefaultsPool.slotsInUse
+
+        IsolatedDefaultsPool.checkIn(peek.slot)
+
+        XCTAssertEqual(outside.integer(forKey: "probe"), 1, "a check-in of a free slot wiped it")
+        XCTAssertEqual(IsolatedDefaultsPool.slotsInUse, slotsBefore)
+    }
+
+    func testOnlyPoolSuitesCountAsPoolNames() {
+        XCTAssertTrue(IsolatedDefaultsPool.isPoolName(IsolatedDefaultsPool.suiteName(0)))
+        XCTAssertTrue(IsolatedDefaultsPool.isPoolName(IsolatedDefaultsPool.suiteName(12)))
+        for name in [
+            "BalanceServiceTests-\(UUID().uuidString)", "SnoozePayTests.isolated.", "SnoozePayTests.isolated.x",
+            "SnoozePayTests.isolated.-1", "SnoozePayTests.isolated.01", "xSnoozePayTests.isolated.0"
+        ] {
+            XCTAssertFalse(IsolatedDefaultsPool.isPoolName(name), name)
+        }
+    }
+
+    func testRatchetCountsBothSpellingsAndSkipsComments() {
+        let plain = "UserDefaults(" + "suiteName: a)"
+        let viaInit = "UserDefaults.init(" + "suiteName: b)"
+        let source = """
+            let one = \(plain)
+            let two = \(viaInit)!
+            // let skipped = \(plain)
+            /* let skipped = \(plain)
+               let skipped = \(viaInit) */
+            let three = /* inline \(plain) */ \(plain)
+            """
+        XCTAssertEqual(Self.rawSuiteSites(in: source), 3)
+    }
+
     // MARK: - Ratchet
 
     /// Hand-rolled suites left per file, compared exactly; a file not listed
     /// must have none. After migrating a file, lower or delete its line. Each
     /// is a fresh suite name per test, and cfprefsd holds a descriptor for
-    /// every such name until the whole run ends. `//` comment lines don't count.
+    /// every such name until the whole run ends. `//` lines and `/* */` blocks don't count.
     private static let handRolled: [String: Int] = [
         "AlarmCivilClockIntegrationTests.swift": 1,
         "AlarmCivilClockPersistenceTests.swift": 1,
@@ -110,7 +151,6 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         "BalanceLedgerDecimalTests.swift": 1,
         "BalanceLedgerSourceOfTruthTests.swift": 2,
         "BalanceServiceMoneyAPITests.swift": 1,
-        "BalanceServiceTests.swift": 5,
         "CreateAlarmCivilClockTests.swift": 1,
         "CreateAlarmPermissionTests.swift": 1,
         "CreateAlarmRepeatValidityTests.swift": 1,
@@ -130,24 +170,20 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         "ReferralServiceTests.swift": 1,
         "SettingsPriceCurrencyTests.swift": 1,
         "SettingsReferralIsolationTests.swift": 1,
-        "SettingsRowCopyTests.swift": 4,
         "SettingsScreenCopyTests.swift": 1,
         "SettingsSectionsTests.swift": 1,
         "SettingsSubtitleRowHeightTests.swift": 1,
         "SettingsViewModelTests.swift": 1,
         "SnoozeAffordabilityTests.swift": 2,
         "SnoozePriceScaleStoreTests.swift": 1,
-        "SoundCatalogueCopyTests.swift": 3,
         "SoundThemePickerCatalogueTests.swift": 1,
         "StatisticsCurrencyTests.swift": 1,
         "StatisticsDataHealthTests.swift": 1,
         "StatisticsHeatmapCurrencyTests.swift": 1,
-        "StatisticsLoadFailureTraceTests.swift": 3,
         "StatisticsSnapshotTests.swift": 1,
         "StoreKitCopyTests.swift": 1,
         "StoreKitPurchaseCancellationTests.swift": 1,
         "StoreKitPurchaseCrashRecoveryTests.swift": 1,
-        "StoreKitServiceTests.swift": 1,
         "StoreKitVerifiedPurchaseTests.swift": 1,
         "ThemeServiceTests.swift": 1,
         "TopUpDisplayAmountTests.swift": 1,
@@ -155,26 +191,33 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         "TopUpSuccessCurrencyTests.swift": 1,
         "TrackedSnoozeTestSupport.swift": 1,
         "TransactionCurrencyCodableTests.swift": 1,
-        "TxHistoryPeriodTests.swift": 1,
         "UITourWarningRoutesTests.swift": 1,
         "VolumePickerInteractionTests.swift": 1,
         "WakeDayIdentityTests.swift": 1,
         "WakeEventStoreTests.swift": 1,
         "WakeHistoryAvailabilityTests.swift": 1,
         "WakeHistoryHostedLayoutTests.swift": 1,
-        "WalletBalanceCurrencyTests.swift": 2,
-        "WalletLedgerLoadTests.swift": 3
+        "WalletBalanceCurrencyTests.swift": 2
     ]
-    private static let needle = "UserDefaults(" + "suiteName"  // split so this file does not match itself
+    /// Both spellings of the initializer; split so this file does not match itself.
+    private static let needles = ["UserDefaults(" + "suiteName", "UserDefaults.init(" + "suiteName"]
+
+    /// Raw suite sites in `text`, not counting `/* */` blocks or `//` lines.
+    private static func rawSuiteSites(in text: String) -> Int {
+        let code = text.replacingOccurrences(of: #"/\*[\s\S]*?\*/"#, with: " ", options: .regularExpression)
+        return code.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .reduce(0) { sum, line in
+                sum + needles.reduce(0) { $0 + line.components(separatedBy: $1).count - 1 }
+            }
+    }
 
     func testHandRolledSuitesMatchTheAllowlist() throws {
         let sources = try Self.testSources()
         XCTAssertGreaterThan(sources.count, 50, "found \(sources.count) sources — the scan would be vacuous")
 
         let found = sources.compactMapValues { text -> Int? in
-            let count = text.split(separator: "\n", omittingEmptySubsequences: false)
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .reduce(0) { $0 + $1.components(separatedBy: Self.needle).count - 1 }
+            let count = Self.rawSuiteSites(in: text)
             return count > 0 ? count : nil
         }
         let offenders = Set(found.keys).union(Self.handRolled.keys)

@@ -94,9 +94,7 @@ final class SettingsRowCopyTests: XCTestCase {
 
     func testRecoveryOnlyClearsTheFailedStoreAndPreservesTheWallet() throws {
         for transactionFailed in [true, false] {
-            let suite = "test.settings.recovery.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suite)!
-            defer { defaults.removePersistentDomain(forName: suite) }
+            let defaults = makeIsolatedDefaults()
             let ledger = TransactionRepository(defaults: defaults)
             let alarms = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
             let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
@@ -130,9 +128,7 @@ final class SettingsRowCopyTests: XCTestCase {
     @available(iOS 26.0, *)
     func testRecoverySettingsRouteRequiresNativeCleanupAndPreservesWalletOnFailure() throws {
         for cleanupFails in [false, true] {
-            let suite = "test.settings.nativeRecovery.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suite)!
-            defer { defaults.removePersistentDomain(forName: suite) }
+            let defaults = makeIsolatedDefaults()
             let ledger = TransactionRepository(defaults: defaults)
             let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
                                         notificationCenter: NotificationCenter())
@@ -175,9 +171,7 @@ final class SettingsRowCopyTests: XCTestCase {
     }
 
     func testBusyRecoveryShowsRetryCopyAndKeepsAlarmBytesLocked() throws {
-        let suite = "test.settings.busyRecovery.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let ledger = TransactionRepository(defaults: defaults)
         let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
                                     notificationCenter: NotificationCenter())
@@ -268,8 +262,7 @@ final class SettingsRowCopyTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeSUT(snoozeMinutes: Int? = nil) -> SettingsViewController {
-        let suite = "test.settings.rowcopy.\(UUID().uuidString)"
-        let defaults = AlarmDefaults(defaults: UserDefaults(suiteName: suite)!)
+        let defaults = AlarmDefaults(defaults: makeIsolatedDefaults())
         if let snoozeMinutes { defaults.snoozeMinutes = snoozeMinutes }
         let sut = SettingsViewController(alarmDefaults: defaults, priceContextSource: { .scale(.rouble) })
         sut.loadViewIfNeeded()
