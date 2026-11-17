@@ -180,7 +180,8 @@ final class ProgressiveScaleCell: UITableViewCell {
     /// Off keeps the card's texture (#688): the chain stays on screen, muted
     /// to neutral ink, and the flame stays pain-tinted at the app's disabled
     /// alpha instead of fading to grey. The canon only draws the armed card
-    /// (`SPMore2.jsx:257-280`), so the off state follows the app's existing
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:257-280`),
+    /// so the off state follows the app's existing
     /// disabled row (`SoundPickerRowCell`, alpha 0.45).
     private func applyArmedAppearance(_ isOn: Bool) {
         iconView.tintColor = AppColors.pain400

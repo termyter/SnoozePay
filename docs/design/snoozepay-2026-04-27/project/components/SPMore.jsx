@@ -293,10 +293,10 @@ function Settings() {
    ============================================================ */
 function SoundPicker() {
   const [sel, setSel] = oS("dawn");
-  // Каталог = приложение (#465): SoundCatalogue.ids без «radar» (#861), тексты — ru-значения
+  // Каталог = приложение (#465): SoundCatalogue.ids, тексты — ru-значения
   // common.sound.name.<id> / create_alarm.sound.subtitle.<id> («Тёплый рассвет с птицами» и т.д.).
-  // Строки — в SP_SOUND_CATALOGUE в конце файла: номера строк ниже цитируются из Swift.
-  // Заменяет прежние шесть (Soft Dawn, Energy, Birds, Mountain, Classic Beep, Своя мелодия).
+  // Строки вынесены в SP_SOUND_CATALOGUE в конец файла, чтобы не сдвигать диапазон
+  // SPMore.jsx:294-374, на который ссылается SoundCatalogue.swift.
   const sounds = [
     ...SP_SOUND_CATALOGUE,
     { id: "custom", t: "Своя мелодия · скоро", s: "Импорт своей мелодии появится позже", off: true },
@@ -450,7 +450,7 @@ Object.assign(window, {
 });
 
 /* Каталог звуков SoundPicker — канон приложения (#465).
- * Порядок: SoundCatalogue.ids (SnoozePay/SnoozePay/Models/SoundCatalogue.swift) без «radar» (#861).
+ * Порядок: SoundCatalogue.ids (SnoozePay/SnoozePay/Models/SoundCatalogue.swift).
  * t: ru common.sound.name.<id>, s: ru create_alarm.sound.subtitle.<id> (Resources/Localizable.xcstrings).
  * Звук по умолчанию — "dawn" (SoundCatalogue.defaultID после #861). */
 const SP_SOUND_CATALOGUE = [

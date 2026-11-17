@@ -15,7 +15,7 @@ import os
 /// the pure-logic split the issue calls for.
 ///
 /// `CreateAlarmViewModel.availableSounds` is derived from `entries`, so the
-/// 14-sound catalogue stays the single source of truth; the picker pulls the
+/// catalogue stays the single source of truth; the picker pulls the
 /// disabled custom slot from `customSlot`.
 ///
 /// # Where the copy lives (#598)
@@ -67,7 +67,7 @@ enum SoundCatalogue {
         "marimba", "badinerie", "vibraphone", "strum", "reflection"
     ]
 
-    /// Sound a new alarm starts with: the design's default row («Soft Dawn»,
+    /// Sound a new alarm starts with: the design's default row («Рассвет»,
     /// `SPMore.jsx` `SoundPicker`). It was `radar` until #861 retired that id.
     static let defaultID = "dawn"
 

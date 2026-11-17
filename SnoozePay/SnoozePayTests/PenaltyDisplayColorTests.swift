@@ -5,7 +5,9 @@ import XCTest
 ///
 /// Canon paints the price `var(--sp-warn-400)` on the alarm form
 /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:240`) and
-/// on the Settings row (`SPMore2.jsx:99`). Both call sites now take
+/// on the Settings row
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:99`).
+/// Both call sites now take
 /// `AppColors.snoozePriceInk`, and these tests read the colour off the REAL
 /// rendered views rather than off the token, so a call site that drifts to a
 /// different token goes red here even if the token itself is untouched.

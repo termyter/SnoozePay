@@ -30,9 +30,8 @@ final class ProgressiveScaleCellLayoutTests: XCTestCase {
 
     private func hostedCell() -> ProgressiveScaleCell {
         let cell = ProgressiveScaleCell(style: .default, reuseIdentifier: nil)
-        // Armed: the chain row is only in the hierarchy while the mode is on,
-        // and it is the widest row — laying out without it would measure a
-        // column the user never sees.
+        // Armed: the chain row is the widest row and carries its full-colour
+        // steps only while the mode is on (#688 keeps a muted copy when off).
         cell.configure(isOn: true, chain: [50, 100, 200, 400], currency: .rub, accessibilityChain: "")
 
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: cardWidth, height: 400))

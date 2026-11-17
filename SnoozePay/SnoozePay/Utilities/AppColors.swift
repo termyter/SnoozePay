@@ -125,7 +125,9 @@ enum AppColors {
     ///
     /// Canon paints the price `var(--sp-warn-400)` on both screens —
     /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:240`
-    /// (form) and `SPMore2.jsx:99` (Settings row). That is exactly our
+    /// (form) and
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:99`
+    /// (Settings row). That is exactly our
     /// `warn400`: the dark branch IS the canon value, the light branch is its
     /// text-safe derivation (same hue, ~38°, reduced value; see the ramp notes
     /// above). Measured on the card both rows sit on (`bg1`):
