@@ -36,6 +36,13 @@ final class SettingsPriceContextTests: XCTestCase {
             let text = MoneyFormatter.string(decimal(tier), currency: usd)
             XCTAssertTrue(labels(in: row).contains { $0.text == text }, "\(amount) → \(text)")
             XCTAssertFalse(labels(in: row).contains { ($0.text ?? "").contains("₽") })
+            // The fixture's wallet store says roubles; the icon follows the
+            // context, not the store.
+            XCTAssertEqual(sut.walletCurrencyStore.currency, .rub)
+            let icon = try XCTUnwrap(descendants(in: row).compactMap { $0 as? UIImageView }.first)
+            let banknote = try XCTUnwrap(UIImage(systemName: "banknote")?
+                .withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)))
+            XCTAssertEqual(icon.image?.pngData(), banknote.pngData(), "\(amount)")
         }
         let sut = makeSUT(amount: 50) { .scale(self.usdScale) }
         let rules = sut.makeRulesCell(at: rulesIndexPath(in: sut))
@@ -75,6 +82,11 @@ final class SettingsPriceContextTests: XCTestCase {
         context = .unavailable(usd)
         center.post(name: BalanceService.walletCurrencyChangedNotification, object: nil)
         waitForRow("—", in: sut)
+
+        // A first balance move ends a pristine wallet's storefront context.
+        context = .scale(.rouble)
+        center.post(name: BalanceService.balanceChangedNotification, object: nil)
+        waitForRow(MoneyFormatter.string(50.0, currency: .rub), in: sut)
     }
 
     // MARK: - Fixture
@@ -128,6 +140,10 @@ final class SettingsPriceContextTests: XCTestCase {
     }
 
     private func labels(in view: UIView) -> [UILabel] {
-        view.subviews.flatMap { ($0 as? UILabel).map { [$0] } ?? [] } + view.subviews.flatMap { labels(in: $0) }
+        descendants(in: view).compactMap { $0 as? UILabel }
+    }
+
+    private func descendants(in view: UIView) -> [UIView] {
+        view.subviews.flatMap { [$0] + descendants(in: $0) }
     }
 }

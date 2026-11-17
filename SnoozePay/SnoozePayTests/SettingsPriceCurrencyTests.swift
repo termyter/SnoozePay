@@ -279,7 +279,8 @@ final class SettingsPriceCurrencyTests: XCTestCase {
             alarmDefaults: alarmDefaults,
             referralService: ReferralService(defaults: defaults, balanceService: wallet),
             walletCurrencyStore: currencyStore,
-            priceContextSource: { wallet.priceContext }
+            priceContextSource: { wallet.priceContext },
+            notificationCenter: NotificationCenter()
         )
         sut.loadViewIfNeeded()
         return (sut, defaults)
