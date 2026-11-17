@@ -139,6 +139,7 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
                 let three = StrictDefaults
                     (\(key): c)
                 let none = NotADefaults(\(key): d)
+                override init?(\(key) name: String?) { super.init(\(key): name) }
                 """
         ]
         let subclasses = Self.defaultsSubclasses(in: sources)
@@ -205,11 +206,12 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     /// without `.init`, with any whitespace (newlines included) around `.init`
     /// and `(`, plus the inferred `.init(suiteName:`. One alternation, so
     /// `UserDefaults.init(suiteName:` is one match, not two. A subclass built on
-    /// a pool name still counts: only the helper builds those.
+    /// a pool name still counts: only the helper builds those. `super.init(suiteName:)`
+    /// does not: it forwards the name of whoever builds the subclass, which is counted.
     private static func rawSitePattern(subclasses: Set<String>) -> NSRegularExpression? {
         let names = (["UserDefaults"] + subclasses.sorted()).joined(separator: "|")
         return try? NSRegularExpression(
-            pattern: #"(?:"# + names + #")\s*(?:\.init)?\s*\(\s*suiteName|\.init\s*\(\s*suiteName"#
+            pattern: #"(?:"# + names + #")\s*(?:\.init)?\s*\(\s*suiteName|(?<!super)\.init\s*\(\s*suiteName"#
         )
     }
 

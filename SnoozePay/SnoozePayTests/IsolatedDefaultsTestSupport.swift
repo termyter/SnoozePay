@@ -73,9 +73,9 @@ extension XCTestCase {
     }
 }
 
-/// A `UserDefaults` subclass the pool can build on its own suites. Declare the
-/// subclass `final` and conform it with an empty extension: for a final class
-/// the inherited `init?(suiteName:)` satisfies the requirement.
+/// A `UserDefaults` subclass the pool can build on its own suites. The
+/// subclass must spell out `override init?(suiteName:)` forwarding to `super`:
+/// the inherited initializer does not satisfy the requirement.
 protocol IsolatedDefaultsSubclass: UserDefaults {
     init?(suiteName suitename: String?)
 }

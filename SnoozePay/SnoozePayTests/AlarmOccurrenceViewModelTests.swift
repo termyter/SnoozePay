@@ -541,6 +541,8 @@ final class OccurrenceVMFixture {
 }
 
 final class FinishWriteRefusingDefaults: UserDefaults, IsolatedDefaultsSubclass, @unchecked Sendable {
+    // Spelled out: an inherited initializer does not witness `IsolatedDefaultsSubclass`.
+    override init?(suiteName suitename: String?) { super.init(suiteName: suitename) }
     private let lock = NSLock()
     private var blocked: String?
     var skippedKey: String? {

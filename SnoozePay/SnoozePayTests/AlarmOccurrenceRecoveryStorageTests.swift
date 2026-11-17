@@ -325,6 +325,8 @@ private final class RecoveryStorageScheduler: AlarmScheduling {
 }
 
 private final class RecoveryStorageDefaults: UserDefaults, IsolatedDefaultsSubclass, @unchecked Sendable {
+    // Spelled out: an inherited initializer does not witness `IsolatedDefaultsSubclass`.
+    override init?(suiteName suitename: String?) { super.init(suiteName: suitename) }
     private let lock = NSLock()
     private var rejected = false
     var rejectAlarmWrites: Bool {

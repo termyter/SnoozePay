@@ -161,6 +161,8 @@ final class StoreKitPurchaseCrashRecoveryTests: XCTestCase {
 
 /// Logs every write so a test can rebuild the on-disk state after any prefix.
 private final class WriteLogDefaults: UserDefaults, IsolatedDefaultsSubclass, @unchecked Sendable {
+    // Spelled out: an inherited initializer does not witness `IsolatedDefaultsSubclass`.
+    override init?(suiteName suitename: String?) { super.init(suiteName: suitename) }
     private(set) var writes: [(key: String, value: Any?)] = []
 
     override func set(_ value: Any?, forKey defaultName: String) {
