@@ -18,7 +18,7 @@ import Foundation
 ///   handed to `NumberFormatter` are the same string, whatever the source.
 ///
 /// So: parse/validate once at the boundary, carry a known-good value afterwards.
-struct Currency: Hashable, Codable, CustomStringConvertible {
+nonisolated struct Currency: Hashable, Codable, CustomStringConvertible, Sendable {
 
     /// ISO 4217 alpha-3 code, upper case.
     let code: String

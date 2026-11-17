@@ -220,7 +220,7 @@ enum MoneyFormatter {
     /// Decimal(Double) can change even exact large integers. Keep their fixed
     /// C-format digits; for fractions use Double's shortest round-trip text.
     /// Unrepresentable values stay unknown instead of becoming zero.
-    static func decimalForDisplay(_ amount: Double) -> Decimal {
+    nonisolated static func decimalForDisplay(_ amount: Double) -> Decimal {
         guard amount.isFinite, amount >= 0 else { return .nan }
         let integral = amount.rounded(.towardZero) == amount
         let text = integral ? String(format: "%.0f", amount) : String(amount)
