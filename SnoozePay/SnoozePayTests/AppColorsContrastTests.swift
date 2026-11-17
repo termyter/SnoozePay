@@ -169,19 +169,17 @@ final class AppColorsContrastTests: XCTestCase {
     /// this is the #489 property, and switching an ink call site to the fill
     /// tone would drop it to 1.85:1 on the light card.
     ///
-    /// There is exactly ONE registered exception: `AppColors.penaltyAmountDisplay32`,
-    /// the 32pt snooze amount, which is `warnFill500` used as ink by PM
-    /// decision (#673). It is named here so the rule and its exception cannot
-    /// drift apart in separate files; the ratio it costs and the mitigation it
-    /// leans on are pinned by `PenaltyDisplayColorTests`.
+    /// There is no registered exception any more. The one there was —
+    /// `penaltyAmountDisplay32`, `warnFill500` used as the 32pt snooze amount
+    /// (#673) — was retired by #683: the price is `AppColors.snoozePriceInk`
+    /// (= `warn400`) on both screens, and `PenaltyDisplayColorTests` reads it
+    /// off the rendered form and Settings row.
     ///
     /// ⚠️ What this test does NOT do is inspect call sites. It iterates token
-    /// VALUES against the three surfaces, so a second `static let foo =
-    /// warnFill500` used as text would be invisible to it, and `hardcoded_color`
-    /// only matches raw `UIColor(...)` literals. The guard against that is the
-    /// exception's NAME carrying its size (`…Display32`), not this assertion —
-    /// said plainly here because an earlier version of this comment claimed the
-    /// coverage it does not have.
+    /// VALUES against the three surfaces, so a `static let foo = warnFill500`
+    /// used as text would be invisible to it, and `hardcoded_color` only
+    /// matches raw `UIColor(...)` literals. Said plainly here because an
+    /// earlier version of this comment claimed the coverage it does not have.
     func testWarnInk_clearsBodyTextOnEverySurface() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (name, surface) in [("bg0", AppColors.bg0), ("bg1", AppColors.bg1), ("bg2", AppColors.bg2)] {

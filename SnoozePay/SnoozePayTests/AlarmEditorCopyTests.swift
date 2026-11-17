@@ -76,6 +76,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         "create_alarm.penalty.hint": "Сколько спишется при «отложить»",
         "create_alarm.penalty.minimum": "Минимум 1 ₽",
         "create_alarm.penalty.minimum_currency": "Минимум 1 %@",
+        "create_alarm.progressive.chain_off_accessibility": "Выключено. Если включить: %@",
         "create_alarm.progressive.subtitle": "Каждое откладывание — в 2 раза дороже.",
         "create_alarm.progressive.title": "Прогрессивный режим",
         "create_alarm.repeat.caps": "ПОВТОР",

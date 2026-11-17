@@ -181,7 +181,7 @@ class AlarmFiringViewController: UIViewController {
     // MARK: - No-balance UI — shown when `viewModel.canSnooze == false`.
     //
     // The no-balance state replaces the snooze CTA + dismiss group with a
-    // disabled snooze card on top, an Apple Pay 500 ₽ primary CTA, and a big
+    // disabled snooze card on top, a top-up primary CTA, and a big
     // ghost «Я встал — выключить» secondary. All three are mounted
     // unconditionally so swapping is just a visibility flip — saves us from
     // rebuilding constraints when the user tops up mid-firing and crosses
@@ -192,10 +192,9 @@ class AlarmFiringViewController: UIViewController {
     /// "this WAS the action you wanted, but it's locked".
     var noBalanceSnoozeCard: SPSnoozePrice?
 
-    /// Apple Pay 500 ₽ primary CTA. Single-tap purchase via StoreKitService
-    /// (SKU `io.mobilife.snoozepay.balance.499`); falls back to direct
-    /// `BalanceService.topUp` when the StoreKit product list hasn't loaded
-    /// yet (test / debug paths) so the wallet still credits end-to-end.
+    /// No-balance top-up CTA. Buys the minimal sufficient pack the amount sheet
+    /// also recommends (#652) via StoreKitService; disabled with «—» while that
+    /// pack's storefront offer is unknown.
     var applePayNoBalanceButton: SPButton?
 
     /// Big ghost «Я встал — выключить» secondary. Calls `viewModel.dismiss()`
@@ -206,7 +205,7 @@ class AlarmFiringViewController: UIViewController {
 
     /// Small quiet/sm link «Выбрать другую сумму» rendered below the ghost
     /// dismiss. Routes to the existing `presentTopUpSheet()` for users who
-    /// want a different amount than the 500 ₽ default.
+    /// want a different pack than the recommended one.
     var chooseAmountLink: SPButton?
 
     /// Container stacking the no-balance views vertically. Hidden when the
@@ -459,7 +458,7 @@ class AlarmFiringViewController: UIViewController {
         updateAtmosphereTone()
 
         // Swap between the normal snooze + dismiss group and the no-balance
-        // (Apple Pay 500 ₽) stack based on affordability. `canSnooze` is
+        // (top-up) stack based on affordability. `canSnooze` is
         // the single source of truth.
         refreshNoBalanceVisibility()
         if viewModel.finishRequested {

@@ -750,8 +750,10 @@ final class AlarmScheduler: AlarmScheduling {
         }
     ) -> String? {
         let extensions = Self.alarmSoundExtensions
-        for ext in extensions where resourceExists(soundID, ext) {
-            return "\(soundID).\(ext)"
+        // A retired id registers the file it maps to (#861: `radar` → `default_alarm`).
+        let fileID = SoundCatalogue.fileID(for: soundID)
+        for ext in extensions where resourceExists(fileID, ext) {
+            return "\(fileID).\(ext)"
         }
         let tried = extensions.joined(separator: ",")
         // Try default alarm sound

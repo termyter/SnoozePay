@@ -173,9 +173,13 @@ final class AlarmsListSoundNameTests: XCTestCase {
     /// The lookup table covered exactly the catalogued ids. A sound added to
     /// `SoundCatalogue.ids` without a name key would now reach the list screen
     /// as a bare id instead of failing to compile, so the coverage is asserted
-    /// rather than assumed.
+    /// rather than assumed. Retired ids count too (#861): `radar` left the
+    /// picker, but alarms saved with it still show its name on the list.
     func testTheCatalogueCoversPreciselyTheSoundsTheDeletedTableCovered() {
-        XCTAssertEqual(Set(SoundCatalogue.ids), Set(Self.namesBeforeTheCollapse.keys))
+        XCTAssertEqual(
+            Set(SoundCatalogue.ids).union(SoundCatalogue.retiredFileIDs.keys),
+            Set(Self.namesBeforeTheCollapse.keys)
+        )
     }
 
     // MARK: - Layer 2: the words did not move
@@ -236,6 +240,13 @@ final class AlarmsListSoundNameTests: XCTestCase {
         // namespace. Reaching it from here would mean the list screen started
         // rendering a row the user cannot pick.
         XCTAssertNil(Localized.optionalText(SoundCatalogue.nameKey(for: "custom")))
+    }
+
+    /// #861 took `radar` out of the picker, not out of saved alarms: their
+    /// pill keeps the name the user picked, which still rings the same sound.
+    func testAlarmSavedWithRetiredRadarKeepsItsName() {
+        let viewModel = makeViewModel(withSoundIDs: ["radar"])
+        XCTAssertEqual(viewModel.alarmSoundName(at: 0), "Радар")
     }
 
     /// Out-of-range indices returned `nil` before the collapse and still do —

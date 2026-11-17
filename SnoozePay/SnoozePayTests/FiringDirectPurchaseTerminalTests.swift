@@ -16,7 +16,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertEqual(fixture.calls.ends, 0)
         button.sendActions(for: .touchUpInside)
         button.sendActions(for: .touchUpInside)
-        XCTAssertEqual(fixture.calls.requested, [AlarmFiringViewController.noBalanceProductID])
+        XCTAssertEqual(fixture.calls.requested, [sku(499)])
         XCTAssertEqual(fixture.calls.begins, 1)
         fixture.post(StoreKitService.purchasePendingNotification)
         XCTAssertTrue(fixture.wallet.topUp(amount: 1))
@@ -156,7 +156,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertEqual(fixture.wallet.balance, 0)
         controller.noBalanceApplePayTapped()
         XCTAssertTrue(fixture.calls.requested.isEmpty)
-        fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 4.99,
+        fixture.offer = TopUpOffer(productID: sku(499), price: 4.99,
                                    currencyCode: "USD", displayPrice: "$4.99")
         fixture.post(StoreKitService.productsLoadedNotification)
         let loaded = try XCTUnwrap(controller.applePayNoBalanceButton)
@@ -167,7 +167,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertTrue(loaded === controller.applePayNoBalanceButton)
         loaded.sendActions(for: .touchUpInside)
         fixture.post(StoreKitService.purchasePendingNotification)
-        fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 4.99,
+        fixture.offer = TopUpOffer(productID: sku(499), price: 4.99,
                                    currencyCode: "EUR", displayPrice: "4,99 €")
         fixture.post(StoreKitService.productsLoadedNotification)
         let changed = try XCTUnwrap(controller.applePayNoBalanceButton)
@@ -191,20 +191,20 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
                 $0.accessibilityIdentifier == "firing.noBalance.topUpButton"
             }.count, 1)
             controller.noBalanceApplePayTapped()
-            fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 499.49,
+            fixture.offer = TopUpOffer(productID: sku(499), price: 499.49,
                                        currencyCode: "RUB", displayPrice: "499,49 RUB")
             fixture.post(StoreKitService.productsLoadedNotification)
             controller.applePayNoBalanceButton?.sendActions(for: .touchUpInside)
         }
         XCTAssertEqual(fixture.calls.requested,
-                       Array(repeating: AlarmFiringViewController.noBalanceProductID, count: 4))
+                       Array(repeating: sku(499), count: 4))
     }
 
     func testInjectedWalletAllowsFirstForeignPurchaseAndRefusesEstablishedRublesWithoutMutation() throws {
         for pristine in [true, false] {
             let fixture = Fixture()
             if !pristine { XCTAssertEqual(fixture.wallet.topUpFromPurchase(amount: 1, currency: .rub), .credited) }
-            fixture.offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 4.99,
+            fixture.offer = TopUpOffer(productID: sku(499), price: 4.99,
                                        currencyCode: "USD", displayPrice: "$4.99")
             fixture.post(StoreKitService.productsLoadedNotification)
             let controller = try XCTUnwrap(fixture.controller)
@@ -215,6 +215,72 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             XCTAssertEqual(fixture.defaults.persistentDomain(forName: fixture.suite) as NSDictionary?, before)
             if !pristine { XCTAssertEqual(controller.alerts.first?.title, ForeignCurrencyNotice.alertTitle) }
         }
+    }
+
+    /// #652: the direct CTA quotes and buys the pack the amount sheet opens on —
+    /// never a fixed SKU — for the same wallet, next charge and actual catalogue.
+    func testDirectCTABuysTheMinimalSufficientPackTheSheetPreselects() throws {
+        let cases = [
+            PackCase("RUB", 0, 50, expected: 149), PackCase("RUB", 0, 149, expected: 149),
+            PackCase("RUB", 0, 200, expected: 499), PackCase("RUB", 100, 200, expected: 149),
+            PackCase("RUB", 0, 600, expected: 999),
+            PackCase("RUB", 0, 5000, expected: 999),                 // nothing covers: the largest pack
+            PackCase("RUB", 0, 5000, missing: 999, expected: 499),   // largest missing: largest offered
+            PackCase("RUB", 0, 200, missing: 499, expected: 999),    // minimal one missing: next sufficient
+            PackCase("USD", 1.50, 2.99, expected: 149), PackCase("USD", 0.50, 2.99, expected: 499),
+            PackCase("USD", 0, 2.99, expected: 149)                  // pristine: no cross-currency maths
+        ]
+        for testCase in cases {
+            let fixture = Fixture(available: false, penalty: testCase.penalty)
+            let currency = try XCTUnwrap(Currency(code: testCase.code))
+            if testCase.banked > 0 {
+                XCTAssertEqual(fixture.wallet.topUpFromPurchase(amount: testCase.banked, currency: currency), .credited)
+            }
+            let scale = testCase.code == "RUB" ? 1 : 100
+            for nominal in [149, 499, 999] where nominal != testCase.missing {
+                let price = Decimal(nominal) / Decimal(scale)
+                fixture.catalog[sku(nominal)] = TopUpOffer(productID: sku(nominal), price: price,
+                                                           currencyCode: testCase.code, displayPrice: "\(price) quote")
+            }
+            fixture.post(StoreKitService.productsLoadedNotification)
+            let controller = try XCTUnwrap(fixture.controller)
+            let display = try XCTUnwrap(fixture.catalog[sku(testCase.expected)]?.displayPrice)
+            let button = try XCTUnwrap(controller.applePayNoBalanceButton)
+            XCTAssertEqual(button.accessibilityLabel, Localized.text("common.button.top_up") + ", " + display,
+                           "\(testCase)")
+            let sheet = FiringTopUpBottomSheetViewController(
+                snoozePrice: controller.viewModel.currentPenalty, balance: fixture.wallet,
+                notificationCenter: fixture.center, pauseLifecycle: { _ in }, preflightRefusal: { _ in nil },
+                offerProvider: { [catalog = fixture.catalog] in catalog[$0] }
+            )
+            sheet.loadViewIfNeeded()
+            XCTAssertEqual(descendants(sheet.view).compactMap { $0 as? FiringTopUpPresetRow }
+                .filter(\.isSelected).map(\.accessibilityIdentifier),
+                           ["firingTopUp.preset." + sku(testCase.expected)], "\(testCase)")
+            button.sendActions(for: .touchUpInside)
+            XCTAssertEqual(fixture.calls.requested, [sku(testCase.expected)], "\(testCase)")
+        }
+    }
+
+    func testDirectCTARequotesOnCatalogueChangesAndStaysHonestWithoutCatalogue() throws {
+        let fixture = Fixture(available: false, penalty: 100)
+        let controller = try XCTUnwrap(fixture.controller)
+        controller.noBalanceApplePayTapped()
+        XCTAssertTrue(fixture.calls.requested.isEmpty, "No catalogue: nothing to buy, no nominal fallback")
+        XCTAssertFalse(try XCTUnwrap(controller.applePayNoBalanceButton).isEnabled)
+        for nominal in [149, 499] {
+            fixture.catalog[sku(nominal)] = TopUpOffer(productID: sku(nominal), price: Decimal(nominal),
+                                                       currencyCode: "RUB", displayPrice: "\(nominal) RUB")
+        }
+        fixture.post(StoreKitService.productsLoadedNotification)
+        XCTAssertEqual(controller.applePayNoBalanceButton?.accessibilityLabel,
+                       Localized.text("common.button.top_up") + ", 149 RUB")
+        fixture.catalog[sku(149)] = nil
+        fixture.post(StoreKitService.productsLoadedNotification)
+        XCTAssertEqual(controller.applePayNoBalanceButton?.accessibilityLabel,
+                       Localized.text("common.button.top_up") + ", 499 RUB")
+        controller.applePayNoBalanceButton?.sendActions(for: .touchUpInside)
+        XCTAssertEqual(fixture.calls.requested, [sku(499)])
     }
 
     #if DEBUG
@@ -231,9 +297,12 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
                 controller.loadViewIfNeeded()
                 let button = try XCTUnwrap(controller.applePayNoBalanceButton)
                 XCTAssertTrue(button.isEnabled)
+                // 149 is the minimal demo pack covering the sample's 50 charge (#652).
+                let quote = MoneyFormatter.string(149.0, currency: .rub)
+                XCTAssertEqual(button.accessibilityLabel, Localized.text("common.button.top_up") + ", " + quote)
                 button.sendActions(for: .touchUpInside)
-                XCTAssertEqual(fixture.wallet.balance, 499)
-                XCTAssertEqual(controller.viewModel.balance, 499)
+                XCTAssertEqual(fixture.wallet.balance, 149)
+                XCTAssertEqual(controller.viewModel.balance, 149)
                 XCTAssertFalse(controller.noBalancePurchaseInFlight)
                 XCTAssertTrue(controller.noBalanceContainer?.isHidden == true)
             } else { XCTAssertEqual(fixture.wallet.balance, 0) }
@@ -258,16 +327,17 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         let store: StoreKitService
         var controller: PurchaseController?
         var offer: TopUpOffer?
+        var catalog: [String: TopUpOffer] = [:]
 
-        init(available: Bool = true) {
+        init(available: Bool = true, penalty: Double = 50) {
             defaults = UserDefaults(suiteName: suite)!
             wallet = BalanceService(defaults: defaults, notificationCenter: center)
             store = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
-            if available { offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID,
+            if available { offer = TopUpOffer(productID: sku(499),
                                               price: 499, currencyCode: "RUB", displayPrice: "499 RUB") }
             let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
             let model = AlarmFiringViewModel(
-                alarm: Alarm(penaltyAmount: 50), balanceService: wallet,
+                alarm: Alarm(penaltyAmount: penalty), balanceService: wallet,
                 alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler), scheduler: scheduler,
                 wakeStore: WakeEventStore(defaults: defaults), ledger: TransactionRepository(defaults: defaults)
             )
@@ -275,7 +345,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             self.controller = controller
             controller.noBalancePurchase = AlarmFiringNoBalancePurchase(
                 controller: controller, center: center, dispatch: { [calls] in calls.requested.append($0) },
-                offerProvider: { [weak self] _ in self?.offer },
+                offerProvider: { [weak self] in self?.catalog[$0] ?? self?.offer },
                 beginFeedback: { [calls, store] in calls.begins += 1; store.beginObservingPurchaseFeedback() },
                 endFeedback: { [calls, store] in calls.ends += 1; store.endObservingPurchaseFeedback() }
             )
@@ -318,3 +388,22 @@ private final class TrackingCenter: NotificationCenter, @unchecked Sendable {
         super.removeObserver(observer)
     }
 }
+
+private struct PackCase {
+    let code: String
+    let banked: Double
+    let penalty: Double
+    let missing: Int?
+    let expected: Int
+
+    init(_ code: String, _ banked: Double, _ penalty: Double, missing: Int? = nil, expected: Int) {
+        self.code = code
+        self.banked = banked
+        self.penalty = penalty
+        self.missing = missing
+        self.expected = expected
+    }
+}
+
+private func sku(_ nominal: Int) -> String { "io.mobilife.snoozepay.balance.\(nominal)" }
+private func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }

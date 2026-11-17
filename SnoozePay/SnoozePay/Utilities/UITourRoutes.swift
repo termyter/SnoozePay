@@ -73,7 +73,7 @@ enum UITourRoutes {
             mountPushedOnCreate(in: window) { _ in
                 SoundPickerViewController(
                     sounds: CreateAlarmViewModel(alarm: nil).availableSounds,
-                    selectedID: "radar",
+                    selectedID: SoundCatalogue.defaultID,
                     onSelect: { _ in },
                     previewSound: { _ in false }
                 )
@@ -307,19 +307,22 @@ enum UITourRoutes {
         let model = AlarmFiringViewModel(alarm: firingSampleAlarm(), balanceService: balance)
         let firing = controllerBuilder?(model) ?? AlarmFiringViewController(viewModel: model)
         guard StoreKitService.isCatalogForcedEmpty(arguments: arguments) else { return firing }
-        let productID = AlarmFiringViewController.noBalanceProductID
-        let offer = TopUpOffer(productID: productID, price: 499, currencyCode: "RUB",
-                               displayPrice: MoneyFormatter.string(Double(499), currency: .rub))
+        // The sheet's RUB demo catalogue, so the CTA picks its pack by the real rule (#652).
+        let offers = FiringTopUpBottomSheetViewController.defaultPresets.compactMap { preset in
+            TopUpOffer(productID: preset.productID, price: Decimal(preset.rubDemoAmount), currencyCode: "RUB",
+                       displayPrice: MoneyFormatter.string(Double(preset.rubDemoAmount), currency: .rub))
+        }
         firing.noBalancePurchase = AlarmFiringNoBalancePurchase(
-            controller: firing, dispatch: { [weak firing] _ in
-                let credited = balance.topUp(amount: 499)
+            controller: firing, dispatch: { [weak firing] productID in
+                let amount = StoreKitService.catalogAmount(for: productID) ?? 0
+                let credited = amount > 0 && balance.topUp(amount: Double(amount))
                 firing?.noBalancePurchase.finish()
                 if credited {
                     firing?.updateUI()
                 } else {
                     firing?.presentNoBalancePurchaseFailureAlert(message: StoreKitService.ledgerLockedFailureMessage)
                 }
-            }, offerProvider: { $0 == productID ? offer : nil }
+            }, offerProvider: { productID in offers.first { $0.productID == productID } }
         )
         return firing
     }

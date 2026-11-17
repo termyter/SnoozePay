@@ -91,7 +91,9 @@ final class CreateAlarmViewModel {
         // into a user-typed name on the very next save — the alarm would start
         // showing "БУДИЛЬНИК · …" in the caps row just because it was opened.
         self.name = alarm.map { $0.nameIsDefault ? "" : $0.name } ?? ""
-        self.soundID = alarm?.soundID ?? "radar"
+        // A retired sound opens on the row the picker shows for it (#861), so
+        // the form never names a sound the picker cannot select.
+        self.soundID = alarm.map { SoundCatalogue.selectableID(for: $0.soundID) } ?? SoundCatalogue.defaultID
         self.vibrationEnabled = alarm?.vibrationEnabled ?? defaults.vibrationEnabled
         // Clamp legacy values silently — pre-#143 alarms could store up to 30
         // minutes (old stepper range). The form's slider now caps at 15.

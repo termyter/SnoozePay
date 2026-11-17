@@ -38,7 +38,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
     func testAvailableSounds_hasCorrectCount() {
         let vm = CreateAlarmViewModel(repository: repo)
-        XCTAssertEqual(vm.availableSounds.count, 19)
+        XCTAssertEqual(vm.availableSounds.count, 18)
     }
 
     func testAvailableSounds_allHaveUniqueIDs() {
@@ -78,7 +78,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertEqual(vm.name, "")
         XCTAssertEqual(vm.penaltyAmount, 50)
         XCTAssertEqual(vm.snoozeMinutes, 9)
-        XCTAssertEqual(vm.soundID, "radar")
+        XCTAssertEqual(vm.soundID, "dawn")
         XCTAssertTrue(vm.vibrationEnabled)
         XCTAssertFalse(vm.progressiveScale)
         XCTAssertTrue(vm.enabled)
@@ -387,11 +387,20 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         XCTAssertEqual(remaining.first?.name, "Бета")
     }
 
+    /// #861: a saved Radar alarm opens on the picker's default row, so the
+    /// form row names a sound and the picker has a row checked.
+    func testInit_fromAlarmWithRetiredRadar_selectsTheDefaultRow() {
+        let vm = CreateAlarmViewModel(alarm: Alarm(name: "Старый", soundID: "radar"), repository: repo)
+
+        XCTAssertEqual(vm.soundID, SoundCatalogue.defaultID)
+        XCTAssertEqual(vm.availableSounds.first(where: { $0.id == vm.soundID })?.name, "Рассвет")
+    }
+
     func testInit_fromExistingAlarm_loadsValues() {
         let alarm = Alarm(
             repeatDays: [0, 2, 4],
             name: "Работа",
-            soundID: "radar",
+            soundID: "bell",
             vibrationEnabled: false,
             snoozeMinutes: 15,
             penaltyAmount: 200,
@@ -402,7 +411,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
         XCTAssertTrue(vm.isEditing)
         XCTAssertEqual(vm.name, "Работа")
-        XCTAssertEqual(vm.soundID, "radar")
+        XCTAssertEqual(vm.soundID, "bell")
         XCTAssertFalse(vm.vibrationEnabled)
         XCTAssertEqual(vm.snoozeMinutes, 15)
         XCTAssertEqual(vm.penaltyAmount, 200)
