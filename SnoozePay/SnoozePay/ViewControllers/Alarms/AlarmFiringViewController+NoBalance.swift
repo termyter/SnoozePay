@@ -223,9 +223,15 @@ extension AlarmFiringViewController {
             refreshNoBalanceCatalog()
             return
         }
-        guard viewModel.acceptsPurchase(in: offer.currency) else {
-            let message = ForeignCurrencyNotice.message(wallet: viewModel.walletCurrency, storefront: offer.currency)
-            present(ForeignCurrencyNotice.alert(message: message), animated: true)
+        // Same gate as both top-up sheets: an unreadable ledger refuses every
+        // pack, accepted currency included, as a purchase failure (#1168).
+        let refusal = viewModel.prePurchaseRefusal(in: offer.currency)
+        if let message = ForeignCurrencyNotice.blockingMessage(for: refusal) {
+            if refusal == .ledgerUnreadable {
+                presentNoBalancePurchaseFailureAlert(message: message)
+            } else {
+                present(ForeignCurrencyNotice.alert(message: message), animated: true)
+            }
             return
         }
         noBalancePurchaseInFlight = true

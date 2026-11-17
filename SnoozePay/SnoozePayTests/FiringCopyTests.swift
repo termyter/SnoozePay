@@ -322,6 +322,7 @@ final class FiringCopyTests: XCTestCase {
 /// and the no-balance state, and it reads nothing but `canAfford`.
 private final class FiringCopyWallet: AlarmFiringBalancing {
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     let walletCurrency: Currency = .rub
     var balance: Double
 

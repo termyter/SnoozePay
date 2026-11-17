@@ -204,6 +204,7 @@ final class AlarmFiringSnoozeRefundTests: XCTestCase {
 /// (the real services are `final` and a locked ledger fails both calls).
 private final class StubFiringBalance: AlarmFiringBalancing {
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     let walletCurrency: Currency = .rub
     private(set) var balance: Double
     private let chargeResult: Bool

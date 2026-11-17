@@ -45,6 +45,7 @@ private final class AffordEverythingWallet: AlarmFiringBalancing {
     private(set) var chargeCalls: [Currency?] = []
 
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     func canAfford(_ amount: Double) -> Bool { true }
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
         chargeCalls.append(nil)

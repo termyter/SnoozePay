@@ -112,6 +112,7 @@ final class AlarmFiringAlarmKitSnoozeStopTests: XCTestCase {
 /// A funded wallet that is never charged: nothing here snoozes.
 private final class SnoozeStopWallet: AlarmFiringBalancing {
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     let walletCurrency: Currency = .rub
     var balance: Double { 1000 }
     func canAfford(_ amount: Double) -> Bool { true }
