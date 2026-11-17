@@ -22,6 +22,10 @@ final class ViewModelLocalizationTests: XCTestCase {
     /// Every key #599 introduced. Listed literally rather than derived from
     /// the catalogue, so deleting an entry fails instead of shrinking the loop.
     private static let migratedKeys = [
+        // Moved from `AlarmsListViewController` into the view model by #1109.
+        "alarms.balance_corrupted.message",
+        "alarms.balance_corrupted.message_currency",
+        "alarms.balance_corrupted.message_unpriced",
         "alarms.days.every_day",
         "alarms.days.once",
         "alarms.days.once_on",

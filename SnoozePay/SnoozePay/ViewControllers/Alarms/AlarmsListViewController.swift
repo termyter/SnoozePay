@@ -467,14 +467,12 @@ class AlarmsListViewController: UIViewController {
 
     /// Corrupt `user_balance` detected (#119) — possibly at cold start before
     /// any observer existed (#206). Pop-ups and top-ups are gated until the
-    /// user acknowledges, so the alert offers an immediate reset to 0 ₽.
+    /// user acknowledges, so the alert offers an immediate reset to zero.
     private func presentBalanceCorruptedAlert(rawValue: Double) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
             title: Localized.text("alarms.balance_corrupted.title"),
-            // The raw value goes in as a string so it prints exactly as it did
-            // before — a `%f` would round the very number support needs to see.
-            message: Localized.format("alarms.balance_corrupted.message", "\(rawValue)"),
+            message: viewModel.balanceCorruptedMessage(rawValue: rawValue),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(
