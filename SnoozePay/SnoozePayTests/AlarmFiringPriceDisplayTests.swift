@@ -6,13 +6,12 @@ import XCTest
 /// the ring (#1142): hint, CTA, no-balance card, top-up pick and tone. Rouble
 /// wallets render exactly what they rendered before.
 ///
-/// Every wallet lives in its own `UserDefaults` suite: the host app may have
-/// cached a storefront scale in `.standard`, which would make the shared
-/// wallet's context depend on the simulator.
+/// Every wallet lives in an isolated `UserDefaults` suite
+/// (`makeIsolatedDefaults`): the host app may have cached a storefront scale in
+/// `.standard`, which would make the shared wallet's context depend on the simulator.
 @MainActor
 final class AlarmFiringPriceDisplayTests: XCTestCase {
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var repository: TransactionRepository!
     private var scaleStore: SnoozePriceScaleStore!
@@ -26,8 +25,7 @@ final class AlarmFiringPriceDisplayTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.firing.priceDisplay.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         repository = TransactionRepository(defaults: defaults)
         scaleStore = SnoozePriceScaleStore(defaults: defaults, notificationCenter: center)
@@ -38,7 +36,7 @@ final class AlarmFiringPriceDisplayTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
+        // The pool empties the suite itself; never write to it from here.
         wallet = nil
         scaleStore = nil
         repository = nil
