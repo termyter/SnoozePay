@@ -105,9 +105,25 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
             // let skipped = \(plain)
             /* let skipped = \(plain)
                let skipped = \(viaInit) */
-            let three = /* inline \(plain) */ \(plain)
+            let three = \(plain)
+            let four = /* inline \(plain) */ \(plain)
             """
-        XCTAssertEqual(Self.rawSuiteSites(in: source), 3)
+        // A greedy `/\*[\s\S]*\*/` would swallow `three` along with both comments and count 3.
+        XCTAssertEqual(Self.rawSuiteSites(in: source), 4)
+    }
+
+    func testRatchetCatchesSpacedSplitAndInferredSpellings() {
+        let key = "suite" + "Name"
+        let source = """
+            let one = UserDefaults (\(key): a)
+            let two = UserDefaults.init( \(key): b)
+            let three: UserDefaults? = .init(\(key): c)
+            let four = UserDefaults
+                .init(\(key): d)
+            let none = UserDefaults.standard
+            let alsoNone = UserDefaults()
+            """
+        XCTAssertEqual(Self.rawSuiteSites(in: source), 4)
     }
 
     // MARK: - Ratchet
@@ -117,12 +133,9 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     /// is a fresh suite name per test, and cfprefsd holds a descriptor for
     /// every such name until the whole run ends. `//` lines and `/* */` blocks don't count.
     private static let handRolled: [String: Int] = [
-        "AlarmCivilClockIntegrationTests.swift": 1,
-        "AlarmCivilClockPersistenceTests.swift": 1,
         "AlarmCorruptRecoveryTests.swift": 1,
         "AlarmFiringBalanceCurrencyTests.swift": 2,
         "AlarmFiringChargeFlyUpTests.swift": 1,
-        "AlarmFiringCoordinatorTests.swift": 1,
         "AlarmFiringPresenterMissRuleTests.swift": 1,
         "AlarmFiringPresenterMissTests.swift": 1,
         "AlarmFiringPresenterQueueTests.swift": 1,
@@ -134,82 +147,62 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         "AlarmKitSnoozeIdentityTests.swift": 1,
         "AlarmKitSnoozeLoadFailureTests.swift": 1,
         "AlarmListPriceCurrencyTests.swift": 2,
-        "AlarmOccurrenceFinishSessionTests.swift": 1,
         "AlarmPriceTierTests.swift": 1,
         "AlarmRecoveryAcceptanceTests.swift": 2,
         "AlarmRecoveryGuardTests.swift": 1,
-        "AlarmRepeatModeTests.swift": 1,
-        "AlarmSchedulerPaidSnoozeRearmTests.swift": 1,
         "AlarmThemeImageLifetimeTests.swift": 1,
-        "AlarmViewModelLocalizationTests.swift": 1,
         "AlarmsListIndexTests.swift": 1,
         "AlarmsListSoundNameTests.swift": 1,
-        "AlarmsListZeroBalanceAndWrapTests.swift": 1,
-        "AppBannerPostingTests.swift": 1,
         "AppDelegateSnoozeDiagnosticTests.swift": 1,
         "AppLoggerSinkTests.swift": 1,
         "BalanceLedgerDecimalTests.swift": 1,
-        "BalanceLedgerSourceOfTruthTests.swift": 2,
-        "BalanceServiceMoneyAPITests.swift": 1,
-        "CreateAlarmCivilClockTests.swift": 1,
         "CreateAlarmPermissionTests.swift": 1,
-        "CreateAlarmRepeatValidityTests.swift": 1,
         "CreateAlarmViewModelPreviewTests.swift": 1,
         "CriticalWarningCenterTests.swift": 1,
         "DepositCatalogCurrencyTests.swift": 1,
         "EditorPriceCurrencyTests.swift": 1,
-        "FiringCopyTests.swift": 1,
         "FiringDirectPurchaseTerminalTests.swift": 1,
         "FiringTopUpAutoResumeTests.swift": 1,
         "FiringTopUpCatalogTests.swift": 1,
         "MissingAlarmNotificationAudioTests.swift": 1,
         "PenaltyDisplayColorTests.swift": 1,
-        "ReferralEntryPointVisibilityTests.swift": 1,
         "ReferralFriendCodeApplyTests.swift": 1,
         "ReferralPersonalCodeTests.swift": 1,
         "ReferralServiceTests.swift": 1,
         "SettingsPriceCurrencyTests.swift": 1,
         "SettingsReferralIsolationTests.swift": 1,
-        "SettingsScreenCopyTests.swift": 1,
-        "SettingsSectionsTests.swift": 1,
         "SettingsSubtitleRowHeightTests.swift": 1,
         "SettingsViewModelTests.swift": 1,
-        "SnoozeAffordabilityTests.swift": 2,
-        "SnoozePriceScaleStoreTests.swift": 1,
         "SoundThemePickerCatalogueTests.swift": 1,
         "StatisticsCurrencyTests.swift": 1,
-        "StatisticsDataHealthTests.swift": 1,
         "StatisticsHeatmapCurrencyTests.swift": 1,
         "StatisticsSnapshotTests.swift": 1,
         "StoreKitCopyTests.swift": 1,
         "StoreKitPurchaseCancellationTests.swift": 1,
         "StoreKitPurchaseCrashRecoveryTests.swift": 1,
-        "StoreKitVerifiedPurchaseTests.swift": 1,
-        "ThemeServiceTests.swift": 1,
         "TopUpDisplayAmountTests.swift": 1,
-        "TopUpRestoreServiceTests.swift": 1,
         "TopUpSuccessCurrencyTests.swift": 1,
         "TrackedSnoozeTestSupport.swift": 1,
-        "TransactionCurrencyCodableTests.swift": 1,
-        "UITourWarningRoutesTests.swift": 1,
         "VolumePickerInteractionTests.swift": 1,
-        "WakeDayIdentityTests.swift": 1,
-        "WakeEventStoreTests.swift": 1,
         "WakeHistoryAvailabilityTests.swift": 1,
         "WakeHistoryHostedLayoutTests.swift": 1,
         "WalletBalanceCurrencyTests.swift": 2
     ]
-    /// Both spellings of the initializer; split so this file does not match itself.
-    private static let needles = ["UserDefaults(" + "suiteName", "UserDefaults.init(" + "suiteName"]
+    /// The initializer with or without `.init`, with any whitespace (newlines
+    /// included) around `.init` and `(`, plus the inferred `.init(suiteName:`.
+    /// One alternation, so `UserDefaults.init(suiteName:` is one match, not two.
+    private static let rawSite = try? NSRegularExpression(
+        pattern: #"UserDefaults\s*(?:\.init)?\s*\(\s*suiteName|\.init\s*\(\s*suiteName"#
+    )
 
     /// Raw suite sites in `text`, not counting `/* */` blocks or `//` lines.
+    /// A pattern that failed to compile counts 0, which the two tests above catch.
     private static func rawSuiteSites(in text: String) -> Int {
         let code = text.replacingOccurrences(of: #"/\*[\s\S]*?\*/"#, with: " ", options: .regularExpression)
-        return code.split(separator: "\n", omittingEmptySubsequences: false)
+            .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .reduce(0) { sum, line in
-                sum + needles.reduce(0) { $0 + line.components(separatedBy: $1).count - 1 }
-            }
+            .joined(separator: "\n")
+        return rawSite?.numberOfMatches(in: code, range: NSRange(code.startIndex..., in: code)) ?? 0
     }
 
     func testHandRolledSuitesMatchTheAllowlist() throws {

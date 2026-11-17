@@ -682,6 +682,7 @@ final class AlarmFiringBilledSnoozesTests: XCTestCase {
 /// with a balance high enough to keep `canSnooze` true.
 private final class StubBilledBalance: AlarmFiringBalancing {
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     let walletCurrency: Currency
     var balance: Double = 1000
     init(currency: Currency = .rub) { walletCurrency = currency }

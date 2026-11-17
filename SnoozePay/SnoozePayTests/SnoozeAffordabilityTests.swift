@@ -18,17 +18,6 @@ import XCTest
 /// harness, not the screens.
 final class SnoozeAffordabilityTests: XCTestCase {
 
-    /// Suites handed out by `renderBothScreens` — torn down together.
-    private var suiteNames: [String] = []
-
-    override func tearDown() {
-        for name in suiteNames {
-            UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
-        }
-        suiteNames = []
-        super.tearDown()
-    }
-
     // MARK: - Helpers
 
     /// What each screen renders for one state of the world.
@@ -50,9 +39,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
         alarms: [Alarm],
         settingsPrice: Double? = nil
     ) -> Screens {
-        let suiteName = "test.snoozeAffordability.\(UUID().uuidString)"
-        suiteNames.append(suiteName)
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = makeIsolatedDefaults()
 
         let repo = AlarmRepository(
             defaults: defaults,

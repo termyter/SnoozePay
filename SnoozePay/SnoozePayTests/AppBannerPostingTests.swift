@@ -103,9 +103,7 @@ final class AppBannerPostingTests: XCTestCase {
                 detail: "unreadable", refundLanded: true, alarmID: alarmID, poster: $0
             )
         }
-        let suite = "banner-outcome-\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let delegate = AppDelegate()
         delegate.criticalWarnings = CriticalWarningCenter(defaults: defaults)
         delegate.criticalWarnings.isForegroundActive = { false }

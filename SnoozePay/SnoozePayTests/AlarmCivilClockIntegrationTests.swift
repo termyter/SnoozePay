@@ -244,12 +244,8 @@ final class AlarmCivilClockIntegrationTests: XCTestCase {
 
     private func withStore(_ body: (CivilClockIntegrationStore) throws -> Void) throws {
         let domainGuard = AppDefaultsDomainGuard()
-        let suite = "test.civil-clock.integration.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            domainGuard.assertUntouched()
-        }
+        let defaults = makeIsolatedDefaults()
+        defer { domainGuard.assertUntouched() }
         try body(CivilClockIntegrationStore(defaults: defaults))
     }
 }

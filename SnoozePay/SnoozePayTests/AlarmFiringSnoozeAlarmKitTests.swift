@@ -124,6 +124,7 @@ private final class SnoozeMockAlarmKit: UnsupportedAlarmKitBackend {
 
 private final class SnoozeStubBalance: AlarmFiringBalancing {
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     let walletCurrency: Currency = .rub
     private(set) var balance: Double
     private(set) var chargeCalls: [Double] = []

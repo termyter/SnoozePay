@@ -8,18 +8,15 @@ import XCTest
 final class ThemeServiceTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var service: ThemeService!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.themeservice.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         service = ThemeService(defaults: testDefaults)
     }
 
     override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
         service = nil
         testDefaults = nil
         super.tearDown()

@@ -22,16 +22,12 @@ final class TopUpRestoreServiceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test_\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        let isolated = makeIsolatedSuite()
+        testDefaults = isolated.defaults
+        suiteName = isolated.name
         balance = BalanceService(defaults: testDefaults, notificationCenter: NotificationCenter())
         storeKit = StoreKitService(notificationPoster: LocalNotificationPosterSpy(), defaults: testDefaults)
         service = TopUpRestoreService(balance: balance, storeKit: storeKit)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Helpers
