@@ -51,11 +51,15 @@ final class AlarmThemeTileCellTests: XCTestCase {
             )
 
             let stops = try XCTUnwrap(gradient.colors as? [CGColor], "badge gradient has no stops")
-            let expected = SPSupport.moneyGradientColors(for: badge.traitCollection)
+            // Resolved from the tokens, not through `SPSupport`, so the test does
+            // not inherit a bug in the helper it is checking.
+            let theme = UITraitCollection(userInterfaceStyle: style)
+            let expected = [AppColors.money400, AppColors.money500, AppColors.money700]
+                .map { $0.resolvedColor(with: theme) }
             XCTAssertEqual(stops.count, expected.count)
             for (actual, wanted) in zip(stops, expected) {
                 XCTAssertEqual(
-                    UIColor(cgColor: actual).hexText, UIColor(cgColor: wanted).hexText,
+                    UIColor(cgColor: actual).hexText, wanted.hexText,
                     "badge stops are not the \(style.name) money ramp"
                 )
             }
@@ -86,6 +90,73 @@ final class AlarmThemeTileCellTests: XCTestCase {
                     worst, textFloor,
                     "«\(label.text ?? "")» reads \(String(format: "%.2f", worst)):1 on the \(style.name) custom tile"
                 )
+            }
+        }
+    }
+
+    // MARK: - Reuse
+
+    /// One cell walked through the states the grid recycles it between.
+    ///
+    /// Light theme on purpose: `bg1` is white there, so "the tile centre is
+    /// not `bg1`" cleanly means "a preview or photo is painted" — in dark the
+    /// dawn gradient is too close to `bg1 #0E1320` to tell apart. Each step
+    /// must undo the previous one: the photo hides the preview, the empty
+    /// custom slot swaps the copy ink, only the selected step shows the badge.
+    /// On the pre-#1110 cell this fails at the empty-custom ink and the badge
+    /// fill; photo → built-in already held, because
+    /// `SPThemePreviewView.apply(theme:)` un-hides itself.
+    func testReusedCell_restoresEachStateFromThePreviousOne() throws {
+        let style = UIUserInterfaceStyle.light
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let cell = makeHostedCell(style: style) {
+            $0.configure(theme: .dawn, isCustomSlot: true, isSelected: false, customImage: photo)
+        }
+        let theme = cell.traitCollection
+        let pageHex = AppColors.bg1.resolvedColor(with: theme).hexText
+        let white = UIColor.white.hexText
+        let ink = AppColors.fg1.resolvedColor(with: theme).hexText
+
+        let steps = [
+            Step(name: "photo", apply: { _ in }, paintsPreview: true, titleHex: white, selected: false),
+            Step(name: "built-in dawn", apply: {
+                $0.configure(theme: .dawn, isCustomSlot: false, isSelected: false, customImage: nil)
+            }, paintsPreview: true, titleHex: white, selected: false),
+            Step(name: "empty custom", apply: {
+                $0.configure(theme: .dawn, isCustomSlot: true, isSelected: false, customImage: nil)
+            }, paintsPreview: false, titleHex: ink, selected: false),
+            Step(name: "built-in selected", apply: {
+                $0.configure(theme: .dawn, isCustomSlot: false, isSelected: true, customImage: nil)
+            }, paintsPreview: true, titleHex: white, selected: true)
+        ]
+
+        for step in steps {
+            step.apply(cell)
+            cell.window?.setNeedsLayout()
+            cell.window?.layoutIfNeeded()
+            let tile = render(cell)
+
+            let centre = tile.color(at: CGPoint(x: cell.bounds.midX, y: cell.bounds.midY)).hexText
+            if step.paintsPreview {
+                XCTAssertNotEqual(centre, pageHex, "\(step.name): the tile centre is bare `bg1` — nothing painted")
+            }
+
+            let title = try XCTUnwrap(visibleLabels(in: cell).first, "\(step.name): no title label")
+            XCTAssertEqual(
+                title.textColor.resolvedColor(with: title.traitCollection).hexText, step.titleHex,
+                "\(step.name): wrong title ink"
+            )
+
+            let badge = badgeView(in: cell)
+            XCTAssertEqual(badge != nil, step.selected, "\(step.name): badge visibility")
+            if let badge {
+                // Inside the circle, clear of the tick: the money ramp is green-dominant.
+                let edge = tile.color(at: badge.convert(CGPoint(x: 4, y: badge.bounds.midY), to: cell))
+                let parts = channels(edge)
+                XCTAssertTrue(parts[1] > parts[0] && parts[1] > parts[2], "\(step.name): badge not painted green")
             }
         }
     }
@@ -203,6 +274,15 @@ final class AlarmThemeTileCellTests: XCTestCase {
         let second = luminance(rhs)
         return (max(first, second) + 0.05) / (min(first, second) + 0.05)
     }
+}
+
+/// One configuration in the reuse walk and what it must render.
+private struct Step {
+    let name: String
+    let apply: (AlarmThemeTileCell) -> Void
+    let paintsPreview: Bool
+    let titleHex: String
+    let selected: Bool
 }
 
 /// Pixel reader over a 1x RGBA8 sRGB copy of the rendered tile.

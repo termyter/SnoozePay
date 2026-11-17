@@ -213,8 +213,9 @@ final class AlarmThemeTileCell: UICollectionViewCell {
     /// - Parameters:
     ///   - theme: built-in theme to render the gradient/name/subtitle from.
     ///     Ignored for the custom slot (pass `.dawn` as a placeholder).
-    ///   - isCustomSlot: when true, render the `+` affordance plus a dimmed
-    ///     placeholder gradient (or the picked photo thumbnail).
+    ///   - isCustomSlot: when true, render the `+` affordance on a flat
+    ///     `whiteOverlay06` fill with theme-ink copy (or the picked photo
+    ///     thumbnail with white copy).
     ///   - isSelected: money outline + offset + checkmark badge.
     ///   - customImage: thumbnail for the `.custom` slot when a photo exists.
     func configure(theme: AlarmTheme, isCustomSlot: Bool, isSelected: Bool, customImage: UIImage?) {
