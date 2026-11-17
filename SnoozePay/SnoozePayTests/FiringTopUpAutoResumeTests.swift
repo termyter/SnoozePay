@@ -236,7 +236,7 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
 
     @MainActor
     private final class Fixture {
-        let slot: Int
+        private let lease: IsolatedDefaultsLease<UserDefaults>
         let suite: String
         let defaults: UserDefaults
         let center: NotificationCenter
@@ -250,16 +250,17 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         var refusal: String?
 
         init() throws {
-            let (slot, defaults) = IsolatedDefaultsPool.checkOut()
+            let lease = IsolatedDefaultsPool.checkOut()
+            let defaults = lease.defaults
             let center = NotificationCenter()
-            self.slot = slot
-            self.suite = IsolatedDefaultsPool.suiteName(slot)
+            self.lease = lease
+            self.suite = lease.name
             self.defaults = defaults
             self.center = center
             self.balance = BalanceService(defaults: defaults, notificationCenter: center)
         }
 
-        func clear() { IsolatedDefaultsPool.checkIn(slot) }
+        func clear() { IsolatedDefaultsPool.checkIn(lease) }
 
         func makeSheet() -> FiringTopUpBottomSheetViewController {
             let sheet = FiringTopUpBottomSheetViewController(

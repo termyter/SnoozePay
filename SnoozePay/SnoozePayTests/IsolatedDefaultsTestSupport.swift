@@ -45,8 +45,8 @@ extension XCTestCase {
     /// reopen the suite (``reopenIsolatedDefaults(named:)``) to prove persistence.
     func makeIsolatedSuite() -> (defaults: UserDefaults, name: String) {
         let lease = IsolatedDefaultsPool.checkOut()
-        addTeardownBlock { IsolatedDefaultsPool.checkIn(lease.slot) }
-        return (lease.defaults, IsolatedDefaultsPool.suiteName(lease.slot))
+        addTeardownBlock { IsolatedDefaultsPool.checkIn(lease) }
+        return (lease.defaults, lease.name)
     }
 
     /// Same as ``makeIsolatedSuite()``, as an instance of a `UserDefaults` subclass.
@@ -54,8 +54,8 @@ extension XCTestCase {
         as type: Defaults.Type
     ) -> (defaults: Defaults, name: String) {
         let lease = IsolatedDefaultsPool.checkOut(as: type)
-        addTeardownBlock { IsolatedDefaultsPool.checkIn(lease.slot) }
-        return (lease.defaults, IsolatedDefaultsPool.suiteName(lease.slot))
+        addTeardownBlock { IsolatedDefaultsPool.checkIn(lease) }
+        return (lease.defaults, lease.name)
     }
 
     /// A second, independent instance on a suite from ``makeIsolatedSuite()``,
@@ -80,12 +80,25 @@ protocol IsolatedDefaultsSubclass: UserDefaults {
     init?(suiteName suitename: String?)
 }
 
-/// Which pool slots are handed out to the running test.
+/// One hand-out of a pool slot. Only the lease that is current for its slot
+/// can check it back in: once the slot has been handed out again, an older
+/// lease for the same slot is stale and its check-in does nothing.
+struct IsolatedDefaultsLease<Defaults: UserDefaults> {
+    let slot: Int
+    let defaults: Defaults
+    fileprivate let token: Int
+
+    @MainActor var name: String { IsolatedDefaultsPool.suiteName(slot) }
+}
+
+/// Which pool slots are handed out to the running test, and to which lease.
 @MainActor
 enum IsolatedDefaultsPool {
-    private static var inUse: Set<Int> = []
+    /// Slot → token of the lease that holds it.
+    private static var owners: [Int: Int] = [:]
+    private static var lastToken = 0
 
-    static var slotsInUse: Int { inUse.count }
+    static var slotsInUse: Int { owners.count }
 
     private static let namePrefix = "SnoozePayTests.isolated."
 
@@ -98,37 +111,41 @@ enum IsolatedDefaultsPool {
     }
 
     /// The lowest free slot, emptied of whatever a previous test left in it.
-    static func checkOut() -> (slot: Int, defaults: UserDefaults) {
-        var slot = 0
-        while inUse.contains(slot) { slot += 1 }
-        inUse.insert(slot)
-        let name = suiteName(slot)
-        guard let defaults = UserDefaults(suiteName: name) else {
-            preconditionFailure("UserDefaults refused suite name \(name)")
-        }
-        defaults.removePersistentDomain(forName: name)
-        return (slot, defaults)
+    static func checkOut() -> IsolatedDefaultsLease<UserDefaults> {
+        checkOut { UserDefaults(suiteName: $0) }
     }
 
     /// ``checkOut()``, with the slot's suite opened as `Defaults`. The caller
-    /// owns the slot until it hands it back with ``checkIn(_:)``.
+    /// owns the slot until it hands the lease back with ``checkIn(_:)``.
     static func checkOut<Defaults: IsolatedDefaultsSubclass>(
         as type: Defaults.Type
-    ) -> (slot: Int, defaults: Defaults) {
-        let slot = checkOut().slot
+    ) -> IsolatedDefaultsLease<Defaults> {
+        checkOut { Defaults(suiteName: $0) }
+    }
+
+    private static func checkOut<Defaults: UserDefaults>(
+        opening open: (String) -> Defaults?
+    ) -> IsolatedDefaultsLease<Defaults> {
+        var slot = 0
+        while owners[slot] != nil { slot += 1 }
+        lastToken += 1
+        owners[slot] = lastToken
         let name = suiteName(slot)
-        guard let defaults = Defaults(suiteName: name) else {
+        // Emptied through a plain instance: a subclass may log or refuse writes.
+        UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+        guard let defaults = open(name) else {
             preconditionFailure("\(Defaults.self) refused suite name \(name)")
         }
-        return (slot, defaults)
+        return IsolatedDefaultsLease(slot: slot, defaults: defaults, token: lastToken)
     }
 
     /// Empties the slot's suite and frees the slot for the next hand-out.
-    /// A slot that is not handed out is left alone: a second check-in must not
-    /// wipe whatever the slot's next owner, or a test peeking at it, put there.
-    static func checkIn(_ slot: Int) {
-        guard inUse.remove(slot) != nil else { return }
-        let name = suiteName(slot)
+    /// Only the slot's current lease does that: a second check-in, or a stale
+    /// one after the slot went to a new owner, must not wipe the new owner's data.
+    static func checkIn<Defaults>(_ lease: IsolatedDefaultsLease<Defaults>) {
+        guard owners[lease.slot] == lease.token else { return }
+        owners[lease.slot] = nil
+        let name = suiteName(lease.slot)
         UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
     }
 }

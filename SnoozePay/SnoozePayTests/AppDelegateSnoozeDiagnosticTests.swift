@@ -75,9 +75,7 @@ final class AppDelegateSnoozeDiagnosticTests: XCTestCase {
         _ outcome: AlarmFiringCoordinator.SnoozeOutcome, level: OSLogType, message: String,
         postsBanner: Bool = false, file: StaticString = #filePath, line: UInt = #line
     ) throws {
-        let suite = "test.snoozeOutcomeDiagnostic.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite), file: file, line: line)
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let warnings = CriticalWarningCenter(defaults: defaults)
         warnings.isForegroundActive = { false }
         let delegate = AppDelegate()

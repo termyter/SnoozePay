@@ -9,7 +9,6 @@ import XCTest
 @MainActor
 final class AlarmRecoveryGuardTests: XCTestCase {
     private var defaults: UserDefaults!
-    private var suite: String!
 
     private struct LoggedLine: Equatable {
         let category: AppLogCategory
@@ -21,13 +20,7 @@ final class AlarmRecoveryGuardTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suite = "test.recoveryGuard.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        super.tearDown()
+        defaults = makeIsolatedDefaults()
     }
 
     // MARK: - (a) callback in flight

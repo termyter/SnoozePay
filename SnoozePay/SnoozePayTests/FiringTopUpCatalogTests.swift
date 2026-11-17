@@ -301,6 +301,7 @@ final class FiringTopUpCatalogTests: XCTestCase {
 
     @MainActor
     private final class Fixture {
+        private let lease: IsolatedDefaultsLease<UserDefaults>
         let suite: String
         let defaults: UserDefaults
         let center: NotificationCenter
@@ -310,15 +311,16 @@ final class FiringTopUpCatalogTests: XCTestCase {
         var alerts: [UIAlertController] = []
         var delays: [TimeInterval] = []
         init() {
-            let suite = "FiringTopUpCatalogTests.\(UUID())"
-            let defaults = UserDefaults(suiteName: suite)!
+            let lease = IsolatedDefaultsPool.checkOut()
+            let defaults = lease.defaults
             let center = NotificationCenter()
-            self.suite = suite
+            self.lease = lease
+            self.suite = lease.name
             self.defaults = defaults
             self.center = center
             self.wallet = BalanceService(defaults: defaults, notificationCenter: center)
         }
-        func clear() { defaults.removePersistentDomain(forName: suite) }
+        func clear() { IsolatedDefaultsPool.checkIn(lease) }
         static func sku(_ nominal: Int) -> String { "io.mobilife.snoozepay.balance.\(nominal)" }
         func put(_ nominal: Int, price: String, code: String, display: String) {
             offers[Self.sku(nominal)] = TopUpOffer(productID: Self.sku(nominal), price: Decimal(string: price)!,

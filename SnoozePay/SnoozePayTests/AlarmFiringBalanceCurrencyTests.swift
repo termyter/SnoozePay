@@ -65,9 +65,7 @@ final class AlarmFiringBalanceCurrencyTests: XCTestCase {
     }
 
     func testRealIsolatedPaidWalletSuppliesCurrencyThroughRequiredProtocol() {
-        let suite = "firing-currency-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         XCTAssertEqual(wallet.topUpFromPurchase(amount: 0.49, currency: Currency(code: "USD")!), .credited)
         let rows = TransactionRepository(defaults: defaults).fetchAll()
@@ -132,9 +130,7 @@ final class AlarmFiringBalanceCurrencyTests: XCTestCase {
     private func makeController(wallet: AlarmFiringBalancing, penalty: Double = 50) -> BalanceLayoutController {
         let backend = TestAlarmKitBackend()
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
-        let suite = "firing-layout-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let alarm = Alarm(penaltyAmount: penalty)
         let model = AlarmFiringViewModel(
             alarm: alarm, balanceService: wallet,

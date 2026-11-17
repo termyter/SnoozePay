@@ -5,21 +5,18 @@ import XCTest
 @MainActor
 final class AlarmKitSnoozeIdentityTests: XCTestCase {
 
-    private var suite: String!
     private var defaults: UserDefaults!
     private var repository: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suite = "test.snoozeIdentity.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = makeIsolatedDefaults()
         repository = AlarmRepository(
             defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler()
         )
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
         repository = nil
         defaults = nil
         super.tearDown()

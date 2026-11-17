@@ -215,9 +215,7 @@ final class EditorPriceCurrencyTests: XCTestCase {
     private func makeSUT(
         editing: Bool = false, currency: Currency? = Currency(code: "USD")!
     ) -> Fixture {
-        let suite = "test.editor.currency.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
         let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         if let currency { XCTAssertEqual(wallet.freezeCurrency(currency), .frozen(currency)) }

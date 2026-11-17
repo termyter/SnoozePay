@@ -180,7 +180,8 @@ final class DepositCatalogCurrencyTests: XCTestCase {
 
     @MainActor
     private final class Fixture {
-        let suite = "DepositCatalogCurrencyTests.\(UUID())"
+        private let lease: IsolatedDefaultsLease<UserDefaults>
+        let suite: String
         let defaults: UserDefaults
         let center = NotificationCenter()
         let balance: BalanceService
@@ -188,12 +189,14 @@ final class DepositCatalogCurrencyTests: XCTestCase {
         var requested: [String] = []
 
         init() throws {
-            defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            lease = IsolatedDefaultsPool.checkOut()
+            suite = lease.name
+            defaults = lease.defaults
             balance = BalanceService(defaults: defaults, notificationCenter: center)
         }
 
         static func productID(_ amount: Int) -> String { "io.mobilife.snoozepay.balance.\(amount)" }
-        func clear() { defaults.removePersistentDomain(forName: suite) }
+        func clear() { IsolatedDefaultsPool.checkIn(lease) }
         func reload() { center.post(name: StoreKitService.productsLoadedNotification, object: nil) }
         func offer(amount: Int = 149, price: String = "1.79", code: String = "USD", display: String = "$1.79") {
             let productID = Self.productID(amount)

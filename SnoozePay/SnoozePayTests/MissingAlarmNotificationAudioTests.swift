@@ -47,15 +47,13 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         }
     }
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var repository: AlarmRepository!
     private var delegate: AppDelegate!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.missingAlarmAudio.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        defaults = makeIsolatedDefaults()
         repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
         delegate = AppDelegate()
         delegate.alarmRepository = repository
@@ -70,7 +68,6 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         drainMainQueue()
         delegate = nil
         repository = nil
-        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         super.tearDown()
     }
@@ -200,7 +197,7 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
         delegate.reportAlarmDataCorrupted = { reported.append($0) }
         // Nothing loads a screen on this path; stop and drain anyway, so a
         // regression that starts the sound cannot leak it into the next test
-        // (#846). The suite goes in `tearDown`.
+        // (#846). The suite goes with the test.
         defer {
             AudioService.shared.stopAlarmSound()
             drainMainQueue()

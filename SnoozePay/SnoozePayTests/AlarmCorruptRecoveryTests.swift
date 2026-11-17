@@ -4,18 +4,11 @@ import XCTest
 @MainActor
 final class AlarmCorruptRecoveryTests: XCTestCase {
     private var defaults: UserDefaults!
-    private var suite: String!
     private let corrupt = Data("unreadable alarm store".utf8)
 
     override func setUp() {
         super.setUp()
-        suite = "test.corruptRecovery.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        super.tearDown()
+        defaults = makeIsolatedDefaults()
     }
 
     func testVerifiedCleanupCommitsOnlyAfterBackendSuccessAndKeepsBackup() throws {

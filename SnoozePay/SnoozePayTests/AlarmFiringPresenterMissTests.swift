@@ -23,7 +23,6 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
     /// tone: the bundle's files are not what this pins.
     private static let toneSoundID = "nonexistent_test_sound"
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var presenter: AlarmFiringPresenter!
     private var lines: [Line] = []
@@ -35,8 +34,7 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.presenterMiss.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        defaults = makeIsolatedDefaults()
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: nil)
         presenter = AlarmFiringPresenter(alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler))
         // A miss is terminal: it must never go looking for a host.
@@ -54,7 +52,6 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
         presenter = nil
-        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         lines = []
         reported = []

@@ -493,7 +493,7 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
 
 @MainActor
 final class OccurrenceVMFixture {
-    let slot: Int
+    private let lease: IsolatedDefaultsLease<FinishWriteRefusingDefaults>
     let defaults: FinishWriteRefusingDefaults
     let alarm: Alarm
     let backend = TestAlarmKitBackend()
@@ -507,12 +507,14 @@ final class OccurrenceVMFixture {
     var seedRepository: AlarmRepository { AlarmRepository(defaults: defaults, scheduler: NoopScheduler()) }
 
     init(oneShot: Bool = false) throws {
-        let (slot, defaults) = IsolatedDefaultsPool.checkOut(as: FinishWriteRefusingDefaults.self)
-        self.slot = slot
-        self.defaults = defaults
+        // The date first: a throw after the check-out would leak the slot, since nobody calls close().
         let time = try XCTUnwrap(Calendar.current.date(from: DateComponents(
             year: 2026, month: 10, day: 26, hour: 7, minute: 10
         )))
+        let lease = IsolatedDefaultsPool.checkOut(as: FinishWriteRefusingDefaults.self)
+        let defaults = lease.defaults
+        self.lease = lease
+        self.defaults = defaults
         alarm = Alarm(time: time, repeatDays: [0, 2], penaltyAmount: 50, repeatMode: oneShot ? .never : .weekly)
         ledger = TransactionRepository(defaults: defaults)
         wallet = BalanceService(
@@ -530,7 +532,7 @@ final class OccurrenceVMFixture {
         )
     }
     func store() -> AlarmSnoozeSessionStore { AlarmSnoozeSessionStore(defaults: defaults) }
-    func close() { IsolatedDefaultsPool.checkIn(slot) }
+    func close() { IsolatedDefaultsPool.checkIn(lease) }
 
     private final class NoopScheduler: AlarmScheduling {
         func schedule(_ alarm: Alarm, completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?) {
