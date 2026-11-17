@@ -7053,6 +7053,24 @@
         }
       }
     },
+    "settings.row.default_price.unavailable_hint" : {
+      "comment" : "VoiceOver hint on the inert default snooze-price row while prices in the wallet currency are unavailable.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze fees in your wallet currency haven’t loaded yet."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цены откладывания в валюте кошелька ещё не загрузились."
+          }
+        }
+      }
+    },
     "settings.row.privacy_policy" : {
       "comment" : "Settings row that opens the privacy policy. The same words are the title of the screen it opens AND the first line of that screen's placeholder body, so they are read three times over.",
       "extractionState" : "manual",

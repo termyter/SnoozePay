@@ -10,7 +10,8 @@ final class AlarmsListViewModel {
     private let alarmRepository: AlarmRepository
     private let balanceService: BalanceService
     private let transactionRepository: TransactionRepository
-    private let notificationCenter: NotificationCenter
+    /// Internal so the list's gear can hand Settings the same center (#1155).
+    let notificationCenter: NotificationCenter
     /// The user's configured "Цена откладывания по умолчанию". Backs the
     /// affordability hint when no enabled alarm has a price of its own (#546).
     private let alarmDefaults: AlarmDefaults
@@ -448,6 +449,11 @@ final class AlarmsListViewModel {
     // MARK: - Formatted balance
 
     var walletCurrency: Currency { balanceService.walletCurrency }
+
+    /// The wallet's price context read now, not the cached `priceContext`:
+    /// Settings refreshes on the same notifications this VM observes and must
+    /// not depend on which observer runs first (#1155).
+    func livePriceContext() -> SnoozePriceContext { balanceService.priceContext }
 
     /// The currency the balance is shown in: `BalanceService.displayCurrency`
     /// (#1147). It differs from `walletCurrency` only for a pristine wallet,

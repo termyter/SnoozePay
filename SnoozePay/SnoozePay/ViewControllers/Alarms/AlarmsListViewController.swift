@@ -225,7 +225,16 @@ class AlarmsListViewController: UIViewController {
         // bar is hidden on this root (#280), so the helper restores it before
         // the push and the Settings screen keeps its standard back arrow +
         // title; this VC re-hides it in `viewWillAppear` on the way back.
-        AppNavigationBarStyle.pushRestoringBar(SettingsViewController(priceContextSource: { BalanceService.shared.priceContext }), from: self)
+        AppNavigationBarStyle.pushRestoringBar(makeSettingsViewController(), from: self)
+    }
+
+    /// The gear's Settings screen, priced from the same wallet and notification
+    /// center as this list, read live on every refresh (#1147, #1155).
+    func makeSettingsViewController() -> SettingsViewController {
+        SettingsViewController(
+            priceContextSource: { [viewModel] in viewModel.livePriceContext() },
+            notificationCenter: viewModel.notificationCenter
+        )
     }
 
     #if DEBUG

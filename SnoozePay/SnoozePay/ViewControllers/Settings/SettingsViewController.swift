@@ -46,6 +46,10 @@ class SettingsViewController: UIViewController {
     private let notificationCenter: NotificationCenter
     private var priceContextObservers: [NSObjectProtocol] = []
 
+    /// The default-price sheet while it is up. Its options are priced in the
+    /// context it was built in, so a context change dismisses it (#1155).
+    weak var defaultPricePicker: UIAlertController?
+
     // MARK: - UI
 
     /// Internal so `SettingsViewController+Referral` can call
@@ -91,11 +95,16 @@ class SettingsViewController: UIViewController {
         priceContextObservers.forEach { notificationCenter.removeObserver($0) }
     }
 
-    /// Re-reads the context and reloads a mounted table when it moved.
+    /// Re-reads the context and reloads a mounted table when it moved. An open
+    /// default-price sheet is dismissed: its tiers belong to the old context,
+    /// and committing one would store a price nobody was shown (#1155).
     func refreshPriceContext() {
         let context = priceContextSource()
         guard context != priceContext else { return }
         priceContext = context
+        if let picker = defaultPricePicker, presentedViewController === picker {
+            dismiss(animated: true)
+        }
         if isViewLoaded { tableView.reloadData() }
     }
 
