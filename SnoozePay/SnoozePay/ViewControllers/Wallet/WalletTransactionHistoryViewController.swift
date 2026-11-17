@@ -110,6 +110,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
             return
         }
         let all = load.transactions
+        let currency = BalanceService.shared.walletCurrency
         // Period narrows by date; the summary card aggregates this whole
         // period set so its totals stay stable as the user toggles chips.
         let periodVisible = period.filter(all)
@@ -123,7 +124,8 @@ final class WalletTransactionHistoryViewController: UIViewController {
         // Pairing of charge↔refund is resolved against the FULL ledger, not the
         // period slice — the two rows can straddle a month boundary (#358).
         stack.addArrangedSubview(makeSummaryCard(
-            summary: TxHistorySummary.compute(from: periodVisible, ledger: all)
+            summary: TxHistorySummary.compute(from: periodVisible, ledger: all, currency: currency),
+            currency: currency
         ))
 
         // Soft notice (NOT the corrupt-ledger banner): rows this build can't
@@ -220,7 +222,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
 
     // MARK: - Summary card (artboard 21)
 
-    private func makeSummaryCard(summary: TxHistorySummary) -> UIView {
+    func makeSummaryCard(summary: TxHistorySummary, currency: Currency) -> UIView {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.lg)
 
         let caption = UILabel()
@@ -236,7 +238,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         let spent = makeSummaryColumn(
             title: Localized.text("wallet.history.summary.spent"),
             value: MoneyFormatter.attributed(
-                summary.spent, digitsFont: AppTypography.moneyMd, prefix: "−",
+                summary.spent, currency: currency, digitsFont: AppTypography.moneyMd, prefix: "−",
                 color: WalletAmountTint.ink(for: .outgoing)
             ),
             alignment: .left
@@ -244,7 +246,7 @@ final class WalletTransactionHistoryViewController: UIViewController {
         let topups = makeSummaryColumn(
             title: Localized.text("wallet.history.summary.topups"),
             value: MoneyFormatter.attributed(
-                summary.topups, digitsFont: AppTypography.moneyMd, prefix: "+",
+                summary.topups, currency: currency, digitsFont: AppTypography.moneyMd, prefix: "+",
                 color: WalletAmountTint.ink(for: .incoming)
             ),
             alignment: .left

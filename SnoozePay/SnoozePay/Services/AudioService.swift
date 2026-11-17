@@ -259,11 +259,21 @@ final class AudioService {
     /// but a stale session may keep other apps duck'ed.
     private func deactivateAudioSession() {
         do {
-            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            try sessionDeactivator()
         } catch {
-            AppLogger.audio.error("failed to deactivate audio session: \(error.localizedDescription, privacy: .public)")
+            AppLogger.emit(.audio, .error, "failed to deactivate audio session: \(error.localizedDescription)")
         }
     }
+
+    /// Queue-confined alarm teardown, separate from preview test overrides.
+    private var sessionDeactivator: () throws -> Void = AudioService.othersNotifyingDeactivator
+
+    #if DEBUG
+    /// Fail alarm teardown without reaching AVAudioSession. `nil` restores it.
+    func overrideSessionDeactivation(_ deactivator: (() throws -> Void)?) {
+        queue.sync { sessionDeactivator = deactivator ?? Self.othersNotifyingDeactivator }
+    }
+    #endif
 
     // MARK: - Preview session (#850)
 
@@ -399,12 +409,12 @@ final class AudioService {
             return
         }
 
-        let player = resolveAlarmPlayer(soundID: soundID)
+        let player = resolvePlayerForPlayback(soundID: soundID)
 
         guard let player else {
             // Neither bundled file nor synthetic tone available — refuse to claim
             // playback. Vibration still runs so the user is at least woken.
-            AppLogger.audio.notice("startAlarmSound: no audio source available, vibration only")
+            AppLogger.emit(.audio, .default, "startAlarmSound: no audio source available, vibration only")
             _currentAlarmID = alarmID
             _state = .vibrationOnly
             startVibration()
@@ -426,8 +436,9 @@ final class AudioService {
         let prepared = player.prepareToPlay()
         let started = player.play()
         if !prepared || !started {
-            AppLogger.audio.error(
-                "AVAudioPlayer play() rejected (prepared=\(prepared, privacy: .public), started=\(started, privacy: .public))"
+            AppLogger.emit(
+                .audio, .error,
+                "AVAudioPlayer play() rejected (prepared=\(prepared), started=\(started))"
             )
             audioPlayer = nil
             _currentAlarmID = alarmID
@@ -439,6 +450,23 @@ final class AudioService {
         _currentAlarmID = alarmID
         _state = .playing
         startVibration()
+    }
+
+    #if DEBUG
+    private var alarmPlayerResolver: ((String) -> AVAudioPlayer?)?
+
+    /// Reach player refusal/no-source branches without changing bundled audio.
+    /// Installed and invoked on `queue`; nil restores the production resolver.
+    func overrideAlarmPlayerResolution(_ resolver: ((String) -> AVAudioPlayer?)?) {
+        queue.sync { alarmPlayerResolver = resolver }
+    }
+    #endif
+
+    private func resolvePlayerForPlayback(soundID: String) -> AVAudioPlayer? {
+        #if DEBUG
+        if let alarmPlayerResolver { return alarmPlayerResolver(soundID) }
+        #endif
+        return resolveAlarmPlayer(soundID: soundID)
     }
 
     /// Handle an `.startAlarmSound` call while the service is already in a
@@ -538,7 +566,7 @@ final class AudioService {
     /// reports the absence of.
     ///
     /// ⚠️ Reached from `startAlarmSoundLocked`, i.e. inside `queue.sync`, so
-    /// unlike every other `AppLogger.emit` call site this one is not
+    /// this `AppLogger.emit` call site is not
     /// GUARANTEED to be on the main thread. `sync` runs the block on whichever
     /// thread called it: `AlarmFiringViewController.viewDidLoad` is main, but
     /// the notification-centre delegate in `AppDelegate` carries no documented
@@ -546,13 +574,12 @@ final class AudioService {
     /// and the suite drives `startAlarmSound` from background threads on
     /// purpose (`testStartAlarmSound_fromBackgroundThread_reachesPlayingState`).
     ///
-    /// `queue.sync` buys `emit`'s unguarded `testSink` nothing: it serialises
-    /// audio work against other audio work, not against a test installing or
-    /// removing the sink on its own thread. What a test can lean on instead is
-    /// that `startAlarmSound` returns only once the queued body has run, so a
-    /// sink installed around that call is still installed when this line is
-    /// emitted — `AudioServiceStartWiringTests` reads it that way, and that is
-    /// what keeps `startAlarmSoundLocked` calling this method at all (#774).
+    /// `queue.sync` only serialises audio work. AppLogger separately synchronizes
+    /// its DEBUG sink access and callback delivery against installation and
+    /// restoration. `startAlarmSound` returns only once the queued body has run,
+    /// so a sink installed around that call still observes this line —
+    /// `AudioServiceStartWiringTests` reads it that way, which keeps
+    /// `startAlarmSoundLocked` calling this method at all (#774).
     /// The `AudioServiceTests` cases call it directly instead.
     func resolveAlarmPlayer(
         soundID: String,
@@ -788,7 +815,7 @@ final class AudioService {
         // Mirror `startAlarmSoundLocked`'s play()==false branch and fall to
         // `.vibrationOnly` so the UI reflects the real state (#406).
         if !player.play() {
-            AppLogger.audio.error("resumePlaybackLocked: AVAudioPlayer.play() returned false")
+            AppLogger.emit(.audio, .error, "resumePlaybackLocked: AVAudioPlayer.play() returned false")
             _isPaused = false
             _state = .vibrationOnly
             startVibration()

@@ -22,7 +22,7 @@ final class AlarmDeletionCopyTests: XCTestCase {
         XCTAssertEqual(
             AlarmDeletionCopy.body(balance: 840),
             "Баланс 840\(narrowSpace)₽ останется на месте — "
-                + "он привязан к аккаунту, а не к будильнику."
+                + "он не привязан к будильнику."
         )
     }
 
@@ -31,7 +31,7 @@ final class AlarmDeletionCopyTests: XCTestCase {
         XCTAssertEqual(
             body,
             "Будни · Пн–Пт · 07:00. Баланс 840\(narrowSpace)₽ останется на месте — "
-                + "он привязан к аккаунту, а не к будильнику."
+                + "он не привязан к будильнику."
         )
     }
 

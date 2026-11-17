@@ -2,7 +2,7 @@ import UIKit
 
 /// Referral hero — the deep-green promo panel at the top of
 /// `ReferralViewController` (`Referral()`,
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:250-263` contains "Реферальная программа"):
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:247-260` contains "Реферальная программа"):
 /// caps eyebrow + h1 payout + body explainer over a 135° gradient.
 ///
 /// Its own view rather than a `UIView` assembled inline in the controller for

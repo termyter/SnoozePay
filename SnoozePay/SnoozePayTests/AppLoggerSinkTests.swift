@@ -125,6 +125,49 @@ final class AppLoggerSinkTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testAsyncSink_observesDeferredMainActorLogAndRestoresAfterSuccess() async {
+        let delivered = expectation(description: "a later main-actor task wrote its line")
+        var lines: [String] = []
+        await AppLogger.withAsyncTestSink({ lines.append($2) }, perform: {
+            Task { @MainActor in
+                AppLogger.emit(.appDelegate, .error, "deferred line")
+                delivered.fulfill()
+            }
+            await fulfillment(of: [delivered], timeout: 5)
+        })
+        XCTAssertEqual(lines, ["deferred line"])
+        XCTAssertNil(AppLogger.testSink, "the async sink must not escape its body")
+    }
+
+    @MainActor
+    func testAsyncSink_restoresOuterSinkAfterSuspensionAndThrow() async {
+        struct Boom: Error {}
+        let delivered = expectation(description: "the inner scope suspended before throwing")
+        var outer: [String] = []
+        var inner: [String] = []
+        await AppLogger.withAsyncTestSink({ outer.append($2) }, perform: {
+            do {
+                try await AppLogger.withAsyncTestSink({ inner.append($2) }, perform: {
+                    Task { @MainActor in
+                        AppLogger.emit(.ui, .error, "inner deferred line")
+                        delivered.fulfill()
+                    }
+                    await fulfillment(of: [delivered], timeout: 5)
+                    throw Boom()
+                })
+                XCTFail("the throwing body must propagate its error")
+            } catch is Boom {
+                AppLogger.emit(.ui, .default, "outer restored")
+            } catch {
+                XCTFail("unexpected error: \(error)")
+            }
+        })
+        XCTAssertEqual(inner, ["inner deferred line"])
+        XCTAssertEqual(outer, ["outer restored"], "nested sinks shadow, then restore")
+        XCTAssertNil(AppLogger.testSink, "throwing must not leak a global sink")
+    }
+
     /// `emit` must hand the sink back what it was given, unchanged, for every
     /// category — otherwise a caller's category is decided by the seam rather
     /// than by the caller, and lines land where nobody greps for them.

@@ -115,12 +115,12 @@ extension WalletViewController {
         // from the card edge. There is no `4px 20px` row rule in the prototype:
         // as a standalone padding value that shorthand occurs once, on a theme
         // block inside a settings card,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:209` contains "4px 20px 12px".
         // A substring grep looks like five hits only because four
         // screen-section containers read `padding: "24px 20px 0"`:
         // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:581` contains "24px 20px 0",
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:196` contains "24px 20px 0",
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:412` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:195` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:411` contains "24px 20px 0",
         // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:193` contains "24px 20px 0".
         // One of those minus its leading `2` is the likeliest origin of the
         // invented rule (#685). Do not cite this comment as canon.

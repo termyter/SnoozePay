@@ -108,17 +108,17 @@ function TxHistory() {
 /* Пополнение — BOTTOM SHEET поверх затемнённого живого кошелька (#233), а не
    отдельный полноэкранный шаг. Выбора способа оплаты в шите нет: платит
    StoreKit, экран «Способы оплаты» из MVP убран (#237/#521).
-   Суммы — живые SKU 49/149/299/499/999 («Популярно» на 149), а не
-   дизайнерская линейка 500/1000/2000/5000: продукты в App Store Connect
-   заведены под первую (#233, п. 8). */
+   49/149/299/499/999 — идентификаторы существующих SKU («Популярно» на 149).
+   Суммы и ₽ здесь — статический RUB-пример; приложение показывает StoreKit
+   Product.displayPrice в валюте магазина. Число откладываний пакет не обещает. */
 function Deposit() {
   const [amount, setAmount] = oS3(149);
   const presets = [
-    { v: 49,  l: "≈ 1 откладывание" },
-    { v: 149, l: "≈ 3 откладывания", popular: true },
-    { v: 299, l: "≈ 6 откладываний" },
-    { v: 499, l: "≈ 10 откладываний" },
-    { v: 999, l: "≈ 20 откладываний" },
+    { v: 49 },
+    { v: 149, popular: true },
+    { v: 299 },
+    { v: 499 },
+    { v: 999 },
   ];
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
@@ -136,7 +136,7 @@ function Deposit() {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 16 }}>
           {presets.map(p => (
-            <SPAmountPreset key={p.v} value={p.v} label={p.l} popular={p.popular}
+            <SPAmountPreset key={p.v} value={p.v} popular={p.popular}
               selected={amount === p.v} onClick={()=>setAmount(p.v)} />
           ))}
         </div>

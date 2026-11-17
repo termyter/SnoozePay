@@ -112,9 +112,9 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     private let previewPlayButton: UIButton = {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.layer.cornerRadius = 24
-        button.layer.masksToBounds = true
         button.tintColor = AppColors.fgOnMoney
+        button.isAccessibilityElement = true
+        button.accessibilityTraits = .button
         button.setImage(
             UIImage(systemName: "play.fill")?
                 .withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)),
@@ -123,7 +123,15 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         return button
     }()
 
-    private let previewPlayGradient = CAGradientLayer()
+    // Keep the gradient outside UIButton's managed image-layer hierarchy.
+    // The backing layer paints beneath every child, including the play head.
+    private let previewPlayBackground: SPGradientView = {
+        let view = SPGradientView(colors: [], locations: SPSupport.moneyGradientLocations)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 24
+        view.clipsToBounds = true
+        return view
+    }()
 
     /// Progress track + fill + timecode, per
     /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:362-365` contains "0:08 / 0:24" — a 3pt
@@ -249,17 +257,15 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     /// trait-aware ramp (#491) rather than the `UITraitCollection.current`
     /// snapshot the plain `moneyGradientColors` property takes.
     private func refreshPreviewGradient() {
-        previewPlayGradient.colors = SPSupport.moneyGradientColors(for: traitCollection)
+        previewPlayBackground.refresh(
+            colors: SPSupport.moneyGradientColors(for: traitCollection),
+            locations: SPSupport.moneyGradientLocations
+        )
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopPreview()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        previewPlayGradient.frame = previewPlayButton.bounds
     }
 
     // MARK: - Setup
@@ -309,12 +315,12 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         // that shorthand occurs exactly once, and not on a row: it is
         // `padding: "4px 20px 12px"` on a theme block inside a settings card
         // on another artboard,
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:209` contains "4px 20px 12px".
         // A plain substring grep for `4px 20px` looks like five hits because
         // four screen-section containers read `padding: "24px 20px 0"`:
         // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:581` contains "24px 20px 0",
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:196` contains "24px 20px 0",
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:412` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:195` contains "24px 20px 0",
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:411` contains "24px 20px 0",
         // `docs/design/snoozepay-2026-04-27/project/components/SPMore3.jsx:193` contains "24px 20px 0".
         // One of those with its leading `2` dropped is the likeliest origin
         // of the invented rule. None of the five is a row inset (#685).
@@ -379,11 +385,15 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
     /// Builds the bottom «Превью» player block (caps label + player card with
     /// money-gradient play head). Kept separate so `setupContent` stays small.
     private func makePreviewBlock() -> UIStackView {
-        previewPlayGradient.startPoint = SPSupport.gradientStart
-        previewPlayGradient.endPoint = SPSupport.gradientEnd
-        previewPlayGradient.locations = SPSupport.moneyGradientLocations
         refreshPreviewGradient()
-        previewPlayButton.layer.insertSublayer(previewPlayGradient, at: 0)
+        previewPlayBackground.addSubview(previewPlayButton)
+        NSLayoutConstraint.activate([
+            previewPlayButton.topAnchor.constraint(equalTo: previewPlayBackground.topAnchor),
+            previewPlayButton.leadingAnchor.constraint(equalTo: previewPlayBackground.leadingAnchor),
+            previewPlayButton.trailingAnchor.constraint(equalTo: previewPlayBackground.trailingAnchor),
+            previewPlayButton.bottomAnchor.constraint(equalTo: previewPlayBackground.bottomAnchor)
+        ])
+        previewPlayButton.accessibilityIdentifier = "sound_picker.preview"
         previewPlayButton.addTarget(self, action: #selector(previewTapped), for: .touchUpInside)
         previewPlayButton.accessibilityLabel = Localized.text(
             "create_alarm.sound_picker.preview_accessibility"
@@ -407,7 +417,7 @@ final class SoundPickerViewController: UIViewController, UITableViewDataSource, 
         previewTextStack.spacing = AppSpacing.sp1 + 2   // 6pt — matches `marginTop: 6`
         previewTextStack.alignment = .fill
 
-        let previewRow = UIStackView(arrangedSubviews: [previewPlayButton, previewTextStack])
+        let previewRow = UIStackView(arrangedSubviews: [previewPlayBackground, previewTextStack])
         previewRow.translatesAutoresizingMaskIntoConstraints = false
         previewRow.axis = .horizontal
         previewRow.spacing = AppSpacing.sp3
@@ -661,14 +671,14 @@ extension SoundPickerViewController {
             // The earlier «padding "4px 20px"» citation was
             // wrong twice over: no such row rule exists in the prototype — as
             // a standalone value that shorthand appears once, on a theme block
-            // (`docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:212` contains "4px 20px 12px");
+            // (`docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:209` contains "4px 20px 12px");
             // see the note in `setupContent()` for why a
             // grep makes it look like five — and the sound rows it claimed to
             // match use a different inset (#685).
             //
             // Canon for a row card of this family is `<SPCard padding={4}>`
             // (`docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:266` contains "SPCard padding={4}",
-            // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:420` contains "SPCard padding={4}")
+            // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:419` contains "SPCard padding={4}")
             // wrapping `.sp-row`, which
             // has `padding: 14px 0` (`components.css:86-88`) — 4pt, not 20.
             // The 20 is kept because it is the same number the rest of the app

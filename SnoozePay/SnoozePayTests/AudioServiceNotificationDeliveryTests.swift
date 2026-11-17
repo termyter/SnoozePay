@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import SnoozePay
 
@@ -91,9 +92,13 @@ final class AudioServiceNotificationDeliveryTests: XCTestCase {
     /// Transitions driven from a background thread reach observers on main,
     /// with the service as `object` and each state in `userInfo`, in the
     /// order they happened. The observer uses `queue: nil`, so it runs on the
-    /// posting thread and records where the post really came from.
-    func testBackgroundTransitions_areDeliveredOnMainInOrderWithTheirState() {
+    /// posting thread and records where the post really came from. Session and
+    /// player calls are controlled here: their native latency is not the
+    /// notification contract. The other cases retain real audio dependencies.
+    func testBackgroundTransitions_areDeliveredOnMainInOrderWithTheirState() throws {
         let service = AudioService.shared
+        let player = try installNotificationOrderPlayer()
+        defer { restoreAudioDependencies() }
         var deliveries: [Delivery] = []
         observers.append(NotificationCenter.default.addObserver(
             forName: AudioService.stateChangedNotification,
@@ -122,6 +127,7 @@ final class AudioServiceNotificationDeliveryTests: XCTestCase {
         let started = states.first ?? nil
         XCTAssertNotNil(started, "nothing was delivered, or a delivery lost its userInfo state")
         XCTAssertNotEqual(started, .stopped, "the first delivery must be the start's state")
+        XCTAssertEqual(started, .playing, "the controlled player must reach the real playing transition")
         XCTAssertEqual(
             states, [started, .stopped, started, .stopped],
             "every transition must be delivered once, in the order it happened"
@@ -135,6 +141,13 @@ final class AudioServiceNotificationDeliveryTests: XCTestCase {
             "the notification's object must stay the service"
         )
         XCTAssertEqual(states.last ?? nil, service.state, "the last delivered state must be the current one")
+        XCTAssertEqual(states, [.playing, .stopped, .playing, .stopped])
+        XCTAssertEqual(
+            player.calls,
+            ["activate", "prepare", "play", "stop", "deactivate",
+             "activate", "prepare", "play", "stop", "deactivate"],
+            "both cycles must traverse session activation, player start and session handoff"
+        )
     }
 
     /// A main-thread transition is not delivered inside the call that made it.
@@ -266,6 +279,24 @@ final class AudioServiceNotificationDeliveryTests: XCTestCase {
 
     // MARK: - Helpers
 
+    private func installNotificationOrderPlayer() throws -> NotificationOrderAudioPlayer {
+        let service = AudioService.shared
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "default_alarm", withExtension: "caf"))
+        let player = try NotificationOrderAudioPlayer(contentsOf: url)
+        service.overrideSessionActivation { player.record("activate") }
+        service.overrideSessionDeactivation { player.record("deactivate") }
+        service.overrideAlarmPlayerResolution { _ in player }
+        return player
+    }
+
+    private func restoreAudioDependencies() {
+        let service = AudioService.shared
+        service.stopAlarmSound()
+        service.overrideAlarmPlayerResolution(nil)
+        service.overrideSessionActivation(nil)
+        service.overrideSessionDeactivation(nil)
+    }
+
     /// Run `transition` on a background thread while main is blocked on a
     /// semaphore, and fail if it does not return within two seconds.
     ///
@@ -328,5 +359,38 @@ final class AudioServiceNotificationDeliveryTests: XCTestCase {
             "the main observer must see the transition once, with the state it landed in",
             file: file, line: line
         )
+    }
+}
+
+/// The real service still mutates state and posts notifications. Only session
+/// and player operations are controlled; vibration and run-loop calls remain.
+nonisolated private final class NotificationOrderAudioPlayer: AVAudioPlayer {
+    private let callsLock = NSLock()
+    private var recordedCalls: [String] = []
+
+    var calls: [String] {
+        callsLock.lock()
+        defer { callsLock.unlock() }
+        return recordedCalls
+    }
+
+    func record(_ call: String) {
+        callsLock.lock()
+        defer { callsLock.unlock() }
+        recordedCalls.append(call)
+    }
+
+    override func prepareToPlay() -> Bool {
+        record("prepare")
+        return true
+    }
+
+    override func play() -> Bool {
+        record("play")
+        return true
+    }
+
+    override func stop() {
+        record("stop")
     }
 }

@@ -41,6 +41,20 @@ extension AlarmFiringViewController {
         snooze.accessibilityIdentifier = "firing.snoozeButton"
         view.addSubview(snooze)
         snoozeCTA = snooze
+        progressionUnavailableLabel.text = Localized.text("firing.progression.unavailable")
+        progressionUnavailableLabel.font = AppTypography.body
+        progressionUnavailableLabel.textColor = AppColors.fgOnHeroDeep
+        progressionUnavailableLabel.textAlignment = .center
+        progressionUnavailableLabel.numberOfLines = 0
+        progressionUnavailableLabel.accessibilityIdentifier = "firing.progressionUnavailable"
+        progressionUnavailableLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(progressionUnavailableLabel)
+        NSLayoutConstraint.activate([
+            progressionUnavailableLabel.leadingAnchor.constraint(equalTo: snooze.leadingAnchor),
+            progressionUnavailableLabel.trailingAnchor.constraint(equalTo: snooze.trailingAnchor),
+            progressionUnavailableLabel.topAnchor.constraint(equalTo: snooze.topAnchor),
+            progressionUnavailableLabel.bottomAnchor.constraint(equalTo: snooze.bottomAnchor)
+        ])
 
         dismissButton.translatesAutoresizingMaskIntoConstraints = false
         // Heavier ghost stroke for the wake CTA: 1.5pt white at .22 alpha

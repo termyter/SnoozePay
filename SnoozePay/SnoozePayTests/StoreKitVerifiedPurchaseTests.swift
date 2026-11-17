@@ -7,6 +7,7 @@ final class StoreKitVerifiedPurchaseTests: XCTestCase {
     private var suite: String!
     private var balance: BalanceService!
     private var store: StoreKitService!
+    private var poster: LocalNotificationPosterSpy!
     private let usd = Currency(code: "USD")!
     private var rows: [Transaction] { TransactionRepository(defaults: defaults).fetchAll() }
 
@@ -15,7 +16,8 @@ final class StoreKitVerifiedPurchaseTests: XCTestCase {
         suite = "StoreKitVerifiedPurchaseTests.\(UUID())"
         defaults = UserDefaults(suiteName: suite)!
         balance = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
-        store = StoreKitService(notificationPoster: LocalNotificationPosterSpy(), defaults: defaults)
+        poster = LocalNotificationPosterSpy()
+        store = StoreKitService(notificationPoster: poster, defaults: defaults)
         store.beginObservingPurchaseFeedback()
     }
 
@@ -139,5 +141,62 @@ final class StoreKitVerifiedPurchaseTests: XCTestCase {
         XCTAssertEqual(finishes, 1)
         XCTAssertEqual(balance.balance, 299)
         XCTAssertEqual(rows.count, 1)
+    }
+
+    func testDeferredUsdCreditNotifiesOnceWithReceiptAmountAndCurrency() async {
+        store.endObservingPurchaseFeedback()
+        var finishes = 0
+        let candidate = purchase(currency: usd)
+        await store.applyVerifiedPurchase(candidate, balance: balance) { finishes += 1 }
+        await store.applyVerifiedPurchase(candidate, balance: balance) { finishes += 1 }
+
+        XCTAssertEqual(finishes, 2, "Replays finish without crediting or notifying twice")
+        XCTAssertEqual(balance.balance, 2.99)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.amount, 2.99)
+        XCTAssertEqual(rows.first?.currency, usd)
+        XCTAssertEqual(poster.requests.count, 1)
+        let request = poster.requests.first
+        XCTAssertEqual(request?.content.title, "Баланс пополнен")
+        XCTAssertEqual(request?.content.body, "Баланс пополнен на \(MoneyFormatter.string(2.99, currency: usd)).")
+        XCTAssertFalse(request?.content.body.contains("₽") ?? true)
+        XCTAssertNil(request?.trigger)
+    }
+
+    func testDeferredRubCreditPreservesPaidKopecks() async {
+        store.endObservingPurchaseFeedback()
+        var finishes = 0
+        await store.applyVerifiedPurchase(purchase(price: 149.99, currency: .rub), balance: balance) {
+            finishes += 1
+            XCTAssertEqual(self.balance.balance, 149.99)
+            XCTAssertTrue(self.poster.requests.isEmpty, "Feedback follows successful finish")
+        }
+
+        XCTAssertEqual(finishes, 1)
+        XCTAssertEqual(rows.first?.amount, 149.99)
+        XCTAssertEqual(rows.first?.currency, .rub)
+        XCTAssertEqual(poster.requests.count, 1)
+        XCTAssertEqual(poster.requests.first?.content.body, "Баланс пополнен на 149,99\u{202F}₽.")
+    }
+
+    func testVerifiedCreditWithSubscriberBroadcastsActualAmountWithoutLocalNotification() async {
+        let observedStore = store!
+        var received: [Notification] = []
+        let token = NotificationCenter.default.addObserver(
+            forName: StoreKitService.purchaseCompletedNotification, object: nil, queue: nil
+        ) { note in
+            guard (note.object as? StoreKitService) === observedStore else { return }
+            received.append(note)
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        var finishes = 0
+        await store.applyVerifiedPurchase(purchase(currency: usd), balance: balance) { finishes += 1 }
+
+        XCTAssertEqual(finishes, 1)
+        XCTAssertEqual(balance.balance, 2.99)
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(received.first?.userInfo?[StoreKitService.amountUserInfoKey] as? Double, 2.99)
+        XCTAssertTrue(poster.requests.isEmpty)
     }
 }

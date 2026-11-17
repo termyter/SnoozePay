@@ -51,9 +51,10 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// questions cannot be answered without one — `rectForFooter(inSection:)`
     /// on an unlaid table reports nothing.
     private func laidOutSettings(
-        referralEnabled: Bool = AppFeatureFlags.referralEnabled
-    ) throws -> SettingsViewController {
-        let sut = makeSettings()
+        referralEnabled: Bool = AppFeatureFlags.referralEnabled,
+        recoveryVisible: Bool = false
+    ) throws -> SettingsVisibilityController {
+        let sut = makeSettings(recoveryVisible: recoveryVisible)
         sut.referralEnabled = referralEnabled
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 900))
         if let scene = UIApplication.shared.connectedScenes
@@ -70,7 +71,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         return sut
     }
 
-    private func makeSettings() -> SettingsViewController {
+    private func makeSettings(recoveryVisible: Bool = false) -> SettingsVisibilityController {
         let suite = "test.referral.visibility.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         suites.append((name: suite, defaults: defaults))
@@ -78,7 +79,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         // at `.shared`. Laying the section out in the ON position calls
         // `getMyCode()`, which GENERATES AND PERSISTS a code on first read —
         // against `.shared` that write lands in `UserDefaults.standard` (#690).
-        let sut = SettingsViewController(
+        let sut = SettingsVisibilityController(
             alarmDefaults: AlarmDefaults(defaults: defaults),
             referralService: ReferralService(
                 defaults: defaults,
@@ -88,6 +89,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
                 )
             )
         )
+        sut.recoveryVisible = recoveryVisible
         sut.loadViewIfNeeded()
         return sut
     }
@@ -95,7 +97,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     // MARK: - Section model, both flag positions
 
     func testTheSectionModelDropsReferralWhenTheFlagIsOff() {
-        let sections = SettingsViewController.visibleSections(referralEnabled: false)
+        let sections = SettingsViewController.visibleSections(referralEnabled: false, recoveryVisible: true)
         XCTAssertFalse(sections.contains(.referral))
         XCTAssertEqual(sections.count, SettingsViewController.Section.allCases.count - 1)
     }
@@ -109,7 +111,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// test was green against code that never ran. Both helpers are gone; the
     /// model has one gate and it is asserted here and on a live table below.
     func testTheSectionModelRestoresReferralWhenTheFlagIsOn() {
-        let sections = SettingsViewController.visibleSections(referralEnabled: true)
+        let sections = SettingsViewController.visibleSections(referralEnabled: true, recoveryVisible: true)
         XCTAssertEqual(sections, SettingsViewController.Section.allCases)
         XCTAssertEqual(SettingsViewController.ReferralRow.allCases.count, 3)
     }
@@ -132,8 +134,8 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         XCTAssertEqual(
             sut.tableView.numberOfSections,
             AppFeatureFlags.referralEnabled
-                ? SettingsViewController.Section.allCases.count
-                : SettingsViewController.Section.allCases.count - 1
+                ? SettingsViewController.Section.allCases.count - 1
+                : SettingsViewController.Section.allCases.count - 2
         )
     }
 
@@ -151,7 +153,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
 
         XCTAssertEqual(
             sut.tableView.numberOfSections,
-            SettingsViewController.Section.allCases.count,
+            SettingsViewController.Section.allCases.count - 1,
             "the table did not build the referral section back"
         )
 
@@ -176,14 +178,14 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         let sut = try laidOutSettings(referralEnabled: false)
         XCTAssertEqual(
             sut.tableView.numberOfSections,
-            SettingsViewController.Section.allCases.count - 1
+            SettingsViewController.Section.allCases.count - 2
         )
 
         sut.referralEnabled = true
 
         XCTAssertEqual(
             sut.tableView.numberOfSections,
-            SettingsViewController.Section.allCases.count,
+            SettingsViewController.Section.allCases.count - 1,
             "the table did not rebuild when the flag flipped under it"
         )
         let index = try XCTUnwrap(sut.visibleSections.firstIndex(of: .referral))
@@ -204,14 +206,14 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// and without the method (875.0000089009603 either way, at 402pt).
     ///
     /// So this asks the table, not the delegate: how many sections did it
-    /// actually build, and does its content end where six sections' worth of
-    /// footers would put it.
+    /// actually build? Healthy Settings has neither optional section, so
+    /// neither can reserve a phantom footer.
     func testTheHiddenSectionIsAbsentFromTheTable_notMerelyEmpty() throws {
         let sut = try laidOutSettings(referralEnabled: false)
 
         XCTAssertEqual(
-            sut.tableView.numberOfSections, SettingsViewController.Section.allCases.count - 1,
-            "the referral section is still built; an empty section still reserves its footer"
+            sut.tableView.numberOfSections, SettingsViewController.Section.allCases.count - 2,
+            "a hidden section is still built; an empty section still reserves its footer"
         )
         XCTAssertFalse(
             sut.visibleSections.contains(.referral),
@@ -228,13 +230,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     func testEverySectionThatRendersKeepsItsFooterGap() throws {
         let sut = try laidOutSettings()
         for index in 0..<sut.tableView.numberOfSections {
-            // Only sections that actually render. `.diagnostics` stays in the
-            // list while empty and keeps a phantom footer — deliberate, since
-            // it merges into the padding above the version line — but that is a
-            // wart being tolerated (#684), not a requirement. Asserting it here
-            // would fail the day someone collapses it, with a message claiming
-            // the sections had run together.
-            guard sut.tableView.numberOfRows(inSection: index) > 0 else { continue }
+            XCTAssertGreaterThan(sut.tableView.numberOfRows(inSection: index), 0)
             let footer = sut.tableView.rectForFooter(inSection: index)
             XCTAssertGreaterThan(
                 footer.height, 1,
@@ -244,6 +240,89 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
                 """
             )
         }
+    }
+
+    /// Exercise the real mapping and row factories in every combination,
+    /// including recovery without referral: it must occupy index 4, not its
+    /// raw value 5. No shared repository is corrupted to reach that state.
+    func testOptionalSectionsMapToTheirRowsInEveryCombination() throws {
+        let cases: [((referral: Bool, recovery: Bool), [SettingsViewController.Section])] = [
+            ((false, false), [.finance, .soundNotifications, .rules, .other]),
+            ((true, false), [.finance, .soundNotifications, .rules, .referral, .other]),
+            ((false, true), [.finance, .soundNotifications, .rules, .other, .diagnostics]),
+            ((true, true), [.finance, .soundNotifications, .rules, .referral, .other, .diagnostics])
+        ]
+        for (flags, expected) in cases {
+            let sut = try laidOutSettings(referralEnabled: flags.referral, recoveryVisible: flags.recovery)
+            XCTAssertEqual(sut.visibleSections, expected)
+            XCTAssertEqual(sut.tableView.numberOfSections, expected.count)
+            for (index, section) in expected.enumerated() {
+                XCTAssertEqual(sut.visibleSection(at: index), section)
+                XCTAssertGreaterThan(sut.tableView.numberOfRows(inSection: index), 0)
+                XCTAssertNotNil(sut.tableView(sut.tableView, titleForHeaderInSection: index))
+                XCTAssertGreaterThan(sut.tableView.rectForFooter(inSection: index).height, 1)
+            }
+            XCTAssertNil(sut.visibleSection(at: expected.count))
+            if flags.recovery {
+                let index = try XCTUnwrap(sut.visibleSections.firstIndex(of: .diagnostics))
+                XCTAssertEqual(sut.tableView.numberOfRows(inSection: index), 1)
+                let cell = sut.tableView(sut.tableView, cellForRowAt: IndexPath(row: 0, section: index))
+                XCTAssertTrue(cell is SettingsIconRowCell)
+                XCTAssertTrue(containsRecoveryTitle(in: cell))
+            }
+        }
+    }
+
+    /// Returning from a failed repository load and from recovery rebuilds the
+    /// existing table; the diagnostic row must appear and disappear as a
+    /// section, while the following version footer remains a table footer.
+    func testRecoveryVisibilityRebuildsTheLaidOutTableOnAppearance() throws {
+        let sut = try laidOutSettings(referralEnabled: false)
+        XCTAssertEqual(sut.tableView.numberOfSections, 4)
+
+        sut.recoveryVisible = true
+        sut.viewWillAppear(false)
+        sut.tableView.layoutIfNeeded()
+        XCTAssertEqual(sut.visibleSection(at: 4), .diagnostics)
+        XCTAssertEqual(sut.tableView.numberOfSections, 5)
+        XCTAssertEqual(sut.tableView.numberOfRows(inSection: 4), 1)
+
+        sut.recoveryVisible = false
+        sut.viewWillAppear(false)
+        sut.tableView.layoutIfNeeded()
+        XCTAssertEqual(sut.tableView.numberOfSections, 4)
+        XCTAssertNil(sut.visibleSection(at: 4))
+    }
+
+    /// Removing an empty section removes its footer, not the version line or
+    /// the final visible section's spacing. Measure the laid-out boundary in
+    /// both themes instead of pinning the old 17.33pt empty-section artifact.
+    func testVersionFooterFollowsTheLastVisibleSectionInBothThemes() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for recovery in [false, true] {
+                let sut = try laidOutSettings(referralEnabled: false, recoveryVisible: recovery)
+                sut.view.window?.overrideUserInterfaceStyle = style
+                sut.view.window?.layoutIfNeeded()
+                sut.tableView.layoutIfNeeded()
+                let footer = try XCTUnwrap(sut.tableView.tableFooterView)
+                footer.layoutIfNeeded()
+                let lastIndex = sut.tableView.numberOfSections - 1
+                let sectionEnd = sut.tableView.rect(forSection: lastIndex).maxY
+                XCTAssertEqual(footer.frame.minY, sectionEnd, accuracy: 1 / sut.tableView.traitCollection.displayScale)
+                XCTAssertGreaterThan(footer.bounds.height, 0)
+                let label = try XCTUnwrap(footer.subviews.compactMap { $0 as? UILabel }.first)
+                XCTAssertEqual(label.text, SettingsViewController.versionFooterString())
+                XCTAssertGreaterThan(label.frame.minY, 0)
+                XCTAssertLessThan(label.frame.maxY, footer.bounds.height)
+            }
+        }
+    }
+
+    private func containsRecoveryTitle(in view: UIView) -> Bool {
+        if let label = view as? UILabel, label.text == Localized.text("settings.recovery.row_title") {
+            return true
+        }
+        return view.subviews.contains { containsRecoveryTitle(in: $0) }
     }
 
     /// The row the hidden section used to own must not be reachable through
@@ -327,6 +406,11 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
     /// wrong action — or to nothing — is caught here rather than nowhere.
     func testTappingTheStatisticsShortcutOpensTheReferralScreen() throws {
         let sut = StatisticsViewController()
+        var factoryCalls = 0
+        sut.referralControllerFactory = {
+            factoryCalls += 1
+            return ReferralViewController(personalCodeProvider: { "ABCD23" })
+        }
         sut.referralShortcutEnabled = true
         let stack = UINavigationController(rootViewController: sut)
         let window = makeHostWindow()
@@ -340,6 +424,7 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
             "the hosted screen has no referral shortcut to tap"
         )
         button.sendActions(for: .touchUpInside)
+        XCTAssertEqual(factoryCalls, 1)
 
         XCTAssertTrue(
             stack.topViewController is ReferralViewController,
@@ -376,8 +461,14 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
 
     private func debugRowLabels(referralShortcutEnabled: Bool) throws -> [String] {
         let sut = StatisticsViewController()
+        var factoryCalls = 0
+        sut.referralControllerFactory = {
+            factoryCalls += 1
+            return ReferralViewController(personalCodeProvider: { "ABCD23" })
+        }
         sut.referralShortcutEnabled = referralShortcutEnabled
         let stack = try XCTUnwrap(sut.makeDebugButtonsRow() as? UIStackView)
+        XCTAssertEqual(factoryCalls, 0, "Building the row must not create a referral identity")
         return stack.arrangedSubviews.compactMap { $0.accessibilityLabel }
     }
 
@@ -418,4 +509,12 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
         XCTAssertNotNil(sut.tableView.dequeueReusableCell(withIdentifier: ReferralFriendInputCell.reuseID))
         XCTAssertNotNil(sut.tableView.dequeueReusableCell(withIdentifier: ReferralCaptionCell.reuseID))
     }
+}
+
+/// Only the recovery read is replaced. The production section mapping,
+/// data source, row construction and lifecycle reloads are exercised intact.
+private final class SettingsVisibilityController: SettingsViewController {
+    var recoveryVisible = false
+
+    override var isRecoveryVisible: Bool { recoveryVisible }
 }
