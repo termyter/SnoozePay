@@ -19,7 +19,8 @@ nonisolated enum SnoozePriceTier: Int, Codable, CaseIterable, Sendable {
     /// Reads a legacy bare amount — written when every alarm was priced in roubles —
     /// as a tier, for a context where roubles are not the currency: `≤ 50 → low`,
     /// `≤ 100 → mid`, anything above → `high`. Nothing is rewritten on disk; the
-    /// mapping happens at read time.
+    /// mapping happens at read time. `0` maps to `low` here, but the resolver never
+    /// asks: a free alarm resolves to zero before this mapping (#1127).
     ///
     /// `nil` for a negative or non-finite amount: such a value was never a valid
     /// price, and guessing a tier for it would charge a number nobody chose.
@@ -40,7 +41,8 @@ nonisolated enum SnoozePriceTier: Int, Codable, CaseIterable, Sendable {
 /// - `tier` — chosen outside roubles; resolves against the wallet's scale.
 /// - `amount` — the legacy rouble number (`Alarm.penaltyAmount`). In a rouble
 ///   context it is charged exactly as today; elsewhere it is read as a tier via
-///   `SnoozePriceTier(legacyAmount:)`.
+///   `SnoozePriceTier(legacyAmount:)` — except an amount ≤ 0, which stays free in
+///   every currency (`SnoozePriceResolver.base`, #1127).
 nonisolated enum SnoozePrice: Equatable, Sendable {
     case tier(SnoozePriceTier)
     case amount(Double)

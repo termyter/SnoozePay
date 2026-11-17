@@ -109,9 +109,38 @@ final class SnoozePriceResolverTests: XCTestCase {
         }
     }
 
+    /// NaN and infinity were never a price. A finite amount ≤ 0 is not invalid
+    /// any more — it is a free alarm (#1127), see the test below.
     func testInvalidAmountResolvesToNil() {
-        for amount in [-1, Double.nan, .infinity] {
+        for amount in [Double.nan, .infinity, -.infinity] {
             for context in [SnoozePriceContext.scale(.rouble), .scale(usdScale)] {
+                XCTAssertNil(SnoozePriceResolver.resolve(
+                    .amount(amount), snoozeCount: 1, isProgressive: true, in: context
+                ), "\(amount) in \(context)")
+            }
+        }
+    }
+
+    /// #1127: a free alarm stays free in every currency, at every count, flat or
+    /// progressive — not the low tier (which `SnoozePriceTier(legacyAmount: 0)`
+    /// would give outside roubles), not `nil`. An unavailable context still
+    /// charges nothing it could guess at: `nil`.
+    func testZeroAmountStaysFreeInEveryCurrency() {
+        for amount in [0.0, -0.0, -1, -50] {
+            for context in [SnoozePriceContext.scale(.rouble), .scale(usdScale)] {
+                for progressive in [false, true] {
+                    for count in 0...6 {
+                        XCTAssertEqual(
+                            SnoozePriceResolver.resolve(
+                                .amount(amount), snoozeCount: count, isProgressive: progressive, in: context
+                            ),
+                            .zero(context.currency),
+                            "\(amount) in \(context) progressive=\(progressive) count=\(count)"
+                        )
+                    }
+                }
+            }
+            for context in [SnoozePriceContext.unavailable(usd), .unavailable(.rub)] {
                 XCTAssertNil(SnoozePriceResolver.resolve(
                     .amount(amount), snoozeCount: 1, isProgressive: true, in: context
                 ), "\(amount) in \(context)")

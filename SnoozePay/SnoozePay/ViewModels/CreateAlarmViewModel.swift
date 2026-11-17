@@ -46,6 +46,13 @@ final class CreateAlarmViewModel {
     var repeatMode: AlarmRepeatMode
 
     private let existingID: UUID?
+    /// The edited alarm's snooze-price tier and the amount it opened with
+    /// (#1127). The form has no tier control yet, so the tier is carried through
+    /// a save untouched — rebuilding the alarm without it would silently turn a
+    /// tier alarm back into a bare amount. Editing the amount drops it: the
+    /// number the user just chose is the price.
+    private let openedTier: SnoozePriceTier?
+    private let openedPenaltyAmount: Double?
 
     var isEditing: Bool { existingID != nil }
 
@@ -69,6 +76,8 @@ final class CreateAlarmViewModel {
         self.balanceService = balanceService
         self.backendMonitor = backendMonitor
         self.existingID = alarm?.id
+        self.openedTier = alarm?.penaltyTier
+        self.openedPenaltyAmount = alarm?.penaltyAmount
         self.editorCalendar = calendar
 
         // Seed from existing alarm or — for a brand-new alarm — the user's
@@ -301,6 +310,7 @@ final class CreateAlarmViewModel {
             vibrationEnabled: vibrationEnabled,
             snoozeMinutes: safeSnooze,
             penaltyAmount: safePenalty,
+            penaltyTier: safePenalty == openedPenaltyAmount ? openedTier : nil,
             progressiveScale: progressiveScale,
             enabled: enabled,
             volume: volume,
