@@ -329,26 +329,26 @@ final class StoreKitServiceTests: XCTestCase {
         XCTAssertNil(defaults.array(forKey: "storekit.processed_tx_ids") as? [String])
     }
 
-    func testUnmarkProcessed_missingTableDoesNotInventAMarkerAndReplayCanRecord() {
+    func testIsProcessed_missingTableIsFalseAndWritesNothing() {
         let (defaults, name) = makeSuite()
         defer { defaults.removePersistentDomain(forName: name) }
         let service = makeService(poster: LocalNotificationPosterSpy(), defaults: defaults)
 
-        service.unmarkProcessed(transactionID: 42)
-
+        XCTAssertEqual(service.isProcessed(transactionID: 42), false)
         XCTAssertNil(defaults.object(forKey: "storekit.processed_tx_ids"))
         XCTAssertEqual(service.markProcessed(transactionID: 42), .recorded)
+        XCTAssertEqual(service.isProcessed(transactionID: 42), true)
     }
 
-    func testUnmarkProcessed_corruptTableIsPreservedAndReplayStaysDegraded() {
+    /// An unreadable table is "unknown", never "not processed" (#1011).
+    func testIsProcessed_corruptTableIsUnknownAndPreserved() {
         let (defaults, name) = makeSuite()
         defer { defaults.removePersistentDomain(forName: name) }
         let service = makeService(poster: LocalNotificationPosterSpy(), defaults: defaults)
         let corrupt = ["unexpected": 1]
         defaults.set(corrupt, forKey: "storekit.processed_tx_ids")
 
-        service.unmarkProcessed(transactionID: 42)
-
+        XCTAssertNil(service.isProcessed(transactionID: 42))
         XCTAssertEqual(defaults.dictionary(forKey: "storekit.processed_tx_ids") as? [String: Int], corrupt)
         XCTAssertEqual(service.markProcessed(transactionID: 42), .degraded)
         XCTAssertEqual(defaults.dictionary(forKey: "storekit.processed_tx_ids") as? [String: Int], corrupt)

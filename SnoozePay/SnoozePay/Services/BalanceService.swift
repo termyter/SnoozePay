@@ -206,7 +206,7 @@ final class BalanceService {
     /// no longer accepts a `refundsTransactionID`.
     @discardableResult
     func topUp(amount: Double) -> Bool {
-        credit(type: .topup, amount: amount)
+        credit(type: .topup, amount: amount) == .recorded
     }
 
     // MARK: - Refund (reversal of a snooze penalty)
@@ -228,7 +228,7 @@ final class BalanceService {
     /// did NOT land and the caller must surface a wallet-desync warning.
     @discardableResult
     func refund(amount: Double, refundsTransactionID: UUID? = nil) -> Bool {
-        credit(type: .refund, amount: amount, refundsTransactionID: refundsTransactionID)
+        credit(type: .refund, amount: amount, refundsTransactionID: refundsTransactionID) == .recorded
     }
 
     // MARK: - Promotional credit (referral, daily bonus, ...)
@@ -241,31 +241,37 @@ final class BalanceService {
     /// logic that keys off `.topup` (issue #144).
     @discardableResult
     func creditPromotion(amount: Double) -> Bool {
-        credit(type: .promotion, amount: amount)
+        credit(type: .promotion, amount: amount) == .recorded
     }
 
     /// Shared implementation behind every credit (`topUp` / `refund` /
     /// `creditPromotion`). Only the ledger `type` differs — the corruption
     /// gating, amount validation and ledger-first ordering are identical and
     /// must stay that way, so they live in one place.
+    ///
+    /// `id` is random for every credit except a paid purchase, whose row id is
+    /// derived from the StoreKit transaction (#1011) — that is what makes a
+    /// replay come back `.duplicate` instead of crediting twice.
     private func credit(
         type: TransactionType,
         amount: Double,
         createdAt: Date = Date(),
+        id: UUID = UUID(),
         refundsTransactionID: UUID? = nil
-    ) -> Bool {
+    ) -> LedgerWriteResult {
         // Reject non-finite / non-positive amounts (#441): a negative credit
         // would record a positive-typed row while DECREASING the balance
         // (ledger/balance divergence that can drive `user_balance` negative and
         // latch #119 corruption); a NaN would persist into storage before the
         // read-time guard fires.
-        guard amount.isFinite, amount > 0 else { return false }
+        guard amount.isFinite, amount > 0 else { return .rejected }
 
-        let result: (recorded: Bool, newBalance: Double) = queue.sync {
+        let result: (write: LedgerWriteResult, newBalance: Double) = queue.sync {
             let current = readRawBalance()
-            guard !_balanceCorrupted else { return (false, current) }
+            guard !_balanceCorrupted else { return (.rejected, current) }
 
             let transaction = Transaction(
+                id: id,
                 type: type,
                 amount: amount,
                 currency: walletCurrency,
@@ -276,16 +282,14 @@ final class BalanceService {
             // ack), encoding fails, or the row is a replay of an id already in
             // the ledger, the balance must not move — an unrecorded credit is a
             // silent desync (#72), a replayed one is double-crediting (#483).
-            guard ledgerStore.append(transaction) == .recorded else {
-                return (false, current)
-            }
-            return (true, readRawBalance())
+            let write = ledgerStore.append(transaction)
+            return (write, write == .recorded ? readRawBalance() : current)
         }
 
-        if result.recorded {
+        if result.write == .recorded {
             notifyBalanceChanged(result.newBalance)
         }
-        return result.recorded
+        return result.write
     }
 
     // MARK: - Validation
@@ -448,8 +452,12 @@ final class BalanceService {
         /// Nothing was credited — the caller must surface this rather than
         /// crediting the bare number (that is #558).
         case refusedCurrency(wallet: Currency, purchase: Currency)
-        /// Ledger locked / encoding failed / replayed row — same failure modes
-        /// as `topUp(amount:)` returning `false`.
+        /// The row keyed on this purchase is already in the ledger: an earlier
+        /// run credited it and died before finishing the transaction (#1011).
+        /// Nothing moved now; the caller may mark and finish.
+        case alreadyCredited
+        /// Ledger locked / encoding failed / corrupted balance — same failure
+        /// modes as `topUp(amount:)` returning `false`.
         case notRecorded
     }
 
@@ -466,13 +474,18 @@ final class BalanceService {
     /// on a clean install (#364) — a top-up bought in March is March's revenue
     /// in Statistics, not today's. It does not affect the balance: the ledger
     /// sum is order-independent.
+    ///
+    /// `ledgerID` is `RestorableTopUp.ledgerRowID` — the persisted link between
+    /// the StoreKit transaction and its credit (#1011). The default (random)
+    /// exists only for callers with no StoreKit transaction behind them.
     func topUpFromPurchase(
         amount: Double,
         currency: Currency?,
-        purchasedAt: Date = Date()
+        purchasedAt: Date = Date(),
+        ledgerID: UUID = UUID()
     ) -> PurchaseCredit {
         guard let currency else {
-            return creditPaid(amount: amount, at: purchasedAt)
+            return creditPaid(amount: amount, at: purchasedAt, id: ledgerID)
         }
         guard acceptsPurchase(in: currency) else {
             return .refusedCurrency(wallet: walletCurrency, purchase: currency)
@@ -488,11 +501,15 @@ final class BalanceService {
             // above and here. Refuse rather than credit into the wrong wallet.
             return .refusedCurrency(wallet: existing, purchase: attempted)
         }
-        return creditPaid(amount: amount, at: purchasedAt)
+        return creditPaid(amount: amount, at: purchasedAt, id: ledgerID)
     }
 
-    private func creditPaid(amount: Double, at date: Date) -> PurchaseCredit {
-        credit(type: .topup, amount: amount, createdAt: date) ? .credited : .notRecorded
+    private func creditPaid(amount: Double, at date: Date, id: UUID) -> PurchaseCredit {
+        switch credit(type: .topup, amount: amount, createdAt: date, id: id) {
+        case .recorded: return .credited
+        case .duplicate: return .alreadyCredited
+        case .rejected: return .notRecorded
+        }
     }
 
     /// Money-typed charge. Returns `false` when funds are insufficient,

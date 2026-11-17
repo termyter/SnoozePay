@@ -37,6 +37,16 @@ extension RestorableTopUp {
                   currency: transaction.currency.flatMap { Currency($0) },
                   transactionPrice: transaction.price, purchaseDate: transaction.purchaseDate)
     }
+
+    /// Ledger row id derived from `transactionID` — the persisted link between
+    /// a paid transaction and its credit (#1011). A fixed prefix plus the eight
+    /// bytes of the id: bijective, so a replay finds its own row and nothing
+    /// else, and no random-UUID legacy row can be mistaken for one.
+    var ledgerRowID: UUID {
+        let id: [UInt8] = withUnsafeBytes(of: transactionID.bigEndian) { Array($0) }
+        return UUID(uuid: (0x53, 0x50, 0x41, 0x59, 0x00, 0x00, 0x80, 0x00,
+                           id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7]))
+    }
 }
 
 /// What one restore pass did. Returned (rather than only logged) so the
@@ -90,10 +100,9 @@ struct TopUpRestoreReport: Equatable {
 ///
 /// Two independent guards, and both are load-bearing:
 ///
-///  * **Per transaction** — every credit goes through
-///    `StoreKitService.markProcessed(transactionID:)`, the same dedup table the
-///    purchase and `Transaction.updates` paths use. A replay is a no-op there,
-///    whichever path saw it first.
+///  * **Per transaction** — a transaction in `StoreKitService`'s dedup table
+///    is skipped, and every credit is keyed on `RestorableTopUp.ledgerRowID`,
+///    so a replay is a no-op whichever path saw it first (#1011).
 ///  * **Per wallet** — the pass only runs on a *pristine* wallet (zero balance,
 ///    empty ledger, no latched corruption). A wallet with history already holds
 ///    the money these transactions bought.
@@ -152,18 +161,18 @@ final class TopUpRestoreService {
                 AppLogger.storeKit.error("restore skipped invalid paid metadata — not marking processed")
                 continue
             }
-            switch storeKit.markProcessed(transactionID: candidate.transactionID) {
-            case .alreadyProcessed:
+            switch storeKit.isProcessed(transactionID: candidate.transactionID) {
+            case true?:
                 report.alreadyCredited += 1
                 continue
-            case .degraded:
+            case nil:
                 // The dedup table's plist type has drifted, so "already
                 // credited?" has no answer. Stop the whole pass rather than
                 // credit blind — the wallet stays pristine and the next launch
                 // (after recovery) tries again.
                 AppLogger.storeKit.error("restore aborted — dedup table degraded")
                 return report
-            case .recorded:
+            case false?:
                 break
             }
             credit(candidate, amount: amount, into: &report)
@@ -190,19 +199,24 @@ final class TopUpRestoreService {
         switch balance.topUpFromPurchase(
             amount: amount,
             currency: candidate.currency,
-            purchasedAt: candidate.purchaseDate
+            purchasedAt: candidate.purchaseDate,
+            ledgerID: candidate.ledgerRowID
         ) {
         case .credited:
             report.credited += amount
             report.creditedCount += 1
+            storeKit.markProcessed(transactionID: candidate.transactionID)
+
+        case .alreadyCredited:
+            report.alreadyCredited += 1
+            storeKit.markProcessed(transactionID: candidate.transactionID)
 
         case .refusedCurrency(let wallet, let purchase):
             // A purchase from a storefront the user has since left. Crediting
             // the bare number would book `purchase` money as `wallet` money
             // (#558) and there is no conversion in this app (#559), so it is
-            // dropped. Unmarked so it stays eligible if the wallet is ever
+            // dropped. Never marked, so it stays eligible if the wallet is ever
             // wiped back to pristine.
-            storeKit.unmarkProcessed(transactionID: candidate.transactionID)
             report.foreignCurrency += 1
             AppLogger.balance.notice(
                 """
@@ -212,7 +226,6 @@ final class TopUpRestoreService {
             )
 
         case .notRecorded:
-            storeKit.unmarkProcessed(transactionID: candidate.transactionID)
             report.notRecorded += 1
             AppLogger.balance.error("restore could not record a top-up — ledger refused the write")
         }
