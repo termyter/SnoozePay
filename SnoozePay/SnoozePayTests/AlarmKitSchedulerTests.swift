@@ -600,7 +600,7 @@ final class AlarmKitSchedulerTests: XCTestCase {
 /// Records the calls `AlarmScheduler` makes against its AlarmKit seam so the
 /// authorized-vs-refused branching can be asserted on any host OS. Mirrors the
 /// `PermissionStubCenter` pattern from `AlarmSchedulerTests`.
-private final class MockAlarmKitScheduler: AlarmKitScheduling {
+private final class MockAlarmKitScheduler: UnsupportedAlarmKitBackend {
     struct SnoozeScheduleError: Error {}
     struct ScheduleError: Error {}
 
@@ -672,7 +672,7 @@ private final class MockAlarmKitScheduler: AlarmKitScheduling {
 /// the callback and only invokes it (as a `.failure`) when `fireRejection()` is
 /// called. Lets a test drop the `AlarmScheduler` reference before the async
 /// reject lands (#424).
-private final class DeferringAlarmKitScheduler: AlarmKitScheduling {
+private final class DeferringAlarmKitScheduler: UnsupportedAlarmKitBackend {
     struct ScheduleRejected: Error {}
 
     private let authorized: Bool

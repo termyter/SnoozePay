@@ -69,11 +69,17 @@ final class AlarmCorruptRecoveryTests: XCTestCase {
         XCTAssertEqual(backend.recoveries, 0)
     }
 
-    func testUnknownBackendCannotAuthorizeErasingCorruptData() {
-        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend())
+    /// The shared double's refusal is its explicit `recoveryResult`, not an
+    /// inherited default (#1135), and the request count proves the answer came
+    /// from the sweep itself rather than from a guard in front of it.
+    func testSweepFailureCannotAuthorizeErasingCorruptData() {
+        let backend = TestAlarmKitBackend()
+        backend.recoveryResult = .failure(.unsupported)
+        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
         let repository = AlarmRepository(defaults: defaults, scheduler: scheduler)
         defaults.set(corrupt, forKey: "stored_alarms")
         XCTAssertEqual(repository.clearCorruptState().failure, .unsupported)
+        XCTAssertEqual(backend.recoveryRequests, 1)
         XCTAssertEqual(defaults.data(forKey: "stored_alarms"), corrupt)
         XCTAssertTrue(repository.lastLoadFailed)
     }
@@ -157,7 +163,8 @@ final class AlarmCorruptRecoveryTests: XCTestCase {
         ))
     }
 
-    private final class RecoveryBackend: AlarmKitScheduling {
+    private final class RecoveryBackend: CoarseAlarmKitAuthorization, UnknownAlarmKitInventory,
+        RefusesAlarmKitOccurrenceFinish, RefusesAlarmKitFinishVerification, RefusesAlarmKitSupersedeVerification {
         var isAuthorized = true
         var outcome: Result<Void, AlarmRecoveryError> = .success(())
         var onRecovery: (() -> Void)?
@@ -185,6 +192,7 @@ final class AlarmCorruptRecoveryTests: XCTestCase {
             finish = { completion(self.failRegistration ? .failure(AlarmRecoveryError.unsupported)
                 : .success(.init(systemID: alarm.id, fireDate: fireDate))) }
         }
+        func cancelTrackedSnooze(_ alarmID: UUID) -> Bool { false }
         func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
             recoveries += 1
             onRecovery?()

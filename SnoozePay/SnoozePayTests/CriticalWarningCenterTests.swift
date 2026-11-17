@@ -257,7 +257,9 @@ final class CriticalWarningCenterTests: XCTestCase {
         override func dismiss(animated: Bool, completion: (() -> Void)?) { dismissals += 1 }
     }
 
-    private final class DeferredBackend: AlarmKitScheduling {
+    private final class DeferredBackend: UnknownAlarmKitInventory, RefusesAlarmKitRecoveryClear,
+        RefusesAlarmKitTrackedSnooze, RefusesAlarmKitOccurrenceFinish,
+        RefusesAlarmKitFinishVerification, RefusesAlarmKitSupersedeVerification {
         var authorization: AlarmKitAuthorization { .authorized }
         var isAuthorized: Bool { true }
         var completion: ((Result<Void, Error>) -> Void)?

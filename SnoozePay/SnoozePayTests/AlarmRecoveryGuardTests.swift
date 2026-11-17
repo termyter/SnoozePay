@@ -186,7 +186,8 @@ final class AlarmRecoveryGuardTests: XCTestCase {
         ]
     }
 
-    private final class GuardBackend: AlarmKitScheduling {
+    private final class GuardBackend: CoarseAlarmKitAuthorization, UnknownAlarmKitInventory,
+        RefusesAlarmKitOccurrenceFinish, RefusesAlarmKitFinishVerification, RefusesAlarmKitSupersedeVerification {
         var isAuthorized = true
         var onRecovery: (() -> Void)?
         var finish: (() -> Void)?
@@ -209,6 +210,7 @@ final class AlarmRecoveryGuardTests: XCTestCase {
             registrations += 1
             finish = { completion(.success(.init(systemID: alarm.id, fireDate: fireDate))) }
         }
+        func cancelTrackedSnooze(_ alarmID: UUID) -> Bool { false }
         func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
             recoveries += 1
             onRecovery?()

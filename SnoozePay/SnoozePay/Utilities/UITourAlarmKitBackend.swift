@@ -136,12 +136,13 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
     //
     // Was the last requirement still inherited as `.unsupported`. Same
     // postcondition as the production sweep, over this fake's inventory:
-    // everything it registered is dropped, then absence is verified. Like the
-    // finish family it needs no grant - clearing never arms anything.
+    // everything it registered is dropped. An in-memory `removeAll()` cannot
+    // leave anything behind, so there is no failure branch to verify (#1135).
+    // Like the finish family it needs no grant - clearing never arms anything.
 
     func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
         fixedSchedules.removeAll()
-        return fixedSchedules.isEmpty ? .success(()) : .failure(.registrationsRemain)
+        return .success(())
     }
 
     private func derivedCopy(of alarmID: UUID) -> Date? {

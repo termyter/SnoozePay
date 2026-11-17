@@ -2,39 +2,60 @@ import Foundation
 import UserNotifications
 @testable import SnoozePay
 
-/// Fallbacks for test doubles only (#1125).
-///
-/// These used to live on `AlarmKitScheduling` in the app target, where they
-/// also silently covered the DEBUG `UITourAlarmKitBackend`: it inherited a
-/// failing finish family and the firing E2E went blind (#1117). Here they are
-/// invisible to the app target, so every app conformer must implement each
-/// requirement, while a double that models one axis keeps getting the
-/// conservative answer for the rest: `.unsupported`, "unknown" inventory and
-/// the coarse authorization mapping. Values are unchanged from the originals.
-extension AlarmKitScheduling {
-    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
-        .failure(.unsupported)
-    }
+// MARK: - Opt-in refusals (#1125, #1135)
+//
+// A double that models one axis of `AlarmKitScheduling` still has to answer the
+// rest. Those answers used to come from one blanket `extension
+// AlarmKitScheduling`, so every double inherited them silently: a fake that
+// forgot `scheduleTrackedSnooze` refused every snooze with `unsupportedBackend`,
+// and a "snooze refused -> refund" test could pass for that reason instead of
+// the one it named. Now each double names, in its declaration, the axes it
+// refuses; a member that is neither implemented nor opted into does not compile.
+//
+// Rule: opt into an axis only when the double implements NONE of its members,
+// otherwise the missing sibling is inherited as silently as before. A double
+// that implements part of an axis spells out the rest.
+//
+// The answers are unchanged from the originals: `.unsupported`, "unknown"
+// inventory and the coarse authorization mapping.
 
+/// Tri-state authorization derived from `isAuthorized`: never `.notDetermined`.
+protocol CoarseAlarmKitAuthorization: AlarmKitScheduling {}
+extension CoarseAlarmKitAuthorization {
+    var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
+}
+
+/// The double cannot read system inventory: nil, never a guessed empty set.
+protocol UnknownAlarmKitInventory: AlarmKitScheduling {}
+extension UnknownAlarmKitInventory {
+    var alertingAlarmIDs: Set<UUID>? { nil }
+}
+
+/// The corrupt-store sweep is refused, so recovery may never erase anything.
+protocol RefusesAlarmKitRecoveryClear: AlarmKitScheduling {}
+extension RefusesAlarmKitRecoveryClear {
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> { .failure(.unsupported) }
+}
+
+/// No tracked snooze: a Void success is not evidence of a registered fixed schedule.
+protocol RefusesAlarmKitTrackedSnooze: AlarmKitScheduling {}
+extension RefusesAlarmKitTrackedSnooze {
+    // swiftlint:disable:next function_parameter_count
     func scheduleTrackedSnooze(
         _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
         isCurrent: @escaping () -> Bool,
         completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
     ) {
-        // An old backend's Void success is not evidence of a registered fixed schedule.
         completion(.failure(AlarmSnoozeContextError.unsupportedBackend))
     }
 
     func cancelTrackedSnooze(_ alarmID: UUID) -> Bool { false }
+}
 
-    var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
-    var alertingAlarmIDs: Set<UUID>? { nil }
-
+/// The mutating half of «Я встал»: finish, late-snooze cleanup, original stop.
+protocol RefusesAlarmKitOccurrenceFinish: AlarmKitScheduling {}
+extension RefusesAlarmKitOccurrenceFinish {
     func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
-        .failure(.unsupported)
-    }
-
-    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
         .failure(.unsupported)
     }
 
@@ -45,13 +66,31 @@ extension AlarmKitScheduling {
     func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
         .failure(.unsupported)
     }
+}
 
+/// The read-only proof that a finished occurrence left nothing registered.
+protocol RefusesAlarmKitFinishVerification: AlarmKitScheduling {}
+extension RefusesAlarmKitFinishVerification {
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+}
+
+/// The read-only proof that an earlier ring's request may be retired.
+protocol RefusesAlarmKitSupersedeVerification: AlarmKitScheduling {}
+extension RefusesAlarmKitSupersedeVerification {
     func verifySupersededOccurrence(
         _ request: AlarmOccurrenceFinishRequest
     ) -> Result<Void, AlarmOccurrenceFinishError> {
         .failure(.unsupported)
     }
 }
+
+/// Every axis above: a double that models only the pre-#1076 core
+/// (authorize, schedule, snooze, cancel, stop) and refuses everything newer.
+typealias UnsupportedAlarmKitBackend = CoarseAlarmKitAuthorization & UnknownAlarmKitInventory
+    & RefusesAlarmKitRecoveryClear & RefusesAlarmKitTrackedSnooze & RefusesAlarmKitOccurrenceFinish
+    & RefusesAlarmKitFinishVerification & RefusesAlarmKitSupersedeVerification
 
 /// Shared `AlarmKitScheduling` double.
 ///
@@ -63,7 +102,8 @@ extension AlarmKitScheduling {
 ///
 /// Defaults to authorized-and-succeeding: the common case is "the backend works,
 /// I'm testing something else". Inventory stays unknown unless explicitly supplied.
-final class TestAlarmKitBackend: AlarmKitScheduling {
+/// Tracked snooze is refused by declaration; tests of it use `TrackedSessionBackend`.
+final class TestAlarmKitBackend: RefusesAlarmKitTrackedSnooze {
 
     struct ScheduleRejected: LocalizedError {
         var errorDescription: String? { "AlarmKit rejected the schedule" }
@@ -93,6 +133,9 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     /// Refuses by default: an earlier ring's request is retired only when a test proves it.
     var supersedeVerificationResult: Result<Void, AlarmOccurrenceFinishError> = .failure(.nativeUnconfirmed)
     private(set) var supersedeVerificationRequests: [AlarmOccurrenceFinishRequest] = []
+    /// Refuses by default: corrupt alarm data is erased only when a test proves the sweep.
+    var recoveryResult: Result<Void, AlarmRecoveryError> = .failure(.unsupported)
+    private(set) var recoveryRequests = 0
 
     init(
         authorization: AlarmKitAuthorization = .authorized,
@@ -160,6 +203,11 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     ) -> Result<Void, AlarmOccurrenceFinishError> {
         supersedeVerificationRequests.append(request)
         return supersedeVerificationResult
+    }
+
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
+        recoveryRequests += 1
+        return recoveryResult
     }
 }
 

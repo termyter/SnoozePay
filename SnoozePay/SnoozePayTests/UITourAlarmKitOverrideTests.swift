@@ -203,25 +203,46 @@ final class UITourAlarmKitOverrideTests: XCTestCase {
 
     /// Recovery was the last requirement the tour backend still inherited as
     /// `.unsupported` (#1125). Like the production sweep it must drop what it
-    /// registered and confirm absence, on either authorization state.
+    /// registered and confirm absence. The precondition is asserted, so the
+    /// sweep is shown removing a copy that was really there (#1135).
     func testTourBackend_recoverySweepClearsItsOwnRegistrations() {
-        for isAuthorized in [false, true] {
-            let backend = UITourAlarmKitBackend(isAuthorized: isAuthorized)
-            let alarm = makeAlarm()
-            let fireDate = Date(timeIntervalSince1970: 1_800_000_000)
-            backend.scheduleTrackedSnooze(
-                alarm, fireDate: fireDate, token: AlarmSnoozeToken(sessionID: UUID(), attemptID: UUID()),
-                attemptCount: 1, isCurrent: { true }, completion: { _ in }
-            )
+        let backend = UITourAlarmKitBackend(isAuthorized: true)
+        let alarm = makeAlarm()
+        let fireDate = Date(timeIntervalSince1970: 1_800_000_000)
+        var receipt: AlarmSnoozeReceipt?
+        backend.scheduleTrackedSnooze(
+            alarm, fireDate: fireDate, token: AlarmSnoozeToken(sessionID: UUID(), attemptID: UUID()),
+            attemptCount: 1, isCurrent: { true }, completion: { receipt = try? $0.get() }
+        )
+        XCTAssertEqual(receipt?.fireDate, fireDate, "precondition: the snooze copy was registered")
+        let request = AlarmOccurrenceFinishRequest(
+            alarmID: alarm.id, weekly: nil, expectedDerivedFireDate: fireDate, allowsUntrackedDerived: false
+        )
+        XCTAssertEqual(backend.verifyFinishedOccurrence(request).finishFailure, .nativeUnconfirmed,
+                       "precondition: the copy is visible before the sweep")
 
-            XCTAssertNoThrow(try backend.clearRegisteredAlarmsForRecovery().get(),
-                             "authorized=\(isAuthorized): recovery must not answer .unsupported")
-            let request = AlarmOccurrenceFinishRequest(
-                alarmID: alarm.id, weekly: nil, expectedDerivedFireDate: fireDate, allowsUntrackedDerived: false
-            )
-            XCTAssertNil(backend.verifyFinishedOccurrence(request).finishFailure,
-                         "authorized=\(isAuthorized): the sweep must actually remove the snooze copy")
+        XCTAssertNoThrow(try backend.clearRegisteredAlarmsForRecovery().get(),
+                         "recovery must not answer .unsupported")
+        XCTAssertNil(backend.verifyFinishedOccurrence(request).finishFailure,
+                     "the sweep must actually remove the snooze copy")
+    }
+
+    /// A denied tour registers nothing, and clearing nothing must still succeed:
+    /// the sweep needs no grant, and an empty inventory is the verified state.
+    func testTourBackend_recoverySweepSucceedsOnAnEmptyInventory() {
+        let backend = UITourAlarmKitBackend(isAuthorized: false)
+        let alarm = makeAlarm()
+        var outcome: Result<AlarmSnoozeReceipt, Error>?
+        backend.scheduleTrackedSnooze(
+            alarm, fireDate: Date(timeIntervalSince1970: 1_800_000_000),
+            token: AlarmSnoozeToken(sessionID: UUID(), attemptID: UUID()),
+            attemptCount: 1, isCurrent: { true }, completion: { outcome = $0 }
+        )
+        guard case .failure? = outcome else {
+            return XCTFail("precondition: a denied tour registers no snooze copy")
         }
+
+        XCTAssertNoThrow(try backend.clearRegisteredAlarmsForRecovery().get())
     }
 
     // MARK: - Isolation

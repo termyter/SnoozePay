@@ -252,16 +252,6 @@ final class AlarmOccurrenceFacadeTests: XCTestCase {
         XCTAssertTrue(backend.originalCancels.isEmpty)
     }
 
-    func testOldBackendDefaultsCannotClaimOccurrenceSupport() {
-        let alarm = weeklyAlarm()
-        let request = AlarmOccurrenceFinishRequest(alarmID: alarm.id, weekly: nil,
-                                                   expectedDerivedFireDate: nil, allowsUntrackedDerived: true)
-        let oldBackend = UnsupportedOccurrenceBackend()
-        assertFailure(oldBackend.finishOccurrence(request), .unsupported)
-        assertFailure(oldBackend.cleanUpLateSnooze(request), .unsupported)
-        assertFailure(oldBackend.stopOriginalForFinish(alarm.id), .unsupported)
-    }
-
     private func trackedTicket(_ alarm: Alarm) throws -> (AlarmOccurrenceFinishTicket, AlarmSnoozeReceipt) {
         let token = try store.reserve(alarmID: alarm.id, sessionID: nil, expectedCount: 0)
         try store.recordCharge(token, alarmID: alarm.id)
@@ -460,14 +450,12 @@ extension AlarmOccurrenceFacadeTests {
                                         alarmKit: backend, snoozeSessions: store)
             assertFailure(facade.verifyPendingOccurrenceFinish(currentAlarm: alarm, ticket: ticket), .unsupported)
         }
-        let request = AlarmOccurrenceFinishRequest(alarmID: alarm.id, weekly: nil,
-                                                   expectedDerivedFireDate: nil, allowsUntrackedDerived: true)
-        assertFailure(UnsupportedOccurrenceBackend().verifyFinishedOccurrence(request), .unsupported)
     }
 }
 
 @MainActor
-private final class OccurrenceFacadeBackend: AlarmKitScheduling {
+private final class OccurrenceFacadeBackend: CoarseAlarmKitAuthorization, UnknownAlarmKitInventory,
+    RefusesAlarmKitRecoveryClear, RefusesAlarmKitTrackedSnooze, RefusesAlarmKitSupersedeVerification {
     var isAuthorized = true
     var finished: [AlarmOccurrenceFinishRequest] = []
     var verified: [AlarmOccurrenceFinishRequest] = []
@@ -564,7 +552,7 @@ private final class OccurrenceLegacyNotifications: NotificationScheduling {
 }
 
 @MainActor
-private final class UnsupportedOccurrenceBackend: AlarmKitScheduling {
+private final class UnsupportedOccurrenceBackend: UnsupportedAlarmKitBackend {
     var isAuthorized = true
     func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(true) }
     func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) { completion(.success(())) }
