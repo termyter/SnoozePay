@@ -35,8 +35,8 @@ final class AudioServicePlayerInitFailureTests: XCTestCase {
         let url: URL = unplayableURL
         var lines: [LoggedLine] = []
         let player = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
-            AudioService.shared.resolveAlarmPlayer(soundID: "radar") { name, ext in
-                name == "radar" && ext == "caf" ? url : nil
+            AudioService.shared.resolveAlarmPlayer(soundID: "bell") { name, ext in
+                name == "bell" && ext == "caf" ? url : nil
             }
         })
 

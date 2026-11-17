@@ -785,8 +785,8 @@ final class AudioServiceTests: XCTestCase {
         let player = AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
             // The lookup answers for the REQUESTED id, so the fallback branch
             // is never entered — which is the state under test.
-            AudioService.shared.resolveAlarmPlayer(soundID: "radar") { name, ext in
-                name == "radar" && ext == "caf" ? soundURL : nil
+            AudioService.shared.resolveAlarmPlayer(soundID: "bell") { name, ext in
+                name == "bell" && ext == "caf" ? soundURL : nil
             }
         })
 

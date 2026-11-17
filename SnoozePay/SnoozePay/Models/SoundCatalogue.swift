@@ -46,10 +46,10 @@ enum SoundCatalogue {
         let subtitle: String
     }
 
-    /// The 19 bundled sounds, in catalogue order. The first ten match the
-    /// pre-V3 `availableSounds` list (do NOT cut to 6 — design keeps the full
-    /// lineup); `hawk`, `morning`, `sirena` and `spaceship` are the PM's
-    /// recordings appended by #850; `marimba`, `badinerie`, `vibraphone`,
+    /// The 18 selectable sounds, in catalogue order. The first nine match the
+    /// pre-V3 `availableSounds` list minus `radar` (do NOT cut to 6 — design
+    /// keeps the full lineup; `radar` left in #861, see ``retiredFileIDs``);
+    /// `hawk`, `morning`, `sirena` and `spaceship` are the PM's recordings appended by #850; `marimba`, `badinerie`, `vibraphone`,
     /// `strum` and `reflection` are the melodic set appended by #1092. Each id
     /// is also the base name of its file in `Resources/Sounds/`, which is how
     /// both the ring and the preview find it
@@ -61,11 +61,44 @@ enum SoundCatalogue {
     /// #762 the prose above was the only thing saying so, and `ids.sort()` was
     /// green across the target.
     static let ids: [String] = [
-        "dawn", "radar", "drops", "piano", "guitar",
+        "dawn", "drops", "piano", "guitar",
         "bell", "waves", "birds", "classic", "jazz",
         "hawk", "morning", "sirena", "spaceship",
         "marimba", "badinerie", "vibraphone", "strum", "reflection"
     ]
+
+    /// Sound a new alarm starts with: the design's default row («Soft Dawn»,
+    /// `SPMore.jsx` `SoundPicker`). It was `radar` until #861 retired that id.
+    static let defaultID = "dawn"
+
+    /// Ids that left the picker but may still be stored in saved alarms,
+    /// mapped to the bundled file they ring (#861).
+    ///
+    /// `radar.caf` was a byte copy of `default_alarm.caf`, so `radar` maps to
+    /// the fallback sound: a saved Radar alarm rings exactly what it rang
+    /// before. The ring (`AudioService.resolveAlarmPlayer`) and the AlarmKit
+    /// registration (`AlarmScheduler.alarmSoundFileName`) both resolve through
+    /// ``fileID(for:)``. `radar.caf` itself stays bundled: an AlarmKit alarm
+    /// registered before the update still names `radar.caf` until the app
+    /// next launches and re-arms it, and a missing file there would ring the
+    /// system sound instead.
+    ///
+    /// `nonisolated` and a literal rather than `AudioService.fallbackSoundID`:
+    /// the ring resolves on `AudioService`'s queue, off the main actor.
+    /// `SoundCatalogueRetiredRadarTests` pins the literal to that constant.
+    nonisolated static let retiredFileIDs: [String: String] = ["radar": "default_alarm"]
+
+    /// Base name of the bundled file `soundID` rings: itself, unless retired.
+    nonisolated static func fileID(for soundID: String) -> String {
+        retiredFileIDs[soundID] ?? soundID
+    }
+
+    /// The picker row that stands for `soundID`: itself, or ``defaultID`` for
+    /// a retired id, so a saved Radar alarm opens with a row selected instead
+    /// of a blank form row and an unchecked list.
+    static func selectableID(for soundID: String) -> String {
+        retiredFileIDs[soundID] == nil ? soundID : defaultID
+    }
 
     /// Id of the disabled custom-melody slot. Not one of ``ids``: it is
     /// rendered after the catalogue and cannot be selected.
