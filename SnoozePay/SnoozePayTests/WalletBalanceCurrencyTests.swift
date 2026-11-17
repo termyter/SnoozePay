@@ -15,7 +15,7 @@ final class WalletBalanceCurrencyTests: XCTestCase {
     func testRubCardAndPillKeepCanonicalNarrowGap() {
         let card = SPBalanceCard(balance: 1234, currency: .rub)
         let header = SPAlarmsListHeader()
-        header.setBalance(1234, currency: .rub, hint: nil)
+        header.setBalance(1234, currency: .rub, hint: nil, isLow: false)
         for view in [card as UIView, header] {
             XCTAssertTrue(strings(in: view).contains("1\u{00A0}234\u{202F}₽"))
         }
@@ -27,7 +27,7 @@ final class WalletBalanceCurrencyTests: XCTestCase {
         for (currency, symbol, next, nextSymbol) in [(usd, "$", eur, "€"), (eur, "€", usd, "$")] {
             let card = SPBalanceCard(balance: 0.49, currency: currency, delta: -0.49)
             let header = SPAlarmsListHeader()
-            header.setBalance(0.49, currency: currency, hint: nil)
+            header.setBalance(0.49, currency: currency, hint: nil, isLow: true)
             let stack = UIStackView(arrangedSubviews: [card, header])
             stack.axis = .vertical
             let host = UIViewController()
@@ -55,7 +55,7 @@ final class WalletBalanceCurrencyTests: XCTestCase {
             }
             XCTAssertEqual(card.currency, currency)
             card.update(balance: 1.79, currency: next, delta: nil)
-            header.setBalance(1.79, currency: next, hint: nil)
+            header.setBalance(1.79, currency: next, hint: nil, isLow: true)
             for view in [card as UIView, header] {
                 XCTAssertTrue(strings(in: view).contains { $0.contains("1,79") && $0.contains(nextSymbol) })
             }

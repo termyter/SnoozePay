@@ -16,6 +16,21 @@ final class CreateAlarmViewModel {
 
     var walletCurrency: Currency { balanceService.walletCurrency }
 
+    /// Subtitle of the confirm-delete sheet (#277): this alarm's schedule and
+    /// the injected wallet's balance in its display currency (#1151). The
+    /// balance and its currency are read together, at the tap.
+    var deletionBody: String {
+        let balance = balanceService.balance
+        let currency = balanceService.displayCurrency
+        return AlarmDeletionCopy.body(
+            contextLine: AlarmDeletionCopy.contextLine(
+                repeatDays: repeatDays, repeatMode: repeatMode, time: time, clockTime: selectedTimeOfDay
+            ),
+            balance: balance,
+            currency: currency
+        )
+    }
+
     // MARK: - Editable state (bound to UI controls)
 
     /// Date bridge retained for callers; only a changed local clock adopts civil authority.

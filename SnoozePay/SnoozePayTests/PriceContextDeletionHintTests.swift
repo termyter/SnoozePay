@@ -135,7 +135,13 @@ final class PriceContextDeletionHintTests: XCTestCase {
             ([Alarm(penaltyAmount: 50, progressiveScale: true, enabled: true)], 0.99, 5),
             ([Alarm(penaltyAmount: 50, enabled: true), Alarm(penaltyAmount: 100, enabled: true),
               Alarm(penaltyAmount: 200, enabled: true)], 1.99, 2),
-            ([Alarm(penaltyAmount: 200, enabled: false), Alarm(penaltyAmount: 50, enabled: true)], 0.99, 5)
+            ([Alarm(penaltyAmount: 200, enabled: false), Alarm(penaltyAmount: 50, enabled: true)], 0.99, 5),
+            // Free alarms do not pull the median to zero.
+            ([Alarm(penaltyAmount: 0, enabled: true), Alarm(penaltyAmount: 0, enabled: true),
+              Alarm(penaltyAmount: 50, enabled: true)], 0.99, 5),
+            // No enabled alarm: the configured default (50) resolves too.
+            ([], 0.99, 5),
+            ([Alarm(penaltyAmount: 200, enabled: false)], 0.99, 5)
         ]
 
         let settings = AlarmDefaults(defaults: defaults)
@@ -153,6 +159,23 @@ final class PriceContextDeletionHintTests: XCTestCase {
             )
             XCTAssertEqual(walletHint(testCase.alarms), Localized.format("common.snooze_affordability", testCase.count))
         }
+    }
+
+    func testStoredDollarWallet_configuredDefaultPriceResolvesAsALegacyAmount() {
+        recordScale(["0.99", "1.99", "2.99"])
+        fundDollars(5)
+        let settings = AlarmDefaults(defaults: defaults)
+        settings.penaltyAmount = 150
+
+        XCTAssertEqual(
+            SnoozeAffordability.currentPrice(alarms: [], defaults: settings, context: wallet.priceContext), 2.99
+        )
+        XCTAssertEqual(
+            SnoozeAffordability.affordableCount(
+                balance: wallet.balance, alarms: [], defaults: settings, context: wallet.priceContext
+            ),
+            1
+        )
     }
 
     /// 0.3 / 0.1 is 2.9999999999999996 in binary: the count must still be 3.
@@ -205,5 +228,9 @@ final class PriceContextDeletionHintTests: XCTestCase {
         XCTAssertNil(SnoozeAffordability.hint(
             balance: 1.99, alarms: [], defaults: AlarmDefaults(defaults: defaults), context: .unavailable(usd)
         ), "the configured-default fallback does not resolve either")
+
+        XCTAssertTrue(wallet.charge(amount: 1.99, alarmID: nil))
+        XCTAssertEqual(wallet.balance, 0)
+        XCTAssertTrue(makeListViewModel([]).isLowBalance, "an empty wallet is low in any context")
     }
 }

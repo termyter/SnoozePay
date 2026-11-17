@@ -60,10 +60,11 @@ final class WalletViewController: UIViewController {
         self.balanceService = balanceService
         self.transactionRepository = transactionRepository
         let initialBalance = balanceService.balance
+        let context = balanceService.priceContext
         balanceCard = SPBalanceCard(
             balance: Decimal(initialBalance),
             // A pristine wallet's zero reads in the storefront currency (#1147).
-            currency: balanceService.displayCurrency,
+            currency: context.currency,
             delta: nil,
             // Real hint from the first frame (#546). The placeholder this
             // replaced was a hardcoded «~17 откладываний» that the first
@@ -71,7 +72,7 @@ final class WalletViewController: UIViewController {
             hint: WalletHints.affordHint(
                 forBalance: initialBalance,
                 alarms: AlarmRepository.shared.fetchAll(),
-                context: balanceService.priceContext
+                context: context
             )
         )
         super.init(nibName: nil, bundle: nil)

@@ -113,6 +113,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
     func testBothScreensAgreeOnTheSameBalanceAndAlarms() {
         let screens = renderBothScreens(balance: 298, alarms: issueScreenshotAlarms)
 
+        XCTAssertNotNil(screens.list, "nil == nil must not pass as agreement")
         XCTAssertEqual(
             screens.list,
             screens.wallet,
@@ -135,6 +136,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
     func testScreensStayInStepAcrossBalances() {
         for balance in [1.0, 99.0, 100.0, 250.0, 298.0, 1000.0, 5000.0] {
             let screens = renderBothScreens(balance: balance, alarms: issueScreenshotAlarms)
+            XCTAssertNotNil(screens.list, "no hint at \(balance) ₽")
             XCTAssertEqual(
                 screens.list,
                 screens.wallet,
