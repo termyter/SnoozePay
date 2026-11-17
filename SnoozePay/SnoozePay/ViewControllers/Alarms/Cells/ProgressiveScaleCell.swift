@@ -3,8 +3,8 @@ import UIKit
 /// V2 «Прогрессивный режим» card (#231, `SPMore2.jsx` AlarmEdit).
 ///
 /// A single self-contained card: leading flame icon + h4 title, rationale
-/// subtitle, the doubling chain `50 → 100 → 200 → 400 ₽` (visible while the
-/// mode is armed) and a trailing `SPSwitch`. When armed, the card surface
+/// subtitle, the doubling chain `50 → 100 → 200 → 400 ₽` (coloured when
+/// armed, muted when not — #688) and a trailing `SPSwitch`. When armed, the card surface
 /// flips to the pain-tinted gradient + pain hairline so the row reads as
 /// "this will hurt" at a glance.
 ///
@@ -75,6 +75,12 @@ final class ProgressiveScaleCell: UITableViewCell {
     }()
 
     private let toggle = SPSwitch()
+
+    /// What `configure` last rendered, kept so the switch can repaint the
+    /// chain in place without the host re-`configure`-ing the cell.
+    private var chain: [Double] = []
+    private var currency: Currency = .rub
+    private var accessibilityChain = ""
 
     // MARK: - Callbacks
 
@@ -158,8 +164,9 @@ final class ProgressiveScaleCell: UITableViewCell {
     ///   - accessibilityChain: Spoken form of the chain («1-е: 50 ₽ → …»).
     func configure(isOn: Bool, chain: [Double], currency: Currency, accessibilityChain: String) {
         toggle.isOn = isOn
-        chainLabel.attributedText = Self.chainText(for: chain, currency: currency)
-        chainLabel.accessibilityLabel = accessibilityChain
+        self.chain = chain
+        self.currency = currency
+        self.accessibilityChain = accessibilityChain
         applyArmedAppearance(isOn)
     }
 
@@ -170,11 +177,32 @@ final class ProgressiveScaleCell: UITableViewCell {
         onToggled?(toggle.isOn)
     }
 
+    /// Off keeps the card's texture (#688): the chain stays on screen, muted
+    /// to neutral ink, and the flame stays pain-tinted at the app's disabled
+    /// alpha instead of fading to grey. The canon only draws the armed card
+    /// (`SPMore2.jsx:257-280`), so the off state follows the app's existing
+    /// disabled row (`SoundPickerRowCell`, alpha 0.45).
     private func applyArmedAppearance(_ isOn: Bool) {
-        iconView.tintColor = isOn ? AppColors.pain400 : AppColors.fg3
-        chainLabel.isHidden = !isOn
+        iconView.tintColor = AppColors.pain400
+        iconView.alpha = isOn ? 1 : Self.disabledFlameAlpha
+        chainLabel.isHidden = false
+        chainLabel.attributedText = Self.chainText(for: chain, currency: currency, isArmed: isOn)
+        // A UILabel takes no touches, so the chain is not interactive in
+        // either state; VoiceOver is told the rule is off rather than reading
+        // the prices as if they applied.
+        chainLabel.accessibilityLabel = isOn
+            ? accessibilityChain
+            : Localized.format("create_alarm.progressive.chain_off_accessibility", accessibilityChain)
+        if isOn {
+            chainLabel.accessibilityTraits.remove(.notEnabled)
+        } else {
+            chainLabel.accessibilityTraits.insert(.notEnabled)
+        }
         surface.setPainTinted(isOn)
     }
+
+    /// Same dimming as a disabled `SoundPickerRowCell` row.
+    static let disabledFlameAlpha: CGFloat = 0.45
 
     // MARK: - Chain rendering
 
@@ -182,16 +210,19 @@ final class ProgressiveScaleCell: UITableViewCell {
     /// warn-tinted (still affordable), the back half pain-tinted, and the
     /// final step renders bold at 16pt with the wallet currency via
     /// `MoneyFormatter` so the narrow-space rule holds.
-    private static func chainText(for chain: [Double], currency: Currency) -> NSAttributedString {
+    ///
+    /// Disarmed, every step takes `fg3` — the card's own meta ink — so the
+    /// shape and numbers stay but nothing reads as a live price.
+    private static func chainText(for chain: [Double], currency: Currency, isArmed: Bool) -> NSAttributedString {
         guard chain.count == 4 else { return NSAttributedString() }
         let stepFont = AppFonts.mono(.semibold, 14)
         let arrowAttributes: [NSAttributedString.Key: Any] = [
             .font: stepFont,
             .foregroundColor: AppColors.fg4
         ]
-        let stepColors: [UIColor] = [
-            AppColors.warn400, AppColors.warn400, AppColors.pain400
-        ]
+        let stepColors: [UIColor] = isArmed
+            ? [AppColors.warn400, AppColors.warn400, AppColors.pain400]
+            : [AppColors.fg3, AppColors.fg3, AppColors.fg3]
 
         let result = NSMutableAttributedString()
         for (index, value) in chain.prefix(3).enumerated() {
@@ -204,7 +235,7 @@ final class ProgressiveScaleCell: UITableViewCell {
         result.append(MoneyFormatter.quotedAttributed(
             chain[3], currency: currency,
             digitsFont: AppFonts.mono(.bold, 16),
-            color: AppColors.pain400
+            color: isArmed ? AppColors.pain400 : AppColors.fg3
         ))
         return result
     }
@@ -376,8 +407,8 @@ final class ProgressiveCardSurface: UIView {
         // So toggling this control off dropped its own outline 1.0 -> 0.333
         // while its neighbours never moved, and that step — together with the
         // gradient going and the `50 -> 100 -> 200 -> 400 РУБ` chain hiding
-        // (#688) — is what was reported as the card "losing its border" when
-        // switched off. The disarmed state was never the outlier; the armed
+        // (since #688 it stays, muted) — is what was reported as the card
+        // "losing its border" when switched off. The disarmed state was never the outlier; the armed
         // one was.
         //
         // Two earlier attempts got this wrong in opposite directions: PR #682

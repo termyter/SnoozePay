@@ -2251,6 +2251,24 @@
         }
       }
     },
+    "create_alarm.progressive.chain_off_accessibility" : {
+      "comment" : "VoiceOver label of the muted price chain on the progressive-mode card while the switch is OFF. %@ is the spoken chain («1-е: 50 ₽ → 2-е: 100 ₽ → …»).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off. If turned on: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выключено. Если включить: %@"
+          }
+        }
+      }
+    },
     "create_alarm.progressive.step" : {
       "comment" : "One rung of the progressive-penalty chain, spoken by VoiceOver as «1-е: 50 ₽». %1$lld is the 1-based step number carrying a Russian ordinal ending, %2$@ the formatted sum.",
       "extractionState" : "manual",

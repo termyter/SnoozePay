@@ -142,7 +142,8 @@ final class EditorPriceCurrencyTests: XCTestCase {
         toggle.isOn = false
         toggle.sendActions(for: .valueChanged)
         XCTAssertEqual(toggles, [false])
-        XCTAssertTrue(try progressiveLabel(in: cell).isHidden)
+        XCTAssertFalse(try progressiveLabel(in: cell).isHidden, "off keeps the chain, muted (#688)")
+        XCTAssertTrue(try progressiveLabel(in: cell).accessibilityTraits.contains(.notEnabled))
     }
 
     func testProgressiveCellKeepsExactLargeDigitsAndMarksMultiplicationOverflowUnknown() throws {
