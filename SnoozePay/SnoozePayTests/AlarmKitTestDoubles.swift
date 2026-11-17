@@ -2,6 +2,57 @@ import Foundation
 import UserNotifications
 @testable import SnoozePay
 
+/// Fallbacks for test doubles only (#1125).
+///
+/// These used to live on `AlarmKitScheduling` in the app target, where they
+/// also silently covered the DEBUG `UITourAlarmKitBackend`: it inherited a
+/// failing finish family and the firing E2E went blind (#1117). Here they are
+/// invisible to the app target, so every app conformer must implement each
+/// requirement, while a double that models one axis keeps getting the
+/// conservative answer for the rest: `.unsupported`, "unknown" inventory and
+/// the coarse authorization mapping. Values are unchanged from the originals.
+extension AlarmKitScheduling {
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
+        .failure(.unsupported)
+    }
+
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
+        isCurrent: @escaping () -> Bool,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        // An old backend's Void success is not evidence of a registered fixed schedule.
+        completion(.failure(AlarmSnoozeContextError.unsupportedBackend))
+    }
+
+    func cancelTrackedSnooze(_ alarmID: UUID) -> Bool { false }
+
+    var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
+    var alertingAlarmIDs: Set<UUID>? { nil }
+
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func verifySupersededOccurrence(
+        _ request: AlarmOccurrenceFinishRequest
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+}
+
 /// Shared `AlarmKitScheduling` double.
 ///
 /// Since #472 AlarmKit is the ONLY backend, so "a scheduler that succeeds" can

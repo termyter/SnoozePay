@@ -141,51 +141,13 @@ protocol AlarmKitScheduling: AnyObject {
     func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError>
 }
 
-/// Default derivation for test doubles that only model the yes/no axis: they
-/// keep implementing `isAuthorized` alone and get the coarse mapping for free.
-/// The production `AlarmKitScheduler` overrides this with the real tri-state,
-/// which is the only place the distinction can actually be observed.
-extension AlarmKitScheduling {
-    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
-        .failure(.unsupported)
-    }
-
-    func scheduleTrackedSnooze(
-        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
-        isCurrent: @escaping () -> Bool,
-        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
-    ) {
-        // An old backend's Void success is not evidence of a registered fixed schedule.
-        completion(.failure(AlarmSnoozeContextError.unsupportedBackend))
-    }
-
-    func cancelTrackedSnooze(_ alarmID: UUID) -> Bool { false }
-
-    var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
-    var alertingAlarmIDs: Set<UUID>? { nil }
-
-    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
-        .failure(.unsupported)
-    }
-
-    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
-        .failure(.unsupported)
-    }
-
-    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
-        .failure(.unsupported)
-    }
-
-    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
-        .failure(.unsupported)
-    }
-
-    func verifySupersededOccurrence(
-        _ request: AlarmOccurrenceFinishRequest
-    ) -> Result<Void, AlarmOccurrenceFinishError> {
-        .failure(.unsupported)
-    }
-}
+// No protocol-extension defaults here, deliberately (#1125). A default that
+// answers `.unsupported` lets a backend forget a requirement and still
+// compile: the DEBUG tour backend inherited a failing finish family that way
+// and the firing E2E went blind (#1117). Every app-target conformer now
+// implements each requirement itself; test doubles get their fallbacks from a
+// test-target extension (`SnoozePayTests/AlarmKitTestDoubles.swift`), which
+// the app target cannot see.
 
 #if canImport(AlarmKit)
 
