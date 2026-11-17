@@ -60,7 +60,9 @@ extension OnboardingViewController {
         let glowHost = makePage1Glow()
         container.addSubview(glowHost)
         let clockLabel = makePage1Clock()
-        let pill = OnboardingPenaltyPill()
+        let pill = OnboardingPenaltyPill(
+            amount: ExampleMoneyCopy.string(roubles: 50, tier: .low, in: priceContext)
+        )
         let titleLabel = makePage1Title()
         let bodyLabel = makePage1Body()
 
@@ -199,10 +201,16 @@ extension OnboardingViewController {
         )
         titleLabel.numberOfLines = 0
 
+        // The deposit is the default preset and the charge one low-tier snooze,
+        // in the price context (#1109); unpriced wording when it is unavailable.
+        let deposit = depositOptions[defaultDepositIndex].money.map(ExampleMoneyCopy.string(_:))
+        let charge = ExampleMoneyCopy.string(roubles: 50, tier: .low, in: priceContext)
         let rows = [
-            ("1", Localized.format("onboarding.page2.step1_title", MoneyFormatter.string(500)),
+            ("1", deposit.map { Localized.format("onboarding.page2.step1_title", $0) }
+                ?? Localized.text("onboarding.page2.step1_title_unpriced"),
              Localized.text("onboarding.page2.step1_body")),
-            ("2", Localized.format("onboarding.page2.step2_title", MoneyFormatter.string(50)),
+            ("2", charge.map { Localized.format("onboarding.page2.step2_title", $0) }
+                ?? Localized.text("onboarding.page2.step2_title_unpriced"),
              Localized.text("onboarding.page2.step2_body")),
             ("3", Localized.text("onboarding.page2.step3_title"),
              Localized.text("onboarding.page2.step3_body"))
@@ -264,7 +272,7 @@ extension OnboardingViewController {
 
         for (index, option) in depositOptions.enumerated() {
             let optionView = OnboardingDepositOptionView(option: option, isCompact: isCompactHeight)
-            optionView.isSelectedOption = index == defaultDepositIndex
+            optionView.isSelectedOption = index == selectedDepositIndex
             optionView.onTap = { [weak self] in self?.handleDepositOptionTap(at: index) }
             depositOptionViews.append(optionView)
             optionsStack.addArrangedSubview(optionView)
@@ -350,13 +358,13 @@ extension OnboardingViewController {
     /// matching the Wallet deposit sheet). Re-run on every option-tap so the
     /// suffix tracks the selection.
     func rebuildDepositCTA() {
-        let amount = depositOptions[selectedDepositIndex].amount
+        let money = depositOptions[selectedDepositIndex].money
         let newButton = SPButton(
             title: Localized.text("onboarding.button.deposit"),
             variant: .money,
             size: .lg,
             icon: UIImage(systemName: "wallet.pass"),
-            suffix: amount.formattedRubles(),
+            suffix: money.map(ExampleMoneyCopy.string(_:)),
             fullWidth: true
         )
         swapPrimary(with: newButton)

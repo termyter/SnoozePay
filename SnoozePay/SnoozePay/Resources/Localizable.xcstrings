@@ -271,6 +271,24 @@
         }
       }
     },
+    "alarm_off.body_unpriced" : {
+      "comment" : "Body of the alarm-off warning when the snooze price scale of the wallet's currency is unavailable, so no amount can be quoted.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’ve been charged this week. Something may have gone wrong. What would you like to do?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За эту неделю были списания. Возможно, что-то пошло не так. Что хотите сделать?"
+          }
+        }
+      }
+    },
     "alarm_off.button.dismiss" : {
       "comment" : "Footer CTA of the alarm-off warning sheet — declines all three suggestions and closes it.",
       "extractionState" : "manual",
@@ -375,6 +393,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сейчас %1$@ → попробовать %2$@"
+          }
+        }
+      }
+    },
+    "alarm_off.lower_price.subtitle_unpriced" : {
+      "comment" : "Subtitle of the lower-price suggestion when no snooze price can be quoted in the wallet's currency.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick a smaller fee"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбрать цену поменьше"
           }
         }
       }
@@ -5331,6 +5367,24 @@
         }
       }
     },
+    "onboarding.page2.step1_title_unpriced" : {
+      "comment" : "Onboarding step 1 title when no amount can be quoted in the wallet's currency.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You top up your balance"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Положили деньги на баланс"
+          }
+        }
+      }
+    },
     "onboarding.page2.step2_body" : {
       "comment" : "Body of numbered step 2 of the mechanics.",
       "extractionState" : "manual",
@@ -5363,6 +5417,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Поспать ещё в 07:00 → −%@"
+          }
+        }
+      }
+    },
+    "onboarding.page2.step2_title_unpriced" : {
+      "comment" : "Onboarding step 2 title when no snooze price can be quoted in the wallet's currency.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snooze at 7:00 AM → you pay"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поспать ещё в 07:00 → списание"
           }
         }
       }
@@ -5453,6 +5525,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "≈ 5 откладываний по %@"
+          }
+        }
+      }
+    },
+    "onboarding.page3.option1_body_unpriced" : {
+      "comment" : "Smallest deposit preset description when no snooze price can be quoted in the wallet's currency.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 5 snoozes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈ 5 откладываний"
           }
         }
       }

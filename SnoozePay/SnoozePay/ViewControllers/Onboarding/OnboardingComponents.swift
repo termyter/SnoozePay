@@ -40,12 +40,15 @@ final class OnboardingPenaltyPill: UIView {
     private let gradient: CAGradientLayer
     private let label = UILabel()
 
-    init() {
+    /// `amount` is one low-tier snooze in the price context (#1109); `nil`
+    /// (scale unavailable) hides the pill rather than invent a number.
+    init(amount: String?) {
         gradient = CAGradientLayer()
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         configureChrome()
-        configureLabel()
+        configureLabel(amount: amount ?? "")
+        isHidden = amount == nil
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -67,9 +70,9 @@ final class OnboardingPenaltyPill: UIView {
         layer.masksToBounds = false
     }
 
-    private func configureLabel() {
+    private func configureLabel(amount: String) {
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "−\(MoneyFormatter.string(50))"
+        label.text = "−" + amount
         label.font = AppTypography.moneySm  // mono digits for the penalty pill (#289)
         label.textColor = AppColors.fgOnWarn
         addSubview(label)
@@ -284,9 +287,10 @@ final class OnboardingDepositOptionView: UIControl {
         descriptionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
-        amountLabel.attributedText = MoneyFormatter.attributed(
-            option.amount, digitsFont: AppTypography.moneyMd
-        )
+        // «—» while the price context is unavailable (#1109), as Settings shows.
+        amountLabel.attributedText = option.money.map {
+            ExampleMoneyCopy.attributed($0, digitsFont: AppTypography.moneyMd)
+        } ?? NSAttributedString(string: "—", attributes: [.font: AppTypography.moneyMd])
         amountLabel.font = AppTypography.moneyMd
         amountLabel.textColor = AppColors.fg1
         amountLabel.setContentHuggingPriority(.required, for: .horizontal)

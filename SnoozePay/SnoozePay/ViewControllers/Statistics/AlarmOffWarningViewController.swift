@@ -33,6 +33,18 @@ final class AlarmOffWarningViewController: UIViewController {
     /// re-resolves — `refreshHeroTheme()` installs them trait-explicitly.
     let heroBadge = SPGradientView(colors: [], locations: SPSupport.painGradientLocations)
 
+    /// The price context the example amounts are quoted in (#1109). Defaults to
+    /// the rouble scale — the copy before — so a fixture never reads the host
+    /// app's wallet; the app passes `BalanceService.shared.priceContext`.
+    let priceContext: SnoozePriceContext
+
+    init(priceContext: SnoozePriceContext = .scale(.rouble)) {
+        self.priceContext = priceContext
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
@@ -211,20 +223,26 @@ final class AlarmOffWarningViewController: UIViewController {
         // suffix literal around an `append`: where the sum falls in the
         // sentence is a property of the language, and that pair could only ever
         // render it in the middle (`Localized.attributed`).
-        let attr = Localized.attributed(
-            "alarm_off.body",
-            attributes: [
-                .font: AppTypography.bodyLg,
-                .foregroundColor: AppColors.fg2
-            ],
-            replacing: MoneyFormatter.attributed(
-                Decimal(750),
-                digitsFont: AppFonts.mono(.bold, 17),
-                prefix: "−",
-                color: AppColors.pain400
+        //
+        // 750 ₽ is fifteen 50 ₽ snoozes; outside roubles fifteen low-tier ones
+        // (#1109), and no number at all while the scale is unavailable.
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: AppTypography.bodyLg,
+            .foregroundColor: AppColors.fg2
+        ]
+        if let charged = ExampleMoneyCopy.money(roubles: 750, tier: .low, times: 15, in: priceContext) {
+            body.attributedText = Localized.attributed(
+                "alarm_off.body",
+                attributes: attributes,
+                replacing: ExampleMoneyCopy.attributed(
+                    charged, digitsFont: AppFonts.mono(.bold, 17), prefix: "−", color: AppColors.pain400
+                )
             )
-        )
-        body.attributedText = attr
+        } else {
+            body.attributedText = NSAttributedString(
+                string: Localized.text("alarm_off.body_unpriced"), attributes: attributes
+            )
+        }
         body.translatesAutoresizingMaskIntoConstraints = false
 
         let stack = UIStackView(arrangedSubviews: [headline, body])
@@ -251,11 +269,7 @@ final class AlarmOffWarningViewController: UIViewController {
                 iconTint: AppColors.warn400,
                 iconBackground: AppColors.warnFill500.withAlphaComponent(0.14),
                 title: Localized.text("alarm_off.lower_price.title"),
-                subtitle: Localized.format(
-                    "alarm_off.lower_price.subtitle",
-                    MoneyFormatter.string(50),
-                    MoneyFormatter.string(20)
-                )
+                subtitle: Self.lowerPriceSubtitle(in: priceContext)
             ),
             makeSuggestionRow(
                 icon: "xmark",
@@ -270,6 +284,17 @@ final class AlarmOffWarningViewController: UIViewController {
         stack.alignment = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
+    }
+
+    /// «Сейчас 50 ₽ → попробовать 20 ₽» in roubles. Outside roubles there is no
+    /// tier below the cheapest, so the step is mid → low in the context currency
+    /// (#1109); with the scale unavailable the row suggests without numbers.
+    static func lowerPriceSubtitle(in context: SnoozePriceContext) -> String {
+        guard let now = ExampleMoneyCopy.string(roubles: 50, tier: .mid, in: context),
+              let next = ExampleMoneyCopy.string(roubles: 20, tier: .low, in: context) else {
+            return Localized.text("alarm_off.lower_price.subtitle_unpriced")
+        }
+        return Localized.format("alarm_off.lower_price.subtitle", now, next)
     }
 
     private func makeSuggestionRow(
