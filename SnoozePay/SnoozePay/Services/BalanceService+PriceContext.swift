@@ -110,12 +110,23 @@ extension Currency {
     /// digits the screen does not show. A well-formed code Foundation does not
     /// list gets the formatter's default, 2, logged once per code.
     nonisolated var minorUnitDigits: Int {
+        if let cached = Self.digitsByCode.withLock({ $0[code] }) { return cached }
+        let digits = Self.formatterDigits(for: code)
+        Self.digitsByCode.withLock { $0[code] = digits }
+        return digits
+    }
+
+    /// Per code, because every non-rouble balance read asks inside the
+    /// service queue and a `NumberFormatter` is not cheap to build (#1163).
+    nonisolated private static let digitsByCode = OSAllocatedUnfairLock(initialState: [String: Int]())
+
+    nonisolated private static func formatterDigits(for code: String) -> Int {
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.numberStyle = .currency
         formatter.currencyCode = code
         let digits = formatter.maximumFractionDigits
-        if !Self.knownCodes.contains(code), PriceContextLogOnce.first("unknownCode|\(code)") {
+        if !knownCodes.contains(code), PriceContextLogOnce.first("unknownCode|\(code)") {
             AppLogger.emit(.balance, .default, "currency \(code) unknown to Foundation — \(digits) digits assumed")
         }
         return digits

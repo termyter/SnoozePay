@@ -40,12 +40,25 @@ enum ForeignCurrencyNotice {
         locale: Locale = .autoupdatingCurrent
     ) -> String? {
         guard let storefront = storefrontCurrency(of: product) else { return nil }
-        guard !balanceService.acceptsPurchase(in: storefront) else { return nil }
-        return message(
-            wallet: balanceService.walletCurrency,
-            storefront: storefront,
-            locale: locale
-        )
+        return blockingMessage(for: balanceService.purchaseRefusal(in: storefront), locale: locale)
+    }
+
+    /// The copy for a refusal from `BalanceService.purchaseRefusal(in:)`. An
+    /// unreadable ledger is named as such whatever the storefront sells: it is
+    /// also what makes the wallet non-pristine, and a currency notice would
+    /// send the user after the wrong problem (#1163).
+    static func blockingMessage(
+        for refusal: BalanceService.PurchaseRefusal?,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        switch refusal {
+        case nil:
+            return nil
+        case .ledgerUnreadable?:
+            return StoreKitService.ledgerLockedFailureMessage
+        case let .foreignCurrency(wallet, storefront)?:
+            return message(wallet: wallet, storefront: storefront, locale: locale)
+        }
     }
 
     /// User-facing copy. Says what the wallet holds, what the store is selling,
