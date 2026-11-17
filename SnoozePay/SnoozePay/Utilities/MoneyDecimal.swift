@@ -64,6 +64,17 @@ nonisolated enum MoneyDecimal {
         sum([lhs, -rhs]).flatMap(double) ?? lhs - rhs
     }
 
+    /// `amount` rounded half away from zero to `digits` fraction digits (#1122):
+    /// −3e-15 → 0, 2.9899999999999998 → 2.99. `amount` itself when it has no
+    /// exact `Decimal` form — never a guessed neighbour.
+    static func rounded(_ amount: Double, toDigits digits: Int) -> Double {
+        var value = exact(amount)
+        guard !value.isNaN else { return amount }
+        var result = Decimal()
+        NSDecimalRound(&result, &value, digits, .plain)
+        return double(result) ?? amount
+    }
+
     /// `balance >= amount`, decided on the decimal values the user sees.
     static func covers(_ balance: Double, _ amount: Double) -> Bool {
         let available = exact(balance), required = exact(amount)
