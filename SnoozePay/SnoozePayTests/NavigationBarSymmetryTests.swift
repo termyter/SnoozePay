@@ -55,7 +55,13 @@ final class NavigationBarSymmetryTests: XCTestCase {
             ),
             BarlessRoot(
                 name: "Статистика",
-                make: { StatisticsViewController() },
+                make: {
+                    let statistics = StatisticsViewController()
+                    statistics.referralControllerFactory = {
+                        ReferralViewController(personalCodeProvider: { "ABCD23" })
+                    }
+                    return statistics
+                },
                 pushAction: Selector(("debugReferralTapped")),
                 child: ReferralViewController.self
             )
@@ -191,6 +197,9 @@ final class NavigationBarSymmetryTests: XCTestCase {
             "no tab is rooted at StatisticsViewController any more"
         )
         let statistics = try XCTUnwrap(stack.viewControllers.first as? StatisticsViewController)
+        statistics.referralControllerFactory = {
+            ReferralViewController(personalCodeProvider: { "ABCD23" })
+        }
         let window = makeHostWindow()
         window.rootViewController = tabBarController
         statistics.loadViewIfNeeded()

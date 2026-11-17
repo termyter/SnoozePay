@@ -34,8 +34,8 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     // MARK: - Body copy
 
     /// Subtitle line shown below the headline. Defaults to the design's
-    /// reassurance copy «Баланс N ₽ останется на месте — он привязан к
-    /// аккаунту, а не к будильнику» with the live balance interpolated
+    /// reassurance copy «Баланс N ₽ останется на месте — он не привязан
+    /// к будильнику» with the live balance interpolated
     /// (#277); the host should pass `AlarmDeletionCopy.body(contextLine:
     /// balance:)` to prepend alarm-specific context (repeat + time).
     private let bodyCopy: String

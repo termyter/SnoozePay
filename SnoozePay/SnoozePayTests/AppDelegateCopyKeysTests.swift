@@ -92,8 +92,8 @@ final class AppDelegateCopyKeysTests: XCTestCase {
         // `AppDelegateAlertTests.testNotificationsDisabledAlertCopyResolvesToTheShippedWords`.
         "permissions.alert.notifications_disabled.title",
         "permissions.alert.notifications_disabled.message",
-        "common.button.cancel",
-        "common.button.settings",
+        "alarms.backend_guard.action.not_now",
+        "alarms.backend_guard.action.open_settings",
         // Corrupt-data alert's only button — spelling owned by
         // `AlertButtonLocalizationTests`.
         "common.button.ok",

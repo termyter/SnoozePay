@@ -2,8 +2,8 @@ import UIKit
 
 // MARK: - Snoozed firing state (#226)
 //
-// After a foreground «Поспать ещё» tap the firing screen does NOT dismiss —
-// it transitions in place into the «отложено» state described by
+// Explicit DEBUG visual fixtures mount the «отложено» state described by
+// the handoff below. Production snoozes hand off only on `.scheduled` (#641):
 // `docs/design/v2-handoff/components/SPFiringThemeSnoozed.jsx`:
 //   • the big live clock is replaced by a live mm:ss countdown to the next ring,
 //   • the bell tile dims (.7) and gains a `zZ` badge,
@@ -21,8 +21,8 @@ extension AlarmFiringViewController {
 
     // MARK: - Entry / exit
 
-    /// Switch the live firing screen into the snoozed state in place (no VC
-    /// recreation). Called from `snoozeTapped()` after a successful charge.
+    /// Mount the retained snoozed visual component for explicit DEBUG fixtures.
+    /// Production `snoozeTapped()` never enters a foreground countdown.
     func enterSnoozedState() {
         guard !isSnoozedStateActive else { return }
         // Defensive: if the next ring is already due (clock skew, or a

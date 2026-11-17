@@ -68,7 +68,7 @@ final class StoreKitCopyTests: XCTestCase {
         "deposit.error.verification_failed":
             "Не удалось проверить чек покупки. Если деньги списаны — напиши в поддержку.",
         "deposit.notification.credited.title": "Баланс пополнен",
-        "deposit.notification.credited.body": "Баланс пополнен на %lld ₽.",
+        "deposit.notification.credited.body": "Баланс пополнен на %@.",
         "deposit.notification.failed.title": "Покупка пополнения",
         "deposit.restore.success.title": "Запрос отправлен",
         "deposit.restore.success.message":
@@ -158,11 +158,11 @@ final class StoreKitCopyTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: name) }
         let service = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
 
-        service.postPurchaseCompleted(299)
+        service.postPurchaseCompleted(299, currency: .rub)
 
         let content = poster.requests.first?.content
         XCTAssertEqual(content?.title, Localized.text("deposit.notification.credited.title"))
-        XCTAssertEqual(content?.body, "Баланс пополнен на 299 ₽.")
+        XCTAssertEqual(content?.body, "Баланс пополнен на 299\u{202F}₽.")
         XCTAssertFalse(content?.body.contains("%") ?? true, "the specifier was left unsubstituted")
     }
 

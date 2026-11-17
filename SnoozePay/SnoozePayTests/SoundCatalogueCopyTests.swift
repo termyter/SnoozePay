@@ -2,8 +2,8 @@ import XCTest
 @testable import SnoozePay
 
 /// Pins the copy that this slice of #598 moved out of `SoundCatalogue` and
-/// into `Localizable.xcstrings`: ten sound names, ten descriptive subtitles
-/// (fourteen of each since #850 appended four sounds)
+/// into `Localizable.xcstrings`: the sound names, the descriptive subtitles
+/// (nineteen of each since #1092 appended five melodic sounds)
 /// and the two strings of the disabled custom-melody slot.
 ///
 /// `Localized.text` hands back the key on a miss, so a mistyped key ships as
@@ -26,7 +26,7 @@ import XCTest
 ///     to a typo in the *key* at the call site, because there the catalogue
 ///     itself is fine.
 ///
-/// Alongside them, one thing that is not copy at all: the **order** of the ten
+/// Alongside them, one thing that is not copy at all: the **order** of the
 /// ids, pinned to literals in ``idsInCatalogueOrder`` (#762). It sits here
 /// because this is where the catalogue's outside view already lives, and
 /// because the assertion it replaces used to sit in layer 3 pretending to do
@@ -102,11 +102,23 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "create_alarm.sound.subtitle.morning": "Бодрое начало дня",
         "create_alarm.sound.subtitle.sirena": "Сигнал тревоги",
         "create_alarm.sound.subtitle.spaceship": "Гул космического корабля",
+        // #1092: the five melodic sounds. Subtitles written from the files as
+        // they sound through the app's own preview, unlike #850's above.
+        "common.sound.name.marimba": "Маримба",
+        "common.sound.name.badinerie": "Шутка Баха",
+        "common.sound.name.vibraphone": "Вибрафон",
+        "common.sound.name.strum": "Перебор",
+        "common.sound.name.reflection": "Размышление",
+        "create_alarm.sound.subtitle.marimba": "Утренний перезвон маримбы",
+        "create_alarm.sound.subtitle.badinerie": "Бах в 8-битной обработке",
+        "create_alarm.sound.subtitle.vibraphone": "Звонкий воздушный вибрафон",
+        "create_alarm.sound.subtitle.strum": "Мягкие гитарные аккорды",
+        "create_alarm.sound.subtitle.reflection": "Тихая мелодия для лёгкого утра",
         "create_alarm.sound.name.custom": "Своя мелодия",
         "create_alarm.sound.subtitle.custom": "Скоро"
     ]
 
-    /// The ten display names keyed by **sound id** rather than by catalogue
+    /// The display names keyed by **sound id** rather than by catalogue
     /// key. That difference is the whole reason the table exists (#763), and it
     /// is the same argument ``subtitlesBySoundID`` makes below for the other
     /// column.
@@ -144,7 +156,12 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "hawk": "Ястреб",
         "morning": "Утро",
         "sirena": "Сирена",
-        "spaceship": "Космолёт"
+        "spaceship": "Космолёт",
+        "marimba": "Маримба",
+        "badinerie": "Шутка Баха",
+        "vibraphone": "Вибрафон",
+        "strum": "Перебор",
+        "reflection": "Размышление"
     ]
 
     /// The ten descriptive subtitles keyed by **sound id** rather than by
@@ -181,7 +198,12 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "hawk": "Клич хищной птицы",
         "morning": "Бодрое начало дня",
         "sirena": "Сигнал тревоги",
-        "spaceship": "Гул космического корабля"
+        "spaceship": "Гул космического корабля",
+        "marimba": "Утренний перезвон маримбы",
+        "badinerie": "Бах в 8-битной обработке",
+        "vibraphone": "Звонкий воздушный вибрафон",
+        "strum": "Мягкие гитарные аккорды",
+        "reflection": "Тихая мелодия для лёгкого утра"
     ]
 
     /// The ten ids **in catalogue order**, written out rather than read from
@@ -213,11 +235,13 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// warns against.
     ///
     /// #850 appended `hawk`, `morning`, `sirena`, `spaceship` — the PM's
-    /// recordings, placed at the end by the issue's own defaults.
+    /// recordings, placed at the end by the issue's own defaults. #1092
+    /// appended the melodic five after them for the same reason.
     private static let idsInCatalogueOrder: [String] = [
         "dawn", "radar", "drops", "piano", "guitar",
         "bell", "waves", "birds", "classic", "jazz",
-        "hawk", "morning", "sirena", "spaceship"
+        "hawk", "morning", "sirena", "spaceship",
+        "marimba", "badinerie", "vibraphone", "strum", "reflection"
     ]
 
     func testEveryMigratedKeyResolvesToCopy() {
@@ -304,13 +328,13 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// quietly degenerates stops failing.
     ///
     /// A duplicate would mean the transcription lost a sound while keeping the
-    /// length, and «fourteen» is the count the docblock and
+    /// length, and «nineteen» is the count the docblock and
     /// `SoundThemePickerCatalogueTests` both name.
-    func testTheOrderOracleStillListsFourteenDistinctSounds() {
-        XCTAssertEqual(Self.idsInCatalogueOrder.count, 14)
+    func testTheOrderOracleStillListsEverySoundOnce() {
+        XCTAssertEqual(Self.idsInCatalogueOrder.count, 19)
         XCTAssertEqual(
             Set(Self.idsInCatalogueOrder).count, Self.idsInCatalogueOrder.count,
-            "the pinned lineup repeats an id — it no longer describes fourteen sounds"
+            "the pinned lineup repeats an id — it no longer describes nineteen sounds"
         )
     }
 

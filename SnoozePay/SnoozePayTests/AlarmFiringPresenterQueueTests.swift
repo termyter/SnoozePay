@@ -78,7 +78,10 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
     }
 
     private func makeScreen(_ alarm: Alarm, snoozeCount: Int = 0) -> ReadBackFiringScreen {
-        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: nil)
+        // Denied preserves local sound ownership; the mock can still confirm free finish.
+        let scheduler = AlarmScheduler(
+            notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend(authorization: .denied)
+        )
         return ReadBackFiringScreen(viewModel: AlarmFiringViewModel(
             alarm: alarm, snoozeCount: snoozeCount,
             balanceService: BalanceService(defaults: defaults),

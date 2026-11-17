@@ -222,7 +222,11 @@ final class EditorPriceCurrencyTests: XCTestCase {
         let alarm = editing ? Alarm(penaltyAmount: 49.5) : nil
         if let alarm { XCTAssertTrue(repository.save(alarm)) }
         let viewModel = CreateAlarmViewModel(
-            alarm: alarm, repository: repository, defaults: alarmDefaults, balanceService: wallet
+            alarm: alarm, repository: repository, defaults: alarmDefaults, balanceService: wallet,
+            backendMonitor: AlarmBackendMonitor(
+                probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+                notificationCenter: NotificationCenter()
+            )
         )
         let sut = CreateAlarmViewController(viewModel: viewModel)
         sut.loadViewIfNeeded()

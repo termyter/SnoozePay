@@ -49,6 +49,9 @@ final class AlarmRepository {
     private let queue = DispatchQueue(label: "com.snoozepay.alarms.serial")
     private static let log = OSLog(subsystem: AppLogger.subsystem, category: "AlarmRepository")
 
+    /// Per-record attempt identity; ephemeral and confined to `queue`.
+    private var saveRevisions: [UUID: UUID] = [:]
+
     /// Set inside `queue.sync` whenever a decode failure is observed. While
     /// true, `persist()` refuses to write — this prevents the user from
     /// pressing "+" on what looks like an empty list and silently
@@ -93,6 +96,13 @@ final class AlarmRepository {
         try queue.sync { try readAll() }
     }
 
+    /// Strict inventory for occurrence completion. Unknown storage types or
+    /// duplicate identities cannot prove that an alarm is missing or disabled.
+    /// This does not change the older repository read/recovery contracts.
+    func fetchOccurrenceFinishAlarms() throws -> [Alarm] {
+        try queue.sync { try readOccurrenceFinishAlarms() }
+    }
+
     /// Lossy read: a decode failure is indistinguishable from "alarm doesn't
     /// exist" (#210). All production call sites moved to `fetchChecked(id:)`
     /// (#271); kept for the tests that pin the lossy contract.
@@ -119,6 +129,10 @@ final class AlarmRepository {
     ///   Callers (CreateAlarmViewModel) surface the failure to the user
     ///   instead of pretending the alarm landed safely (issue #72).
     ///
+    /// `rollbackOnSchedulingFailure` is used by the create/edit form. A rejected
+    /// new candidate is removed; an existing record keeps its original fields
+    /// but becomes disabled because its previous schedule was cancelled.
+    ///
     /// `schedulingResult` is invoked **only on the successful-persist path**
     /// once `AlarmScheduler.schedule` finishes (issue #118). Disabled alarms
     /// resolve with `.success(())` because there is no scheduling work, but
@@ -129,8 +143,11 @@ final class AlarmRepository {
     @discardableResult
     func save(
         _ alarm: Alarm,
+        rollbackOnSchedulingFailure: Bool = false,
         schedulingResult: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)? = nil
     ) -> Bool {
+        let revision = UUID()
+        var previous: Alarm?
         let didPersist: Bool = queue.sync {
             guard !_lastLoadFailed else { return false }
             // Read fresh state inside the lock so concurrent saves don't
@@ -143,24 +160,55 @@ final class AlarmRepository {
                 return false
             }
             if let idx = alarms.firstIndex(where: { $0.id == alarm.id }) {
+                previous = alarms[idx]
                 alarms[idx] = alarm
             } else {
                 alarms.append(alarm)
             }
-            return persist(alarms)
+            guard persist(alarms) else { return false }
+            saveRevisions[alarm.id] = revision
+            return true
         }
 
         guard didPersist else { return false }
 
         scheduler.cancel(alarm.id)
         if alarm.enabled {
-            scheduler.schedule(alarm, completion: schedulingResult)
+            scheduler.schedule(alarm) { result in
+                if rollbackOnSchedulingFailure, case .failure = result {
+                    self.compensateFailedSave(alarm, previous: previous, revision: revision)
+                }
+                schedulingResult?(result)
+            }
         } else {
             // Disabled alarms don't schedule — report success so async
             // callers don't hang waiting for a closure that never fires.
             schedulingResult?(.success(()))
         }
         return true
+    }
+
+    /// Remove a failed new candidate; preserve an existing record's fields but
+    /// disable it, since its previous schedule was cancelled. A late callback
+    /// must never undo a newer edit, even when that edit has identical values.
+    private func compensateFailedSave(_ alarm: Alarm, previous: Alarm?, revision: UUID) {
+        let compensated = queue.sync { () -> Bool in
+            guard saveRevisions[alarm.id] == revision else { return true }
+            guard var alarms = try? readAll(),
+                  let index = alarms.firstIndex(where: { $0.id == alarm.id }),
+                  alarms[index] == alarm else { return false }
+            if let previous {
+                alarms[index] = previous.with(enabled: false)
+            } else {
+                alarms.remove(at: index)
+            }
+            guard persist(alarms) else { return false }
+            saveRevisions.removeValue(forKey: alarm.id)
+            return true
+        }
+        if !compensated {
+            AppLogger.repository.fault("Failed to roll back an unarmed alarm after a rejected schedule")
+        }
     }
 
     @discardableResult
@@ -174,7 +222,9 @@ final class AlarmRepository {
                 return false
             }
             alarms.removeAll { $0.id == id }
-            return persist(alarms)
+            guard persist(alarms) else { return false }
+            saveRevisions.removeValue(forKey: id)
+            return true
         }
         if didPersist {
             scheduler.cancel(id)
@@ -215,12 +265,13 @@ final class AlarmRepository {
             guard let idx = alarms.firstIndex(where: { $0.id == id }) else { return nil }
             alarms[idx] = alarms[idx].with(enabled: enabled)
             guard persist(alarms) else { return nil }
+            saveRevisions[id] = UUID()
             return alarms[idx]
         }
 
         guard let alarm = updated else {
             os_log(
-                "setEnabled: no alarm with id %{public}@ (or store locked)",
+                "setEnabled: no alarm with id %{private}@ (or store locked)",
                 log: Self.log, type: .info, id.uuidString
             )
             return false
@@ -234,6 +285,32 @@ final class AlarmRepository {
             schedulingResult?(.success(()))
         }
         return true
+    }
+
+    /// Persist only after an explicit recovery has independently proved both
+    /// native IDs absent. Unlike a user toggle, this must not cancel a new ring.
+    /// The captured record and complete write readback are checked under the queue.
+    func persistFinishedOneShot(_ expected: Alarm) throws {
+        guard expected.enabled, expected.repeatMode == .never || expected.repeatDays.isEmpty else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        try queue.sync {
+            let alarms = try readOccurrenceFinishAlarms()
+            let matches = alarms.indices.filter { alarms[$0].id == expected.id }
+            guard matches.count == 1, let index = matches.first, alarms[index] == expected else {
+                throw AlarmOccurrenceFinishError.ownershipUnavailable
+            }
+            var updated = alarms
+            updated[index] = expected.with(enabled: false)
+            guard persist(updated) else { throw AlarmOccurrenceFinishError.persistenceFailed }
+            do {
+                guard try readOccurrenceFinishAlarms() == updated else {
+                    throw AlarmOccurrenceFinishError.persistenceFailed
+                }
+            } catch {
+                throw AlarmOccurrenceFinishError.persistenceFailed
+            }
+        }
     }
 
     // MARK: - Recovery
@@ -250,6 +327,18 @@ final class AlarmRepository {
     }
 
     // MARK: - Private (must be called inside queue.sync)
+
+    private func readOccurrenceFinishAlarms() throws -> [Alarm] {
+        guard defaults.object(forKey: key) == nil || defaults.data(forKey: key) != nil else {
+            throw AlarmOccurrenceFinishError.persistenceFailed
+        }
+        let alarms: [Alarm]
+        do { alarms = try readAll() } catch { throw AlarmOccurrenceFinishError.persistenceFailed }
+        guard Set(alarms.map(\.id)).count == alarms.count else {
+            throw AlarmOccurrenceFinishError.ownershipUnavailable
+        }
+        return alarms
+    }
 
     /// Returns persisted alarms.
     ///
@@ -271,7 +360,17 @@ final class AlarmRepository {
         do {
             let alarms = try JSONDecoder().decode([Alarm].self, from: data)
             _lastLoadFailed = false
-            return alarms.sorted { $0.time < $1.time }
+            let calendar = Calendar.current
+            return alarms.sorted { lhs, rhs in
+                let lhsClock = lhs.resolvedTimeOfDay(calendar: calendar)
+                let rhsClock = rhs.resolvedTimeOfDay(calendar: calendar)
+                // Creation dates can differ; sort by the displayed clock first.
+                // Missing clock components sort last without trapping. Date keeps
+                // the prior tie order; exact-date ties retain the persisted order.
+                let lhsKey = (lhsClock?.hour ?? Int.max, lhsClock?.minute ?? Int.max, lhs.time)
+                let rhsKey = (rhsClock?.hour ?? Int.max, rhsClock?.minute ?? Int.max, rhs.time)
+                return lhsKey < rhsKey
+            }
         } catch {
             // Case 3: stored bytes can't be decoded.
             _lastLoadFailed = true

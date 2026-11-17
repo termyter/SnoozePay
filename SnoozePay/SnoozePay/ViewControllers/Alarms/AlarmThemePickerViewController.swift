@@ -19,6 +19,11 @@ final class AlarmThemePickerViewController: UIViewController {
 
     private var currentTheme: AlarmTheme
     private let onSelect: (AlarmTheme) -> Void
+    private let loadPhoto: (NSItemProvider, @escaping (Any?) -> Void) -> Void
+    private let saveImage: (UIImage) -> URL?
+    private let photoPickerPresenter: ((PHPickerViewController) -> Void)?
+    private var photoSelectionID: UUID?
+    private var acceptsPhotoSelection = true
 
     /// Items rendered in the grid. Built-in themes first, custom slot last.
     /// Resolved on init so reordering the static `AlarmTheme.builtInOrder`
@@ -39,7 +44,7 @@ final class AlarmThemePickerViewController: UIViewController {
     /// V2 firing-screen preview block — sits above the grid and tracks the
     /// currently-selected theme so the user sees a 180pt-tall stamp of what
     /// the alarm-firing screen will look like before they pick. Matches
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:344-355` contains "height: 180".
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:343-354` contains "height: 180".
     private let previewContainer: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -102,9 +107,20 @@ final class AlarmThemePickerViewController: UIViewController {
     ///   - onSelect: Invoked with the chosen theme. For `.custom` this fires
     ///     after the user has both confirmed in PHPicker AND we've persisted
     ///     the image to disk — never on cancel.
-    init(currentTheme: AlarmTheme, onSelect: @escaping (AlarmTheme) -> Void) {
+    init(
+        currentTheme: AlarmTheme,
+        onSelect: @escaping (AlarmTheme) -> Void,
+        loadPhoto: @escaping (NSItemProvider, @escaping (Any?) -> Void) -> Void = { provider, completion in
+            provider.loadObject(ofClass: UIImage.self) { object, _ in completion(object) }
+        },
+        saveImage: @escaping (UIImage) -> URL? = { AlarmThemeImageStore.saveImage($0) },
+        presentPhotoPicker: ((PHPickerViewController) -> Void)? = nil
+    ) {
         self.currentTheme = currentTheme
         self.onSelect = onSelect
+        self.loadPhoto = loadPhoto
+        self.saveImage = saveImage
+        self.photoPickerPresenter = presentPhotoPicker
         var built: [Item] = AlarmTheme.builtInOrder.map { .theme($0) }
         built.append(.customSlot)
         self.items = built
@@ -122,7 +138,7 @@ final class AlarmThemePickerViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
         // V2 caps title — matches
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:339` contains "Тема будильника".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:338` contains "Тема будильника".
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
             string: Localized.text("create_alarm.theme_picker.title").uppercased(),
@@ -136,7 +152,7 @@ final class AlarmThemePickerViewController: UIViewController {
         navigationItem.titleView = titleLabel
 
         // «Готово» quiet-sm — V3 exit affordance, matching the canon header at
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:339` contains "quiet".
         // The path matters: a second copy of that file under
         // `docs/design/v2-handoff/` is numbered differently, and the reference
         // this replaces was reading it.
@@ -155,7 +171,35 @@ final class AlarmThemePickerViewController: UIViewController {
         setupCollectionView()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        acceptsPhotoSelection = true
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Photos keeps this navigation owner; a push, pop or host dismissal ends ownership.
+        let navigationChangedOwner = navigationController.map { $0.topViewController !== self } ?? false
+        if isMovingFromParent || navigationChangedOwner || isBeingDismissed
+            || navigationController?.isBeingDismissed == true {
+            endPhotoSelection()
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if let navigationController, navigationController.topViewController !== self {
+            endPhotoSelection()
+        }
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        if parent == nil { endPhotoSelection() }
+    }
+
     @objc private func doneTapped() {
+        endPhotoSelection()
         navigationController?.popViewController(animated: true)
     }
 
@@ -244,7 +288,7 @@ final class AlarmThemePickerViewController: UIViewController {
     }
 
     /// Three-column compositional grid, tile aspect 1:1.2 (V3 —
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:359-365` contains "aspectRatio").
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:358-364` contains "aspectRatio").
     /// The 10pt inter-column gap is folded into per-item trailing
     /// insets; the row group height tracks the tile aspect so tiles stay 1:1.2.
     /// A «Готовые темы» caps header sits above the grid.
@@ -299,8 +343,10 @@ final class AlarmThemePickerViewController: UIViewController {
     /// refreshes inline so the user sees the firing-screen sample update
     /// before the pop animation completes.
     private func selectItem(at indexPath: IndexPath) {
+        guard acceptsPhotoSelection else { return }
         switch items[indexPath.item] {
         case .theme(let theme):
+            endPhotoSelection()
             currentTheme = theme
             renderPreview(for: theme)
             onSelect(theme)
@@ -311,12 +357,22 @@ final class AlarmThemePickerViewController: UIViewController {
     }
 
     private func presentPhotoPicker() {
+        photoSelectionID = nil
         var configuration = PHPickerConfiguration(photoLibrary: .shared())
         configuration.filter = .images
         configuration.selectionLimit = 1
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = self
-        present(picker, animated: true)
+        if let photoPickerPresenter {
+            photoPickerPresenter(picker)
+        } else {
+            present(picker, animated: true)
+        }
+    }
+
+    private func endPhotoSelection() {
+        acceptsPhotoSelection = false
+        photoSelectionID = nil
     }
 
     // MARK: - Helpers
@@ -434,17 +490,34 @@ extension AlarmThemePickerViewController: PHPickerViewControllerDelegate {
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
-        guard let result = results.first else { return }
-        let provider = result.itemProvider
-        guard provider.canLoadObject(ofClass: UIImage.self) else { return }
-        provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
-            guard let self, let image = object as? UIImage else { return }
-            DispatchQueue.main.async {
-                guard let url = AlarmThemeImageStore.saveImage(image) else {
+        loadSelectedPhoto(from: results.first?.itemProvider)
+    }
+
+    /// Photos delegates enter here; cancellation also invalidates an older in-flight load.
+    func loadSelectedPhoto(from provider: NSItemProvider?) {
+        photoSelectionID = nil
+        guard acceptsPhotoSelection, !isMovingFromParent, !isBeingDismissed,
+              navigationController?.topViewController === self,
+              let provider, provider.canLoadObject(ofClass: UIImage.self) else { return }
+        let selectionID = UUID()
+        photoSelectionID = selectionID
+        loadPhoto(provider) { [weak self] object in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.acceptsPhotoSelection, self.photoSelectionID == selectionID else { return }
+                guard !self.isMovingFromParent, !self.isBeingDismissed,
+                      self.navigationController?.topViewController === self,
+                      self.navigationController?.isBeingDismissed != true else {
+                    self.photoSelectionID = nil
+                    return
+                }
+                self.photoSelectionID = nil
+                guard let image = object as? UIImage else { return }
+                guard let url = self.saveImage(image) else {
                     // Keep the picker on screen — selection didn't happen.
                     self.presentSaveFailureAlert()
                     return
                 }
+                self.endPhotoSelection()
                 let theme = AlarmTheme.custom(imagePath: url)
                 self.currentTheme = theme
                 self.onSelect(theme)

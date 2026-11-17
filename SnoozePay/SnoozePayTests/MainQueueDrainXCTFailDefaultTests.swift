@@ -149,4 +149,43 @@ final class MainQueueDrainXCTFailDefaultTests: XCTestCase {
             "a quiet drain must be silent, got: \(issues.map(\.compactDescription))"
         )
     }
+
+    private func captureAsyncIssues(during body: () async -> Void) async -> [XCTIssue] {
+        capturedIssues = []
+        isCapturing = true
+        defer { isCapturing = false }
+        await body()
+        return capturedIssues
+    }
+
+    func testAsyncDefaultSinkRecordsARealFailureAtTheCaller() async {
+        let hog = QueueHog()
+        hog.start()
+        defer { hog.stop() }
+        var quiet = true
+        let expectedLine = UInt(#line + 2)
+        let issues = await captureAsyncIssues {
+            quiet = await drainMainQueueAsync(cap: 1)
+        }
+        hog.stop()
+
+        XCTAssertFalse(quiet)
+        XCTAssertEqual(issues.count, 1)
+        guard let issue = issues.first else { return }
+        XCTAssertTrue(issue.isFailure)
+        XCTAssertTrue(issue.compactDescription.contains("never went quiet"))
+        XCTAssertEqual(
+            issue.sourceCodeContext.location?.fileURL.lastPathComponent,
+            "MainQueueDrainXCTFailDefaultTests.swift"
+        )
+        XCTAssertEqual(issue.sourceCodeContext.location?.lineNumber, Int(expectedLine))
+    }
+
+    func testAsyncDefaultSinkSaysNothingWhenTheQueueGoesQuiet() async {
+        var quiet = false
+        let issues = await captureAsyncIssues { quiet = await drainMainQueueAsync() }
+
+        XCTAssertTrue(quiet)
+        XCTAssertTrue(issues.isEmpty)
+    }
 }

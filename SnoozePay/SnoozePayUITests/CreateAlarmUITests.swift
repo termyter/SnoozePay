@@ -93,40 +93,30 @@ final class CreateAlarmUITests: XCTestCase {
         XCTAssertTrue(nameField.waitForExistence(timeout: 10),
                       "Create-alarm name field should appear")
 
-        // A denied backend also makes `AppDelegate` offer its "включите в
-        // Настройках" alert on launches where the permissions screen has
-        // already been seen. That alert is not what this test is about — get
-        // it out of the way instead of letting it decide the assertions below.
-        let launchAlert = app.alerts["Уведомления выключены"]
-        if launchAlert.waitForExistence(timeout: 2) {
-            launchAlert.buttons["Отмена"].tap()
-        }
-
         guard fillNameField(nameField, in: app) else { return }
 
         app.buttons["createAlarm.saveButton"].tap()
 
         // The refusal is explained, not swallowed. Queried by title, so a
         // different alert cannot satisfy it.
-        let alert = app.alerts["Не удалось запланировать будильник"]
+        let alert = app.alerts["Доступ к будильникам выключен"]
         XCTAssertTrue(alert.waitForExistence(timeout: 5),
                       "A refused schedule must surface its own alert, not fail silently")
         let explanation = alert.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "не зазвонит")
+            NSPredicate(format: "label CONTAINS[c] %@", "не сработают")
         ).firstMatch
         XCTAssertTrue(explanation.exists,
                       "The alert must say the alarm would not ring, not just that something failed")
-        // Dismissed by position, not by title. #664 routed this button through
-        // `common.button.ok`, so its label went from "OK" to «Ок» — a query on
-        // the old text matches nothing and the tap fails on a missing element.
-        // The alert is already identified by its own title above; the button is
-        // its only one. Same reason as FiringFlowUITests.
-        alert.buttons.element(boundBy: 0).tap()
+        // Not Now keeps the entered form without creating an unarmed alarm.
+        alert.buttons["Не сейчас"].tap()
 
         // And the form is still up: the user keeps the form they were on
         // instead of landing back on a list that implies success.
         XCTAssertTrue(nameField.waitForExistence(timeout: 5),
                       "Create sheet must stay up when the alarm could not be armed")
+        app.buttons["createAlarm.closeButton"].tap()
+        XCTAssertTrue(nameField.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(app.switches.count, 0, "Refusing permission must not leave a persisted alarm row")
     }
 
     /// A synthesized tap can be dropped while the field remains hittable.

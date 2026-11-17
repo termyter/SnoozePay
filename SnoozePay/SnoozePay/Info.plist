@@ -4,8 +4,6 @@
 <dict>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>SnoozePay использует будильники, чтобы будить вас вовремя — даже в беззвучном режиме.</string>
-	<key>NSCriticalAlertUsageDescription</key>
-	<string>SnoozePay использует критические уведомления для срабатывания будильника даже в режиме «Не беспокоить» и при выключенном звуке.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Manrope-ExtraLight.ttf</string>

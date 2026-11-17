@@ -1,28 +1,8 @@
 import XCTest
 
-/// End-to-end PoC for the core firing → snooze → wake loop.
-///
-/// Drives the REAL `AlarmFiringViewController` through the DEBUG `-uitour`
-/// deep link (`UITourLauncher`), which mounts the firing screen directly as
-/// the window root with a seeded balance — no onboarding / tab navigation to
-/// tap through. The flow exercised here is the single most important path in
-/// the product:
-///
-///   1. Firing screen up (snooze CTA + «Я встал» both present).
-///   2. Tap «Поспать ещё» → the screen transitions IN PLACE into the snoozed
-///      state with a live countdown (it deliberately does not dismiss, #226).
-///   3. Tap «Я встал — выключить» → the WokeMorning summary is presented.
-///   4. Tap «Закрыть» → the summary unwinds back to the firing screen.
-///
-/// This file holds BOTH halves of that tap: `FiringFlowUITests` below drives
-/// the denied backend (in-place snoozed state), `AlarmKitSnoozeHandoffUITests`
-/// the authorized one (the screen closes, #642). They share a file because
-/// `SnoozePayUITests` is a plain `PBXGroup` — see that class's doc.
-///
-/// This is intentionally ONE test: a stability probe. If it runs reliably and
-/// green on CI, the e2e suite is worth expanding; if XCUITest proves flaky on
-/// the CI simulator, we keep e2e thin and lean on unit tests. Selectors are
-/// stable `accessibilityIdentifier`s, not localized button copy.
+/// Native denied snooze: explain the failure, retain firing controls, and
+/// never promise a countdown to an alarm that was not scheduled (#641).
+/// The authorized handoff and shared alert helper remain in this target file.
 final class FiringFlowUITests: XCTestCase {
 
     /// Title of `firing.alert.snooze_not_scheduled` as the user sees it.
@@ -48,14 +28,8 @@ final class FiringFlowUITests: XCTestCase {
 
     func testFiringSnoozeWakeFlow() {
         let app = XCUIApplication()
-        // `-uitour firing` mounts AlarmFiringViewController as root;
-        // `-uitour-balance 1000` guarantees the snooze is affordable so the
-        // flow reaches the snoozed state rather than the no-balance layout.
-        // `-uitour-alarmkit denied` states the backend this flow runs on
-        // instead of inheriting whatever the simulator answers (#626): the
-        // in-place snoozed state below exists only on a backend that does NOT
-        // arm the next ring itself — on an authorized one the screen closes
-        // and the system owns it (#383).
+        // The denied route mounts the actual firing controller as root.
+        // An affordable charge reaches the real scheduling refusal/refund path.
         app.launchArguments = [
             "-uitour", "firing", "-uitour-balance", "1000", "-uitour-alarmkit", "denied"
         ]
@@ -69,17 +43,8 @@ final class FiringFlowUITests: XCTestCase {
         XCTAssertTrue(dismiss.exists,
                       "«Я встал» dismiss button should be present on the firing screen")
 
-        // 2. Snooze → the refusal is stated, then the snoozed state with a live
-        // countdown appears in place. On the denied backend the schedule is
-        // refused (#472) and the screen says so before anything else can be
-        // tapped — clear that alert here, deliberately, rather than leaving it
-        // to XCUITest (see `dismissAppAlert`).
-        //
-        // Tapped in a bounded loop, same as the authorized test below: a
-        // dropped synthesized tap (#523, #626, #647) and a refusal that never
-        // shows look identical after one attempt (#800). The alert and the
-        // countdown come from the same snooze call, so a countdown without the
-        // alert means the tap landed and the refusal went missing.
+        // A denied backend must explain the refusal and retain the active UI.
+        // A bounded second tap covers a dropped synthesized touch, not success.
         let countdown = app.staticTexts["firing.countdown"]
         var taps = 0
         var refused = false
@@ -111,21 +76,10 @@ final class FiringFlowUITests: XCTestCase {
             "A snooze refused by an unauthorized backend should explain itself (\(taps) tap(s))"
         )
 
-        // ⚠️ This assertion pins behaviour that is KNOWN TO BE WRONG — see #641.
-        // On a denied backend `scheduleSnooze` calls its completion
-        // synchronously, so `exitSnoozedState()` runs before the state is
-        // active (a no-op) and `enterSnoozedState()` then builds a countdown to
-        // a ring that will never happen, behind an alert that just said it will
-        // never happen. The countdown below IS that bug.
-        //
-        // It is asserted rather than inverted because it is what the app does
-        // today, and a test that fails on unchanged code is worse than one that
-        // documents the defect. When #641 is fixed, THIS TEST GOING RED IS
-        // EXPECTED — it is not a sign the fix is wrong. Replace the assertion
-        // with one on the active firing UI (or delete the snoozed-state tests
-        // outright, if PM decides foreground snooze goes away with it).
-        XCTAssertTrue(countdown.waitForExistence(timeout: 5),
-                      "Snoozed-state countdown should appear after «Поспать ещё» (see #641)")
+        XCTAssertFalse(countdown.exists, "A refused snooze must not create a countdown")
+        XCTAssertFalse(app.staticTexts["firing.snoozed.progressivePill"].exists)
+        XCTAssertTrue(snooze.exists, "The firing snooze control remains after the refund")
+        XCTAssertTrue(dismiss.exists && dismiss.isEnabled, "Stop must remain available after refusal")
 
         // 3. «Я встал — выключить» → the WokeMorning summary is presented.
         dismiss.tap()
@@ -149,11 +103,8 @@ final class FiringFlowUITests: XCTestCase {
 /// With AlarmKit authorized the snooze re-fires as a REAL system alarm: the
 /// scheduler stops the currently-alerting alarm and reschedules it, so the
 /// in-app firing screen has nothing left to do and closes; the system owns the
-/// next ring (#383). The in-place «отложено» countdown that `FiringFlowUITests`
-/// above and `ProgressiveSnoozeUITests` assert is the OTHER branch — the one
-/// for a backend that does not arm the next ring itself. Both of those pin
-/// `-uitour-alarmkit denied` (#639), which left the branch every real user
-/// takes with no E2E at all. This class is that branch.
+/// next ring (#383). The denied case above must retain its active controls;
+/// foreground countdowns are covered only by an explicit visual fixture.
 ///
 /// Two things make it an assertion rather than a screenshot:
 ///
