@@ -180,4 +180,34 @@ final class AlarmFiringPriceLockTests: XCTestCase {
         XCTAssertEqual(charges.map(\.currency), [usd])
         XCTAssertEqual(wallet.balance, 1, accuracy: 1e-9)
     }
+
+    /// Review of #1140: the catalogue had not loaded when the ring started, so
+    /// the lock is roubles; then it loads in USD and a purchase freezes the
+    /// wallet in dollars. No top-up can ever pay the locked rouble price, so
+    /// the ring refuses rather than keep offering purchases.
+    func testWalletFrozenInAnotherCurrencyMidRing_refusesInsteadOfOfferingTopUps() {
+        let alarmRepository = AlarmRepository(defaults: defaults, scheduler: scheduler)
+        let alarm = Alarm(repeatDays: [], penaltyAmount: 50, enabled: true)
+        alarmRepository.save(alarm)
+        let model = AlarmFiringViewModel(
+            alarm: alarm, balanceService: wallet, alarmRepository: alarmRepository,
+            scheduler: scheduler, wakeStore: WakeEventStore(defaults: defaults), ledger: repository
+        )
+        XCTAssertEqual(model.lockedPriceContext, .scale(.rouble))
+        XCTAssertTrue(model.isProgressionAvailable, "pristine rouble wallet: the no-balance route is right")
+
+        XCTAssertTrue(scaleStore.record(usdScale))
+        fund(9.99, in: usd)
+
+        XCTAssertTrue(model.isLockedPriceStranded)
+        XCTAssertFalse(model.isProgressionAvailable)
+        XCTAssertFalse(model.canSnooze)
+        XCTAssertTrue(model.currentPenalty.isNaN)
+        XCTAssertFalse(model.snooze())
+        XCTAssertTrue(charges.isEmpty)
+        XCTAssertEqual(wallet.balance, 9.99, accuracy: 1e-9)
+
+        guard case .success = model.dismiss() else { return XCTFail("Stop must still work") }
+        XCTAssertEqual(alarmRepository.fetchOrFail(id: alarm.id)?.enabled, false)
+    }
 }

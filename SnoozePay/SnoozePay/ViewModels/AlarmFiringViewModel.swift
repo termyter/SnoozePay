@@ -47,6 +47,8 @@ final class AlarmFiringViewModel {
     /// reused for every snooze of the ring (price lock, #1137). `nil` only for a
     /// wallet that supplies no context (test stubs): today's legacy amounts.
     let lockedPriceContext: SnoozePriceContext?
+    /// The stranded-price refusal (`isLockedPriceStranded`) is logged once per ring.
+    var didLogStrandedPrice = false
 
     /// Called before mounting through the existing screen factory/read-back path.
     func bindSnoozeSession(_ reference: AlarmSnoozeReference, store: AlarmSnoozeSessionStore) {
@@ -136,7 +138,7 @@ final class AlarmFiringViewModel {
         self.ledger = ledger
         self.firingStartedAt = firingStartedAt
         self.snoozeSessions = snoozeSessions
-        self.lockedPriceContext = Self.lockPriceContext(of: balanceService, alarm: alarm)
+        self.lockedPriceContext = Self.lockPriceContext(of: balanceService, alarm: alarm, snoozeCount: snoozeCount)
         if let pending = try? snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id),
            !retireSupersededFinish(pending) {
             finishRequested = true

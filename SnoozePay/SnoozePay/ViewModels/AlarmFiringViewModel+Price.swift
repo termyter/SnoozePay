@@ -12,9 +12,13 @@ import os
 /// - The locked price does not resolve (`.unavailable`, or a number the resolver
 ///   refuses) → the existing "progression unavailable" state: no charge, no
 ///   guessed number, logged once at lock time; Stop is unaffected.
-/// - The price resolves in a currency the wallet does not hold (a pristine
-///   wallet on a foreign storefront) → cannot afford, so the top-up path stays
-///   reachable. Never a debit of a number denominated in another currency.
+/// - The price resolves in a currency the wallet does not hold but would still
+///   accept (a pristine wallet on a foreign storefront) → cannot afford, so the
+///   top-up path stays reachable. Never a debit of a number denominated in
+///   another currency.
+/// - The price is in a currency the wallet can no longer accept (it froze in
+///   another one mid-ring) → "progression unavailable" too: no top-up could
+///   ever make the locked price payable, so none is offered.
 ///
 /// Rouble wallets resolve `.amount` to the amount itself and the ladder in
 /// `Decimal`, so charges and sufficiency equal `alarm.penalty(forSnoozeCount:)`.
@@ -24,14 +28,31 @@ extension AlarmFiringViewModel {
 
     /// Reads the context of `wallet` once, for the whole ring, and logs a lock
     /// that cannot be charged. `nil` when the wallet supplies no context.
-    static func lockPriceContext(of wallet: AlarmFiringBalancing, alarm: Alarm) -> SnoozePriceContext? {
-        guard let provider = wallet as? AlarmFiringPriceContextProviding else { return nil }
-        let context = provider.priceContext
+    static func lockPriceContext(
+        of wallet: AlarmFiringBalancing, alarm: Alarm, snoozeCount: Int
+    ) -> SnoozePriceContext? {
         let alarmID = alarm.id
+        guard let provider = wallet as? AlarmFiringPriceContextProviding else {
+            AppLogger.ui.notice(
+                "firing: wallet supplies no price context alarm=\(alarmID, privacy: .private) — legacy amounts"
+            )
+            return nil
+        }
+        let context = provider.priceContext
+        let resolved = SnoozePriceResolver.resolve(
+            alarm.price, snoozeCount: snoozeCount + 1, isProgressive: alarm.progressiveScale, in: context
+        )
         if case .unavailable(let currency) = context {
             AppLogger.ui.error(
                 """
                 firing: price unavailable in \(currency.code, privacy: .public) \
+                alarm=\(alarmID, privacy: .private), snooze refused, no charge
+                """
+            )
+        } else if resolved.flatMap({ MoneyDecimal.double($0.amount) }) == nil {
+            AppLogger.ui.error(
+                """
+                firing: price does not resolve in \(context.currency.code, privacy: .public) \
                 alarm=\(alarmID, privacy: .private), snooze refused, no charge
                 """
             )
@@ -80,9 +101,32 @@ extension AlarmFiringViewModel {
 
     // MARK: - State the screen reads
 
-    /// The session allows a paid continuation AND the locked price resolves.
+    /// The session allows a paid continuation, the locked price resolves, and
+    /// the wallet holds or can still adopt the price's currency.
     var isProgressionAvailable: Bool {
         isSessionProgressionAvailable && chargeAmount(forSnoozeCount: snoozeCount + 1) != nil
+            && !isLockedPriceStranded
+    }
+
+    /// The locked price is in a currency the wallet neither holds nor accepts
+    /// any more: it froze in another currency mid-ring (a purchase after the
+    /// catalogue loaded). Topping up cannot fix that, so the ring refuses
+    /// instead of steering the user into purchases. Logged once per ring.
+    var isLockedPriceStranded: Bool {
+        guard lockedPriceContext != nil, let price = price(forSnoozeCount: snoozeCount + 1),
+              price.currency != walletCurrency,
+              !balanceService.acceptsPurchase(in: price.currency) else { return false }
+        if !didLogStrandedPrice {
+            didLogStrandedPrice = true
+            let priceCode = price.currency.code, walletCode = walletCurrency.code, alarmID = alarm.id
+            AppLogger.ui.error(
+                """
+                firing: price locked in \(priceCode, privacy: .public), wallet frozen in \
+                \(walletCode, privacy: .public) alarm=\(alarmID, privacy: .private) — snooze refused, no charge
+                """
+            )
+        }
+        return true
     }
 
     /// The next snooze's charge; `.nan` while progression is unavailable.
@@ -149,6 +193,11 @@ extension AlarmFiringViewModel {
 ///
 /// A separate protocol rather than a requirement of `AlarmFiringBalancing`, so
 /// adding the context does not change every existing billing stub.
+///
+/// ⚠️ Any production `AlarmFiringBalancing` MUST conform: without it the
+/// firing screen charges the legacy bare amount in whatever currency the
+/// wallet holds, which is the pre-#1109 bug. A non-conforming wallet is logged
+/// at lock time ("wallet supplies no price context").
 protocol AlarmFiringPriceContextProviding: AnyObject {
     var priceContext: SnoozePriceContext { get }
 }

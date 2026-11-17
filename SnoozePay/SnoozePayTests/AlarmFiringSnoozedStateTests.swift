@@ -7,6 +7,25 @@ import UserNotifications
 /// countdown formatting. UIKit-free so it runs without a view hierarchy.
 final class AlarmFiringSnoozedStateTests: XCTestCase {
 
+    /// An empty rouble wallet in its own suite. The `.shared` default reads the
+    /// host's storefront scale: on a simulator whose catalogue loaded in USD the
+    /// ladder and receipts were priced in dollars (#1137).
+    private var suiteName: String!
+    private var wallet: BalanceService!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "test.firing.snoozedState.\(UUID().uuidString)"
+        wallet = BalanceService(defaults: UserDefaults(suiteName: suiteName)!, notificationCenter: NotificationCenter())
+    }
+
+    override func tearDown() {
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        wallet = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
     // MARK: - Helpers
 
     /// Build an alarm whose time is a fixed 07:00 on a known calendar day so the
@@ -57,7 +76,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             snoozeCount: 1,
-            snoozeAnchor: reference(hour: 7, minute: 1)
+            snoozeAnchor: reference(hour: 7, minute: 1), balanceService: wallet
         )
         XCTAssertEqual(vm.nextRingTimeText(), "07:06", "07:01 tap + 5min = 07:06")
     }
@@ -67,7 +86,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             snoozeCount: 3,
-            snoozeAnchor: reference(hour: 7, minute: 11)
+            snoozeAnchor: reference(hour: 7, minute: 11), balanceService: wallet
         )
         XCTAssertEqual(vm.nextRingTimeText(), "07:16", "07:11 tap + 5min = 07:16, regardless of snoozeCount")
     }
@@ -76,13 +95,13 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 9),
             snoozeCount: 2,
-            snoozeAnchor: reference(hour: 7, minute: 10)
+            snoozeAnchor: reference(hour: 7, minute: 10), balanceService: wallet
         )
         XCTAssertEqual(vm.nextRingTimeText(), "07:19", "07:10 tap + 9min = 07:19")
     }
 
     func testNextRingTime_noAnchor_isEmpty() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 0)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 0, balanceService: wallet)
         XCTAssertEqual(vm.nextRingTimeText(), "", "Before the first snooze there is no anchored ring")
         XCTAssertNil(vm.nextRingDate(), "No anchor → no target date")
     }
@@ -91,7 +110,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             snoozeCount: 1,
-            snoozeAnchor: reference(hour: 7, minute: 1)
+            snoozeAnchor: reference(hour: 7, minute: 1), balanceService: wallet
         )
         XCTAssertEqual(vm.snoozedHeroTitle(), "Будни · отложено до 07:06")
     }
@@ -101,7 +120,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: alarm,
             snoozeCount: 1,
-            snoozeAnchor: reference(hour: 7, minute: 1)
+            snoozeAnchor: reference(hour: 7, minute: 1), balanceService: wallet
         )
         XCTAssertEqual(vm.snoozedHeroTitle(), "отложено до 07:06", "Whitespace name must not leave a dangling «·»")
     }
@@ -119,7 +138,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             snoozeCount: 1,
-            snoozeAnchor: anchor
+            snoozeAnchor: anchor, balanceService: wallet
         )
         XCTAssertEqual(vm.secondsUntilNextRing(from: anchor), 300)
     }
@@ -131,7 +150,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             snoozeCount: 1,
-            snoozeAnchor: anchor
+            snoozeAnchor: anchor, balanceService: wallet
         )
         // Anchor 07:00, target 07:05. now=07:01 → 240s, now=07:04 → 60s.
         XCTAssertEqual(vm.secondsUntilNextRing(from: anchor.addingTimeInterval(60)), 240)
@@ -154,7 +173,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             snoozeCount: 1,
-            snoozeAnchor: tap
+            snoozeAnchor: tap, balanceService: wallet
         )
         // At the tap the chrome installs (positive countdown to 07:17).
         XCTAssertEqual(vm.secondsUntilNextRing(from: tap), 5 * 60,
@@ -171,14 +190,14 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
         let vm = AlarmFiringViewModel(
             alarm: makeAlarm(snoozeMinutes: 5),
             snoozeCount: 1,
-            snoozeAnchor: anchor
+            snoozeAnchor: anchor, balanceService: wallet
         )
         // 6 minutes after the 07:00 tap — past the tap + 5min ring; never negative.
         XCTAssertEqual(vm.secondsUntilNextRing(from: anchor.addingTimeInterval(6 * 60)), 0)
     }
 
     func testSecondsUntilNextRing_noAnchor_isZero() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 0)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(snoozeMinutes: 5), snoozeCount: 0, balanceService: wallet)
         XCTAssertEqual(vm.secondsUntilNextRing(from: Date()), 0,
                        "No snooze taken → no countdown, so the snoozed chrome never installs")
     }
@@ -196,17 +215,17 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
     // MARK: - Charge ladder
 
     func testLadderSteps_emptyWhenNotProgressive() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(progressive: false), snoozeCount: 2)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(progressive: false), snoozeCount: 2, balanceService: wallet)
         XCTAssertTrue(vm.ladderSteps.isEmpty, "Non-progressive alarms hide the ladder")
     }
 
     func testLadderSteps_amountsAreDoublingSchedule() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 1)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 1, balanceService: wallet)
         XCTAssertEqual(vm.ladderSteps.map { $0.amount }, [50, 100, 200, 400])
     }
 
     func testLadderSteps_stateAfterFirstSnooze() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 1)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 1, balanceService: wallet)
         XCTAssertEqual(
             vm.ladderSteps.map { $0.state },
             [.done, .current, .future, .future],
@@ -215,12 +234,12 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
     }
 
     func testLadderSteps_stateAtStart() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 0)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 0, balanceService: wallet)
         XCTAssertEqual(vm.ladderSteps.map { $0.state }, [.current, .future, .future, .future])
     }
 
     func testLadderSteps_clampsCurrentAtCeiling() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 6)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 6, balanceService: wallet)
         XCTAssertEqual(
             vm.ladderSteps.map { $0.state },
             [.done, .done, .done, .current],
@@ -231,18 +250,18 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
     // MARK: - Last charge (fly-up amount)
 
     func testLastChargeAmount_zeroBeforeSnooze() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 0)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 0, balanceService: wallet)
         XCTAssertEqual(vm.lastChargeAmount, 0)
     }
 
     func testLastChargeAmount_progressiveTracksRung() {
         // snoozeCount == 2 → most recent charge was rung 2 = base × 2 = 100.
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 2)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: true), snoozeCount: 2, balanceService: wallet)
         XCTAssertEqual(vm.lastChargeAmount, 100)
     }
 
     func testLastChargeAmount_flatWhenNotProgressive() {
-        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: false), snoozeCount: 3)
+        let vm = AlarmFiringViewModel(alarm: makeAlarm(penalty: 50, progressive: false), snoozeCount: 3, balanceService: wallet)
         XCTAssertEqual(vm.lastChargeAmount, 50, "Flat penalty alarms charge the base each time")
     }
 

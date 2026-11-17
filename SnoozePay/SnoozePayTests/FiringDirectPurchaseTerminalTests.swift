@@ -237,10 +237,16 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             PackCase("RUB", 0, 5000, catalogue: whole, expected: 999)
         ]
         for testCase in cases {
-            let fixture = Fixture(available: false, penalty: testCase.penalty)
             let currency = try XCTUnwrap(Currency(code: testCase.code))
-            if testCase.banked > 0 {
-                XCTAssertEqual(fixture.wallet.topUpFromPurchase(amount: testCase.banked, currency: currency), .credited)
+            // The wallet is banked BEFORE the ring's price is locked (#1137), and a
+            // banked foreign wallet gets the scale whose low tier is this charge.
+            let fixture = Fixture(available: false, penalty: testCase.penalty) { wallet, defaults in
+                guard testCase.banked > 0 else { return }
+                XCTAssertEqual(wallet.topUpFromPurchase(amount: testCase.banked, currency: currency), .credited)
+                guard currency != .rub else { return }
+                let low = Decimal(string: "\(testCase.penalty)")!
+                let scale = SnoozePriceScale(currency: currency, tiers: [low, low + 1, low + 2])!
+                XCTAssertTrue(SnoozePriceScaleStore(defaults: defaults).record(scale))
             }
             let scale = testCase.code == "RUB" ? 1 : 100
             for nominal in testCase.catalogue where nominal != testCase.missing {
@@ -335,9 +341,13 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         var offer: TopUpOffer?
         var catalog: [String: TopUpOffer] = [:]
 
-        init(available: Bool = true, penalty: Double = 50) {
+        init(
+            available: Bool = true, penalty: Double = 50,
+            beforeRing: ((BalanceService, UserDefaults) -> Void)? = nil
+        ) {
             defaults = UserDefaults(suiteName: suite)!
             wallet = BalanceService(defaults: defaults, notificationCenter: center)
+            beforeRing?(wallet, defaults)
             store = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
             if available { offer = TopUpOffer(productID: sku(499),
                                               price: 499, currencyCode: "RUB", displayPrice: "499 RUB") }
