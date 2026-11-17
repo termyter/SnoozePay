@@ -676,8 +676,9 @@ final class AlarmFiringViewModelTests: XCTestCase {
     private var defaults: UserDefaults!
     private var wallet: BalanceService!
     /// Fails the test if it moved the host's real `UserDefaults.standard`
-    /// (#830). The `testPenaltyFor*` tests still build the view model on its
-    /// `.shared` defaults; they only read, and this is what keeps it so.
+    /// (#830). Every view model here, `testPenaltyFor*` included, runs on
+    /// `wallet`: the `.shared` default reads the host's storefront scale, so a
+    /// simulator whose catalogue loaded in USD priced them in dollars (#1137).
     private var domainGuard: AppDefaultsDomainGuard!
 
     override func setUp() {
@@ -722,20 +723,20 @@ final class AlarmFiringViewModelTests: XCTestCase {
 
     func testPenaltyForFirstSnooze() {
         let alarm = alarm(penalty: 50)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 0, balanceService: wallet)
         XCTAssertEqual(vm.currentPenalty, 50)
     }
 
     func testPenaltyForSecondSnoozeWithProgression() {
         let alarm = alarm(penalty: 50, progressive: true)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 1)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 1, balanceService: wallet)
         // snoozeCount=1 → penalty(forSnoozeCount: 2) → 50 * 2 = 100
         XCTAssertEqual(vm.currentPenalty, 100)
     }
 
     func testPenaltyForFifthSnoozeCapsAtCeiling() {
         let alarm = alarm(penalty: 50, progressive: true)
-        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 4)
+        let vm = AlarmFiringViewModel(alarm: alarm, snoozeCount: 4, balanceService: wallet)
         // snoozeCount=4 → penalty(forSnoozeCount: 5) caps at base × 8 = 400 (#274)
         XCTAssertEqual(vm.currentPenalty, 400)
     }

@@ -150,7 +150,7 @@ final class UITourAlarmKitOverrideTests: XCTestCase {
     // MARK: - Finishing the ring
 
     /// «Я встал» on a tour route goes through `finishOccurrence` since #1076.
-    /// The protocol default answers `.unsupported`, so a tour backend that
+    /// The protocol default answered `.unsupported`, so a tour backend that
     /// inherited it turned every dismiss into «Завершение не подтверждено» and
     /// the E2E never reached the WokeMorning summary (#1117). Both states:
     /// the firing E2E runs on `denied`, and a stop must not need a grant.
@@ -199,6 +199,29 @@ final class UITourAlarmKitOverrideTests: XCTestCase {
         XCTAssertNil(backend.finishOccurrence(request(fireDate)).finishFailure)
         XCTAssertNil(backend.verifyFinishedOccurrence(request(fireDate)).finishFailure,
                      "the finish must actually remove the copy it confirmed")
+    }
+
+    /// Recovery was the last requirement the tour backend still inherited as
+    /// `.unsupported` (#1125). Like the production sweep it must drop what it
+    /// registered and confirm absence, on either authorization state.
+    func testTourBackend_recoverySweepClearsItsOwnRegistrations() {
+        for isAuthorized in [false, true] {
+            let backend = UITourAlarmKitBackend(isAuthorized: isAuthorized)
+            let alarm = makeAlarm()
+            let fireDate = Date(timeIntervalSince1970: 1_800_000_000)
+            backend.scheduleTrackedSnooze(
+                alarm, fireDate: fireDate, token: AlarmSnoozeToken(sessionID: UUID(), attemptID: UUID()),
+                attemptCount: 1, isCurrent: { true }, completion: { _ in }
+            )
+
+            XCTAssertNoThrow(try backend.clearRegisteredAlarmsForRecovery().get(),
+                             "authorized=\(isAuthorized): recovery must not answer .unsupported")
+            let request = AlarmOccurrenceFinishRequest(
+                alarmID: alarm.id, weekly: nil, expectedDerivedFireDate: fireDate, allowsUntrackedDerived: false
+            )
+            XCTAssertNil(backend.verifyFinishedOccurrence(request).finishFailure,
+                         "authorized=\(isAuthorized): the sweep must actually remove the snooze copy")
+        }
     }
 
     // MARK: - Isolation

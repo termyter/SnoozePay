@@ -370,28 +370,40 @@ final class AlarmKitSchedulerTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
     }
 
+    /// Since #1138 a non-rouble quote resolves the alarm's price in its scale
+    /// (`AlarmKitPriceQuoteTests`); a rouble quote keeps the raw amount.
     @available(iOS 26.0, *)
-    func testBothConfigurationsBuildThePricedButtonInTheSuppliedWalletCurrency() throws {
-        for code in ["RUB", "USD", "EUR", "JPY", "KWD"] {
-            let currency = try XCTUnwrap(Currency(code: code))
+    func testBothConfigurationsBuildThePricedButtonFromTheSuppliedQuote() throws {
+        let usd = try XCTUnwrap(Currency(code: "USD"))
+        let usdScale = try XCTUnwrap(SnoozePriceScale(currency: usd, tierStrings: ["0.99", "1.99", "2.99"]))
+        let quotes: [SnoozePriceContext?] = [.scale(.rouble), .scale(usdScale), .unavailable(usd), nil]
+        for quote in quotes {
             for amount in [1.25, 0.001] {
                 let alarm = AppAlarm(penaltyAmount: amount)
                 var copies: [String] = []
-                let build: (AppAlarm, Currency?) -> AlarmPresentation = { source, supplied in
+                let build: (AppAlarm, SnoozePriceContext?) -> AlarmPresentation = { source, supplied in
                     XCTAssertEqual(source.penaltyAmount, amount, "Configuration must preserve the raw amount")
-                    XCTAssertEqual(supplied, currency)
-                    let presentation = AlarmKitScheduler.makePresentation(for: source, currency: supplied)
+                    XCTAssertEqual(supplied, quote)
+                    let presentation = AlarmKitScheduler.makePresentation(for: source, quote: supplied)
                     if let title = presentation.alert.secondaryButton?.text {
                         copies.append(String(localized: title))
                     }
                     return presentation
                 }
-                _ = try AlarmKitScheduler.makeConfiguration(for: alarm, currency: currency, presentation: build)
+                _ = try AlarmKitScheduler.makeConfiguration(for: alarm, quote: quote, presentation: build)
                 _ = try AlarmKitScheduler.makeSnoozeConfiguration(
-                    for: alarm, fireDate: Date().addingTimeInterval(60), currency: currency, presentation: build
+                    for: alarm, fireDate: Date().addingTimeInterval(60), quote: quote, presentation: build
                 )
-                let quote = MoneyFormatter.quotedString(amount, currency: currency) ?? "—"
-                XCTAssertEqual(copies, Array(repeating: "Поспать ещё (−\(quote))", count: 2))
+                let expected: String
+                switch quote {
+                case .scale(let scale) where scale.currency == .rub:
+                    expected = "Поспать ещё (−\(MoneyFormatter.quotedString(amount, currency: .rub) ?? "—"))"
+                case .scale:
+                    expected = "Поспать ещё (−\(MoneyFormatter.quotedString(0.99, currency: usd) ?? "—"))"
+                default:
+                    expected = "Поспать ещё"
+                }
+                XCTAssertEqual(copies, Array(repeating: expected, count: 2))
                 XCTAssertEqual(alarm.penaltyAmount, amount)
             }
         }
@@ -399,7 +411,7 @@ final class AlarmKitSchedulerTests: XCTestCase {
 
     @available(iOS 26.0, *)
     func testPristineWalletPresentationDoesNotBakeInALegacyCurrencyBeforeFirstPurchase() {
-        let presentation = AlarmKitScheduler.makePresentation(for: AppAlarm(penaltyAmount: 50), currency: nil)
+        let presentation = AlarmKitScheduler.makePresentation(for: AppAlarm(penaltyAmount: 50), quote: nil)
         XCTAssertEqual(presentation.alert.secondaryButton.map { String(localized: $0.text) }, "Поспать ещё")
     }
 

@@ -711,6 +711,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 .appDelegate, .default,
                 "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
             )
+        case let .priceUnavailable(currency):
+            AppLogger.appDelegate.error(
+                "SNOOZE_ACTION: no snooze price in \(currency.code, privacy: .public) — snooze skipped, nothing charged"
+            )
         case let .scheduled(newSnoozeCount, charged):
             AppLogger.emit(
                 .appDelegate, .info, "SNOOZE_ACTION: scheduled #\(newSnoozeCount) charged=\(charged)"
