@@ -41,6 +41,25 @@ extension BalanceService {
     /// roubles until the first purchase freezes it.
     var displayCurrency: Currency { priceContext.currency }
 
+    /// The context AlarmKit snooze labels are quoted in (#1138), or `nil` for
+    /// today's unpriced label.
+    ///
+    /// Same as `priceContext`, except for a pristine wallet whose storefront
+    /// scale is not cached (no catalogue loaded yet, or the cached one is
+    /// unreadable): `priceContext` falls back to roubles there, but a label is
+    /// baked into an alert that may still be ringing when the first purchase
+    /// freezes another currency, so it stays unpriced rather than quoting ₽.
+    /// A refresh on `snoozePriceScaleChangedNotification` re-bakes it.
+    ///
+    /// ⚠️ Takes `queue.sync` like `priceContext`: never read it from the queue.
+    var alarmQuoteContext: SnoozePriceContext? {
+        let context = priceContext
+        guard storedWalletCurrency == nil, walletIsPristine else { return context }
+        guard let storefront = priceScaleStore.lastStorefrontCurrency,
+              case .scale(let scale) = context, scale.currency == storefront else { return nil }
+        return context
+    }
+
     private func roundedCachedScale(for currency: Currency) -> SnoozePriceScale? {
         guard let cached = priceScaleStore.scale(for: currency) else { return nil }
         if currency == .rub { return cached }

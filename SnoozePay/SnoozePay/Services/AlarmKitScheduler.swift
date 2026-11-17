@@ -276,7 +276,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     ) {
         let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
         do {
-            configuration = try Self.makeConfiguration(for: alarm, currency: BalanceService.shared.alarmQuoteCurrency)
+            configuration = try Self.makeConfiguration(for: alarm, quote: BalanceService.shared.alarmQuoteContext)
         } catch {
             // Synchronous config-build failure — report immediately so the
             // caller surfaces it instead of claiming the alarm is armed (#417).
@@ -326,7 +326,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
         do {
             configuration = try Self.makeSnoozeConfiguration(
-                for: alarm, fireDate: fireDate, currency: BalanceService.shared.alarmQuoteCurrency
+                for: alarm, fireDate: fireDate, quote: BalanceService.shared.alarmQuoteContext
             )
         } catch {
             // Synchronous config-build failure — report immediately so the
@@ -371,7 +371,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     ) {
         do {
             let configuration = try Self.makeSnoozeConfiguration(
-                for: alarm, fireDate: fireDate, currency: BalanceService.shared.alarmQuoteCurrency,
+                for: alarm, fireDate: fireDate, quote: BalanceService.shared.alarmQuoteContext,
                 token: token, attemptCount: attemptCount
             )
             Task {
@@ -492,11 +492,12 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// snooze buttons), the stop / snooze intents, and the alarm sound.
     static func makeConfiguration(
         for alarm: Alarm,
-        currency: Currency? = .legacyDefault,
-        presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation
+        quote: SnoozePriceContext? = .scale(.rouble),
+        presentation buildPresentation: (Alarm, SnoozePriceContext?) -> AlarmPresentation
+            = AlarmKitScheduler.makePresentation
     ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
         let schedule = makeSchedule(for: alarm)
-        let presentation = buildPresentation(alarm, currency)
+        let presentation = buildPresentation(alarm, quote)
         let attributes = AlarmAttributes<SnoozePayAlarmMetadata>(
             presentation: presentation,
             metadata: SnoozePayAlarmMetadata(),
@@ -518,18 +519,19 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     static func makeSnoozeConfiguration(
         for alarm: Alarm,
         fireDate: Date,
-        currency: Currency? = .legacyDefault,
+        quote: SnoozePriceContext? = .scale(.rouble),
         token: AlarmSnoozeToken? = nil,
         attemptCount: Int = 0,
-        presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation,
+        presentation buildPresentation: (Alarm, SnoozePriceContext?) -> AlarmPresentation
+            = AlarmKitScheduler.makePresentation,
         construct: (AlarmKit.Alarm.Schedule, AlarmAttributes<SnoozePayAlarmMetadata>, StopAlarmIntent,
                     SnoozeAlarmIntent, ActivityKit.AlertConfiguration.AlertSound) -> SnoozeConfiguration = {
             .alarm(schedule: $0, attributes: $1, stopIntent: $2, secondaryIntent: $3, sound: $4)
         }
     ) throws -> SnoozeConfiguration {
         let schedule = makeSnoozeSchedule(fireDate: fireDate)
-        let presentation = token == nil ? buildPresentation(alarm, currency)
-            : makePresentation(for: alarm, currency: currency, nextSnoozeCount: attemptCount + 1)
+        let presentation = token == nil ? buildPresentation(alarm, quote)
+            : makePresentation(for: alarm, quote: quote, nextSnoozeCount: attemptCount + 1)
         let attributes = AlarmAttributes<SnoozePayAlarmMetadata>(
             presentation: presentation,
             metadata: SnoozePayAlarmMetadata(),
@@ -636,17 +638,29 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// Build the full-screen alert presentation. The primary (stop) button is
     /// driven by `stopIntent`; the secondary (snooze) button shows the paid
     /// snooze cost and is driven by `secondaryIntent`.
-    static func makePresentation(for alarm: Alarm, currency: Currency?) -> AlarmPresentation {
-        makePresentation(for: alarm, currency: currency, nextSnoozeCount: 1)
+    ///
+    /// The cost is `SnoozePriceResolver` applied to `alarm.price` in `quote`
+    /// (#1138): a `nil` quote (pristine wallet, no storefront scale) or an
+    /// `.unavailable` one bakes the unpriced label, never a guessed number.
+    static func makePresentation(for alarm: Alarm, quote: SnoozePriceContext?) -> AlarmPresentation {
+        makePresentation(for: alarm, quote: quote, nextSnoozeCount: 1)
     }
 
-    static func makePresentation(for alarm: Alarm, currency: Currency?, nextSnoozeCount: Int) -> AlarmPresentation {
+    static func makePresentation(
+        for alarm: Alarm, quote: SnoozePriceContext?, nextSnoozeCount: Int
+    ) -> AlarmPresentation {
         // The price is substituted into a catalogue format rather than
         // interpolated into a literal: interpolating made the whole rendered
         // phrase the resource's lookup key, so the words could never come from
         // the catalogue (`AlarmKitCopy`).
+        let price = quote.flatMap {
+            SnoozePriceResolver.resolve(
+                alarm.price, snoozeCount: nextSnoozeCount, isProgressive: alarm.progressiveScale, in: $0
+            )
+        }
+        // Through `Double` so the rouble path formats exactly as before.
         let snoozeTitle = AlarmKitCopy.pricedSnoozeTitle(
-            penalty: alarm.penalty(forSnoozeCount: nextSnoozeCount), currency: currency
+            penalty: price.map { NSDecimalNumber(decimal: $0.amount).doubleValue } ?? 0, currency: price?.currency
         )
         let snoozeButton = AlarmButton(
             text: snoozeTitle,

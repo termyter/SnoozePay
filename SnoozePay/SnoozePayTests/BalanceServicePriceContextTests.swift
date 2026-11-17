@@ -139,11 +139,11 @@ final class BalanceServicePriceContextTests: XCTestCase {
         XCTAssertTrue(balance.acceptsPurchase(in: eur), "the wallet may still adopt any currency")
     }
 
-    /// Decision for #1130: AlarmKit labels keep today's quote currency; their
-    /// switch to the storefront currency is step 5b.
-    func testAlarmQuoteCurrency_ofAPristineWallet_staysNilWithACachedStorefront() {
+    /// Step 5b (#1138): AlarmKit labels of a pristine wallet quote the cached
+    /// storefront currency (was `nil` under #1130).
+    func testAlarmQuoteCurrency_ofAPristineWallet_isTheCachedStorefront() {
         XCTAssertTrue(scaleStore.record(usdScale))
-        XCTAssertNil(balance.alarmQuoteCurrency)
+        XCTAssertEqual(balance.alarmQuoteCurrency, usd)
     }
 
     // MARK: - Minor-unit rounding
