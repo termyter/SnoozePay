@@ -62,3 +62,6 @@ android/build/
 android/app/build/
 android/captures/
 android/.externalNativeBuild/
+
+# Local derived data of test runs (-derivedDataPath .dd); never commit build caches.
+.dd/

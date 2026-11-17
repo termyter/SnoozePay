@@ -8,7 +8,15 @@ final class VolumePickerInteractionTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
-        var model = CreateAlarmViewModel(repository: repository, defaults: AlarmDefaults(defaults: defaults))
+        let monitor = AlarmBackendMonitor(
+            probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+            notificationCenter: NotificationCenter()
+        )
+        let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+        var model = CreateAlarmViewModel(
+            repository: repository, defaults: AlarmDefaults(defaults: defaults),
+            balanceService: wallet, backendMonitor: monitor
+        )
         model.enabled = false
         model.volume = 0.7
         var changes: [Bool] = []
@@ -34,7 +42,8 @@ final class VolumePickerInteractionTests: XCTestCase {
             let stored = try XCTUnwrap(repository.fetchAllChecked().first)
             XCTAssertEqual(try repository.fetchAllChecked().count, 1, "editing updates the existing alarm")
             model = CreateAlarmViewModel(alarm: stored, repository: repository,
-                                         defaults: AlarmDefaults(defaults: defaults))
+                                         defaults: AlarmDefaults(defaults: defaults),
+                                         balanceService: wallet, backendMonitor: monitor)
             XCTAssertEqual(model.volumeFadeIn, expected)
             let reopened = VolumePickerViewController(volume: model.volume, fadeIn: model.volumeFadeIn)
             reopened.loadViewIfNeeded()

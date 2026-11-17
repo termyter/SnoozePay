@@ -182,7 +182,7 @@
       }
     },
     "alarm_kit.action.snooze" : {
-      "comment" : "Name of SnoozeAlarmIntent, the intent wired to the AlarmKit alert's secondary action (AlarmConfiguration.secondaryIntent). Shortcuts and Siri show it. This is NOT the text of the alert's snooze button — that is alarm_kit.action.snooze.priced, set explicitly via AlarmButton(text:). Byte-identical to firing.action.snooze and still a separate entry. The reason is not that the words might diverge (they need not) but that firing.action.snooze titles the pre-#472 UNNotification category that nothing schedules any more (AlarmScheduler.registerCategories) and is expected to be deleted with it: one shared key would make that cleanup silently take a live intent name with it, and the person deleting legacy notification copy has no way to see that from where they stand. Since the words are identical either way, no user sees a difference — this is a namespace choice, not a copy one. #712's precedent points the other way (it merged byte-identical literals reached from two code paths) and is overridden here only by the pending deletion; #711 is not a precedent for this at all, having separated strings whose words differ. NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
+      "comment" : "Name of SnoozeAlarmIntent, the intent wired to the AlarmKit alert's secondary action (AlarmConfiguration.secondaryIntent). Shortcuts and Siri show it. This is NOT the text of the alert's snooze button — that is alarm_kit.action.snooze.priced, set explicitly via AlarmButton(text:). Byte-identical to firing.action.snooze and still a separate entry. The reason is not that the words might diverge (they need not) but that firing.action.snooze titles the pre-#472 UNNotification category that nothing schedules any more (AlarmScheduler.registerCategories) and is expected to be deleted with it: one shared key would make that cleanup silently take a live intent name with it, and the person deleting legacy notification copy has no way to see that from where they stand. Since the words are identical either way, no user sees a difference — this is a namespace choice, not a copy one. #712's precedent points the other way (it merged byte-identical literals reached from two code paths) and is overridden here only by the pending deletion; #711 is not a precedent for this at all, having separated strings whose words differ. AppIntents exports this title from a statically extractable LocalizedStringResource key in the main bundle with table Localizable. The compiled RU and EN tables provide the title when the system resolves the resource; Siri's locale can differ from the app's UI language. AlarmKitCopyTests checks the actual title resource in both languages. Physical Shortcuts/Siri and armed-alarm presentation remain acceptance items in #727. The alert's priced secondary-button label is a separate resource resolved at schedule time.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -218,7 +218,7 @@
       }
     },
     "alarm_kit.action.stop" : {
-      "comment" : "Name of StopAlarmIntent, the intent wired to the AlarmKit alert's stop action (AlarmConfiguration.stopIntent). Shortcuts and Siri show it. Whether the system also paints it on the alert itself is NOT established: AlarmPresentation.Alert.stopButton is deprecated in iOS 26.1 as \"not used anymore\", and AlarmKitScheduler uses the 26.1 initializer, which has no stop button parameter — so the app sets no stop button text anywhere. Kept apart from the two other ways the app says «stop»: firing.action.dismiss («Выключить») titles the pre-#472 UNNotification category that nothing schedules any more, and firing.button.dismiss («Я встал — выключить») is the in-app firing screen's CTA. #712 merged two literals because they were byte-identical, reached through two different code paths; that criterion does not apply here, because these three say different words. Merging any pair would rewrite what a user reads somewhere — a copy decision for the PM, not part of moving a literal into the catalogue (#723). NOTE: nothing reads this entry at runtime yet. AppIntents exports intent titles at build time and refuses every bundle but the main one, which this app's copy is unreachable through while knownRegions is (en, Base) (#596). The Swift literal is still what renders; AlarmKitCopyTests fails if the two stop agreeing. #727 tracks finishing the move.",
+      "comment" : "Name of StopAlarmIntent, the intent wired to the AlarmKit alert's stop action (AlarmConfiguration.stopIntent). Shortcuts and Siri show it. Whether the system also paints it on the alert itself is NOT established: AlarmPresentation.Alert.stopButton is deprecated in iOS 26.1 as \"not used anymore\", and AlarmKitScheduler uses the 26.1 initializer, which has no stop button parameter — so the app sets no stop button text anywhere. Kept apart from the two other ways the app says «stop»: firing.action.dismiss («Выключить») titles the pre-#472 UNNotification category that nothing schedules any more, and firing.button.dismiss («Я встал — выключить») is the in-app firing screen's CTA. #712 merged two literals because they were byte-identical, reached through two different code paths; that criterion does not apply here, because these three say different words. Merging any pair would rewrite what a user reads somewhere — a copy decision for the PM, not part of moving a literal into the catalogue (#723). AppIntents exports this title from a statically extractable LocalizedStringResource key in the main bundle with table Localizable. The compiled RU and EN tables provide the title when the system resolves the resource; Siri's locale can differ from the app's UI language. AlarmKitCopyTests checks the actual title resource in both languages. Physical Shortcuts/Siri and armed-alarm presentation remain acceptance items in #727. The system-owned stop-button label remains outside this entry's contract.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -415,6 +415,24 @@
         }
       }
     },
+    "alarms.backend_guard.action.not_now" : {
+      "comment" : "PM-approved AlarmKit permission gate copy (#594).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не сейчас"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Now"
+          }
+        }
+      }
+    },
     "alarms.backend_guard.action.open_settings" : {
       "comment" : "CTA on the AlarmKit requirement screen that deep-links into Settings, used by the states the app can no longer resolve on its own.",
       "extractionState" : "manual",
@@ -428,7 +446,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Открыть Настройки"
+            "value" : "Открыть настройки"
           }
         }
       }
@@ -440,49 +458,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Allow"
+            "value" : "Allow Alarms"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Разрешить"
-          }
-        }
-      }
-    },
-    "alarms.backend_guard.create_anyway" : {
-      "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user taps «+».",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Create Anyway"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Всё равно создать"
-          }
-        }
-      }
-    },
-    "alarms.backend_guard.enable_anyway" : {
-      "comment" : "Alarms list: the escape hatch on the «alarms are not permitted» alert raised when the user switches an alarm on.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turn On Anyway"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Всё равно включить"
+            "value" : "Разрешить будильники"
           }
         }
       }
@@ -512,13 +494,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The app hasn’t asked for permission to use alarms and notifications yet. Without it, the alarms you create won’t ring."
+            "value" : "Allow SnoozePay to use alarms. You need this permission to set an alarm."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Приложение ещё не спросило разрешение на будильники и уведомления. Без него созданные будильники не сработают."
+            "value" : "Разрешите SnoozePay использовать будильники. Без этого разрешения поставить будильник не получится"
           }
         }
       }
@@ -530,13 +512,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Permission for alarms and notifications is turned off. Turn it on in Settings — otherwise the alarms you create won’t ring."
+            "value" : "Enable alarm access for SnoozePay in iOS Settings. Without it, your alarms won’t ring."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Разрешение на будильники и уведомления выключено. Включите его в Настройках — иначе созданные будильники не сработают."
+            "value" : "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
           }
         }
       }
@@ -559,20 +541,38 @@
         }
       }
     },
-    "alarms.backend_guard.title.wont_ring" : {
-      "comment" : "Heading of the AlarmKit permission requirement screen / banner, shown both when the grant was never asked for and when it is switched off. One entry for both states because the sentence is the same promise being broken; the message below it is what differs.",
+    "alarms.backend_guard.title.not_requested" : {
+      "comment" : "PM-approved AlarmKit permission gate copy (#594).",
       "extractionState" : "manual",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alarms Won’t Ring"
-          }
-        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Будильники не зазвонят"
+            "value" : "Нужно разрешение на будильники"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm Permission Needed"
+          }
+        }
+      }
+    },
+    "alarms.backend_guard.title.unavailable" : {
+      "comment" : "PM-approved AlarmKit permission gate copy (#594).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Доступ к будильникам выключен"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm Access Is Off"
           }
         }
       }
@@ -1117,24 +1117,6 @@
         }
       }
     },
-    "alarms.error.data_title" : {
-      "comment" : "Alarms list: title of the alert shown when the alarm store cannot be read.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
-          }
-        }
-      }
-    },
     "alarms.error.load_failed" : {
       "comment" : "Alert body when the stored alarms JSON cannot be decoded (AlarmRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
@@ -1513,6 +1495,24 @@
         }
       }
     },
+    "common.error.data_title" : {
+      "comment" : "Shared title for alarm-list and statistics data-load errors. Each alert message identifies the affected domain.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data Error"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ошибка данных"
+          }
+        }
+      }
+    },
     "common.purchase_failed.message" : {
       "comment" : "Fallback body of the purchase-failure alert, used when StoreKit supplies no message of its own.",
       "extractionState" : "manual",
@@ -1617,6 +1617,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Хватит на ~%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "common.sound.name.badinerie" : {
+      "comment" : "Display name of the «badinerie» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bach's Badinerie"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шутка Баха"
           }
         }
       }
@@ -1765,6 +1783,24 @@
         }
       }
     },
+    "common.sound.name.marimba" : {
+      "comment" : "Display name of the «marimba» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marimba"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маримба"
+          }
+        }
+      }
+    },
     "common.sound.name.morning" : {
       "comment" : "Display name of the «morning» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1819,6 +1855,24 @@
         }
       }
     },
+    "common.sound.name.reflection" : {
+      "comment" : "Display name of the «reflection» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reflection"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Размышление"
+          }
+        }
+      }
+    },
     "common.sound.name.sirena" : {
       "comment" : "Display name of the «sirena» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1851,6 +1905,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Космолёт"
+          }
+        }
+      }
+    },
+    "common.sound.name.strum" : {
+      "comment" : "Display name of the «strum» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strum"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перебор"
+          }
+        }
+      }
+    },
+    "common.sound.name.vibraphone" : {
+      "comment" : "Display name of the «vibraphone» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibraphone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрафон"
           }
         }
       }
@@ -2413,6 +2503,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.badinerie" : {
+      "comment" : "Sound picker: the descriptive line under «Шутка Баха». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bach in 8-bit"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бах в 8-битной обработке"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.bell" : {
       "comment" : "Sound picker: the descriptive line under «Колокольчик». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2575,6 +2683,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.marimba" : {
+      "comment" : "Sound picker: the descriptive line under «Маримба». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Morning marimba chime"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Утренний перезвон маримбы"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.morning" : {
       "comment" : "Sound picker: the descriptive line under «Утро». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2629,6 +2755,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.reflection" : {
+      "comment" : "Sound picker: the descriptive line under «Размышление». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A quiet melody for a gentle morning"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тихая мелодия для лёгкого утра"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.sirena" : {
       "comment" : "Sound picker: the descriptive line under «Сирена». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2661,6 +2805,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Гул космического корабля"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.strum" : {
+      "comment" : "Sound picker: the descriptive line under «Перебор». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soft plucked guitar chords"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мягкие гитарные аккорды"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.vibraphone" : {
+      "comment" : "Sound picker: the descriptive line under «Вибрафон». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bright, airy vibraphone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонкий воздушный вибрафон"
           }
         }
       }
@@ -4177,6 +4357,168 @@
         }
       }
     },
+    "firing.finish.error.message" : {
+      "comment" : "Unconfirmed occurrence finish: keep the screen and paid-continuation guard until retry succeeds (#1063).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not confirm that the alarm stopped. Try again. Paid snoozing is temporarily unavailable."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось подтвердить выключение будильника. Попробуйте ещё раз. Платное откладывание пока недоступно."
+          }
+        }
+      }
+    },
+    "firing.finish.error.title" : {
+      "comment" : "Do not claim that the alarm is still ringing or already stopped when native finish is unconfirmed (#1063).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish not confirmed"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершение не подтверждено"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.confirmed" : {
+      "comment" : "Quiet acknowledgement only; does not reconstruct a historical morning or billing summary.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish Confirmed"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершение подтверждено"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.message" : {
+      "comment" : "Explains that a confirmed retry records the wake at the original attempt's time and that quiet retry never stops a new native occurrence.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can confirm the pending finish after restarting. A successful retry records the wake at the time of the original attempt. It does not stop a new alarm."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "После перезапуска можно повторно подтвердить завершение. При успехе подъём отмечается временем исходной попытки. Новое срабатывание не выключается."
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.previous" : {
+      "comment" : "Separate quiet recovery action in a newer firing error; does not finish or dismiss the current firing screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check Previous Finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверить предыдущую попытку"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.retry" : {
+      "comment" : "Explicit action for the exact persisted finish request; no new paid attempt.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm Pending Finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторить завершение"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.title" : {
+      "comment" : "Quiet heading for a persisted unconfirmed alarm finish; does not represent a new firing.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending finish"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Незавершённая попытка"
+          }
+        }
+      }
+    },
+    "firing.finish.recovery.unavailable" : {
+      "comment" : "Unavailable durable finish discovery, distinct from having no pending requests.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not read pending finishes. Your data is preserved. Try again."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать незавершённые попытки. Данные сохранены. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "firing.finish.retry" : {
+      "comment" : "Retry the same pending finish request, without another paid snooze (#1063).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Again"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторить"
+          }
+        }
+      }
+    },
     "firing.hint.max_price" : {
       "comment" : "Replaces firing.hint.next_price once the progressive ladder hits its ceiling and there is no higher price to quote.",
       "extractionState" : "manual",
@@ -5392,13 +5734,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Without notification permission, alarms won’t ring. Turn on notifications in Settings."
+            "value" : "Enable alarm access for SnoozePay in iOS Settings. Without it, your alarms won’t ring."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Без разрешения на уведомления будильники не сработают. Включите их в Настройках."
+            "value" : "Включите доступ к будильникам для SnoozePay в настройках iOS. Без него будильники не сработают"
           }
         }
       }
@@ -5410,13 +5752,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Notifications Are Off"
+            "value" : "Alarm Access Is Off"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Уведомления выключены"
+            "value" : "Доступ к будильникам выключен"
           }
         }
       }
@@ -6999,24 +7341,6 @@
         }
       }
     },
-    "statistics.error.title" : {
-      "comment" : "Title of the alert shown when the statistics repository fails to load. Byte for byte the value of alarms.error.data_title, and knowingly so rather than by oversight: both alerts are title + errorDescription-or-fallback + OK, the domain lives in the message (statistics.error.message vs alarms.error.load_failed_fallback) and not in the title, so by the common.* rule in Localized.swift this is a candidate for one shared common.error.data_title. Not merged in this slice because dropping a key is precisely the case merge-xcstrings.py refuses to resolve, and the #599 lane is editing this same file in parallel. alarms.error.data_title itself came from #601, which is closed and already on main — it is not what #599 is holding. Consolidate-or-justify-forever is #724. This is not the streak.behavioral.caps situation: there the two entries have different shapes behind them, here they do not.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
-          }
-        }
-      }
-    },
     "statistics.last_slip" : {
       "comment" : "Hero meta line; %@ is a day-and-month date («8 января»).",
       "extractionState" : "manual",
@@ -7431,6 +7755,24 @@
         }
       }
     },
+    "statistics.wake_time.calculation_unavailable" : {
+      "comment" : "Wake-time card when enough history exists but its median cannot be published. No recovery promise.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up time couldn’t be calculated from the recorded history."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось рассчитать время подъёма по записанной истории."
+          }
+        }
+      }
+    },
     "statistics.wake_time.caps" : {
       "comment" : "Caps title of the wake-time card (SPWakeTimeCard).",
       "extractionState" : "manual",
@@ -7445,6 +7787,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ВРЕМЯ ПОДЪЁМА"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.comparison_unavailable" : {
+      "comment" : "Wake-time card comparison when the baseline result was refused; the recent median remains visible.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The wake-up time comparison is unavailable."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сравнение времени подъёма недоступно."
           }
         }
       }
@@ -7553,6 +7913,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Копим историю: нужно ещё %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.unreadable" : {
+      "comment" : "Wake history could not be read. Used by the wake-time card or the statistics unavailable state; no repair action.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up history couldn’t be read."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать историю подъёмов."
           }
         }
       }

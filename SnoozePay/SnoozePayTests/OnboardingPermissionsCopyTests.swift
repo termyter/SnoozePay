@@ -163,7 +163,11 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
     // MARK: - Layer 2b: the permissions screen
 
     func testPermissionsScreenRendersCopyRatherThanKeys() {
-        let controller = PermissionsViewController()
+        let monitor = AlarmBackendMonitor(
+            probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
+            notificationCenter: NotificationCenter()
+        )
+        let controller = PermissionsViewController(backendMonitor: monitor)
         controller.loadViewIfNeeded()
 
         let rendered = strings(in: controller.view)

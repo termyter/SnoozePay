@@ -23,9 +23,12 @@ final class AlarmFiringFinishDiagnosticTests: XCTestCase {
         let target = lines.filter { $0.category == .ui && $0.message.hasPrefix(prefix) }
         XCTAssertEqual(target.count, 1, "scheduler cleanup may log separately; the finish needs one UI diagnostic")
         XCTAssertEqual(target.first?.level, .error)
-        XCTAssertEqual(target.first?.message, prefix + String(describing: AlarmSnoozeContextError.unavailable))
+        XCTAssertEqual(target.first?.message, prefix + String(describing: AlarmOccurrenceFinishError.sessionUnavailable))
         XCTAssertEqual(fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key), bytes)
-        XCTAssertTrue(backend.cancelled.contains(fixture.alarm.id), "a failed finish must not skip cancellation")
+        XCTAssertEqual(backend.finishOriginalStopIDs, [fixture.alarm.id],
+                       "Corrupt context must still attempt the known original stop")
+        XCTAssertTrue(backend.cancelled.isEmpty, "Unverified context must not delete weekly or unowned derived")
+        XCTAssertTrue(WakeEventStore(defaults: fixture.defaults).wakeDays().isEmpty)
     }
 
     func testDismiss_validContextFinishesWithoutAFinishFailureDiagnostic() throws {
@@ -34,7 +37,7 @@ final class AlarmFiringFinishDiagnosticTests: XCTestCase {
         try store.recordCharge(token, alarmID: fixture.alarm.id)
         try store.complete(token, alarmID: fixture.alarm.id, receipt: nil)
         XCTAssertNoThrow(try store.resolve(token, alarmID: fixture.alarm.id), "precondition: session is unfinished")
-        let model = fixture.model(backend: TrackedSessionBackend())
+        let model = fixture.model(backend: TrackedSessionBackend(), reference: .token(token))
         var lines: [LoggedLine] = []
 
         AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: { model.dismiss() })

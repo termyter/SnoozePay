@@ -66,6 +66,7 @@ final class TimePickerCell: UITableViewCell {
     /// `prepareForReuse` so a recycled cell never fires the wrong alarm's
     /// time before the next `configure(...)`.
     var onTimeChanged: ((Date) -> Void)?
+    private var readoutCalendar = Calendar.current
 
     // MARK: - Init
 
@@ -122,7 +123,10 @@ final class TimePickerCell: UITableViewCell {
 
     // MARK: - Configure
 
-    func configure(time: Date) {
+    func configure(time: Date, calendar: Calendar = .current) {
+        readoutCalendar = calendar
+        picker.calendar = calendar
+        picker.timeZone = calendar.timeZone
         picker.date = time
         updateReadout(for: time)
     }
@@ -139,7 +143,7 @@ final class TimePickerCell: UITableViewCell {
     /// wheel reading "7:00 PM". The separator lookup still holds on a 12-hour
     /// string ("7:00 PM" has exactly one colon).
     private func updateReadout(for date: Date) {
-        let text = WallClockFormatter.string(from: date, style: .padded)
+        let text = WallClockFormatter.string(from: date, style: .padded, calendar: readoutCalendar)
         let attributed = NSMutableAttributedString(
             string: text,
             attributes: [

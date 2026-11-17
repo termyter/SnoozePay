@@ -42,8 +42,7 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// slice replaced. A list derived from the catalogue would agree with any
     /// mistake in it.
     private static let copy: [String: String] = [
-        "alarms.backend_guard.create_anyway": "Всё равно создать",
-        "alarms.backend_guard.enable_anyway": "Всё равно включить",
+        "alarms.backend_guard.action.not_now": "Не сейчас",
         "alarms.balance_corrupted.later": "Позже",
         "alarms.balance_corrupted.message": "В хранилище обнаружено некорректное значение баланса (%@). "
             + "Пополнения и списания приостановлены. Сбросить баланс до 0 ₽?",
@@ -56,12 +55,12 @@ final class AlarmEditorCopyTests: XCTestCase {
             + "увидите экран приветствия.",
         "alarms.debug.reset_onboarding.title": "Онбординг сброшен",
         "alarms.delete.title": "Удалить будильник?",
-        "alarms.error.data_title": "Ошибка данных",
         "alarms.error.load_failed_fallback": "Не удалось загрузить будильники.",
         "alarms.streak.caps": "%1$lld %2$@ БЕЗ ОТКЛАДЫВАНИЙ",
         "alarms.streak.saved": "Сэкономили %@",
         "common.button.cancel": "Отмена",
         "common.button.done": "Готово",
+        "common.error.data_title": "Ошибка данных",
         "create_alarm.accessibility.not_selected": "не выбрано",
         "create_alarm.accessibility.selected": "выбрано",
         "create_alarm.button.delete_alarm": "Удалить будильник",
@@ -172,6 +171,12 @@ final class AlarmEditorCopyTests: XCTestCase {
         // No direct catalogue reads. FiringDirectPurchaseTerminalTests checks
         // the delegated failure alert; FiringCopyTests pins its catalogue strings.
         "AlarmFiringNoBalancePurchase.swift",
+        // AlarmOccurrenceRecoveryCopyTests scans and renders the finish alerts
+        // and their delegated recovery panel. The header has no direct keys;
+        // the same suite scans it so introducing one cannot go unpinned.
+        "AlarmOccurrenceRecoveryAlerts.swift",
+        "AlarmFiringViewController+OccurrenceRecovery.swift",
+        "AlarmsOccurrenceRecoveryHeader.swift",
         // FiringCopyTests
         "AlarmFiringViewController.swift",
         "AlarmFiringViewController+Audio.swift",

@@ -99,18 +99,22 @@ final class AlarmFiringSnoozeHandoffTests: XCTestCase {
         assertPending()
 
         screen.dismissTapped()
-        XCTAssertTrue(screen.isStoppedByUser)
-        XCTAssertTrue(screen.summary is WokeMorningViewController)
-        XCTAssertEqual(backend.cancelledIDs, [screen.viewModel.alarm.id])
+        XCTAssertFalse(screen.isStoppedByUser, "Pending registration cannot confirm native finish")
+        XCTAssertTrue(screen.summary is UIAlertController)
+        XCTAssertTrue(backend.cancelledIDs.isEmpty)
         backend.resolve(.success(()))
 
-        XCTAssertEqual(backend.cancelledIDs, [screen.viewModel.alarm.id, screen.viewModel.alarm.id],
-                       "A trigger created after Stop's first cancel must be cancelled too")
+        XCTAssertTrue(backend.cancelledIDs.isEmpty, "Late cleanup must never cancel the weekly original")
+        XCTAssertEqual(backend.cleanedSnoozeIDs, [screen.viewModel.alarm.id])
         XCTAssertEqual(screen.dismissals, 0, "Late success must not remove the user's summary")
         XCTAssertNil(screen.viewModel.nextRingDate())
         XCTAssertFalse(screen.viewModel.snooze(), "A stopped firing session cannot start another debit")
         XCTAssertEqual(wallet.charges, [50])
         XCTAssertTrue(wallet.refunds.isEmpty, "Stop must preserve the existing charge/refund policy")
+        screen.dismissTapped()
+        XCTAssertTrue(screen.isStoppedByUser)
+        XCTAssertTrue(screen.summary is WokeMorningViewController)
+        XCTAssertEqual(backend.finishedIDs, [screen.viewModel.alarm.id])
     }
 
     private func makeScreen(loadView: Bool = true) {
@@ -164,6 +168,8 @@ private final class HandoffBackend: AlarmKitScheduling {
     var snoozeCalls = 0
     var stoppedIDs: [UUID] = []
     var cancelledIDs: [UUID] = []
+    var cleanedSnoozeIDs: [UUID] = []
+    var finishedIDs: [UUID] = []
     private var completion: ((Result<Void, Error>) -> Void)?
     func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(isAuthorized) }
     func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) { completion(.success(())) }
@@ -179,6 +185,15 @@ private final class HandoffBackend: AlarmKitScheduling {
     func cancelOriginal(_ alarmID: UUID) {}
     func cancel(_ alarmID: UUID) { cancelledIDs.append(alarmID) }
     func stop(_ alarmID: UUID) { stoppedIDs.append(alarmID) }
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        finishedIDs.append(request.alarmID)
+        return .success(())
+    }
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        cleanedSnoozeIDs.append(request.alarmID)
+        return .success(())
+    }
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> { .success(()) }
 }
 
 private final class HandoffWallet: AlarmFiringBalancing {

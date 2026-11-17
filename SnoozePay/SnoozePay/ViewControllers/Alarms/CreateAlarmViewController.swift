@@ -171,6 +171,7 @@ final class CreateAlarmViewController: UIViewController {
             closeButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
             closeButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
             closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+            closeButton.accessibilityIdentifier = "createAlarm.closeButton"
             closeButton.accessibilityLabel = Localized.text("create_alarm.close.accessibility")
             navigationItem.leftBarButtonItem = AppNavigationBarStyle.barItem(for: closeButton)
         }
@@ -313,12 +314,18 @@ final class CreateAlarmViewController: UIViewController {
         // The async overload waits on `AlarmScheduler.schedule` to resolve so
         // we don't dismiss-and-toast on a notification request that
         // silently failed to register (issue #118).
+        saveButton?.isEnabled = false
         viewModel.save { [weak self] outcome in
             guard let self else { return }
+            self.saveButton?.isEnabled = self.viewModel.canSave
             switch outcome {
             case .success:
                 self.onSave?()
                 self.dismiss(animated: true)
+            case .alreadySaving:
+                break
+            case .permissionRequired(let availability):
+                self.presentPermissionRequired(availability)
             case .persistFailed:
                 // Persist failed (corrupt store / encode error). Surface the
                 // failure inline so the user doesn't tap «Сохранить», see the
@@ -328,9 +335,14 @@ final class CreateAlarmViewController: UIViewController {
                     error: AlarmRepository.RepositoryError.persistBlocked
                 )
             case .schedulingFailed(let error):
-                // Persist landed but the notification didn't — the user is
-                // about to go to bed thinking the alarm will ring. Tell
-                // them so they can fix the cause (issue #118).
+                // A grant can disappear after the pre-save check but before
+                // AlarmKit schedules. Rollback has completed before this callback.
+                self.viewModel.backendMonitor.refresh()
+                if error == .backendUnavailable,
+                   self.viewModel.backendMonitor.availability != .available {
+                    self.presentPermissionRequired(self.viewModel.backendMonitor.availability)
+                    return
+                }
                 self.presentSaveError(
                     title: Localized.text("create_alarm.error.schedule_failed"),
                     error: error
@@ -343,6 +355,20 @@ final class CreateAlarmViewController: UIViewController {
                 self.revealRepeatModeRow()
             }
         }
+    }
+
+    private func presentPermissionRequired(_ availability: AlarmBackendAvailability) {
+        guard let warning = AlarmBackendWarning(availability: availability) else { return }
+        let alert = UIAlertController(title: warning.title, message: warning.message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: warning.actionTitle, style: .default) { [weak self] _ in
+            if warning.canRequestInApp {
+                self?.viewModel.backendMonitor.requestAuthorization()
+            } else if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        })
+        alert.addAction(UIAlertAction(title: Localized.text("alarms.backend_guard.action.not_now"), style: .cancel))
+        present(alert, animated: true)
     }
 
     /// Inline alert for repository or scheduler failures that block the

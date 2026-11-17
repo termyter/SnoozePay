@@ -38,19 +38,28 @@ final class LocalizableCatalogTests: XCTestCase {
         )
     }
 
-    /// `Localized` must reach the Russian bundle rather than fall back to
-    /// `.main`. While `knownRegions` is `(en, Base)` (#596), `.main` negotiates
-    /// to `Base.lproj`, which contains no copy at all — so this failing means
-    /// every string in the app has silently become its own key.
-    func testLocalizedResolvesToTheRussianBundle() {
-        XCTAssertNotEqual(
-            Localized.bundle.bundlePath,
-            Bundle.main.bundlePath,
-            "Localized fell back to Bundle.main; ru.lproj was not found."
-        )
+    /// The shared TestAction states RU explicitly instead of forcing Russian
+    /// inside production code. English process launches override this fixture.
+    func testLocalizedFollowsTheAppBundlesNegotiatedLanguage() throws {
+        XCTAssertEqual(Bundle.main.preferredLocalizations.first, "ru")
+        XCTAssertEqual(AppLocale.text.language.languageCode?.identifier, "ru")
+        let russianPath = try XCTUnwrap(Bundle.main.path(forResource: "ru", ofType: "lproj"))
+        XCTAssertEqual(Localized.bundle.bundlePath, russianPath)
+        XCTAssertEqual(Localized.text("create_alarm.wake_up"), "Подъём")
+        XCTAssertEqual(Plural.word(21, .days), "день")
     }
 
     // MARK: - Layer 2: plain keys
+
+    func testSharedDataErrorTitleKeepsRussianAndEnglishCopy() throws {
+        for (language, expected) in [("ru", "Ошибка данных"), ("en", "Data Error")] {
+            let path = try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"))
+            let localized = try XCTUnwrap(Bundle(path: path))
+            XCTAssertEqual(
+                localized.localizedString(forKey: "common.error.data_title", value: nil, table: nil), expected
+            )
+        }
+    }
 
     func testTimePickerHeaderResolves() {
         XCTAssertEqual(Localized.text("create_alarm.wake_up"), "Подъём")
@@ -108,8 +117,8 @@ final class LocalizableCatalogTests: XCTestCase {
     /// asserted specimen means the next four issues copy something known to
     /// work rather than rediscovering the error message.
     ///
-    /// The locale is passed explicitly: CI's simulator is not Russian, and
-    /// `String.localizedStringWithFormat` would silently apply English rules.
+    /// The noun variation belongs to the text language. The device's regional
+    /// locale may differ even while the test scheme requests Russian copy.
     func testPluralVariationExampleSelectsRussianForms() {
         let format = Localized.bundle.localizedString(
             forKey: "example.days_count",
@@ -117,7 +126,7 @@ final class LocalizableCatalogTests: XCTestCase {
             table: nil
         )
         let rendered = { (count: Int) in
-            String(format: format, locale: AppLocale.display, arguments: [count])
+            String(format: format, locale: AppLocale.text, arguments: [count])
         }
         XCTAssertEqual(rendered(1), "1 день")
         XCTAssertEqual(rendered(3), "3 дня")
