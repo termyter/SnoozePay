@@ -3,7 +3,7 @@ import XCTest
 
 /// Pins the copy that this slice of #598 moved out of `SoundCatalogue` and
 /// into `Localizable.xcstrings`: the sound names, the descriptive subtitles
-/// (nineteen of each since #1092 appended five melodic sounds)
+/// (eighteen of each: #1092 appended five melodic sounds, #861 retired radar)
 /// and the two strings of the disabled custom-melody slot.
 ///
 /// `Localized.text` hands back the key on a miss, so a mistyped key ships as
@@ -73,7 +73,6 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// slice, not read back from the catalogue.
     private static let copy: [String: String] = [
         "common.sound.name.dawn": "Рассвет",
-        "common.sound.name.radar": "Радар",
         "common.sound.name.drops": "Капли",
         "common.sound.name.piano": "Пиано",
         "common.sound.name.guitar": "Гитара",
@@ -83,7 +82,6 @@ final class SoundCatalogueCopyTests: XCTestCase {
         "common.sound.name.classic": "Классика",
         "common.sound.name.jazz": "Джаз",
         "create_alarm.sound.subtitle.dawn": "Тёплый рассвет с птицами",
-        "create_alarm.sound.subtitle.radar": "Нарастающий сигнал тревоги",
         "create_alarm.sound.subtitle.drops": "Мягкие капли воды",
         "create_alarm.sound.subtitle.piano": "Спокойные клавиши",
         "create_alarm.sound.subtitle.guitar": "Лёгкий струнный перебор",
@@ -144,7 +142,6 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// pre-migration literals.
     private static let namesBySoundID: [String: String] = [
         "dawn": "Рассвет",
-        "radar": "Радар",
         "drops": "Капли",
         "piano": "Пиано",
         "guitar": "Гитара",
@@ -186,7 +183,6 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// left the pre-migration literals.
     private static let subtitlesBySoundID: [String: String] = [
         "dawn": "Тёплый рассвет с птицами",
-        "radar": "Нарастающий сигнал тревоги",
         "drops": "Мягкие капли воды",
         "piano": "Спокойные клавиши",
         "guitar": "Лёгкий струнный перебор",
@@ -237,8 +233,9 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// #850 appended `hawk`, `morning`, `sirena`, `spaceship` — the PM's
     /// recordings, placed at the end by the issue's own defaults. #1092
     /// appended the melodic five after them for the same reason.
+    /// #861 removed `radar` from the second slot (a byte copy of the default).
     private static let idsInCatalogueOrder: [String] = [
-        "dawn", "radar", "drops", "piano", "guitar",
+        "dawn", "drops", "piano", "guitar",
         "bell", "waves", "birds", "classic", "jazz",
         "hawk", "morning", "sirena", "spaceship",
         "marimba", "badinerie", "vibraphone", "strum", "reflection"
@@ -328,13 +325,13 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// quietly degenerates stops failing.
     ///
     /// A duplicate would mean the transcription lost a sound while keeping the
-    /// length, and «nineteen» is the count the docblock and
+    /// length, and «eighteen» (#861) is the count the docblock and
     /// `SoundThemePickerCatalogueTests` both name.
     func testTheOrderOracleStillListsEverySoundOnce() {
-        XCTAssertEqual(Self.idsInCatalogueOrder.count, 19)
+        XCTAssertEqual(Self.idsInCatalogueOrder.count, 18)
         XCTAssertEqual(
             Set(Self.idsInCatalogueOrder).count, Self.idsInCatalogueOrder.count,
-            "the pinned lineup repeats an id — it no longer describes nineteen sounds"
+            "the pinned lineup repeats an id — it no longer describes eighteen sounds"
         )
     }
 

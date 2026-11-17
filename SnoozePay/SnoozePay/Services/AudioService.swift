@@ -587,7 +587,8 @@ final class AudioService {
             Bundle.main.url(forResource: name, withExtension: ext)
         }
     ) -> AVAudioPlayer? {
-        let url = Self.firstBundledURL(for: soundID, resourceURL: resourceURL)
+        // A retired id rings the file it maps to (#861: `radar` → `default_alarm`).
+        let url = Self.firstBundledURL(for: SoundCatalogue.fileID(for: soundID), resourceURL: resourceURL)
             ?? fallbackAlarmSoundURL(after: soundID, resourceURL: resourceURL)
 
         guard let soundURL = url else { return Self.generateAlarmTone() }

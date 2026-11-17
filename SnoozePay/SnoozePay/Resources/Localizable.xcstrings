@@ -1838,7 +1838,7 @@
       }
     },
     "common.sound.name.radar" : {
-      "comment" : "Display name of the «radar» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "comment" : "Display name of the retired «radar» alarm sound (#861). No longer a picker row; still shown on the alarms-list cell of alarms saved with it, which keep ringing the default sound.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -2733,24 +2733,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Спокойные клавиши"
-          }
-        }
-      }
-    },
-    "create_alarm.sound.subtitle.radar" : {
-      "comment" : "Sound picker: the descriptive line under «Радар». Picker-only, unlike the name above it.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A rising alert signal"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Нарастающий сигнал тревоги"
           }
         }
       }
@@ -4004,13 +3986,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "If any purchase is still pending, your balance will update within a few seconds."
+            "value" : "If a purchase is still pending, your balance will update once it is confirmed. Completed top-ups cannot be restored."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Если у вас есть предыдущие покупки, баланс обновится автоматически в течение нескольких секунд."
+            "value" : "Если есть незавершённая покупка, баланс обновится после её подтверждения. Завершённые пополнения не восстанавливаются"
           }
         }
       }
@@ -6743,6 +6725,60 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld мин"
+          }
+        }
+      }
+    },
+    "settings.recovery.alarms_busy": {
+      "comment": "Alarm recovery refused while an alarm registration or recovery is in progress.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alarm recovery is busy. Wait for the current alarm operation to finish, then try again. Damaged alarm data remains locked."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Восстановление будильников занято. Дождитесь завершения текущей операции с будильником и повторите попытку. Повреждённые данные будильников остаются заблокированными."
+          }
+        }
+      }
+    },
+    "settings.recovery.alarms_cleanup_failed": {
+      "comment": "Alarm cleanup could not be verified. Wallet recovery may already have completed.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not confirm that all system alarms were cancelled. Some system alarms may already have been cancelled. Damaged alarm data was not erased and remains locked. Transaction history recovery may already have completed."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подтвердить отмену всех системных будильников. Часть системных будильников уже могла быть отменена. Повреждённые данные будильников не удалены и остаются заблокированными. Восстановление истории операций могло уже завершиться."
+          }
+        }
+      }
+    },
+    "settings.recovery.alarms_failed_title": {
+      "comment": "Title when verified corrupt-alarm recovery cannot complete.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alarm Recovery Incomplete"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Восстановление будильников не завершено"
           }
         }
       }

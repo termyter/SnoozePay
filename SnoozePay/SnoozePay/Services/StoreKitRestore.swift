@@ -2,37 +2,31 @@ import StoreKit
 import UIKit
 import os
 
-/// Reusable "Restore purchases" entry point. Extracted from the retired
-/// `TopUpViewController` (#281) so the single Deposit surface
-/// (`DepositBottomSheetViewController`) keeps the App Store-required restore
-/// affordance. `AppStore.sync()` triggers Apple's restore; the
-/// `Transaction.updates` listener inside `StoreKitService` does the actual
-/// crediting, and we surface typed errors with actionable Russian copy
-/// instead of swallowing them (#71).
+/// Sends an explicit App Store sync request; it does not credit purchases.
+/// Verified transaction processing remains owned by `StoreKitService`.
 extension UIViewController {
 
-    /// Triggers Apple's restore flow and surfaces a success / error alert.
-    /// `onCredited` runs on the main actor after a successful `sync()` so the
-    /// caller can refresh any visible balance UI.
-    func performStoreKitRestore(onCredited: (@MainActor () -> Void)? = nil) {
+    /// Completion means the sync request returned, not that money was credited.
+    /// The returned task also lets callers wait for the request's terminal result.
+    @discardableResult
+    func performStoreKitRestore(
+        onRequestCompleted: (@MainActor () -> Void)? = nil,
+        sync: @escaping @MainActor () async throws -> Void = { try await AppStore.sync() }
+    ) -> Task<Void, Never> {
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await AppStore.sync()
-                await MainActor.run {
-                    onCredited?()
-                    self.presentRestoreSuccess()
-                }
-            } catch is CancellationError {
-                return
+                try await sync()
+                AppLogger.storeKit.notice("Restore request completed")
+                onRequestCompleted?()
+                self.presentRestoreSuccess()
             } catch {
-                if (error as NSError).code == NSUserCancelledError { return }
-                AppLogger.storeKit.error(
-                    "performStoreKitRestore failed: \(error.localizedDescription, privacy: .public)"
-                )
-                await MainActor.run {
-                    self.presentRestoreError(error)
+                if restoreRequestWasCancelled(error) {
+                    AppLogger.storeKit.notice("Restore request cancelled")
+                    return
                 }
+                AppLogger.storeKit.error("Restore request failed")
+                self.presentRestoreError(error)
             }
         }
     }
@@ -56,6 +50,15 @@ extension UIViewController {
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
+}
+
+/// Cancellation codes are meaningful only within their own error domain.
+private func restoreRequestWasCancelled(_ error: Error) -> Bool {
+    if error is CancellationError { return true }
+    if let storeKitError = error as? StoreKitError, case .userCancelled = storeKitError { return true }
+    let systemError = error as NSError
+    return (systemError.domain == NSCocoaErrorDomain && systemError.code == NSUserCancelledError)
+        || (systemError.domain == SKErrorDomain && systemError.code == SKError.Code.paymentCancelled.rawValue)
 }
 
 /// Translates StoreKit / SKError / URLError failures into actionable copy from

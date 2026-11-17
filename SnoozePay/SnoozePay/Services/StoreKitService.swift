@@ -329,6 +329,13 @@ final class StoreKitService {
     /// Shared by foreground purchase and updates. Metadata is validated before
     /// dedup writes; `finish` runs only after credit or an already-processed replay.
     /// Plain transaction data and an injected wallet make this money boundary testable.
+    ///
+    /// Order is credit → mark → finish (#1011). The credit row is keyed on
+    /// `ledgerRowID`, so the row itself is the commit: an interruption before
+    /// it leaves nothing and a replay credits once; one after it leaves a row
+    /// that a replay finds (`.alreadyCredited`) instead of crediting again.
+    /// A marker with no linked row is legacy (written mark-first) and is
+    /// finished without credit, exactly as before — PM decision 2026-11-17.
     func applyVerifiedPurchase(
         _ transaction: RestorableTopUp,
         balance: BalanceService = .shared,
@@ -344,31 +351,32 @@ final class StoreKitService {
             postPurchaseFailed(Self.ledgerLockedFailureMessage)
             return
         }
-        switch markProcessed(transactionID: transaction.transactionID) {
-        case .alreadyProcessed:
+        switch isProcessed(transactionID: transaction.transactionID) {
+        case true?:
             await finish()
             return
-        case .degraded:
+        case nil:
             postPurchaseFailed(Self.degradedDedupFailureMessage)
             return
-        case .recorded:
+        case false?:
             break
         }
-        guard creditVerifiedPurchase(amount: amount, currency: currency,
-                                     transaction: transaction, balance: balance) else {
-            return
-        }
+        let outcome = creditVerifiedPurchase(amount: amount, currency: currency,
+                                             transaction: transaction, balance: balance)
+        guard outcome == .credited || outcome == .alreadyCredited else { return }
+        markProcessed(transactionID: transaction.transactionID)
         await finish()
-        postPurchaseCompleted(amount, currency: currency)
+        if outcome == .credited {
+            postPurchaseCompleted(amount, currency: currency)
+        }
     }
 
     /// Credits a verified paid transaction and, if this is the wallet's first
     /// one, establishes the wallet currency from `Transaction.currency` (#563).
     ///
-    /// Returns `false` when nothing was credited. In that case the dedup mark
-    /// has been rolled back and the failure surfaced, and the caller must NOT
-    /// `finish()` — money has already been collected by Apple, so the
-    /// transaction is left in the queue rather than discarded. Both credit
+    /// On `.refusedCurrency` / `.notRecorded` the failure is surfaced and the
+    /// caller must NOT mark or `finish()` — money has already been collected by
+    /// Apple, so the transaction is left in the queue rather than discarded. Both credit
     /// paths (foreground purchase and the `Transaction.updates` listener) go
     /// through here so they cannot drift apart.
     private func creditVerifiedPurchase(
@@ -376,17 +384,23 @@ final class StoreKitService {
         currency: Currency,
         transaction: RestorableTopUp,
         balance: BalanceService
-    ) -> Bool {
-        switch balance.topUpFromPurchase(amount: amount, currency: currency) {
+    ) -> BalanceService.PurchaseCredit {
+        let outcome = balance.topUpFromPurchase(amount: amount, currency: currency,
+                                                ledgerID: transaction.ledgerRowID)
+        switch outcome {
         case .credited:
-            return true
+            break
+
+        case .alreadyCredited:
+            AppLogger.storeKit.notice(
+                "tx=\(transaction.transactionID, privacy: .private) already credited by an interrupted run — finishing"
+            )
 
         case .refusedCurrency(let wallet, let purchase):
             // The top-up screens refuse a foreign-currency purchase before it
             // starts, so this is the residue: a deferred approval or restore
             // that resolved after the storefront changed. Crediting the bare
             // number would book `purchase` money as `wallet` money (#558).
-            unmarkProcessed(transactionID: transaction.transactionID)
             AppLogger.storeKit.fault(
                 """
                 tx=\(transaction.transactionID, privacy: .private) paid in \(purchase.code, privacy: .public) \
@@ -394,14 +408,12 @@ final class StoreKitService {
                 """
             )
             postPurchaseFailed(Self.foreignCurrencyFailureMessage)
-            return false
 
         case .notRecorded:
             // Ledger locked / record() failed — money already collected by
-            // Apple. Roll back the dedup mark and don't finish, so StoreKit
-            // replays the transaction on next launch (another shot at
-            // crediting). Surface to the user immediately.
-            unmarkProcessed(transactionID: transaction.transactionID)
+            // Apple. Nothing was marked; don't finish, so StoreKit replays the
+            // transaction on next launch (another shot at crediting). Surface
+            // to the user immediately.
             AppLogger.storeKit.error(
                 """
                 topUp failed tx=\(transaction.transactionID, privacy: .private) \
@@ -409,8 +421,8 @@ final class StoreKitService {
                 """
             )
             postPurchaseFailed(Self.ledgerLockedFailureMessage)
-            return false
         }
+        return outcome
     }
 
     // MARK: - Notification posting helpers
@@ -495,9 +507,9 @@ final class StoreKitService {
 
     /// Outcome of attempting to record a transaction in the dedup table (#209).
     enum MarkResult: Equatable {
-        /// New transaction — recorded for the first time; proceed to credit.
+        /// Recorded for the first time (after its credit row, #1011).
         case recorded
-        /// Already processed in a previous session — skip credit, finish() it.
+        /// Already in the table — a replay; nothing to record.
         case alreadyProcessed
         /// The dedup blob exists but its plist type has drifted (tampering /
         /// schema migration by another build). We refuse to operate: crediting
@@ -524,62 +536,47 @@ final class StoreKitService {
     /// `internal` (not `private`) so money-correctness unit tests can drive the
     /// recorded / already-processed / degraded outcomes against an injected
     /// `UserDefaults` suite. Not part of the public surface.
+    ///
+    /// Called only AFTER the credit row is written (#1011), so for a new
+    /// purchase a marker always has a linked row; its result is informational.
+    @discardableResult
     func markProcessed(transactionID: UInt64) -> MarkResult {
-        let key = Self.processedTxKey
         let idString = String(transactionID)
-
-        let stored = defaults.object(forKey: key)
-        var processed: [String]
-        if stored == nil {
-            // Brand-new install / table not yet written — legitimate empty state.
-            processed = []
-        } else if let casted = stored as? [String] {
-            processed = casted
-        } else {
-            // Blob present but its plist type drifted. Refuse — never wipe, never
-            // double-credit. Back it up once for diagnosis.
-            if defaults.object(forKey: Self.processedBackupCorruptKey) == nil {
-                defaults.set(stored, forKey: Self.processedBackupCorruptKey)
-            }
-            AppLogger.storeKit.error(
-                "markProcessed: dedup table corrupt (type drift) — refusing to credit, backed up tx=\(transactionID, privacy: .private)"
-            )
-            return .degraded
-        }
-
+        guard var processed = loadProcessed(transactionID: transactionID) else { return .degraded }
         guard !processed.contains(idString) else { return .alreadyProcessed }
         processed.append(idString)
         if processed.count > Self.processedTxCap {
             processed = Array(processed.suffix(Self.processedTxCap))
         }
-        defaults.set(processed, forKey: key)
+        defaults.set(processed, forKey: Self.processedTxKey)
         return .recorded
     }
 
-    /// Roll back a `markProcessed(transactionID:)` recorded earlier in the same
-    /// flow. Used when a downstream step (e.g. `BalanceService.topUp`) fails
-    /// AFTER the dedup mark was set — without this rollback the transaction
-    /// would look "already processed" on StoreKit's retry replay and finish
-    /// silently without crediting (the very money-loss bug #115 is fixing).
+    /// Read-only dedup lookup, checked BEFORE crediting (#1011). `nil` means the
+    /// table is unreadable (type drift): "processed?" has no answer, so the
+    /// caller must neither credit nor finish — never read it as "not processed".
     ///
-    /// `internal` because `TopUpRestoreService` (#364) shares this exact dedup
-    /// table — it must be able to roll a mark back for the same reason this
-    /// path does, and a restore that owned its own table would not deduplicate
-    /// against purchases at all.
-    func unmarkProcessed(transactionID: UInt64) {
-        let key = Self.processedTxKey
-        let idString = String(transactionID)
-        guard var processed = defaults.array(forKey: key) as? [String] else {
-            // No rollback was applied. A still-missing table allows a fresh mark;
-            // a corrupt table makes markProcessed refuse with `.degraded`.
-            // Neither condition alone predicts whether replay will credit or finish.
-            AppLogger.storeKit.error(
-                "unmarkProcessed: dedup table missing/corrupt — rollback not applied tx=\(transactionID, privacy: .private)"
-            )
-            return
+    /// `internal` because `TopUpRestoreService` (#364) shares this exact table —
+    /// a restore that owned its own table would not deduplicate against purchases.
+    func isProcessed(transactionID: UInt64) -> Bool? {
+        loadProcessed(transactionID: transactionID)?.contains(String(transactionID))
+    }
+
+    /// `nil` on type drift, after backing the blob up once (#209).
+    private func loadProcessed(transactionID: UInt64) -> [String]? {
+        let stored = defaults.object(forKey: Self.processedTxKey)
+        // Brand-new install / table not yet written — legitimate empty state.
+        guard let stored else { return [] }
+        if let casted = stored as? [String] { return casted }
+        // Blob present but its plist type drifted. Refuse — never wipe, never
+        // double-credit. Back it up once for diagnosis.
+        if defaults.object(forKey: Self.processedBackupCorruptKey) == nil {
+            defaults.set(stored, forKey: Self.processedBackupCorruptKey)
         }
-        processed.removeAll { $0 == idString }
-        defaults.set(processed, forKey: key)
+        AppLogger.storeKit.error(
+            "dedup table corrupt (type drift) — refusing to credit, backed up tx=\(transactionID, privacy: .private)"
+        )
+        return nil
     }
 
     // MARK: - Verify transaction

@@ -77,11 +77,11 @@ final class AudioServiceStartWiringTests: XCTestCase {
 
     func testStartAlarmSound_withABundledSound_playsThatFile() throws {
         _ = try XCTUnwrap(
-            Bundle.main.url(forResource: "radar", withExtension: "caf"),
-            "precondition: the app bundle ships radar.caf"
+            Bundle.main.url(forResource: "bell", withExtension: "caf"),
+            "precondition: the app bundle ships bell.caf"
         )
         XCTAssertEqual(
-            playingFileName(afterStarting: "radar"), "radar.caf",
+            playingFileName(afterStarting: "bell"), "bell.caf",
             "the player kept must be the one resolved for the soundID the caller asked for"
         )
     }

@@ -505,16 +505,14 @@ final class DepositBottomSheetViewController: UIViewController {
     }
 
     @objc private func restoreTapped() {
-        performStoreKitRestore { [weak self] in
-            self?.refreshBalanceAfterRestore()
-        }
+        performStoreKitRestore(onRequestCompleted: { [weak self] in
+            self?.handleRestoreRequestCompleted()
+        })
     }
 
-    /// `Transaction.updates` inside `StoreKitService` credits the balance; this
-    /// sheet only shows its own success state, so there's nothing to redraw
-    /// here beyond logging. Kept as a hook so the closure reads intentionally.
-    private func refreshBalanceAfterRestore() {
-        AppLogger.storeKit.notice("DepositSheet: restore sync completed")
+    /// Request completion does not imply a credit; verified transactions update the balance separately.
+    private func handleRestoreRequestCompleted() {
+        AppLogger.storeKit.notice("DepositSheet: restore request completed")
     }
 
     // MARK: - Success / failure
