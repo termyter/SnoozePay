@@ -103,6 +103,31 @@ final class DepositCatalogCurrencyTests: XCTestCase {
         XCTAssertEqual(fixture.balance.balance, 0.49)
     }
 
+    /// #1109: a storefront reload can post `productsLoaded` mid-purchase. The
+    /// tapped button stays as it was; the purchase's end rebuilds it fresh.
+    func testCatalogReloadMidPurchaseKeepsTheTappedButtonUntilThePurchaseEnds() throws {
+        let fixture = try Fixture()
+        defer { fixture.clear() }
+        fixture.offer()
+        let sheet = fixture.sheet()
+        sheet.loadViewIfNeeded()
+        let tapped = try purchaseButton(sheet)
+        tapped.sendActions(for: .touchUpInside)
+        XCTAssertEqual(fixture.requested.count, 1)
+
+        fixture.offer(price: "1.99", display: "$1.99")
+        fixture.reload()
+        XCTAssertTrue(try purchaseButton(sheet) === tapped, "the in-flight button is not swapped")
+        XCTAssertFalse(tapped.isEnabled)
+        XCTAssertTrue(strings(tapped).contains("$1.79"))
+
+        fixture.center.post(name: StoreKitService.purchaseCancelledNotification, object: nil)
+        let rebuilt = try purchaseButton(sheet)
+        XCTAssertFalse(rebuilt === tapped)
+        XCTAssertTrue(rebuilt.isEnabled)
+        XCTAssertTrue(strings(rebuilt).contains("$1.99"), "the end of the purchase picks up the reloaded price")
+    }
+
     func testEstablishedCurrencyMismatchStopsActualCheckoutBeforeDispatch() throws {
         let fixture = try Fixture()
         defer { fixture.clear() }

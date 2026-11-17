@@ -37,6 +37,8 @@ final class DepositBottomSheetViewController: UIViewController {
 
     /// Suppresses re-taps while StoreKit is busy with the first one.
     private var purchaseInFlight = false
+    /// A catalogue reload arrived mid-purchase; the button is rebuilt when it ends (#1109).
+    private var catalogRefreshDeferred = false
 
     /// Set once a successful purchase resolves — guards double-delivery
     /// (foreground purchase + background `Transaction.updates` listener).
@@ -405,7 +407,24 @@ final class DepositBottomSheetViewController: UIViewController {
             let offer = offer(for: preset.productID)
             tile.update(value: offer?.price ?? .nan, label: nil, displayPrice: offer?.displayPrice ?? "—")
         }
+        // A storefront reload can land mid-purchase (#1109): keep the button the
+        // user tapped; the purchase's end rebuilds it from the fresh catalogue.
+        guard !purchaseInFlight else {
+            catalogRefreshDeferred = true
+            return
+        }
         rebuildPurchaseButton()
+    }
+
+    /// Unlocks the current button in place, unless a reload arrived meanwhile.
+    private func endPurchaseInFlight() {
+        purchaseInFlight = false
+        if catalogRefreshDeferred {
+            catalogRefreshDeferred = false
+            rebuildPurchaseButton()
+        } else {
+            depositButton.isEnabled = canPurchase(offer: selectedOffer)
+        }
     }
 
     private func rebuildPurchaseButton() {
@@ -450,8 +469,7 @@ final class DepositBottomSheetViewController: UIViewController {
             forName: StoreKitService.purchaseCancelledNotification, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
-            self.purchaseInFlight = false
-            self.depositButton.isEnabled = self.canPurchase(offer: self.selectedOffer)
+            self.endPurchaseInFlight()
         }
     }
 
@@ -557,8 +575,7 @@ final class DepositBottomSheetViewController: UIViewController {
 
     private func handlePurchaseFailure(message: String?) {
         guard successReceipt == nil else { return }
-        purchaseInFlight = false
-        depositButton.isEnabled = canPurchase(offer: selectedOffer)
+        endPurchaseInFlight()
 
         let alert = UIAlertController(
             title: Localized.text("common.purchase_failed.title"),
