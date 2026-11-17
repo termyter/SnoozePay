@@ -65,6 +65,7 @@ final class SettingsRowCopyTests: XCTestCase {
         "settings.recovery.row_title": "Стереть повреждённые данные",
         "settings.row.contact": "Связаться с нами",
         "settings.row.default_price": "Цена откладывания по умолчанию",
+        "settings.row.default_price.unavailable_hint": "Цены откладывания в валюте кошелька ещё не загрузились.",
         "settings.row.privacy_policy": "Политика конфиденциальности",
         "settings.row.progressive_price": "Прогрессивная цена",
         "settings.row.snooze_duration": "Длительность откладывания",

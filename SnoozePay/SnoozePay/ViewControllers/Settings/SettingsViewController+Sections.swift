@@ -28,7 +28,8 @@ extension SettingsViewController {
     ///
     /// With the scale unavailable the row is inert (#1147): no chevron, no
     /// highlight, and `presentDefaultPricePicker()` refuses — there is no price
-    /// it could offer in that currency.
+    /// it could offer in that currency. VoiceOver hears it as dimmed, with a
+    /// hint saying why, instead of a bare «—» (#1155).
     func makeDefaultPriceRow(at indexPath: IndexPath) -> UITableViewCell {
         let cell = dequeueIconRowCell(at: indexPath)
         cell.configure(
@@ -38,7 +39,10 @@ extension SettingsViewController {
             trailingText: Self.defaultPriceText(alarmDefaults.penaltyAmount, in: priceContext),
             trailingColor: AppColors.snoozePriceInk,
             accessory: isDefaultPricePickerEnabled ? .disclosureIndicator : .none,
-            selectionStyle: isDefaultPricePickerEnabled ? .default : .none
+            selectionStyle: isDefaultPricePickerEnabled ? .default : .none,
+            isEnabled: isDefaultPricePickerEnabled,
+            accessibilityHint: isDefaultPricePickerEnabled
+                ? nil : Localized.text("settings.row.default_price.unavailable_hint")
         )
         return cell
     }
@@ -342,7 +346,9 @@ extension SettingsViewController {
     /// the global default never rewrites existing alarms — only new ones inherit.
     func presentDefaultPricePicker() {
         guard isDefaultPricePickerEnabled else { return }
-        present(makeDefaultPricePicker(), animated: true)
+        let picker = makeDefaultPricePicker()
+        defaultPricePicker = picker
+        present(picker, animated: true)
     }
 
     /// One option of the default-price sheet; `commit` is what its tap does.
@@ -356,14 +362,19 @@ extension SettingsViewController {
     /// Another cached scale: its three tiers, priced like the row (#1147), the
     /// current one being the tier the editor would light for a new alarm
     /// (`CreateAlarmViewModel.openingTier`). Unavailable: none at all.
+    ///
+    /// A choice commits only while the context it was priced in is still the
+    /// current one; after a change it does nothing (#1155).
     func defaultPriceChoices() -> [DefaultPriceChoice] {
+        let pricedIn = priceContext
         switch priceContext {
         case .scale(let scale) where scale == .rouble:
             let currency = walletCurrencyStore.currency
             return [20, 50, 100, 200, 500].map { amount in
                 let title = MoneyFormatter.string(Double(amount), currency: currency)
                 return DefaultPriceChoice(title: title, isCurrent: false) { [weak self] in
-                    self?.applyDefaultPrice(Double(amount))
+                    guard let self, self.priceContext == pricedIn else { return }
+                    self.applyDefaultPrice(Double(amount))
                 }
             }
         case .scale(let scale):
@@ -372,7 +383,8 @@ extension SettingsViewController {
                 guard let price = scale.price(for: tier) else { return nil }
                 let title = MoneyFormatter.string(price.amount, currency: price.currency)
                 return DefaultPriceChoice(title: title, isCurrent: tier == current) { [weak self] in
-                    self?.applyDefaultTier(tier)
+                    guard let self, self.priceContext == pricedIn else { return }
+                    self.applyDefaultTier(tier)
                 }
             }
         case .unavailable:

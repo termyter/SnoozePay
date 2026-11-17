@@ -154,7 +154,9 @@ final class SettingsIconRowCell: UITableViewCell {
         trailingText: String? = nil,
         trailingColor: UIColor = AppColors.fg3,
         accessory: UITableViewCell.AccessoryType = .none,
-        selectionStyle: UITableViewCell.SelectionStyle = .default
+        selectionStyle: UITableViewCell.SelectionStyle = .default,
+        isEnabled: Bool = true,
+        accessibilityHint: String? = nil
     ) {
         iconImageView.image = UIImage(systemName: systemName)?.withConfiguration(
             UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
@@ -176,6 +178,14 @@ final class SettingsIconRowCell: UITableViewCell {
 
         accessoryType = accessory
         self.selectionStyle = selectionStyle
+
+        // An inert row reads as dimmed to VoiceOver (#1155).
+        if isEnabled {
+            accessibilityTraits.remove(.notEnabled)
+        } else {
+            accessibilityTraits.insert(.notEnabled)
+        }
+        self.accessibilityHint = accessibilityHint
     }
 
     /// Switch-row variant (вибрация). When `enabled` is `false` the toggle

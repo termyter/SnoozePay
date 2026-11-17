@@ -107,15 +107,92 @@ final class SettingsPriceContextTests: XCTestCase {
         }
     }
 
+    /// The stored amounts are presets themselves (#1155): a mutation that
+    /// checks the matching rouble preset goes red here, which 137 never could.
     func testRoubleContextPickerKeepsThePresetsAndChecksNothing() {
-        let sut = makeSUT(amount: 137) { .scale(.rouble) }
-        let picker = sut.makeDefaultPricePicker()
-        XCTAssertEqual(picker.actions.dropLast().map(\.title), [20, 50, 100, 200, 500].map {
-            MoneyFormatter.string(Double($0), currency: .rub)
-        })
-        XCTAssertNil(picker.preferredAction)
-        tap(3, in: sut)
-        XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 200)
+        for (amount, choice, stored) in [(50.0, 3, 200.0), (200, 1, 50)] {
+            let sut = makeSUT(amount: amount) { .scale(.rouble) }
+            let picker = sut.makeDefaultPricePicker()
+            XCTAssertEqual(picker.actions.dropLast().map(\.title), [20, 50, 100, 200, 500].map {
+                MoneyFormatter.string(Double($0), currency: .rub)
+            })
+            XCTAssertNil(picker.preferredAction, "\(amount)")
+            XCTAssertFalse(sut.defaultPriceChoices().contains { $0.isCurrent }, "\(amount)")
+            tap(choice, in: sut)
+            XCTAssertEqual(sut.alarmDefaults.penaltyAmount, stored)
+        }
+    }
+
+    /// A sheet built in one context and tapped after the context moved stores
+    /// nothing: re-picking the checked USD tier of a 137 would otherwise store
+    /// 200 once roubles are current (#1155).
+    func testChoiceFromAStaleContextCommitsNothing() {
+        var context = SnoozePriceContext.scale(usdScale)
+        let sut = makeSUT(amount: 137) { context }
+        let choices = sut.defaultPriceChoices()
+        XCTAssertTrue(choices[2].isCurrent)
+
+        context = .scale(.rouble)
+        sut.refreshPriceContext()
+        choices[2].commit()
+        choices[0].commit()
+        XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 137)
+
+        // Back in the context the sheet was priced in, it commits again.
+        context = .scale(usdScale)
+        sut.refreshPriceContext()
+        choices[0].commit()
+        XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 50)
+    }
+
+    func testContextChangeDismissesTheOpenDefaultPricePicker() throws {
+        var context = SnoozePriceContext.scale(usdScale)
+        let sut = makeRecordingSUT { context }
+        sut.presentDefaultPricePicker()
+        let picker = try XCTUnwrap(sut.presented as? UIAlertController)
+        XCTAssertTrue(sut.defaultPricePicker === picker)
+
+        sut.refreshPriceContext()
+        XCTAssertEqual(sut.dismissals, 0, "an unchanged context keeps the sheet up")
+
+        context = .scale(.rouble)
+        sut.refreshPriceContext()
+        XCTAssertEqual(sut.dismissals, 1)
+        XCTAssertNil(sut.presented)
+    }
+
+    func testContextChangeLeavesAnotherPresentedSheetUp() {
+        var context = SnoozePriceContext.scale(usdScale)
+        let sut = makeRecordingSUT { context }
+        sut.presentDefaultPricePicker()
+        let other = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        sut.presented = other
+
+        context = .unavailable(usd)
+        sut.refreshPriceContext()
+        XCTAssertEqual(sut.dismissals, 0)
+        XCTAssertTrue(sut.presented === other)
+    }
+
+    func testInertRowReadsAsDimmedWithAHint() {
+        let inert = makeSUT(amount: 50) { .unavailable(self.usd) }
+        let row = inert.makeFinanceCell(at: priceIndexPath(in: inert))
+        XCTAssertTrue(row.accessibilityTraits.contains(.notEnabled))
+        XCTAssertEqual(row.accessibilityHint, Localized.text("settings.row.default_price.unavailable_hint"))
+
+        for context in [SnoozePriceContext.scale(.rouble), .scale(usdScale)] {
+            let sut = makeSUT(amount: 50) { context }
+            let row = sut.makeFinanceCell(at: priceIndexPath(in: sut))
+            XCTAssertFalse(row.accessibilityTraits.contains(.notEnabled), "\(context)")
+            XCTAssertNil(row.accessibilityHint, "\(context)")
+        }
+
+        // A recycled cell sheds both on its next tenant.
+        let cell = SettingsIconRowCell(style: .default, reuseIdentifier: nil)
+        cell.configure(systemName: "banknote", iconColor: .label, title: "", isEnabled: false, accessibilityHint: "x")
+        cell.configure(systemName: "clock", iconColor: .label, title: "")
+        XCTAssertFalse(cell.accessibilityTraits.contains(.notEnabled))
+        XCTAssertNil(cell.accessibilityHint)
     }
 
     func testChoosingATierStoresItsRoubleEquivalent() {
@@ -219,6 +296,23 @@ final class SettingsPriceContextTests: XCTestCase {
         return sut
     }
 
+    private func makeRecordingSUT(context: @escaping () -> SnoozePriceContext) -> RecordingSettings {
+        let defaults = makeIsolatedDefaults()
+        let alarmDefaults = AlarmDefaults(defaults: defaults)
+        alarmDefaults.penaltyAmount = 137
+        let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+        let sut = RecordingSettings(
+            themeService: ThemeService(defaults: defaults),
+            alarmDefaults: alarmDefaults,
+            referralService: ReferralService(defaults: defaults, balanceService: wallet),
+            walletCurrencyStore: WalletCurrencyStore(defaults: defaults),
+            priceContextSource: context,
+            notificationCenter: NotificationCenter()
+        )
+        sut.loadViewIfNeeded()
+        return sut
+    }
+
     private func rowShows(_ text: String, in sut: SettingsViewController) -> Bool {
         sut.tableView.layoutIfNeeded()
         guard let cell = sut.tableView.cellForRow(at: priceIndexPath(in: sut)) else { return false }
@@ -252,5 +346,23 @@ final class SettingsPriceContextTests: XCTestCase {
 
     private func descendants(in view: UIView) -> [UIView] {
         view.subviews.flatMap { [$0] + descendants(in: $0) }
+    }
+}
+
+/// Records presentation instead of performing it, so the dismissal rule is
+/// checked without a window or an animation.
+private final class RecordingSettings: SettingsViewController {
+    var presented: UIViewController?
+    var dismissals = 0
+
+    override var presentedViewController: UIViewController? { presented }
+
+    override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
+        presented = controller
+    }
+
+    override func dismiss(animated: Bool, completion: (() -> Void)? = nil) {
+        dismissals += 1
+        presented = nil
     }
 }
