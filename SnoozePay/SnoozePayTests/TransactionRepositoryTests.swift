@@ -298,6 +298,29 @@ final class TransactionRepositoryTests: XCTestCase {
         XCTAssertEqual(repo.currentStreak(from: snapshot), 2)
     }
 
+    // MARK: - Unreadable wake history (#1099)
+
+    func testCurrentStreak_unreadableWakeHistory_returnsZeroNotLegacyStreak() {
+        // Same ledger as `testCurrentStreak_onlyTopups_allDaysClean`, which
+        // reads 6 through the legacy fallback when wake_days is absent.
+        repo.record(topup(amount: 500, daysAgo: 5))
+        repo.record(topup(amount: 100, daysAgo: 0))
+        testDefaults.set(Data("damaged wake days".utf8), forKey: "wake_days")
+
+        XCTAssertEqual(repo.currentStreak(), 0,
+                       "A damaged history is unknown, not a charge-free streak to celebrate")
+        XCTAssertEqual(repo.currentStreak(from: repo.fetchAllOrFail()), 0)
+    }
+
+    func testCurrentStreak_unreadableWakeTimesOnly_keepsTheWakeStreak() {
+        recordWake(daysAgo: 0)
+        recordWake(daysAgo: 1)
+        repo.record(topup(amount: 100, daysAgo: 0))
+        testDefaults.set(Data("damaged wake times".utf8), forKey: "wake_times")
+
+        XCTAssertEqual(repo.currentStreak(), 2, "Only wake_days decides the streak")
+    }
+
     // MARK: - Edge cases
 
     func testFetchAll_emptyByDefault() {
