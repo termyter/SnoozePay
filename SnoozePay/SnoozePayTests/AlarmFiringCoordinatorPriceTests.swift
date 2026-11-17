@@ -162,11 +162,13 @@ final class AlarmFiringCoordinatorPriceTests: XCTestCase {
         XCTAssertTrue(charges.isEmpty)
     }
 
+    /// #1136: the refusal is the wallet's own reason, a currency mismatch —
+    /// no longer reported as insufficient funds.
     func testPristineWallet_onForeignStorefront_chargesNothingAndStaysPristine() {
         XCTAssertTrue(scaleStore.record(usdScale))
         let alarm = save(Alarm(penaltyAmount: 50))
 
-        XCTAssertEqual(snooze(alarm, toCount: 1), .insufficientFunds)
+        XCTAssertEqual(snooze(alarm, toCount: 1), .currencyMismatch(price: usd, wallet: .rub))
         XCTAssertTrue(rows.isEmpty)
         XCTAssertTrue(balance.walletIsPristine)
         XCTAssertNil(defaults.object(forKey: WalletCurrencyStore.storageKey))

@@ -37,6 +37,14 @@ final class AlarmFiringCoordinator {
         /// storefront scale is not cached (#1130). Nothing was charged; the
         /// snooze is refused rather than charged a guessed number.
         case priceUnavailable(currency: Currency)
+        /// The price resolved, but its `Decimal` has no `Double` to debit — a
+        /// defect in the price, not a catalogue that has not loaded (#1136).
+        /// Nothing was charged; no "open the app" banner, which would be false.
+        case priceNotRepresentable(currency: Currency)
+        /// The price resolved in `price` but the wallet holds `wallet` at the
+        /// debit — reported by `BalanceService.debit` itself (#1136). Nothing
+        /// was charged; there is no conversion.
+        case currencyMismatch(price: Currency, wallet: Currency)
         /// Charge succeeded and a new snooze notification was scheduled.
         case scheduled(newSnoozeCount: Int, charged: Double)
         /// Charge succeeded but the underlying `UNUserNotificationCenter.add`
@@ -161,16 +169,23 @@ final class AlarmFiringCoordinator {
         // `chargeWithReceipt` returns the persisted Transaction so a later
         // refund can link back to it (issue #133) — without that link stats
         // can't tell a refunded charge apart from a real snooze. The wallet
-        // re-checks the price currency inside its queue (#1143); a freeze in
-        // between refuses here, as insufficient funds.
-        guard let chargeTransaction = balanceService.chargeWithReceipt(
-            amount: penalty,
-            expecting: priceCurrency,
-            alarmID: payload.alarmID
-        ) else {
-            let alarmID = payload.alarmID
+        // compares the price currency inside its queue (#1143) and names the
+        // refusal itself (#1136): a currency mismatch is not insufficient funds.
+        let chargeTransaction: Transaction
+        switch balanceService.debit(amount: penalty, expecting: priceCurrency, alarmID: payload.alarmID) {
+        case .success(let transaction):
+            chargeTransaction = transaction
+        case .failure(.currencyMismatch(let price, let wallet)):
+            // `debit` already wrote the `.error` line naming both currencies.
+            completion?(.currencyMismatch(price: price, wallet: wallet))
+            return
+        case .failure(let refusal):
+            let alarmID = payload.alarmID, reason = String(describing: refusal)
             AppLogger.coordinator.notice(
-                "snooze: insufficient funds alarm=\(alarmID, privacy: .private) penalty=\(penalty, privacy: .public)"
+                """
+                snooze: charge refused (\(reason, privacy: .public)) alarm=\(alarmID, privacy: .private) \
+                penalty=\(penalty, privacy: .public)
+                """
             )
             completion?(.insufficientFunds)
             return
@@ -220,19 +235,11 @@ final class AlarmFiringCoordinator {
                 alarm=\(alarmID, privacy: .private), no charge
                 """
             )
-            return .refuse(.priceUnavailable(currency: context.currency))
+            return .refuse(.priceNotRepresentable(currency: context.currency))
         }
-        // A pristine wallet prices in its storefront currency but holds nothing
-        // in it (its rows would still be stamped roubles): never debit a number
-        // denominated in a currency the wallet does not hold.
-        let walletCurrency = balanceService.walletCurrency
-        guard price.currency == walletCurrency else {
-            let priceCode = price.currency.code, walletCode = walletCurrency.code
-            AppLogger.coordinator.notice(
-                "snooze: price in \(priceCode, privacy: .public), wallet in \(walletCode, privacy: .public) — no charge"
-            )
-            return .refuse(.insufficientFunds)
-        }
+        // A pristine wallet prices in its storefront currency but holds roubles:
+        // the debit refuses that mismatch under the wallet queue (#1136), so no
+        // caller-side copy of the check here.
         return .charge(amount, price.currency)
     }
 
