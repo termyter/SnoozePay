@@ -37,6 +37,10 @@ final class AlarmFiringCoordinator {
         /// storefront scale is not cached (#1130). Nothing was charged; the
         /// snooze is refused rather than charged a guessed number.
         case priceUnavailable(currency: Currency)
+        /// The price resolved, but its `Decimal` has no `Double` to debit — a
+        /// defect in the price, not a catalogue that has not loaded (#1136).
+        /// Nothing was charged; no "open the app" banner, which would be false.
+        case priceNotRepresentable(currency: Currency)
         /// The price resolved in `price` but the wallet holds `wallet` at the
         /// debit — reported by `BalanceService.debit` itself (#1136). Nothing
         /// was charged; there is no conversion.
@@ -231,7 +235,7 @@ final class AlarmFiringCoordinator {
                 alarm=\(alarmID, privacy: .private), no charge
                 """
             )
-            return .refuse(.priceUnavailable(currency: context.currency))
+            return .refuse(.priceNotRepresentable(currency: context.currency))
         }
         // A pristine wallet prices in its storefront currency but holds roubles:
         // the debit refuses that mismatch under the wallet queue (#1136), so no

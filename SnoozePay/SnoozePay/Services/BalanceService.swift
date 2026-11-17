@@ -210,7 +210,14 @@ final class BalanceService {
             // wallet, and the credit that follows it runs through this queue.
             let held = walletCurrency
             if let expected, expected != held {
-                AppLogger.emit(.balance, .error, "charge refused: priced in \(expected.code), wallet in \(held.code)")
+                // A pristine wallet on a foreign storefront is a new user
+                // outside Russia, an expected state; anything else is a defect.
+                let pristine = current == 0 && !_balanceCorrupted
+                    && (try? ledgerStore.loadEntries())?.isEmpty == true
+                AppLogger.emit(
+                    .balance, pristine ? .default : .error,
+                    "charge refused: priced in \(expected.code), wallet in \(held.code)"
+                )
                 return (.failure(.currencyMismatch(price: expected, wallet: held)), current)
             }
             guard !_balanceCorrupted else { return (.failure(.balanceCorrupted), current) }

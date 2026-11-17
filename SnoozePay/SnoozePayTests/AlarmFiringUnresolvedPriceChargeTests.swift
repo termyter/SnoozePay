@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import SnoozePay
 
@@ -23,10 +24,17 @@ final class AlarmFiringUnresolvedPriceChargeTests: XCTestCase {
         XCTAssertTrue(model.canSnooze, "precondition: the tap reaches the charge")
         XCTAssertNil(model.price(forSnoozeCount: 2), "precondition: no price to take a currency from")
 
-        XCTAssertFalse(model.snooze())
+        var uiErrors: [String] = []
+        let started = AppLogger.withTestSink({ category, level, message in
+            if category == .ui, level == .error { uiErrors.append(message) }
+        }, perform: { model.snooze() })
 
+        XCTAssertFalse(started)
         XCTAssertTrue(wallet.chargeCalls.isEmpty, "no charge attempted: \(wallet.chargeCalls)")
         XCTAssertEqual(model.snoozeCount, 1)
+        XCTAssertFalse(model.isSnoozeScheduling, "a refused tap must not leave the CTA locked")
+        XCTAssertEqual(uiErrors.count, 1, "\(uiErrors)")
+        XCTAssertTrue(uiErrors.first?.hasPrefix("firing: snooze price unresolved alarm=") == true, "\(uiErrors)")
     }
 }
 

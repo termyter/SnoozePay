@@ -720,8 +720,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
             )
         case let .priceUnavailable(currency):
-            AppLogger.appDelegate.error(
-                "SNOOZE_ACTION: no snooze price in \(currency.code, privacy: .public) — snooze skipped, nothing charged"
+            AppLogger.emit(
+                .appDelegate, .error,
+                "SNOOZE_ACTION: no snooze price in \(currency.code) — snooze skipped, nothing charged — posting banner"
+            )
+        case let .priceNotRepresentable(currency):
+            AppLogger.emit(
+                .appDelegate, .error,
+                "SNOOZE_ACTION: snooze price in \(currency.code) not chargeable — snooze skipped, nothing charged"
             )
         case let .currencyMismatch(price, wallet):
             AppLogger.emit(

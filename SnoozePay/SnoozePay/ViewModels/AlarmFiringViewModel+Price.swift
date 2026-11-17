@@ -135,8 +135,9 @@ extension AlarmFiringViewModel {
     /// refuses first; this is the guard for a price that still does not resolve.
     func nextChargeCurrency() -> Currency? {
         if let currency = price(forSnoozeCount: snoozeCount + 1)?.currency { return currency }
-        let alarmID = alarm.id
-        AppLogger.ui.error("firing: snooze price unresolved alarm=\(alarmID, privacy: .private) — no charge")
+        // `emit` writes public text, so the 8-character handle, not the id.
+        let handle = String(alarm.id.uuidString.prefix(8))
+        AppLogger.emit(.ui, .error, "firing: snooze price unresolved alarm=\(handle) — no charge")
         return nil
     }
 

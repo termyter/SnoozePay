@@ -10,6 +10,7 @@ import XCTest
 /// comparison would leave such a test green (the gap #1136 item 1 names).
 final class BalanceServiceChargeCurrencyTests: XCTestCase {
 
+    private var defaults: UserDefaults!
     private var repository: TransactionRepository!
     private var wallet: BalanceService!
 
@@ -17,7 +18,7 @@ final class BalanceServiceChargeCurrencyTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        let defaults = makeIsolatedDefaults()
+        defaults = makeIsolatedDefaults()
         repository = TransactionRepository(defaults: defaults)
         wallet = BalanceService(defaults: defaults, transactionRepository: repository, notificationCenter: NotificationCenter())
     }
@@ -25,6 +26,7 @@ final class BalanceServiceChargeCurrencyTests: XCTestCase {
     override func tearDown() {
         wallet = nil
         repository = nil
+        defaults = nil
         super.tearDown()
     }
 
@@ -119,6 +121,36 @@ final class BalanceServiceChargeCurrencyTests: XCTestCase {
         XCTAssertEqual(refusal(amount: 0, usd), .invalidAmount)
         XCTAssertNil(refusal(amount: 1, usd), "a covered charge in the wallet's currency lands")
         XCTAssertEqual(wallet.balance, 0)
+    }
+
+    /// Order inside `debit`: currency mismatch, then corruption, then funds,
+    /// then the ledger write. A mismatch is named even on a corrupt wallet.
+    func testDebit_currencyMismatchOutranksCorruption_corruptionOutranksFunds() {
+        defaults.set(-5.0, forKey: "user_balance")
+
+        XCTAssertEqual(refusal(amount: 1, usd), .currencyMismatch(price: usd, wallet: .rub))
+        XCTAssertEqual(refusal(amount: 1, .rub), .balanceCorrupted)
+        XCTAssertTrue(rows.isEmpty)
+    }
+
+    func testDebit_lockedLedger_isNotRecorded_balanceUnchanged() {
+        XCTAssertTrue(wallet.topUp(amount: 100))
+        defaults.set(Data("not json".utf8), forKey: "stored_transactions")
+
+        XCTAssertEqual(refusal(amount: 10, .rub), .notRecorded)
+        XCTAssertEqual(wallet.balance, 100)
+    }
+
+    /// A pristine wallet on a foreign storefront is a new user outside Russia:
+    /// the mismatch is expected there and logged at `.default`, not `.error`.
+    func testPristineWallet_currencyMismatch_isLoggedAsExpectedState() {
+        var levels: [OSLogType] = []
+        let outcome = AppLogger.withTestSink({ category, level, _ in
+            if category == .balance { levels.append(level) }
+        }, perform: { refusal(amount: 1, usd) })
+
+        XCTAssertEqual(outcome, .currencyMismatch(price: usd, wallet: .rub))
+        XCTAssertEqual(levels, [.default])
     }
 
     private func refusal(amount: Double, _ currency: Currency) -> BalanceService.DebitRefusal? {
