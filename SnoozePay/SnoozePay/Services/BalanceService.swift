@@ -540,6 +540,14 @@ final class BalanceService {
             return creditPaid(amount: amount, at: purchasedAt, id: ledgerID)
         }
         guard acceptsPurchase(in: currency) else {
+            // An unreadable ledger takes no credit in any currency, and it is
+            // also what makes the wallet non-pristine: a currency refusal would
+            // misname the cause (#1133). An accepted currency is untouched — it
+            // reaches the ledger write and is refused there, as before.
+            guard queue.sync(execute: { ledgerStore.isReadable }) else {
+                AppLogger.emit(.balance, .error, "purchase in \(currency.code) not credited: ledger unreadable")
+                return .notRecorded
+            }
             return .refusedCurrency(wallet: walletCurrency, purchase: currency)
         }
         // Freeze BEFORE crediting: the ledger row is stamped with
@@ -650,14 +658,21 @@ final class BalanceService {
         guard ledgerStore.isReadable, let entries = try? ledgerStore.loadEntries() else {
             return cached
         }
-        let net = BalanceLedger.net(of: entries, in: walletCurrency)
+        let currency = walletCurrency
+        let net = BalanceLedger.net(of: entries, in: currency)
         guard let opening = ledgerStore.openingBalance else {
             ledgerStore.openingBalance = MoneyDecimal.subtracting(cached, net)
             return cached
         }
         // Decimal sum (#1119): binary rounding noise must not read as a
         // ledger below zero.
-        let derived = MoneyDecimal.adding(opening, net)
+        let sum = MoneyDecimal.adding(opening, net)
+        // An opening adopted by a pre-#1119 build was `cached − Σ` in Double
+        // and may carry noise (−20.950000000000003), so the exact sum can be
+        // −3e-15 (#1122). Round to the minor unit the wallet is shown in
+        // before judging the sign. Roubles are left as they are: their rows
+        // are whole numbers, which Double always summed exactly.
+        let derived = currency == .rub ? sum : MoneyDecimal.rounded(sum, toDigits: currency.minorUnitDigits)
         // A ledger that sums below zero is a desync, not a wallet the user can
         // spend from — route it through the same #119 gate as a negative
         // `user_balance` instead of handing back a negative number.
