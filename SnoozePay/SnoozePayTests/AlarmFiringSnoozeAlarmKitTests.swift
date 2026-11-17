@@ -94,7 +94,7 @@ final class AlarmFiringSnoozeAlarmKitTests: XCTestCase {
 
 // MARK: - Test doubles
 
-private final class SnoozeMockAlarmKit: AlarmKitScheduling {
+private final class SnoozeMockAlarmKit: UnsupportedAlarmKitBackend {
     private let authorized: Bool
     private(set) var scheduledIDs: [UUID] = []
     private(set) var snoozedIDs: [UUID] = []

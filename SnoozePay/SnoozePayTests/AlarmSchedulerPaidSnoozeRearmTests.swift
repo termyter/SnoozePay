@@ -241,7 +241,8 @@ final class AlarmSchedulerPaidSnoozeRearmTests: XCTestCase {
 /// Retains actual pending IDs/dates, and executes the production cancellation
 /// methods against that state. A recording-only `cancel` would hide #935.
 @available(iOS 26.0, *)
-private final class PendingAlarmKitBackend: AlarmKitScheduling {
+private final class PendingAlarmKitBackend: RefusesAlarmKitRecoveryClear, RefusesAlarmKitTrackedSnooze,
+    RefusesAlarmKitOccurrenceFinish, RefusesAlarmKitFinishVerification, RefusesAlarmKitSupersedeVerification {
     var authorization: AlarmKitAuthorization = .authorized
     var isAuthorized: Bool { authorization == .authorized }
     var failSchedule = false

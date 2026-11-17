@@ -3,7 +3,8 @@ import XCTest
 @testable import SnoozePay
 
 @MainActor
-final class TrackedSessionBackend: AlarmKitScheduling {
+final class TrackedSessionBackend: CoarseAlarmKitAuthorization, RefusesAlarmKitRecoveryClear,
+    RefusesAlarmKitFinishVerification, RefusesAlarmKitSupersedeVerification {
     enum Rejection: Error { case schedule }
     var isAuthorized = true
     var deferred = false

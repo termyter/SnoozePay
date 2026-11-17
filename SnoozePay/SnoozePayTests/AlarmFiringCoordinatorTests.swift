@@ -352,7 +352,9 @@ private final class MockNotificationCenter: NotificationScheduling {
 /// time the coordinator's refund path calls `refund`, the repository is locked
 /// (decode failed on the corrupt blob) and `record()` refuses — reproducing the
 /// `.scheduleFailedAndRefundFailed` outcome (issue #200).
-private final class CorruptingThenFailingAlarmKit: AlarmKitScheduling {
+private final class CorruptingThenFailingAlarmKit: UnknownAlarmKitInventory, RefusesAlarmKitRecoveryClear,
+    RefusesAlarmKitTrackedSnooze, RefusesAlarmKitOccurrenceFinish,
+    RefusesAlarmKitFinishVerification, RefusesAlarmKitSupersedeVerification {
     struct Rejected: LocalizedError {
         var errorDescription: String? { "AlarmKit rejected the schedule" }
     }

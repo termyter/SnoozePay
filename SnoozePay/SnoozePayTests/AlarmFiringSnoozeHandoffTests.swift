@@ -163,7 +163,9 @@ private final class HandoffScreen: AlarmFiringViewController {
     }
 }
 
-private final class HandoffBackend: AlarmKitScheduling {
+private final class HandoffBackend: CoarseAlarmKitAuthorization, UnknownAlarmKitInventory,
+    RefusesAlarmKitRecoveryClear, RefusesAlarmKitTrackedSnooze,
+    RefusesAlarmKitFinishVerification, RefusesAlarmKitSupersedeVerification {
     var isAuthorized = true
     var snoozeCalls = 0
     var stoppedIDs: [UUID] = []
