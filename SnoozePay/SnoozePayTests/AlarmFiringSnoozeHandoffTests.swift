@@ -205,6 +205,7 @@ private final class HandoffWallet: AlarmFiringBalancing {
     var refunds: [Double] = []
     var refundSucceeds = true
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     func canAfford(_ amount: Double) -> Bool { balance >= amount }
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
         charges.append(amount)

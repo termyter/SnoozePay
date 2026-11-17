@@ -345,6 +345,10 @@ final class AlarmFiringViewModel {
         return locked
     }
     func acceptsPurchase(in currency: Currency) -> Bool { balanceService.acceptsPurchase(in: currency) }
+    /// The no-balance CTA's gate, read at tap time (#1168): see `AlarmFiringBalancing`.
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? {
+        balanceService.prePurchaseRefusal(in: currency)
+    }
 
     var alarmName: String { alarm.name }
 
@@ -765,6 +769,11 @@ protocol AlarmFiringBalancing: AnyObject {
     var balance: Double { get }
     var walletCurrency: Currency { get }
     func acceptsPurchase(in currency: Currency) -> Bool
+    /// Why a pack in `currency` must not be dispatched, checked against the
+    /// ledger now: an unreadable ledger refuses every currency, because Apple
+    /// would charge for a credit that cannot land (#1163, #1168). No default —
+    /// a wallet that forwarded to `acceptsPurchase` would let that charge through.
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal?
     func canAfford(_ amount: Double) -> Bool
     /// Charges the penalty and returns the persisted charge `Transaction` (or
     /// `nil` on insufficient funds / locked ledger). The returned `id` lets the

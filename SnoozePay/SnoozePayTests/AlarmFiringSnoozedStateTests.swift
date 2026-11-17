@@ -364,6 +364,7 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
 /// drain-to-empty scenario) without touching `UserDefaults`.
 private final class SnoozedStubBalance: AlarmFiringBalancing {
     func acceptsPurchase(in currency: Currency) -> Bool { false }
+    func prePurchaseRefusal(in currency: Currency) -> BalanceService.PurchaseRefusal? { .ledgerUnreadable }
     let walletCurrency: Currency = .rub
     private(set) var balance: Double
     init(balanceValue: Double) { balance = balanceValue }
