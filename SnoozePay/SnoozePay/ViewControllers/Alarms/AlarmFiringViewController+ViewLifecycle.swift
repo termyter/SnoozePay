@@ -130,10 +130,7 @@ extension AlarmFiringViewController {
         guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         // Recommend an actual compatible offer for the next progressive charge.
         // The sheet reads its live wallet; package copy makes no snooze forecasts.
-        let sheet = FiringTopUpBottomSheetViewController(
-            snoozePrice: viewModel.currentPenalty,
-            snoozePriceCurrency: viewModel.priceCurrency
-        )
+        let sheet = makeTopUpSheet(viewModel.currentPenalty, viewModel.priceCurrency)
         present(sheet, animated: true)
     }
 }
