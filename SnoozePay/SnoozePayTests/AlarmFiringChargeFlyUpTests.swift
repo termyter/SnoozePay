@@ -67,9 +67,7 @@ final class AlarmFiringChargeFlyUpTests: XCTestCase {
     private func makeController(
         amount: Double, currency: Currency, snoozeCount: Int = 1, progressive: Bool = false
     ) -> AlarmFiringViewController {
-        let suite = "test.firing.chargeFlyUp.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(currency), .frozen(currency))
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend())
         let model = AlarmFiringViewModel(

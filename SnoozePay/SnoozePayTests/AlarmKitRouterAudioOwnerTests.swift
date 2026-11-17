@@ -24,7 +24,6 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
     /// tone: the bundle's files are not what this pins.
     private static let toneSoundID = "nonexistent_test_sound"
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var router: AlarmKitActionRouter!
     private var poster: LocalNotificationPosterSpy!
@@ -33,8 +32,7 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmKitRouterAudioOwner.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        defaults = makeIsolatedDefaults()
         poster = LocalNotificationPosterSpy()
         router = AlarmKitActionRouter()
         router.alarmRepository = AlarmRepository(
@@ -53,7 +51,6 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
         drainMainQueue()
         router = nil
         poster = nil
-        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         presented = []
         lines = []

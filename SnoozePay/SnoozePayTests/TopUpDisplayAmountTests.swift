@@ -48,9 +48,7 @@ final class TopUpDisplayAmountTests: XCTestCase {
     }
 
     private func directButton(offer: TopUpOffer?) -> SPButton {
-        let suite = "test.topUpDisplayAmount.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend())
         let model = AlarmFiringViewModel(
             alarm: Alarm(penaltyAmount: 50),

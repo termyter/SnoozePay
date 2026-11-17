@@ -25,9 +25,12 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         }
     }
 
-    private static let suite = "AlarmFiringPresenterQueueTests"
     private static let fullUUID = "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"
-    private let defaults = UserDefaults(suiteName: suite) ?? UserDefaults()
+    /// A pool slot (#1118), taken in `setUp` and handed back from `tearDown`
+    /// where the fixed suite used to be wiped, so anything `tearDown` stops or
+    /// drains before that point still writes into a slot this test owns.
+    private var lease: IsolatedDefaultsLease<UserDefaults>!
+    private var defaults: UserDefaults { lease.defaults }
     private var top: UIViewController?
     private var rootReady = true
     private var dismissed: [UIViewController] = []
@@ -37,6 +40,7 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         super.setUp()
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
+        lease = IsolatedDefaultsPool.checkOut()
     }
 
     /// Every presenter line a test here recorded is checked for a whole id:
@@ -48,7 +52,8 @@ final class AlarmFiringPresenterQueueTests: XCTestCase {
         }
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
-        defaults.removePersistentDomain(forName: Self.suite)
+        IsolatedDefaultsPool.checkIn(lease)
+        lease = nil
         top = nil
         dismissed = []
         lines = []

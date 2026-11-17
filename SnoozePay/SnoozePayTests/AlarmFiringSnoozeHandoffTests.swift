@@ -7,7 +7,6 @@ import XCTest
 @MainActor
 final class AlarmFiringSnoozeHandoffTests: XCTestCase {
     private var defaults: UserDefaults!
-    private var suite: String!
     private var screen: HandoffScreen!
     private var backend: HandoffBackend!
     private var wallet: HandoffWallet!
@@ -15,8 +14,7 @@ final class AlarmFiringSnoozeHandoffTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suite = "AlarmFiringSnoozeHandoffTests-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)
+        defaults = makeIsolatedDefaults()
         backend = HandoffBackend()
         wallet = HandoffWallet()
         warnings = CriticalWarningCenter(defaults: defaults)
@@ -30,9 +28,7 @@ final class AlarmFiringSnoozeHandoffTests: XCTestCase {
         wallet = nil
         warnings = nil
         drainMainQueue()
-        defaults.removePersistentDomain(forName: suite)
         defaults = nil
-        suite = nil
         super.tearDown()
     }
 

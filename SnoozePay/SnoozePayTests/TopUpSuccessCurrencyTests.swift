@@ -7,7 +7,7 @@ final class TopUpSuccessCurrencyTests: XCTestCase {
     func testBothRealSuccessLabelsUseCreditedFractionAndWalletCurrencyInsteadOfSkuOrTotal() throws {
         for firing in [false, true] {
             for (code, symbol) in [("USD", "$"), ("EUR", "€"), ("RUB", "₽")] {
-                let fixture = try Fixture()
+                let fixture = Fixture()
                 defer { fixture.clear() }
                 let currency = try XCTUnwrap(Currency(code: code))
                 XCTAssertEqual(fixture.balance.topUpFromPurchase(amount: 10, currency: currency), .credited)
@@ -44,7 +44,7 @@ final class TopUpSuccessCurrencyTests: XCTestCase {
 
     func testMalformedEventsCannotInventSuccessAndCancellationPendingAndValidRetryStillWork() throws {
         for firing in [false, true] {
-            let fixture = try Fixture()
+            let fixture = Fixture()
             defer { fixture.clear() }
             let sheet = fixture.makeSheet(firing: firing)
             sheet.loadViewIfNeeded()
@@ -76,7 +76,7 @@ final class TopUpSuccessCurrencyTests: XCTestCase {
 
     func testInjectedCenterObserversDoNotKeepEitherSheetAlive() throws {
         for firing in [false, true] {
-            let fixture = try Fixture()
+            let fixture = Fixture()
             defer { fixture.clear() }
             weak var released: UIViewController?
             autoreleasepool {
@@ -110,6 +110,8 @@ final class TopUpSuccessCurrencyTests: XCTestCase {
 
     @MainActor
     private final class Fixture {
+        /// A pool slot (#1118), checked back in by `clear()` from each caller's `defer`.
+        private let lease: IsolatedDefaultsLease<UserDefaults>
         let suite: String
         let defaults: UserDefaults
         let center: NotificationCenter
@@ -117,17 +119,18 @@ final class TopUpSuccessCurrencyTests: XCTestCase {
         var delays: [TimeInterval] = []
         var requested: [String] = []
 
-        init() throws {
-            let suite = "TopUpSuccessCurrencyTests.\(UUID())"
-            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        init() {
+            let lease = IsolatedDefaultsPool.checkOut()
+            let defaults = lease.defaults
             let center = NotificationCenter()
-            self.suite = suite
+            self.lease = lease
+            self.suite = lease.name
             self.defaults = defaults
             self.center = center
             self.balance = BalanceService(defaults: defaults, notificationCenter: center)
         }
 
-        func clear() { defaults.removePersistentDomain(forName: suite) }
+        func clear() { IsolatedDefaultsPool.checkIn(lease) }
 
         func makeSheet(firing: Bool) -> UIViewController {
             let schedule: TopUpSuccessDismissal = { [weak self] delay, _ in self?.delays.append(delay) }

@@ -69,6 +69,24 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         XCTAssertNil(second.defaults.object(forKey: "probe"))
     }
 
+    /// `checkOut(as:)` empties the slot through a plain instance, not through the
+    /// subclass it hands out: a subclass that refuses the wipe still starts empty.
+    func testSubclassThatRefusesTheWipeStillStartsOnAnEmptySlot() {
+        let peek = IsolatedDefaultsPool.checkOut()
+        IsolatedDefaultsPool.checkIn(peek)
+        let stale = reopenIsolatedDefaults(named: IsolatedDefaultsPool.suiteName(peek.slot))
+        stale.set(1, forKey: "stale")
+        XCTAssertNotNil(stale.object(forKey: "stale"), "pollution did not land — the check below would be vacuous")
+
+        let (defaults, name) = makeIsolatedSuite(as: WipeRefusingDefaults.self)
+
+        XCTAssertEqual(name, IsolatedDefaultsPool.suiteName(peek.slot))
+        XCTAssertNil(defaults.object(forKey: "stale"), "the slot was emptied through the subclass, which refuses")
+        defaults.set(2, forKey: "probe")
+        defaults.removePersistentDomain(forName: name)
+        XCTAssertEqual(defaults.integer(forKey: "probe"), 2, "the subclass wiped — the check above would be vacuous")
+    }
+
     /// A slot nobody holds is not wiped or "freed" by a stray check-in.
     func testCheckInOfASlotNotHandedOutLeavesItAlone() {
         let peek = IsolatedDefaultsPool.checkOut()
@@ -178,6 +196,41 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         XCTAssertEqual(Self.rawSuiteSites(in: source), 2)
     }
 
+    /// A generic subclass, a module-qualified parent, and inits spelled with generic
+    /// arguments or a module prefix. Without the optional `<...>` the generic sites
+    /// fall through; `NotGenericDefaults` is not a subclass and must not count.
+    func testRatchetCountsGenericAndModuleQualifiedSubclassInits() {
+        let key = "suite" + "Name"
+        let sources = [
+            "a.swift": """
+                final class GenericDefaults<Value>: UserDefaults {}
+                class QualifiedDefaults: Foundation.UserDefaults {}
+                """,
+            "b.swift": """
+                let one = GenericDefaults<Int>(\(key): a)
+                let two = GenericDefaults<[String: Int]>.init(\(key): b)
+                let three = SnoozePayTests.QualifiedDefaults(\(key): c)
+                let four = Foundation.UserDefaults(\(key): d)
+                let five = SnoozePayTests.GenericDefaults<Int>.init(\(key): e)
+                let none = NotGenericDefaults<Int>(\(key): f)
+                """
+        ]
+        let subclasses = Self.defaultsSubclasses(in: sources)
+        XCTAssertEqual(subclasses, ["GenericDefaults", "QualifiedDefaults"])
+        XCTAssertEqual(Self.rawSuiteSites(in: sources["b.swift"] ?? "", subclasses: subclasses), 5)
+    }
+
+    /// The `super.init` skip is the keyword only: a metatype held in a name that
+    /// merely ends in `super` builds a suite and counts.
+    func testRatchetSuperSkipIsTheKeywordOnly() {
+        let key = "suite" + "Name"
+        let source = """
+            override init?(\(key) name: String?) { super.init(\(key): name) }
+            let built = fromsuper.init(\(key): "a")
+            """
+        XCTAssertEqual(Self.rawSuiteSites(in: source), 1)
+    }
+
     /// The real subclasses are found, so the scan above is not vacuous on this checkout.
     func testRatchetFindsTheSubclassesInThisTarget() throws {
         let subclasses = Self.defaultsSubclasses(in: try Self.testSources())
@@ -190,43 +243,24 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     // MARK: - Ratchet
 
     /// Hand-rolled suites left per file, compared exactly; a file not listed
-    /// must have none. After migrating a file, lower or delete its line. Each
-    /// is a fresh suite name per test, and cfprefsd holds a descriptor for
-    /// every such name until the whole run ends. `//` lines and `/* */` blocks don't count.
-    private static let handRolled: [String: Int] = [
-        "AlarmFiringChargeFlyUpTests.swift": 1,
-        "AlarmFiringPresenterMissRuleTests.swift": 1,
-        "AlarmFiringPresenterQueueTests.swift": 1,
-        "AlarmFiringPresenterSlotTests.swift": 1,
-        "AlarmFiringPresenterTransitionTests.swift": 1,
-        "AlarmFiringSnoozeHandoffTests.swift": 1,
-        "AlarmKitRouterAudioOwnerTests.swift": 1,
-        "AlarmKitSnoozeLoadFailureTests.swift": 1,
-        "AlarmRecoveryAcceptanceTests.swift": 2,
-        "AlarmsListIndexTests.swift": 1,
-        "CreateAlarmViewModelPreviewTests.swift": 1,
-        "PenaltyDisplayColorTests.swift": 1,
-        "ReferralPersonalCodeTests.swift": 1,
-        "ReferralServiceTests.swift": 1,
-        "SettingsReferralIsolationTests.swift": 1,
-        "StatisticsSnapshotTests.swift": 1,
-        "StoreKitPurchaseCancellationTests.swift": 1,
-        "TopUpDisplayAmountTests.swift": 1,
-        "TopUpSuccessCurrencyTests.swift": 1,
-        "VolumePickerInteractionTests.swift": 1,
-        "WakeHistoryHostedLayoutTests.swift": 1,
-        "WalletBalanceCurrencyTests.swift": 2
-    ]
+    /// must have none. Empty since batch 6: every test file is on the pool. A
+    /// hand-rolled suite is a fresh name per test, and cfprefsd holds a descriptor
+    /// for every such name until the whole run ends. `//` lines and `/* */` blocks
+    /// don't count. Add a line here only with a reason the pool cannot serve.
+    private static let handRolled: [String: Int] = [:]
     /// The initializer of `UserDefaults` or of any of its `subclasses`, with or
     /// without `.init`, with any whitespace (newlines included) around `.init`
     /// and `(`, plus the inferred `.init(suiteName:`. One alternation, so
-    /// `UserDefaults.init(suiteName:` is one match, not two. A subclass built on
-    /// a pool name still counts: only the helper builds those. `super.init(suiteName:)`
-    /// does not: it forwards the name of whoever builds the subclass, which is counted.
+    /// `UserDefaults.init(suiteName:` is one match, not two. Generic arguments
+    /// (`Foo<Bar>(suiteName:`) and a module prefix (`SnoozePayTests.Foo(`) count
+    /// too. A subclass built on a pool name still counts: only the helper builds
+    /// those. `super.init(suiteName:)` does not — the keyword `super` only, not a
+    /// name ending in it: it forwards the name of whoever builds the subclass, which is counted.
     private static func rawSitePattern(subclasses: Set<String>) -> NSRegularExpression? {
         let names = (["UserDefaults"] + subclasses.sorted()).joined(separator: "|")
         return try? NSRegularExpression(
-            pattern: #"\b(?:"# + names + #")\s*(?:\.init)?\s*\(\s*suiteName|(?<!super)\.init\s*\(\s*suiteName"#
+            pattern: #"\b(?:"# + names + #")(?:\s*<[^<>()]*>)?\s*(?:\.init)?\s*\(\s*suiteName"#
+                + #"|(?<!\bsuper)\.init\s*\(\s*suiteName"#
         )
     }
 
@@ -241,7 +275,9 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
     /// Classes declared as `UserDefaults` subclasses, directly or through
     /// another subclass, anywhere in `sources` — not guessed by name suffix.
     private static func defaultsSubclasses(in sources: [String: String]) -> Set<String> {
-        let declaration = try? NSRegularExpression(pattern: #"\bclass\s+(\w+)\s*:\s*(\w+)"#)
+        let declaration = try? NSRegularExpression(
+            pattern: #"\bclass\s+(\w+)\s*(?:<[^<>]*>)?\s*:\s*(?:\w+\s*\.\s*)?(\w+)"#
+        )
         var parents: [String: String] = [:]
         for text in sources.values.map(stripComments) {
             let range = NSRange(text.startIndex..., in: text)
@@ -304,4 +340,11 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         }
         return sources
     }
+}
+
+/// Ignores `removePersistentDomain`, like a fault-injecting subclass might.
+private final class WipeRefusingDefaults: UserDefaults, IsolatedDefaultsSubclass {
+    // Spelled out: an inherited initializer does not witness `IsolatedDefaultsSubclass`.
+    override init?(suiteName suitename: String?) { super.init(suiteName: suitename) }
+    override func removePersistentDomain(forName domainName: String) {}
 }

@@ -31,7 +31,7 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
                     previous.makeKeyAndVisible()
                 }
             }
-            fixture.defaults.removePersistentDomain(forName: fixture.suite)
+            fixture.close()
         }
         fixtures.removeAll()
         super.tearDown()
@@ -79,7 +79,7 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
     }
 
     func testBarOcclusionRequiresAttachmentAndRejectsVisiblePublicBars() throws {
-        let fixture = try WakeHistoryLayoutFixture(style: .light)
+        let fixture = WakeHistoryLayoutFixture(style: .light)
         fixtures.append(fixture)
         try fixture.seedHealthyHistory()
         fixture.defaults.set(Data("unreadable owned wake history".utf8), forKey: "wake_times")
@@ -149,7 +149,7 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
     private func makeFixture(
         style: UIUserInterfaceStyle, unreadableDays: Bool, initialToolbarItems: [UIBarButtonItem]? = nil
     ) throws -> WakeHistoryLayoutFixture {
-        let fixture = try WakeHistoryLayoutFixture(style: style)
+        let fixture = WakeHistoryLayoutFixture(style: style)
         fixtures.append(fixture)
         try fixture.seedHealthyHistory()
         fixture.defaults.set(Data("unreadable owned wake history".utf8),
@@ -471,6 +471,8 @@ final class WakeHistoryHostedLayoutTests: XCTestCase {
 
 @MainActor
 private final class WakeHistoryLayoutFixture {
+    /// A pool slot (#1118), checked back in by `close()` from the test's `tearDown()`.
+    private let lease: IsolatedDefaultsLease<UserDefaults>
     let suite: String
     let defaults: UserDefaults
     let calendar: Calendar
@@ -484,9 +486,9 @@ private final class WakeHistoryLayoutFixture {
     var navigation: WakeHistoryLayoutNavigationController?
     weak var previousKeyWindow: UIWindow?
 
-    init(style: UIUserInterfaceStyle) throws {
-        let name = "test.wakeHistoryHosted.\(UUID().uuidString)"
-        let ownedDefaults = try XCTUnwrap(UserDefaults(suiteName: name))
+    init(style: UIUserInterfaceStyle) {
+        let lease = IsolatedDefaultsPool.checkOut()
+        let ownedDefaults = lease.defaults
         let ownedCalendar = StatisticsViewModel.mondayFirstCalendar
         let instant = Date()
         ownedDefaults.set(100, forKey: "best_streak")
@@ -499,7 +501,8 @@ private final class WakeHistoryLayoutFixture {
         XCTAssertTrue(alarms.save(Alarm(penaltyAmount: 50)))
         let viewModel = StatisticsViewModel(repository: repository, wakeStore: wakes,
                                             alarmRepository: alarms, defaults: ownedDefaults, calendar: ownedCalendar)
-        suite = name
+        self.lease = lease
+        suite = lease.name
         defaults = ownedDefaults
         calendar = ownedCalendar
         now = instant
@@ -518,6 +521,8 @@ private final class WakeHistoryLayoutFixture {
     }
 
     var domain: NSDictionary { NSDictionary(dictionary: defaults.persistentDomain(forName: suite) ?? [:]) }
+
+    func close() { IsolatedDefaultsPool.checkIn(lease) }
 
     func seedHealthyHistory() throws {
         defaults.removeObject(forKey: "wake_days")

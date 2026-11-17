@@ -18,7 +18,6 @@ final class StatisticsSnapshotTests: XCTestCase {
     }
 
     private var defaults: UserDefaults!
-    private var suiteName: String!
     private var transactionRepository: TransactionRepository!
     private var wakeStore: WakeEventStore!
     private var alarmRepository: AlarmRepository!
@@ -27,16 +26,10 @@ final class StatisticsSnapshotTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.statisticsSnapshot.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         wakeStore = WakeEventStore(defaults: defaults)
         transactionRepository = TransactionRepository(defaults: defaults, wakeStore: wakeStore)
         alarmRepository = AlarmRepository(defaults: defaults, scheduler: StubScheduler())
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     private func makeViewModel() -> StatisticsViewModel {

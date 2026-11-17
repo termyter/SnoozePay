@@ -7,6 +7,7 @@ import XCTest
 final class FiringDirectPurchaseTerminalTests: XCTestCase {
     func testActualButtonKeepsPendingBusyAcrossBalanceChangeThenCancellationAllowsRetry() throws {
         let fixture = Fixture()
+        defer { fixture.close() }
         let controller = try XCTUnwrap(fixture.controller)
         let button = try XCTUnwrap(controller.applePayNoBalanceButton)
         let chooseAmount = try XCTUnwrap(controller.chooseAmountLink)
@@ -51,6 +52,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
 
     func testFailureAndCompletionOnlyFinishActivePurchaseAndAllowMoreCreditWhenInsufficient() throws {
         let fixture = Fixture()
+        defer { fixture.close() }
         let controller = try XCTUnwrap(fixture.controller)
         let button = try XCTUnwrap(controller.applePayNoBalanceButton)
         fixture.post(StoreKitService.purchaseFailedNotification)
@@ -88,6 +90,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
 
     func testGhostStopEndsPendingFeedbackBeforeSummaryAndRestoresStoreKitFallback() throws {
         let fixture = Fixture()
+        defer { fixture.close() }
         let controller = try XCTUnwrap(fixture.controller)
         try XCTUnwrap(controller.applePayNoBalanceButton).sendActions(for: .touchUpInside)
         fixture.post(StoreKitService.purchasePendingNotification)
@@ -128,11 +131,17 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             let fixture = Fixture()
             controller = fixture.controller
             owner = fixture.controller?.noBalancePurchase
-            try XCTUnwrap(fixture.controller?.applePayNoBalanceButton).sendActions(for: .touchUpInside)
+            do {
+                try XCTUnwrap(fixture.controller?.applePayNoBalanceButton).sendActions(for: .touchUpInside)
+            } catch {
+                fixture.close()
+                throw error
+            }
             XCTAssertEqual(fixture.calls.begins, 1)
             fixture.controller = nil
             return fixture
         }
+        defer { fixture.close() }
         XCTAssertNil(controller)
         XCTAssertNil(owner)
         XCTAssertEqual(fixture.calls.ends, 1)
@@ -150,6 +159,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
 
     func testCatalogRefreshReplacesOnlyChangedPriceAndNeverReenablesBusyOrRemovedOffers() throws {
         let fixture = Fixture(available: false)
+        defer { fixture.close() }
         let controller = try XCTUnwrap(fixture.controller)
         let empty = try XCTUnwrap(controller.applePayNoBalanceButton)
         XCTAssertFalse(empty.isEnabled)
@@ -203,6 +213,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
     func testInjectedWalletAllowsFirstForeignPurchaseAndRefusesEstablishedRublesWithoutMutation() throws {
         for pristine in [true, false] {
             let fixture = Fixture()
+            defer { fixture.close() }
             if !pristine { XCTAssertEqual(fixture.wallet.topUpFromPurchase(amount: 1, currency: .rub), .credited) }
             fixture.offer = TopUpOffer(productID: sku(499), price: 4.99,
                                        currencyCode: "USD", displayPrice: "$4.99")
@@ -252,6 +263,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
                 let scale = SnoozePriceScale(currency: currency, tiers: [low, low + 1, low + 2])!
                 XCTAssertTrue(SnoozePriceScaleStore(defaults: defaults).record(scale))
             }
+            defer { fixture.close() }
             let scale = testCase.code == "RUB" ? 1 : 100
             for nominal in testCase.catalogue where nominal != testCase.missing {
                 let price = Decimal(nominal) / Decimal(scale)
@@ -280,6 +292,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
 
     func testDirectCTARequotesOnCatalogueChangesAndStaysHonestWithoutCatalogue() throws {
         let fixture = Fixture(available: false, penalty: 100)
+        defer { fixture.close() }
         let controller = try XCTUnwrap(fixture.controller)
         controller.noBalanceApplePayTapped()
         XCTAssertTrue(fixture.calls.requested.isEmpty, "No catalogue: nothing to buy, no nominal fallback")
@@ -303,6 +316,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
     func testRealTourFactoryEnablesDemoOnlyExplicitlyAndCreditsItsBoundWallet() throws {
         for arguments in [[], ["-uitour", "firing-nobalance"], [StoreKitService.emptyCatalogArgument]] {
             let fixture = Fixture()
+            defer { fixture.close() }
             let controller = UITourRoutes.makeNoBalanceFiringController(
                 arguments: arguments, balance: fixture.wallet, controllerBuilder: PurchaseController.init(viewModel:)
             )
@@ -377,7 +391,9 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             controller.observeBalanceForNoBalanceState()
         }
 
-        isolated deinit { IsolatedDefaultsPool.checkIn(lease) }
+        /// Hands the slot back. Every construction site calls it from `defer`,
+        /// not from `deinit`: when the last reference drops is ARC's business.
+        func close() { IsolatedDefaultsPool.checkIn(lease) }
 
         func post(_ name: Notification.Name, message: String? = nil) {
             center.post(name: name, object: nil, userInfo: message.map { [StoreKitService.messageUserInfoKey: $0] })
