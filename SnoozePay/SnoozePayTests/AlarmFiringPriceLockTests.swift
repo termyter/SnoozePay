@@ -7,7 +7,6 @@ import XCTest
 /// a currency the wallet does not hold.
 final class AlarmFiringPriceLockTests: XCTestCase {
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var repository: TransactionRepository!
     private var scaleStore: SnoozePriceScaleStore!
@@ -19,8 +18,7 @@ final class AlarmFiringPriceLockTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.firing.priceLock.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         repository = TransactionRepository(defaults: defaults)
         scaleStore = SnoozePriceScaleStore(defaults: defaults, notificationCenter: center)
@@ -31,7 +29,6 @@ final class AlarmFiringPriceLockTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         wallet = nil
         scaleStore = nil
         repository = nil

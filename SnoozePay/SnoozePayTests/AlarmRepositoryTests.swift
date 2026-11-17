@@ -5,19 +5,12 @@ import XCTest
 final class AlarmRepositoryTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmRepo.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         repo = AlarmRepository(defaults: testDefaults, scheduler: KnownEmptyRecoveryScheduler())
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Helpers

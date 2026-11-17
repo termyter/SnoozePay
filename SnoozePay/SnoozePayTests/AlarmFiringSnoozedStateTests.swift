@@ -10,19 +10,15 @@ final class AlarmFiringSnoozedStateTests: XCTestCase {
     /// An empty rouble wallet in its own suite. The `.shared` default reads the
     /// host's storefront scale: on a simulator whose catalogue loaded in USD the
     /// ladder and receipts were priced in dollars (#1137).
-    private var suiteName: String!
     private var wallet: BalanceService!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.firing.snoozedState.\(UUID().uuidString)"
-        wallet = BalanceService(defaults: UserDefaults(suiteName: suiteName)!, notificationCenter: NotificationCenter())
+        wallet = BalanceService(defaults: makeIsolatedDefaults(), notificationCenter: NotificationCenter())
     }
 
     override func tearDown() {
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         wallet = nil
-        suiteName = nil
         super.tearDown()
     }
 

@@ -5,7 +5,6 @@ import XCTest
 /// scale a wallet resolves in, read synchronously from UserDefaults only.
 final class BalanceServicePriceContextTests: XCTestCase {
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var center: NotificationCenter!
     private var scaleStore: SnoozePriceScaleStore!
@@ -18,8 +17,7 @@ final class BalanceServicePriceContextTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.priceContext.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         center = NotificationCenter()
         scaleStore = SnoozePriceScaleStore(defaults: defaults, notificationCenter: center)
         balance = BalanceService(
@@ -31,7 +29,6 @@ final class BalanceServicePriceContextTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         balance = nil
         scaleStore = nil
         defaults = nil
