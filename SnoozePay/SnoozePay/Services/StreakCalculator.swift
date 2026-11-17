@@ -49,8 +49,9 @@ enum StreakCalculator {
     /// - Parameters:
     ///   - transactions: the full ledger (charges + topups). Only `.charge`
     ///     entries break or bound the streak.
-    ///   - wakeDays: `startOfDay` dates the user dismissed an alarm
-    ///     (`WakeEventStore.wakeDays()`).
+    ///   - wakeDays: the stored wake-day rows (`WakeEventStore.wakeDays()`).
+    ///     Compared through ``WakeDayIdentity``, not by instant, so a recorded
+    ///     morning keeps counting after the device's timezone changes (#1064).
     ///   - now: injected for deterministic tests; defaults to the wall clock.
     ///   - calendar: injected so tests pin a fixed timezone/locale.
     static func currentStreak(
@@ -77,6 +78,12 @@ enum StreakCalculator {
                 .map { calendar.startOfDay(for: $0.createdAt) }
         )
 
+        // Stored rows answer "which civil day did the user wake on"; the walk
+        // below asks the same question of each local day it steps through.
+        // Comparing the two as instants is what broke after a timezone change
+        // (#1064) — see `WakeDayIdentity`.
+        let wakeDayIdentities = Set(wakeDays.map(WakeDayIdentity.init(storedDay:)))
+
         var streak = 0
         var day = calendar.startOfDay(for: now)
 
@@ -90,7 +97,7 @@ enum StreakCalculator {
             if chargeDays.contains(day) {
                 break              // a slip ends the run immediately.
             }
-            if wakeDays.contains(day) {
+            if wakeDayIdentities.contains(WakeDayIdentity(date: day, calendar: calendar)) {
                 streak += 1        // genuine wake without a charge.
             }
             // else: neutral day (incl. today before its wake) — skip, don't break.

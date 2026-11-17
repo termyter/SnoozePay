@@ -22,12 +22,22 @@ final class WakeEventStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRecordWake_storesStartOfDay() {
-        let noon = calendar.date(
-            bySettingHour: 12, minute: 30, second: 0, of: Date()
-        )!
-        store.recordWake(on: noon, calendar: calendar)
-        XCTAssertEqual(store.wakeDays(), [calendar.startOfDay(for: noon)])
+    func testRecordWake_storesCanonicalDayIdentity() {
+        var moscow = Calendar(identifier: .gregorian)
+        moscow.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let instant = moscow.date(from: DateComponents(
+            year: 2026, month: 10, day: 25, hour: 7, minute: 30
+        ))!
+        store.recordWake(on: instant, calendar: moscow)
+
+        // #1064: the row is the civil day's UTC midnight — 2026-10-25T00:00Z —
+        // not a `startOfDay` carrying this device's offset (21:00Z here).
+        let expected = WakeDayIdentity(year: 2026, month: 10, day: 25).canonicalStoredDay!
+        XCTAssertEqual(store.wakeDays(), [expected])
+        XCTAssertEqual(
+            store.wakeDays().map(WakeDayIdentity.init(storedDay:)),
+            [WakeDayIdentity(year: 2026, month: 10, day: 25)]
+        )
     }
 
     func testRecordWake_sameDayTwice_dedupes() {
@@ -59,8 +69,8 @@ final class WakeEventStoreTests: XCTestCase {
         // entry is dropped before it ever hits the blob.
         store.recordWake(on: ancient, calendar: calendar)
         store.recordWake(on: Date(), calendar: calendar)
-        let today = calendar.startOfDay(for: Date())
-        XCTAssertEqual(store.wakeDays(), [today],
+        let today = WakeDayIdentity(date: Date(), calendar: calendar)
+        XCTAssertEqual(store.wakeDays().map(WakeDayIdentity.init(storedDay:)), [today],
                        "Entries older than the retention window must be pruned")
     }
 
@@ -68,6 +78,48 @@ final class WakeEventStoreTests: XCTestCase {
         testDefaults.set(Data("not json".utf8), forKey: "wake_days")
         XCTAssertTrue(store.wakeDays().isEmpty,
                       "Corrupt blob degrades to empty — heatmap falls back to dark cells")
+    }
+
+    // MARK: - Unreadable history is never overwritten (#1097)
+
+    func testRecordWake_unreadableDays_keepsBlobAndStillRecordsInstant() {
+        let damaged = Data("damaged wake days".utf8)
+        testDefaults.set(damaged, forKey: "wake_days")
+        let now = Date()
+
+        store.recordWake(on: now, calendar: calendar)
+
+        XCTAssertEqual(testDefaults.data(forKey: "wake_days"), damaged,
+                       "A dismissal must not replace a damaged history with one fresh row")
+        XCTAssertEqual(store.readSnapshot().days, .unreadable,
+                       "Statistics must keep reporting the history as unavailable")
+        let times = store.wakeTimes()
+        XCTAssertEqual(times.count, 1, "The readable sibling key still records")
+        XCTAssertEqual(times.first?.timeIntervalSince1970 ?? 0, now.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testRecordWake_unreadableTimes_keepsBlobAndStillRecordsDay() {
+        let damaged = Data("damaged wake times".utf8)
+        testDefaults.set(damaged, forKey: "wake_times")
+        let now = Date()
+
+        store.recordWake(on: now, calendar: calendar)
+
+        XCTAssertEqual(testDefaults.data(forKey: "wake_times"), damaged)
+        XCTAssertEqual(store.readSnapshot().times, .unreadable)
+        XCTAssertEqual(store.wakeDays().map(WakeDayIdentity.init(storedDay:)),
+                       [WakeDayIdentity(date: now, calendar: calendar)])
+    }
+
+    func testRecordWake_bothUnreadable_writesNothing() {
+        testDefaults.set(42, forKey: "wake_days")
+        testDefaults.set(Data("damaged wake times".utf8), forKey: "wake_times")
+        let before = testDefaults.persistentDomain(forName: suiteName) ?? [:]
+
+        store.recordWake(on: Date(), calendar: calendar)
+
+        let after = testDefaults.persistentDomain(forName: suiteName) ?? [:]
+        XCTAssertEqual(after as NSDictionary, before as NSDictionary)
     }
 
     func testRoundTrip_persistsAcrossInstances() {
