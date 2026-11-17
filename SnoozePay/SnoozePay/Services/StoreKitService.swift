@@ -84,7 +84,20 @@ final class StoreKitService {
     /// restore that resolved after the storefront changed.
     static var foreignCurrencyFailureMessage: String { Localized.text("deposit.error.foreign_currency") }
 
-    private(set) var products: [Product] = []
+    /// The last successfully loaded catalogue (#1109). A failed reload keeps it.
+    private(set) var catalogue = LoadedCatalogue.empty
+
+    var products: [Product] { catalogue.products }
+
+    /// Fetches one catalogue. Production: `Product.products(for:)`; injected in tests.
+    let catalogueLoader: CatalogueLoader
+
+    /// Catalogue reload state (#1109), driven by `StoreKitService+CatalogueReload`.
+    var lastCatalogueLoadFailed = false
+    var isCatalogueReloadInFlight = false
+    var queuedCatalogueReload: CatalogueReloadTrigger?
+    var storefrontObserver: Task<Void, Never>?
+    var foregroundObservation: NotificationObservation?
 
     /// Background listener for `Transaction.updates`. Required by StoreKit 2 to
     /// receive deferred transactions: Ask-to-Buy approvals, refunds, restores
@@ -126,19 +139,23 @@ final class StoreKitService {
     private let defaults: UserDefaults
 
     /// Where the storefront snooze-price scale is cached (#1126).
-    private let priceScaleStore: SnoozePriceScaleStore
+    let priceScaleStore: SnoozePriceScaleStore
 
     private init() {
         self.notificationPoster = UNUserNotificationCenter.current()
         self.defaults = .standard
         self.priceScaleStore = .shared
+        self.catalogueLoader = Self.loadStoreCatalogue
         transactionListener = Self.makeTransactionListener()
+        // Reload on a storefront change, and on foreground after an unhealthy
+        // load (#1109) — before this the catalogue loaded once per process.
+        startCatalogueReloadTriggers(storefrontChanges: Self.storefrontChangeStream(), foregroundCenter: .default)
         // Fetch the StoreKit catalogue at startup. Without this the `products`
         // array stays empty for the whole session and every top-up path falls
         // back to the (DEBUG-only intended) local credit — the purchase sheet
         // never reaches real StoreKit. `_ = StoreKitService.shared` in
         // AppDelegate triggers this init, so the load kicks off at launch.
-        Task { await loadProducts() }
+        requestCatalogueReload(.launch)
     }
 
     /// Test-only initializer. Injects the notification + storage seams and skips
@@ -149,18 +166,25 @@ final class StoreKitService {
         notificationPoster: LocalNotificationPosting,
         defaults: UserDefaults = .standard,
         priceScaleStore: SnoozePriceScaleStore? = nil,
-        startListener: Bool = false
+        startListener: Bool = false,
+        catalogueLoader: CatalogueLoader? = nil,
+        storefrontChanges: AsyncStream<Void>? = nil,
+        foregroundCenter: NotificationCenter? = nil
     ) {
         self.notificationPoster = notificationPoster
         self.defaults = defaults
         self.priceScaleStore = priceScaleStore ?? SnoozePriceScaleStore(defaults: defaults)
+        self.catalogueLoader = catalogueLoader ?? Self.loadStoreCatalogue
         if startListener {
             transactionListener = Self.makeTransactionListener()
         }
+        startCatalogueReloadTriggers(storefrontChanges: storefrontChanges, foregroundCenter: foregroundCenter)
     }
 
     deinit {
         transactionListener?.cancel()
+        // The foreground observer is removed by `foregroundObservation`'s own deinit.
+        storefrontObserver?.cancel()
     }
 
     // MARK: - Purchase-feedback subscriber tracking (#45)
@@ -219,36 +243,49 @@ final class StoreKitService {
     }
     #endif
 
-    func loadProducts() async {
+    /// The one load path for launch and every reload (#1109): a success replaces
+    /// the catalogue and records its scale; a failure keeps both and only the
+    /// launch load tells the user (a reload is a silent retry).
+    func loadProducts(_ trigger: CatalogueReloadTrigger = .launch) async {
         #if DEBUG
         if Self.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments) {
             AppLogger.storeKit.notice(
                 "catalogue load skipped — \(Self.emptyCatalogArgument, privacy: .public) present (UI test)"
             )
-            products = []
+            catalogue = .empty
+            lastCatalogueLoadFailed = false
             postProductsLoaded(products)
             return
         }
         #endif
         do {
-            let loaded = try await Product.products(for: Set(StoreKitService.productIDs))
-            products = loaded.sorted { $0.price < $1.price }
+            let loaded = try await catalogueLoader()
+            catalogue = loaded
+            lastCatalogueLoadFailed = false
             // `Product.products(for:)` returns the *available* subset and does
             // NOT throw when an ID is simply unavailable (e.g. the Paid Apps
             // agreement isn't active, or the SKU hasn't propagated yet) — it
             // just omits it. Log found/missing so a silent empty result is
             // diagnosable instead of looking like the call never ran.
             let missing = Set(StoreKitService.productIDs)
-                .subtracting(loaded.map(\.id))
+                .subtracting(loaded.loadedIDs)
                 .sorted()
             AppLogger.storeKit.notice(
-                "loaded \(loaded.count)/\(StoreKitService.productIDs.count) products; missing: \(missing.joined(separator: ", "), privacy: .public)"
+                """
+                \(trigger.rawValue, privacy: .public) load: \(loaded.loadedIDs.count)/\
+                \(StoreKitService.productIDs.count) products; missing: \(missing.joined(separator: ", "), privacy: .public)
+                """
             )
-            recordPriceScale(from: products)
+            recordPriceScale(from: loaded)
             postProductsLoaded(products)
         } catch {
-            AppLogger.storeKit.error("product load failed: \(error.localizedDescription, privacy: .public)")
-            postPurchaseFailed(Localized.text("deposit.error.products_load_failed"))
+            lastCatalogueLoadFailed = true
+            AppLogger.storeKit.error(
+                "\(trigger.rawValue, privacy: .public) load failed: \(error.localizedDescription, privacy: .public)"
+            )
+            if trigger == .launch {
+                postPurchaseFailed(Localized.text("deposit.error.products_load_failed"))
+            }
         }
     }
 
@@ -590,6 +627,10 @@ final class StoreKitService {
         )
         return nil
     }
+}
+
+// Outside the class body only to keep it under `type_body_length` (#1109).
+extension StoreKitService {
 
     // MARK: - Verify transaction
 
@@ -685,19 +726,23 @@ extension StoreKitService {
     /// The purchase path passes the loaded catalogue, never just the bought
     /// product, so a partial catalogue there records nothing too.
     func recordPriceScale(from products: [Product]) {
-        let offers = products.compactMap(TopUpOffer.init(product:))
-        guard offers.count == products.count else {
-            let converted = Set(offers.map(\.productID))
-            let failed = products.map(\.id).filter { !converted.contains($0) }.joined(separator: ", ")
+        recordPriceScale(from: LoadedCatalogue(products: products))
+    }
+
+    /// The single place a catalogue records its scale — launch, reload and purchase.
+    func recordPriceScale(from catalogue: LoadedCatalogue) {
+        guard catalogue.invalidProductIDs.isEmpty else {
+            let invalid = catalogue.invalidProductIDs
             AppLogger.storeKit.error(
                 """
-                snooze price scale not recorded: \(products.count - offers.count, privacy: .public) of \
-                \(products.count, privacy: .public) products are not valid offers: \(failed, privacy: .public)
+                snooze price scale not recorded: \(invalid.count, privacy: .public) of \
+                \(catalogue.loadedIDs.count, privacy: .public) products are not valid offers: \
+                \(invalid.joined(separator: ", "), privacy: .public)
                 """
             )
             return
         }
-        guard let scale = Self.scaleToRecord(from: offers, isDemo: isDemoCatalog) else { return }
+        guard let scale = Self.scaleToRecord(from: catalogue.offers, isDemo: isDemoCatalog) else { return }
         _ = priceScaleStore.record(scale)
     }
 }
