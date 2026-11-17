@@ -47,12 +47,25 @@ final class CreateAlarmViewModel {
 
     private let existingID: UUID?
     /// The edited alarm's snooze-price tier and the amount it opened with
-    /// (#1127). The form has no tier control yet, so the tier is carried through
-    /// a save untouched — rebuilding the alarm without it would silently turn a
-    /// tier alarm back into a bare amount. Editing the amount drops it: the
-    /// number the user just chose is the price.
+    /// (#1127). The rouble form has no tier control, so the tier is carried
+    /// through a save untouched — rebuilding the alarm without it would silently
+    /// turn a tier alarm back into a bare amount. Editing the amount drops it:
+    /// the number the user just chose is the price.
     private let openedTier: SnoozePriceTier?
     private let openedPenaltyAmount: Double?
+
+    /// The snooze-price context, read once when the editor opens (#1146). The
+    /// rouble scale keeps today's amount field and presets; any other scale
+    /// offers its three tiers; `.unavailable` offers nothing and saves the
+    /// opened price untouched.
+    let priceContext: SnoozePriceContext
+    /// The tier lit outside roubles: the opened price read as a tier, or the
+    /// user's pick. `nil` in roubles, when unavailable, and for a free alarm
+    /// (a zero amount resolves to zero, not to the cheapest tier).
+    private(set) var selectedTier: SnoozePriceTier?
+    /// Only a pick rewrites the price: an alarm opened and saved untouched
+    /// keeps the record it had, legacy amount included.
+    private var pickedTier = false
 
     var isEditing: Bool { existingID != nil }
 
@@ -69,6 +82,7 @@ final class CreateAlarmViewModel {
         defaults: AlarmDefaults = .shared,
         balanceService: BalanceService = .shared,
         backendMonitor: AlarmBackendMonitor = AlarmBackendMonitor(),
+        priceContext: SnoozePriceContext = .scale(.rouble),
         calendar: Calendar = .current,
         now: Date = Date()
     ) {
@@ -108,7 +122,12 @@ final class CreateAlarmViewModel {
         // minutes (old stepper range). The form's slider now caps at 15.
         let rawSnooze = alarm?.snoozeMinutes ?? defaults.snoozeMinutes
         self.snoozeMinutes = min(max(rawSnooze, Self.snoozeMinutesRange.lowerBound), Self.snoozeMinutesRange.upperBound)
-        self.penaltyAmount = alarm?.penaltyAmount ?? defaults.penaltyAmount
+        let openingAmount = alarm?.penaltyAmount ?? defaults.penaltyAmount
+        self.penaltyAmount = openingAmount
+        self.priceContext = priceContext
+        self.selectedTier = Self.openingTier(
+            tier: alarm?.penaltyTier, amount: openingAmount, context: priceContext
+        )
         self.progressiveScale = alarm?.progressiveScale ?? defaults.progressiveScale
         self.enabled = alarm?.enabled ?? true
         self.volume = alarm?.volume ?? defaults.volume
@@ -297,6 +316,7 @@ final class CreateAlarmViewModel {
             Alarm.snoozeMinutesRange.upperBound
         )
         let safePenalty = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
+        let savedPrice = savedPrice(safePenalty: safePenalty)
         let safeRepeatDays = repeatDays.filter(Alarm.weekdayIndexRange.contains)
         return Alarm(
             id: existingID ?? draftID,
@@ -309,8 +329,8 @@ final class CreateAlarmViewModel {
             soundID: soundID,
             vibrationEnabled: vibrationEnabled,
             snoozeMinutes: safeSnooze,
-            penaltyAmount: safePenalty,
-            penaltyTier: safePenalty == openedPenaltyAmount ? openedTier : nil,
+            penaltyAmount: savedPrice.amount,
+            penaltyTier: savedPrice.tier,
             progressiveScale: progressiveScale,
             enabled: enabled,
             volume: volume,
@@ -318,6 +338,20 @@ final class CreateAlarmViewModel {
             theme: theme,
             repeatMode: repeatMode
         )
+    }
+
+    /// What Save writes as the price. Roubles: the amount, keeping the opened
+    /// tier while the amount is unedited (#1127). Elsewhere: a picked tier with
+    /// its rouble equivalent (50 / 100 / 200) as `penaltyAmount`, so a rouble
+    /// context still resolves it sensibly; otherwise the opened price as it was.
+    private func savedPrice(safePenalty: Double) -> (amount: Double, tier: SnoozePriceTier?) {
+        guard !offersAmountEntry else {
+            return (safePenalty, safePenalty == openedPenaltyAmount ? openedTier : nil)
+        }
+        if pickedTier, let tier = selectedTier, let rouble = SnoozePriceScale.rouble.price(for: tier) {
+            return (NSDecimalNumber(decimal: rouble.amount).doubleValue, tier)
+        }
+        return (safePenalty, openedTier)
     }
 
     // MARK: - Delete
@@ -375,16 +409,63 @@ final class CreateAlarmViewModel {
         }
     }
 
+    // MARK: - Snooze price tiers (#1146)
+
+    /// `true` in the rouble context: the amount field and the 20…500 presets,
+    /// exactly as before #1146. Any other context shows tiers or nothing.
+    var offersAmountEntry: Bool { priceContext == .scale(.rouble) }
+
+    /// The currency the price section and the progressive chain are shown in.
+    /// Roubles keep following the wallet, as before; elsewhere the context's.
+    var priceCurrency: Currency { offersAmountEntry ? walletCurrency : priceContext.currency }
+
+    /// The three tier prices outside roubles, cheapest first; empty in roubles
+    /// and when the context is unavailable — no guessed numbers.
+    var tierPrices: [Money] {
+        guard !offersAmountEntry, case .scale(let scale) = priceContext else { return [] }
+        return SnoozePriceTier.allCases.compactMap { scale.price(for: $0) }
+    }
+
+    /// Lights `tier` and makes Save write it. Ignored where no tiers are offered.
+    func selectTier(_ tier: SnoozePriceTier) {
+        guard !tierPrices.isEmpty else { return }
+        selectedTier = tier
+        pickedTier = true
+    }
+
+    /// The tier an opened price reads as outside roubles: its own tier, else
+    /// its legacy amount (≤ 50 low, ≤ 100 mid, else high). A free alarm lights
+    /// nothing, because it resolves to zero rather than to the cheapest tier.
+    static func openingTier(
+        tier: SnoozePriceTier?, amount: Double, context: SnoozePriceContext
+    ) -> SnoozePriceTier? {
+        guard context != .scale(.rouble), case .scale = context else { return nil }
+        if let tier { return tier }
+        guard amount.isFinite, amount > 0 else { return nil }
+        return SnoozePriceTier(legacyAmount: amount)
+    }
+
     // MARK: - Progressive scale preview text
 
     /// Match the charge engine's raw Double doubling, using the same base
     /// sanitation as Save. Rendering must not round or clamp to an Int range.
+    ///
+    /// Outside roubles the steps come from `SnoozePriceResolver` in the editor's
+    /// context (tier price ×2 up to the cap); a step it cannot price is `nan`,
+    /// which the formatter shows as «—».
     var progressiveChain: [Double] {
+        guard offersAmountEntry else {
+            let price: SnoozePrice = selectedTier.map(SnoozePrice.tier) ?? .amount(penaltyAmount)
+            return (1...4).map { count in
+                SnoozePriceResolver.resolve(price, snoozeCount: count, isProgressive: true, in: priceContext)
+                    .map { NSDecimalNumber(decimal: $0.amount).doubleValue } ?? .nan
+            }
+        }
         let base = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
         return (0..<4).map { base * pow(2.0, Double($0)) }
     }
 
-    var progressiveScalePreview: String { progressiveScalePreview(currency: walletCurrency) }
+    var progressiveScalePreview: String { progressiveScalePreview(currency: priceCurrency) }
 
     /// A currency snapshot keeps the visible and spoken chains in the same unit.
     func progressiveScalePreview(currency: Currency) -> String {

@@ -80,7 +80,8 @@ final class CreateAlarmViewController: UIViewController {
     // MARK: - Init
 
     convenience init(alarm: Alarm?) {
-        self.init(viewModel: CreateAlarmViewModel(alarm: alarm))
+        // The price context is read once, here, when the editor opens (#1146).
+        self.init(viewModel: CreateAlarmViewModel(alarm: alarm, priceContext: BalanceService.shared.priceContext))
     }
 
     init(viewModel: CreateAlarmViewModel) {
@@ -117,7 +118,7 @@ final class CreateAlarmViewController: UIViewController {
         tableView.reloadSections(IndexSet([Section.settings.rawValue]), with: .none)
         // A first paid top-up can establish currency while this form is away.
         // Refresh only labels so pending text and selection stay untouched.
-        for case let cell as PenaltyCell in tableView.visibleCells {
+        for case let cell as PenaltyCell in tableView.visibleCells where viewModel.offersAmountEntry {
             cell.updateCurrency(viewModel.walletCurrency)
         }
         refreshProgressivePreview()
@@ -407,10 +408,16 @@ final class CreateAlarmViewController: UIViewController {
         refreshProgressivePreview()
     }
 
+    /// `internal` so `+Sections.makePenaltyCell` can wire the tier chips (#1146).
+    func setPenaltyTier(_ tier: SnoozePriceTier) {
+        viewModel.selectTier(tier)
+        refreshProgressivePreview()
+    }
+
     private func refreshProgressivePreview() {
         let progressiveIndexPath = IndexPath(row: 0, section: Section.progressiveScale.rawValue)
         if let cell = tableView.cellForRow(at: progressiveIndexPath) as? ProgressiveScaleCell {
-            let currency = viewModel.walletCurrency
+            let currency = viewModel.priceCurrency
             cell.configure(
                 isOn: viewModel.progressiveScale, chain: viewModel.progressiveChain, currency: currency,
                 accessibilityChain: viewModel.progressiveScalePreview(currency: currency)
