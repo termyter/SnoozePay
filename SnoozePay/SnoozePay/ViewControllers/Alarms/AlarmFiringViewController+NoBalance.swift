@@ -119,7 +119,7 @@ extension AlarmFiringViewController {
         )
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityIdentifier = "firing.noBalance.topUpButton"
-        button.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight
+        button.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight && !viewModel.finishRequested
         button.addTarget(
             self,
             action: #selector(noBalanceApplePayTapped),
@@ -170,7 +170,7 @@ extension AlarmFiringViewController {
     /// every VM state change rechecks) and from the balance observer (so
     /// external top-ups also flip the state).
     func refreshNoBalanceVisibility() {
-        let needsNoBalance = !viewModel.canSnooze
+        let needsNoBalance = viewModel.isProgressionAvailable && !viewModel.canSnooze
         // #398: while the snoozed countdown owns the screen, never surface the
         // no-balance stack — even if a mid-snooze balance notification re-runs
         // this pass with `canSnooze == false`. `exitSnoozedState` re-calls this
@@ -198,9 +198,10 @@ extension AlarmFiringViewController {
         // Hide the normal-state group when the no-balance stack takes over.
         // The progressive chrome (centre-hero indicator pill + ticker) is also
         // hidden so it doesn't float over the no-balance layout.
-        snoozeCTA?.isHidden = needsNoBalance
+        snoozeCTA?.isHidden = needsNoBalance || !viewModel.isProgressionAvailable
         dismissButton.isHidden = needsNoBalance
         progressiveStack?.isHidden = needsNoBalance || !viewModel.isProgressiveActive
+            || !viewModel.isProgressionAvailable
     }
 
     // MARK: - Balance observation
@@ -217,7 +218,7 @@ extension AlarmFiringViewController {
 
     /// Revalidate the offer and this VM's wallet before dispatching the fixed SKU.
     @objc func noBalanceApplePayTapped() {
-        guard !noBalancePurchaseInFlight else { return }
+        guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         let purchase = noBalancePurchase
         guard let offer = purchase.offer else {
             refreshNoBalanceCatalog()
@@ -254,12 +255,13 @@ extension AlarmFiringViewController {
             stack.insertArrangedSubview(button, at: 1)
             applePayNoBalanceButton = button
         }
-        applePayNoBalanceButton?.isEnabled = displayPrice != nil && !noBalancePurchaseInFlight
+        applePayNoBalanceButton?.isEnabled = displayPrice != nil
+            && !noBalancePurchaseInFlight && !viewModel.finishRequested
     }
 
     /// «Выбрать другую сумму» tap. Routes to the presets bottom sheet.
     @objc func noBalanceChooseAmountTapped() {
-        guard !noBalancePurchaseInFlight else { return }
+        guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         presentTopUpSheet()
     }
 

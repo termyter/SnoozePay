@@ -52,43 +52,18 @@ import AppIntents
 @available(iOS 26.0, *)
 struct StopAlarmIntent: LiveActivityIntent {
 
-    /// # This literal cannot be moved into the catalogue yet
+    /// Statically extractable catalogue key: AppIntents exports this metadata
+    /// at build time and requires a main-bundle resource. Runtime lookups and
+    /// `.atURL` / `.forClass` bundles are rejected by the metadata processor.
+    /// The compiled app contains both RU and EN tables; resource tests resolve
+    /// this actual title in each language rather than relying on knownRegions.
     ///
-    /// Established in #723 — which is **closed**, so do not read it as
-    /// "the blocker is gone". The open blocker is **#727**.
-    ///
-    /// It is not an oversight and not a missed migration: AppIntents exports
-    /// intent titles at **build** time, so `title` cannot read anything at
-    /// runtime, and the only bundle it will resolve against is the main one —
-    /// which is the one bundle this app's copy is not reachable through until
-    /// #596 fixes `knownRegions` (see ``Localized``).
-    ///
-    /// All four spellings were put through `appintentsmetadataprocessor`
-    /// directly, in that order. Its verbatim answers:
-    ///
-    /// | spelling | answer |
-    /// |---|---|
-    /// | `LocalizedStringResource(stringLiteral: <catalogue value read at runtime>)` | `error: 'LocalizedStringResource' must be initialized with a call to its initializer or a string literal` |
-    /// | `LocalizedStringResource(key, table:, bundle: .atURL(ruLprojURL))` | `error: AppIntents requires 'LocalizedStringResource' to use the main bundle` |
-    /// | `LocalizedStringResource(key, table:, bundle: .forClass(Anchor.self))` | same "must use the main bundle" — so the refusal is of the *bundle*, not of computed arguments |
-    /// | `LocalizedStringResource(key, table: "Localizable")` | accepted, metadata written |
-    ///
-    /// The last row is what this line becomes the day #596 lands, and not
-    /// before: today it would resolve through `Bundle.main`, miss, and leave
-    /// the intent named `alarm_kit.action.stop` wherever the system shows that
-    /// name — Shortcuts for certain, and possibly the alert itself.
-    ///
-    /// The words still live in the catalogue under
-    /// ``AlarmKitCopy/stopKey``, and `AlarmKitCopyTests` fails if this literal
-    /// and that entry ever stop agreeing — which is the most a build-time
-    /// export allows.
-    ///
-    /// Where this title is actually shown: Shortcuts and Siri, as the intent's
-    /// name. The alert's *stop button* is not ours to label —
-    /// `AlarmPresentation.Alert.stopButton` is deprecated in iOS 26.1 as "not
-    /// used anymore" and `AlarmKitScheduler.makePresentation` uses the 26.1
-    /// initializer, which has no stop button parameter.
-    static let title: LocalizedStringResource = "Выключить будильник"  // i18n:exempt AppIntent.title, см. #727
+    /// Shortcuts and Siri choose the locale when resolving the resource, which
+    /// can differ from the app's UI language. This is the intent's name, not
+    /// the system alert's stop-button label: the iOS 26.1 presentation
+    /// initializer exposes no stop-button text parameter.
+    static let title: LocalizedStringResource =
+        LocalizedStringResource("alarm_kit.action.stop", table: "Localizable")
 
     /// Bring the app to the foreground when the system runs this intent so the
     /// router can present our custom firing screen (#379). Without this the
@@ -105,12 +80,24 @@ struct StopAlarmIntent: LiveActivityIntent {
 
     init() {}
 
-    init(alarmID: UUID) {
+    @Parameter(title: "Snooze Session")
+    var sessionID: String?
+    @Parameter(title: "Snooze Attempt")
+    var attemptID: String?
+
+    var routerProvider: @MainActor @Sendable () -> AlarmKitActionRouter = { .shared }
+
+    init(alarmID: UUID, token: AlarmSnoozeToken? = nil) {
         self.alarmID = alarmID.uuidString
+        self.sessionID = token?.sessionID.uuidString
+        self.attemptID = token?.attemptID.uuidString
     }
 
     func perform() async throws -> some IntentResult {
-        await AlarmKitActionRouter.shared.handleStop(alarmIDString: alarmID)
+        let router = await routerProvider()
+        await router.handleStop(
+            alarmIDString: alarmID, sessionIDString: sessionID, attemptIDString: attemptID
+        )
         return .result()
     }
 }
@@ -118,14 +105,12 @@ struct StopAlarmIntent: LiveActivityIntent {
 @available(iOS 26.0, *)
 struct SnoozeAlarmIntent: LiveActivityIntent {
 
-    /// Pinned to ``AlarmKitCopy/snoozeKey`` by `AlarmKitCopyTests` but kept a
-    /// literal for the build-time reason spelled out on `StopAlarmIntent.title`.
-    ///
-    /// The alert's secondary *button* shows the priced variant built in
-    /// `AlarmKitScheduler.makePresentation`, which is an ordinary
-    /// `AlarmButton` rather than an intent title and so does read the
-    /// catalogue. This is the intent's own name, which Shortcuts also displays.
-    static let title: LocalizedStringResource = "Поспать ещё"  // i18n:exempt AppIntent.title, см. #727
+    /// A static main-bundle resource for the intent's name in Shortcuts and
+    /// Siri; see `StopAlarmIntent.title` for the metadata export constraints.
+    /// The alert's secondary button uses the separate priced resource built
+    /// by `AlarmKitCopy.pricedSnoozeTitle(penalty:)` at schedule time.
+    static let title: LocalizedStringResource =
+        LocalizedStringResource("alarm_kit.action.snooze", table: "Localizable")
 
     /// Open the app so the paid-snooze flow runs in our firing screen (#379)
     /// rather than charging silently from the lock screen. See `StopAlarmIntent`.
@@ -136,12 +121,24 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
 
     init() {}
 
-    init(alarmID: UUID) {
+    @Parameter(title: "Snooze Session")
+    var sessionID: String?
+    @Parameter(title: "Snooze Attempt")
+    var attemptID: String?
+
+    var routerProvider: @MainActor @Sendable () -> AlarmKitActionRouter = { .shared }
+
+    init(alarmID: UUID, token: AlarmSnoozeToken? = nil) {
         self.alarmID = alarmID.uuidString
+        self.sessionID = token?.sessionID.uuidString
+        self.attemptID = token?.attemptID.uuidString
     }
 
     func perform() async throws -> some IntentResult {
-        await AlarmKitActionRouter.shared.handleSnooze(alarmIDString: alarmID)
+        let router = await routerProvider()
+        await router.handleSnooze(
+            alarmIDString: alarmID, sessionIDString: sessionID, attemptIDString: attemptID
+        )
         return .result()
     }
 }
@@ -188,6 +185,10 @@ final class AlarmKitActionRouter {
 
     /// Where `handleSnooze` checks that the alarm still loads. Production
     /// never reassigns it; a test points it at its own defaults suite (#814).
+    var stopSystemAlarm: (UUID) -> Void = { AlarmScheduler.shared.stopSystemAlarm($0) }
+    var presentTracked: (UUID, AlarmSnoozeReference) -> Void = { alarmID, reference in
+        AlarmFiringPresenter.shared.requestTrackedPresentation(alarmID: alarmID, reference: reference)
+    }
     var alarmRepository: AlarmRepository = .shared
     var criticalWarnings: CriticalWarningCenter = .shared
 
@@ -207,7 +208,7 @@ final class AlarmKitActionRouter {
     /// mirroring the notification `DISMISS_ACTION` semantics). The screen is
     /// the single owner of the wake event so a Stop that the user then changes
     /// their mind on (snoozes in-app) isn't double-counted.
-    func handleStop(alarmIDString: String) {
+    func handleStop(alarmIDString: String, sessionIDString: String? = nil, attemptIDString: String? = nil) {
         guard let alarmID = UUID(uuidString: alarmIDString) else {
             AppLogger.scheduler.error(
                 "AlarmKit stop: malformed alarmID \(alarmIDString, privacy: .public)"
@@ -217,8 +218,8 @@ final class AlarmKitActionRouter {
         AppLogger.scheduler.notice("AlarmKit stop alarm=\(alarmID, privacy: .private)")
         stopAudioIfOwned(by: alarmID, action: "AlarmKit stop")
         // Stop the AlarmKit alert itself so the system stops the alarm UI.
-        AlarmScheduler.shared.stopSystemAlarm(alarmID)
-        present(alarmID)
+        stopSystemAlarm(alarmID)
+        route(alarmID, sessionID: sessionIDString, attemptID: attemptIDString)
     }
 
     /// Snooze button on the system alert. Silence the in-app audio if this
@@ -228,7 +229,7 @@ final class AlarmKitActionRouter {
     /// notification banner takes. The charge therefore happens exactly once,
     /// in the screen, never from the lock-screen button (which can't surface a
     /// balance error or a top-up sheet).
-    func handleSnooze(alarmIDString: String) async {
+    func handleSnooze(alarmIDString: String, sessionIDString: String? = nil, attemptIDString: String? = nil) async {
         guard let alarmID = UUID(uuidString: alarmIDString) else {
             AppLogger.scheduler.error(
                 "AlarmKit snooze: malformed alarmID \(alarmIDString, privacy: .public)"
@@ -237,9 +238,19 @@ final class AlarmKitActionRouter {
         }
         AppLogger.scheduler.notice("AlarmKit snooze alarm=\(alarmID, privacy: .private)")
         stopAudioIfOwned(by: alarmID, action: "AlarmKit snooze")
-        AlarmScheduler.shared.stopSystemAlarm(alarmID)
+        stopSystemAlarm(alarmID)
         guard !reportSnoozeFailureIfUnloadable(alarmID) else { return }
-        present(alarmID)
+        route(alarmID, sessionID: sessionIDString, attemptID: attemptIDString)
+    }
+
+    private func route(_ alarmID: UUID, sessionID: String?, attemptID: String?) {
+        guard sessionID != nil || attemptID != nil else { present(alarmID); return }
+        guard let sessionID, let session = UUID(uuidString: sessionID),
+              let attemptID, let attempt = UUID(uuidString: attemptID) else {
+            presentTracked(alarmID, .unavailable)
+            return
+        }
+        presentTracked(alarmID, .token(AlarmSnoozeToken(sessionID: session, attemptID: attempt)))
     }
 
     /// Stop the in-app ring only when `alarmID` owns it (#869), the gate

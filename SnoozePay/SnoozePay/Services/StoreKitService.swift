@@ -359,7 +359,7 @@ final class StoreKitService {
             return
         }
         await finish()
-        postPurchaseCompleted(amount)
+        postPurchaseCompleted(amount, currency: currency)
     }
 
     /// Credits a verified paid transaction and, if this is the wallet's first
@@ -425,15 +425,15 @@ final class StoreKitService {
 
     /// `internal` so #45 fallback tests can drive the no-subscriber path and
     /// assert a local notification is posted. Not public.
-    func postPurchaseCompleted(_ amount: Double) {
+    func postPurchaseCompleted(_ amount: Double, currency: Currency) {
         // A mounted screen handles the in-app banner. If none is mounted the
         // broadcast is lost — fall back to a local notification so a deferred
         // approval / restore credited in the background is never silent (#45).
         guard hasPurchaseFeedbackSubscriber else {
-            let rubles = Int(amount.rounded())
+            let credited = MoneyFormatter.string(amount, currency: currency)
             postLocalFeedbackNotification(
                 title: Localized.text("deposit.notification.credited.title"),
-                body: Localized.format("deposit.notification.credited.body", rubles)
+                body: Localized.format("deposit.notification.credited.body", credited)
             )
             return
         }
@@ -570,13 +570,11 @@ final class StoreKitService {
         let key = Self.processedTxKey
         let idString = String(transactionID)
         guard var processed = defaults.array(forKey: key) as? [String] else {
-            // Dedup table missing or its plist type was reset. Without the mark,
-            // a replay of this transaction WILL re-enter `markProcessed` (no-op
-            // path) and credit normally — but we lose the audit trail. Logging
-            // so future divergence between StoreKit replays and our ledger is
-            // diagnosable in Console.
+            // No rollback was applied. A still-missing table allows a fresh mark;
+            // a corrupt table makes markProcessed refuse with `.degraded`.
+            // Neither condition alone predicts whether replay will credit or finish.
             AppLogger.storeKit.error(
-                "unmarkProcessed: dedup table missing/corrupt — replay will silently finish tx=\(transactionID, privacy: .private)"
+                "unmarkProcessed: dedup table missing/corrupt — rollback not applied tx=\(transactionID, privacy: .private)"
             )
             return
         }

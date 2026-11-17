@@ -24,7 +24,8 @@ extension CreateAlarmViewController {
             contextLine: AlarmDeletionCopy.contextLine(
                 repeatDays: viewModel.repeatDays,
                 repeatMode: viewModel.repeatMode,
-                time: viewModel.time
+                time: viewModel.time,
+                clockTime: viewModel.selectedTimeOfDay
             ),
             balance: BalanceService.shared.balance
         )

@@ -38,8 +38,8 @@ extension CreateAlarmViewController {
     func makeTimePickerCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: TimePickerCell.reuseID, for: indexPath)
         if let cell = cell as? TimePickerCell {
-            cell.configure(time: viewModel.time)
-            cell.onTimeChanged = { [weak self] date in self?.viewModel.time = date }
+            cell.configure(time: viewModel.pickerTime, calendar: viewModel.pickerCalendar)
+            cell.onTimeChanged = { [weak self] date in self?.viewModel.selectPickerTime(date) }
         }
         return cell
     }
@@ -91,6 +91,7 @@ extension CreateAlarmViewController {
     /// Lives next to the two rows that can produce that state; also called
     /// from `viewDidLoad` so the button starts in the right state.
     func refreshRepeatValidity() {
+        // Valid repeat edits must not re-enable Save while a schedule is pending.
         saveButton?.isEnabled = viewModel.canSave
         guard let cell = tableView.cellForRow(at: repeatModeIndexPath) as? RepeatModeCell else { return }
         cell.configure(mode: viewModel.repeatMode, hint: viewModel.repeatModeHint)

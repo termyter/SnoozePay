@@ -16,7 +16,7 @@ import UIKit
 /// Supported screens: onboarding, permissions, alarms, alarms-nobackend,
 /// wallet, stats, settings, create, edit, theme-picker, sound-picker,
 /// volume-picker, confirm-delete, firing, firing-presented, firing-snoozed,
-/// firing-progressive, firing-nobalance, firing-topup, firing-topup-expensive,
+/// firing-progressive, firing-progressive-snoozed, firing-nobalance, firing-topup, firing-topup-expensive,
 /// alarm-off-warning, txhistory, periodpicker, deposit, streak.
 enum UITourRoutes {
 
@@ -92,7 +92,7 @@ enum UITourRoutes {
             // serializes the steps; it can still arrive after teardown (#996).
             mountPresented(nav, onTab: 0, in: window, then: confirmDeleteCompletion(for: nav, in: window))
         },
-        "firing": { $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm()) },
+        "firing": { $0.rootViewController = trackedFiringScreen(firingSampleAlarm()) },
         // The same screen, mounted the way the app actually mounts it:
         // `AlarmFiringPresenter` presents it FULL-SCREEN over the topmost view
         // controller — it is never the window's root. Every other `firing*`
@@ -103,23 +103,22 @@ enum UITourRoutes {
         // `AlarmKitSnoozeHandoffUITests` (#642) asserts exactly that closing,
         // so it needs a presenter underneath.
         "firing-presented": { window in
-            let firing = AlarmFiringViewController(alarm: firingSampleAlarm())
+            let firing = trackedFiringScreen(firingSampleAlarm())
             firing.modalPresentationStyle = .fullScreen
             mountPresented(firing, onTab: 0, in: window)
         },
         "firing-progressive": {
-            $0.rootViewController = AlarmFiringViewController(alarm: progressiveFiringAlarm())
+            $0.rootViewController = trackedFiringScreen(progressiveFiringAlarm())
         },
-        "firing-snoozed": {
-            $0.rootViewController = AlarmFiringViewController(alarm: firingSampleAlarm(), snoozeCount: 2)
-        },
+        "firing-snoozed": { mountSnoozedFixture(firingSampleAlarm(), in: $0) },
+        "firing-progressive-snoozed": { mountSnoozedFixture(progressiveFiringAlarm(), in: $0) },
         "firing-nobalance": { window in
             UITourLauncher.forceBalance(to: 0)
             window.rootViewController = makeNoBalanceFiringController()
         },
         "firing-topup": { window in
             let alarm = firingSampleAlarm()
-            let firing = AlarmFiringViewController(alarm: alarm)
+            let firing = trackedFiringScreen(alarm)
             window.rootViewController = firing
             presentLater(
                 FiringTopUpBottomSheetViewController(snoozePrice: alarm.penaltyAmount),
@@ -132,7 +131,7 @@ enum UITourRoutes {
         "firing-topup-expensive": { window in
             UITourLauncher.forceBalance(to: 0)
             let alarm = firingSampleAlarm(penalty: 200)
-            let firing = AlarmFiringViewController(alarm: alarm)
+            let firing = trackedFiringScreen(alarm)
             window.rootViewController = firing
             presentLater(
                 FiringTopUpBottomSheetViewController(
@@ -325,6 +324,16 @@ enum UITourRoutes {
         return firing
     }
 
+    /// Standalone visual state: no charge, scheduler call, or denied-backend
+    /// success. This entire route table is DEBUG-only; production never enters it.
+    private static func mountSnoozedFixture(_ alarm: Alarm, in window: UIWindow) {
+        let model = AlarmFiringViewModel(alarm: alarm, snoozeCount: 1, snoozeAnchor: Date())
+        let firing = AlarmFiringViewController(viewModel: model)
+        window.rootViewController = firing
+        firing.loadViewIfNeeded()
+        firing.enterSnoozedState()
+    }
+
     // MARK: - Sample data
     //
     // The alarm names in this section stay Swift literals (#598), for the
@@ -350,6 +359,12 @@ enum UITourRoutes {
     /// so the countdown stays positive regardless of the alarm's HH:MM — but a
     /// now-anchored time still keeps the firing clock and "ringing now" framing
     /// realistic for screenshots and the e2e firing→snooze→wake UI test.
+    private static func trackedFiringScreen(_ alarm: Alarm) -> AlarmFiringViewController {
+        let persisted = alarm.with(enabled: true)
+        _ = AlarmRepository.shared.save(persisted)
+        return AlarmFiringViewController(alarm: persisted)
+    }
+
     private static func firingSampleAlarm(penalty: Double = 50) -> Alarm {
         Alarm(
             time: Date(),

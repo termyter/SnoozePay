@@ -9,6 +9,12 @@ private final class OrderRecorder {
     var order: [Int] = []
 }
 
+private struct DrainReport {
+    let message: String
+    let file: String
+    let line: UInt
+}
+
 /// Keeps the main queue permanently busy: each block occupies the queue for
 /// longer than the drain's quiet threshold and then queues its successor.
 ///
@@ -245,5 +251,57 @@ final class MainQueueDrainTests: XCTestCase {
     func testAQuietOutcomeHasNothingToSay() {
         XCTAssertTrue(MainQueueDrainOutcome.quiet(turns: 1).isQuiet)
         XCTAssertEqual(MainQueueDrainOutcome.quiet(turns: 1).diagnosis, "")
+    }
+
+    /// A no-op or a blocking wait in an async main-actor turn fails this canary.
+    func testAsyncDrainRunsEveryAlreadyQueuedBlockBeforeReturning() async {
+        let recorder = OrderRecorder()
+        for index in 0..<25 {
+            DispatchQueue.main.async { recorder.order.append(index) }
+        }
+        XCTAssertTrue(recorder.order.isEmpty)
+
+        let quiet = await drainMainQueueAsync()
+
+        XCTAssertTrue(quiet)
+        XCTAssertEqual(recorder.order, Array(0..<25))
+    }
+
+    func testAsyncDrainReportsOneCapFailureAtTheCallerAndRecovers() async {
+        let hog = QueueHog()
+        hog.start()
+        defer { hog.stop() }
+        var reports: [DrainReport] = []
+        let started = Date()
+        let quiet = await drainMainQueueAsync(cap: 1, file: "AsyncDrainCaller.swift", line: 918) {
+            reports.append(DrainReport(message: $0, file: String(describing: $1), line: $2))
+        }
+        hog.stop()
+
+        XCTAssertFalse(quiet)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "slow probes must share one deadline")
+        XCTAssertEqual(reports.count, 1)
+        XCTAssertTrue(reports.first?.message.contains("never went quiet") ?? false)
+        XCTAssertEqual(reports.first?.file, "AsyncDrainCaller.swift")
+        XCTAssertEqual(reports.first?.line, 918)
+
+        let recovered = await drainMainQueueAsync()
+        XCTAssertTrue(recovered, "stopping the busy producer must allow a real quiet probe")
+    }
+
+    func testAsyncCapExhaustionCarriesTheProbeEvidence() async {
+        let hog = QueueHog()
+        hog.start()
+        defer { hog.stop() }
+        let outcome = await drainMainQueueOutcomeAsync(cap: 1)
+
+        guard case let .capExhausted(turns, lastProbe, _, cap) = outcome else {
+            return XCTFail("a permanently busy queue must exhaust the cap, got \(outcome)")
+        }
+        XCTAssertFalse(outcome.isQuiet)
+        XCTAssertGreaterThan(turns, 0)
+        XCTAssertGreaterThan(lastProbe, 0)
+        XCTAssertEqual(cap, 1, accuracy: 0.001)
+        XCTAssertTrue(outcome.diagnosis.contains("probe"))
     }
 }

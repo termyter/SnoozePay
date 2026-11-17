@@ -13,6 +13,34 @@ enum AlarmThemeImageStore {
     private static let log = OSLog(subsystem: AppLogger.subsystem, category: "AlarmThemeImageStore")
     private static let directoryName = "AlarmThemes"
     private static let jpegQuality: CGFloat = 0.85
+    private static let processSession = Session()
+
+    /// A picked photo can belong to an unsaved form, so the repository alone
+    /// cannot prove it is an orphan. Keep this process's writes until the next
+    /// launch. The lock covers both registration and each sweep deletion.
+    nonisolated final class Session: @unchecked Sendable {
+        private let lock = NSLock()
+        private var pickedURLs = Set<URL>()
+        private let remove: @Sendable (URL) throws -> Void
+
+        init(remove: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }) {
+            self.remove = remove
+        }
+
+        func write(_ data: Data, to url: URL) throws {
+            lock.lock()
+            defer { lock.unlock() }
+            try data.write(to: url, options: .atomic)
+            pickedURLs.insert(url.standardizedFileURL)
+        }
+
+        func removeIfNotPicked(_ url: URL) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !pickedURLs.contains(url.standardizedFileURL) else { return }
+            try? remove(url)
+        }
+    }
 
     /// Resolve (and create on first use) the on-disk directory holding all
     /// custom theme images. Returned URL has a trailing slash via
@@ -37,15 +65,20 @@ enum AlarmThemeImageStore {
     /// success or nil if encoding / disk write fails — the picker degrades
     /// the failure into "stay on the previous theme" rather than crashing.
     static func saveImage(_ image: UIImage) -> URL? {
+        saveImage(image, in: nil)
+    }
+
+    /// Directory and session seams keep tests away from the app's real cache.
+    static func saveImage(_ image: UIImage, in directory: URL?, session: Session? = nil) -> URL? {
         guard let data = image.jpegData(compressionQuality: jpegQuality) else {
             os_log("Failed to encode picked image as JPEG", log: log, type: .error)
             return nil
         }
         do {
-            let folder = try directoryURL()
+            let folder = try directory ?? directoryURL()
             let filename = "alarm-theme-\(UUID().uuidString).jpg"
             let fileURL = folder.appendingPathComponent(filename)
-            try data.write(to: fileURL, options: .atomic)
+            try (session ?? processSession).write(data, to: fileURL)
             return fileURL
         } catch {
             os_log("Failed to write picked image: %{public}@", log: log, type: .error, String(describing: error))
@@ -73,15 +106,15 @@ enum AlarmThemeImageStore {
     /// every pick and nothing deletes the old one, re-picking a custom photo or
     /// deleting a `.custom`-themed alarm orphans its JPEG forever. Reconciling
     /// against the live alarm set on launch reclaims both orphan sources in one
-    /// safe place — at launch no in-flight create/edit form survives, so any
-    /// unreferenced file is genuinely dead (this avoids the "cancel the form
-    /// after re-picking" hazard of deleting eagerly on re-pick).
+    /// place. The launch worker can overlap a new form, so this process's
+    /// successful writes are protected even before an alarm references them.
+    /// Abandoned selections become ordinary orphans on the next launch.
     ///
     /// Files are matched by `lastPathComponent` so a path that round-tripped
     /// through `URL(string:)` (how `.custom` persists, see `AlarmTheme`) still
     /// matches the file on disk regardless of `file://` vs raw-path spelling.
     /// Exposed with an explicit `directory` so tests can drive a temp folder.
-    static func reconcile(in directory: URL, referencedURLs: Set<URL>) {
+    static func reconcile(in directory: URL, referencedURLs: Set<URL>, session: Session? = nil) {
         let manager = FileManager.default
         guard let files = try? manager.contentsOfDirectory(
             at: directory,
@@ -89,7 +122,7 @@ enum AlarmThemeImageStore {
         ) else { return }
         let keep = Set(referencedURLs.map { $0.lastPathComponent })
         for file in files where !keep.contains(file.lastPathComponent) {
-            try? manager.removeItem(at: file)
+            (session ?? processSession).removeIfNotPicked(file)
         }
     }
 
@@ -120,12 +153,16 @@ enum AlarmThemeImageStore {
     /// later launch that can read the alarms.
     /// - Returns: `true` when a sweep ran, `false` when it was skipped.
     @discardableResult
-    static func reconcile(in directory: URL, readingAlarms read: () throws -> [Alarm]) -> Bool {
+    static func reconcile(
+        in directory: URL,
+        session: Session? = nil,
+        readingAlarms read: () throws -> [Alarm]
+    ) -> Bool {
         guard let alarms = try? read() else {
             os_log("Theme-image sweep skipped: alarm store unreadable", log: log, type: .error)
             return false
         }
-        reconcile(in: directory, referencedURLs: referencedImageURLs(in: alarms))
+        reconcile(in: directory, referencedURLs: referencedImageURLs(in: alarms), session: session)
         return true
     }
 

@@ -28,20 +28,31 @@ class AlarmsListViewController: UIViewController {
     private let viewModel: AlarmsListViewModel
     private var renderedPriceCurrency: Currency
     private let bannerStreakCount: () -> Int
+    private let occurrenceRecovery: AlarmOccurrenceRecovering
+    private let recoveryNotificationCenter: NotificationCenter
+    private lazy var recoveryUI = AlarmsOccurrenceRecoveryHeader(
+        recovery: occurrenceRecovery, host: self
+    ) { [weak self] in self?.viewModel.loadData() }
 
     init(
         viewModel: AlarmsListViewModel = AlarmsListViewModel(),
-        bannerStreakCount: @escaping () -> Int = { TransactionRepository.shared.currentStreak() }
+        bannerStreakCount: @escaping () -> Int = { TransactionRepository.shared.currentStreak() },
+        occurrenceRecovery: AlarmOccurrenceRecovering = AlarmOccurrenceRecovery.shared,
+        recoveryNotificationCenter: NotificationCenter = .default
     ) {
         self.viewModel = viewModel
         self.renderedPriceCurrency = viewModel.walletCurrency
         self.bannerStreakCount = bannerStreakCount
+        self.occurrenceRecovery = occurrenceRecovery
+        self.recoveryNotificationCenter = recoveryNotificationCenter
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    deinit { recoveryNotificationCenter.removeObserver(self) }
 
     // MARK: - UI Elements
 
@@ -106,6 +117,11 @@ class AlarmsListViewController: UIViewController {
         setupLayout()
         setupCallbacks()
         bindViewModel()
+        recoveryNotificationCenter.addObserver(
+            self, selector: #selector(recoveryAppBecameActive(_:)),
+            name: UIApplication.didBecomeActiveNotification, object: nil
+        )
+        refreshOccurrenceRecovery()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -119,7 +135,7 @@ class AlarmsListViewController: UIViewController {
         AppNavigationBarStyle.hideBar(on: self, animated: animated)
         viewModel.loadData()
         tableView.reloadData()
-        refreshStreakBanner()
+        refreshOccurrenceRecovery()
         // Re-probe on every appearance; the VM's monitor additionally re-probes
         // on app activation, so a permission revoked in iOS Settings while the
         // screen stayed mounted still lands (#428).
@@ -296,7 +312,7 @@ class AlarmsListViewController: UIViewController {
             self.emptyStateView.isHidden = !isEmpty
             self.tableView.isHidden = isEmpty
             self.refreshHeader()
-            self.refreshStreakBanner()
+            self.refreshOccurrenceRecovery()
         }
 
         viewModel.onBalanceUpdated = { [weak self] _ in
@@ -365,6 +381,10 @@ class AlarmsListViewController: UIViewController {
     /// current streak is 0, the banner is removed entirely so the empty
     /// state column doesn't collide with a stale header view.
     private func refreshStreakBanner() {
+        defer {
+            recoveryUI.compose(on: tableView, emptyState: emptyStateView,
+                               hasAlarms: !viewModel.alarms.isEmpty, width: view.bounds.width)
+        }
         let streak = bannerStreakCount()
         guard streak > 0 else {
             tableView.tableHeaderView = nil
@@ -406,13 +426,22 @@ class AlarmsListViewController: UIViewController {
         // measure on every layout pass (rotation, split-view resize).
         if tableView.tableHeaderView === streakBanner {
             refreshStreakBanner()
+        } else if tableView.tableHeaderView === recoveryUI.header {
+            recoveryUI.sizeHeader(on: tableView, width: view.bounds.width)
         }
+    }
+
+    @objc private func recoveryAppBecameActive(_ notification: Notification) { refreshOccurrenceRecovery() }
+
+    func refreshOccurrenceRecovery() {
+        recoveryUI.refresh()
+        refreshStreakBanner()
     }
 
     private func presentRepositoryError(_ error: LocalizedError) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
-            title: Localized.text("alarms.error.data_title"),
+            title: Localized.text("common.error.data_title"),
             message: error.errorDescription ?? Localized.text("alarms.error.load_failed_fallback"),
             preferredStyle: .alert
         )
@@ -447,40 +476,15 @@ class AlarmsListViewController: UIViewController {
 
     // MARK: - Backend guard UI (#428)
 
-    /// Shared interception for the create / enable CTAs. Copy comes from the
-    /// same `AlarmBackendWarning` the banner renders, so the screen states the
-    /// problem once and in one voice.
-    ///
-    /// Returns `false` when the alert could NOT be shown (another modal is up,
-    /// or the guard cleared between tap and present). It deliberately does not
-    /// fall through to `onProceed` in that case: silently performing the
-    /// guarded action would be exactly the swallowed failure this PR removes.
-    /// Callers decide what "couldn't warn" means for them.
-    @discardableResult
-    private func presentBackendUnavailableAlert(
-        proceedTitle: String,
-        onCancel: (() -> Void)? = nil,
-        onProceed: @escaping () -> Void
-    ) -> Bool {
-        guard presentedViewController == nil, let warning = viewModel.backendWarning else {
-            return false
-        }
-        let alert = UIAlertController(
-            title: warning.title,
-            message: warning.message,
-            preferredStyle: .alert
-        )
-        // `.notRequested` can still raise the system dialog in place; a decided
-        // grant can only be changed in Settings.
+    /// Permission remedies never continue into creating/enabling an unarmed alarm.
+    private func presentBackendUnavailableAlert() {
+        guard presentedViewController == nil, let warning = viewModel.backendWarning else { return }
+        let alert = UIAlertController(title: warning.title, message: warning.message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: warning.actionTitle, style: .default) { [weak self] _ in
             self?.resolveBackendWarning()
-            onCancel?()
         })
-        alert.addAction(UIAlertAction(title: proceedTitle, style: .cancel) { _ in
-            onProceed()
-        })
+        alert.addAction(UIAlertAction(title: Localized.text("alarms.backend_guard.action.not_now"), style: .cancel))
         present(alert, animated: true)
-        return true
     }
 
     /// Route the banner / alert action: prompt in place while the OS still
@@ -495,16 +499,20 @@ class AlarmsListViewController: UIViewController {
 
     /// Deeplink into this app's page in iOS Settings — the one place the user
     /// can actually fix a decided-and-refused alarm/notification grant.
-    private static func openSystemSettings() {
+    static func openSystemSettings(
+        open: @MainActor (URL, @escaping @MainActor @Sendable (Bool) -> Void) -> Void = { url, completion in
+            UIApplication.shared.open(url, options: [:], completionHandler: completion)
+        }
+    ) {
         guard let url = URL(string: UIApplication.openSettingsURLString) else {
             AppLogger.ui.error("openSettingsURLString is not a valid URL — cannot route the user to Settings")
             return
         }
-        UIApplication.shared.open(url, options: [:]) { opened in
+        open(url) { opened in
             // Without this the tap is a no-op the user can only read as "the
             // banner is broken".
             if !opened {
-                AppLogger.ui.error("failed to open the Settings deeplink for the alarm-backend guard")
+                AppLogger.emit(.ui, .error, "failed to open the Settings deeplink for the alarm-backend guard")
             }
         }
     }
@@ -512,22 +520,12 @@ class AlarmsListViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func addAlarmTapped() {
-        // Gate the create CTA on there being a backend at all (#428) — without
-        // it the alarm saves, fails to schedule, and the user learns that one
-        // alarm at a time. The alert is an interception, not a wall: it leads
-        // to Settings but still lets a user who plans to grant permission
-        // later set the alarm up now.
-        guard viewModel.shouldInterceptCreate else {
-            presentCreateAlarm()
+        viewModel.refreshBackendAvailability()
+        guard !viewModel.shouldInterceptCreate else {
+            presentBackendUnavailableAlert()
             return
         }
-        // If the alert can't be shown (another modal is already up) we simply
-        // do nothing — presenting the editor on top of it would fail anyway.
-        presentBackendUnavailableAlert(
-            proceedTitle: Localized.text("alarms.backend_guard.create_anyway")
-        ) { [weak self] in
-            self?.presentCreateAlarm()
-        }
+        presentCreateAlarm()
     }
 
     private func presentCreateAlarm() {
@@ -580,30 +578,13 @@ extension AlarmsListViewController: UITableViewDataSource {
         let alarmID = alarm.id
         cell.onToggle = { [weak self] isOn in
             guard let self else { return }
-            // Same gate as the "+" CTA (#428): switching an alarm ON with no
-            // backend produces a scheduling error the user can't act on from
-            // here. Intercept once, point at Settings, and revert the switch
-            // if they take that route.
-            guard self.viewModel.shouldInterceptToggle(isOn: isOn) else {
-                self.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
+            self.viewModel.refreshBackendAvailability()
+            guard !self.viewModel.shouldInterceptToggle(isOn: isOn) else {
+                self.tableView.reloadData()
+                self.presentBackendUnavailableAlert()
                 return
             }
-            let warned = self.presentBackendUnavailableAlert(
-                proceedTitle: Localized.text("alarms.backend_guard.enable_anyway"),
-                onCancel: { [weak self] in
-                    // Cell already flipped its own switch optimistically —
-                    // re-bind from the (unchanged) model to snap it back.
-                    self?.tableView.reloadData()
-                },
-                onProceed: { [weak self] in
-                    self?.viewModel.toggleAlarm(id: alarmID, enabled: true)
-                }
-            )
-            if !warned {
-                // Couldn't warn ⇒ don't enable behind the user's back; snap the
-                // switch back to the model's truth instead.
-                self.tableView.reloadData()
-            }
+            self.viewModel.toggleAlarm(id: alarmID, enabled: isOn)
         }
 
         return cell

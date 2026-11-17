@@ -2,7 +2,7 @@ import UIKit
 import os
 
 /// Settings screen, V3 layout per design (#283):
-/// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:128-232` contains "function SettingsV2".
+/// `docs/design/snoozepay-2026-04-27/project/components/SPMore4.jsx:128-229` contains "function SettingsV2".
 ///
 /// Sections: Финансы (default price · snooze duration) · Звук и уведомления
 /// (volume → picker · vibration) · Правила (progressive
@@ -252,7 +252,7 @@ extension SettingsViewController: UITableViewDataSource {
         // already filtered the section out, so no index maps here.
         case .referral:           return ReferralRow.allCases.count
         case .other:              return OtherRow.allCases.count
-        case .diagnostics:        return isRecoveryVisible ? 1 : 0
+        case .diagnostics:        return 1
         }
     }
 
@@ -264,9 +264,8 @@ extension SettingsViewController: UITableViewDataSource {
         case .rules:              return Localized.text("settings.section.rules")
         case .referral:           return Localized.text("settings.section.referral")
         case .other:              return Localized.text("settings.section.other")
-        // No header when the recovery row is hidden, so the empty section
-        // collapses entirely rather than leaving a stray caps title.
-        case .diagnostics:        return isRecoveryVisible ? Localized.text("settings.section.recovery") : nil
+        // Hidden optional sections have already been removed from the mapping.
+        case .diagnostics:        return Localized.text("settings.section.recovery")
         }
     }
 

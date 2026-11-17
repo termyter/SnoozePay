@@ -60,7 +60,7 @@ enum Plural {
     /// except n%100 in 12…14; `many` otherwise (including 0). Any other
     /// language gets the two-form rule (`one` for 1, `many` for the rest),
     /// which is correct for English and the safe default elsewhere.
-    static func category(for count: Int, locale: Locale = AppLocale.display) -> PluralCategory {
+    static func category(for count: Int, locale: Locale = AppLocale.text) -> PluralCategory {
         let magnitude = abs(count)
         guard locale.language.languageCode?.identifier == "ru" else {
             return magnitude == 1 ? .one : .many
@@ -73,7 +73,7 @@ enum Plural {
     }
 
     /// The form of `forms` that goes after `count`.
-    static func word(_ count: Int, _ forms: PluralForms, locale: Locale = AppLocale.display) -> String {
+    static func word(_ count: Int, _ forms: PluralForms, locale: Locale = AppLocale.text) -> String {
         forms.form(category(for: count, locale: locale))
     }
 }
@@ -91,11 +91,11 @@ extension PluralForms {
     /// `.few` is looked up as optional so a two-form language can simply omit
     /// it and inherit `many`, which is the behaviour `init(one:few:many:)`
     /// already promises.
-    init(catalogKey: String) {
+    init(catalogKey: String, bundle: Bundle = Localized.bundle) {
         self.init(
-            one: Localized.text("\(catalogKey).one"),
-            few: Localized.optionalText("\(catalogKey).few"),
-            many: Localized.text("\(catalogKey).many")
+            one: Localized.text("\(catalogKey).one", in: bundle),
+            few: Localized.optionalText("\(catalogKey).few", in: bundle),
+            many: Localized.text("\(catalogKey).many", in: bundle)
         )
     }
 }
