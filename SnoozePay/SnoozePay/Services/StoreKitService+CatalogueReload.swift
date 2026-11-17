@@ -1,5 +1,6 @@
 import StoreKit
 import UIKit
+import os
 
 /// One fetched catalogue, in a form a test can build without StoreKit (#1109).
 struct LoadedCatalogue {
@@ -92,10 +93,14 @@ extension StoreKitService {
 
     /// Whether a foreground should reload: the last load failed, the catalogue
     /// is partial, or no scale is cached for the catalogue's currency.
-    var needsCatalogueReload: Bool {
-        if lastCatalogueLoadFailed { return true }
-        guard catalogue.isComplete, let currency = catalogue.currency else { return true }
-        return priceScaleStore.scale(for: currency) == nil
+    var needsCatalogueReload: Bool { catalogueReloadReason != nil }
+
+    /// Why the catalogue is unhealthy, or `nil` when it is healthy.
+    var catalogueReloadReason: String? {
+        if lastCatalogueLoadFailed { return "last load failed" }
+        guard catalogue.isComplete else { return "partial catalogue" }
+        guard let currency = catalogue.currency else { return "mixed currencies" }
+        return priceScaleStore.scale(for: currency) == nil ? "no scale for \(currency.code)" : nil
     }
 
     func startCatalogueReloadTriggers(storefrontChanges: AsyncStream<Void>?, foregroundCenter: NotificationCenter?) {
@@ -118,7 +123,8 @@ extension StoreKitService {
 
     /// A load already in flight is newer than this foreground, so it is not queued behind.
     func reloadCatalogueOnForegroundIfNeeded() {
-        guard !isCatalogueReloadInFlight, needsCatalogueReload else { return }
+        guard !isCatalogueReloadInFlight, let reason = catalogueReloadReason else { return }
+        AppLogger.storeKit.debug("foreground catalogue reload: \(reason, privacy: .public)")
         requestCatalogueReload(.foreground)
     }
 
@@ -141,5 +147,6 @@ extension StoreKitService {
             queuedCatalogueReload = nil
         }
         isCatalogueReloadInFlight = false
+        onCatalogueReloadsSettled?()
     }
 }

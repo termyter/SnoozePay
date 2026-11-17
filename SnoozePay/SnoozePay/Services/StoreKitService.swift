@@ -98,6 +98,8 @@ final class StoreKitService {
     var queuedCatalogueReload: CatalogueReloadTrigger?
     var storefrontObserver: Task<Void, Never>?
     var foregroundObservation: NotificationObservation?
+    /// Test hook: called when a reload run (with its follow-up) has finished.
+    var onCatalogueReloadsSettled: (() -> Void)?
 
     /// Background listener for `Transaction.updates`. Required by StoreKit 2 to
     /// receive deferred transactions: Ask-to-Buy approvals, refunds, restores

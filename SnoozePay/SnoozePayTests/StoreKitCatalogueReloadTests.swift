@@ -40,8 +40,10 @@ final class StoreKitCatalogueReloadTests: XCTestCase {
     private var loader: CatalogueLoaderStub!
     private var storefront: AsyncStream<Void>.Continuation!
     private var service: StoreKitService!
+    private var posterSpy: LocalNotificationPosterSpy!
 
     private let usd = Currency(code: "USD")!
+    private let eur = Currency(code: "EUR")!
     private let usdScale = SnoozePriceScale(
         currency: Currency(code: "USD")!, tiers: ["0.99", "1.99", "2.99"].map { Decimal(string: $0)! }
     )!
@@ -55,8 +57,9 @@ final class StoreKitCatalogueReloadTests: XCTestCase {
         let (stream, continuation) = AsyncStream<Void>.makeStream()
         storefront = continuation
         let loader = loader!
+        posterSpy = LocalNotificationPosterSpy()
         service = StoreKitService(
-            notificationPoster: LocalNotificationPosterSpy(), defaults: defaults, priceScaleStore: scaleStore,
+            notificationPoster: posterSpy, defaults: defaults, priceScaleStore: scaleStore,
             catalogueLoader: { try await loader.load() }, storefrontChanges: stream, foregroundCenter: center
         )
     }
@@ -99,6 +102,22 @@ final class StoreKitCatalogueReloadTests: XCTestCase {
         )
     }
 
+    /// Fulfilled when the current reload run, follow-up included, has finished.
+    private func expectSettled(_ description: String) -> XCTestExpectation {
+        let settled = expectation(description: description)
+        service.onCatalogueReloadsSettled = { settled.fulfill() }
+        return settled
+    }
+
+    private func expectNoScaleChange(_ description: String) -> (XCTestExpectation, NSObjectProtocol) {
+        let posts = expectation(description: description)
+        posts.isInverted = true
+        let token = center.addObserver(
+            forName: SnoozePriceScaleStore.snoozePriceScaleChangedNotification, object: nil, queue: nil
+        ) { _ in posts.fulfill() }
+        return (posts, token)
+    }
+
     private func postForeground() {
         center.post(name: UIApplication.willEnterForegroundNotification, object: nil)
     }
@@ -125,6 +144,35 @@ final class StoreKitCatalogueReloadTests: XCTestCase {
         XCTAssertEqual(scaleStore.lastStorefrontCurrency, usd)
         XCTAssertEqual(service.catalogue.offers.map(\.productID), StoreKitService.productIDs)
         XCTAssertFalse(service.needsCatalogueReload)
+    }
+
+    func testStorefrontSwitchRecordsTheNewCurrencyAndKeepsTheOldScale() async {
+        await seed(.success(fullUSD))
+        let call = expectLoaderCall("storefront switch reloads")
+        storefront.yield()
+        await fulfillment(of: [call], timeout: 2)
+
+        let recorded = scaleChanged()
+        loader.complete(with: .success(catalogue(["0.99", "1.99", "2.99", "4.99", "9.99"], code: "EUR")))
+        await fulfillment(of: [recorded], timeout: 2)
+        XCTAssertEqual(scaleStore.scale(for: eur)?.currency, eur)
+        XCTAssertEqual(scaleStore.lastStorefrontCurrency, eur)
+        XCTAssertEqual(scaleStore.scale(for: usd), usdScale, "the old wallet currency keeps its scale")
+    }
+
+    func testPartialReloadReplacesProductsButKeepsTheStoredScale() async {
+        await seed(.success(fullUSD))
+        let (noPost, token) = expectNoScaleChange("a partial reload records nothing")
+        defer { center.removeObserver(token) }
+        let call = expectLoaderCall("storefront reload")
+        let settled = expectSettled("partial reload finished")
+        storefront.yield()
+        await fulfillment(of: [call], timeout: 2)
+        loader.complete(with: .success(partialUSD))
+        await fulfillment(of: [settled], timeout: 2)
+        await fulfillment(of: [noPost], timeout: 0.2)
+        XCTAssertEqual(service.catalogue.offers.count, 4)
+        XCTAssertEqual(scaleStore.scale(for: usd), usdScale)
     }
 
     // MARK: - Foreground
@@ -176,10 +224,19 @@ final class StoreKitCatalogueReloadTests: XCTestCase {
         storefront.yield()
         await fulfillment(of: [first], timeout: 2)
         postForeground()
+        XCTAssertNil(service.queuedCatalogueReload, "a foreground mid-load queues nothing")
         let noFollowUp = expectNoLoaderCall("foreground mid-load adds nothing")
+        let settled = expectSettled("failed load finished")
         loader.complete(with: .failure(OfflineError()))
-        await fulfillment(of: [noFollowUp], timeout: 0.5)
+        await fulfillment(of: [settled, noFollowUp], timeout: 0.5)
         XCTAssertEqual(loader.calls, 1)
+
+        // The failure must not leave the in-flight flag stuck: the next foreground retries.
+        XCTAssertFalse(service.isCatalogueReloadInFlight)
+        let retry = expectLoaderCall("next foreground retries the failure")
+        postForeground()
+        await fulfillment(of: [retry], timeout: 2)
+        XCTAssertEqual(loader.calls, 2)
     }
 
     // MARK: - Coalescing
@@ -208,18 +265,38 @@ final class StoreKitCatalogueReloadTests: XCTestCase {
 
     func testFailedReloadKeepsThePreviousCatalogueAndScale() async {
         await seed(.success(fullUSD))
-        let posts = expectation(description: "a failed reload posts no scale change")
-        posts.isInverted = true
-        let token = center.addObserver(
-            forName: SnoozePriceScaleStore.snoozePriceScaleChangedNotification, object: nil, queue: nil
-        ) { _ in posts.fulfill() }
+        let (noPost, token) = expectNoScaleChange("a failed reload posts no scale change")
         defer { center.removeObserver(token) }
 
-        await seed(.failure(OfflineError()))
-        await fulfillment(of: [posts], timeout: 0.2)
+        // Storefront-triggered reload fails...
+        let storefrontCall = expectLoaderCall("storefront reload")
+        var settled = expectSettled("storefront reload finished")
+        storefront.yield()
+        await fulfillment(of: [storefrontCall], timeout: 2)
+        loader.complete(with: .failure(OfflineError()))
+        await fulfillment(of: [settled], timeout: 2)
+        XCTAssertTrue(service.needsCatalogueReload, "the failure is retried on the next foreground")
+
+        // ...and so does the foreground retry.
+        let foregroundCall = expectLoaderCall("foreground retry")
+        settled = expectSettled("foreground retry finished")
+        postForeground()
+        await fulfillment(of: [foregroundCall], timeout: 2)
+        loader.complete(with: .failure(OfflineError()))
+        await fulfillment(of: [settled], timeout: 2)
+
+        await fulfillment(of: [noPost], timeout: 0.2)
         XCTAssertEqual(service.catalogue.offers.map(\.productID), StoreKitService.productIDs)
         XCTAssertEqual(scaleStore.scale(for: usd), usdScale)
-        XCTAssertTrue(service.needsCatalogueReload, "the failure is still retried on the next foreground")
+        XCTAssertTrue(posterSpy.requests.isEmpty, "a reload failure is a silent retry, not a banner")
+    }
+
+    func testLaunchLoadFailureStillReportsToTheUser() async throws {
+        loader.immediate = [.failure(OfflineError())]
+        await service.loadProducts(.launch)
+        XCTAssertEqual(posterSpy.requests.count, 1)
+        let request = try XCTUnwrap(posterSpy.requests.first)
+        XCTAssertEqual(request.content.body, Localized.text("deposit.error.products_load_failed"))
     }
 
     // MARK: - Lifetime
