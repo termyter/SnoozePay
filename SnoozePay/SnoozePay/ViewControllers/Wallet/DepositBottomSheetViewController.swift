@@ -488,9 +488,15 @@ final class DepositBottomSheetViewController: UIViewController {
             refreshCatalog()
             return
         }
-        guard balance.acceptsPurchase(in: offer.currency) else {
-            let message = ForeignCurrencyNotice.message(wallet: balance.walletCurrency, storefront: offer.currency)
-            present(ForeignCurrencyNotice.alert(message: message), animated: true)
+        // An unreadable ledger refuses every pack, accepted currency included:
+        // Apple would charge and nothing could be credited (#1163).
+        let refusal = balance.prePurchaseRefusal(in: offer.currency)
+        if let message = ForeignCurrencyNotice.blockingMessage(for: refusal) {
+            if refusal == .ledgerUnreadable {
+                handlePurchaseFailure(message: message)
+            } else {
+                present(ForeignCurrencyNotice.alert(message: message), animated: true)
+            }
             return
         }
         purchaseInFlight = true

@@ -89,8 +89,10 @@ final class BalanceServiceMinorUnitRoundingTests: XCTestCase {
         XCTAssertEqual(service.balance.bitPattern, (1.235).bitPattern)
     }
 
+    /// −150.3 + 1150 = 999.7, which only the zero-digit rounding turns into
+    /// 1000 — `nextUp` noise would be exact in Decimal anyway and pin nothing.
     func testZeroDigitCurrency_roundsToWholeYen() {
-        let service = launch(currency: jpy, credits: [150, 1000], opening: -(150.0.nextUp))
+        let service = launch(currency: jpy, credits: [150, 1000], opening: -150.3)
 
         XCTAssertFalse(service.balanceCorrupted)
         XCTAssertEqual(service.balance.bitPattern, (1000.0).bitPattern)
@@ -112,6 +114,34 @@ final class BalanceServiceMinorUnitRoundingTests: XCTestCase {
 
         XCTAssertTrue(service.balanceCorrupted)
         XCTAssertEqual(service.corruptedRawValue, -0.01)
+    }
+
+    /// Below half a cent under zero rounds to zero: healthy, empty.
+    func testSubMinorNegative_belowHalfAUnit_isHealthy() {
+        let service = launch(currency: usd, opening: -0.004)
+
+        XCTAssertFalse(service.balanceCorrupted)
+        XCTAssertNil(service.corruptedRawValue)
+        XCTAssertEqual(service.balance, 0)
+    }
+
+    /// Half a cent under zero rounds away from zero to −0.01 and latches.
+    func testSubMinorNegative_atHalfAUnit_latches() {
+        let service = launch(currency: usd, opening: -0.005)
+
+        XCTAssertTrue(service.balanceCorrupted)
+        XCTAssertEqual(service.corruptedRawValue, -0.01)
+        XCTAssertEqual(service.balance, 0)
+    }
+
+    /// A non-finite opening is no opening: it is re-adopted from the cache
+    /// instead of reaching the rounding as NaN.
+    func testNaNOpening_isReadoptedFromTheCache() {
+        let service = launch(currency: usd, credits: [1.99], opening: .nan, cached: 1.99)
+
+        XCTAssertFalse(service.balanceCorrupted)
+        XCTAssertEqual(service.balance, 1.99)
+        XCTAssertEqual(defaults.object(forKey: LocalBalanceLedgerStore.openingBalanceKey) as? Double, 0)
     }
 
     func testNaNCachedBalance_stillLatches() {
@@ -151,6 +181,7 @@ final class BalanceServiceMinorUnitRoundingTests: XCTestCase {
     func testRounded_keepsUnbridgeableValuesAsTheyAre() {
         XCTAssertEqual(MoneyDecimal.rounded(-3e-15, toDigits: 2).bitPattern, (0.0).bitPattern)
         XCTAssertEqual(MoneyDecimal.rounded(-0.005, toDigits: 2), -0.01, "Half rounds away from zero")
+        XCTAssertEqual(MoneyDecimal.rounded(2.9899999999999998, toDigits: 2).bitPattern, (2.99).bitPattern)
         XCTAssertEqual(MoneyDecimal.rounded(1e300, toDigits: 2), 1e300, "No Decimal form: unchanged")
         XCTAssertTrue(MoneyDecimal.rounded(.nan, toDigits: 2).isNaN)
     }

@@ -63,6 +63,18 @@ final class BalanceServiceLockedLedgerPurchaseTests: XCTestCase {
         XCTAssertEqual(service.balance, 5)
     }
 
+    /// The wallet's own currency is accepted and reaches the ledger write,
+    /// which refuses it: still `.notRecorded`, nothing written.
+    func testUnreadableLedger_establishedWallet_ownCurrency_isNotRecorded() {
+        XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(usd), .frozen(usd))
+        defaults.set(unreadable, forKey: "stored_transactions")
+        let service = makeService()
+
+        XCTAssertEqual(service.topUpFromPurchase(amount: 2.99, currency: usd), .notRecorded)
+        XCTAssertEqual(service.storedWalletCurrency, usd)
+        XCTAssertEqual(defaults.data(forKey: "stored_transactions"), unreadable)
+    }
+
     // MARK: - Readable wallets keep the currency rules
 
     func testReadableRoubleWalletWithHistory_foreignPurchase_isStillACurrencyRefusal() {

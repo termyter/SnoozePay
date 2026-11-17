@@ -479,6 +479,43 @@ final class BalanceService {
         return currency == .legacyDefault || walletIsPristine
     }
 
+    /// Why a paid top-up in `currency` would be refused, or `nil` when it is
+    /// accepted. Shared by `topUpFromPurchase` and, under `prePurchaseRefusal(in:)`,
+    /// the pre-purchase gate of the top-up sheets (#1133, #1163).
+    ///
+    /// An unreadable ledger takes no credit in any currency, and it is also
+    /// what makes the wallet non-pristine: calling that a currency mismatch
+    /// would misname the cause. An accepted currency is untouched — it reaches
+    /// the ledger write and is refused there, as before.
+    func purchaseRefusal(in currency: Currency) -> PurchaseRefusal? {
+        guard !acceptsPurchase(in: currency) else { return nil }
+        // `init` reads the balance, so an undecodable ledger has already
+        // latched `isReadable` by the time anyone asks.
+        guard queue.sync(execute: { ledgerStore.isReadable }) else { return .ledgerUnreadable }
+        return .foreignCurrency(wallet: walletCurrency, purchase: currency)
+    }
+
+    /// The refusal the top-up sheets show **before** `Product.purchase(_:)`.
+    ///
+    /// Stricter than `purchaseRefusal(in:)`: an unreadable ledger refuses even
+    /// an accepted currency, because a purchase dispatched now is charged by
+    /// Apple and then not credited (#1163). The read is checked here rather
+    /// than trusting the latch, which only moves when something reads — a
+    /// ledger damaged after launch would otherwise pass an established wallet.
+    func prePurchaseRefusal(in currency: Currency) -> PurchaseRefusal? {
+        let readable = queue.sync { (try? ledgerStore.loadEntries()) != nil }
+        guard readable else { return .ledgerUnreadable }
+        return purchaseRefusal(in: currency)
+    }
+
+    /// See `purchaseRefusal(in:)`.
+    enum PurchaseRefusal: Equatable {
+        /// The wallet holds `wallet` and cannot take `purchase` (#563).
+        case foreignCurrency(wallet: Currency, purchase: Currency)
+        /// The ledger cannot be read, so nothing can be credited.
+        case ledgerUnreadable
+    }
+
     /// True only for a wallet that has never held or moved money: zero balance,
     /// no ledger rows, no latched corruption. Such a wallet has nothing to
     /// restate, so it may adopt any currency.
@@ -539,16 +576,14 @@ final class BalanceService {
         guard let currency else {
             return creditPaid(amount: amount, at: purchasedAt, id: ledgerID)
         }
-        guard acceptsPurchase(in: currency) else {
-            // An unreadable ledger takes no credit in any currency, and it is
-            // also what makes the wallet non-pristine: a currency refusal would
-            // misname the cause (#1133). An accepted currency is untouched — it
-            // reaches the ledger write and is refused there, as before.
-            guard queue.sync(execute: { ledgerStore.isReadable }) else {
-                AppLogger.emit(.balance, .error, "purchase in \(currency.code) not credited: ledger unreadable")
-                return .notRecorded
-            }
-            return .refusedCurrency(wallet: walletCurrency, purchase: currency)
+        switch purchaseRefusal(in: currency) {
+        case .ledgerUnreadable?:
+            AppLogger.emit(.balance, .error, "purchase in \(currency.code) not credited: ledger unreadable")
+            return .notRecorded
+        case let .foreignCurrency(wallet, purchase)?:
+            return .refusedCurrency(wallet: wallet, purchase: purchase)
+        case nil:
+            break
         }
         // Freeze BEFORE crediting: the ledger row is stamped with
         // `walletCurrency`, so a row written first would carry the old currency
@@ -670,8 +705,9 @@ final class BalanceService {
         // An opening adopted by a pre-#1119 build was `cached − Σ` in Double
         // and may carry noise (−20.950000000000003), so the exact sum can be
         // −3e-15 (#1122). Round to the minor unit the wallet is shown in
-        // before judging the sign. Roubles are left as they are: their rows
-        // are whole numbers, which Double always summed exactly.
+        // before judging the sign. Roubles are left as they are so legacy
+        // values stay bit-identical: fractional rouble openings exist, and
+        // rounding them would restate wallets that read fine before #1122.
         let derived = currency == .rub ? sum : MoneyDecimal.rounded(sum, toDigits: currency.minorUnitDigits)
         // A ledger that sums below zero is a desync, not a wallet the user can
         // spend from — route it through the same #119 gate as a negative

@@ -728,9 +728,13 @@ extension FiringTopUpBottomSheetViewController {
         guard canPurchase else { return }
         guard let offer = selectedOffer else { refreshCatalog(); return }
         // The real wallet policy precedes both test dispatch and optional refusals.
-        let refusal = balance.acceptsPurchase(in: offer.currency)
-            ? preflightRefusal?(offer.productID)
-            : ForeignCurrencyNotice.message(wallet: balance.walletCurrency, storefront: offer.currency)
+        // An unreadable ledger refuses every pack, accepted currency included (#1163).
+        let walletRefusal = balance.prePurchaseRefusal(in: offer.currency)
+        if walletRefusal == .ledgerUnreadable {
+            handlePurchaseFailure(message: ForeignCurrencyNotice.blockingMessage(for: walletRefusal))
+            return
+        }
+        let refusal = ForeignCurrencyNotice.blockingMessage(for: walletRefusal) ?? preflightRefusal?(offer.productID)
         if let refusal {
             handlePurchaseFailure(message: refusal, title: ForeignCurrencyNotice.alertTitle,
                                   dismissTitle: Localized.text("deposit.foreign_currency.dismiss"))
