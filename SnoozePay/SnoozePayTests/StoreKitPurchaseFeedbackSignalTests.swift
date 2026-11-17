@@ -9,7 +9,6 @@ import XCTest
 @MainActor
 final class StoreKitPurchaseFeedbackSignalTests: XCTestCase {
     private let usd = Currency(code: "USD")!
-    private var suites: [String] = []
     private var recorders: [FeedbackRecorder] = []
     private let paid = RestorableTopUp(transactionID: 7, productID: "io.mobilife.snoozepay.balance.299",
                                        currency: Currency(code: "USD"), transactionPrice: 2.99,
@@ -17,16 +16,10 @@ final class StoreKitPurchaseFeedbackSignalTests: XCTestCase {
 
     override func tearDown() {
         recorders = [] // each recorder detaches itself in deinit
-        suites.forEach { UserDefaults().removePersistentDomain(forName: $0) }
-        suites = []
         super.tearDown()
     }
 
-    private func makeDefaults() -> UserDefaults {
-        let name = "StoreKitPurchaseFeedbackSignalTests.\(UUID())"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
+    private func makeDefaults() -> UserDefaults { makeIsolatedDefaults() }
 
     private struct Process {
         let balance: BalanceService

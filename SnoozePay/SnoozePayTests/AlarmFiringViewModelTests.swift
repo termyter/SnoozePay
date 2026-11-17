@@ -18,7 +18,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     )
 
     /// Every store the view model writes through — wallet, ledger, alarms,
-    /// wake days — lives in this per-test suite, deleted after the test (#814, #1118).
+    /// wake days — lives in a pooled isolated suite, emptied after the test (#814, #1118).
     ///
     /// Until #814 this class drove `BalanceService.shared`, the view model's
     /// default `WakeEventStore.shared` and `AlarmRepository(defaults: .standard)`,

@@ -8,7 +8,6 @@ private typealias AppAlarm = SnoozePay.Alarm
 /// which context a wallet quotes in, and what title each context bakes.
 final class AlarmKitPriceQuoteTests: XCTestCase {
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var scaleStore: SnoozePriceScaleStore!
     private var balance: BalanceService!
@@ -19,8 +18,7 @@ final class AlarmKitPriceQuoteTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmKitPriceQuote.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         scaleStore = SnoozePriceScaleStore(defaults: defaults, notificationCenter: center)
         balance = BalanceService(
@@ -32,11 +30,9 @@ final class AlarmKitPriceQuoteTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         balance = nil
         scaleStore = nil
         defaults = nil
-        suiteName = nil
         super.tearDown()
     }
 
