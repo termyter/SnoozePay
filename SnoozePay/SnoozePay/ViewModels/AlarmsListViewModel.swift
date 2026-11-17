@@ -199,11 +199,9 @@ final class AlarmsListViewModel {
         AlarmBackendWarning(availability: backendAvailability)
     }
 
-    /// `false` only when we positively know NO backend can ring an alarm.
-    /// An unresolved or indeterminate probe leaves the CTAs open — we never
-    /// block the user on our own ignorance.
+    /// Only a confirmed AlarmKit grant permits creating/enabling alarms (#594).
     var canCreateAlarms: Bool {
-        backendWarning?.gatesAlarmCreation != true
+        backendAvailability == .available
     }
 
     /// Re-query authorization. Called on `viewWillAppear`; the monitor also

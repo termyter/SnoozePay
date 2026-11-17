@@ -91,6 +91,7 @@ extension CreateAlarmViewController {
     /// Lives next to the two rows that can produce that state; also called
     /// from `viewDidLoad` so the button starts in the right state.
     func refreshRepeatValidity() {
+        // Valid repeat edits must not re-enable Save while a schedule is pending.
         saveButton?.isEnabled = viewModel.canSave
         guard let cell = tableView.cellForRow(at: repeatModeIndexPath) as? RepeatModeCell else { return }
         cell.configure(mode: viewModel.repeatMode, hint: viewModel.repeatModeHint)

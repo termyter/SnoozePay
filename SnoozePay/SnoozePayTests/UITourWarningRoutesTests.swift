@@ -184,7 +184,7 @@ final class UITourWarningRoutesTests: XCTestCase {
             Variant(argument: nil, availability: .unavailable, gates: true),
             Variant(argument: "unavailable", availability: .unavailable, gates: true),
             Variant(argument: "notrequested", availability: .notRequested, gates: true),
-            Variant(argument: "indeterminate", availability: .indeterminate, gates: false)
+            Variant(argument: "indeterminate", availability: .indeterminate, gates: true)
         ]
 
         for row in expected {
