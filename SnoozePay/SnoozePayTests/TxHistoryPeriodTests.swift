@@ -139,9 +139,7 @@ final class TxHistoryPeriodTests: XCTestCase {
     }
 
     func testSummary_unsetWalletUsesLegacyRublesWithoutAddingForeignMoney() throws {
-        let suite = "TxHistoryPeriodTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let currency = WalletCurrencyStore(defaults: defaults).currency
         let transactions = [
             Transaction(type: .topup, amount: 49.99),

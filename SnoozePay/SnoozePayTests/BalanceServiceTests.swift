@@ -6,18 +6,11 @@ final class BalanceServiceTests: XCTestCase {
 
     /// Use a fresh UserDefaults suite to avoid polluting real app data.
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var service: BalanceService!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test_\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
+        testDefaults = makeIsolatedDefaults()
     }
 
     // MARK: - Helpers
@@ -667,12 +660,11 @@ final class BalanceServiceTests: XCTestCase {
 /// Tests for AlarmFiringViewModel — snooze/balance deduction edge cases.
 final class AlarmFiringViewModelTests: XCTestCase {
 
-    /// The wallet these tests fund or drain, in a per-test suite dropped in
-    /// `tearDown` (#814). Until #814 they topped up and drained
+    /// The wallet these tests fund or drain, in a pooled isolated suite emptied
+    /// after the test (#814, #1118). Until #814 they topped up and drained
     /// `BalanceService.shared`, which CI run 35861930577 measured rewriting
     /// `user_balance` and `stored_transactions` in the host's real
     /// `UserDefaults.standard`.
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var wallet: BalanceService!
     /// Fails the test if it moved the host's real `UserDefaults.standard`
@@ -684,16 +676,13 @@ final class AlarmFiringViewModelTests: XCTestCase {
     override func setUp() {
         super.setUp()
         domainGuard = AppDefaultsDomainGuard()
-        suiteName = "test.firing.vm.edge.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         wallet = nil
         defaults = nil
-        suiteName = nil
         domainGuard.assertUntouched()
         domainGuard = nil
         super.tearDown()
@@ -761,7 +750,7 @@ final class StatisticsViewModelTests: XCTestCase {
     /// `UserDefaults.standard` transactions, so any prior app/test activity
     /// makes "empty data" assertions flake (red on CI, red locally after QA).
     private func makeIsolatedStatisticsVM() -> StatisticsViewModel {
-        let isolated = UserDefaults(suiteName: "test.statsSmoke.\(UUID().uuidString)")!
+        let isolated = makeIsolatedDefaults()
         return StatisticsViewModel(
             repository: TransactionRepository(defaults: isolated),
             wakeStore: WakeEventStore(defaults: isolated),
@@ -803,13 +792,12 @@ final class StatisticsViewModelTests: XCTestCase {
 /// Tests for CreateAlarmViewModel — progressive scale preview and day toggle.
 final class CreateAlarmViewModelTests: XCTestCase {
 
-    /// The alarm store and the global alarm defaults, both in a per-test suite
-    /// dropped in `tearDown` (#814). Until #814 the view model fell back to
+    /// The alarm store and the global alarm defaults, both in a pooled isolated
+    /// suite emptied after the test (#814, #1118). Until #814 the view model fell back to
     /// `AlarmRepository.shared`, so the two `save()` tests below rewrote
     /// `stored_alarms` in the host's real `UserDefaults.standard` (CI run
     /// 35861930577), and `testEmptyNameDefaultsToPlaceholder` read back
     /// `.last` of whatever alarms earlier tests had left there.
-    private var suiteName: String!
     private var defaults: UserDefaults!
     /// Fails the test if it moved the host's real `UserDefaults.standard` (#830).
     private var domainGuard: AppDefaultsDomainGuard!
@@ -817,14 +805,11 @@ final class CreateAlarmViewModelTests: XCTestCase {
     override func setUp() {
         super.setUp()
         domainGuard = AppDefaultsDomainGuard()
-        suiteName = "test.createAlarm.vm.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
-        suiteName = nil
         domainGuard.assertUntouched()
         domainGuard = nil
         super.tearDown()
@@ -906,18 +891,14 @@ final class CreateAlarmViewModelTests: XCTestCase {
 final class BalanceServiceAmountValidationTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.balanceGuard.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
     }
 
     override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
         testDefaults = nil
-        suiteName = nil
         super.tearDown()
     }
 
