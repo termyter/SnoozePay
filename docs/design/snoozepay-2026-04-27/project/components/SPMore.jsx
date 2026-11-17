@@ -293,13 +293,13 @@ function Settings() {
    ============================================================ */
 function SoundPicker() {
   const [sel, setSel] = oS("dawn");
+  // Каталог = приложение (#465): SoundCatalogue.ids, тексты — ru-значения
+  // common.sound.name.<id> / create_alarm.sound.subtitle.<id> («Тёплый рассвет с птицами» и т.д.).
+  // Строки вынесены в SP_SOUND_CATALOGUE в конец файла, чтобы не сдвигать диапазон
+  // SPMore.jsx:294-374, на который ссылается SoundCatalogue.swift.
   const sounds = [
-    { id: "dawn", t: "Soft Dawn", s: "Тёплый рассвет с птицами" },
-    { id: "energy", t: "Energy", s: "Бодрое пробуждение, нарастает" },
-    { id: "birds", t: "Birds", s: "Только щебет, без музыки" },
-    { id: "mountain", t: "Mountain", s: "Колокольчик и ветер" },
-    { id: "classic", t: "Classic Beep", s: "Старый добрый писк" },
-    { id: "custom", t: "Своя мелодия", s: "Из библиотеки" },
+    ...SP_SOUND_CATALOGUE,
+    { id: "custom", t: "Своя мелодия · скоро", s: "Импорт своей мелодии появится позже", off: true },
   ];
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--sp-bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -319,10 +319,10 @@ function SoundPicker() {
               const isLast = i === sounds.length - 1;
               const on = sel === s.id;
               return (
-                <button key={s.id} onClick={()=>setSel(s.id)} style={{
+                <button key={s.id} disabled={s.off} onClick={()=>!s.off && setSel(s.id)} style={{
                   width: "100%", padding: "14px 16px", border: 0, background: "transparent",
-                  textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 12,
-                  borderBottom: !isLast ? "1px solid var(--sp-white-08)" : "0",
+                  textAlign: "left", cursor: s.off ? "default" : "pointer", display: "flex", alignItems: "center", gap: 12,
+                  borderBottom: !isLast ? "1px solid var(--sp-white-08)" : "0", opacity: s.off ? 0.45 : 1,
                 }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: 10,
@@ -448,3 +448,28 @@ Object.assign(window, {
   Statistics, Settings, SoundPicker,
   EmptyAlarms, EmptyStats,
 });
+
+/* Каталог звуков SoundPicker — канон приложения (#465).
+ * Порядок: SoundCatalogue.ids (SnoozePay/SnoozePay/Models/SoundCatalogue.swift).
+ * t: ru common.sound.name.<id>, s: ru create_alarm.sound.subtitle.<id> (Resources/Localizable.xcstrings).
+ * Звук по умолчанию — "dawn" (SoundCatalogue.defaultID после #861). */
+const SP_SOUND_CATALOGUE = [
+  { id: "dawn", t: "Рассвет", s: "Тёплый рассвет с птицами" },
+  { id: "drops", t: "Капли", s: "Мягкие капли воды" },
+  { id: "piano", t: "Пиано", s: "Спокойные клавиши" },
+  { id: "guitar", t: "Гитара", s: "Лёгкий струнный перебор" },
+  { id: "bell", t: "Колокольчик", s: "Чистый звон без музыки" },
+  { id: "waves", t: "Волны", s: "Прибой и морской бриз" },
+  { id: "birds", t: "Птицы", s: "Только щебет, без музыки" },
+  { id: "classic", t: "Классика", s: "Старый добрый писк" },
+  { id: "jazz", t: "Джаз", s: "Бодрое утреннее настроение" },
+  { id: "hawk", t: "Ястреб", s: "Клич хищной птицы" },
+  { id: "morning", t: "Утро", s: "Бодрое начало дня" },
+  { id: "sirena", t: "Сирена", s: "Сигнал тревоги" },
+  { id: "spaceship", t: "Космолёт", s: "Гул космического корабля" },
+  { id: "marimba", t: "Маримба", s: "Утренний перезвон маримбы" },
+  { id: "badinerie", t: "Шутка Баха", s: "Бах в 8-битной обработке" },
+  { id: "vibraphone", t: "Вибрафон", s: "Звонкий воздушный вибрафон" },
+  { id: "strum", t: "Перебор", s: "Мягкие гитарные аккорды" },
+  { id: "reflection", t: "Размышление", s: "Тихая мелодия для лёгкого утра" },
+];

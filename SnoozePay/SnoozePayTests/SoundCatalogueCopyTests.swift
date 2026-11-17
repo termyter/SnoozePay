@@ -223,12 +223,12 @@ final class SoundCatalogueCopyTests: XCTestCase {
     /// before the V3 picker (`git show f59ee56^`), which is the list the
     /// docblock points at as the origin of the order. The prototype's
     /// `SoundPicker` (the design canon copy,
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:296-303` contains "Soft Dawn" —
-    /// the `v2-handoff` copy carries the same block at different line
-    /// numbers) is *not* the source: it draws an
-    /// abbreviated six-row lineup with two ids the app never shipped
-    /// («energy», «mountain»), and cutting to it is the mistake the docblock
-    /// warns against.
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:294-303` contains "SP_SOUND_CATALOGUE")
+    /// is *not* the source either: since #465 it mirrors `SoundCatalogue.ids`,
+    /// so it follows this list rather than defining it. The `v2-handoff` copy
+    /// still draws the earlier abbreviated six-row lineup with two ids the app
+    /// never shipped («energy», «mountain»); cutting to that one is the
+    /// mistake the docblock warns against.
     ///
     /// #850 appended `hawk`, `morning`, `sirena`, `spaceship` — the PM's
     /// recordings, placed at the end by the issue's own defaults. #1092
