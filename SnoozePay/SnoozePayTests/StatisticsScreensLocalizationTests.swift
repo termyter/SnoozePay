@@ -62,12 +62,14 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// silently when an entry is deleted instead of failing.
     private static let migratedKeys = [
         "alarm_off.body",
+        "alarm_off.body_unpriced",
         "alarm_off.button.dismiss",
         "alarm_off.caps",
         "alarm_off.disable.subtitle",
         "alarm_off.disable.title",
         "alarm_off.headline",
         "alarm_off.lower_price.subtitle",
+        "alarm_off.lower_price.subtitle_unpriced",
         "alarm_off.lower_price.title",
         "alarm_off.reschedule.subtitle",
         "alarm_off.reschedule.title",
@@ -184,7 +186,7 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// copied from the pre-migration source, so this fails both on a missing
     /// catalogue entry and on a call site pointed at the wrong key.
     func testAlarmOffWarningRendersItsPreMigrationCopy() {
-        let sut = AlarmOffWarningViewController()
+        let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
         sut.loadViewIfNeeded()
         let rendered = Self.renderedText(in: sut.view)
 
@@ -214,7 +216,7 @@ final class StatisticsScreensLocalizationTests: XCTestCase {
     /// single key renders the whole sentence — a template that lost its
     /// specifier would still satisfy a `hasPrefix` check alone.
     func testAlarmOffWarningBodyKeepsTheAmountInsideOneSentence() throws {
-        let sut = AlarmOffWarningViewController()
+        let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
         sut.loadViewIfNeeded()
 
         let body = try XCTUnwrap(

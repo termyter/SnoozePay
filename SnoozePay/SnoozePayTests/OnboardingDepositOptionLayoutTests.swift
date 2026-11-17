@@ -32,7 +32,7 @@ final class OnboardingDepositOptionLayoutTests: XCTestCase {
 
     /// Mounts the onboarding pager and returns its three deposit cards.
     private func laidOutDepositCards() -> [OnboardingDepositOptionView] {
-        let controller = OnboardingViewController()
+        let controller = OnboardingViewController(priceContextSource: { .scale(.rouble) })
         let host = UIWindow(frame: CGRect(origin: .zero, size: screen))
         host.rootViewController = controller
         host.isHidden = false

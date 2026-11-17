@@ -604,7 +604,7 @@ final class StatisticsViewController: UIViewController {
     }
 
     @objc func debugAlarmOffTapped() {
-        let vc = AlarmOffWarningViewController()
+        let vc = AlarmOffWarningViewController(priceContext: BalanceService.shared.priceContext)
         vc.modalPresentationStyle = .pageSheet
         if let sheet = vc.sheetPresentationController {
             sheet.detents = [.large()]
