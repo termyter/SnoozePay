@@ -11,12 +11,12 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.balanceLedger.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        let isolated = makeIsolatedSuite()
+        testDefaults = isolated.defaults
+        suiteName = isolated.name
     }
 
     override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
         testDefaults = nil
         suiteName = nil
         super.tearDown()
@@ -283,7 +283,7 @@ final class BalanceLedgerSourceOfTruthTests: XCTestCase {
         XCTAssertTrue(try ledger.fetchAllChecked().isEmpty)
         XCTAssertEqual(testDefaults.data(forKey: TransactionRepository.corruptBackupKey), corrupt)
         XCTAssertEqual(testDefaults.object(forKey: "storekit.processed_tx_ids") as? [String], dedup)
-        let relaunchedDefaults = UserDefaults(suiteName: suiteName)!
+        let relaunchedDefaults = reopenIsolatedDefaults(named: suiteName)
         let relaunched = BalanceService(
             defaults: relaunchedDefaults,
             transactionRepository: TransactionRepository(defaults: relaunchedDefaults),

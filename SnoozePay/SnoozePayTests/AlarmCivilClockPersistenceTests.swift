@@ -245,9 +245,7 @@ final class AlarmCivilClockPersistenceTests: XCTestCase {
     private func withRepository(
         _ body: (UserDefaults, AlarmRepository, CivilClockSchedulerSpy) throws -> Void
     ) throws {
-        let suite = "test.civil-clock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let scheduler = CivilClockSchedulerSpy()
         try body(defaults, AlarmRepository(defaults: defaults, scheduler: scheduler), scheduler)
     }

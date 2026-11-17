@@ -12,19 +12,15 @@ import XCTest
 /// instant equality fails, identity equality must not.
 final class WakeDayIdentityTests: XCTestCase {
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        suiteName = "WakeDayIdentityTests-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        defaults = makeIsolatedDefaults()
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
-        suiteName = nil
         super.tearDown()
     }
 

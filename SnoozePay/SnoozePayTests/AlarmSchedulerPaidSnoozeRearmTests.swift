@@ -115,9 +115,7 @@ final class AlarmSchedulerPaidSnoozeRearmTests: XCTestCase {
         let before = backend.pending
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
         let center = NotificationCenter()
-        let suite = "currency.rearm.\(UUID())"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let wallet = BalanceService(defaults: defaults, notificationCenter: center)
         let completed = expectation(description: "currency presentation refresh completed")
         let tokens = AppDelegate.observeAlarmRescheduleTriggers(center: center) { trigger in

@@ -18,13 +18,11 @@ import XCTest
 final class CreateAlarmRepeatValidityTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.repeatValidity.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         repo = AlarmRepository(defaults: testDefaults, scheduler: AlarmsListViewModelTests.StubScheduler())
     }
 
@@ -33,11 +31,6 @@ final class CreateAlarmRepeatValidityTests: XCTestCase {
             probe: AlarmsListBackendGuardTests.StubProbe(result: .available),
             notificationCenter: NotificationCenter()
         )
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Opening state

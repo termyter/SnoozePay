@@ -8,17 +8,10 @@ import XCTest
 final class BalanceServiceMoneyAPITests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test_\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
+        testDefaults = makeIsolatedDefaults()
     }
 
     private func makeService(balance: Double = 0) -> BalanceService {

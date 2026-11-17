@@ -188,9 +188,7 @@ final class FiringCopyTests: XCTestCase {
     // MARK: - Layer 3: the firing-time top-up sheet
 
     func testTopUpSheetRendersGenericRowsAndWalletDisclaimerWithoutForecasts() {
-        let suite = "FiringCopyTests.sheet.\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let balance = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         let sheet = FiringTopUpBottomSheetViewController(
             snoozePrice: 200, balance: balance, notificationCenter: NotificationCenter(), offerProvider: { productID in

@@ -8,7 +8,6 @@ import UserNotifications
 final class AlarmFiringCoordinatorTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var alarmRepo: AlarmRepository!
     private var balanceService: BalanceService!
     private var coordinator: AlarmFiringCoordinator!
@@ -18,8 +17,7 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.coordinator.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         alarmRepo = AlarmRepository(defaults: testDefaults)
         balanceService = BalanceService(defaults: testDefaults)
         // Inject a stub AlarmKit backend so the success path doesn't touch a
@@ -35,11 +33,6 @@ final class AlarmFiringCoordinatorTests: XCTestCase {
             balanceService: balanceService,
             scheduler: scheduler
         )
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Helpers
