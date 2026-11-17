@@ -110,6 +110,13 @@ final class PenaltyCell: UITableViewCell {
     }()
 
     private var presetButtons: [UIButton] = []
+    /// Amount + suffix row; hidden in tier mode.
+    private var amountRow: UIStackView?
+    /// Tier chips outside roubles (#1146). Built on the first `configureTiers`,
+    /// so a rouble card carries no extra views.
+    private var tierStack: UIStackView?
+    private var tierButtons: [UIButton] = []
+    private var selectedTier: SnoozePriceTier?
     private var currentAmount: Double = 0
     /// Last value that passed validation — restored if the field is left blank.
     private var lastValidAmount: Double?
@@ -119,6 +126,9 @@ final class PenaltyCell: UITableViewCell {
     /// Fires with a validated whole amount (≥ 1 ₽) when the user types a valid
     /// value or taps a chip. Invalid input never fires it.
     var onValueChanged: ((Double) -> Void)?
+
+    /// Fires with the tier chip the user tapped (#1146). Tier mode only.
+    var onTierSelected: ((SnoozePriceTier) -> Void)?
 
     // MARK: - Init
 
@@ -172,6 +182,7 @@ final class PenaltyCell: UITableViewCell {
         amountRow.axis = .horizontal
         amountRow.alignment = .firstBaseline
         amountRow.spacing = AppSpacing.sp1
+        self.amountRow = amountRow
 
         let column = UIStackView(arrangedSubviews: [
             captionLabel, hintLabel, amountRow, helperLabel, presetStack
@@ -205,11 +216,13 @@ final class PenaltyCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         onValueChanged = nil
+        onTierSelected = nil
     }
 
     // MARK: - Configure
 
     func configure(amount: Double, currency: Currency) {
+        setTierMode(false)
         updateCurrency(currency)
         let text = Self.amountText(amount)
         currentAmount = amount.rounded()
@@ -243,6 +256,72 @@ final class PenaltyCell: UITableViewCell {
         // loses integer digits at 2^63, even with en_US_POSIX. The unlocalized
         // fixed-format path prints the represented whole Double directly.
         return String(format: "%.0f", amount.rounded())
+    }
+
+    // MARK: - Tier mode (#1146)
+
+    /// Three tier chips instead of the field and the rouble presets. `titles`
+    /// are the formatted tier prices, cheapest first; empty means the price
+    /// scale is unknown, and the chips show «—» disabled — no guessed numbers.
+    func configureTiers(titles: [String], selected: SnoozePriceTier?) {
+        setTierMode(true)
+        let available = titles.count == SnoozePriceTier.allCases.count
+        for (index, button) in tierButtons.enumerated() {
+            button.setTitle(available ? titles[index] : "—", for: .normal)
+            button.isEnabled = available
+        }
+        selectedTier = available ? selected : nil
+        refreshTierAppearance()
+    }
+
+    private func setTierMode(_ isOn: Bool) {
+        if isOn, tierStack == nil { installTierStack() }
+        amountRow?.isHidden = isOn
+        presetStack.isHidden = isOn
+        tierStack?.isHidden = !isOn
+        if isOn { helperLabel.isHidden = true }
+    }
+
+    private func installTierStack() {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.distribution = .fillEqually
+        stack.spacing = AppSpacing.sp2
+        for tier in SnoozePriceTier.allCases {
+            let button = UIButton(type: .system)
+            button.titleLabel?.font = AppFonts.mono(.semibold, 14)
+            button.titleLabel?.adjustsFontSizeToFitWidth = true
+            button.layer.cornerRadius = AppRadius.sm
+            button.layer.masksToBounds = true
+            button.tag = tier.rawValue
+            button.accessibilityIdentifier = "createAlarm.penaltyTier.\(tier.rawValue)"
+            button.addTarget(self, action: #selector(tierTapped(_:)), for: .touchUpInside)
+            button.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            tierButtons.append(button)
+            stack.addArrangedSubview(button)
+        }
+        if let column = presetStack.superview as? UIStackView {
+            column.addArrangedSubview(stack)
+        }
+        tierStack = stack
+    }
+
+    private func refreshTierAppearance() {
+        for button in tierButtons {
+            let isOn = button.tag == selectedTier?.rawValue
+            button.backgroundColor = isOn ? AppColors.warnFill500 : AppColors.whiteOverlay06
+            button.setTitleColor(isOn ? AppColors.fgOnWarn : AppColors.fg2, for: .normal)
+            button.setTitleColor(AppColors.fg4, for: .disabled)
+            button.accessibilityTraits = isOn ? [.button, .selected] : .button
+        }
+    }
+
+    @objc private func tierTapped(_ sender: UIButton) {
+        guard let tier = SnoozePriceTier(rawValue: sender.tag) else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        selectedTier = tier
+        refreshTierAppearance()
+        onTierSelected?(tier)
     }
 
     // MARK: - Validation
@@ -311,6 +390,7 @@ final class PenaltyCell: UITableViewCell {
     /// properties don't auto-resolve dynamic UIColors, so this also runs on
     /// theme flips.
     private func refreshAppearance() {
+        refreshTierAppearance()
         for (index, button) in presetButtons.enumerated() {
             let preset = Self.presets[index]
             let isOn = abs(preset - currentAmount) < .ulpOfOne

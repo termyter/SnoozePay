@@ -75,7 +75,7 @@ enum UITourRoutes {
         "sound-picker": { window in
             mountPushedOnCreate(in: window) { _ in
                 SoundPickerViewController(
-                    sounds: CreateAlarmViewModel(alarm: nil).availableSounds,
+                    sounds: SoundCatalogue.entries,
                     selectedID: SoundCatalogue.defaultID,
                     onSelect: { _ in },
                     previewSound: { _ in false }
