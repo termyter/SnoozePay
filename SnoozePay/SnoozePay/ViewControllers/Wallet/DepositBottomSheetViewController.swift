@@ -488,9 +488,9 @@ final class DepositBottomSheetViewController: UIViewController {
             refreshCatalog()
             return
         }
-        // An unreadable ledger also fails the currency check; it is named as
-        // the locked ledger it is, not as a foreign storefront (#1163).
-        let refusal = balance.purchaseRefusal(in: offer.currency)
+        // An unreadable ledger refuses every pack, accepted currency included:
+        // Apple would charge and nothing could be credited (#1163).
+        let refusal = balance.prePurchaseRefusal(in: offer.currency)
         if let message = ForeignCurrencyNotice.blockingMessage(for: refusal) {
             if refusal == .ledgerUnreadable {
                 handlePurchaseFailure(message: message)

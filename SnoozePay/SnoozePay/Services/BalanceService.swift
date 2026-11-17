@@ -480,8 +480,8 @@ final class BalanceService {
     }
 
     /// Why a paid top-up in `currency` would be refused, or `nil` when it is
-    /// accepted. The one seam behind both the pre-purchase gate of the top-up
-    /// sheets and `topUpFromPurchase` (#1133, #1163).
+    /// accepted. Shared by `topUpFromPurchase` and, under `prePurchaseRefusal(in:)`,
+    /// the pre-purchase gate of the top-up sheets (#1133, #1163).
     ///
     /// An unreadable ledger takes no credit in any currency, and it is also
     /// what makes the wallet non-pristine: calling that a currency mismatch
@@ -493,6 +493,19 @@ final class BalanceService {
         // latched `isReadable` by the time anyone asks.
         guard queue.sync(execute: { ledgerStore.isReadable }) else { return .ledgerUnreadable }
         return .foreignCurrency(wallet: walletCurrency, purchase: currency)
+    }
+
+    /// The refusal the top-up sheets show **before** `Product.purchase(_:)`.
+    ///
+    /// Stricter than `purchaseRefusal(in:)`: an unreadable ledger refuses even
+    /// an accepted currency, because a purchase dispatched now is charged by
+    /// Apple and then not credited (#1163). The read is checked here rather
+    /// than trusting the latch, which only moves when something reads — a
+    /// ledger damaged after launch would otherwise pass an established wallet.
+    func prePurchaseRefusal(in currency: Currency) -> PurchaseRefusal? {
+        let readable = queue.sync { (try? ledgerStore.loadEntries()) != nil }
+        guard readable else { return .ledgerUnreadable }
+        return purchaseRefusal(in: currency)
     }
 
     /// See `purchaseRefusal(in:)`.
