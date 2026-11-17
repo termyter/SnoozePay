@@ -77,6 +77,18 @@ final class AlarmFiringPriceDisplayTests: XCTestCase {
 
     private func sku(_ nominal: Int) -> String { "io.mobilife.snoozepay.balance.\(nominal)" }
 
+    /// The whole catalogue in dollars: $0.99 … $9.99.
+    private func dollarCatalogue() throws -> [String: TopUpOffer] {
+        let prices: [Int: String] = [49: "0.99", 149: "1.49", 299: "2.99", 499: "4.99", 999: "9.99"]
+        var catalogue: [String: TopUpOffer] = [:]
+        for (nominal, price) in prices {
+            catalogue[sku(nominal)] = try XCTUnwrap(TopUpOffer(
+                productID: sku(nominal), price: Decimal(string: price)!, currencyCode: "USD", displayPrice: "$\(price)"
+            ))
+        }
+        return catalogue
+    }
+
     // MARK: - Rouble parity
 
     /// Presets 20/50/100/200/500, flat and progressive, counts 0…5: CTA, card,
@@ -161,13 +173,7 @@ final class AlarmFiringPriceDisplayTests: XCTestCase {
 
     func testPristineWalletOnDollarStorefront_cardAndTopUpPickAreInDollars() throws {
         XCTAssertTrue(scaleStore.record(usdScale))
-        let prices: [Int: String] = [49: "0.99", 149: "1.49", 299: "2.99", 499: "4.99", 999: "9.99"]
-        var catalogue: [String: TopUpOffer] = [:]
-        for (nominal, price) in prices {
-            catalogue[sku(nominal)] = try XCTUnwrap(TopUpOffer(
-                productID: sku(nominal), price: Decimal(string: price)!, currencyCode: "USD", displayPrice: "$\(price)"
-            ))
-        }
+        let catalogue = try dollarCatalogue()
         // 200 ₽ legacy → the high tier, $2.99. Reckoned in roubles the dollar
         // packs had unknown coverage and the cheapest default ($1.49) was
         // picked; in dollars the minimal sufficient pack is the $2.99 one.
@@ -187,6 +193,39 @@ final class AlarmFiringPriceDisplayTests: XCTestCase {
         XCTAssertFalse(card.accessibilityValue?.contains("₽") ?? true)
         XCTAssertEqual(controller.noBalancePurchase.offer?.productID, sku(299),
                        "sufficiency is reckoned in dollars: the minimal pack covering $2.99")
+    }
+
+    /// The amount sheet reckons coverage of the next charge in the price's
+    /// currency, not the wallet's: a pristine rouble wallet facing a $2.99
+    /// charge is offered and preselected the $2.99 pack. Without the price
+    /// currency the dollar packs have unknown coverage and the sheet keeps its
+    /// default rows on the cheapest one.
+    func testTopUpSheet_reckonsCoverageInThePriceCurrencyNotTheWallets() throws {
+        let catalogue = try dollarCatalogue()
+        func sheetRows(priceCurrency: Currency?) -> (ids: [Int], selected: Int?) {
+            let sheet = FiringTopUpBottomSheetViewController(
+                snoozePrice: 2.99, snoozePriceCurrency: priceCurrency, balance: wallet,
+                notificationCenter: NotificationCenter(),
+                scheduleSuccessDismissal: { _, _ in }, purchaseProduct: { _ in },
+                presentPurchaseFailure: { _ in }, pauseLifecycle: { _ in }, preflightRefusal: { _ in nil },
+                offerProvider: { catalogue[$0] }, arguments: []
+            )
+            sheet.loadViewIfNeeded()
+            let rows = descendants(sheet.view).compactMap { $0 as? FiringTopUpPresetRow }
+            let id: (FiringTopUpPresetRow) -> Int? = {
+                Int($0.accessibilityIdentifier?.split(separator: ".").last ?? "")
+            }
+            return (rows.compactMap(id), rows.first(where: \.isSelected).flatMap(id))
+        }
+        XCTAssertEqual(wallet.walletCurrency, .rub)
+
+        let inDollars = sheetRows(priceCurrency: usd)
+        XCTAssertEqual(inDollars.ids, [299, 499, 999], "the minimal sufficient pack is swapped in")
+        XCTAssertEqual(inDollars.selected, 299)
+
+        let inWalletCurrency = sheetRows(priceCurrency: nil)
+        XCTAssertEqual(inWalletCurrency.ids, [149, 499, 999], "rouble wallet vs dollar packs: coverage unknown")
+        XCTAssertEqual(inWalletCurrency.selected, 149)
     }
 
     // MARK: - Mid-ring freeze in another currency
@@ -210,6 +249,9 @@ final class AlarmFiringPriceDisplayTests: XCTestCase {
         XCTAssertFalse(controller.viewModel.isPriceTense)
     }
 }
+
+@MainActor
+private func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
 
 /// The real layout, without audio, observers, ticker or breathing.
 @MainActor

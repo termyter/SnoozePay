@@ -12,8 +12,25 @@ final class AlarmFiringHintTests: XCTestCase {
         Alarm(penaltyAmount: penalty, progressiveScale: progressive)
     }
 
+    /// A firing screen on an isolated, pristine rouble wallet. The hint quotes
+    /// the price locked from the wallet's context (#1142), and the shared
+    /// wallet's context follows whatever storefront scale the host app cached.
+    private func makeController(alarm: Alarm, snoozeCount: Int) -> AlarmFiringViewController {
+        let defaults = makeIsolatedDefaults()
+        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend())
+        let ledger = TransactionRepository(defaults: defaults)
+        let wallet = BalanceService(
+            defaults: defaults, transactionRepository: ledger, notificationCenter: NotificationCenter()
+        )
+        return AlarmFiringViewController(viewModel: AlarmFiringViewModel(
+            alarm: alarm, snoozeCount: snoozeCount, balanceService: wallet,
+            alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler),
+            scheduler: scheduler, wakeStore: WakeEventStore(defaults: defaults), ledger: ledger
+        ))
+    }
+
     func testSnoozeHint_nilWhenNotProgressive() {
-        let vc = AlarmFiringViewController(
+        let vc = makeController(
             alarm: makeAlarm(penalty: 50, progressive: false),
             snoozeCount: 0
         )
@@ -23,7 +40,7 @@ final class AlarmFiringHintTests: XCTestCase {
 
     func testSnoozeHint_showsNextPriceBeforeCeiling() {
         // snoozeCount=0 → probes penalty(forSnoozeCount: 2) = 100.
-        let vc = AlarmFiringViewController(
+        let vc = makeController(
             alarm: makeAlarm(penalty: 50, progressive: true),
             snoozeCount: 0
         )
@@ -33,7 +50,7 @@ final class AlarmFiringHintTests: XCTestCase {
 
     func testSnoozeHint_showsNextPriceAtThirdRung() {
         // snoozeCount=1 → probes penalty(forSnoozeCount: 3) = 200 (still below ceiling).
-        let vc = AlarmFiringViewController(
+        let vc = makeController(
             alarm: makeAlarm(penalty: 50, progressive: true),
             snoozeCount: 1
         )
@@ -44,7 +61,7 @@ final class AlarmFiringHintTests: XCTestCase {
     func testSnoozeHint_showsMaxCopyAtCeiling() {
         // snoozeCount=2 → probes penalty(forSnoozeCount: 4), which is the
         // base × 8 ceiling. No higher price to show → max-step copy.
-        let vc = AlarmFiringViewController(
+        let vc = makeController(
             alarm: makeAlarm(penalty: 50, progressive: true),
             snoozeCount: 2
         )
@@ -52,7 +69,7 @@ final class AlarmFiringHintTests: XCTestCase {
     }
 
     func testSnoozeHint_staysMaxCopyBeyondCeiling() {
-        let vc = AlarmFiringViewController(
+        let vc = makeController(
             alarm: makeAlarm(penalty: 50, progressive: true),
             snoozeCount: 8
         )
