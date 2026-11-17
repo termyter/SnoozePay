@@ -12,8 +12,8 @@ final class SoundThemePickerCatalogueTests: XCTestCase {
 
     // MARK: - Sound catalogue
 
-    func testSoundCatalogue_keepsAllFourteenSounds() {
-        XCTAssertEqual(SoundCatalogue.entries.count, 14, "Catalogue must keep all 14 sounds, not cut to 6")
+    func testSoundCatalogue_keepsAllNineteenSounds() {
+        XCTAssertEqual(SoundCatalogue.entries.count, 19, "Catalogue must keep all 19 sounds, not cut to 6")
     }
 
     func testSoundCatalogue_idsAreUnique() {

@@ -109,7 +109,7 @@ final class ReferralOnboardingCopyTests: XCTestCase {
     // MARK: - Layer 2a: the referral screen
 
     func testReferralScreenRendersCopyRatherThanKeys() {
-        let controller = mount(ReferralViewController())
+        let controller = mount(ReferralViewController(personalCodeProvider: { "ABCD23" }))
 
         let rendered = strings(in: controller.view) + [controller.title ?? ""]
         assertNoKeysLeaked(Self.allKeys, in: rendered)

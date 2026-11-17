@@ -13,11 +13,8 @@ import UIKit
 ///   3. Median available, baseline still short → the comparison columns drop
 ///      out rather than inventing a «раньше было».
 ///
-/// A fourth case exists only defensively: a median the aggregation refused as
-/// not-a-time-of-day (#657). `wakeTimeStats` already returns `nil` for it, so
-/// the host takes case 1; if such a value is handed to `apply` directly, the
-/// columns go and no copy replaces them — «нужно ещё 0 утр» would be worse
-/// than silence.
+/// Unreadable history or a refused median keeps an explanation visible
+/// instead of masquerading as no history or a request for zero more mornings.
 final class SPWakeTimeCard: UIView {
 
     // MARK: - Subviews
@@ -71,39 +68,58 @@ final class SPWakeTimeCard: UIView {
     // MARK: - API
 
     func apply(_ stats: StatisticsViewModel.WakeTimeStats) {
+        apply(StatisticsViewModel.WakeTimeAvailability(stats: stats))
+    }
+
+    func apply(_ availability: StatisticsViewModel.WakeTimeAvailability) {
+        switch availability {
+        case .noRecentHistory: showState(nil)
+        case .unavailable(let reason): showState(reason.message)
+        case .accumulating(let stats):
+            showState(StatisticsViewModel.wakeSamplesPendingText(stats.samplesUntilReady))
+        case .available(let stats): applyAvailable(stats)
+        }
+    }
+
+    private func clearValues() {
+        for label in [averageValueLabel, baselineValueLabel, deltaValueLabel, deltaCaptionLabel] {
+            label.text = nil
+            label.attributedText = nil
+        }
+    }
+
+    private func showState(_ message: String?) {
+        clearValues()
+        columnsRow.isHidden = true
+        pendingLabel.isHidden = true
+        pendingLabel.text = nil
+        accumulatingLabel.isHidden = message == nil
+        accumulatingLabel.text = message
+    }
+
+    private func applyAvailable(_ stats: StatisticsViewModel.WakeTimeStats) {
         guard let median = stats.medianMinutes else {
-            // Two states share this branch. State 2 — some mornings recorded,
-            // not enough to call anything typical yet — offers to keep
-            // counting. State 4 — a full window whose median was refused, or
-            // no history at all — says nothing, and the host hides the card
-            // outright (#657).
-            columnsRow.isHidden = true
-            pendingLabel.isHidden = true
-            accumulatingLabel.isHidden = !stats.isAccumulating
-            // Cleared, not merely left unwritten. A `UILabel` keeps its text
-            // after being hidden, and this card is reused across `apply` calls:
-            // a short window writes «нужно ещё 4 утра», the data then goes bad,
-            // and skipping the assignment would leave that sentence loaded
-            // behind a hidden label — one visibility refactor away from the
-            // screen, which is the thing being guarded against.
-            accumulatingLabel.text = stats.isAccumulating
-                ? StatisticsViewModel.wakeSamplesPendingText(stats.samplesUntilReady)
-                : nil
+            showState(StatisticsViewModel.WakeTimeUnavailableReason.calculationUnavailable.message)
             return
         }
+        clearValues()
         columnsRow.isHidden = false
         accumulatingLabel.isHidden = true
+        accumulatingLabel.text = nil
         averageValueLabel.text = StatisticsViewModel.clockText(minutes: median)
 
         guard let baseline = stats.baselineMedianMinutes, let delta = stats.deltaMinutes else {
             baselineColumn.isHidden = true
             deltaColumn.isHidden = true
             pendingLabel.isHidden = false
+            pendingLabel.text = Localized.text(stats.baselineWasRefused
+                ? "statistics.wake_time.comparison_unavailable" : "statistics.wake_time.pending")
             return
         }
         baselineColumn.isHidden = false
         deltaColumn.isHidden = false
         pendingLabel.isHidden = true
+        pendingLabel.text = nil
 
         baselineValueLabel.attributedText = NSAttributedString(
             string: StatisticsViewModel.clockText(minutes: baseline),
