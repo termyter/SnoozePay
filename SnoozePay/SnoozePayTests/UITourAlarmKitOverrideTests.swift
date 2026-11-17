@@ -147,6 +147,47 @@ final class UITourAlarmKitOverrideTests: XCTestCase {
         }
     }
 
+    // MARK: - Re-arm on foreground (#1135)
+
+    private func rescheduleFailures(isAuthorized: Bool, alarms: [Alarm]) -> Int? {
+        let scheduler = AlarmScheduler(
+            notificationCenter: InertNotificationCenter(),
+            alarmKit: UITourAlarmKitBackend(isAuthorized: isAuthorized),
+            snoozeSessions: AlarmSnoozeSessionStore(defaults: makeIsolatedDefaults())
+        )
+        let exp = expectation(description: "rescheduleAll completes")
+        var failed: Int?
+        scheduler.rescheduleAll(alarms) { failed = $0; exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+        return failed
+    }
+
+    /// The tour fake registers no originals, so its alerting inventory is
+    /// known and empty. Answering nil ("unknown") hit the unreadable-state
+    /// guard and counted every enabled alarm as failed: a false re-arm
+    /// banner on every foreground of a granted E2E run.
+    func testGrantedTourBackend_rescheduleAllReportsNoFailures() {
+        let alarms = [makeAlarm(), makeAlarm(), Alarm(repeatDays: [5], name: "Off", enabled: false)]
+
+        XCTAssertEqual(
+            rescheduleFailures(isAuthorized: true, alarms: alarms), 0,
+            "a granted tour arms every enabled alarm; nothing failed to re-arm"
+        )
+    }
+
+    /// Denied still counts every enabled alarm, for the real reason: each
+    /// schedule refuses with `.backendUnavailable` (the revoked-grant
+    /// contract), not because the inventory was unreadable.
+    func testDeniedTourBackend_rescheduleAllCountsEveryEnabledAlarm() {
+        let alarms = [makeAlarm(), makeAlarm(), Alarm(repeatDays: [5], name: "Off", enabled: false)]
+
+        XCTAssertEqual(rescheduleFailures(isAuthorized: false, alarms: alarms), 2)
+        XCTAssertEqual(
+            UITourAlarmKitBackend(isAuthorized: false).alertingAlarmIDs, [],
+            "the inventory is not gated on the grant, like the production adapter"
+        )
+    }
+
     // MARK: - Finishing the ring
 
     /// «Я встал» on a tour route goes through `finishOccurrence` since #1076.
