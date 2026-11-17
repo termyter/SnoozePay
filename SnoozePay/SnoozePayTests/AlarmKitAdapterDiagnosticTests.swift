@@ -230,6 +230,61 @@ final class AlarmKitAdapterDiagnosticTests: XCTestCase {
         XCTAssertEqual(reads, 2)
     }
 
+    func testRecoveryLogsEveryFailingExitWithStageErrorAndCounts() {
+        let messages = [
+            "Alarm recovery failed: stage=inventory error=read",
+            "Alarm recovery failed: stage=readback inventory=3 failedCancels=1 error=read",
+            "Alarm recovery failed: stage=cancel inventory=3 failedCancels=2 remaining=2 error=cancel",
+            "Alarm recovery failed: stage=verify inventory=3 failedCancels=0 remaining=1"
+        ]
+        let expected: [AlarmRecoveryError] = [
+            .inventoryUnavailable, .inventoryUnavailable, .cancellationFailed, .registrationsRemain
+        ]
+        for scenario in 0..<4 {
+            let ids: Set<UUID> = [UUID(), UUID(), UUID()]
+            var inventory = ids
+            var reads = 0
+            var cancels = 0
+            let backend = AlarmKitScheduler(cancelAlarm: { id in
+                cancels += 1
+                switch scenario {
+                case 1 where cancels == 1, 2 where cancels <= 2: throw RecoveryFixtureError.cancel
+                case 3 where cancels == 1: return
+                default: inventory.remove(id)
+                }
+            }, readRegisteredAlarmIDs: {
+                reads += 1
+                if (scenario == 0 && reads == 1) || (scenario == 1 && reads == 2) {
+                    throw RecoveryFixtureError.read
+                }
+                return inventory
+            })
+            var lines: [LoggedLine] = []
+            var result: Result<Void, AlarmRecoveryError>?
+
+            AppLogger.withTestSink({ lines.append(LoggedLine(category: $0, level: $1, message: $2)) }, perform: {
+                result = backend.clearRegisteredAlarmsForRecovery()
+            })
+
+            guard case .failure(let error)? = result else { XCTFail("scenario \(scenario) must fail"); continue }
+            XCTAssertEqual(error, expected[scenario], "scenario \(scenario)")
+            assertLine(lines, level: .error, message: messages[scenario])
+        }
+    }
+
+    func testSuccessfulRecoveryLogsNoFailure() throws {
+        var inventory: Set<UUID> = [UUID()]
+        let backend = AlarmKitScheduler(cancelAlarm: { inventory.remove($0) },
+                                        readRegisteredAlarmIDs: { inventory })
+        var lines: [LoggedLine] = []
+        try AppLogger.withTestSink({ lines.append(LoggedLine(category: $0, level: $1, message: $2)) }, perform: {
+            try backend.clearRegisteredAlarmsForRecovery().get()
+        })
+        XCTAssertTrue(lines.isEmpty)
+    }
+
+    private enum RecoveryFixtureError: Error { case read, cancel }
+
     private func assertLine(
         _ lines: [LoggedLine], level: OSLogType, message: String,
         file: StaticString = #filePath, line: UInt = #line

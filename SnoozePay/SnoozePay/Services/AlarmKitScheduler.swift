@@ -438,15 +438,35 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// Use the throwing exact-ID operation; normal cancel intentionally swallows errors.
     func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
         let ids: Set<UUID>
-        do { ids = try readRegisteredAlarmIDs() } catch { return .failure(.inventoryUnavailable) }
-        var cancellationFailed = false
-        for id in ids {
-            do { try cancelAlarm(id) } catch { cancellationFailed = true }
+        do { ids = try readRegisteredAlarmIDs() } catch {
+            AppLogger.emit(.scheduler, .error,
+                           "Alarm recovery failed: stage=inventory error=\(String(describing: error))")
+            return .failure(.inventoryUnavailable)
         }
+        var failedCancels = 0
+        var lastCancelError: Error?
+        for id in ids {
+            do { try cancelAlarm(id) } catch { failedCancels += 1; lastCancelError = error }
+        }
+        let counts = "inventory=\(ids.count) failedCancels=\(failedCancels)"
         let remaining: Set<UUID>
-        do { remaining = try readRegisteredAlarmIDs() } catch { return .failure(.inventoryUnavailable) }
-        guard !cancellationFailed else { return .failure(.cancellationFailed) }
-        guard remaining.isEmpty else { return .failure(.registrationsRemain) }
+        do { remaining = try readRegisteredAlarmIDs() } catch {
+            AppLogger.emit(.scheduler, .error,
+                           "Alarm recovery failed: stage=readback \(counts) error=\(String(describing: error))")
+            return .failure(.inventoryUnavailable)
+        }
+        if let lastCancelError {
+            AppLogger.emit(.scheduler, .error, """
+                Alarm recovery failed: stage=cancel \(counts) remaining=\(remaining.count) \
+                error=\(String(describing: lastCancelError))
+                """)
+            return .failure(.cancellationFailed)
+        }
+        guard remaining.isEmpty else {
+            AppLogger.emit(.scheduler, .error,
+                           "Alarm recovery failed: stage=verify \(counts) remaining=\(remaining.count)")
+            return .failure(.registrationsRemain)
+        }
         return .success(())
     }
 

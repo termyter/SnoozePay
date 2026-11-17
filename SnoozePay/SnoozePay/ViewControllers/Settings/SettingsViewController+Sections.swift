@@ -241,6 +241,8 @@ extension SettingsViewController {
             return
         }
         if case .failure(let error) = alarmRepository.clearCorruptState() {
+            // The wallet is already recovered; its rows must not stay stale behind the alarm alert.
+            tableView.reloadData()
             let alert = UIAlertController(
                 title: Localized.text("settings.recovery.alarms_failed_title"),
                 message: Localized.text(error == .busy

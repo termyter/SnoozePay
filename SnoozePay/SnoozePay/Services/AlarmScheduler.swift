@@ -477,7 +477,12 @@ final class AlarmScheduler: AlarmScheduling {
     /// registrations until the repository has synchronously removed its corrupt key.
     func recoverCorruptAlarms(commit: () -> Void) -> Result<Void, AlarmRecoveryError> {
         recoveryLock.lock()
-        guard !recovering, registrations.isEmpty else { recoveryLock.unlock(); return .failure(.busy) }
+        guard !recovering, registrations.isEmpty else {
+            let state = "recovering=\(recovering) registrations=\(registrations.count)"
+            recoveryLock.unlock()
+            AppLogger.emit(.scheduler, .error, "Alarm recovery refused: busy \(state)")
+            return .failure(.busy)
+        }
         recovering = true
         recoveryLock.unlock()
         defer {
@@ -485,7 +490,10 @@ final class AlarmScheduler: AlarmScheduling {
             recovering = false
             recoveryLock.unlock()
         }
-        guard let alarmKitScheduler else { return .failure(.unsupported) }
+        guard let alarmKitScheduler else {
+            AppLogger.emit(.scheduler, .error, "Alarm recovery refused: no AlarmKit backend")
+            return .failure(.unsupported)
+        }
         let result = alarmKitScheduler.clearRegisteredAlarmsForRecovery()
         if case .success = result { commit() }
         return result
