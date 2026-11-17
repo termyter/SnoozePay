@@ -12,7 +12,6 @@ import XCTest
 final class StatisticsViewModelDataTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var txRepo: TransactionRepository!
     private var wakeStore: WakeEventStore!
 
@@ -21,18 +20,12 @@ final class StatisticsViewModelDataTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.statistics.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         wakeStore = WakeEventStore(defaults: testDefaults)
         // The repository now derives the streak from wake events too (#276),
         // so it must share the isolated wake store — otherwise it would read
         // the production singleton and leak real-device history into the test.
         txRepo = TransactionRepository(defaults: testDefaults, wakeStore: wakeStore)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Helpers
