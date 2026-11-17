@@ -187,8 +187,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ///   permission (so `usesAlarmKit` is re-evaluated and the alarm moves to
     ///   the correct backend).
     ///
-    /// - Wallet currency establishment refreshes price labels on future
-    ///   originals only; original IDs reported as alerting are skipped.
+    /// - Wallet currency establishment and a new storefront snooze-price scale
+    ///   (#1126) refresh price labels on future originals only; original IDs
+    ///   reported as alerting are skipped.
     ///
     /// Re-arming is idempotent — for an unchanged alarm `cancel` + `schedule`
     /// re-adds the same deterministic notification identifiers — so firing it on
@@ -206,7 +207,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let names: [Notification.Name] = [
             UIApplication.significantTimeChangeNotification,
             UIApplication.didBecomeActiveNotification,
-            BalanceService.walletCurrencyChangedNotification
+            BalanceService.walletCurrencyChangedNotification,
+            SnoozePriceScaleStore.snoozePriceScaleChangedNotification
         ]
         return names.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { _ in onTrigger(name) }
@@ -246,7 +248,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ alarms: [Alarm], trigger: Notification.Name, scheduler: AlarmScheduler,
         completion: @escaping (Int) -> Void
     ) {
-        if trigger == BalanceService.walletCurrencyChangedNotification {
+        // A new storefront price scale changes snooze prices exactly like a
+        // currency freeze does, so it refreshes the same presentations (#1126).
+        if trigger == BalanceService.walletCurrencyChangedNotification
+            || trigger == SnoozePriceScaleStore.snoozePriceScaleChangedNotification {
             scheduler.refreshCurrencyPresentations(alarms, completion: completion)
         } else {
             scheduler.rescheduleAll(alarms, completion: completion)

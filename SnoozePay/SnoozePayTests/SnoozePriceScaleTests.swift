@@ -102,7 +102,11 @@ final class SnoozePriceScaleTests: XCTestCase {
             #"{"currency":"USD","tiers":["2.99","1.99","0.99"]}"#,
             #"{"currency":"USD","tiers":["0.99","abc","2.99"]}"#,
             #"{"currency":"RUB","tiers":["49","149","299"]}"#,
-            #"{"currency":"rub!","tiers":["50","100","200"]}"#
+            #"{"currency":"rub!","tiers":["50","100","200"]}"#,
+            // #1126: a prefix parse would read these as 1.99 and 1 — valid-looking scales.
+            #"{"currency":"USD","tiers":["0.99","1.99x","2.99"]}"#,
+            #"{"currency":"USD","tiers":["0.99","1,09","2.99"]}"#,
+            #"{"currency":"USD","tiers":[" 0.99","1.99","2.99"]}"#
         ]
         for payload in payloads {
             XCTAssertThrowsError(try JSONDecoder().decode(SnoozePriceScale.self, from: Data(payload.utf8)), payload)

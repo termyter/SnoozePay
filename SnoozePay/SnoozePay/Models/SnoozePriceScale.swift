@@ -78,10 +78,7 @@ nonisolated struct SnoozePriceScale: Equatable, Hashable, Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let currency = try container.decode(Currency.self, forKey: .currency)
         let raw = try container.decode([String].self, forKey: .tiers)
-        let posix = Locale(identifier: "en_US_POSIX")
-        let tiers = raw.compactMap { Decimal(string: $0, locale: posix) }
-        guard tiers.count == raw.count,
-              let scale = SnoozePriceScale(currency: currency, tiers: tiers) else {
+        guard let scale = SnoozePriceScale(currency: currency, tierStrings: raw) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .tiers, in: container,
                 debugDescription: "Snooze price scale needs three ascending positive prices, got \(raw)"
@@ -93,6 +90,34 @@ nonisolated struct SnoozePriceScale: Equatable, Hashable, Codable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(currency, forKey: .currency)
-        try container.encode(tiers.map { NSDecimalNumber(decimal: $0).stringValue }, forKey: .tiers)
+        try container.encode(tierStrings, forKey: .tiers)
+    }
+
+    // MARK: - Decimal strings
+
+    /// The tiers as POSIX decimal strings — the persisted form.
+    var tierStrings: [String] {
+        tiers.map { NSDecimalNumber(decimal: $0).stringValue }
+    }
+
+    /// Builds a scale from persisted decimal strings; `nil` if any string is not
+    /// a whole POSIX decimal or the tiers fail the `init(currency:tiers:)` rules.
+    init?(currency: Currency, tierStrings: [String]) {
+        let tiers = tierStrings.compactMap(Self.parseTier)
+        guard tiers.count == tierStrings.count else { return nil }
+        self.init(currency: currency, tiers: tiers)
+    }
+
+    /// Parses one stored tier, requiring the WHOLE string to be a POSIX decimal.
+    ///
+    /// `Decimal(string:)` stops at the first character it cannot read and returns
+    /// the prefix, so `"1.99x"` would become 1.99 and `"1,09"` would become 1 — a
+    /// corrupt value read as a different price. The scanner must end at the end.
+    static func parseTier(_ string: String) -> Decimal? {
+        let scanner = Scanner(string: string)
+        scanner.charactersToBeSkipped = nil
+        scanner.locale = Locale(identifier: "en_US_POSIX")
+        guard let value = scanner.scanDecimal(), scanner.isAtEnd else { return nil }
+        return value
     }
 }
