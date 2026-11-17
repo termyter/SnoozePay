@@ -85,6 +85,38 @@ final class ReferralFriendCodeApplyTests: XCTestCase {
         try assertRejected(screen, reason: nil)
     }
 
+    func testBalanceLockRollsBackAndReportsTheReasonWithoutLocking() throws {
+        // A negative stored balance trips the wallet's corruption gate, so the
+        // service refuses the credit and rolls the applied code back.
+        let store = try makeStore(balance: -5)
+        let screen = makeScreen(service: store.service)
+
+        try enter("ABCD23", in: screen)
+        try applyButton(in: screen.controller).sendActions(for: .touchUpInside)
+
+        try assertRejected(screen, reason: ReferralService.ApplyError.balanceLocked.errorDescription)
+        XCTAssertNil(store.defaults.string(forKey: "referral_applied_code"),
+                     "The one-shot slot must be released when no bonus landed")
+        XCTAssertTrue(promotions(in: store.defaults).isEmpty)
+    }
+
+    func testCodeAppliedElsewhereWhileOpenLocksAfterTheRejection() throws {
+        let store = try makeStore(balance: 0)
+        let screen = makeScreen(service: store.service)
+        try enter("ABCD23", in: screen)
+
+        // Settings redeems a code while this screen is still on the stack.
+        try store.service.applyFriendCode("XYZ789")
+        try applyButton(in: screen.controller).sendActions(for: .touchUpInside)
+
+        let alert = try XCTUnwrap(screen.alerts.single)
+        XCTAssertEqual(alert.title, Localized.text("referral.error.apply_failed"))
+        XCTAssertEqual(alert.message, ReferralService.ApplyError.alreadyApplied.errorDescription)
+        try assertLocked(screen)
+        XCTAssertEqual(store.defaults.string(forKey: "referral_applied_code"), "XYZ789")
+        XCTAssertEqual(promotions(in: store.defaults).count, 1)
+    }
+
     // MARK: - Already applied
 
     func testCodeAppliedEarlierLocksTheInputOnOpen() throws {
