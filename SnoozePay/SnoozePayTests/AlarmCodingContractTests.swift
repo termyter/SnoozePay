@@ -47,6 +47,7 @@ final class AlarmCodingContractTests: XCTestCase {
         "vibrationEnabled": ["vibrationEnabled"],
         "snoozeMinutes": ["snoozeMinutes"],
         "penaltyAmount": ["penaltyAmount"],
+        "penaltyTier": ["penaltyTier"],
         "progressiveScale": ["progressiveScale"],
         "enabled": ["enabled"],
         "volume": ["volume"],
@@ -59,10 +60,11 @@ final class AlarmCodingContractTests: XCTestCase {
         Set(storedPropertyToPersistedKeys.values.flatMap { $0 })
     }
 
-    /// Only explicitly selected clocks carry the new key. Legacy records keep
-    /// the exact shipped key set rather than writing null or adopting a time.
+    /// Only explicitly selected clocks carry `clockTime`, and only tier alarms
+    /// carry `penaltyTier` (#1127). Legacy records keep the exact shipped key
+    /// set rather than writing null or adopting a time or a tier.
     private static var legacyPersistedKeys: Set<String> {
-        persistedKeys.subtracting(["clockTime"])
+        persistedKeys.subtracting(["clockTime", "penaltyTier"])
     }
 
     private static let fixtureID = UUID(uuidString: "3F2504E0-4F89-11D3-9A0C-0305E82C3301")!
@@ -84,6 +86,7 @@ final class AlarmCodingContractTests: XCTestCase {
             vibrationEnabled: false,
             snoozeMinutes: 7,
             penaltyAmount: 175,
+            penaltyTier: .high,
             progressiveScale: true,
             enabled: false,
             volume: 0.4,
@@ -131,7 +134,7 @@ final class AlarmCodingContractTests: XCTestCase {
     /// which `AlarmRepository` reports as a fatal decode failure that locks
     /// the whole store (#72 / #117).
     func testEncode_defaultNamedAlarm_writesTheSameKeys() throws {
-        let alarm = Alarm(clockTime: Self.fullySpecifiedAlarm.clockTime)
+        let alarm = Alarm(clockTime: Self.fullySpecifiedAlarm.clockTime, penaltyTier: .low)
         XCTAssertEqual(Set(try encodedJSON(alarm).keys), Self.persistedKeys)
     }
 
@@ -167,6 +170,7 @@ final class AlarmCodingContractTests: XCTestCase {
         XCTAssertEqual(json["vibrationEnabled"] as? Bool, false)
         XCTAssertEqual(json["snoozeMinutes"] as? Int, 7)
         XCTAssertEqual(json["penaltyAmount"] as? Double, 175)
+        XCTAssertEqual(json["penaltyTier"] as? Int, 3)
         XCTAssertEqual(json["progressiveScale"] as? Bool, true)
         XCTAssertEqual(json["enabled"] as? Bool, false)
         XCTAssertEqual(try XCTUnwrap(json["volume"] as? Double), 0.4, accuracy: 0.0001)
@@ -198,6 +202,9 @@ final class AlarmCodingContractTests: XCTestCase {
         XCTAssertEqual(decoded.theme, .ocean)
         XCTAssertEqual(decoded.repeatMode, .never)
         XCTAssertEqual(decoded.clockTime, TimeOfDay(hour: 6, minute: 43))
+        XCTAssertEqual(decoded.penaltyTier, .high)
+        XCTAssertEqual(decoded.price, .tier(.high))
+        XCTAssertEqual(decoded.penaltyAmount, 175)
     }
 
     /// Saving a record that was just loaded must not change it. This is the
@@ -326,6 +333,60 @@ final class AlarmCodingContractTests: XCTestCase {
 
         XCTAssertEqual(alarm.repeatMode, .never)
         XCTAssertEqual(alarm.id, Self.fixtureID)
+    }
+
+    // MARK: - Snooze-price tier (#1127)
+
+    /// A record exactly as the current build wrote it before #1127: every
+    /// shipped key, no `clockTime`, no `penaltyTier`.
+    private static let preTierPayload = """
+    {"enabled":true,"id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","name":"Зал","nameIsDefault":false,\
+    "penaltyAmount":100,"progressiveScale":true,"repeatDays":[1,2],"repeatMode":"weekly","snoozeMinutes":9,\
+    "soundID":"radar","theme":{"id":"forest"},"time":721692800,"vibrationEnabled":true,"volume":0.5,\
+    "volumeFadeIn":false}
+    """
+
+    /// The legacy record reads as `.amount` and saves back to the same bytes:
+    /// the tier key is not invented, nothing is rewritten.
+    func testDecode_preTierPayload_readsAmountAndReEncodesByteIdentically() throws {
+        let alarm = try decode(Self.preTierPayload)
+        XCTAssertNil(alarm.penaltyTier)
+        XCTAssertEqual(alarm.price, .amount(100))
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let reEncoded = try encoder.encode(alarm)
+
+        XCTAssertEqual(String(decoding: reEncoded, as: UTF8.self), Self.preTierPayload)
+        let json = try encodedJSON(alarm)
+        XCTAssertEqual(Set(json.keys), Self.legacyPersistedKeys)
+        XCTAssertNil(json["penaltyTier"])
+    }
+
+    /// A tier alarm still writes `penaltyAmount`, and the record minus the new
+    /// key — which is all a build predating #1127 looks at — reads as that
+    /// amount. Rolling back loses the tier, never the alarm.
+    func testEncode_tierAlarm_stillWritesPenaltyAmountForOlderBuilds() throws {
+        let alarm = Alarm(id: Self.fixtureID, time: Self.fixtureTime, penaltyAmount: 100, penaltyTier: .mid)
+        var json = try encodedJSON(alarm)
+
+        XCTAssertEqual(Set(json.keys), Self.legacyPersistedKeys.union(["penaltyTier"]))
+        XCTAssertEqual(json["penaltyAmount"] as? Double, 100)
+        XCTAssertEqual(json["penaltyTier"] as? Int, 2)
+
+        json["penaltyTier"] = nil
+        let olderShape = try JSONDecoder().decode(Alarm.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(olderShape.price, .amount(100))
+        XCTAssertEqual(olderShape.id, Self.fixtureID)
+    }
+
+    func testRoundTrip_eachTier() throws {
+        for tier in SnoozePriceTier.allCases {
+            let alarm = Alarm(penaltyAmount: 50, penaltyTier: tier)
+            let decoded = try JSONDecoder().decode(Alarm.self, from: JSONEncoder().encode(alarm))
+            XCTAssertEqual(decoded, alarm, "\(tier)")
+            XCTAssertEqual(decoded.price, .tier(tier))
+        }
     }
 
     // MARK: - Helpers
