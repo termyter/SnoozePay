@@ -168,7 +168,7 @@ final class BalanceService {
         let result: (charged: Bool, newBalance: Double) = queue.sync {
             let current = readRawBalance()
             guard !_balanceCorrupted else { return (false, current) }
-            guard current >= amount else { return (false, current) }
+            guard MoneyDecimal.covers(current, amount) else { return (false, current) }
 
             // The ledger append IS the mutation (#483). If the store is locked
             // (corrupt blob waiting on user ack), encoding fails, or the row is
@@ -295,7 +295,7 @@ final class BalanceService {
     // MARK: - Validation
 
     func canAfford(_ amount: Double) -> Bool {
-        queue.sync { readRawBalance() >= amount }
+        queue.sync { MoneyDecimal.covers(readRawBalance(), amount) }
     }
 
     // MARK: - Recovery (corruption)
@@ -600,10 +600,12 @@ final class BalanceService {
         }
         let net = BalanceLedger.net(of: entries, in: walletCurrency)
         guard let opening = ledgerStore.openingBalance else {
-            ledgerStore.openingBalance = cached - net
+            ledgerStore.openingBalance = MoneyDecimal.subtracting(cached, net)
             return cached
         }
-        let derived = opening + net
+        // Decimal sum (#1119): binary rounding noise must not read as a
+        // ledger below zero.
+        let derived = MoneyDecimal.adding(opening, net)
         // A ledger that sums below zero is a desync, not a wallet the user can
         // spend from — route it through the same #119 gate as a negative
         // `user_balance` instead of handing back a negative number.
@@ -623,7 +625,7 @@ final class BalanceService {
     private func rebaseLedger(to target: Double) {
         let net = (try? ledgerStore.loadEntries())
             .map { BalanceLedger.net(of: $0, in: walletCurrency) } ?? 0
-        ledgerStore.openingBalance = target - net
+        ledgerStore.openingBalance = MoneyDecimal.subtracting(target, net)
     }
 
     /// Latches the corruption flag, logs once, and broadcasts the notification.

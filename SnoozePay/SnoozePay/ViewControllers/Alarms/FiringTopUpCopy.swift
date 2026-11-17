@@ -42,4 +42,35 @@ enum FiringTopUpCopy {
                                              walletCurrency: walletCurrency) ?? offers.first?.productID
         return offers.first { $0.productID == productID }
     }
+
+    /// The rows the firing sheet offers (#1112): the minimal pack of the whole
+    /// catalogue covering the next charge is always one of them. When the
+    /// defaults lack it, it replaces the dearest non-popular default cheaper than
+    /// it (else the cheapest non-popular one), so three rows stay sorted by price
+    /// and the popular row stays put. No sufficient pack, unknown coverage
+    /// (including a wallet/storefront currency mismatch) or an unpriced default
+    /// keep the defaults untouched.
+    static func offeredProductIDs(
+        defaults: [String], popular: Set<String>, catalogue: [TopUpOffer], balance: Double, price: Double,
+        walletCurrency: Currency, acceptsPurchase: (Currency) -> Bool
+    ) -> [String] {
+        let compatible = catalogue.filter { acceptsPurchase($0.currency) }.sorted(by: cheaperFirst)
+        let coverage = compatible.map { coversNextCharge(offer: $0, balance: balance, price: price,
+                                                        walletCurrency: walletCurrency) }
+        guard coverage.allSatisfy({ $0 != nil }),
+              let pick = zip(compatible, coverage).first(where: { $0.1 == true })?.0,
+              !defaults.contains(pick.productID) else { return defaults }
+        let priced = defaults.compactMap { id in compatible.first { $0.productID == id } }
+        let replaceable = priced.filter { !popular.contains($0.productID) }
+        guard priced.count == defaults.count,
+              let victim = replaceable.last(where: { cheaperFirst($0, pick) }) ?? replaceable.first else {
+            return defaults
+        }
+        let rows = priced.filter { $0.productID != victim.productID } + [pick]
+        return rows.sorted(by: cheaperFirst).map(\.productID)
+    }
+
+    private static func cheaperFirst(_ lhs: TopUpOffer, _ rhs: TopUpOffer) -> Bool {
+        lhs.price == rhs.price ? lhs.productID < rhs.productID : lhs.price < rhs.price
+    }
 }
