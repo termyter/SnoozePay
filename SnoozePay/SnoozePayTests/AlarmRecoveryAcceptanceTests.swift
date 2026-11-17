@@ -59,7 +59,9 @@ final class AlarmRecoveryAcceptanceTests: XCTestCase {
             let corrupt = Data("damaged alarms beside a healthy wallet".utf8)
             defaults.set(corrupt, forKey: "stored_alarms")
             XCTAssertThrowsError(try alarms.fetchAllChecked())
-            let settings = RecoverySettingsSpy(alarmDefaults: AlarmDefaults(defaults: defaults))
+            let settings = RecoverySettingsSpy(
+                alarmDefaults: AlarmDefaults(defaults: defaults), priceContextSource: { .scale(.rouble) }
+            )
             settings.loadViewIfNeeded()
 
             settings.performRecovery(balanceService: wallet, alarmRepository: alarms)

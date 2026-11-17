@@ -61,7 +61,10 @@ enum UITourRoutes {
         "alarm-off-warning": { mountPresented(makeAlarmOffWarningSheet(), onTab: 2, in: $0) },
         "wallet": { $0.rootViewController = tabBar(selected: 1) },
         "stats": { $0.rootViewController = tabBar(selected: 2) },
-        "settings": { mountPushed(SettingsViewController(), onTab: 0, in: $0) },
+        "settings": { window in
+            let settings = SettingsViewController(priceContextSource: { BalanceService.shared.priceContext })
+            mountPushed(settings, onTab: 0, in: window)
+        },
         "create": { mountPresented(createNav(alarm: nil), onTab: 0, in: $0) },
         "edit": { mountPresented(createNav(alarm: sampleAlarm()), onTab: 0, in: $0) },
         "theme-picker": { window in
