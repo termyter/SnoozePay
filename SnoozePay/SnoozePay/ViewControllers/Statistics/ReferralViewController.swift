@@ -1,3 +1,4 @@
+import os
 import UIKit
 
 /// Referral programme screen — V2 design (`Referral()`,
@@ -469,7 +470,16 @@ final class ReferralViewController: UIViewController {
         } catch let error as ReferralService.ApplyError {
             title = Localized.text("referral.error.apply_failed")
             message = error.errorDescription
+            // A code redeemed elsewhere (Settings) while this screen was open:
+            // further attempts can only fail the same way, so stop offering them.
+            if error == .alreadyApplied {
+                lockFriendCodeInput()
+            }
         } catch {
+            // `ReferralService` throws only `ApplyError`; anything else comes from
+            // a future applier and must leave a trace rather than vanish.
+            let reason = String(describing: error)
+            AppLogger.ui.error("referral friend-code apply failed: \(reason, privacy: .public)")
             title = Localized.text("referral.error.apply_failed")
             message = nil
         }
