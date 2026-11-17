@@ -80,6 +80,48 @@ final class WakeEventStoreTests: XCTestCase {
                       "Corrupt blob degrades to empty — heatmap falls back to dark cells")
     }
 
+    // MARK: - Unreadable history is never overwritten (#1097)
+
+    func testRecordWake_unreadableDays_keepsBlobAndStillRecordsInstant() {
+        let damaged = Data("damaged wake days".utf8)
+        testDefaults.set(damaged, forKey: "wake_days")
+        let now = Date()
+
+        store.recordWake(on: now, calendar: calendar)
+
+        XCTAssertEqual(testDefaults.data(forKey: "wake_days"), damaged,
+                       "A dismissal must not replace a damaged history with one fresh row")
+        XCTAssertEqual(store.readSnapshot().days, .unreadable,
+                       "Statistics must keep reporting the history as unavailable")
+        let times = store.wakeTimes()
+        XCTAssertEqual(times.count, 1, "The readable sibling key still records")
+        XCTAssertEqual(times.first?.timeIntervalSince1970 ?? 0, now.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testRecordWake_unreadableTimes_keepsBlobAndStillRecordsDay() {
+        let damaged = Data("damaged wake times".utf8)
+        testDefaults.set(damaged, forKey: "wake_times")
+        let now = Date()
+
+        store.recordWake(on: now, calendar: calendar)
+
+        XCTAssertEqual(testDefaults.data(forKey: "wake_times"), damaged)
+        XCTAssertEqual(store.readSnapshot().times, .unreadable)
+        XCTAssertEqual(store.wakeDays().map(WakeDayIdentity.init(storedDay:)),
+                       [WakeDayIdentity(date: now, calendar: calendar)])
+    }
+
+    func testRecordWake_bothUnreadable_writesNothing() {
+        testDefaults.set(42, forKey: "wake_days")
+        testDefaults.set(Data("damaged wake times".utf8), forKey: "wake_times")
+        let before = testDefaults.persistentDomain(forName: suiteName) ?? [:]
+
+        store.recordWake(on: Date(), calendar: calendar)
+
+        let after = testDefaults.persistentDomain(forName: suiteName) ?? [:]
+        XCTAssertEqual(after as NSDictionary, before as NSDictionary)
+    }
+
     func testRoundTrip_persistsAcrossInstances() {
         store.recordWake(on: Date(), calendar: calendar)
         let reloaded = WakeEventStore(defaults: testDefaults)

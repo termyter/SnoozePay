@@ -119,7 +119,17 @@ final class WakeEventStore {
             return
         }
         queue.sync {
-            var days = readAll()
+            // An unreadable key is left exactly as it is (#1097). Writing
+            // today's row over it would erase the damaged history and, worse,
+            // turn the "history unavailable" state #669 surfaces into what
+            // looks like a fresh install after the very next dismissal. The
+            // readable sibling key still records normally.
+            guard let storedDays = readResult(forKey: key).dates else {
+                logSkippedWrite(forKey: key)
+                recordInstant(date, identity: identity, calendar: calendar)
+                return
+            }
+            var days = Set(storedDays)
             // The row is already present for *this* day — a repeat dismissal,
             // or a canonical row written earlier today. Deliberately not an
             // identity match: a pre-#1064 row can reconstruct to a displaced
@@ -130,20 +140,6 @@ final class WakeEventStore {
             guard !days.contains(day) else { return }
             days.insert(day)
 
-            var times = readAllTimes()
-            // Keep "one instant per morning": a pre-#1064 row can already
-            // carry this day's first dismissal (the day and the instant were
-            // written together since #348), and appending this later one would
-            // make `wakeTimes()` report two rows for one morning. The card
-            // takes the earliest per day, so the UI hid it — the contract did
-            // not.
-            let hasInstantForMorning = times.contains {
-                WakeDayIdentity(date: $0, calendar: calendar) == identity
-            }
-            if !hasInstantForMorning {
-                times.append(date)
-            }
-
             // Prune anything beyond the retention window so the blob stays
             // bounded. Pruning keys off "now", not the recorded date, so a
             // backdated test fixture can still round-trip recent history.
@@ -151,17 +147,50 @@ final class WakeEventStore {
             // Days compare by civil identity rather than instant: canonical
             // rows are UTC midnights, so comparing them to a local cutoff
             // would shift the window by up to a day for readers west of UTC.
-            // `wake_times` keeps the instant comparison — it is raw history,
-            // and a one-day boundary nuance there costs nothing displayed.
-            if let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: Date()) {
-                let cutoffDay = calendar.startOfDay(for: cutoff)
+            if let cutoffDay = retentionCutoffDay(calendar: calendar) {
                 let cutoffIdentity = WakeDayIdentity(date: cutoffDay, calendar: calendar)
                 days = days.filter { WakeDayIdentity(storedDay: $0) >= cutoffIdentity }
-                times = times.filter { $0 >= cutoffDay }
             }
             persist(days)
-            persistTimes(times)
+            recordInstant(date, identity: identity, calendar: calendar)
         }
+    }
+
+    /// Appends this morning's exact instant to `wake_times` unless the key is
+    /// unreadable (left untouched, #1097) or already holds one for this day.
+    /// Must be called inside `queue.sync`.
+    private func recordInstant(_ date: Date, identity: WakeDayIdentity, calendar: Calendar) {
+        guard var times = readResult(forKey: timesKey).dates else {
+            logSkippedWrite(forKey: timesKey)
+            return
+        }
+        // Keep "one instant per morning": a pre-#1064 row can already
+        // carry this day's first dismissal (the day and the instant were
+        // written together since #348), and appending this later one would
+        // make `wakeTimes()` report two rows for one morning. The card
+        // takes the earliest per day, so the UI hid it — the contract did
+        // not.
+        let hasInstantForMorning = times.contains {
+            WakeDayIdentity(date: $0, calendar: calendar) == identity
+        }
+        guard !hasInstantForMorning else { return }
+        times.append(date)
+        // `wake_times` keeps the instant comparison — it is raw history,
+        // and a one-day boundary nuance there costs nothing displayed.
+        if let cutoffDay = retentionCutoffDay(calendar: calendar) {
+            times = times.filter { $0 >= cutoffDay }
+        }
+        persistTimes(times)
+    }
+
+    private func retentionCutoffDay(calendar: Calendar) -> Date? {
+        calendar.date(byAdding: .day, value: -Self.retentionDays, to: Date())
+            .map { calendar.startOfDay(for: $0) }
+    }
+
+    private func logSkippedWrite(forKey storageKey: String) {
+        os_log("[WAKE-669-UNREADABLE] %{public}@: wake not written, damaged history preserved",
+               log: Self.log, type: .error, storageKey)
     }
 
     // MARK: - Read
