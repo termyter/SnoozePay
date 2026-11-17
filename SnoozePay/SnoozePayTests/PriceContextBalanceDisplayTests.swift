@@ -186,8 +186,13 @@ final class PriceContextBalanceDisplayTests: XCTestCase {
         let controller = WalletViewController(balanceService: wallet, transactionRepository: ledger)
         controller.loadViewIfNeeded()
         let hero = try XCTUnwrap(descendants(of: controller.view).first { $0 is SPGradientTextLabel } as? UILabel)
+        let initial = hero.attributedText?.string ?? ""
+        XCTAssertTrue(initial.contains("$"), "first render: \(initial)")
+        XCTAssertFalse(initial.contains("₽"), initial)
+        // `refresh()` runs on every appearance and must keep the storefront zero.
+        controller.viewWillAppear(false)
         let pristine = hero.attributedText?.string ?? ""
-        XCTAssertTrue(pristine.contains("$"), pristine)
+        XCTAssertTrue(pristine.contains("$"), "after refresh: \(pristine)")
         XCTAssertFalse(pristine.contains("₽"), pristine)
 
         XCTAssertEqual(wallet.topUpFromPurchase(amount: 50, currency: nil), .credited)
@@ -219,5 +224,43 @@ final class PriceContextBalanceDisplayTests: XCTestCase {
 
     func testFiringBalancePill_roubleWithoutScaleUnchanged() {
         XCTAssertEqual(makeFiringViewModel().balanceCurrency, .rub)
+    }
+
+    /// The pill follows the price locked at ring start, not the live display
+    /// currency: a scale recorded mid-ring must not put "$" next to "₽" prices.
+    func testFiringBalancePill_scaleArrivingMidRing_keepsTheLockedCurrency() {
+        let viewModel = makeFiringViewModel()
+        XCTAssertTrue(scaleStore.record(usdScale))
+        XCTAssertEqual(wallet.displayCurrency, usd, "precondition: the live display currency moved")
+        XCTAssertEqual(viewModel.balanceCurrency, .rub)
+    }
+
+    /// An empty wallet that froze another currency mid-ring can no longer take
+    /// the locked one: the pill shows the wallet's own currency.
+    func testFiringBalancePill_walletFrozenAwayFromLockedCurrency_showsWalletCurrency() {
+        XCTAssertTrue(scaleStore.record(usdScale))
+        let viewModel = makeFiringViewModel()
+        XCTAssertEqual(viewModel.lockedPriceContext?.currency, usd, "precondition: locked in dollars")
+        XCTAssertEqual(wallet.freezeCurrency(.rub), .frozen(.rub))
+        XCTAssertEqual(wallet.balance, 0)
+        XCTAssertEqual(viewModel.balanceCurrency, .rub)
+    }
+
+    private final class PillLayoutController: AlarmFiringViewController {
+        // The real layout only: no audio, observers, ticker or breathing.
+        override func viewDidLoad() { buildFiringLayout() }
+    }
+
+    func testFiringBalancePill_pristineDollarStorefront_rendersDollarZero() throws {
+        XCTAssertTrue(scaleStore.record(usdScale))
+        let controller = PillLayoutController(viewModel: makeFiringViewModel())
+        controller.loadViewIfNeeded()
+        let pill = try XCTUnwrap(controller.balancePill)
+        let text = texts(in: pill).joined(separator: " ")
+        XCTAssertTrue(text.contains("$"), text)
+        XCTAssertFalse(text.contains("₽"), text)
+        controller.updateUI()
+        let refreshed = texts(in: try XCTUnwrap(controller.balancePill)).joined(separator: " ")
+        XCTAssertTrue(refreshed.contains("$"), refreshed)
     }
 }

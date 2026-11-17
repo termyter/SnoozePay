@@ -85,14 +85,16 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         let cell = AlarmCell(style: .default, reuseIdentifier: AlarmCell.reuseID)
         for (code, amount, enabled) in [("RUB", 50.0, true), ("USD", 2.99, true),
                                         ("RUB", 50.0, false), ("RUB", 50.0, true)] {
-            withPrice(amount, currency: Currency(code: code)!) { viewModel in
+            let scale = code == "USD" ? ["0.99", "1.99", "2.99"] : nil
+            withPrice(amount, currency: Currency(code: code)!, scale: scale) { viewModel in
                 cell.prepareForReuse()
                 let price = viewModel.alarmPriceText(at: 0)
                 cell.configure(
                     time: "7:00", daysCaps: "", priceText: price,
-                    priceCurrency: viewModel.walletCurrency,
+                    priceCurrency: viewModel.priceCurrency,
                     multiplier: nil, soundName: nil, enabled: enabled
                 )
+                if code == "USD" { XCTAssertTrue(price.contains("$"), price) }
                 let views = descendants(of: cell.contentView)
                 XCTAssertTrue(views.compactMap { ($0 as? UILabel)?.attributedText?.string }.contains(price))
                 XCTAssertTrue(views.contains { $0.accessibilityLabel == "Будильник 7:00, \(price)" })
