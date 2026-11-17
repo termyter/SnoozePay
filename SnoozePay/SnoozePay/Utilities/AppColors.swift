@@ -118,62 +118,29 @@ enum AppColors {
     /// Darkest stop of `--sp-grad-warn`.
     static let warnFill600 = UIColor(hex: 0xC97A06)
 
-    /// `PenaltyCell`'s 32pt bold mono amount and its `₽` suffix — that one
-    /// numeral and nothing else.
+    /// The snooze price, wherever it is shown as a number: the 32pt amount
+    /// and `₽` on the alarm form (`PenaltyCell`) and the value and glyph of
+    /// the default-price row in Settings. One token so the two screens cannot
+    /// drift apart again (#683).
     ///
-    /// The name carries the size on purpose. This is a `warnFill*` value used
-    /// as **ink**, which the rule two blocks up otherwise forbids, and the
-    /// exemption is bought entirely by 32pt. Issue #683 is open to make the
-    /// Settings snooze-price row match this one; that row's value label is
-    /// 14pt, and reaching for this token there would ship body text at
-    /// 2.15:1. `AppColorsContrastTests` asserts on token VALUES and would not
-    /// notice, so the fence is the name.
+    /// Canon paints the price `var(--sp-warn-400)` on both screens —
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:240`
+    /// (form) and `SPMore2.jsx:99` (Settings row). That is exactly our
+    /// `warn400`: the dark branch IS the canon value, the light branch is its
+    /// text-safe derivation (same hue, ~38°, reduced value; see the ramp notes
+    /// above). Measured on the card both rows sit on (`bg1`):
     ///
-    /// ## Why it diverges from `warn400`
-    ///
-    /// The canon and our contrast rule disagree here, and the PM decided for
-    /// the canon's INTENT rather than its literal value (#673). Three numbers,
-    /// all on `bg1` light (`#FFFFFF`):
-    ///
-    /// | | value | ratio |
+    /// | theme | ink | on `bg1` |
     /// |---|---|---|
-    /// | canon amount, `--sp-warn-400` ¹ | `#FFB84D` | 1.72:1 |
-    /// | shipped here, `--sp-warn-500` (`tokens.css:30`) | `#F59E0B` | **2.15:1** |
-    /// | our light `warn400` | `#966107` | 5.24:1 |
+    /// | light | `#966107` | 5.24:1 |
+    /// | dark | `#FFB84D` | 10.78:1 |
     ///
-    /// ¹ `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:240` contains "--sp-warn-400"
-    ///
-    /// So this is a THIRD value, not "the canon won": canon-literal is one ramp
-    /// stop lighter and measures worse than what ships. Naming it as canon
-    /// would be false — it is the closest stop that keeps the column reading as
-    /// one colour without dropping to 1.72:1.
-    ///
-    /// And the column is one colour in OUR build, not in the prototype. Canon
-    /// deliberately uses three values:
-    /// - amount `--sp-warn-400` (¹ above);
-    /// - slider fill `--sp-warn-500`,
-    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:213` contains "--sp-warn-500";
-    /// - selected chip `--sp-grad-warn`, a gradient `#FFD479 → #F59E0B → #C97A06`,
-    ///   `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:247` contains "--sp-grad-warn".
-    ///
-    /// Our chip and track are both flat `warnFill500`, so here the amount
-    /// rendered bronze was the one element out of step — which is what the PM
-    /// reported as "wrong colour".
-    ///
-    /// ## The honest number
-    ///
-    /// 2.15:1 clears neither 4.5:1 nor the 3:1 large-text threshold. What
-    /// softens it is that the amount is usually not the only carrier of the
-    /// value — the same number is stated by the selected preset chip below it,
-    /// in `fgOnWarn` at 8.79:1.
-    ///
-    /// "Usually", not "never": the field takes free input, and a chip lights
-    /// only on an exact preset match, so at 137 ₽ the amount IS the sole
-    /// carrier and sits at 2.15:1. `PenaltyDisplayColorTests` pins the ratio,
-    /// the tie to the chip, and that boundary — including a test that goes red
-    /// if the redundancy is ever made unconditional, so this caveat cannot
-    /// outlive the condition it describes.
-    static let penaltyAmountDisplay32 = warnFill500
+    /// It replaces `penaltyAmountDisplay32` (#673), which put `warnFill500`
+    /// on the form as ink at 2.15:1 in light — under 4.5:1 and under the 3:1
+    /// large-text bar — while Settings stayed on `warn400`. Ink is a text
+    /// colour (`UILabel.textColor`), so it re-resolves on a theme flip by
+    /// itself; nothing here is baked into a `CGColor`.
+    static let snoozePriceInk = warn400
 
     // MARK: - Brand · Info
     /// Informational links only — `--sp-info-500` in `tokens.css`.

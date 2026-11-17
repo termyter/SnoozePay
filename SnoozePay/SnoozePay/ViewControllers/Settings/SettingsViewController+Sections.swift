@@ -30,10 +30,10 @@ extension SettingsViewController {
         let currency = walletCurrencyStore.currency
         cell.configure(
             systemName: currency == .rub ? "rublesign.circle" : "banknote",
-            iconColor: AppColors.warn400,
+            iconColor: AppColors.snoozePriceInk,
             title: Localized.text("settings.row.default_price"),
             trailingText: MoneyFormatter.string(alarmDefaults.penaltyAmount, currency: currency),
-            trailingColor: AppColors.warn400,
+            trailingColor: AppColors.snoozePriceInk,
             accessory: .disclosureIndicator,
             selectionStyle: .default
         )

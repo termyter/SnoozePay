@@ -1,7 +1,7 @@
 import UIKit
 
 /// V3 «Цена откладывания» card (#230, `SPComponents.jsx` `SnoozePriceCard`):
-/// a large free-numeric field (mono 32pt, amber, trailing ₽) over the curated
+/// a large free-numeric field (mono 32pt in the snooze-price ink, trailing ₽) over the curated
 /// quick-chip ladder. Replaces the chips-only V2 picker — the design now lets
 /// the user type any whole price ≥ 1 ₽ (no maximum, chat3) while the chips stay
 /// as fast presets and highlight when they match the typed value.
@@ -46,12 +46,12 @@ final class PenaltyCell: UITableViewCell {
         return label
     }()
 
-    /// Big editable mono amount — `moneyXl`-scale (32pt) amber, numeric pad.
+    /// Big editable mono amount — `moneyXl`-scale (32pt) in `snoozePriceInk`, numeric pad.
     private let amountField: UITextField = {
         let field = UITextField()
         field.font = AppFonts.mono(.bold, 32)
-        field.textColor = AppColors.penaltyAmountDisplay32
-        field.tintColor = AppColors.penaltyAmountDisplay32
+        field.textColor = AppColors.snoozePriceInk
+        field.tintColor = AppColors.snoozePriceInk
         field.keyboardType = .numberPad
         field.borderStyle = .none
         field.setContentHuggingPriority(.required, for: .horizontal)
@@ -75,15 +75,15 @@ final class PenaltyCell: UITableViewCell {
         return toolbar
     }()
 
-    /// Trailing ₽ in the same mono amber as the number.
+    /// Trailing ₽ in the same mono ink as the number.
     private let suffixLabel: UILabel = {
         let label = UILabel()
         label.text = "₽"
         label.font = AppFonts.mono(.bold, 32)
         // Same ink as the amount it sits beside. `setHelper(visible:)` repaints
         // both together, but a path that shows the cell before `configure` runs
-        // would otherwise put a bronze glyph against an amber number (#673).
-        label.textColor = AppColors.penaltyAmountDisplay32
+        // would otherwise leave the glyph and the number in different inks (#673, #683).
+        label.textColor = AppColors.snoozePriceInk
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -301,8 +301,8 @@ final class PenaltyCell: UITableViewCell {
 
     private func setHelper(visible: Bool) {
         helperLabel.isHidden = !visible
-        amountField.textColor = visible ? AppColors.pain400 : AppColors.penaltyAmountDisplay32
-        suffixLabel.textColor = visible ? AppColors.pain400 : AppColors.penaltyAmountDisplay32
+        amountField.textColor = visible ? AppColors.pain400 : AppColors.snoozePriceInk
+        suffixLabel.textColor = visible ? AppColors.pain400 : AppColors.snoozePriceInk
     }
 
     // MARK: - Appearance
