@@ -36,8 +36,18 @@ final class AlarmFiringNoBalancePurchase {
         if observingFeedback { endFeedback() }
     }
 
+    /// The pack the direct CTA quotes and buys: the one the amount sheet opens on
+    /// for the same wallet and next charge (#652), never a fixed SKU.
     var offer: TopUpOffer? {
-        let productID = AlarmFiringViewController.noBalanceProductID
+        guard let model = controller?.viewModel else { return nil }
+        let offers = FiringTopUpBottomSheetViewController.defaultPresets.compactMap { offer(for: $0.productID) }
+        return FiringTopUpCopy.preselectedOffer(
+            offers: offers, balance: model.balance, price: model.currentPenalty,
+            walletCurrency: model.walletCurrency, acceptsPurchase: model.acceptsPurchase(in:)
+        )
+    }
+
+    private func offer(for productID: String) -> TopUpOffer? {
         if let offerProvider {
             let offer = offerProvider(productID)
             return offer?.productID == productID ? offer : nil

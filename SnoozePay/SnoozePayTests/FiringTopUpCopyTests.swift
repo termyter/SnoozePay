@@ -43,6 +43,24 @@ final class FiringTopUpCopyTests: XCTestCase {
         XCTAssertNil(FiringTopUpCopy.recommendedProductID(offers: [], balance: 0, price: 2, walletCurrency: usd))
     }
 
+    /// #652: the one selection both firing entry points use.
+    func testPreselectedOfferIsTheMinimalSufficientAcceptedPackAndFallsBackOnlyToExplainRefusal() {
+        let offers = [offer(149, "1.49"), offer(499, "4.99"), offer(999, "9.99")]
+        let accepts: (Currency) -> Bool = { $0.code == "USD" }
+        for (balance, price, expected) in [(0.0, 1.0, 149), (0, 1.49, 149), (0, 1.50, 499), (3, 4.49, 149),
+                                           (0, 9.99, 999), (0, 50, 999), (0.01, 9.99, 999)] {
+            XCTAssertEqual(FiringTopUpCopy.preselectedOffer(offers: offers, balance: balance, price: price,
+                                                            walletCurrency: usd, acceptsPurchase: accepts)?.productID,
+                           offers.first { $0.productID.hasSuffix(".\(expected)") }?.productID, "\(balance)/\(price)")
+        }
+        let refused = [offer(499, "4.99", currency: "EUR"), offer(149, "1.49", currency: "EUR")]
+        XCTAssertEqual(FiringTopUpCopy.preselectedOffer(offers: refused, balance: 0, price: 2,
+                                                        walletCurrency: usd, acceptsPurchase: accepts)?.productID,
+                       refused[0].productID, "A refused storefront still gets a CTA that explains the refusal")
+        XCTAssertNil(FiringTopUpCopy.preselectedOffer(offers: [], balance: 0, price: 2, walletCurrency: usd,
+                                                      acceptsPurchase: accepts))
+    }
+
     func testCheckedDecimalMathCannotOverflowOrNarrowToSnoozeCounts() {
         XCTAssertNil(FiringTopUpCopy.coversNextCharge(offer: offer(999, "9e127"), balance: 1, price: 200,
                                                      walletCurrency: usd))

@@ -24,10 +24,6 @@ import UIKit
 /// once the user crosses the affordability threshold.
 extension AlarmFiringViewController {
 
-    /// SKU resolved by the no-balance Apple Pay tap. Targets the 499 ₽ tier;
-    /// the 500 ₽ SKU doesn't exist in App Store Connect (lineup is PM's #240).
-    static var noBalanceProductID: String { "io.mobilife.snoozepay.balance.499" }
-
     // MARK: - Setup
 
     /// Build the no-balance stack and the center «Баланса не осталось» block.
@@ -176,6 +172,8 @@ extension AlarmFiringViewController {
         // this pass with `canSnooze == false`. `exitSnoozedState` re-calls this
         // after clearing the flag, so the stack returns correctly on teardown.
         let showNoBalanceStack = needsNoBalance && !isSnoozedStateActive
+        // Balance and the next charge pick the pack; re-quote when they move (#652).
+        refreshNoBalanceCatalog()
         // Refresh the disabled card's hint + price each pass so progressive
         // alarms show the correct disabled value even after snoozeCount has
         // bumped the next penalty.
@@ -216,7 +214,8 @@ extension AlarmFiringViewController {
 
     // MARK: - Actions
 
-    /// Revalidate the offer and this VM's wallet before dispatching the fixed SKU.
+    /// Revalidate the offer and this VM's wallet before dispatching the pack the
+    /// button quotes — the minimal sufficient one, same as the sheet (#652).
     @objc func noBalanceApplePayTapped() {
         guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         let purchase = noBalancePurchase
@@ -234,8 +233,8 @@ extension AlarmFiringViewController {
         chooseAmountLink?.isEnabled = false
         if let dispatch = purchase.dispatch {
             purchase.observeFeedback()
-            dispatch(Self.noBalanceProductID)
-        } else if let product = StoreKitService.shared.products.first(where: { $0.id == Self.noBalanceProductID }) {
+            dispatch(offer.productID)
+        } else if let product = StoreKitService.shared.products.first(where: { $0.id == offer.productID }) {
             purchase.observeFeedback()
             Task { @MainActor in await StoreKitService.shared.purchase(product) }
         } else {

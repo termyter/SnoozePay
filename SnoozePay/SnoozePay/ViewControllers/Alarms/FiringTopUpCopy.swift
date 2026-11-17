@@ -29,4 +29,17 @@ enum FiringTopUpCopy {
         guard coverage.allSatisfy({ $0 != nil }) else { return sorted.first?.productID }
         return zip(sorted, coverage).first { $0.1 == true }?.0.productID ?? sorted.last?.productID
     }
+
+    /// The pack both firing entry points pick (#652): the amount sheet opens on
+    /// it and the direct no-balance CTA buys it. Offers the wallet refuses only
+    /// stand in when nothing else exists, so the tap can explain the refusal.
+    static func preselectedOffer(
+        offers: [TopUpOffer], balance: Double, price: Double, walletCurrency: Currency,
+        acceptsPurchase: (Currency) -> Bool
+    ) -> TopUpOffer? {
+        let compatible = offers.filter { acceptsPurchase($0.currency) }
+        let productID = recommendedProductID(offers: compatible, balance: balance, price: price,
+                                             walletCurrency: walletCurrency) ?? offers.first?.productID
+        return offers.first { $0.productID == productID }
+    }
 }
