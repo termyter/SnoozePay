@@ -691,9 +691,12 @@ final class AlarmFiringViewModel {
         }
         do { try snoozeSessions?.commitOccurrenceFinish(ticket) } catch { return finishContextFailed(error) }
         hasBeenDismissed = true
-        // A request older than this screen belongs to an earlier ring that
-        // this finish merely settles; this ring's wake is now.
-        let wakeAt = ticket.wakeAt.flatMap { $0 >= firingStartedAt ? $0 : nil } ?? Date()
+        // A request from this ring keeps its instant, even when a recreated
+        // screen (relaunch, re-present) resumes it. One older than this ring's
+        // `wakeWindow` belongs to an earlier daily/weekly ring (>= 24 h back)
+        // that this finish merely settles; this ring's wake is now.
+        let windowStart = firingStartedAt.addingTimeInterval(-Self.wakeWindow)
+        let wakeAt = ticket.wakeAt.flatMap { $0 >= windowStart ? $0 : nil } ?? Date()
         wakeStore.recordWake(on: wakeAt)
         onStateChanged?()
         return .success(.completedNow)

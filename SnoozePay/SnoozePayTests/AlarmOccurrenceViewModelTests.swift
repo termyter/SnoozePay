@@ -440,6 +440,23 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
         XCTAssertEqual(fixture.wakes.wakeTimes(), [requested])
     }
 
+    func testRecreatedScreenOnTheSameRingResumesWithTheFirstRequestInstant() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        fixture.backend.occurrenceFinishResult = .failure(.nativeUnconfirmed)
+        XCTAssertEqual(fixture.model().dismiss(), .failure(.nativeUnconfirmed))
+        let ticket = try XCTUnwrap(fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        let requested = try XCTUnwrap(ticket.wakeAt)
+
+        // Relaunch / re-present while the same ring is still alerting.
+        let recreated = fixture.model()
+        XCTAssertLessThanOrEqual(requested, recreated.firingStartedAt)
+        fixture.backend.occurrenceFinishResult = .success(())
+        XCTAssertEqual(recreated.dismiss(), .success(.completedNow))
+
+        XCTAssertEqual(fixture.wakes.wakeTimes(), [requested])
+    }
+
     func testEarlierRingsUntrackedRequestSettledByAFreshRingRecordsTodaysWake() throws {
         let fixture = try OccurrenceVMFixture()
         defer { fixture.close() }
