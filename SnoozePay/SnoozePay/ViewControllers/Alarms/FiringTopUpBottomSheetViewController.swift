@@ -82,6 +82,13 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// Unknown arithmetic never produces an affordability claim.
     private let snoozePrice: Double
 
+    /// The currency `snoozePrice` is denominated in — the ring's locked price
+    /// currency (#1142); `nil` reads the wallet's, as before.
+    private let snoozePriceCurrency: Currency?
+
+    /// Coverage of the next charge is reckoned in the price's own currency.
+    private var chargeCurrency: Currency { snoozePriceCurrency ?? balance.walletCurrency }
+
     private let balance: BalanceService
 
     /// Auto-resume timeout. Spec is 60 seconds. Stored as a constant so the
@@ -284,6 +291,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     init(
         presets: [Preset] = defaultPresets,
         snoozePrice: Double = 0,
+        snoozePriceCurrency: Currency? = nil,
         balance: BalanceService = .shared,
         notificationCenter: NotificationCenter = .default,
         scheduleSuccessDismissal: @escaping TopUpSuccessDismissal = { delay, action in
@@ -310,6 +318,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         self.pauseLifecycle = pauseLifecycle
         self.preflightRefusal = preflightRefusal
         self.snoozePrice = snoozePrice
+        self.snoozePriceCurrency = snoozePriceCurrency
         self.selectedProductID = presets.first?.productID
         self.remainingSeconds = 60
         super.init(nibName: nil, bundle: nil)
@@ -602,7 +611,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         if !hasUserSelection && canPurchase {
             let offered = Self.offeredPresets(
                 defaults: defaultRows, offer: catalogueOffer(for:), balance: balance.balance, price: snoozePrice,
-                walletCurrency: balance.walletCurrency, acceptsPurchase: balance.acceptsPurchase(in:)
+                walletCurrency: chargeCurrency, acceptsPurchase: balance.acceptsPurchase(in:)
             )
             if offered.map(\.productID) != presets.map(\.productID) {
                 presets = offered
@@ -613,7 +622,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         if !hasUserSelection && canPurchase {
             selectedProductID = FiringTopUpCopy.preselectedOffer(
                 offers: offers, balance: balance.balance, price: snoozePrice,
-                walletCurrency: balance.walletCurrency, acceptsPurchase: balance.acceptsPurchase(in:)
+                walletCurrency: chargeCurrency, acceptsPurchase: balance.acceptsPurchase(in:)
             )?.productID ?? presets.first?.productID
         }
         for (row, preset) in zip(presetRows, presets) {
@@ -622,7 +631,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
                        displayPrice: offer?.displayPrice ?? "—", selected: preset.productID == selectedProductID,
                        insufficient: offer.map {
                            FiringTopUpCopy.coversNextCharge(offer: $0, balance: balance.balance, price: snoozePrice,
-                                                          walletCurrency: balance.walletCurrency) == false
+                                                          walletCurrency: chargeCurrency) == false
                        } ?? false)
         }
         rebuildApplePayButton()

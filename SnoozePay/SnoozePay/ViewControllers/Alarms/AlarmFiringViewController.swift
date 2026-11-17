@@ -435,7 +435,7 @@ class AlarmFiringViewController: UIViewController {
         if let snooze = snoozeCTA {
             snooze.update(
                 price: viewModel.currentPenalty,
-                currency: viewModel.walletCurrency,
+                currency: viewModel.priceCurrency,
                 minutes: viewModel.alarm.snoozeMinutes,
                 hint: snoozeHintText()
             )
@@ -495,15 +495,16 @@ class AlarmFiringViewController: UIViewController {
     /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:242` contains "максимум").
     func snoozeHintText() -> String? {
         guard viewModel.isProgressiveActive else { return nil }
-        // Probe the alarm's penalty schedule one step ahead. The double-snooze
-        // rule produces `currentPenalty * 2`, but we route through the model
-        // so caps / custom schedules pick up the right "next" value.
+        // Probe the ring's locked price one step ahead, in that price's own
+        // currency (#1142): the same ladder the CTA and the charge read, so a
+        // dollar CTA is never followed by a rouble "next" figure.
         let nextCount = viewModel.snoozeCount + 2
         if viewModel.alarm.isPenaltyAtCeiling(forSnoozeCount: nextCount) {
             return Localized.text("firing.hint.max_price")
         }
-        let next = viewModel.alarm.penalty(forSnoozeCount: nextCount)
-        guard let nextText = Self.quotedPriceText(next, currency: viewModel.walletCurrency) else { return nil }
+        // A stranded or unresolved price quotes no number at all.
+        guard !viewModel.isLockedPriceStranded,
+              let nextText = viewModel.priceText(forSnoozeCount: nextCount) else { return nil }
         // Lowercase «следующее откладывание: …» per
         // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:241` contains "следующее откладывание".
         return Localized.format("firing.hint.next_price", nextText)
@@ -573,9 +574,9 @@ class AlarmFiringViewController: UIViewController {
         let tone: SPDawnBackgroundView.Tone
         if !viewModel.canSnooze {
             tone = .drained
-        } else if viewModel.isProgressiveActive && viewModel.currentPenalty >= 200 {
-            // Tense once the live snooze price crosses 200 ₽, not at the
-            // intensity midpoint:
+        } else if viewModel.isPriceTense {
+            // Tense once the live snooze price reaches the scale's top tier
+            // (200 ₽ in roubles), not at the intensity midpoint:
             // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:185` contains "price >= 200".
             tone = .tense
         } else {

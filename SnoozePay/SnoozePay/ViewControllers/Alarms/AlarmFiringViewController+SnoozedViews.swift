@@ -97,7 +97,7 @@ extension AlarmFiringViewController {
             $0.removeFromSuperview()
         }
         let accent = firingPalette?.accent ?? .white
-        let currency = viewModel.walletCurrency
+        let currency = viewModel.priceCurrency
         for step in viewModel.ladderSteps {
             row.addArrangedSubview(makeLadderColumn(step: step, accent: accent, currency: currency))
         }

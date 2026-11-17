@@ -239,7 +239,7 @@ extension AlarmFiringViewController {
     func makeLastChargeLabel() -> UILabel? {
         let charge = viewModel.lastChargeAmount
         guard charge != 0 else { return nil }
-        let currency = viewModel.walletCurrency
+        let currency = viewModel.priceCurrency
         let formatted = MoneyFormatter.string(charge, currency: currency)
         let known = formatted != "—" && formatted != MoneyFormatter.string(0.0, currency: currency)
         let label = UILabel()

@@ -186,6 +186,37 @@ extension AlarmFiringViewModel {
     }
 }
 
+// MARK: - Display (#1142)
+
+extension AlarmFiringViewModel {
+
+    /// The currency every snooze price on the screen is shown in: the locked
+    /// price's own. A pristine wallet on a dollar storefront reads "$0.99",
+    /// never "0,99 ₽". A wallet without a context keeps its own currency.
+    var priceCurrency: Currency { lockedPriceContext?.currency ?? walletCurrency }
+
+    /// The `count`-th snooze price (1-based) formatted in its own currency, or
+    /// `nil` when it does not resolve — nothing numeric is shown then.
+    func priceText(forSnoozeCount count: Int) -> String? {
+        guard let price = price(forSnoozeCount: count),
+              let amount = MoneyDecimal.double(price.amount) else { return nil }
+        return MoneyFormatter.quotedString(amount, currency: price.currency)
+    }
+
+    /// The Dawn background turns tense once the next price reaches the top tier
+    /// of the ring's own scale: 200 ₽ in roubles (`SnoozePriceScale.rouble`, so
+    /// every rouble amount keeps today's `>= 200` result), the third-cheapest
+    /// pack elsewhere. Compared in the price's currency; a wallet without a
+    /// context keeps the bare 200. `false` while progression is unavailable.
+    var isPriceTense: Bool {
+        guard isProgressiveActive else { return false }
+        guard let context = lockedPriceContext else { return currentPenalty >= 200 }
+        guard case .scale(let scale) = context, let price = currentPrice,
+              let top = scale.price(for: .high) else { return false }
+        return (price >= top) ?? false
+    }
+}
+
 // MARK: - Price context seam
 
 /// A wallet that knows its snooze-price context. `BalanceService` is one; a
