@@ -34,6 +34,32 @@ final class AppDelegateSnoozeDiagnosticTests: XCTestCase {
         )
     }
 
+    /// #1136: its own line, not "insufficient funds".
+    func testCurrencyMismatch_actualHandlerNamesBothCurrenciesWithoutPostingABanner() throws {
+        try assertOutcome(
+            .currencyMismatch(price: Currency(code: "USD")!, wallet: .rub), level: .default,
+            message: "SNOOZE_ACTION: price in USD, wallet in RUB — snooze skipped, nothing charged"
+        )
+    }
+
+    /// #1136: logged, and the one refusal here that posts the lost-snooze banner.
+    func testPriceUnavailable_actualHandlerLogsTheErrorAndPostsTheBanner() throws {
+        try assertOutcome(
+            .priceUnavailable(currency: Currency(code: "USD")!), level: .error,
+            message: "SNOOZE_ACTION: no snooze price in USD — snooze skipped, nothing charged — posting banner",
+            postsBanner: true
+        )
+    }
+
+    /// #1136: a price that resolved but cannot be debited is a defect, not an
+    /// unloaded catalogue, so no "open the app" banner.
+    func testPriceNotRepresentable_actualHandlerLogsTheErrorWithoutPostingABanner() throws {
+        try assertOutcome(
+            .priceNotRepresentable(currency: Currency(code: "USD")!), level: .error,
+            message: "SNOOZE_ACTION: snooze price in USD not chargeable — snooze skipped, nothing charged"
+        )
+    }
+
     func testScheduled_actualHandlerReportsItsPublicCountAndChargeWithoutPostingABanner() throws {
         try assertOutcome(
             .scheduled(newSnoozeCount: 3, charged: 2.5), level: .info,
@@ -47,7 +73,7 @@ final class AppDelegateSnoozeDiagnosticTests: XCTestCase {
 
     private func assertOutcome(
         _ outcome: AlarmFiringCoordinator.SnoozeOutcome, level: OSLogType, message: String,
-        file: StaticString = #filePath, line: UInt = #line
+        postsBanner: Bool = false, file: StaticString = #filePath, line: UInt = #line
     ) throws {
         let suite = "test.snoozeOutcomeDiagnostic.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite), file: file, line: line)
@@ -67,7 +93,9 @@ final class AppDelegateSnoozeDiagnosticTests: XCTestCase {
         XCTAssertEqual(lines.first?.category, .appDelegate, file: file, line: line)
         XCTAssertEqual(lines.first?.level, level, file: file, line: line)
         XCTAssertEqual(lines.first?.message, message, file: file, line: line)
-        XCTAssertTrue(poster.requests.isEmpty, "these outcomes do not post a failure banner", file: file, line: line)
+        XCTAssertEqual(
+            poster.requests.count, postsBanner ? 1 : 0, "failure banners posted", file: file, line: line
+        )
         XCTAssertTrue(
             warnings.pending.isEmpty, "these outcomes do not create critical warnings", file: file, line: line
         )

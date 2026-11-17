@@ -31,6 +31,8 @@ import XCTest
 /// that, most are pinned where the user reads them:
 ///
 ///  * the three banners — `AppBannerPostingTests`, off the posted request;
+///  * `alarm_failure.snooze.price_unavailable` (#1136) — off the posted request in
+///    `AppBannerPostingTests.testPriceUnavailableOutcome_postsTheSnoozeBannerSayingToOpenTheApp`;
 ///  * `alarm_failure.corrupted.title` — `AppDelegateAlertTests`, off the
 ///    presented alert;
 ///  * the three `tab.*` labels — `testTabBarItemsCarryTheShippedWords` below,
@@ -73,6 +75,7 @@ final class AppDelegateCopyKeysTests: XCTestCase {
         "alarm_failure.snooze.body_refunded": "Установите запасной — %@",
         "alarm_failure.snooze.body_charged":
             "Установите запасной. Списание не возвращено — обратитесь в поддержку. %@",
+        "alarm_failure.snooze.price_unavailable": "цена откладывания ещё не загрузилась. Откройте SnoozePay.",
         "alarm_failure.corrupted.title": "Будильник",
         "alarm_failure.corrupted.message":
             "Будильник прозвенел, но его данные повреждены и экран не загрузился. Подробности: %@",
@@ -106,6 +109,7 @@ final class AppDelegateCopyKeysTests: XCTestCase {
         "alarm_failure.snooze.title",
         "alarm_failure.snooze.body_refunded",
         "alarm_failure.snooze.body_charged",
+        "alarm_failure.snooze.price_unavailable",
         "alarm_failure.corrupted.title",
         "alarm_failure.corrupted.message",
         "alarm_failure.corrupted.message_fallback",
