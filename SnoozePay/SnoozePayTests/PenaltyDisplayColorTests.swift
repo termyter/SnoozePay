@@ -1,33 +1,18 @@
 import XCTest
 @testable import SnoozePay
 
-/// The snooze price numeral's ink, and the price paid for it.
+/// The snooze price's ink — one treatment on both screens that show it (#683).
 ///
-/// `AppColors.penaltyAmountDisplay32` is a `warnFill*` value used as text,
-/// which the token doctrine in `AppColors.swift` otherwise forbids.
+/// Canon paints the price `var(--sp-warn-400)` on the alarm form
+/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:240`) and
+/// on the Settings row (`SPMore2.jsx:99`). Both call sites now take
+/// `AppColors.snoozePriceInk`, and these tests read the colour off the REAL
+/// rendered views rather than off the token, so a call site that drifts to a
+/// different token goes red here even if the token itself is untouched.
 ///
-/// It is NOT "the canon won" — an earlier version of this header said so, and
-/// that is not what happened. Canon paints the numeral `var(--sp-warn-400)`
-/// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:240` contains "--sp-warn-400")
-/// on a dark surface; the app renders it on white. Three
-/// candidate inks, all measured against white:
-///
-/// | ink | ratio on white |
-/// |---|---|
-/// | `#FFB84D` (the literal canon value) | 1.719:1 |
-/// | `#F59E0B` (what this token resolves to) | 2.148:1 |
-/// | `#966107` (the bronze it replaced) | 5.237:1 |
-///
-/// So this is a THIRD value, chosen by PM decision (#673) because the amount,
-/// the preset chip under it and the slider track above it read as one amber
-/// family and the largest of the three was the odd one out. It buys that
-/// family at a real cost in contrast, and the cost is pinned below rather
-/// than left to be re-derived as "probably fine".
-///
-/// These tests exist so that the trade-off cannot rot quietly. They pin the
-/// tie to the chip (so the two can never drift apart again) and they pin the
-/// contrast ratio the exception actually costs (so nobody re-derives it as
-/// "probably fine").
+/// History: #673 put the form on `warnFill500` (amber, 2.15:1 on white) while
+/// Settings stayed on `warn400` (bronze, 5.24:1). That split is what #683
+/// reported and what the cross-screen assertion below forbids.
 @MainActor
 final class PenaltyDisplayColorTests: XCTestCase {
 
@@ -39,107 +24,62 @@ final class PenaltyDisplayColorTests: XCTestCase {
         super.tearDown()
     }
 
-    /// The amount and the selected preset chip are the same amber, in both
-    /// themes. This is the whole point of the token: one family, one value.
-    func testPriceInkMatchesTheSelectedPresetChip() {
+    /// The form's amount, the form's `₽`, the Settings value and the Settings
+    /// glyph all resolve to the same colour, in light and in dark.
+    func testFormAndSettingsPaintThePriceWithOneInk_inBothThemes() throws {
+        let cell = hostedCell(amount: 50)
+        let field = try XCTUnwrap(descendant(UITextField.self, in: cell))
+        let suffix = try XCTUnwrap(descendants(UILabel.self, in: cell).first { $0.text == "₽" })
+
+        let (settings, priceText) = makeSettings()
+        let row = settings.makeFinanceCell(at: IndexPath(
+            row: SettingsViewController.FinanceRow.defaultPrice.rawValue,
+            section: try XCTUnwrap(settings.visibleSections.firstIndex(of: .finance))
+        ))
+        let value = try XCTUnwrap(
+            descendants(UILabel.self, in: row).first { $0.text == priceText },
+            "the Settings price value is gone"
+        )
+        let glyph = try XCTUnwrap(descendant(UIImageView.self, in: row))
+
         for style in [UIUserInterfaceStyle.light, .dark] {
-            XCTAssertEqual(
-                hex(AppColors.penaltyAmountDisplay32, style),
-                hex(AppColors.warnFill500, style),
-                "price ink and the selected chip's fill diverged in \(name(style))"
+            let expected = hex(AppColors.snoozePriceInk, style)
+            XCTAssertEqual(hex(try XCTUnwrap(field.textColor), style), expected, "form amount, \(name(style))")
+            XCTAssertEqual(hex(try XCTUnwrap(suffix.textColor), style), expected, "form ₽, \(name(style))")
+            XCTAssertEqual(hex(try XCTUnwrap(value.textColor), style), expected, "Settings value, \(name(style))")
+            XCTAssertEqual(hex(glyph.tintColor, style), expected, "Settings glyph, \(name(style))")
+        }
+    }
+
+    /// The token is the canon `--sp-warn-400` in dark and its text-safe
+    /// derivation in light — the same values as `warn400`, not a new colour.
+    func testPriceInkIsWarn400_canonInDark_bronzeInLight() {
+        XCTAssertEqual(hex(AppColors.snoozePriceInk, .dark), "#FFB84D", "canon --sp-warn-400")
+        XCTAssertEqual(hex(AppColors.snoozePriceInk, .light), "#966107")
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            XCTAssertEqual(hex(AppColors.snoozePriceInk, style), hex(AppColors.warn400, style))
+        }
+    }
+
+    /// Both rows sit on `bg1`. The price is body-size text in Settings (14pt)
+    /// and the sole carrier of the value on the form at non-preset amounts, so
+    /// it has to clear 4.5:1 in both themes — which the #673 amber did not.
+    func testPriceInkClearsBodyTextOnTheCard_inBothThemes() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let ratio = contrastRatio(
+                AppColors.snoozePriceInk.resolved(style),
+                AppColors.bg1.resolved(style)
+            )
+            XCTAssertGreaterThanOrEqual(
+                ratio,
+                4.5,
+                "snooze price ink is \(String(format: "%.2f", ratio)):1 on bg1 in \(name(style))"
             )
         }
     }
 
-    /// `warnFill*` is flat by design, so the amount reads identically in both
-    /// themes — matching `tokens.css`, which never overrides the warn ramp in
-    /// its `[data-theme="light"]` block.
-    func testPriceInkIsTheSameAmberInBothThemes() {
-        XCTAssertEqual(
-            hex(AppColors.penaltyAmountDisplay32, .light),
-            hex(AppColors.penaltyAmountDisplay32, .dark),
-            "the canon warn ramp is theme-independent; penaltyAmountDisplay32 must be too"
-        )
-    }
-
-    /// The cost of the exception, stated rather than assumed.
-    ///
-    /// On the light card the amount measures ~2.15:1, below both 4.5:1 and the
-    /// 3:1 large-text threshold. The mitigation is that the same number is
-    /// usually also carried by the selected preset chip, whose ink is
-    /// `fgOnWarn` — the assertion below holds that second carrier to the full
-    /// 4.5:1 so the redundancy can't be removed without this test going red.
-    ///
-    /// ⚠️ "Usually" is doing real work in that sentence, and
-    /// `testTheChipOnlyCarriesTheValueOnPresetAmounts` pins exactly where it
-    /// stops being true.
-    func testTheLightModeShortfallIsPinnedAndTheChipCarriesTheValue() {
-        let onCard = contrastRatio(
-            AppColors.penaltyAmountDisplay32.resolved(.light),
-            AppColors.bg1.resolved(.light)
-        )
-        XCTAssertEqual(
-            onCard,
-            2.15,
-            accuracy: 0.05,
-            """
-            penaltyAmountDisplay32 on bg1 measures \(String(format: "%.2f", onCard)):1. If \
-            this moved UP past 3.0 the exception is no longer needed and the \
-            comment in AppColors should be retired; if it moved DOWN the \
-            regression is worse than the one #673 accepted
-            """
-        )
-
-        let chipInk = contrastRatio(
-            AppColors.fgOnWarn.resolved(.light),
-            AppColors.warnFill500.resolved(.light)
-        )
-        XCTAssertGreaterThanOrEqual(
-            chipInk,
-            4.5,
-            """
-            The chip is the accessible carrier of the amount — it measures \
-            \(String(format: "%.2f", chipInk)):1 and must stay at 4.5:1 or \
-            better, or the price has no readable representation at all
-            """
-        )
-    }
-
-    // MARK: - Where the mitigation runs out
-
-    /// The honest boundary of the accessibility argument above.
-    ///
-    /// The field is a free `numberPad` with a 1 ₽ floor, and a chip lights only
-    /// on an exact preset match (`abs(preset - currentAmount) < .ulpOfOne`).
-    /// So for 137 ₽ there is no second carrier at all: the number exists on
-    /// screen exactly once, at 2.15:1.
-    ///
-    /// This test does not assert that that is acceptable — it asserts that it
-    /// is TRUE, so the trade-off in `AppColors.penaltyAmountDisplay32` cannot be read as
-    /// broader than it is. If the redundancy is ever made unconditional (a
-    /// chip that reflects any amount, a second readout), this test goes red and
-    /// the caveat can come out of the comment.
-    func testTheChipOnlyCarriesTheValueOnPresetAmounts() {
-        XCTAssertEqual(
-            selectedChipCount(forAmount: 50),
-            1,
-            "a preset amount must light its chip — that is the accessible carrier"
-        )
-        XCTAssertEqual(
-            selectedChipCount(forAmount: 137),
-            0,
-            """
-            a chip lit for a non-preset amount would mean the mitigation is \
-            unconditional — good news, but the caveat in AppColors.penaltyAmountDisplay32 \
-            then needs rewriting rather than leaving as-is
-            """
-        )
-    }
-
-    /// The branch this PR actually edits: the amount and its `₽` are repainted
-    /// together when the typed value stops validating, and back again when it
-    /// starts. A regression that left the restoring half on the old bronze
-    /// would be invisible without this.
+    /// The amount and its `₽` are repainted together when the typed value
+    /// stops validating, and back to the price ink when it starts again.
     func testInvalidInputRepaintsBothGlyphsAndValidInputRestoresThem() throws {
         let cell = hostedCell(amount: 50)
         let field = try XCTUnwrap(descendant(UITextField.self, in: cell))
@@ -149,7 +89,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
         )
 
         assertSameInk(field.textColor, suffix.textColor, "valid amount")
-        XCTAssertEqual(hex(try XCTUnwrap(field.textColor), .light), hex(AppColors.penaltyAmountDisplay32, .light))
+        XCTAssertEqual(hex(try XCTUnwrap(field.textColor), .light), hex(AppColors.snoozePriceInk, .light))
 
         field.text = ""
         field.sendActions(for: .editingChanged)
@@ -165,7 +105,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
         assertSameInk(field.textColor, suffix.textColor, "restored amount")
         XCTAssertEqual(
             hex(try XCTUnwrap(field.textColor), .light),
-            hex(AppColors.penaltyAmountDisplay32, .light),
+            hex(AppColors.snoozePriceInk, .light),
             "the restoring half of the branch kept an old ink"
         )
     }
@@ -182,14 +122,6 @@ final class PenaltyDisplayColorTests: XCTestCase {
         )
     }
 
-    private func selectedChipCount(forAmount amount: Double) -> Int {
-        let cell = hostedCell(amount: amount)
-        let selected = hex(AppColors.warnFill500, .light)
-        return descendants(UIButton.self, in: cell)
-            .filter { $0.backgroundColor.map { hex($0, .light) } == selected }
-            .count
-    }
-
     private func hostedCell(amount: Double) -> PenaltyCell {
         let cell = PenaltyCell(style: .default, reuseIdentifier: nil)
         cell.configure(amount: amount, currency: .rub)
@@ -202,6 +134,27 @@ final class PenaltyDisplayColorTests: XCTestCase {
         window.setNeedsLayout()
         window.layoutIfNeeded()
         return cell
+    }
+
+    /// A Settings screen on an isolated defaults suite with a frozen ₽ wallet,
+    /// plus the exact text its price row renders.
+    private func makeSettings() -> (SettingsViewController, String) {
+        let suite = "PenaltyDisplayColorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let currencyStore = WalletCurrencyStore(defaults: defaults)
+        _ = currencyStore.freeze(.rub)
+        let alarmDefaults = AlarmDefaults(defaults: defaults)
+        alarmDefaults.penaltyAmount = 50
+        let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+        let sut = SettingsViewController(
+            themeService: ThemeService(defaults: defaults),
+            alarmDefaults: alarmDefaults,
+            referralService: ReferralService(defaults: defaults, balanceService: wallet),
+            walletCurrencyStore: currencyStore
+        )
+        sut.loadViewIfNeeded()
+        return (sut, MoneyFormatter.string(Double(50), currency: .rub))
     }
 
     private func descendant<T: UIView>(_ type: T.Type, in root: UIView) -> T? {

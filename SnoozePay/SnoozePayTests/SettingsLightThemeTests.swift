@@ -343,19 +343,19 @@ final class SettingsLightThemeTests: XCTestCase {
 
     // MARK: - Row accents on the card
 
-    /// The snooze-price row tints its glyph and value with `warn400`. Cards are
+    /// The snooze-price row tints its glyph and value with `snoozePriceInk` (= `warn400`, #683). Cards are
     /// `bg1`, and after #489 the light `warn400` is bronze — check it still
     /// clears the body-text bar there, since `AppColorsContrastTests` only
     /// pins the scale against the worse `bg2` surface.
     func testSnoozePriceAccent_readsOnTheCard_inBothThemes() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let ratio = contrastRatio(
-                AppColors.warn400.resolved(style),
+                AppColors.snoozePriceInk.resolved(style),
                 AppColors.bg1.resolved(style)
             )
             XCTAssertGreaterThanOrEqual(
                 ratio, minimumContrast,
-                "warn400 is \(String(format: "%.2f", ratio)):1 on the card in \(style.debugName)"
+                "snoozePriceInk is \(String(format: "%.2f", ratio)):1 on the card in \(style.debugName)"
             )
         }
     }
