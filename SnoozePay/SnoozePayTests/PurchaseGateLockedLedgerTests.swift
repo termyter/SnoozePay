@@ -53,9 +53,9 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
                        StoreKitService.ledgerLockedFailureMessage)
     }
 
-    /// An established wallet answers `acceptsPurchase` without reading the
-    /// ledger, so nothing has latched the repository yet: the seam must read.
-    func testUnreadableLedger_establishedWallet_otherCurrency_isALockedLedgerWithoutAPriorRead() {
+    /// An established wallet refuses other currencies without looking at the
+    /// ledger; the seam still names the ledger first.
+    func testUnreadableLedger_establishedWallet_otherCurrency_isALockedLedger() {
         XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(usd), .frozen(usd))
         defaults.set(unreadable, forKey: "stored_transactions")
         let service = makeService()

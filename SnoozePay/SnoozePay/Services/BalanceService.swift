@@ -489,11 +489,9 @@ final class BalanceService {
     /// the ledger write and is refused there, as before.
     func purchaseRefusal(in currency: Currency) -> PurchaseRefusal? {
         guard !acceptsPurchase(in: currency) else { return nil }
-        // A load, not `isReadable` alone: the repository only learns the blob
-        // is undecodable when something reads it, and an established wallet
-        // answers `acceptsPurchase` without reading.
-        let readable = queue.sync { ledgerStore.isReadable && (try? ledgerStore.loadEntries()) != nil }
-        guard readable else { return .ledgerUnreadable }
+        // `init` reads the balance, so an undecodable ledger has already
+        // latched `isReadable` by the time anyone asks.
+        guard queue.sync(execute: { ledgerStore.isReadable }) else { return .ledgerUnreadable }
         return .foreignCurrency(wallet: walletCurrency, purchase: currency)
     }
 
