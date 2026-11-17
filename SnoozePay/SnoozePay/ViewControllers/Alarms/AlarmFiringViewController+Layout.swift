@@ -139,7 +139,7 @@ extension AlarmFiringViewController {
         // Two-tier typography — muted «Баланс» label + bold value (#288).
         pill.setBalance(
             label: Localized.text("firing.pill.balance"),
-            value: MoneyFormatter.string(balance, currency: viewModel.walletCurrency)
+            value: MoneyFormatter.string(balance, currency: viewModel.balanceCurrency)
         )
         pill.translatesAutoresizingMaskIntoConstraints = false
         balancePill = pill

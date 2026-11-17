@@ -24,6 +24,11 @@ final class AlarmsListViewModel {
 
     private(set) var alarms: [Alarm] = []
     private(set) var balance: Double = 0
+    /// The wallet's snooze-price context (#1147), read from the service at
+    /// init, on `loadData()` and whenever the balance, the wallet currency or
+    /// the cached storefront scale changes. Cached so a row render does not
+    /// take the wallet's queue once per cell.
+    private(set) var priceContext: SnoozePriceContext
 
     // MARK: - Callbacks (ViewController binds these)
 
@@ -72,6 +77,12 @@ final class AlarmsListViewModel {
     /// (the ViewController owning it may outlive the VM in edge cases).
     private var balanceObserver: NSObjectProtocol?
 
+    /// Observer tokens for `walletCurrencyChangedNotification` and
+    /// `snoozePriceScaleChangedNotification` (#1147): either can move the
+    /// price context without a balance change, so the rows and the balance
+    /// currency would otherwise stay stale until the next appearance.
+    private var priceContextObservers: [NSObjectProtocol] = []
+
     /// Observer token for `balanceCorruptedNotification` — covers corruption
     /// that latches while this VM is alive. Since #851 the service posts on the
     /// next main-queue pass, so even the `BalanceService.init` probe fired by
@@ -104,6 +115,7 @@ final class AlarmsListViewModel {
         self.transactionRepository = transactionRepository
         self.notificationCenter = notificationCenter
         self.alarmDefaults = alarmDefaults
+        self.priceContext = balanceService.priceContext
         // Default the monitor onto the SAME center that was injected —
         // building it with a fresh `.default` would make every test that
         // carefully isolates `notificationCenter:` still observe process-global
@@ -126,7 +138,21 @@ final class AlarmsListViewModel {
             guard let self,
                   let newBalance = note.userInfo?[BalanceService.balanceUserInfoKey] as? Double else { return }
             self.balance = newBalance
+            // A first balance move ends a pristine wallet: its context leaves
+            // the storefront scale.
+            self.priceContext = self.balanceService.priceContext
             self.onBalanceUpdated?(newBalance)
+        }
+
+        priceContextObservers = [
+            BalanceService.walletCurrencyChangedNotification,
+            SnoozePriceScaleStore.snoozePriceScaleChangedNotification
+        ].map { name in
+            notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.priceContext = self.balanceService.priceContext
+                self.onBalanceUpdated?(self.balance)
+            }
         }
 
         corruptionObserver = notificationCenter.addObserver(
@@ -147,6 +173,7 @@ final class AlarmsListViewModel {
         if let token = corruptionObserver {
             notificationCenter.removeObserver(token)
         }
+        priceContextObservers.forEach { notificationCenter.removeObserver($0) }
     }
 
     // MARK: - Load
@@ -179,6 +206,7 @@ final class AlarmsListViewModel {
             // Non-typed decode error — swallow to match the alarm-fetch fallback.
         }
         balance = balanceService.balance
+        priceContext = balanceService.priceContext
         onAlarmsUpdated?()
         onBalanceUpdated?(balance)
         surfacePendingBalanceCorruption()
@@ -421,8 +449,17 @@ final class AlarmsListViewModel {
 
     var walletCurrency: Currency { balanceService.walletCurrency }
 
+    /// The currency the balance is shown in: `BalanceService.displayCurrency`
+    /// (#1147). It differs from `walletCurrency` only for a pristine wallet,
+    /// whose zero reads in the storefront's currency instead of roubles; a
+    /// wallet with history shows its ledger currency.
+    var balanceCurrency: Currency { priceContext.currency }
+
+    /// The currency row prices are quoted in — the context's, like the price.
+    var priceCurrency: Currency { priceContext.currency }
+
     var formattedBalance: String {
-        MoneyFormatter.string(balance, currency: walletCurrency)
+        MoneyFormatter.string(balance, currency: balanceCurrency)
     }
 
     // MARK: - Affordability hint
@@ -558,7 +595,7 @@ final class AlarmsListViewModel {
     /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
         guard alarms.indices.contains(index) else { return "" }
-        let price = formattedAlarmPrice(alarms[index].penaltyAmount)
+        let price = formattedAlarmPrice(alarms[index])
         guard price != "—" else { return price }
         return Localized.format("alarms.penalty", price)
     }
@@ -644,17 +681,24 @@ final class AlarmsListViewModel {
         return dayList
     }
 
-    /// Price pill text uses the injected wallet currency, like the balance.
+    /// Price pill text: the first snooze's price resolved in `priceContext`
+    /// and shown in its own currency (#1147). A rouble alarm's amount resolves
+    /// to itself, so rouble rows read exactly as before.
     func alarmPriceText(at index: Int) -> String {
         guard alarms.indices.contains(index) else { return "" }
-        return formattedAlarmPrice(alarms[index].penaltyAmount)
+        return formattedAlarmPrice(alarms[index])
     }
 
-    /// A positive price that rounds to the currency's zero display is unknown,
-    /// rather than a promise of a free snooze. Stored amounts are untouched.
-    private func formattedAlarmPrice(_ amount: Double) -> String {
-        let text = MoneyFormatter.string(amount, currency: walletCurrency)
-        if amount > 0, text == MoneyFormatter.string(0.0, currency: walletCurrency) {
+    /// `.unavailable` (or a price the resolver refuses) is the unpriced "—",
+    /// never a number in another currency. A positive price that rounds to the
+    /// currency's zero display is unknown too, rather than a promise of a free
+    /// snooze. Stored amounts are untouched.
+    private func formattedAlarmPrice(_ alarm: Alarm) -> String {
+        guard let price = SnoozePriceResolver.resolve(
+            alarm.price, snoozeCount: 1, isProgressive: alarm.progressiveScale, in: priceContext
+        ) else { return "—" }
+        let text = MoneyFormatter.string(price.amount, currency: price.currency)
+        if price.amount > 0, text == MoneyFormatter.string(Decimal(0), currency: price.currency) {
             return "—"
         }
         return text

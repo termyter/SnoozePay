@@ -62,7 +62,8 @@ final class WalletViewController: UIViewController {
         let initialBalance = balanceService.balance
         balanceCard = SPBalanceCard(
             balance: Decimal(initialBalance),
-            currency: balanceService.walletCurrency,
+            // A pristine wallet's zero reads in the storefront currency (#1147).
+            currency: balanceService.displayCurrency,
             delta: nil,
             // Real hint from the first frame (#546). The placeholder this
             // replaced was a hardcoded «~17 откладываний» that the first
@@ -108,6 +109,13 @@ final class WalletViewController: UIViewController {
             name: BalanceService.balanceChangedNotification,
             object: nil
         )
+        // The balance figure's currency follows the price context of a
+        // pristine wallet (#1147), which moves on these two without a balance
+        // change. Same refresh as a balance move.
+        for name in [BalanceService.walletCurrencyChangedNotification,
+                     SnoozePriceScaleStore.snoozePriceScaleChangedNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(balanceChanged), name: name, object: nil)
+        }
         // Wallet is the primary balance/top-up surface — it must surface a
         // corrupt `user_balance` (negative / NaN / infinite), which clamps to
         // `0` in `BalanceService.balance` and would otherwise render as a
@@ -232,7 +240,10 @@ final class WalletViewController: UIViewController {
             forBalance: balance,
             alarms: AlarmRepository.shared.fetchAll()
         )
-        balanceCard.update(balance: decimal, currency: currency, delta: delta, hint: hint)
+        // The figure uses `displayCurrency` (a pristine wallet's zero in the
+        // storefront currency, #1147); the ledger rows above stay filtered by
+        // the wallet currency they were stamped with.
+        balanceCard.update(balance: decimal, currency: balanceService.displayCurrency, delta: delta, hint: hint)
         weeklyChart.update(values: WalletStats.weeklyPenaltyTotals(currency: currency, from: transactions))
         rebuildTxPreview(load: load)
     }

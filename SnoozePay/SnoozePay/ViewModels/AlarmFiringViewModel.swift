@@ -331,6 +331,19 @@ final class AlarmFiringViewModel {
 
     var balance: Double { balanceService.balance }
     var walletCurrency: Currency { balanceService.walletCurrency }
+
+    /// The currency the balance pill shows (#1147). An empty wallet that can
+    /// still take the locked price's currency shows its zero in that currency:
+    /// a pristine wallet reads "$0.00" next to "$0.99", the locked context
+    /// being `displayCurrency` as of ring start, so a catalogue arriving
+    /// mid-ring cannot split the screen into two currencies. For every other
+    /// empty wallet the locked currency already is `walletCurrency`. Money
+    /// held, or no context, → `walletCurrency`.
+    var balanceCurrency: Currency {
+        guard balance == 0, let locked = lockedPriceContext?.currency,
+              balanceService.acceptsPurchase(in: locked) else { return walletCurrency }
+        return locked
+    }
     func acceptsPurchase(in currency: Currency) -> Bool { balanceService.acceptsPurchase(in: currency) }
 
     var alarmName: String { alarm.name }
