@@ -19,10 +19,12 @@ final class TopUpDisplayAmountTests: XCTestCase {
 
     // MARK: - No-balance CTA
 
+    private static let sku499 = "io.mobilife.snoozepay.balance.499"
+
     func testNoBalanceCTA_rendersActualOfferSuffixAndExplicitButtonAccessibilityLabel() {
         for (code, price, display) in [("USD", "4.99", "$4.99"), ("EUR", "4.99", "4,99 €"),
                                        ("RUB", "499.49", "499,49 ₽")] {
-            let offer = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID,
+            let offer = TopUpOffer(productID: Self.sku499,
                                    price: Decimal(string: price)!, currencyCode: code, displayPrice: display)
             let button = directButton(offer: offer)
             XCTAssertTrue(button.isEnabled)
@@ -33,10 +35,11 @@ final class TopUpDisplayAmountTests: XCTestCase {
     }
 
     func testNoBalanceCTA_disablesMissingInvalidAndMismatchedOffersIncludingDirectAction() {
-        let invalid = TopUpOffer(productID: AlarmFiringViewController.noBalanceProductID, price: 0,
+        let invalid = TopUpOffer(productID: Self.sku499, price: 0,
                                  currencyCode: "USD", displayPrice: "$0.00")
-        let mismatched = TopUpOffer(productID: "io.mobilife.snoozepay.balance.149", price: 1.49,
-                                    currencyCode: "USD", displayPrice: "$1.49")
+        // Answered for every requested pack, but names a SKU outside the sheet's lineup (#652).
+        let mismatched = TopUpOffer(productID: "io.mobilife.snoozepay.balance.49", price: 0.49,
+                                    currencyCode: "USD", displayPrice: "$0.49")
         for offer in [nil, invalid, mismatched] {
             let button = directButton(offer: offer)
             XCTAssertFalse(button.isEnabled)
@@ -65,7 +68,7 @@ final class TopUpDisplayAmountTests: XCTestCase {
             displayPrice: controller.noBalancePurchase.offer?.displayPrice
         )
         controller.applePayNoBalanceButton = button
-        if offer?.productID != AlarmFiringViewController.noBalanceProductID { controller.noBalanceApplePayTapped() }
+        if offer?.productID != Self.sku499 { controller.noBalanceApplePayTapped() }
         XCTAssertFalse(controller.isViewLoaded, "Price rendering must not start the firing lifecycle")
         return button
     }

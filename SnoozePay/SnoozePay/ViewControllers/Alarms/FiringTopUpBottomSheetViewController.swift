@@ -565,10 +565,10 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private func refreshCatalog() {
         let offers = presets.compactMap { offer(for: $0.productID) }
         if !hasUserSelection && canPurchase {
-            let compatible = offers.filter { balance.acceptsPurchase(in: $0.currency) }
-            selectedProductID = FiringTopUpCopy.recommendedProductID(
-                offers: compatible, balance: balance.balance, price: snoozePrice, walletCurrency: balance.walletCurrency
-            ) ?? offers.first?.productID ?? presets.first?.productID
+            selectedProductID = FiringTopUpCopy.preselectedOffer(
+                offers: offers, balance: balance.balance, price: snoozePrice,
+                walletCurrency: balance.walletCurrency, acceptsPurchase: balance.acceptsPurchase(in:)
+            )?.productID ?? presets.first?.productID
         }
         for (row, preset) in zip(presetRows, presets) {
             let offer = offers.first { $0.productID == preset.productID }
