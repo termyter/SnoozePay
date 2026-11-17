@@ -259,7 +259,10 @@ final class FiringTopUpCatalogTests: XCTestCase {
         XCTAssertEqual(fixture.alerts.last?.message, Localized.text("deposit.error.products_unavailable"))
         XCTAssertTrue(fixture.delays.isEmpty)
         #if DEBUG
-        let demo = fixture.makeSheet(provider: false, dispatch: false, arguments: ["-uitour-storekit-empty"])
+        // The demo catalogue is the whole catalogue (#1112): at the fixture's default 200 charge the
+        // 149 row gives way to 299, so use a 100 charge, where 149 is the minimal pack and stays a row.
+        let demo = fixture.makeSheet(snoozePrice: 100, provider: false, dispatch: false,
+                                     arguments: ["-uitour-storekit-empty"])
         demo.loadViewIfNeeded()
         let demoRow = try XCTUnwrap(descendants(demo.view).compactMap { $0 as? FiringTopUpPresetRow }.first {
             $0.accessibilityIdentifier == "firingTopUp.preset." + Fixture.sku(149)
