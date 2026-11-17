@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import SnoozePay
 
@@ -46,6 +47,16 @@ final class BalanceServicePriceContextTests: XCTestCase {
 
     private func storeRawScale(_ code: String, _ tiers: [String]) {
         defaults.set([code: [SnoozePriceScaleStore.tiersField: tiers]], forKey: SnoozePriceScaleStore.scalesKey)
+    }
+
+    /// `.balance` lines emitted while `perform` runs. The once-per-process
+    /// guard is shared across tests, so each log test uses tiers of its own.
+    private func balanceLines(_ perform: () -> Void) -> [(level: OSLogType, message: String)] {
+        var lines: [(level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ category, level, message in
+            if category == .balance { lines.append((level, message)) }
+        }, perform: perform)
+        return lines
     }
 
     // MARK: - 1. Stored wallet currency
@@ -170,11 +181,68 @@ final class BalanceServicePriceContextTests: XCTestCase {
         XCTAssertEqual(balance.priceContext, .unavailable(usd))
     }
 
-    func testMinorUnitDigits_followISO4217() {
+    func testMinorUnitDigits_followFoundationCurrencyData() {
         XCTAssertEqual(usd.minorUnitDigits, 2)
         XCTAssertEqual(Currency.rub.minorUnitDigits, 2)
         XCTAssertEqual(Currency(code: "JPY")!.minorUnitDigits, 0)
         XCTAssertEqual(Currency(code: "KWD")!.minorUnitDigits, 3)
+    }
+
+    /// #1136 item 3: CLDR, not ISO 4217 — ISO gives HUF and IDR 2 digits.
+    func testMinorUnitDigits_areCLDRDigits_notISOMinorUnits() {
+        XCTAssertEqual(Currency(code: "HUF")!.minorUnitDigits, 0)
+        XCTAssertEqual(Currency(code: "IDR")!.minorUnitDigits, 0)
+    }
+
+    func testMinorUnitDigits_ofAnUnknownCode_isTheDefault_loggedOncePerCode() {
+        let unknown = Currency(code: "XQQ")!
+        let lines = balanceLines { for _ in 1...3 { XCTAssertEqual(unknown.minorUnitDigits, 2) } }
+
+        XCTAssertEqual(lines.filter { $0.message.contains("currency XQQ") }.count, 1, "\(lines)")
+        XCTAssertTrue(balanceLines { _ = usd.minorUnitDigits }.isEmpty, "a known code logs nothing")
+    }
+
+    // MARK: - Rounding logs (#1136 item 2)
+
+    func testRoundingThatChangesATier_logsANoticeOncePerScale() {
+        storeRawScale("USD", ["0.98999999917", "1.99", "2.99"])
+        fundWallet(in: usd)
+
+        let lines = balanceLines { for _ in 1...3 { XCTAssertEqual(balance.priceContext, .scale(usdScale)) } }
+
+        let rounded = lines.filter { $0.message.contains("0.98999999917") }
+        XCTAssertEqual(rounded.count, 1, "\(lines)")
+        XCTAssertEqual(rounded.first?.level, .default)
+        XCTAssertTrue(rounded.first?.message.contains("0.99/1.99/2.99") == true, "\(lines)")
+    }
+
+    func testRoundingThatLeavesTiersUntouched_logsNothing() {
+        XCTAssertTrue(scaleStore.record(usdScale))
+        fundWallet(in: usd)
+
+        XCTAssertTrue(balanceLines { _ = balance.priceContext }.isEmpty)
+    }
+
+    func testCollapsedTiers_ofAStoredCurrency_logAnErrorNamingUnavailable() {
+        storeRawScale("USD", ["0.9917", "0.9944", "2.99"])
+        fundWallet(in: usd)
+
+        let lines = balanceLines { XCTAssertEqual(balance.priceContext, .unavailable(usd)) }
+
+        XCTAssertEqual(lines.map(\.level), [.error], "\(lines)")
+        XCTAssertTrue(lines.first?.message.contains("unavailable") == true, "\(lines)")
+    }
+
+    /// The docstring used to say collapsed tiers always give `.unavailable`; a
+    /// pristine wallet falls back to roubles, and the log says so.
+    func testCollapsedTiers_ofAPristineWalletsStorefront_fallBackToRoubles_andLogIt() {
+        defaults.set("USD", forKey: SnoozePriceScaleStore.lastStorefrontCurrencyKey)
+        storeRawScale("USD", ["0.9918", "0.9943", "2.99"])
+
+        let lines = balanceLines { XCTAssertEqual(balance.priceContext, .scale(.rouble)) }
+
+        XCTAssertEqual(lines.map(\.level), [.error], "\(lines)")
+        XCTAssertTrue(lines.first?.message.contains("rouble fallback") == true, "\(lines)")
     }
 
     // MARK: - Injection

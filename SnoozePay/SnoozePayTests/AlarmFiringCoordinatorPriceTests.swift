@@ -74,7 +74,22 @@ final class AlarmFiringCoordinatorPriceTests: XCTestCase {
 
     func testRoubleWallet_chargesExactlyAlarmPenalty_forEveryPresetCountAndMode() {
         XCTAssertTrue(balance.topUp(amount: 100_000))
-        for amount in [20.0, 50, 100, 200, 500] {
+        assertChargesEqualAlarmPenalty()
+    }
+
+    /// #1136 item 4: a wallet whose rouble currency is stored (frozen by a paid
+    /// purchase) resolves through branch 1 of `priceContext`, not the legacy one.
+    func testStoredRoubleWallet_chargesExactlyAlarmPenalty_forEveryPresetCountAndMode() {
+        XCTAssertEqual(balance.topUpFromPurchase(amount: 100_000, currency: .rub), .credited)
+        XCTAssertEqual(balance.storedWalletCurrency, .rub)
+        assertChargesEqualAlarmPenalty()
+    }
+
+    /// Presets plus fractional legacy amounts (49.5, 0.1) a free-entry field
+    /// may have stored. The balance delta is taken in `Decimal`, as the ledger
+    /// sums it: in `Double`, 100000 − 99999.9 is not 0.1.
+    private func assertChargesEqualAlarmPenalty() {
+        for amount in [20.0, 50, 100, 200, 500, 49.5, 0.1] {
             for progressive in [false, true] {
                 let alarm = save(Alarm(penaltyAmount: amount, progressiveScale: progressive))
                 for count in 1...6 {
@@ -86,7 +101,7 @@ final class AlarmFiringCoordinatorPriceTests: XCTestCase {
                     XCTAssertEqual(
                         snooze(alarm, toCount: count), .scheduled(newSnoozeCount: count, charged: expected), label
                     )
-                    XCTAssertEqual(before - balance.balance, expected, label)
+                    XCTAssertEqual(MoneyDecimal.subtracting(before, balance.balance), expected, label)
                     let new = charges.filter { !earlier.contains($0.id) }
                     XCTAssertEqual(new.map(\.amount), [expected], label)
                     XCTAssertEqual(new.map(\.currency), [.rub], label)

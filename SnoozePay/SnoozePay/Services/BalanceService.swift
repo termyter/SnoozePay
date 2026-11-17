@@ -159,7 +159,26 @@ final class BalanceService {
     /// can later post a refund linked to this exact ledger entry (issue #133).
     /// Returns `nil` on the same failure modes as `charge` — insufficient
     /// funds, corrupted balance, or repository write rejection.
+    ///
+    /// Debits the bare number in whatever currency the wallet holds. An amount
+    /// priced in a known currency goes through
+    /// `chargeWithReceipt(amount:expecting:alarmID:)` instead (#1143).
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
+        debit(amount: amount, expecting: nil, alarmID: alarmID)
+    }
+
+    /// Charge of an amount priced in `currency` (#1143): `nil` — no ledger row,
+    /// balance unchanged — unless the wallet holds `currency` at the debit.
+    ///
+    /// Compared inside the serial queue, against the same `walletCurrency` read
+    /// the row is stamped with. A caller-side check leaves a gap in which a
+    /// first purchase freezes and credits another currency, and a number priced
+    /// in roubles would then be debited as dollars.
+    func chargeWithReceipt(amount: Double, expecting currency: Currency, alarmID: UUID?) -> Transaction? {
+        debit(amount: amount, expecting: currency, alarmID: alarmID)
+    }
+
+    private func debit(amount: Double, expecting expected: Currency?, alarmID: UUID?) -> Transaction? {
         // Reject non-finite / non-positive amounts up front, matching
         // `creditPromotion`'s contract (#441). Without this a negative amount
         // passes the `current >= amount` guard and records a `.charge` that
@@ -167,37 +186,36 @@ final class BalanceService {
         // streak/stats); a NaN would persist into storage before the read-time
         // corruption guard catches it.
         guard amount.isFinite, amount > 0 else { return nil }
-        let transaction = Transaction(
-            type: .charge,
-            amount: amount,
-            currency: walletCurrency,
-            alarmID: alarmID?.uuidString
-        )
-        let result: (charged: Bool, newBalance: Double) = queue.sync {
+        let result: (charged: Transaction?, newBalance: Double) = queue.sync {
             let current = readRawBalance()
-            guard !_balanceCorrupted else { return (false, current) }
-            guard MoneyDecimal.covers(current, amount) else { return (false, current) }
+            // Read once: the comparison and the stamp see the same currency.
+            let held = walletCurrency
+            if let expected, expected != held {
+                AppLogger.emit(.balance, .error, "charge refused: priced in \(expected.code), wallet in \(held.code)")
+                return (nil, current)
+            }
+            guard !_balanceCorrupted else { return (nil, current) }
+            guard MoneyDecimal.covers(current, amount) else { return (nil, current) }
 
             // The ledger append IS the mutation (#483). If the store is locked
             // (corrupt blob waiting on user ack), encoding fails, or the row is
             // a replay of one already present, the balance must not move —
             // otherwise money disappears from the wallet with no record in
             // stats (see #72 hunter review of PR #101).
+            let transaction = Transaction(type: .charge, amount: amount, currency: held, alarmID: alarmID?.uuidString)
             guard ledgerStore.append(transaction) == .recorded else {
-                return (false, current)
+                return (nil, current)
             }
 
             // Recompute from the ledger rather than `current - amount`: the sum
             // over the rows is the balance, and this call also refreshes the
             // `user_balance` cache.
-            return (true, readRawBalance())
+            return (transaction, readRawBalance())
         }
 
-        if result.charged {
-            notifyBalanceChanged(result.newBalance)
-            return transaction
-        }
-        return nil
+        guard let transaction = result.charged else { return nil }
+        notifyBalanceChanged(result.newBalance)
+        return transaction
     }
 
     // MARK: - Top up (IAP)
