@@ -147,6 +147,60 @@ final class UITourAlarmKitOverrideTests: XCTestCase {
         }
     }
 
+    // MARK: - Finishing the ring
+
+    /// «Я встал» on a tour route goes through `finishOccurrence` since #1076.
+    /// The protocol default answers `.unsupported`, so a tour backend that
+    /// inherited it turned every dismiss into «Завершение не подтверждено» and
+    /// the E2E never reached the WokeMorning summary (#1117). Both states:
+    /// the firing E2E runs on `denied`, and a stop must not need a grant.
+    func testTourBackend_confirmsTheFinishOfTheFiringSampleRing() {
+        for isAuthorized in [false, true] {
+            let alarm = makeAlarm()
+            let scheduler = AlarmScheduler(
+                notificationCenter: InertNotificationCenter(),
+                alarmKit: UITourAlarmKitBackend(isAuthorized: isAuthorized)
+            )
+            let ticket = AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarm.id, token: nil, wakeAt: Date())
+
+            XCTAssertNil(
+                scheduler.finishOccurrence(for: alarm, ticket: ticket).finishFailure,
+                "authorized=\(isAuthorized): a tour ring must be finishable, or dismiss shows an error"
+            )
+        }
+    }
+
+    /// The fake still proves the postcondition rather than answering yes: a
+    /// paid snooze copy it registered must be gone after the finish, and a
+    /// copy at a date the request does not own is refused, not deleted.
+    func testTourBackend_finishRemovesItsOwnSnoozeCopyAndRefusesAForeignOne() {
+        let backend = UITourAlarmKitBackend(isAuthorized: true)
+        let alarm = makeAlarm()
+        let fireDate = Date(timeIntervalSince1970: 1_800_000_000)
+        var receipt: AlarmSnoozeReceipt?
+        backend.scheduleTrackedSnooze(
+            alarm, fireDate: fireDate, token: AlarmSnoozeToken(sessionID: UUID(), attemptID: UUID()),
+            attemptCount: 1, isCurrent: { true }, completion: { receipt = try? $0.get() }
+        )
+        XCTAssertEqual(receipt?.fireDate, fireDate)
+
+        let request = { (expected: Date?) in
+            AlarmOccurrenceFinishRequest(
+                alarmID: alarm.id, weekly: nil, expectedDerivedFireDate: expected, allowsUntrackedDerived: false
+            )
+        }
+        XCTAssertEqual(backend.verifyFinishedOccurrence(request(fireDate)).finishFailure, .nativeUnconfirmed,
+                       "a registered snooze copy means the ring is not finished yet")
+        XCTAssertEqual(backend.finishOccurrence(request(fireDate.addingTimeInterval(60))).finishFailure,
+                       .ownershipUnavailable,
+                       "a copy at another date is not this request's to cancel")
+        XCTAssertEqual(backend.verifyFinishedOccurrence(request(fireDate)).finishFailure, .nativeUnconfirmed,
+                       "a refused finish must leave the copy in place")
+        XCTAssertNil(backend.finishOccurrence(request(fireDate)).finishFailure)
+        XCTAssertNil(backend.verifyFinishedOccurrence(request(fireDate)).finishFailure,
+                     "the finish must actually remove the copy it confirmed")
+    }
+
     // MARK: - Isolation
 
     func testOverride_doesNotHijackASchedulerThatWiredItsOwnBackend() {
@@ -192,5 +246,13 @@ final class UITourAlarmKitOverrideTests: XCTestCase {
         AlarmScheduler.uiTourForcedBackend = nil
         XCTAssertEqual(AlarmScheduler.shared.usesAlarmKit, realState,
                        "clearing the override must hand the scheduler back to the real AlarmKit state")
+    }
+}
+
+private extension Result where Failure == AlarmOccurrenceFinishError {
+    /// `nil` on success; `Result<Void, _>` is not `Equatable`.
+    var finishFailure: AlarmOccurrenceFinishError? {
+        if case .failure(let error) = self { return error }
+        return nil
     }
 }

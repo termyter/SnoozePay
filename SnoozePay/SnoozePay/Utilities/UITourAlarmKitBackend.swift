@@ -86,6 +86,50 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
 
     func stop(_ alarmID: UUID) {}
 
+    // MARK: - Occurrence finish (#1076, #1117)
+    //
+    // «Я встал» goes through these since #1076. The protocol defaults answer
+    // `.unsupported`, which the firing screen shows as «Завершение не
+    // подтверждено» — so inheriting them made every tour dismiss fail and the
+    // firing E2E stop short of the WokeMorning summary (#1117).
+    //
+    // The postcondition is the production adapter's, over what this fake
+    // registers: originals are never registered here (`schedule` arms nothing
+    // that can be listed), so only the derived snooze copy is checked. Like
+    // `stop`/`cancel`, none of it depends on `isAuthorized`: silencing a ring
+    // must never need a grant.
+
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        cleanUpLateSnooze(request)
+    }
+
+    func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        derivedCopy(of: request.alarmID) == nil ? .success(()) : .failure(.nativeUnconfirmed)
+    }
+
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        if let registered = derivedCopy(of: request.alarmID) {
+            // Same ownership rule as the real adapter: a copy at a date this
+            // request did not book is refused, never silently deleted.
+            let owned = request.expectedDerivedFireDate.map { $0 == registered } ?? request.allowsUntrackedDerived
+            guard owned else { return .failure(.ownershipUnavailable) }
+            fixedSchedules[AlarmKitScheduler.snoozeID(for: request.alarmID)] = nil
+        }
+        return verifyFinishedOccurrence(request)
+    }
+
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> { .success(()) }
+
+    func verifySupersededOccurrence(
+        _ request: AlarmOccurrenceFinishRequest
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        verifyFinishedOccurrence(request)
+    }
+
+    private func derivedCopy(of alarmID: UUID) -> Date? {
+        fixedSchedules[AlarmKitScheduler.snoozeID(for: alarmID)]
+    }
+
     /// A denied backend never reaches these calls in practice —
     /// `AlarmScheduler` refuses on `usesAlarmKit` first — but failing here too
     /// keeps the double honest if that guard ever moves.
