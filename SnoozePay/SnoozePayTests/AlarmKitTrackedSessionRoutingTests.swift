@@ -21,7 +21,7 @@ final class AlarmKitTrackedSessionRoutingTests: XCTestCase {
             var capturedSnooze: SnoozeAlarmIntent?
             _ = try AlarmKitScheduler.makeSnoozeConfiguration(
                 for: fixture.alarm, fireDate: try XCTUnwrap(backend.receipts.last).fireDate,
-                token: token, attemptCount: 1,
+                quote: .scale(.rouble), token: token, attemptCount: 1,
                 construct: { schedule, attributes, stop, snooze, sound in
                     capturedStop = stop
                     capturedSnooze = snooze

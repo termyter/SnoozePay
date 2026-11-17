@@ -26,7 +26,8 @@ final class AlarmFiringTrackedSessionTests: XCTestCase {
             XCTAssertEqual(backend.attemptCounts, [index + 1])
             var systemTitle: String?
             _ = try AlarmKitScheduler.makeSnoozeConfiguration(
-                for: fixture.alarm, fireDate: requested, token: token, attemptCount: try XCTUnwrap(backend.attemptCounts.last),
+                for: fixture.alarm, fireDate: requested, quote: .scale(.rouble),
+                token: token, attemptCount: try XCTUnwrap(backend.attemptCounts.last),
                 construct: { schedule, attributes, stop, snooze, sound in
                     systemTitle = attributes.presentation.alert.secondaryButton.map { String(localized: $0.text) }
                     return .alarm(schedule: schedule, attributes: attributes,

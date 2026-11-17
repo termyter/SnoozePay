@@ -390,13 +390,10 @@ final class BalanceService {
     /// Free of `queue.sync`, like `walletCurrency`.
     var storedWalletCurrency: Currency? { currencyStore.storedCurrency }
 
-    /// A pristine wallet may still adopt a foreign currency. Do not persist a
-    /// RUB quote into an alert that could be ringing during its first purchase.
-    var alarmQuoteCurrency: Currency? {
-        if let established = currencyStore.storedCurrency { return established }
-        let pristine = walletIsPristine
-        return currencyStore.storedCurrency ?? (pristine ? nil : .legacyDefault)
-    }
+    /// The currency of `alarmQuoteContext` (#1138), or `nil` while AlarmKit
+    /// labels stay unpriced. An `.unavailable` context still names its currency
+    /// here even though the label it produces carries no number.
+    var alarmQuoteCurrency: Currency? { alarmQuoteContext?.currency }
 
     /// Records this wallet's currency, once. See `WalletCurrencyFreeze` for why
     /// the result is a value the caller has to look at rather than a silent
