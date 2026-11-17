@@ -98,29 +98,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Register notification categories on every cold launch so the actions
         // of a notification left pending by a pre-#472 build stay wired up.
         AlarmScheduler.shared.registerCategories()
-        // Defer the permission prompt until the dedicated
-        // PermissionsViewController has had a chance to drive it (#149) —
-        // otherwise the OS dialog would race the splash → onboarding →
-        // permissions UI and the user sees the system prompt before the
-        // explanatory screen. Once Permissions has been shown at least once,
-        // the auto-request resumes for subsequent launches so the existing
-        // "permission revoked from Settings" alert keeps firing.
-        //
-        // A `-uitour` launch is excluded (#626). The tour mounts ONE screen
-        // directly and must never put a dialog over it — the same contract
-        // `UITourAlarmKitBackend` states for the system prompt. The re-ask here
-        // broke it transitively: `OnboardingFlowUITests` taps «Готово», which
-        // flips `hasBeenShown` in the simulator's UserDefaults, and every tour
-        // launch after it in the same run asked again, was refused, and covered
-        // the mounted screen with «Уведомления выключены» — an alert the test
-        // never asked for and could only hope XCUITest would swat away in time.
-        if PermissionsViewController.hasBeenShown, !AppDelegate.isUITourLaunch {
-            AlarmScheduler.shared.requestPermission { [weak self] granted in
-                if !granted {
-                    AppLogger.appDelegate.notice("alarm permission denied — alarms will not fire")
-                    self?.presentNotificationsDisabledAlert()
-                }
-            }
+        // Permission requests follow the explanatory screen or a user-initiated
+        // create/enable gate. Skipping onboarding must never auto-prompt on launch.
+        if PermissionsViewController.hasBeenShown, !AppDelegate.isUITourLaunch,
+           AlarmScheduler.shared.alarmKitAuthorization == .denied {
+            presentNotificationsDisabledAlert()
         }
 
         // Eagerly construct StoreKitService so its Transaction.updates listener

@@ -9,6 +9,8 @@ final class CreateAlarmViewModel {
 
     private let alarmRepository: AlarmRepository
     private let balanceService: BalanceService
+    let backendMonitor: AlarmBackendMonitor
+    private let draftID = UUID()
     private let editorCalendar: Calendar
     private var projectingPickerTime = false
 
@@ -59,11 +61,13 @@ final class CreateAlarmViewModel {
         repository: AlarmRepository = .shared,
         defaults: AlarmDefaults = .shared,
         balanceService: BalanceService = .shared,
+        backendMonitor: AlarmBackendMonitor = AlarmBackendMonitor(),
         calendar: Calendar = .current,
         now: Date = Date()
     ) {
         self.alarmRepository = repository
         self.balanceService = balanceService
+        self.backendMonitor = backendMonitor
         self.existingID = alarm?.id
         self.editorCalendar = calendar
 
@@ -180,7 +184,9 @@ final class CreateAlarmViewModel {
     /// Whether «Готово» / «Сохранить» may be tapped. The controller mirrors
     /// this onto the button's `isEnabled`; `save` enforces it regardless, so
     /// a missed UI refresh cannot resurrect the silent downgrade.
-    var canSave: Bool { validationError == nil }
+    /// Both Save entry points share one scheduling attempt until its callback.
+    private(set) var isSaving = false
+    var canSave: Bool { validationError == nil && !isSaving }
 
     // MARK: - Save
 
@@ -197,6 +203,8 @@ final class CreateAlarmViewModel {
     enum SaveOutcome: Equatable {
         case success
         case persistFailed
+        case permissionRequired(AlarmBackendAvailability)
+        case alreadySaving
         case schedulingFailed(AlarmScheduler.SchedulingError)
         case invalid(ValidationError)
     }
@@ -208,6 +216,10 @@ final class CreateAlarmViewModel {
     /// The repository contract guarantees `schedulingResult` only fires on
     /// the successful-persist path, so we never deliver two outcomes.
     func save(completion: @escaping (SaveOutcome) -> Void) {
+        guard !isSaving else {
+            completion(.alreadySaving)
+            return
+        }
         // Refuse before touching the store (#633): persisting here would write
         // a mode the screen does not show.
         if let error = validationError {
@@ -215,9 +227,17 @@ final class CreateAlarmViewModel {
             return
         }
 
+        backendMonitor.refresh()
+        guard permissionAllowsSaving else {
+            completion(.permissionRequired(backendMonitor.availability))
+            return
+        }
+
         let alarm = makeAlarmFromCurrentState()
 
-        let didPersist = alarmRepository.save(alarm) { schedulingResult in
+        isSaving = true
+        let didPersist = alarmRepository.save(alarm, rollbackOnSchedulingFailure: true) { schedulingResult in
+            self.isSaving = false
             switch schedulingResult {
             case .success:
                 completion(.success)
@@ -227,6 +247,7 @@ final class CreateAlarmViewModel {
         }
 
         if !didPersist {
+            isSaving = false
             completion(.persistFailed)
         }
     }
@@ -240,8 +261,18 @@ final class CreateAlarmViewModel {
     /// ``validationError``.
     @discardableResult
     func save() -> Bool {
-        guard canSave else { return false }
-        return alarmRepository.save(makeAlarmFromCurrentState())
+        backendMonitor.refresh()
+        guard canSave, permissionAllowsSaving else { return false }
+        isSaving = true
+        let didPersist = alarmRepository.save(makeAlarmFromCurrentState(), rollbackOnSchedulingFailure: true) { _ in
+            self.isSaving = false
+        }
+        if !didPersist { isSaving = false }
+        return didPersist
+    }
+
+    private var permissionAllowsSaving: Bool {
+        (isEditing && !enabled) || backendMonitor.availability == .available
     }
 
     private func makeAlarmFromCurrentState() -> Alarm {
@@ -257,7 +288,7 @@ final class CreateAlarmViewModel {
         let safePenalty = penaltyAmount.isFinite ? max(penaltyAmount, 0) : 50
         let safeRepeatDays = repeatDays.filter(Alarm.weekdayIndexRange.contains)
         return Alarm(
-            id: existingID ?? UUID(),
+            id: existingID ?? draftID,
             time: time,
             clockTime: clockTime,
             repeatDays: safeRepeatDays,

@@ -1,34 +1,9 @@
 import UIKit
 
-/// Permissions screen — V3 (`docs/design/v2-handoff/components/SPMore2.jsx`
-/// `Permissions`, artboard 05). Shown once after Onboarding finishes, before
-/// the main alarms list. Caps «последний шаг» eyebrow → h1 «Чтобы будильник
-/// работал» → body copy → two permission cards (Notifications, Background)
-/// → «Готово» CTA in flow 28pt after the cards (not pinned to the bottom).
-/// Layout padding follows the JSX `70px 16px 52px` frame: 16pt below the
-/// safe-area top, 16pt sides.
-///
-/// The JSX draws a third card, "Critical Alerts", which #566 removed: the
-/// only thing it promised — ringing through silent mode and Do Not Disturb —
-/// is already delivered by AlarmKit, the current scheduling backend, while
-/// the `com.apple.developer.usernotifications.critical-alerts` entitlement
-/// is granted by Apple on application and effectively never to alarm apps.
-/// The card therefore sat permanently on «Недоступно». Card spacing is
-/// unchanged (`AppSpacing.sp3`, the JSX `gap: 12`); the column is simply one
-/// card shorter.
-///
-/// Flow preserves the V1 wiring:
-/// 1. Notifications card → tapping the card calls
-///    `AlarmScheduler.requestPermission` — since #472 that is the AlarmKit
-///    grant, the only thing that makes an alarm ring.
-/// 2. Background — `UIBackgroundModes` is declared in Info.plist for the
-///    audio playback / processing categories, so this card is informational
-///    and renders as granted.
-///
-/// Persistence: `permissions_screen_shown` UserDefaults key prevents re-show
-/// on subsequent launches even when the user picks «Готово» without granting
-/// anything. Future grants / revocations happen through Settings; the screen
-/// does not nag.
+/// AlarmKit permission explanation shared with the create/enable guard (#594).
+/// Request permission while undecided; after refusal, lead to Settings.
+/// Not Now enters the app in view-only mode. The monitor re-probes on activation
+/// so returning from Settings updates the copy and primary action immediately.
 final class PermissionsViewController: UIViewController {
 
     // MARK: - Persistence keys
@@ -39,7 +14,7 @@ final class PermissionsViewController: UIViewController {
     static let hasBeenShownKey = "permissions_screen_shown"
 
     /// `true` once the user has dismissed the permissions screen at least
-    /// once (either by granting or via «Готово»). Read by SceneDelegate to
+    /// once (after granting or via Not Now). Read by SceneDelegate to
     /// decide whether to present the screen on a given launch.
     static var hasBeenShown: Bool {
         UserDefaults.standard.bool(forKey: hasBeenShownKey)
@@ -47,17 +22,20 @@ final class PermissionsViewController: UIViewController {
 
     // MARK: - Callback
 
-    /// Invoked once the user finishes (grant complete or «Готово»). SceneDelegate
+    /// Invoked once the user finishes (grant complete or Not Now). SceneDelegate
     /// uses this to swap the root from this VC to the tab bar.
     var onFinished: (() -> Void)?
 
     // MARK: - State
 
-    /// The alarm-backend grant the first card reflects. Read from AlarmKit,
-    /// not from `UNNotificationSettings`: since #472 a notification cannot ring
-    /// an alarm, so a green card driven by the notification grant would promise
-    /// a working alarm the app can no longer deliver.
-    private var alarmAuthorization: AlarmKitAuthorization = .notDetermined
+    private let backendMonitor: AlarmBackendMonitor
+
+    init(backendMonitor: AlarmBackendMonitor = AlarmBackendMonitor()) {
+        self.backendMonitor = backendMonitor
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     // MARK: - Subviews
 
@@ -115,12 +93,13 @@ final class PermissionsViewController: UIViewController {
         return stack
     }()
 
-    private let ctaButton = SPButton(
-        title: Localized.text("common.button.done"),
-        variant: .money,
-        size: .lg,
-        fullWidth: true
-    )
+    private let actionsStack: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = AppSpacing.sp3
+        return stack
+    }()
 
     /// Vertical scroll container so the caps/title/body/cards/CTA column can
     /// overflow and scroll on compact-height devices or large Dynamic Type
@@ -152,9 +131,9 @@ final class PermissionsViewController: UIViewController {
         overrideUserInterfaceStyle = .dark
         view.backgroundColor = AppColors.bg0
         setupUI()
+        backendMonitor.onChange = { [weak self] _ in self?.applyStatusToCards() }
         refreshNotificationSettings()
-        ctaButton.accessibilityIdentifier = "permissions.doneButton"
-        ctaButton.addTarget(self, action: #selector(ctaTapped), for: .touchUpInside)
+        applyStatusToCards()
     }
 
     override var prefersStatusBarHidden: Bool { false }
@@ -175,8 +154,7 @@ final class PermissionsViewController: UIViewController {
         scrollView.addSubview(titleLabel)
         scrollView.addSubview(bodyLabel)
         scrollView.addSubview(cardsStack)
-        scrollView.addSubview(ctaButton)
-        ctaButton.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(actionsStack)
 
         let inset = AppSpacing.sp4   // 16pt — matches JSX `padding: 70px 16px 52px`
         let content = scrollView.contentLayoutGuide
@@ -221,19 +199,19 @@ final class PermissionsViewController: UIViewController {
             cardsStack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             cardsStack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
 
-            ctaButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
-            ctaButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
+            actionsStack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            actionsStack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
             // V3: «Готово» lives in flow 28pt after the cards (JSX
             // `marginTop: 28`) instead of pinning to the screen bottom —
             // cards no longer flex-grow into the gap.
-            ctaButton.topAnchor.constraint(
+            actionsStack.topAnchor.constraint(
                 equalTo: cardsStack.bottomAnchor,
                 constant: AppSpacing.sp6 + AppSpacing.sp1   // 28pt
             ),
             // Bottom pad mirrors the JSX 52px bottom (≈ 18pt above the
             // home-indicator inset). Drives the scroll content height so the
             // CTA stays reachable instead of clipping on compact heights.
-            ctaButton.bottomAnchor.constraint(
+            actionsStack.bottomAnchor.constraint(
                 equalTo: content.bottomAnchor,
                 constant: -(AppSpacing.sp4 + 2)   // 18pt
             )
@@ -249,21 +227,40 @@ final class PermissionsViewController: UIViewController {
 
     // MARK: - State refresh
 
-    /// Re-read the alarm grant and re-render every card. AlarmKit answers
-    /// synchronously, so unlike the old `getNotificationSettings` round-trip
-    /// there is no background hop to marshal.
+    /// Re-read the grant; the monitor publishes changes on the main queue.
     private func refreshNotificationSettings() {
-        alarmAuthorization = AlarmScheduler.shared.alarmKitAuthorization
-        applyStatusToCards()
+        backendMonitor.refresh()
     }
 
     private func applyStatusToCards() {
-        cardViews[.notifications]?.apply(status: notificationsStatus())
+        let warning = AlarmBackendWarning(availability: backendMonitor.availability)
+        cardViews[.notifications]?.apply(
+            status: backendMonitor.availability == .available ? .granted : .actionable,
+            actionTitle: warning?.canRequestInApp == false ? Localized.text("common.button.settings") : nil
+        )
         cardViews[.sound]?.apply(status: soundStatus())
-    }
-
-    private func notificationsStatus() -> PermissionStatus {
-        Self.alarmPermissionStatus(for: alarmAuthorization)
+        titleLabel.attributedText = NSAttributedString(
+            string: warning?.title ?? Localized.text("onboarding.permissions.title"),
+            attributes: [.font: AppTypography.h1, .kern: -0.32, .foregroundColor: UIColor.white]
+        )
+        bodyLabel.text = warning?.message ?? Localized.text("onboarding.permissions.body")
+        actionsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let primary = SPButton(
+            title: warning?.actionTitle ?? Localized.text("common.button.done"),
+            variant: .money, size: .lg, fullWidth: true
+        )
+        primary.accessibilityIdentifier = warning == nil ? "permissions.doneButton" : "permissions.allowButton"
+        primary.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
+        actionsStack.addArrangedSubview(primary)
+        if warning != nil {
+            let later = SPButton(
+                title: Localized.text("alarms.backend_guard.action.not_now"),
+                variant: .quiet, size: .lg, fullWidth: true
+            )
+            later.accessibilityIdentifier = "permissions.notNowButton"
+            later.addTarget(self, action: #selector(ctaTapped), for: .touchUpInside)
+            actionsStack.addArrangedSubview(later)
+        }
     }
 
     /// Uses the same interpretation as `SystemAlarmBackendProbe`: only an
@@ -299,18 +296,12 @@ final class PermissionsViewController: UIViewController {
     }
 
     private func handleNotificationsTap() {
-        // A decided refusal can only be undone in Settings — the OS silently
-        // no-ops a second request, so prompting again would look like a dead tap.
-        if alarmAuthorization == .denied {
+        backendMonitor.refresh()
+        guard let warning = AlarmBackendWarning(availability: backendMonitor.availability) else { return }
+        if warning.canRequestInApp {
+            backendMonitor.requestAuthorization()
+        } else {
             openAppSettings()
-            return
-        }
-        // Route through `AlarmScheduler.requestPermission` so the same
-        // request runs as on AppDelegate launch.
-        AlarmScheduler.shared.requestPermission { [weak self] _ in
-            // Re-read the grant rather than trusting the `granted` flag alone —
-            // the authorization state is the value the cards render.
-            self?.refreshNotificationSettings()
         }
     }
 
@@ -320,6 +311,15 @@ final class PermissionsViewController: UIViewController {
     }
 
     // MARK: - CTA
+
+    @objc private func primaryTapped() {
+        backendMonitor.refresh()
+        if backendMonitor.availability == .available {
+            ctaTapped()
+        } else {
+            handleNotificationsTap()
+        }
+    }
 
     @objc
     private func ctaTapped() {
