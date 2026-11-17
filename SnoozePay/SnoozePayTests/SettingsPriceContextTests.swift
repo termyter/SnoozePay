@@ -161,24 +161,66 @@ final class SettingsPriceContextTests: XCTestCase {
         XCTAssertNil(sut.presented)
     }
 
-    func testContextChangeLeavesAnotherPresentedSheetUp() {
+    /// The picker is held strongly throughout, so the weak `defaultPricePicker`
+    /// stays set and only the identity check can keep these sheets up.
+    func testContextChangeLeavesAnotherPresentedSheetUp() throws {
         var context = SnoozePriceContext.scale(usdScale)
         let sut = makeRecordingSUT { context }
         sut.presentDefaultPricePicker()
+        let picker = try XCTUnwrap(sut.presented)
         let other = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         sut.presented = other
 
         context = .unavailable(usd)
         sut.refreshPriceContext()
+        XCTAssertTrue(sut.defaultPricePicker === picker)
         XCTAssertEqual(sut.dismissals, 0)
         XCTAssertTrue(sut.presented === other)
     }
 
-    func testInertRowReadsAsDimmedWithAHint() {
+    /// The user already closed the sheet; a later context change must not
+    /// dismiss whatever Settings shows, nor fire a stray dismiss (#1155).
+    func testContextChangeAfterTheUserClosedThePickerDismissesNothing() throws {
+        var context = SnoozePriceContext.scale(usdScale)
+        let sut = makeRecordingSUT { context }
+        sut.presentDefaultPricePicker()
+        let picker = try XCTUnwrap(sut.presented)
+        sut.presented = nil
+
+        context = .scale(.rouble)
+        sut.refreshPriceContext()
+        XCTAssertTrue(sut.defaultPricePicker === picker)
+        XCTAssertEqual(sut.dismissals, 0)
+    }
+
+    /// The rouble presets carry the same guard: a sheet built in roubles and
+    /// tapped after a move to a cached scale stores nothing.
+    func testRoublePresetFromAStaleContextCommitsNothing() {
+        var context = SnoozePriceContext.scale(.rouble)
+        let sut = makeSUT(amount: 50) { context }
+        let choices = sut.defaultPriceChoices()
+
+        context = .scale(usdScale)
+        sut.refreshPriceContext()
+        choices[3].commit()
+        XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 50)
+
+        context = .scale(.rouble)
+        sut.refreshPriceContext()
+        choices[3].commit()
+        XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 200)
+    }
+
+    func testInertRowReadsAsDimmedWithAHint() throws {
         let inert = makeSUT(amount: 50) { .unavailable(self.usd) }
         let row = inert.makeFinanceCell(at: priceIndexPath(in: inert))
         XCTAssertTrue(row.accessibilityTraits.contains(.notEnabled))
         XCTAssertEqual(row.accessibilityHint, Localized.text("settings.row.default_price.unavailable_hint"))
+        let enPath = try XCTUnwrap(Bundle.main.path(forResource: "en", ofType: "lproj"))
+        let english = try XCTUnwrap(Bundle(path: enPath)).localizedString(
+            forKey: "settings.row.default_price.unavailable_hint", value: nil, table: nil
+        )
+        XCTAssertEqual(english, "Snooze fees in your wallet currency haven\u{2019}t loaded yet.")
 
         for context in [SnoozePriceContext.scale(.rouble), .scale(usdScale)] {
             let sut = makeSUT(amount: 50) { context }
