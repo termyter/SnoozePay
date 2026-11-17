@@ -33,6 +33,10 @@ final class AlarmFiringCoordinator {
         case alarmLoadFailed(error: NSError)
         /// Balance was insufficient to cover the (possibly progressive) penalty.
         case insufficientFunds
+        /// The snooze price cannot be resolved in the wallet's currency — its
+        /// storefront scale is not cached (#1130). Nothing was charged; the
+        /// snooze is refused rather than charged a guessed number.
+        case priceUnavailable(currency: Currency)
         /// Charge succeeded and a new snooze notification was scheduled.
         case scheduled(newSnoozeCount: Int, charged: Double)
         /// Charge succeeded but the underlying `UNUserNotificationCenter.add`
@@ -145,7 +149,14 @@ final class AlarmFiringCoordinator {
         }
 
         let newCount = payload.snoozeCount + 1
-        let penalty = alarm.penalty(forSnoozeCount: newCount)
+        let penalty: Double
+        switch snoozeCharge(for: alarm, snoozeCount: newCount) {
+        case .charge(let amount):
+            penalty = amount
+        case .refuse(let outcome):
+            completion?(outcome)
+            return
+        }
 
         // `chargeWithReceipt` returns the persisted Transaction so a later
         // refund can link back to it (issue #133) — without that link stats
@@ -172,6 +183,41 @@ final class AlarmFiringCoordinator {
                 completion: completion
             )
         }
+    }
+
+    private enum SnoozeCharge {
+        case charge(Double)
+        case refuse(SnoozeOutcome)
+    }
+
+    /// What the `snoozeCount`-th snooze of `alarm` debits, resolved through the
+    /// wallet's price context (#1130): in roubles exactly
+    /// `alarm.penalty(forSnoozeCount:)`, elsewhere the cached storefront tier
+    /// (already rounded to the currency's minor unit by `priceContext`). An
+    /// unresolvable price refuses — never a guessed number.
+    private func snoozeCharge(for alarm: Alarm, snoozeCount: Int) -> SnoozeCharge {
+        let context = balanceService.priceContext
+        guard let price = SnoozePriceResolver.resolve(
+            alarm.price, snoozeCount: snoozeCount, isProgressive: alarm.progressiveScale, in: context
+        ), let amount = MoneyDecimal.double(price.amount) else {
+            let code = context.currency.code, alarmID = alarm.id
+            AppLogger.coordinator.error(
+                "snooze: price unavailable in \(code, privacy: .public) alarm=\(alarmID, privacy: .private), no charge"
+            )
+            return .refuse(.priceUnavailable(currency: context.currency))
+        }
+        // A pristine wallet prices in its storefront currency but holds nothing
+        // in it (its rows would still be stamped roubles): never debit a number
+        // denominated in a currency the wallet does not hold.
+        let walletCurrency = balanceService.walletCurrency
+        guard price.currency == walletCurrency else {
+            let priceCode = price.currency.code, walletCode = walletCurrency.code
+            AppLogger.coordinator.notice(
+                "snooze: price in \(priceCode, privacy: .public), wallet in \(walletCode, privacy: .public) — no charge"
+            )
+            return .refuse(.insufficientFunds)
+        }
+        return .charge(amount)
     }
 
     /// Resolves the async scheduler result into a `SnoozeOutcome`. On failure
