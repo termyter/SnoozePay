@@ -136,6 +136,9 @@ protocol AlarmKitScheduling: AnyObject {
     func verifySupersededOccurrence(
         _ request: AlarmOccurrenceFinishRequest
     ) -> Result<Void, AlarmOccurrenceFinishError>
+
+    /// Sweep this app's complete native inventory and verify absence; never derive IDs from corrupt JSON.
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError>
 }
 
 /// Default derivation for test doubles that only model the yes/no axis: they
@@ -143,6 +146,10 @@ protocol AlarmKitScheduling: AnyObject {
 /// The production `AlarmKitScheduler` overrides this with the real tri-state,
 /// which is the only place the distinction can actually be observed.
 extension AlarmKitScheduling {
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
+        .failure(.unsupported)
+    }
+
     func scheduleTrackedSnooze(
         _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
         isCurrent: @escaping () -> Bool,
@@ -207,6 +214,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     private let readAlarms: () throws -> [AlarmKit.Alarm]
     private let stopAlarm: (UUID) throws -> Void
     private let readOccurrenceSnapshots: () throws -> [NativeOccurrenceSnapshot]
+    private let readRegisteredAlarmIDs: () throws -> Set<UUID>
     typealias SnoozeConfiguration = AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
     var registerTracked: (UUID, SnoozeConfiguration) async throws -> AlarmSnoozeReceipt = { id, configuration in
         let registered = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
@@ -225,7 +233,8 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         },
         readAlarms: @escaping () throws -> [AlarmKit.Alarm] = { try AlarmManager.shared.alarms },
         stopAlarm: @escaping (UUID) throws -> Void = { try AlarmManager.shared.stop(id: $0) },
-        readOccurrenceSnapshots: (() throws -> [NativeOccurrenceSnapshot])? = nil
+        readOccurrenceSnapshots: (() throws -> [NativeOccurrenceSnapshot])? = nil,
+        readRegisteredAlarmIDs: (() throws -> Set<UUID>)? = nil
     ) {
         self.cancelAlarm = cancelAlarm
         self.readAuthorization = readAuthorization
@@ -233,6 +242,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         self.readAlarms = readAlarms
         self.stopAlarm = stopAlarm
         self.readOccurrenceSnapshots = readOccurrenceSnapshots ?? Self.occurrenceReader(readAlarms)
+        self.readRegisteredAlarmIDs = readRegisteredAlarmIDs ?? { Set(try readAlarms().map(\.id)) }
     }
 
     var isAuthorized: Bool {
@@ -422,6 +432,42 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         } catch {
             completion(.failure(error))
         }
+    }
+
+    /// AlarmManager's inventory is scoped to this app, including orphaned snooze IDs.
+    /// Use the throwing exact-ID operation; normal cancel intentionally swallows errors.
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
+        let ids: Set<UUID>
+        do { ids = try readRegisteredAlarmIDs() } catch {
+            AppLogger.emit(.scheduler, .error,
+                           "Alarm recovery failed: stage=inventory error=\(String(describing: error))")
+            return .failure(.inventoryUnavailable)
+        }
+        var failedCancels = 0
+        var lastCancelError: Error?
+        for id in ids {
+            do { try cancelAlarm(id) } catch { failedCancels += 1; lastCancelError = error }
+        }
+        let counts = "inventory=\(ids.count) failedCancels=\(failedCancels)"
+        let remaining: Set<UUID>
+        do { remaining = try readRegisteredAlarmIDs() } catch {
+            AppLogger.emit(.scheduler, .error,
+                           "Alarm recovery failed: stage=readback \(counts) error=\(String(describing: error))")
+            return .failure(.inventoryUnavailable)
+        }
+        if let lastCancelError {
+            AppLogger.emit(.scheduler, .error, """
+                Alarm recovery failed: stage=cancel \(counts) remaining=\(remaining.count) \
+                error=\(String(describing: lastCancelError))
+                """)
+            return .failure(.cancellationFailed)
+        }
+        guard remaining.isEmpty else {
+            AppLogger.emit(.scheduler, .error,
+                           "Alarm recovery failed: stage=verify \(counts) remaining=\(remaining.count)")
+            return .failure(.registrationsRemain)
+        }
+        return .success(())
     }
 
     func cancelTrackedSnooze(_ alarmID: UUID) -> Bool {

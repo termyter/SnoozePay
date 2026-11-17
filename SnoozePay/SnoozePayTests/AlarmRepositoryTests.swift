@@ -12,7 +12,7 @@ final class AlarmRepositoryTests: XCTestCase {
         super.setUp()
         suiteName = "test.alarmRepo.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
-        repo = AlarmRepository(defaults: testDefaults)
+        repo = AlarmRepository(defaults: testDefaults, scheduler: KnownEmptyRecoveryScheduler())
     }
 
     override func tearDown() {
