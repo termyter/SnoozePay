@@ -155,15 +155,52 @@ final class SnoozePriceScaleStoreTests: XCTestCase {
 
     // MARK: - StoreKit seam
 
-    @MainActor
-    func testOnlyARealCatalogueYieldsAScaleToRecord() {
-        let offers = ["0.99", "1.99", "2.99", "4.99", "9.99"].map {
-            TopUpOffer(productID: "io.mobilife.snoozepay.balance.\($0)", price: Decimal(string: $0)!,
-                       currencyCode: "USD", displayPrice: "$\($0)")!
+    /// The five real SKUs, cheapest first, priced as a US storefront.
+    private let usdCatalogue: [(String, String)] = Array(zip(
+        StoreKitService.productIDs, ["0.99", "1.99", "2.99", "4.99", "9.99"]
+    ))
+
+    private func offers(_ pairs: [(String, String)]) -> [TopUpOffer] {
+        pairs.map {
+            TopUpOffer(productID: $0.0, price: Decimal(string: $0.1)!, currencyCode: "USD", displayPrice: "$\($0.1)")!
         }
-        XCTAssertEqual(StoreKitService.scaleToRecord(from: offers, isDemo: false),
-                       scale(usd, ["0.99", "1.99", "2.99"]))
-        XCTAssertNil(StoreKitService.scaleToRecord(from: offers, isDemo: true), "demo catalogue")
-        XCTAssertNil(StoreKitService.scaleToRecord(from: [], isDemo: false), "forced-empty catalogue")
+    }
+
+    @MainActor
+    func testOnlyAFullRealCatalogueYieldsAScaleToRecord() {
+        struct Case {
+            let name: String, pairs: [(String, String)], isDemo: Bool, expected: SnoozePriceScale?
+        }
+        let full = usdCatalogue
+        let cheapest3 = scale(usd, ["0.99", "1.99", "2.99"])
+        let cases: [Case] = [
+            Case(name: "5/5", pairs: full, isDemo: false, expected: cheapest3),
+            Case(name: "5/5 shuffled", pairs: full.reversed(), isDemo: false, expected: cheapest3),
+            Case(name: "demo catalogue", pairs: full, isDemo: true, expected: nil),
+            Case(name: "forced-empty catalogue", pairs: [], isDemo: false, expected: nil),
+            Case(name: "4/5 missing the cheapest", pairs: Array(full.dropFirst()), isDemo: false, expected: nil),
+            Case(name: "4/5 missing the dearest", pairs: Array(full.dropLast()), isDemo: false, expected: nil),
+            Case(name: "duplicate product ID", pairs: Array(full.dropLast()) + [full[0]], isDemo: false, expected: nil),
+            Case(name: "6 offers, one duplicated", pairs: full + [full[0]], isDemo: false, expected: nil),
+            Case(name: "foreign product ID", pairs: Array(full.dropLast()) + [("io.example.other", "9.99")],
+                 isDemo: false, expected: nil)
+        ]
+        for testCase in cases {
+            XCTAssertEqual(StoreKitService.scaleToRecord(from: offers(testCase.pairs), isDemo: testCase.isDemo),
+                           testCase.expected, testCase.name)
+        }
+    }
+
+    @MainActor
+    func testPartialCatalogueKeepsTheStoredScale() {
+        let stored = scale(usd, ["0.99", "1.99", "2.99"])
+        XCTAssertTrue(store.record(stored))
+        let partial = offers(Array(usdCatalogue.dropFirst()))
+        if let shifted = StoreKitService.scaleToRecord(from: partial, isDemo: false) {
+            XCTFail("partial catalogue must not yield a scale, got \(shifted)")
+            _ = store.record(shifted)
+        }
+        XCTAssertEqual(store.scale(for: usd), stored)
+        XCTAssertEqual(posts, 1)
     }
 }

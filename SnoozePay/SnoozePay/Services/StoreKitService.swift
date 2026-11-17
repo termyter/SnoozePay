@@ -252,32 +252,6 @@ final class StoreKitService {
         }
     }
 
-    // MARK: - Snooze price scale (#1126)
-
-    /// The scale a catalogue may record, or `nil` when it must record nothing:
-    /// the DEBUG demo / forced-empty catalogue never stands for a real storefront.
-    static func scaleToRecord(from offers: [TopUpOffer], isDemo: Bool) -> SnoozePriceScale? {
-        guard !isDemo else { return nil }
-        return SnoozePriceScale(offers: offers)
-    }
-
-    private var isDemoCatalog: Bool {
-        #if DEBUG
-        return Self.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments)
-        #else
-        return false
-        #endif
-    }
-
-    /// Records the scale of the loaded products. A product that does not convert
-    /// to an offer voids the whole catalogue: dropping it could shift every tier.
-    private func recordPriceScale(from products: [Product]) {
-        let offers = products.compactMap(TopUpOffer.init(product:))
-        guard offers.count == products.count,
-              let scale = Self.scaleToRecord(from: offers, isDemo: isDemoCatalog) else { return }
-        _ = priceScaleStore.record(scale)
-    }
-
     // MARK: - Purchase
 
     func purchase(_ product: Product) async {
@@ -655,5 +629,51 @@ final class StoreKitService {
 
     enum StoreError: Error {
         case failedVerification
+    }
+}
+
+// MARK: - Snooze price scale (#1126)
+
+extension StoreKitService {
+
+    /// The scale a catalogue may record, or `nil` when it must record nothing
+    /// (the previously stored scale then stays):
+    /// - the DEBUG demo / forced-empty catalogue never stands for a real storefront;
+    /// - a partial catalogue is a money bug, not an edge case: without the
+    ///   cheapest pack every tier shifts up and snoozes cost more. Only a
+    ///   catalogue holding every `productIDs` entry exactly once records.
+    static func scaleToRecord(from offers: [TopUpOffer], isDemo: Bool) -> SnoozePriceScale? {
+        guard !isDemo else { return nil }
+        let loaded = offers.map(\.productID)
+        guard loaded.count == productIDs.count, Set(loaded) == Set(productIDs) else {
+            AppLogger.storeKit.notice(
+                """
+                snooze price scale not recorded: catalogue has \(loaded.count, privacy: .public) \
+                offers (\(Set(loaded).count, privacy: .public) distinct), \
+                expected all \(productIDs.count, privacy: .public)
+                """
+            )
+            return nil
+        }
+        return SnoozePriceScale(offers: offers)
+    }
+
+    fileprivate var isDemoCatalog: Bool {
+        #if DEBUG
+        return Self.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments)
+        #else
+        return false
+        #endif
+    }
+
+    /// Records the scale of the loaded products. A product that does not convert
+    /// to an offer voids the whole catalogue: dropping it could shift every tier.
+    /// The purchase path passes the loaded catalogue, never just the bought
+    /// product, so a partial catalogue there records nothing too.
+    func recordPriceScale(from products: [Product]) {
+        let offers = products.compactMap(TopUpOffer.init(product:))
+        guard offers.count == products.count,
+              let scale = Self.scaleToRecord(from: offers, isDemo: isDemoCatalog) else { return }
+        _ = priceScaleStore.record(scale)
     }
 }
