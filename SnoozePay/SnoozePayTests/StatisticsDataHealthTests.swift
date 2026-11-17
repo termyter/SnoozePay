@@ -27,7 +27,6 @@ final class StatisticsDataHealthTests: XCTestCase {
     }
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var txRepo: TransactionRepository!
     private var wakeStore: WakeEventStore!
     private var alarmRepo: AlarmRepository!
@@ -36,16 +35,10 @@ final class StatisticsDataHealthTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.statsHealth.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         wakeStore = WakeEventStore(defaults: testDefaults)
         txRepo = TransactionRepository(defaults: testDefaults, wakeStore: wakeStore)
         alarmRepo = AlarmRepository(defaults: testDefaults, scheduler: StubScheduler())
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     private func makeVM() -> StatisticsViewModel {

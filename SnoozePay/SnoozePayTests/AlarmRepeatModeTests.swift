@@ -15,14 +15,13 @@ import XCTest
 final class AlarmRepeatModeTests: XCTestCase {
 
     /// The alarm and wake-day stores the dismiss and save tests write through,
-    /// in a per-test suite dropped in `tearDown` (#814). They used to save into
+    /// in a pooled isolated suite emptied after the test (#814, #1118). They used to save into
     /// `AlarmRepository(defaults: .standard)` and delete afterwards — which on
     /// a clean host still leaves an encoded empty `stored_alarms` behind — and
     /// the dismiss tests recorded today's wake into `WakeEventStore.shared`,
     /// i.e. `wake_days` / `wake_times` in the host's real `UserDefaults.standard`.
     /// CI run 35861930577 could not see either: earlier tests had already put
     /// all three keys there, and re-saving the same day changes nothing.
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var scheduler: AlarmScheduler!
     /// Fails the test if it moved the host's real `UserDefaults.standard`
@@ -34,18 +33,15 @@ final class AlarmRepeatModeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         domainGuard = AppDefaultsDomainGuard()
-        suiteName = "test.repeatMode.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         let backend = TestAlarmKitBackend()
         backend.occurrenceFinishResult = .success(())
         scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         scheduler = nil
         defaults = nil
-        suiteName = nil
         domainGuard.assertUntouched()
         domainGuard = nil
         super.tearDown()

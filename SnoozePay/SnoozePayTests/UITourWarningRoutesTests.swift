@@ -18,7 +18,6 @@ import XCTest
 @MainActor
 final class UITourWarningRoutesTests: XCTestCase {
 
-    private var suiteName: String!
     private var testDefaults: UserDefaults!
     private var repo: AlarmRepository!
     private var testCenter: NotificationCenter!
@@ -42,8 +41,7 @@ final class UITourWarningRoutesTests: XCTestCase {
         // runner was busy". Widening it would have to cover the whole backlog,
         // and a window that wide stops noticing the regression the wait is for.
         drainMainQueue()
-        suiteName = "test.uitourRoutes.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         repo = AlarmRepository(
             defaults: testDefaults,
             scheduler: AlarmsListViewModelTests.StubScheduler()
@@ -68,7 +66,6 @@ final class UITourWarningRoutesTests: XCTestCase {
         // outlives the test case otherwise.
         window?.isHidden = true
         window = nil
-        testDefaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 

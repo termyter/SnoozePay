@@ -4,7 +4,6 @@ import XCTest
 /// #1126: the per-currency cache of storefront snooze-price scales.
 final class SnoozePriceScaleStoreTests: XCTestCase {
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var center: NotificationCenter!
     private var store: SnoozePriceScaleStore!
@@ -16,8 +15,7 @@ final class SnoozePriceScaleStoreTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test_\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         center = NotificationCenter()
         store = SnoozePriceScaleStore(defaults: defaults, notificationCenter: center)
         posts = 0
@@ -28,7 +26,6 @@ final class SnoozePriceScaleStoreTests: XCTestCase {
 
     override func tearDown() {
         if let token { center.removeObserver(token) }
-        defaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 

@@ -4,24 +4,17 @@ import XCTest
 
 @MainActor
 final class CreateAlarmCivilClockTests: XCTestCase {
-    private var suite: String!
     private var defaults: UserDefaults!
     private var repository: AlarmRepository!
     private var wallet: BalanceService!
 
     override func setUp() {
         super.setUp()
-        suite = "test.createAlarmCivilClock.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = makeIsolatedDefaults()
         repository = AlarmRepository(defaults: defaults, scheduler: ClockScheduler())
         let ledger = TransactionRepository(defaults: defaults, wakeStore: WakeEventStore(defaults: defaults))
         wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
                                 notificationCenter: NotificationCenter())
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        super.tearDown()
     }
 
     func testNewAlarmSavesSevenAndReopensAsSevenInAnotherTimezone() throws {

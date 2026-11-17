@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class AlarmOccurrenceFinishSessionTests: XCTestCase {
     private var fixture: FinishSessionFixture!
-    override func setUp() { super.setUp(); fixture = FinishSessionFixture() }
+    override func setUp() { super.setUp(); fixture = FinishSessionFixture(defaults: makeIsolatedDefaults()) }
     override func tearDown() { fixture.close(); fixture = nil; super.tearDown() }
 
     func testMissingLegacyAndEmptyFinishRequestsReadWithoutCreatingOrMigratingBytes() throws {
@@ -344,20 +344,16 @@ final class AlarmOccurrenceFinishSessionTests: XCTestCase {
 @MainActor
 private final class FinishSessionFixture {
     let alarmID = UUID()
-    let suite: String
     let defaults: UserDefaults
     var chargedTokens: [AlarmSnoozeToken] = []
     var bytes: Data? { defaults.data(forKey: AlarmSnoozeSessionStore.key) }
 
-    init() {
-        let suite = "test.occurrence-finish.\(UUID().uuidString)"
-        self.suite = suite
-        defaults = UserDefaults(suiteName: suite)!
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
     }
     func store() -> AlarmSnoozeSessionStore { AlarmSnoozeSessionStore(defaults: defaults) }
     func close() {
         chargedTokens.forEach { store().operationEnded($0) }
-        defaults.removePersistentDomain(forName: suite)
     }
     func receipt() -> AlarmSnoozeReceipt {
         .init(systemID: UUID(), fireDate: Date(timeIntervalSince1970: 1_000))

@@ -8,8 +8,7 @@ import XCTest
 final class SettingsSectionsTests: XCTestCase {
 
     private func makeSUT() -> SettingsViewController {
-        let suite = "test.settings.sections.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = makeIsolatedDefaults()
         let sut = SettingsViewController(
             alarmDefaults: AlarmDefaults(defaults: defaults), priceContextSource: { .scale(.rouble) }
         )

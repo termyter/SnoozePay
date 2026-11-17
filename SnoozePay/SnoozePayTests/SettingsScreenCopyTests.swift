@@ -60,7 +60,6 @@ final class SettingsScreenCopyTests: XCTestCase {
 
     // MARK: - Fixtures torn down
 
-    private var suites: [(name: String, defaults: UserDefaults)] = []
     private var hostWindows: [UIWindow] = []
     private var pasteboardNames: [UIPasteboard.Name] = []
     /// The table hands cells out without retaining them; hold them so the
@@ -71,8 +70,6 @@ final class SettingsScreenCopyTests: XCTestCase {
         hostWindows.forEach { $0.isHidden = true }
         hostWindows.removeAll()
         retainedCells.removeAll()
-        suites.forEach { $0.defaults.removePersistentDomain(forName: $0.name) }
-        suites.removeAll()
         pasteboardNames.forEach { UIPasteboard.remove(withName: $0) }
         pasteboardNames.removeAll()
         super.tearDown()
@@ -348,9 +345,7 @@ final class SettingsScreenCopyTests: XCTestCase {
         referralEnabled: Bool = AppFeatureFlags.referralEnabled,
         myCode: String? = nil
     ) -> Fixture {
-        let name = "test.settings.screencopy.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        suites.append((name: name, defaults: defaults))
+        let defaults = makeIsolatedDefaults()
         if let myCode { defaults.set(myCode, forKey: "referral_my_code") }
 
         let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())

@@ -12,14 +12,10 @@ final class WakeEventStoreTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.wakestore.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        let isolated = makeIsolatedSuite()
+        testDefaults = isolated.defaults
+        suiteName = isolated.name
         store = WakeEventStore(defaults: testDefaults)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     func testRecordWake_storesCanonicalDayIdentity() {

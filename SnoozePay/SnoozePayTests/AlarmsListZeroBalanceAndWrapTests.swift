@@ -15,22 +15,15 @@ import XCTest
 final class AlarmsListZeroBalanceTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmsListZeroBalance.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         repo = AlarmRepository(
             defaults: testDefaults,
             scheduler: AlarmsListViewModelTests.StubScheduler()
         )
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     /// Builds a VM wired to an isolated BalanceService seeded with the

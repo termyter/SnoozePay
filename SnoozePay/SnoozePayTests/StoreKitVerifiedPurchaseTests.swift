@@ -13,17 +13,13 @@ final class StoreKitVerifiedPurchaseTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suite = "StoreKitVerifiedPurchaseTests.\(UUID())"
-        defaults = UserDefaults(suiteName: suite)!
+        let isolated = makeIsolatedSuite()
+        defaults = isolated.defaults
+        suite = isolated.name
         balance = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         poster = LocalNotificationPosterSpy()
         store = StoreKitService(notificationPoster: poster, defaults: defaults)
         store.beginObservingPurchaseFeedback()
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        super.tearDown()
     }
 
     private func purchase(price: Decimal? = 2.99, currency: Currency? = nil) -> RestorableTopUp {

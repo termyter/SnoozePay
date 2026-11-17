@@ -175,9 +175,7 @@ final class AlarmViewModelLocalizationTests: XCTestCase {
     /// key. Two keys with identical Russian would pass every assertion above
     /// and drift apart on the first translation.
     func testValidationCopyIsSharedByTheHintAndTheError() {
-        let suiteName = "test.alarmViewModelLocalization.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = makeIsolatedDefaults()
 
         let viewModel = CreateAlarmViewModel(repository: AlarmRepository(defaults: defaults))
         viewModel.repeatMode = .weekly
