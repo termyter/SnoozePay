@@ -46,6 +46,10 @@ final class AlarmEditorCopyTests: XCTestCase {
         "alarms.balance_corrupted.later": "Позже",
         "alarms.balance_corrupted.message": "В хранилище обнаружено некорректное значение баланса (%@). "
             + "Пополнения и списания приостановлены. Сбросить баланс до 0 ₽?",
+        "alarms.balance_corrupted.message_currency": "В хранилище обнаружено некорректное значение баланса (%1$@). "
+            + "Пополнения и списания приостановлены. Сбросить баланс до %2$@?",
+        "alarms.balance_corrupted.message_unpriced": "В хранилище обнаружено некорректное значение баланса (%@). "
+            + "Пополнения и списания приостановлены. Сбросить баланс в ноль?",
         "alarms.balance_corrupted.reset": "Сбросить",
         "alarms.balance_corrupted.title": "Баланс повреждён",
         "alarms.button.delete": "Удалить",

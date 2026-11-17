@@ -667,6 +667,42 @@
         }
       }
     },
+    "alarms.balance_corrupted.message_currency" : {
+      "comment" : "Alarms list: body of the corrupt-balance alert for a wallet outside roubles (#1109). %1$@ is the unreadable raw value, printed verbatim so a support request can quote it; %2$@ is zero formatted by MoneyFormatter in the wallet's display currency («$0.00»). A rouble wallet keeps alarms.balance_corrupted.message.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The stored balance can’t be read (%1$@). Top-ups and charges are paused. Reset your balance to %2$@?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В хранилище обнаружено некорректное значение баланса (%1$@). Пополнения и списания приостановлены. Сбросить баланс до %2$@?"
+          }
+        }
+      }
+    },
+    "alarms.balance_corrupted.message_unpriced" : {
+      "comment" : "Alarms list: body of the corrupt-balance alert when the wallet's currency is not known, so zero cannot be written with a currency (#1109). %@ is the unreadable raw value, printed verbatim so a support request can quote it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The stored balance can’t be read (%@). Top-ups and charges are paused. Reset your balance to zero?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В хранилище обнаружено некорректное значение баланса (%@). Пополнения и списания приостановлены. Сбросить баланс в ноль?"
+          }
+        }
+      }
+    },
     "alarms.balance_corrupted.reset" : {
       "comment" : "Alarms list: destructive action of the corrupt-balance alert — zeroes the stored balance.",
       "extractionState" : "manual",

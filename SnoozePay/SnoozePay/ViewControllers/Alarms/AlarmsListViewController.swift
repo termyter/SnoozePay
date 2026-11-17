@@ -458,14 +458,12 @@ class AlarmsListViewController: UIViewController {
 
     /// Corrupt `user_balance` detected (#119) — possibly at cold start before
     /// any observer existed (#206). Pop-ups and top-ups are gated until the
-    /// user acknowledges, so the alert offers an immediate reset to 0 ₽.
+    /// user acknowledges, so the alert offers an immediate reset to zero.
     private func presentBalanceCorruptedAlert(rawValue: Double) {
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
             title: Localized.text("alarms.balance_corrupted.title"),
-            // The raw value goes in as a string so it prints exactly as it did
-            // before — a `%f` would round the very number support needs to see.
-            message: Localized.format("alarms.balance_corrupted.message", "\(rawValue)"),
+            message: Self.balanceCorruptedMessage(rawValue: rawValue, currency: viewModel.balanceCurrency),
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(
@@ -479,6 +477,28 @@ class AlarmsListViewController: UIViewController {
             style: .cancel
         ))
         present(alert, animated: true)
+    }
+
+    /// Body of the corrupt-balance alert, naming the zero the reset leaves in
+    /// the wallet's display currency (#1109).
+    ///
+    /// Roubles keep the original key, so the text is byte-identical to the one
+    /// before (a plain space before «₽», not `MoneyFormatter`'s narrow one).
+    /// Any other currency gets zero from `MoneyFormatter` («$0.00»); with no
+    /// currency the sentence names no amount. The raw value goes in as a string
+    /// so it prints exactly as it did before — a `%f` would round the very
+    /// number support needs to see.
+    static func balanceCorruptedMessage(rawValue: Double, currency: Currency?) -> String {
+        let raw = "\(rawValue)"
+        guard let currency else {
+            return Localized.format("alarms.balance_corrupted.message_unpriced", raw)
+        }
+        guard currency != .rub else {
+            return Localized.format("alarms.balance_corrupted.message", raw)
+        }
+        return Localized.format(
+            "alarms.balance_corrupted.message_currency", raw, MoneyFormatter.string(Decimal(0), currency: currency)
+        )
     }
 
     // MARK: - Backend guard UI (#428)
