@@ -5,18 +5,11 @@ import XCTest
 final class SettingsViewModelTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private let themeKey = "preferred_theme"
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.settings.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
+        testDefaults = makeIsolatedDefaults()
     }
 
     // MARK: - Theme persistence

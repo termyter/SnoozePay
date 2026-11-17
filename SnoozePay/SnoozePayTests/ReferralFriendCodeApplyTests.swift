@@ -13,14 +13,6 @@ import XCTest
 @MainActor
 final class ReferralFriendCodeApplyTests: XCTestCase {
 
-    private var suiteNames: [String] = []
-
-    override func tearDown() {
-        suiteNames.forEach { UserDefaults().removePersistentDomain(forName: $0) }
-        suiteNames.removeAll()
-        super.tearDown()
-    }
-
     // MARK: - Success
 
     func testValidCodeCreditsThroughServiceAndReportsTheCreditedAmount() throws {
@@ -238,9 +230,7 @@ final class ReferralFriendCodeApplyTests: XCTestCase {
     }
 
     private func makeStore(balance: Double, myCode: String? = nil, appliedCode: String? = nil) throws -> Store {
-        let name = "test.referral.friend-code-apply.\(UUID().uuidString)"
-        suiteNames.append(name)
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        let (defaults, name) = makeIsolatedSuite()
         defaults.set(balance, forKey: "user_balance")
         if let myCode { defaults.set(myCode, forKey: "referral_my_code") }
         if let appliedCode { defaults.set(appliedCode, forKey: "referral_applied_code") }

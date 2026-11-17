@@ -154,8 +154,7 @@ final class StoreKitCopyTests: XCTestCase {
     /// swallowed by the template.
     func testCreditedNotificationSubstitutesTheAmount() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
 
         service.postPurchaseCompleted(299, currency: .rub)
@@ -171,8 +170,7 @@ final class StoreKitCopyTests: XCTestCase {
     /// half a key typo would replace with `deposit.notification.failed.title`.
     func testFailedNotificationTitleComesFromTheCatalogue() {
         let poster = LocalNotificationPosterSpy()
-        let (defaults, name) = makeSuite()
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = makeIsolatedDefaults()
         let service = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
 
         service.postPurchaseFailed(StoreKitService.ledgerLockedFailureMessage)
@@ -229,14 +227,6 @@ final class StoreKitCopyTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    /// An isolated defaults suite, so the service under test never reads
-    /// `.standard` — and never `.shared`, which spawns the
-    /// `Transaction.updates` listener.
-    private func makeSuite() -> (UserDefaults, String) {
-        let name = "test_storekit_copy_\(UUID().uuidString)"
-        return (UserDefaults(suiteName: name)!, name)
-    }
 
     /// Copy, not a key: non-empty and containing Cyrillic. Every key in this
     /// batch is lowercase ASCII, so the second half is what tells a resolved

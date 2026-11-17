@@ -106,20 +106,13 @@ final class AlarmPriceTierTests: XCTestCase {
 
     // MARK: - The editor rebuilds the alarm field by field
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmPriceTier.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         repo = AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler())
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     private func editor(for alarm: Alarm) -> CreateAlarmViewModel {

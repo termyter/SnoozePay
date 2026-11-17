@@ -108,19 +108,21 @@ final class TrackedSessionBackend: CoarseAlarmKitAuthorization, RefusesAlarmKitR
 
 @MainActor
 final class TrackedSessionFixture {
-    let suite = "TrackedSession-\(UUID().uuidString)"
+    let slot: Int
     let defaults: UserDefaults
     let alarm: Alarm
 
     init(alarm: Alarm? = nil) {
         self.alarm = alarm ?? Alarm(repeatDays: [0, 1, 2, 3, 4, 5, 6], snoozeMinutes: 5,
                                     penaltyAmount: 50, progressiveScale: true, enabled: true)
-        defaults = UserDefaults(suiteName: suite)!
+        let lease = IsolatedDefaultsPool.checkOut()
+        slot = lease.slot
+        defaults = lease.defaults
         let repository = AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler())
         XCTAssertTrue(repository.save(self.alarm))
         XCTAssertTrue(BalanceService(defaults: defaults).topUp(amount: 2_000))
     }
-    func close() { defaults.removePersistentDomain(forName: suite) }
+    func close() { IsolatedDefaultsPool.checkIn(slot) }
     func store() -> AlarmSnoozeSessionStore { AlarmSnoozeSessionStore(defaults: defaults) }
     func ledger() -> TransactionRepository { TransactionRepository(defaults: defaults) }
     func scheduler(_ backend: AlarmKitScheduling) -> AlarmScheduler {

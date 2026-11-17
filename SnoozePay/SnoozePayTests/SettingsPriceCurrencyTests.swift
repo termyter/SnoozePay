@@ -275,9 +275,7 @@ final class SettingsPriceCurrencyTests: XCTestCase {
     private func makeSUT(
         currency: Currency?, amount: Double = 49.5
     ) -> (SettingsViewController, UserDefaults) {
-        let suite = "test.settings.priceCurrency.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let currencyStore = WalletCurrencyStore(defaults: defaults)
         if let currency { XCTAssertEqual(currencyStore.freeze(currency), .frozen(currency)) }
         let alarmDefaults = AlarmDefaults(defaults: defaults)

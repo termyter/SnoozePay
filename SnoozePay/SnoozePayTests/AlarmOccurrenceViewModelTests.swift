@@ -493,7 +493,7 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
 
 @MainActor
 final class OccurrenceVMFixture {
-    let suite: String
+    let slot: Int
     let defaults: FinishWriteRefusingDefaults
     let alarm: Alarm
     let backend = TestAlarmKitBackend()
@@ -507,9 +507,8 @@ final class OccurrenceVMFixture {
     var seedRepository: AlarmRepository { AlarmRepository(defaults: defaults, scheduler: NoopScheduler()) }
 
     init(oneShot: Bool = false) throws {
-        let suite = "OccurrenceVM-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(FinishWriteRefusingDefaults(suiteName: suite))
-        self.suite = suite
+        let (slot, defaults) = IsolatedDefaultsPool.checkOut(as: FinishWriteRefusingDefaults.self)
+        self.slot = slot
         self.defaults = defaults
         let time = try XCTUnwrap(Calendar.current.date(from: DateComponents(
             year: 2026, month: 10, day: 26, hour: 7, minute: 10
@@ -531,7 +530,7 @@ final class OccurrenceVMFixture {
         )
     }
     func store() -> AlarmSnoozeSessionStore { AlarmSnoozeSessionStore(defaults: defaults) }
-    func close() { defaults.removePersistentDomain(forName: suite) }
+    func close() { IsolatedDefaultsPool.checkIn(slot) }
 
     private final class NoopScheduler: AlarmScheduling {
         func schedule(_ alarm: Alarm, completion: ((Result<Void, AlarmScheduler.SchedulingError>) -> Void)?) {
@@ -541,7 +540,7 @@ final class OccurrenceVMFixture {
     }
 }
 
-final class FinishWriteRefusingDefaults: UserDefaults, @unchecked Sendable {
+final class FinishWriteRefusingDefaults: UserDefaults, IsolatedDefaultsSubclass, @unchecked Sendable {
     private let lock = NSLock()
     private var blocked: String?
     var skippedKey: String? {

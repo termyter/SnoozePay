@@ -5,7 +5,6 @@ import XCTest
 @MainActor
 final class StatisticsCurrencyTests: XCTestCase {
     private var defaults: UserDefaults!
-    private var suiteName: String!
     private var repository: TransactionRepository!
     private var wakeStore: WakeEventStore!
     private var alarms: AlarmRepository!
@@ -14,16 +13,10 @@ final class StatisticsCurrencyTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.statisticsCurrency.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         wakeStore = WakeEventStore(defaults: defaults)
         repository = TransactionRepository(defaults: defaults, wakeStore: wakeStore)
         alarms = AlarmRepository(defaults: defaults, scheduler: InertScheduler())
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     func testActualScreenKeepsUSDCentsAndAccessibilityWhileCountingAllCurrencies() {

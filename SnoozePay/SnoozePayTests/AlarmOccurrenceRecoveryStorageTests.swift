@@ -271,6 +271,7 @@ final class AlarmOccurrenceRecoveryStorageTests: XCTestCase {
 
 @MainActor
 private final class RecoveryStorageFixture {
+    let slot: Int
     let suite: String
     let defaults: RecoveryStorageDefaults
     let scheduler = RecoveryStorageScheduler()
@@ -287,11 +288,12 @@ private final class RecoveryStorageFixture {
     }
 
     init() throws {
-        let suite = "OccurrenceRecoveryStorage-\(UUID().uuidString)"
-        self.suite = suite
-        defaults = try XCTUnwrap(RecoveryStorageDefaults(suiteName: suite))
+        let lease = IsolatedDefaultsPool.checkOut(as: RecoveryStorageDefaults.self)
+        slot = lease.slot
+        defaults = lease.defaults
+        suite = IsolatedDefaultsPool.suiteName(slot)
     }
-    func close() { defaults.removePersistentDomain(forName: suite) }
+    func close() { IsolatedDefaultsPool.checkIn(slot) }
     func store() -> AlarmSnoozeSessionStore { AlarmSnoozeSessionStore(defaults: defaults) }
     func writeAlarms(_ alarms: [Alarm]) throws {
         defaults.set(try JSONEncoder().encode(alarms), forKey: "stored_alarms")
@@ -322,7 +324,7 @@ private final class RecoveryStorageScheduler: AlarmScheduling {
     func cancel(_ alarmID: UUID) { cancelled.append(alarmID) }
 }
 
-private final class RecoveryStorageDefaults: UserDefaults, @unchecked Sendable {
+private final class RecoveryStorageDefaults: UserDefaults, IsolatedDefaultsSubclass, @unchecked Sendable {
     private let lock = NSLock()
     private var rejected = false
     var rejectAlarmWrites: Bool {

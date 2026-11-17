@@ -236,6 +236,7 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
 
     @MainActor
     private final class Fixture {
+        let slot: Int
         let suite: String
         let defaults: UserDefaults
         let center: NotificationCenter
@@ -249,16 +250,16 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         var refusal: String?
 
         init() throws {
-            let suite = "FiringTopUpAutoResumeTests.\(UUID())"
-            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            let (slot, defaults) = IsolatedDefaultsPool.checkOut()
             let center = NotificationCenter()
-            self.suite = suite
+            self.slot = slot
+            self.suite = IsolatedDefaultsPool.suiteName(slot)
             self.defaults = defaults
             self.center = center
             self.balance = BalanceService(defaults: defaults, notificationCenter: center)
         }
 
-        func clear() { defaults.removePersistentDomain(forName: suite) }
+        func clear() { IsolatedDefaultsPool.checkIn(slot) }
 
         func makeSheet() -> FiringTopUpBottomSheetViewController {
             let sheet = FiringTopUpBottomSheetViewController(
