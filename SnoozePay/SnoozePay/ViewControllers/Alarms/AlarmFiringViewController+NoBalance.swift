@@ -87,7 +87,7 @@ extension AlarmFiringViewController {
     private func makeNoBalanceDisabledCard() -> SPSnoozePrice {
         let card = SPSnoozePrice(
             price: viewModel.currentPenalty,
-            currency: viewModel.walletCurrency,
+            currency: viewModel.priceCurrency,
             minutes: viewModel.alarm.snoozeMinutes,
             tone: .warn,
             hint: Localized.text("firing.no_balance.hint")
@@ -180,7 +180,7 @@ extension AlarmFiringViewController {
         if let card = noBalanceSnoozeCard {
             card.update(
                 price: viewModel.currentPenalty,
-                currency: viewModel.walletCurrency,
+                currency: viewModel.priceCurrency,
                 minutes: viewModel.alarm.snoozeMinutes,
                 hint: Localized.text("firing.no_balance.hint")
             )
