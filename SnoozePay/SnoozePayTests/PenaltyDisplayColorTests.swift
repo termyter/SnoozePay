@@ -153,7 +153,8 @@ final class PenaltyDisplayColorTests: XCTestCase {
             themeService: ThemeService(defaults: defaults),
             alarmDefaults: alarmDefaults,
             referralService: ReferralService(defaults: defaults, balanceService: wallet),
-            walletCurrencyStore: currencyStore
+            walletCurrencyStore: currencyStore,
+            priceContextSource: { wallet.priceContext }
         )
         sut.loadViewIfNeeded()
         return (sut, MoneyFormatter.string(Double(50), currency: .rub))

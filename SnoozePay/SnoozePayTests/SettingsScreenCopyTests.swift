@@ -356,7 +356,8 @@ final class SettingsScreenCopyTests: XCTestCase {
         let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         let sut = SettingsViewController(
             alarmDefaults: AlarmDefaults(defaults: defaults),
-            referralService: ReferralService(defaults: defaults, balanceService: wallet)
+            referralService: ReferralService(defaults: defaults, balanceService: wallet),
+            priceContextSource: { wallet.priceContext }
         )
         sut.referralEnabled = referralEnabled
         sut.loadViewIfNeeded()

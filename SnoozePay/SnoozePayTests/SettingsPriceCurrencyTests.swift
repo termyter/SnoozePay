@@ -10,9 +10,12 @@ final class SettingsPriceCurrencyTests: XCTestCase {
             let (sut, defaults) = makeSUT(currency: currency)
             let before = defaults.dictionaryRepresentation() as NSDictionary
             let cell = sut.makeFinanceCell(at: priceIndexPath(in: sut))
-            let text = MoneyFormatter.string(49.5, currency: currency)
+            // Outside roubles 49.5 is a legacy amount quoted as its tier, `low`,
+            // from the cached scale (#1147).
+            let text = currency == .rub ? MoneyFormatter.string(49.5, currency: currency)
+                : MoneyFormatter.string(tierPrice(0, currency), currency: currency)
             XCTAssertTrue(labels(in: cell).contains { $0.text == text }, code)
-            XCTAssertTrue(text.contains("49,5"), text)
+            XCTAssertTrue(text.contains(currency == .rub ? "49,5" : Self.lowDigits[code]!), text)
             if currency != .rub { XCTAssertFalse(text.contains("₽"), text) }
             let icon = try XCTUnwrap(descendants(in: cell).compactMap { $0 as? UIImageView }.first)
             let expectedIcon = UIImage(systemName: currency == .rub ? "rublesign.circle" : "banknote")?
@@ -45,17 +48,24 @@ final class SettingsPriceCurrencyTests: XCTestCase {
     }
 
     func testRowPreservesThreeMinorUnitsAndExactLargeIntegerWithoutWritingDefaults() {
+        // The exact large integer is a rouble property now; outside roubles the
+        // amount is its legacy tier at the scale currency's minor units (#1147):
+        // 1.001 → low (KWD 0.299, three digits), the large amount → high.
+        let large = 18_446_744_073_709_551_616.0
         let cases = [
-            PriceCase(code: "KWD", amount: 1.001, digits: "1,001"),
-            PriceCase(code: "USD", amount: 18_446_744_073_709_551_616,
+            PriceCase(code: "KWD", amount: 1.001, digits: "0,299"),
+            PriceCase(code: "USD", amount: large, digits: "2,99"),
+            PriceCase(code: "RUB", amount: large,
                       digits: "18\u{00A0}446\u{00A0}744\u{00A0}073\u{00A0}709\u{00A0}551\u{00A0}616")
         ]
         for item in cases {
             let (code, amount, digits) = (item.code, item.amount, item.digits)
-            let (sut, defaults) = makeSUT(currency: Currency(code: code)!, amount: amount)
+            let currency = Currency(code: code)!
+            let (sut, defaults) = makeSUT(currency: currency, amount: amount)
             let before = defaults.dictionaryRepresentation() as NSDictionary
             let cell = sut.makeFinanceCell(at: priceIndexPath(in: sut))
-            let text = MoneyFormatter.string(amount, currency: sut.walletCurrencyStore.currency)
+            let text = currency == .rub ? MoneyFormatter.string(amount, currency: currency)
+                : MoneyFormatter.string(tierPrice(amount == large ? 2 : 0, currency), currency: currency)
             XCTAssertTrue(labels(in: cell).contains { $0.text == text }, code)
             XCTAssertTrue(text.contains(digits), text)
             XCTAssertEqual(sut.alarmDefaults.penaltyAmount, amount)
@@ -86,21 +96,25 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         sut.viewWillAppear(false)
         sut.tableView.layoutIfNeeded()
         let refreshed = try XCTUnwrap(sut.tableView.cellForRow(at: indexPath))
-        XCTAssertTrue(labels(in: refreshed).contains { $0.text == MoneyFormatter.string(49.5, currency: usd) })
+        // The frozen USD wallet quotes its cached scale: 49.5 → low (#1147).
+        XCTAssertTrue(labels(in: refreshed).contains {
+            $0.text == MoneyFormatter.string(self.tierPrice(0, usd), currency: usd)
+        })
         XCTAssertFalse(labels(in: refreshed).contains { ($0.text ?? "").contains("₽") })
         let refreshedRules = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
-        XCTAssertEqual(try previewLabel(in: refreshedRules).text,
-                       formattedChain([49.5, 99, 198, 396], currency: usd))
+        XCTAssertEqual(try previewLabel(in: refreshedRules).text, tierChain(0, usd))
         XCTAssertEqual(sut.makeDefaultPricePicker().actions.first?.title, MoneyFormatter.string(20.0, currency: usd))
         XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, before)
     }
 
-    private let progressiveCases: [(base: Double, steps: [Double])] = [
-        (20, [20, 40, 80, 160]),
-        (50, [50, 100, 200, 400]),
-        (100, [100, 200, 400, 800]),
-        (200, [200, 400, 800, 1600]),
-        (500, [500, 1000, 2000, 4000])
+    /// `steps` is the rouble ladder; `tier` the legacy tier the base maps to
+    /// outside roubles (0 low ≤ 50, 1 mid ≤ 100, 2 high), #1147.
+    private let progressiveCases: [(base: Double, steps: [Double], tier: Int)] = [
+        (20, [20, 40, 80, 160], 0),
+        (50, [50, 100, 200, 400], 0),
+        (100, [100, 200, 400, 800], 1),
+        (200, [200, 400, 800, 1600], 2),
+        (500, [500, 1000, 2000, 4000], 2)
     ]
 
     func testRulesPreviewUsesSelectedBaseAndWalletCurrencyWithoutWritingDefaults() throws {
@@ -111,7 +125,9 @@ final class SettingsPriceCurrencyTests: XCTestCase {
                 sut.alarmDefaults.progressiveScale = true
                 let before = defaults.dictionaryRepresentation() as NSDictionary
                 let cell = sut.makeRulesCell(at: rulesIndexPath(in: sut))
-                XCTAssertEqual(try previewLabel(in: cell).text, formattedChain(item.steps, currency: currency))
+                let expected = currency == .rub ? formattedChain(item.steps, currency: currency)
+                    : tierChain(item.tier, currency)
+                XCTAssertEqual(try previewLabel(in: cell).text, expected, code)
                 XCTAssertEqual(try previewLabel(in: cell).text?.components(separatedBy: " → ").count, 4)
                 XCTAssertEqual(sut.alarmDefaults.penaltyAmount, item.base)
                 XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, before)
@@ -123,9 +139,10 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         let currency = try XCTUnwrap(Currency(code: "KWD"))
         let (sut, _) = makeSUT(currency: currency, amount: 1.001)
         let cell = sut.makeRulesCell(at: rulesIndexPath(in: sut))
-        XCTAssertEqual(try previewLabel(in: cell).text,
-                       formattedChain([1.001, 2.002, 4.004, 8.008], currency: currency))
-        XCTAssertTrue(try XCTUnwrap(previewLabel(in: cell).text).contains("1,001"))
+        // 1.001 → low, 0.299 KWD, climbing in three digits (#1147).
+        XCTAssertEqual(try previewLabel(in: cell).text, tierChain(0, currency))
+        XCTAssertTrue(try XCTUnwrap(previewLabel(in: cell).text).contains("0,299"))
+        XCTAssertTrue(try XCTUnwrap(previewLabel(in: cell).text).contains("2,392"))
     }
 
     func testSelectingDefaultPriceImmediatelyReloadsBothMountedRows() throws {
@@ -142,7 +159,7 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         window.layoutIfNeeded()
         sut.tableView.layoutIfNeeded()
         let initial = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
-        XCTAssertEqual(try previewLabel(in: initial).text, formattedChain([50, 100, 200, 400], currency: currency))
+        XCTAssertEqual(try previewLabel(in: initial).text, tierChain(0, currency))
 
         for item in progressiveCases {
             // This is the production picker action's commit, not a test-only
@@ -150,11 +167,12 @@ final class SettingsPriceCurrencyTests: XCTestCase {
             sut.applyDefaultPrice(item.base)
             sut.tableView.layoutIfNeeded()
             let price = try XCTUnwrap(sut.tableView.cellForRow(at: priceIndexPath(in: sut)))
+            // USD quotes the tier the chosen rouble preset maps to (#1147).
             XCTAssertTrue(labels(in: price).contains {
-                $0.text == MoneyFormatter.string(item.base, currency: currency)
+                $0.text == MoneyFormatter.string(self.tierPrice(item.tier, currency), currency: currency)
             })
             let rules = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
-            XCTAssertEqual(try previewLabel(in: rules).text, formattedChain(item.steps, currency: currency))
+            XCTAssertEqual(try previewLabel(in: rules).text, tierChain(item.tier, currency))
             XCTAssertEqual(sut.alarmDefaults.penaltyAmount, item.base)
             XCTAssertTrue(sut.alarmDefaults.progressiveScale)
         }
@@ -211,6 +229,24 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         }
     }
 
+    /// Cached tiers of the foreign wallets (#1147), as `SnoozePriceScaleStore` stores them.
+    private static let scales = [
+        "USD": ["0.99", "1.99", "2.99"], "EUR": ["1.25", "2.49", "3.99"], "KWD": ["0.299", "0.599", "0.899"]
+    ]
+    private static let lowDigits = ["USD": "0,99", "EUR": "1,25", "KWD": "0,299"]
+
+    /// Price of tier `index` (0 low, 1 mid, 2 high) in `currency`'s cached scale.
+    private func tierPrice(_ index: Int, _ currency: Currency) -> Decimal {
+        Decimal(string: Self.scales[currency.code]![index], locale: Locale(identifier: "en_US_POSIX"))!
+    }
+
+    /// The four-step ladder from tier `index`: × 1 / 2 / 4 / 8.
+    private func tierChain(_ index: Int, _ currency: Currency) -> String {
+        let base = tierPrice(index, currency)
+        return [1, 2, 4, 8].map { MoneyFormatter.string(base * Decimal($0), currency: currency) }
+            .joined(separator: " → ")
+    }
+
     private func formattedChain(_ amounts: [Double], currency: Currency) -> String {
         amounts.map { MoneyFormatter.string($0, currency: currency) }.joined(separator: " → ")
     }
@@ -233,12 +269,18 @@ final class SettingsPriceCurrencyTests: XCTestCase {
         if let currency { XCTAssertEqual(currencyStore.freeze(currency), .frozen(currency)) }
         let alarmDefaults = AlarmDefaults(defaults: defaults)
         alarmDefaults.penaltyAmount = amount
+        // Cached scales without a last storefront (#1147): a pristine wallet
+        // still resolves roubles, a frozen foreign wallet resolves its scale.
+        defaults.set(Self.scales.mapValues { [SnoozePriceScaleStore.tiersField: $0] },
+                     forKey: SnoozePriceScaleStore.scalesKey)
         let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         let sut = SettingsViewController(
             themeService: ThemeService(defaults: defaults),
             alarmDefaults: alarmDefaults,
             referralService: ReferralService(defaults: defaults, balanceService: wallet),
-            walletCurrencyStore: currencyStore
+            walletCurrencyStore: currencyStore,
+            priceContextSource: { wallet.priceContext },
+            notificationCenter: NotificationCenter()
         )
         sut.loadViewIfNeeded()
         return (sut, defaults)

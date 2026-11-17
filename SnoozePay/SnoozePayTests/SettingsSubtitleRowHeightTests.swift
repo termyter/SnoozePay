@@ -51,7 +51,8 @@ final class SettingsSubtitleRowHeightTests: XCTestCase {
                     defaults: defaults,
                     notificationCenter: NotificationCenter()
                 )
-            )
+            ),
+            priceContextSource: { .scale(.rouble) }
         )
         sut.loadViewIfNeeded()
         return sut

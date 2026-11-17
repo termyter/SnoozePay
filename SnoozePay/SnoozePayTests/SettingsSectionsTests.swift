@@ -10,7 +10,9 @@ final class SettingsSectionsTests: XCTestCase {
     private func makeSUT() -> SettingsViewController {
         let suite = "test.settings.sections.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
-        let sut = SettingsViewController(alarmDefaults: AlarmDefaults(defaults: defaults))
+        let sut = SettingsViewController(
+            alarmDefaults: AlarmDefaults(defaults: defaults), priceContextSource: { .scale(.rouble) }
+        )
         sut.loadViewIfNeeded()
         return sut
     }
