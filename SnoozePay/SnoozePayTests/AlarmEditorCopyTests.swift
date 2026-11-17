@@ -44,12 +44,9 @@ final class AlarmEditorCopyTests: XCTestCase {
     private static let copy: [String: String] = [
         "alarms.backend_guard.action.not_now": "Не сейчас",
         "alarms.balance_corrupted.later": "Позже",
-        "alarms.balance_corrupted.message": "В хранилище обнаружено некорректное значение баланса (%@). "
-            + "Пополнения и списания приостановлены. Сбросить баланс до 0 ₽?",
-        "alarms.balance_corrupted.message_currency": "В хранилище обнаружено некорректное значение баланса (%1$@). "
-            + "Пополнения и списания приостановлены. Сбросить баланс до %2$@?",
-        "alarms.balance_corrupted.message_unpriced": "В хранилище обнаружено некорректное значение баланса (%@). "
-            + "Пополнения и списания приостановлены. Сбросить баланс в ноль?",
+        // The three `alarms.balance_corrupted.message*` bodies are built by
+        // `AlarmsListViewModel` since #1109; `AlarmsListBalanceCorruptedCopyTests`
+        // pins their words and `ViewModelLocalizationTests` lists the keys.
         "alarms.balance_corrupted.reset": "Сбросить",
         "alarms.balance_corrupted.title": "Баланс повреждён",
         "alarms.button.delete": "Удалить",

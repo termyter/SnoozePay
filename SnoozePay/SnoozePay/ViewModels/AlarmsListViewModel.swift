@@ -748,3 +748,35 @@ final class AlarmsListViewModel {
         return Localized.optionalText(SoundCatalogue.nameKey(for: soundID)) ?? soundID
     }
 }
+
+// MARK: - Corrupt-balance alert body
+
+extension AlarmsListViewModel {
+
+    /// Body of the corrupt-balance alert, naming the zero the reset leaves in
+    /// this wallet's `balanceCurrency` (#1109).
+    func balanceCorruptedMessage(rawValue: Double) -> String {
+        Self.balanceCorruptedMessage(rawValue: rawValue, currency: balanceCurrency)
+    }
+
+    /// The currency → text mapping behind `balanceCorruptedMessage(rawValue:)`.
+    ///
+    /// Roubles keep the original key, so the text is byte-identical to the one
+    /// before (a plain space before «₽», not `MoneyFormatter`'s narrow one).
+    /// Any other currency gets zero from `MoneyFormatter` («$0.00»); with no
+    /// currency the sentence names no amount. The raw value goes in as a string
+    /// so it prints exactly as it did before — a `%f` would round the very
+    /// number support needs to see.
+    static func balanceCorruptedMessage(rawValue: Double, currency: Currency?) -> String {
+        let raw = "\(rawValue)"
+        guard let currency else {
+            return Localized.format("alarms.balance_corrupted.message_unpriced", raw)
+        }
+        guard currency != .rub else {
+            return Localized.format("alarms.balance_corrupted.message", raw)
+        }
+        return Localized.format(
+            "alarms.balance_corrupted.message_currency", raw, MoneyFormatter.string(Decimal(0), currency: currency)
+        )
+    }
+}
