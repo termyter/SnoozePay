@@ -424,20 +424,42 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
 
     // MARK: - The wake belongs to the request, not to a later confirmation
 
-    func testResumedFinishRecordsTheFirstRequestInstantNotTheLaterConfirmation() throws {
+    func testSameRingRetryRecordsTheFirstRequestInstantNotTheLaterConfirmation() throws {
         let fixture = try OccurrenceVMFixture()
         defer { fixture.close() }
         fixture.backend.occurrenceFinishResult = .failure(.nativeUnconfirmed)
-        let before = Date()
-        XCTAssertEqual(fixture.model().dismiss(), .failure(.nativeUnconfirmed))
+        let model = fixture.model()
+        XCTAssertEqual(model.dismiss(), .failure(.nativeUnconfirmed))
         let ticket = try XCTUnwrap(fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
         let requested = try XCTUnwrap(ticket.wakeAt)
-        XCTAssertGreaterThanOrEqual(requested, before)
+        XCTAssertGreaterThanOrEqual(requested, model.firingStartedAt)
 
         fixture.backend.occurrenceFinishResult = .success(())
-        XCTAssertEqual(fixture.model().dismiss(), .success(.completedNow))
+        XCTAssertEqual(model.dismiss(), .success(.completedNow))
 
         XCTAssertEqual(fixture.wakes.wakeTimes(), [requested])
+    }
+
+    func testEarlierRingsUntrackedRequestSettledByAFreshRingRecordsTodaysWake() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        // Ring N: "I'm up" on the original yesterday, process died before the commit.
+        let yesterday = Date().addingTimeInterval(-86_400)
+        let stale = try fixture.store().beginOccurrenceFinish(
+            alarmID: fixture.alarm.id, reference: nil, wakeAt: yesterday
+        )
+        let model = fixture.model()
+
+        XCTAssertEqual(model.dismiss(), .success(.completedNow))
+
+        XCTAssertEqual(try XCTUnwrap(fixture.backend.occurrenceFinishRequests.first).allowsUntrackedDerived, true)
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        let times = fixture.wakes.wakeTimes()
+        XCTAssertEqual(times.count, 1)
+        XCTAssertFalse(times.contains(try XCTUnwrap(stale.wakeAt)))
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(times.first), model.firingStartedAt)
+        let today = try XCTUnwrap(WakeDayIdentity(date: Date(), calendar: .current).canonicalStoredDay)
+        XCTAssertEqual(fixture.wakes.wakeDays(), [today])
     }
 
     private func assertNoFinishSideEffects(
