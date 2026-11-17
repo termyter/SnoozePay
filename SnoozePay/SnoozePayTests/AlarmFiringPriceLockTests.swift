@@ -130,6 +130,36 @@ final class AlarmFiringPriceLockTests: XCTestCase {
         XCTAssertEqual(charges.map(\.amount), [0.99, 0.99])
     }
 
+    // MARK: - Refund (review of #1140)
+
+    func testLockedDollarPrice_scheduleFails_refundsTheProgressiveChargeLinkedToIt() throws {
+        XCTAssertTrue(scaleStore.record(usdScale))
+        fund(10, in: usd)
+        let failing = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: TestAlarmKitBackend(failSnooze: true))
+        let model = AlarmFiringViewModel(
+            alarm: Alarm(penaltyAmount: 50, progressiveScale: true), snoozeCount: 1, balanceService: wallet,
+            alarmRepository: AlarmRepository(defaults: defaults, scheduler: failing),
+            scheduler: failing, wakeStore: WakeEventStore(defaults: defaults), ledger: repository
+        )
+        XCTAssertEqual(model.currentPrice, Money(Decimal(string: "1.98")!, currency: usd))
+
+        let done = expectation(description: "schedule outcome")
+        var outcome: AlarmFiringViewModel.SnoozeScheduleOutcome?
+        XCTAssertTrue(model.snooze { outcome = $0; done.fulfill() })
+        wait(for: [done], timeout: 5)
+
+        guard case .scheduleFailed = outcome else { return XCTFail("got \(String(describing: outcome))") }
+        let rows = (try? repository.fetchAllChecked()) ?? []
+        let charge = try XCTUnwrap(rows.first { $0.type == .charge })
+        let refund = try XCTUnwrap(rows.first { $0.type == .refund })
+        XCTAssertEqual(charge.amount, 1.98)
+        XCTAssertEqual(charge.currency, usd)
+        XCTAssertEqual(refund.amount, 1.98)
+        XCTAssertEqual(refund.currency, usd)
+        XCTAssertEqual(refund.refundsTransactionID, charge.id)
+        XCTAssertEqual(wallet.balance, 10)
+    }
+
     // MARK: - Unavailable
 
     func testUnavailablePrice_refusesWithoutChargeAndStopStillWorks() {

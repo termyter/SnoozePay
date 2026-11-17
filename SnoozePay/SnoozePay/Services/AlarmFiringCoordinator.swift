@@ -149,10 +149,10 @@ final class AlarmFiringCoordinator {
         }
 
         let newCount = payload.snoozeCount + 1
-        let penalty: Double
+        let penalty: Double, priceCurrency: Currency
         switch snoozeCharge(for: alarm, snoozeCount: newCount) {
-        case .charge(let amount):
-            penalty = amount
+        case .charge(let amount, let currency):
+            (penalty, priceCurrency) = (amount, currency)
         case .refuse(let outcome):
             completion?(outcome)
             return
@@ -160,9 +160,12 @@ final class AlarmFiringCoordinator {
 
         // `chargeWithReceipt` returns the persisted Transaction so a later
         // refund can link back to it (issue #133) — without that link stats
-        // can't tell a refunded charge apart from a real snooze.
+        // can't tell a refunded charge apart from a real snooze. The wallet
+        // re-checks the price currency inside its queue (#1143); a freeze in
+        // between refuses here, as insufficient funds.
         guard let chargeTransaction = balanceService.chargeWithReceipt(
             amount: penalty,
+            expecting: priceCurrency,
             alarmID: payload.alarmID
         ) else {
             let alarmID = payload.alarmID
@@ -186,7 +189,8 @@ final class AlarmFiringCoordinator {
     }
 
     private enum SnoozeCharge {
-        case charge(Double)
+        /// The amount and the currency it was priced in.
+        case charge(Double, Currency)
         case refuse(SnoozeOutcome)
     }
 
@@ -197,12 +201,24 @@ final class AlarmFiringCoordinator {
     /// unresolvable price refuses — never a guessed number.
     private func snoozeCharge(for alarm: Alarm, snoozeCount: Int) -> SnoozeCharge {
         let context = balanceService.priceContext
+        let code = context.currency.code, alarmID = alarm.id
         guard let price = SnoozePriceResolver.resolve(
             alarm.price, snoozeCount: snoozeCount, isProgressive: alarm.progressiveScale, in: context
-        ), let amount = MoneyDecimal.double(price.amount) else {
-            let code = context.currency.code, alarmID = alarm.id
+        ) else {
             AppLogger.coordinator.error(
                 "snooze: price unavailable in \(code, privacy: .public) alarm=\(alarmID, privacy: .private), no charge"
+            )
+            return .refuse(.priceUnavailable(currency: context.currency))
+        }
+        // Resolved, but the Decimal has no Double (NaN / overflow): a defect in
+        // the price, not a missing scale — its own line so the two are told apart.
+        guard let amount = MoneyDecimal.double(price.amount) else {
+            let text = price.amount.description
+            AppLogger.coordinator.error(
+                """
+                snooze: price \(text, privacy: .public) \(code, privacy: .public) has no Double \
+                alarm=\(alarmID, privacy: .private), no charge
+                """
             )
             return .refuse(.priceUnavailable(currency: context.currency))
         }
@@ -217,7 +233,7 @@ final class AlarmFiringCoordinator {
             )
             return .refuse(.insufficientFunds)
         }
-        return .charge(amount)
+        return .charge(amount, price.currency)
     }
 
     /// Resolves the async scheduler result into a `SnoozeOutcome`. On failure

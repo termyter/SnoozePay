@@ -466,8 +466,11 @@ final class AlarmFiringViewModel {
         // #366). Without that link the foreground refund offsets the balance
         // but the original charge still inflates snooze stats / streak, the
         // exact bug #133 fixed for the notification-action path only.
+        // In the locked price's currency (#1143): `canSnooze` saw it payable,
+        // the wallet re-checks under its queue. Unresolved → `.nan`, refused.
         guard let chargeTransaction = balanceService.chargeWithReceipt(
             amount: penalty,
+            expecting: price(forSnoozeCount: snoozeCount + 1)?.currency ?? walletCurrency,
             alarmID: alarm.id
         ) else {
             if let token {
@@ -751,6 +754,11 @@ protocol AlarmFiringBalancing: AnyObject {
     /// `refund(amount:refundsTransactionID:)` so a reversed snooze is excluded
     /// from stats — closing the gap #133 left on the foreground path (#366).
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction?
+    /// The charge `snooze()` makes: same contract, plus `nil` unless the wallet
+    /// holds `currency`, compared where the debit is serialized (#1143).
+    /// Deliberately no default here — a production wallet that forwarded to the
+    /// unguarded charge would debit a price in whatever currency it holds.
+    func chargeWithReceipt(amount: Double, expecting currency: Currency, alarmID: UUID?) -> Transaction?
     /// Reverses a penalty as a `.refund` ledger row — deliberately NOT `topUp`,
     /// which is reserved for paid IAP credit and drives revenue accounting
     /// (issue #358). `refundsTransactionID` links the reversal to the charge it

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The snooze-price context of this wallet (#1109, #1130): which scale a snooze
 /// price resolves in, and which currency money is shown in.
@@ -20,19 +21,24 @@ extension BalanceService {
     ///    → rouble scale (the behaviour before #1109).
     ///
     /// Cached tiers are rounded to the currency's minor unit first, so a
-    /// `Product.price` artefact (1.9899999…) never becomes a charge amount; tiers
-    /// that stop being a valid scale once rounded are `.unavailable`.
+    /// `Product.price` artefact (1.9899999…) never becomes a charge amount.
+    /// Tiers that stop being a valid scale once rounded count as no cached
+    /// scale: `.unavailable` for a stored currency (1), the rouble scale for a
+    /// pristine wallet (3). Both are logged once per currency and scale.
     ///
     /// ⚠️ Calls `walletIsPristine`, which takes `queue.sync`: never read this from
     /// inside the serial queue.
     var priceContext: SnoozePriceContext {
         if let stored = storedWalletCurrency {
             guard stored != .rub else { return .scale(.rouble) }
-            return roundedCachedScale(for: stored).map(SnoozePriceContext.scale) ?? .unavailable(stored)
+            return roundedCachedScale(for: stored, otherwise: "unavailable")
+                .map(SnoozePriceContext.scale) ?? .unavailable(stored)
         }
         guard walletIsPristine else { return .scale(.rouble) }
         guard let storefront = priceScaleStore.lastStorefrontCurrency,
-              let scale = roundedCachedScale(for: storefront) else { return .scale(.rouble) }
+              let scale = roundedCachedScale(for: storefront, otherwise: "rouble fallback") else {
+            return .scale(.rouble)
+        }
         return .scale(scale)
     }
 
@@ -60,7 +66,12 @@ extension BalanceService {
         return context
     }
 
-    private func roundedCachedScale(for currency: Currency) -> SnoozePriceScale? {
+    /// The cached scale of `currency` rounded to its minor unit, or `nil`.
+    /// `outcome` names what the caller does with `nil`, for the log line.
+    ///
+    /// `priceContext` is read on every render, so both log lines fire once per
+    /// currency and cached scale per process.
+    private func roundedCachedScale(for currency: Currency, otherwise outcome: String) -> SnoozePriceScale? {
         guard let cached = priceScaleStore.scale(for: currency) else { return nil }
         if currency == .rub { return cached }
         let digits = currency.minorUnitDigits
@@ -69,19 +80,56 @@ extension BalanceService {
             NSDecimalRound(&rounded, &value, digits, .plain)
             return rounded
         }
-        return SnoozePriceScale(currency: currency, tiers: tiers)
+        guard tiers != cached.tiers else { return cached }
+        let code = currency.code
+        let before = cached.tiers.map(\.description).joined(separator: "/")
+        let after = tiers.map(\.description).joined(separator: "/")
+        guard let scale = SnoozePriceScale(currency: currency, tiers: tiers) else {
+            if PriceContextLogOnce.first("invalid|\(code)|\(before)|\(outcome)") {
+                AppLogger.emit(
+                    .balance, .error,
+                    "price scale \(code) \(before) rounds to \(after), not a valid scale — \(outcome)"
+                )
+            }
+            return nil
+        }
+        if PriceContextLogOnce.first("rounded|\(code)|\(before)") {
+            AppLogger.emit(.balance, .default, "price scale \(code) \(before) rounded to minor unit: \(after)")
+        }
+        return scale
     }
 }
 
 extension Currency {
 
-    /// ISO 4217 minor-unit digits (USD 2, JPY 0, KWD 3), from Foundation's
-    /// currency data — the same precision `MoneyFormatter` shows.
+    /// Fraction digits of this currency in Foundation's (CLDR) currency data —
+    /// the precision `MoneyFormatter` shows (USD 2, JPY 0, KWD 3).
+    ///
+    /// Not ISO 4217 minor units: CLDR gives 0 to several currencies ISO lists
+    /// with 2 or 3 (HUF, IDR, ISK, PKR, RSD, LBP, IQD), so a charge never carries
+    /// digits the screen does not show. A well-formed code Foundation does not
+    /// list gets the formatter's default, 2, logged once per code.
     nonisolated var minorUnitDigits: Int {
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.numberStyle = .currency
         formatter.currencyCode = code
-        return formatter.maximumFractionDigits
+        let digits = formatter.maximumFractionDigits
+        if !Self.knownCodes.contains(code), PriceContextLogOnce.first("unknownCode|\(code)") {
+            AppLogger.emit(.balance, .default, "currency \(code) unknown to Foundation — \(digits) digits assumed")
+        }
+        return digits
+    }
+
+    nonisolated private static let knownCodes = Set(Locale.Currency.isoCurrencies.map(\.identifier))
+}
+
+/// Process-wide "first time?" for lines that would otherwise repeat on every
+/// read of `priceContext`.
+private nonisolated enum PriceContextLogOnce {
+    private static let seen = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    static func first(_ key: String) -> Bool {
+        seen.withLock { $0.insert(key).inserted }
     }
 }
