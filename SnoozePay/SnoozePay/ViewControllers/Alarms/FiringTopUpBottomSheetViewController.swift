@@ -47,9 +47,36 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         Preset(productID: "io.mobilife.snoozepay.balance.999", popular: false)
     ].compactMap { $0 }
 
+    /// The rows offered for one next charge (#1112): `defaults`, with the whole
+    /// catalogue's minimal sufficient pack swapped in when they lack it. Both
+    /// firing entry points read their rows here, so the sheet's preselection and
+    /// the direct no-balance CTA stay the same pack.
+    static func offeredPresets(
+        defaults: [Preset] = defaultPresets, offer: (String) -> TopUpOffer?, balance: Double, price: Double,
+        walletCurrency: Currency, acceptsPurchase: (Currency) -> Bool
+    ) -> [Preset] {
+        let ids = FiringTopUpCopy.offeredProductIDs(
+            defaults: defaults.map(\.productID), popular: Set(defaults.filter(\.popular).map(\.productID)),
+            catalogue: StoreKitService.productIDs.compactMap(offer), balance: balance, price: price,
+            walletCurrency: walletCurrency, acceptsPurchase: acceptsPurchase
+        )
+        return ids.compactMap { id in defaults.first { $0.productID == id } ?? Preset(productID: id, popular: false) }
+    }
+
+    #if DEBUG
+    /// The explicit empty-catalogue UI-tour demo: every catalogue SKU at its RUB nominal.
+    static func demoOffer(for productID: String) -> TopUpOffer? {
+        guard let amount = StoreKitService.catalogAmount(for: productID) else { return nil }
+        return TopUpOffer(productID: productID, price: Decimal(amount), currencyCode: "RUB",
+                          displayPrice: MoneyFormatter.string(amount))
+    }
+    #endif
+
     // MARK: - Configuration
 
-    private let presets: [Preset]
+    /// Rows before the catalogue is known; `presets` is what is on screen.
+    private let defaultRows: [Preset]
+    private var presets: [Preset]
 
     /// One next charge, used only to recommend an actual compatible offer.
     /// Unknown arithmetic never produces an affordability claim.
@@ -270,6 +297,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         offerProvider: ((String) -> TopUpOffer?)? = nil,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
+        self.defaultRows = presets
         self.presets = presets
         self.offerProvider = offerProvider
         self.launchArguments = arguments
@@ -504,16 +532,21 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     }
 
     private func setupPresetTiles() {
-        for preset in presets {
+        rebuildPresetRows()
+        refreshCatalog()
+    }
+
+    private func rebuildPresetRows() {
+        presetRows.forEach { $0.removeFromSuperview() }
+        presetRows = presets.map { preset -> FiringTopUpPresetRow in
             let row = FiringTopUpPresetRow(title: Localized.text("firing.top_up.row.title.generic"), hint: "",
                                           displayPrice: "—", selected: false) { [weak self] in
                 self?.selectProduct(preset.productID)
             }
             row.accessibilityIdentifier = "firingTopUp.preset." + preset.productID
             presetStack.addArrangedSubview(row)
-            presetRows.append(row)
+            return row
         }
-        refreshCatalog()
     }
 
     private func makeApplePayButton() -> SPButton {
@@ -548,21 +581,34 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     }
 
     private func offer(for productID: String) -> TopUpOffer? {
-        guard let preset = presets.first(where: { $0.productID == productID }) else { return nil }
+        presets.contains { $0.productID == productID } ? catalogueOffer(for: productID) : nil
+    }
+
+    /// Any catalogue SKU, offered as a row or not; rows are chosen from these.
+    private func catalogueOffer(for productID: String) -> TopUpOffer? {
         if let offerProvider {
             let offer = offerProvider(productID)
             return offer?.productID == productID ? offer : nil
         }
         #if DEBUG
-        if usesDemoCatalog {
-            return TopUpOffer(productID: productID, price: Decimal(preset.rubDemoAmount), currencyCode: "RUB",
-                              displayPrice: MoneyFormatter.string(preset.rubDemoAmount))
-        }
+        if usesDemoCatalog { return Self.demoOffer(for: productID) }
         #endif
         return StoreKitService.shared.products.first { $0.id == productID }.flatMap { TopUpOffer(product: $0) }
     }
 
     private func refreshCatalog() {
+        // Rows follow the catalogue only until the user picks one or a purchase
+        // starts, so a refresh never pulls a tapped row out from under them.
+        if !hasUserSelection && canPurchase {
+            let offered = Self.offeredPresets(
+                defaults: defaultRows, offer: catalogueOffer(for:), balance: balance.balance, price: snoozePrice,
+                walletCurrency: balance.walletCurrency, acceptsPurchase: balance.acceptsPurchase(in:)
+            )
+            if offered.map(\.productID) != presets.map(\.productID) {
+                presets = offered
+                rebuildPresetRows()
+            }
+        }
         let offers = presets.compactMap { offer(for: $0.productID) }
         if !hasUserSelection && canPurchase {
             selectedProductID = FiringTopUpCopy.preselectedOffer(

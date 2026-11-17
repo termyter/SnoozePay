@@ -220,6 +220,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
     /// #652: the direct CTA quotes and buys the pack the amount sheet opens on —
     /// never a fixed SKU — for the same wallet, next charge and actual catalogue.
     func testDirectCTABuysTheMinimalSufficientPackTheSheetPreselects() throws {
+        let whole = [49, 149, 299, 499, 999]
         let cases = [
             PackCase("RUB", 0, 50, expected: 149), PackCase("RUB", 0, 149, expected: 149),
             PackCase("RUB", 0, 200, expected: 499), PackCase("RUB", 100, 200, expected: 149),
@@ -228,7 +229,12 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             PackCase("RUB", 0, 5000, missing: 999, expected: 499),   // largest missing: largest offered
             PackCase("RUB", 0, 200, missing: 499, expected: 999),    // minimal one missing: next sufficient
             PackCase("USD", 1.50, 2.99, expected: 149), PackCase("USD", 0.50, 2.99, expected: 499),
-            PackCase("USD", 0, 2.99, expected: 149)                  // pristine: no cross-currency maths
+            PackCase("USD", 0, 2.99, expected: 149),                 // pristine: no cross-currency maths
+            // #1112: with the whole catalogue the minimal pack is offered even off the default rows.
+            PackCase("RUB", 0, 200, catalogue: whole, expected: 299),
+            PackCase("RUB", 0, 30, catalogue: whole, expected: 49),
+            PackCase("RUB", 100, 200, catalogue: whole, expected: 149),
+            PackCase("RUB", 0, 5000, catalogue: whole, expected: 999)
         ]
         for testCase in cases {
             let fixture = Fixture(available: false, penalty: testCase.penalty)
@@ -237,7 +243,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
                 XCTAssertEqual(fixture.wallet.topUpFromPurchase(amount: testCase.banked, currency: currency), .credited)
             }
             let scale = testCase.code == "RUB" ? 1 : 100
-            for nominal in [149, 499, 999] where nominal != testCase.missing {
+            for nominal in testCase.catalogue where nominal != testCase.missing {
                 let price = Decimal(nominal) / Decimal(scale)
                 fixture.catalog[sku(nominal)] = TopUpOffer(productID: sku(nominal), price: price,
                                                            currencyCode: testCase.code, displayPrice: "\(price) quote")
@@ -394,13 +400,16 @@ private struct PackCase {
     let banked: Double
     let penalty: Double
     let missing: Int?
+    let catalogue: [Int]
     let expected: Int
 
-    init(_ code: String, _ banked: Double, _ penalty: Double, missing: Int? = nil, expected: Int) {
+    init(_ code: String, _ banked: Double, _ penalty: Double, missing: Int? = nil,
+         catalogue: [Int] = [149, 499, 999], expected: Int) {
         self.code = code
         self.banked = banked
         self.penalty = penalty
         self.missing = missing
+        self.catalogue = catalogue
         self.expected = expected
     }
 }

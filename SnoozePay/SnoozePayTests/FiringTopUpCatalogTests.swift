@@ -76,6 +76,38 @@ final class FiringTopUpCatalogTests: XCTestCase {
         XCTAssertEqual(fixture.wallet.balance, 1.50)
     }
 
+    /// #1112: a 200 charge is offered the 299 pack instead of being steered to 499;
+    /// once the user taps a row, a catalogue refresh no longer reshuffles the rows.
+    func testRowsSwapInTheMinimalSufficientPackUntilTheUserPicks() throws {
+        let fixture = Fixture()
+        defer { fixture.clear() }
+        let sheet = fixture.makeSheet(snoozePrice: 200)
+        sheet.loadViewIfNeeded()
+        XCTAssertEqual(rowIDs(sheet), [149, 499, 999], "No catalogue yet: the default rows")
+        for nominal in [49, 149, 299, 499, 999] {
+            fixture.put(nominal, price: "\(nominal)", code: "RUB", display: "\(nominal) RUB")
+        }
+        fixture.refresh()
+        let rows = descendants(sheet.view).compactMap { $0 as? FiringTopUpPresetRow }
+        XCTAssertEqual(rowIDs(sheet), [299, 499, 999])
+        XCTAssertEqual(rows.filter(\.isSelected).map(\.accessibilityIdentifier),
+                       ["firingTopUp.preset." + Fixture.sku(299)])
+        XCTAssertTrue(rows.allSatisfy(\.isEnabled))
+        XCTAssertTrue(strings(try purchaseButton(sheet)).contains("299 RUB"))
+        rows[1].sendActions(for: .touchUpInside)
+        fixture.offers[Fixture.sku(299)] = nil
+        fixture.refresh()
+        XCTAssertEqual(rowIDs(sheet), [299, 499, 999], "A user pick freezes the rows")
+        XCTAssertTrue(rows[1].isSelected)
+        try purchaseButton(sheet).sendActions(for: .touchUpInside)
+        XCTAssertEqual(fixture.requested, [Fixture.sku(499)])
+    }
+
+    private func rowIDs(_ sheet: UIViewController) -> [Int] {
+        descendants(sheet.view).compactMap { ($0 as? FiringTopUpPresetRow)?.accessibilityIdentifier }
+            .compactMap { Int($0.split(separator: ".").last ?? "") }
+    }
+
     func testCatalogRefreshRetainsSelectedSKUAndHasOneCTAWithFourActiveAnchors() throws {
         let fixture = Fixture()
         defer { fixture.clear() }

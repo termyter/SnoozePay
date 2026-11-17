@@ -128,6 +128,7 @@ enum UITourRoutes {
         // #548 — the case the static labels got wrong: a snooze price ABOVE the
         // cheapest offered tier, where buying 149 ₽ unlocks nothing. Kept as its
         // own route so the copy can be screenshotted without editing an alarm.
+        // Since #1112 the sheet swaps 149 for 299, the minimal pack covering 200.
         "firing-topup-expensive": { window in
             UITourLauncher.forceBalance(to: 0)
             let alarm = firingSampleAlarm(penalty: 200)
@@ -307,10 +308,14 @@ enum UITourRoutes {
         let model = AlarmFiringViewModel(alarm: firingSampleAlarm(), balanceService: balance)
         let firing = controllerBuilder?(model) ?? AlarmFiringViewController(viewModel: model)
         guard StoreKitService.isCatalogForcedEmpty(arguments: arguments) else { return firing }
-        // The sheet's RUB demo catalogue, so the CTA picks its pack by the real rule (#652).
-        let offers = FiringTopUpBottomSheetViewController.defaultPresets.compactMap { preset in
-            TopUpOffer(productID: preset.productID, price: Decimal(preset.rubDemoAmount), currencyCode: "RUB",
-                       displayPrice: MoneyFormatter.string(Double(preset.rubDemoAmount), currency: .rub))
+        // The sheet's whole RUB demo catalogue, so the CTA picks its pack by the real
+        // rule (#652) from the rows the sheet offers (#1112). The sample's 50 charge
+        // is covered first by 149 (49 is short), so the demo still quotes 149.
+        let offers = StoreKitService.productIDs.compactMap { productID in
+            StoreKitService.catalogAmount(for: productID).flatMap { amount in
+                TopUpOffer(productID: productID, price: Decimal(amount), currencyCode: "RUB",
+                           displayPrice: MoneyFormatter.string(Double(amount), currency: .rub))
+            }
         }
         firing.noBalancePurchase = AlarmFiringNoBalancePurchase(
             controller: firing, dispatch: { [weak firing] productID in
