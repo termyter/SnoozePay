@@ -151,4 +151,8 @@ enum AlarmFiringTimeFormatter {
     static func string(from date: Date) -> String {
         WallClockFormatter.string(from: date, style: .padded)
     }
+
+    static func string(from alarm: Alarm) -> String {
+        WallClockFormatter.string(from: alarm, style: .padded)
+    }
 }

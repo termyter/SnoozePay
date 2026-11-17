@@ -7,10 +7,10 @@ import Foundation
 /// the date portion leaked into scheduling logic. `TimeOfDay` makes the
 /// "only hour/minute" intent explicit and validates ranges at construction.
 ///
-/// Phase 1 of #31: introduced as a parallel API; `Alarm.time: Date` remains
-/// the storage primary so existing UserDefaults JSON keeps decoding. Callers
-/// that want validated semantics can read `Alarm.timeOfDay`.
-struct TimeOfDay: Equatable, Hashable, Codable {
+/// `Alarm.clockTime` persists explicit selections (#1065). Legacy alarms keep
+/// their Date interpretation until retimed; `Alarm.resolvedTimeOfDay` is the
+/// shared authority boundary. Decoding validates the same ranges as construction.
+nonisolated struct TimeOfDay: Equatable, Hashable, Codable, Sendable {
 
     let hour: Int    // 0...23
     let minute: Int  // 0...59
@@ -24,6 +24,21 @@ struct TimeOfDay: Equatable, Hashable, Codable {
         self.minute = minute
     }
 
+    private enum CodingKeys: String, CodingKey { case hour, minute }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let hour = try container.decode(Int.self, forKey: .hour)
+        let minute = try container.decode(Int.self, forKey: .minute)
+        guard let valid = Self(hour: hour, minute: minute) else {
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: decoder.codingPath,
+                debugDescription: "Civil time requires hour 0...23 and minute 0...59"
+            ))
+        }
+        self = valid
+    }
+
     /// Build from a `Date` by extracting wall-clock components in the given
     /// calendar. Returns `nil` only if the calendar refuses to provide both
     /// components (in practice, never for `Calendar.current` + a real date).
@@ -34,8 +49,8 @@ struct TimeOfDay: Equatable, Hashable, Codable {
     }
 
     /// Project this time-of-day onto the same calendar day as `referenceDate`.
-    /// Returns the computed `Date` or `nil` if the calendar refuses
-    /// (DST gaps, unusual calendars) — callers must handle that edge.
+    /// Foundation may normalize components around a DST gap; this projection
+    /// is not an AlarmKit recurrence/DST policy. Callers must handle failure.
     func toDate(on referenceDate: Date, calendar: Calendar = .current) -> Date? {
         var components = calendar.dateComponents([.year, .month, .day], from: referenceDate)
         components.hour = hour

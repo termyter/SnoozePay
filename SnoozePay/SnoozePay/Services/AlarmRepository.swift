@@ -273,13 +273,13 @@ final class AlarmRepository {
             _lastLoadFailed = false
             let calendar = Calendar.current
             return alarms.sorted { lhs, rhs in
-                let lhsClock = calendar.dateComponents([.hour, .minute], from: lhs.time)
-                let rhsClock = calendar.dateComponents([.hour, .minute], from: rhs.time)
-                // Creation dates can differ; sort by displayed local time first.
+                let lhsClock = lhs.resolvedTimeOfDay(calendar: calendar)
+                let rhsClock = rhs.resolvedTimeOfDay(calendar: calendar)
+                // Creation dates can differ; sort by the displayed clock first.
                 // Missing clock components sort last without trapping. Date keeps
                 // the prior tie order; exact-date ties retain the persisted order.
-                let lhsKey = (lhsClock.hour ?? Int.max, lhsClock.minute ?? Int.max, lhs.time)
-                let rhsKey = (rhsClock.hour ?? Int.max, rhsClock.minute ?? Int.max, rhs.time)
+                let lhsKey = (lhsClock?.hour ?? Int.max, lhsClock?.minute ?? Int.max, lhs.time)
+                let rhsKey = (rhsClock?.hour ?? Int.max, rhsClock?.minute ?? Int.max, rhs.time)
                 return lhsKey < rhsKey
             }
         } catch {

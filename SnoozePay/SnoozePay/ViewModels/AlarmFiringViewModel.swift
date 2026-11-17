@@ -438,7 +438,7 @@ final class AlarmFiringViewModel {
     /// A blank / whitespace-only name degrades to just the time so the row
     /// never renders a dangling "·" separator.
     var heroTitle: String {
-        let time = AlarmFiringTimeFormatter.string(from: alarm.time)
+        let time = AlarmFiringTimeFormatter.string(from: alarm)
         let name = alarm.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? time : "\(name) · \(time)"
     }
