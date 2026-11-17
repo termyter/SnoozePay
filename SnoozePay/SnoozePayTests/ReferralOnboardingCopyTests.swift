@@ -83,12 +83,15 @@ final class ReferralOnboardingCopyTests: XCTestCase {
         "onboarding.page2.caps",
         "onboarding.page2.step1_body",
         "onboarding.page2.step1_title",
+        "onboarding.page2.step1_title_unpriced",
         "onboarding.page2.step2_body",
         "onboarding.page2.step2_title",
+        "onboarding.page2.step2_title_unpriced",
         "onboarding.page2.step3_body",
         "onboarding.page2.step3_title",
         "onboarding.page2.title",
         "onboarding.page3.caps",
+        "onboarding.page3.option1_body_unpriced",
         "onboarding.page3.title"
     ]
 
@@ -154,7 +157,7 @@ final class ReferralOnboardingCopyTests: XCTestCase {
     // MARK: - Layer 2b: the onboarding pages
 
     func testOnboardingPagesRenderCopyRatherThanKeys() {
-        let controller = mount(OnboardingViewController())
+        let controller = mount(OnboardingViewController(priceContextSource: { .scale(.rouble) }))
 
         let rendered = controller.pageViews.flatMap { strings(in: $0) }
         assertNoKeysLeaked(Self.allKeys, in: rendered)
@@ -177,7 +180,7 @@ final class ReferralOnboardingCopyTests: XCTestCase {
     /// — a plain literal here would freeze today's money formatting into the
     /// test and break on #559.
     func testOnboardingMechanicsStepsCarryTheirAmounts() {
-        let controller = mount(OnboardingViewController())
+        let controller = mount(OnboardingViewController(priceContextSource: { .scale(.rouble) }))
         let rendered = controller.pageViews.flatMap { strings(in: $0) }
 
         let deposited = Localized.format("onboarding.page2.step1_title", MoneyFormatter.string(500))
@@ -196,7 +199,7 @@ final class ReferralOnboardingCopyTests: XCTestCase {
     /// whose label is `title` joined with the optional amount suffix — which
     /// is also the string the UI test matches on.
     func testOnboardingPrimaryCTAComesFromTheCatalogue() {
-        let controller = mount(OnboardingViewController())
+        let controller = mount(OnboardingViewController(priceContextSource: { .scale(.rouble) }))
 
         XCTAssertEqual(controller.primaryButton.accessibilityLabel, Localized.text("onboarding.button.next"))
 

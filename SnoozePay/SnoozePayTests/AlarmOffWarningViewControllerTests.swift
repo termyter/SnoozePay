@@ -46,7 +46,7 @@ final class AlarmOffWarningViewControllerTests: XCTestCase {
     /// The whole bug, in one line. On the pre-fix code `loadViewIfNeeded()`
     /// raises `NSGenericException` from `makeTopBar` and this test aborts.
     func testScreenLoads_withoutRaising() {
-        let sut = AlarmOffWarningViewController()
+        let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
         sut.loadViewIfNeeded()
         XCTAssertNotNil(sut.viewIfLoaded, "the sheet must survive viewDidLoad")
     }
@@ -56,7 +56,7 @@ final class AlarmOffWarningViewControllerTests: XCTestCase {
     /// the two cached `cgColor` payloads on the hero badge.
     func testScreenLoads_inBothThemes() {
         for style in [UIUserInterfaceStyle.light, .dark] {
-            let sut = AlarmOffWarningViewController()
+            let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
             sut.overrideUserInterfaceStyle = style
             sut.loadViewIfNeeded()
             XCTAssertNotNil(sut.viewIfLoaded, "sheet failed to load in \(style)")
@@ -67,7 +67,7 @@ final class AlarmOffWarningViewControllerTests: XCTestCase {
     /// show up (as a broken-constraint log and a collapsed frame), so drive
     /// one and assert the sheet actually occupies the window.
     func testScreenSurvivesLayoutPass() {
-        let sut = AlarmOffWarningViewController()
+        let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
         let window = hostInWindow(sut)
         window.layoutIfNeeded()
 
@@ -81,7 +81,7 @@ final class AlarmOffWarningViewControllerTests: XCTestCase {
     /// spacer. Deleting it would also make the crash go away, so pin the
     /// measurement: after layout the two must be the same non-zero width.
     func testTrailingSpacer_mirrorsCloseButtonWidth() {
-        let sut = AlarmOffWarningViewController()
+        let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
         let window = hostInWindow(sut)
         window.layoutIfNeeded()
 
@@ -104,7 +104,7 @@ final class AlarmOffWarningViewControllerTests: XCTestCase {
     /// outcome rather than the mechanism, so a future re-implementation of the
     /// top bar is still held to the same visual contract.
     func testCapsLabel_isHorizontallyCentredInTheTopBar() {
-        let sut = AlarmOffWarningViewController()
+        let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
         let window = hostInWindow(sut)
         window.layoutIfNeeded()
 

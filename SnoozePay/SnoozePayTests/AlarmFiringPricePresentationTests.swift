@@ -49,38 +49,20 @@ final class AlarmFiringPricePresentationTests: XCTestCase {
 
     func testQuotedPricePreservesHugeFiniteCurrencyAndRejectsInvalidOrLossySubunits() throws {
         let currency = Currency(code: "USD")!
-        let digits = try XCTUnwrap(AlarmFiringViewController.roundedPriceText(
-            .greatestFiniteMagnitude, withCurrency: false
-        ))
-        XCTAssertEqual(AlarmFiringViewController.quotedPriceText(.greatestFiniteMagnitude, currency: currency),
-                       digits + MoneyFormatter.narrowSpace + "USD")
+        let quoted = try XCTUnwrap(AlarmFiringViewController.quotedPriceText(.greatestFiniteMagnitude,
+                                                                            currency: currency))
+        let digits = String(format: "%.0f", Double.greatestFiniteMagnitude)
+        XCTAssertEqual(quoted, digits + MoneyFormatter.narrowSpace + "USD")
+        XCTAssertEqual(digits.count, 309)
+        XCTAssertTrue(digits.hasPrefix("17976931348623157"))
         for invalid in [Double.nan, .infinity, -.infinity, -1, .leastNonzeroMagnitude] {
             XCTAssertNil(AlarmFiringViewController.quotedPriceText(invalid, currency: currency))
         }
     }
 
-    func testRoundedPriceTextPreservesOrdinaryCurrencyFormattingAndKnownLargeDigits() {
-        XCTAssertEqual(AlarmFiringViewController.roundedPriceText(1234.5), MoneyFormatter.string(1235))
-        XCTAssertEqual(AlarmFiringViewController.roundedPriceText(9_223_372_036_854_775_808, withCurrency: false),
-                       "9223372036854775808")
-        XCTAssertEqual(AlarmFiringViewController.roundedPriceText(18_446_744_073_709_551_616, withCurrency: false),
-                       "18446744073709551616")
-    }
-
-    func testNonfinitePriceIsNotQuotedAndFiniteDecimalOverflowStillHasDigits() throws {
+    func testNonfinitePriceIsNotQuoted() {
         let controller = AlarmFiringViewController(viewModel: makeViewModel(base: .greatestFiniteMagnitude))
         XCTAssertNil(controller.snoozeHintText(), "Do not quote a finite charge when multiplication overflowed")
-        for invalid in [Double.nan, .infinity, -.infinity, -1] {
-            XCTAssertNil(AlarmFiringViewController.roundedPriceText(invalid))
-        }
-        let digits = try XCTUnwrap(AlarmFiringViewController.roundedPriceText(
-            .greatestFiniteMagnitude, withCurrency: false
-        ))
-        XCTAssertEqual(digits.count, 309)
-        XCTAssertTrue(digits.hasPrefix("17976931348623157"))
-        XCTAssertTrue(digits.utf8.allSatisfy { (48...57).contains($0) })
-        XCTAssertEqual(AlarmFiringViewController.roundedPriceText(.greatestFiniteMagnitude),
-                       digits + MoneyFormatter.narrowSpace + "₽")
     }
 
     func testLadderKeepsLargeAmountsAndStatesAndRendersActualDigits() {

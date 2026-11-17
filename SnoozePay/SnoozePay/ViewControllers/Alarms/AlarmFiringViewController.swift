@@ -228,6 +228,13 @@ class AlarmFiringViewController: UIViewController {
     /// off two purchases.
     var noBalancePurchaseInFlight: Bool = false
 
+    /// Builds the amount sheet `presentTopUpSheet()` presents for the next
+    /// charge and its currency. A seam so tests can give it an isolated wallet
+    /// and catalogue (#1148); production reads the shared ones.
+    var makeTopUpSheet: (_ price: Double, _ currency: Currency?) -> FiringTopUpBottomSheetViewController = {
+        FiringTopUpBottomSheetViewController(snoozePrice: $0, snoozePriceCurrency: $1)
+    }
+
     // MARK: - Progressive UI — only mounted when `alarm.progressiveScale`.
 
     /// Container holding the indicator pill + history ticker. Built lazily
@@ -494,7 +501,9 @@ class AlarmFiringViewController: UIViewController {
     /// «максимум — дальше только встать» (lowercase per
     /// `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:242` contains "максимум").
     func snoozeHintText() -> String? {
-        guard viewModel.isProgressiveActive else { return nil }
+        // A stranded price quotes nothing, not even the ceiling copy (#1148):
+        // its CTA is hidden, so the hint would describe a snooze that is not offered.
+        guard viewModel.isProgressiveActive, !viewModel.isLockedPriceStranded else { return nil }
         // Probe the ring's locked price one step ahead, in that price's own
         // currency (#1142): the same ladder the CTA and the charge read, so a
         // dollar CTA is never followed by a rouble "next" figure.
@@ -502,9 +511,8 @@ class AlarmFiringViewController: UIViewController {
         if viewModel.alarm.isPenaltyAtCeiling(forSnoozeCount: nextCount) {
             return Localized.text("firing.hint.max_price")
         }
-        // A stranded or unresolved price quotes no number at all.
-        guard !viewModel.isLockedPriceStranded,
-              let nextText = viewModel.priceText(forSnoozeCount: nextCount) else { return nil }
+        // An unresolved price quotes no number at all.
+        guard let nextText = viewModel.priceText(forSnoozeCount: nextCount) else { return nil }
         // Lowercase «следующее откладывание: …» per
         // `docs/design/snoozepay-2026-04-27/project/components/SPDawnV3.jsx:241` contains "следующее откладывание".
         return Localized.format("firing.hint.next_price", nextText)
@@ -514,21 +522,6 @@ class AlarmFiringViewController: UIViewController {
     /// Huge finite integers keep full digits when Decimal cannot represent them.
     static func quotedPriceText(_ amount: Double, currency: Currency) -> String? {
         MoneyFormatter.quotedString(amount, currency: currency)
-    }
-
-    /// Display-only rounding, with no Int narrowing or Decimal(Double) overflow.
-    /// Decimal's 38-digit precision limit selects grouping, not a business cap:
-    /// larger finite values keep their full fixed digits. Nonfinite is unknown.
-    static func roundedPriceText(_ amount: Double, withCurrency: Bool = true) -> String? {
-        guard amount.isFinite, amount >= 0 else { return nil }
-        // No locale overload: that path rounds large integers to 17 significant
-        // digits on Darwin (#931). C formatting preserves the represented value.
-        let digits = String(format: "%.0f", amount.rounded())
-        guard withCurrency else { return digits }
-        if digits.count <= 38, let decimal = Decimal(string: digits), decimal.isFinite {
-            return MoneyFormatter.string(decimal)
-        }
-        return digits + MoneyFormatter.narrowSpace + "₽"
     }
 
     /// Refresh the top-right balance pill so the displayed amount + tone

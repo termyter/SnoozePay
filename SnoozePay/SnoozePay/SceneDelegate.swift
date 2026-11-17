@@ -71,7 +71,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// same selector without duplicating the precedence logic.
     private func makeNextRootViewController() -> UIViewController {
         if !OnboardingViewController.isCompleted {
-            let onboarding = OnboardingViewController()
+            let onboarding = OnboardingViewController(priceContextSource: { BalanceService.shared.priceContext })
             onboarding.onFinished = { [weak self] in
                 self?.transitionAfterOnboarding()
             }

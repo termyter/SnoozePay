@@ -9,7 +9,7 @@ final class FiringTopUpPresetRow: UIControl {
     private let amountLabel = UILabel()
     private let checkChip = UIImageView()
     /// A known same-currency offer that does not cover one next charge is dimmed.
-    private var insufficient: Bool
+    private(set) var insufficient: Bool
 
     private let onTap: () -> Void
 

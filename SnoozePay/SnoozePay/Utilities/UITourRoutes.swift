@@ -36,7 +36,7 @@ enum UITourRoutes {
             // chain so an e2e walk can run the whole first-launch journey end
             // to end (the production wiring lives in SceneDelegate, which the
             // -uitour direct mount bypasses).
-            let onboarding = OnboardingViewController()
+            let onboarding = OnboardingViewController(priceContextSource: { BalanceService.shared.priceContext })
             onboarding.onFinished = { [weak window] in
                 let permissions = PermissionsViewController()
                 permissions.onFinished = { [weak window] in
@@ -294,7 +294,7 @@ enum UITourRoutes {
     /// it — the tour must open the screen the way the app does, or it stops
     /// being evidence about the app. Internal so a test can assert the shape.
     static func makeAlarmOffWarningSheet() -> AlarmOffWarningViewController {
-        let warning = AlarmOffWarningViewController()
+        let warning = AlarmOffWarningViewController(priceContext: BalanceService.shared.priceContext)
         warning.modalPresentationStyle = .pageSheet
         if let sheet = warning.sheetPresentationController {
             sheet.detents = [.large()]
