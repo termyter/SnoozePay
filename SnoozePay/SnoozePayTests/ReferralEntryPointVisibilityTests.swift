@@ -87,7 +87,8 @@ final class ReferralEntryPointVisibilityTests: XCTestCase {
                     defaults: defaults,
                     notificationCenter: NotificationCenter()
                 )
-            )
+            ),
+            priceContextSource: { .scale(.rouble) }
         )
         sut.recoveryVisible = recoveryVisible
         sut.loadViewIfNeeded()

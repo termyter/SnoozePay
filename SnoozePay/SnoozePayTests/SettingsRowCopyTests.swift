@@ -149,7 +149,9 @@ final class SettingsRowCopyTests: XCTestCase {
             defaults.set(corrupt, forKey: "stored_transactions")
             XCTAssertThrowsError(try alarms.fetchAllChecked())
             XCTAssertThrowsError(try ledger.fetchAllChecked())
-            let sut = RecoverySettingsSpy(alarmDefaults: AlarmDefaults(defaults: defaults))
+            let sut = RecoverySettingsSpy(
+                alarmDefaults: AlarmDefaults(defaults: defaults), priceContextSource: { .scale(.rouble) }
+            )
             sut.loadViewIfNeeded()
             sut.performRecovery(balanceService: wallet, alarmRepository: alarms)
             XCTAssertEqual(wallet.balance, 149)
@@ -181,7 +183,9 @@ final class SettingsRowCopyTests: XCTestCase {
         let alarms = AlarmRepository(defaults: defaults, scheduler: NoopScheduler(recoveryError: .busy))
         let corrupt = Data("corrupt".utf8)
         defaults.set(corrupt, forKey: "stored_alarms")
-        let sut = RecoverySettingsSpy(alarmDefaults: AlarmDefaults(defaults: defaults))
+        let sut = RecoverySettingsSpy(
+            alarmDefaults: AlarmDefaults(defaults: defaults), priceContextSource: { .scale(.rouble) }
+        )
         sut.loadViewIfNeeded()
         sut.performRecovery(balanceService: wallet, alarmRepository: alarms)
         XCTAssertEqual(sut.alert?.message, Localized.text("settings.recovery.alarms_busy"))

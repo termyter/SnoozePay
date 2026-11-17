@@ -87,8 +87,9 @@ class SettingsViewController: UIViewController {
         }
     }
 
-    /// The app's own Settings (the list's gear, the UI-tour route): the real
-    /// wallet's context. Tests use the designated init with an isolated source.
+    /// The list's gear button only (`AlarmsListViewController.openSettings`):
+    /// the real wallet's context. Temporary, until that call site passes the
+    /// source itself; tests never call it.
     convenience init() {
         self.init(priceContextSource: { BalanceService.shared.priceContext })
     }
