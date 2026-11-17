@@ -63,8 +63,10 @@ final class CreateAlarmViewModel {
     /// user's pick. `nil` in roubles, when unavailable, and for a free alarm
     /// (a zero amount resolves to zero, not to the cheapest tier).
     private(set) var selectedTier: SnoozePriceTier?
-    /// Only a pick rewrites the price: an alarm opened and saved untouched
-    /// keeps the record it had, legacy amount included.
+    /// The tier lit when the editor opened. Picking it again is not a change.
+    private let openingSelection: SnoozePriceTier?
+    /// Only a pick of a different tier rewrites the price: an alarm opened and
+    /// saved untouched keeps the record it had, legacy amount included.
     private var pickedTier = false
 
     var isEditing: Bool { existingID != nil }
@@ -82,7 +84,7 @@ final class CreateAlarmViewModel {
         defaults: AlarmDefaults = .shared,
         balanceService: BalanceService = .shared,
         backendMonitor: AlarmBackendMonitor = AlarmBackendMonitor(),
-        priceContext: SnoozePriceContext = .scale(.rouble),
+        priceContext: SnoozePriceContext,
         calendar: Calendar = .current,
         now: Date = Date()
     ) {
@@ -125,9 +127,11 @@ final class CreateAlarmViewModel {
         let openingAmount = alarm?.penaltyAmount ?? defaults.penaltyAmount
         self.penaltyAmount = openingAmount
         self.priceContext = priceContext
-        self.selectedTier = Self.openingTier(
+        let openingSelection = Self.openingTier(
             tier: alarm?.penaltyTier, amount: openingAmount, context: priceContext
         )
+        self.openingSelection = openingSelection
+        self.selectedTier = openingSelection
         self.progressiveScale = alarm?.progressiveScale ?? defaults.progressiveScale
         self.enabled = alarm?.enabled ?? true
         self.volume = alarm?.volume ?? defaults.volume
@@ -426,11 +430,13 @@ final class CreateAlarmViewModel {
         return SnoozePriceTier.allCases.compactMap { scale.price(for: $0) }
     }
 
-    /// Lights `tier` and makes Save write it. Ignored where no tiers are offered.
+    /// Lights `tier` and makes Save write it, unless it is the tier the editor
+    /// opened on — then the opened record is kept as it was. Ignored where no
+    /// tiers are offered.
     func selectTier(_ tier: SnoozePriceTier) {
         guard !tierPrices.isEmpty else { return }
         selectedTier = tier
-        pickedTier = true
+        pickedTier = tier != openingSelection
     }
 
     /// The tier an opened price reads as outside roubles: its own tier, else

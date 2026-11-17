@@ -79,9 +79,11 @@ final class CreateAlarmViewController: UIViewController {
 
     // MARK: - Init
 
-    convenience init(alarm: Alarm?) {
-        // The price context is read once, here, when the editor opens (#1146).
-        self.init(viewModel: CreateAlarmViewModel(alarm: alarm, priceContext: BalanceService.shared.priceContext))
+    /// The price context is read once, here, when the editor opens (#1146).
+    convenience init(alarm: Alarm?, balanceService: BalanceService = .shared) {
+        self.init(viewModel: CreateAlarmViewModel(
+            alarm: alarm, balanceService: balanceService, priceContext: balanceService.priceContext
+        ))
     }
 
     init(viewModel: CreateAlarmViewModel) {
