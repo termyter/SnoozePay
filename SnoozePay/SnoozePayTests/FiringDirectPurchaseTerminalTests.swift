@@ -229,7 +229,10 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             PackCase("RUB", 0, 5000, missing: 999, expected: 499),   // largest missing: largest offered
             PackCase("RUB", 0, 200, missing: 499, expected: 999),    // minimal one missing: next sufficient
             PackCase("USD", 1.50, 2.99, expected: 149), PackCase("USD", 0.50, 2.99, expected: 499),
-            PackCase("USD", 0, 2.99, expected: 149),                 // pristine: no cross-currency maths
+            // #1109: a pristine wallet with a cached dollar scale reckons the dollar price in dollars.
+            // Uncached when the ring locked: the price stays roubles, dollar packs have unknown
+            // coverage and the cheapest one is quoted (PM default 4 of #1109).
+            PackCase("USD", 0, 2.99, expected: 499), PackCase("USD", 0, 2.99, uncached: true, expected: 149),
             // #1112: with the whole catalogue the minimal pack is offered even off the default rows.
             PackCase("RUB", 0, 200, catalogue: whole, expected: 299),
             PackCase("RUB", 0, 30, catalogue: whole, expected: 49),
@@ -239,11 +242,12 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         for testCase in cases {
             let currency = try XCTUnwrap(Currency(code: testCase.code))
             // The wallet is banked BEFORE the ring's price is locked (#1137), and a
-            // banked foreign wallet gets the scale whose low tier is this charge.
+            // foreign case, banked or pristine, gets the scale whose low tier is this charge.
             let fixture = Fixture(available: false, penalty: testCase.penalty) { wallet, defaults in
-                guard testCase.banked > 0 else { return }
-                XCTAssertEqual(wallet.topUpFromPurchase(amount: testCase.banked, currency: currency), .credited)
-                guard currency != .rub else { return }
+                let banked = testCase.banked > 0 ? wallet.topUpFromPurchase(amount: testCase.banked, currency: currency)
+                    : .credited
+                XCTAssertEqual(banked, .credited)
+                guard currency != .rub, !testCase.uncached else { return }
                 let low = Decimal(string: "\(testCase.penalty)")!
                 let scale = SnoozePriceScale(currency: currency, tiers: [low, low + 1, low + 2])!
                 XCTAssertTrue(SnoozePriceScaleStore(defaults: defaults).record(scale))
@@ -255,13 +259,13 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
                                                            currencyCode: testCase.code, displayPrice: "\(price) quote")
             }
             fixture.post(StoreKitService.productsLoadedNotification)
-            let controller = try XCTUnwrap(fixture.controller)
+            let controller = try XCTUnwrap(fixture.controller), model = controller.viewModel
             let display = try XCTUnwrap(fixture.catalog[sku(testCase.expected)]?.displayPrice)
             let button = try XCTUnwrap(controller.applePayNoBalanceButton)
             XCTAssertEqual(button.accessibilityLabel, Localized.text("common.button.top_up") + ", " + display,
                            "\(testCase)")
             let sheet = FiringTopUpBottomSheetViewController(
-                snoozePrice: controller.viewModel.currentPenalty, balance: fixture.wallet,
+                snoozePrice: model.currentPenalty, snoozePriceCurrency: model.priceCurrency, balance: fixture.wallet,
                 notificationCenter: fixture.center, pauseLifecycle: { _ in }, preflightRefusal: { _ in nil },
                 offerProvider: { [catalog = fixture.catalog] in catalog[$0] }
             )
@@ -410,15 +414,17 @@ private struct PackCase {
     let banked: Double
     let penalty: Double
     let missing: Int?
+    let uncached: Bool
     let catalogue: [Int]
     let expected: Int
 
-    init(_ code: String, _ banked: Double, _ penalty: Double, missing: Int? = nil,
+    init(_ code: String, _ banked: Double, _ penalty: Double, missing: Int? = nil, uncached: Bool = false,
          catalogue: [Int] = [149, 499, 999], expected: Int) {
         self.code = code
         self.banked = banked
         self.penalty = penalty
         self.missing = missing
+        self.uncached = uncached
         self.catalogue = catalogue
         self.expected = expected
     }
