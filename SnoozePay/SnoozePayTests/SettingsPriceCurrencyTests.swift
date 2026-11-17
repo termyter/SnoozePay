@@ -238,7 +238,8 @@ final class SettingsPriceCurrencyTests: XCTestCase {
             themeService: ThemeService(defaults: defaults),
             alarmDefaults: alarmDefaults,
             referralService: ReferralService(defaults: defaults, balanceService: wallet),
-            walletCurrencyStore: currencyStore
+            walletCurrencyStore: currencyStore,
+            priceContextSource: { wallet.priceContext }
         )
         sut.loadViewIfNeeded()
         return (sut, defaults)

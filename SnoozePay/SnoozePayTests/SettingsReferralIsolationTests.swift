@@ -146,7 +146,8 @@ final class SettingsReferralIsolationTests: XCTestCase {
         let sut = SettingsViewController(
             themeService: ThemeService(defaults: defaults),
             alarmDefaults: AlarmDefaults(defaults: defaults),
-            referralService: ReferralService(defaults: defaults, balanceService: wallet)
+            referralService: ReferralService(defaults: defaults, balanceService: wallet),
+            priceContextSource: { wallet.priceContext }
         )
         sut.loadViewIfNeeded()
         sut.referralEnabled = true
@@ -485,6 +486,7 @@ final class SettingsReferralIsolationTests: XCTestCase {
             }
         }
 
-        XCTAssertTrue(SettingsViewController().referralService === ReferralService.shared)
+        XCTAssertTrue(SettingsViewController(priceContextSource: { .scale(.rouble) }).referralService
+            === ReferralService.shared)
     }
 }

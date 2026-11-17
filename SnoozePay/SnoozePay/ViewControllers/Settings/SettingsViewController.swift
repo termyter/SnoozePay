@@ -35,6 +35,17 @@ class SettingsViewController: UIViewController {
     /// past it (#690).
     let referralService: ReferralService
 
+    /// The wallet's snooze-price context (#1147): what the default-price row
+    /// and the progressive ladder are quoted in. Read from `priceContextSource`
+    /// at init, on every appearance and on the wallet-currency, balance and
+    /// price-scale notifications, so a catalogue landing while Settings is on
+    /// screen re-quotes it. No default source: one that silently meant roubles
+    /// is exactly the bug this replaced.
+    private(set) var priceContext: SnoozePriceContext
+    private let priceContextSource: () -> SnoozePriceContext
+    private let notificationCenter: NotificationCenter
+    private var priceContextObservers: [NSObjectProtocol] = []
+
     // MARK: - UI
 
     /// Internal so `SettingsViewController+Referral` can call
@@ -52,13 +63,46 @@ class SettingsViewController: UIViewController {
         themeService: ThemeService = .shared,
         alarmDefaults: AlarmDefaults = .shared,
         referralService: ReferralService = .shared,
-        walletCurrencyStore: WalletCurrencyStore = WalletCurrencyStore(defaults: .standard)
+        walletCurrencyStore: WalletCurrencyStore = WalletCurrencyStore(defaults: .standard),
+        priceContextSource: @escaping () -> SnoozePriceContext,
+        notificationCenter: NotificationCenter = .default
     ) {
         self.themeService = themeService
         self.alarmDefaults = alarmDefaults
         self.referralService = referralService
         self.walletCurrencyStore = walletCurrencyStore
+        self.priceContextSource = priceContextSource
+        self.priceContext = priceContextSource()
+        self.notificationCenter = notificationCenter
         super.init(nibName: nil, bundle: nil)
+        priceContextObservers = [
+            BalanceService.walletCurrencyChangedNotification,
+            BalanceService.balanceChangedNotification,
+            SnoozePriceScaleStore.snoozePriceScaleChangedNotification
+        ].map { name in
+            // The scale store posts from the recording thread; hop to main.
+            notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshPriceContext() }
+            }
+        }
+    }
+
+    /// The app's own Settings (the list's gear, the UI-tour route): the real
+    /// wallet's context. Tests use the designated init with an isolated source.
+    convenience init() {
+        self.init(priceContextSource: { BalanceService.shared.priceContext })
+    }
+
+    deinit {
+        priceContextObservers.forEach { notificationCenter.removeObserver($0) }
+    }
+
+    /// Re-reads the context and reloads a mounted table when it moved.
+    func refreshPriceContext() {
+        let context = priceContextSource()
+        guard context != priceContext else { return }
+        priceContext = context
+        if isViewLoaded { tableView.reloadData() }
     }
 
     required init?(coder: NSCoder) {
@@ -167,7 +211,9 @@ class SettingsViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Re-read defaults (volume may have changed in the pushed picker).
+        // Re-read defaults (volume may have changed in the pushed picker) and
+        // the price context (a purchase elsewhere may have moved it).
+        priceContext = priceContextSource()
         tableView.reloadData()
     }
 

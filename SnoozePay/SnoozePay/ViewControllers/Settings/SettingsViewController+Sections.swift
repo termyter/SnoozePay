@@ -27,17 +27,25 @@ extension SettingsViewController {
     /// Existing alarms keep their own saved price.
     func makeDefaultPriceRow(at indexPath: IndexPath) -> UITableViewCell {
         let cell = dequeueIconRowCell(at: indexPath)
-        let currency = walletCurrencyStore.currency
         cell.configure(
-            systemName: currency == .rub ? "rublesign.circle" : "banknote",
+            systemName: priceContext.currency == .rub ? "rublesign.circle" : "banknote",
             iconColor: AppColors.snoozePriceInk,
             title: Localized.text("settings.row.default_price"),
-            trailingText: MoneyFormatter.string(alarmDefaults.penaltyAmount, currency: currency),
+            trailingText: Self.defaultPriceText(alarmDefaults.penaltyAmount, in: priceContext),
             trailingColor: AppColors.snoozePriceInk,
             accessory: .disclosureIndicator,
             selectionStyle: .default
         )
         return cell
+    }
+
+    /// The stored default (a legacy rouble amount, #1147) as the first snooze
+    /// of a new alarm would cost in `context`: the amount itself in roubles —
+    /// byte-identical to the row before — its legacy tier on a cached scale,
+    /// and the unpriced "—" when the scale is unavailable.
+    static func defaultPriceText(_ amount: Double, in context: SnoozePriceContext) -> String {
+        guard let price = SnoozePriceResolver.base(.amount(amount), in: context) else { return "—" }
+        return MoneyFormatter.string(price.amount, currency: price.currency)
     }
 
     /// "Длительность откладывания · 9 мин" — global default seeding new alarms
@@ -124,10 +132,24 @@ extension SettingsViewController {
     /// capped calculation as charging. It stays visible while the switch is
     /// off, as before, without changing the default flag or any saved alarm.
     private var progressivePricePreview: String {
-        let alarm = Alarm(penaltyAmount: alarmDefaults.penaltyAmount, progressiveScale: true)
-        let currency = walletCurrencyStore.currency
-        return (1...4).map {
-            MoneyFormatter.quotedString(alarm.penalty(forSnoozeCount: $0), currency: currency) ?? "—"
+        Self.progressivePreviewText(alarmDefaults.penaltyAmount, in: priceContext)
+    }
+
+    /// The four-step ladder in `context` (#1147). Roubles keep the Double
+    /// ladder and its quoting byte for byte; a cached scale climbs from the
+    /// amount's tier in `Decimal`; an unavailable scale shows a single "—"
+    /// rather than four unknowns.
+    static func progressivePreviewText(_ amount: Double, in context: SnoozePriceContext) -> String {
+        guard case .scale(let scale) = context else { return "—" }
+        let alarm = Alarm(penaltyAmount: amount, progressiveScale: true)
+        return (1...4).map { count in
+            if scale.currency == .rub {
+                return MoneyFormatter.quotedString(alarm.penalty(forSnoozeCount: count), currency: .rub) ?? "—"
+            }
+            guard let price = SnoozePriceResolver.resolve(
+                alarm.price, snoozeCount: count, isProgressive: true, in: context
+            ) else { return "—" }
+            return MoneyFormatter.string(price.amount, currency: price.currency)
         }.joined(separator: " → ")
     }
 
@@ -311,6 +333,8 @@ extension SettingsViewController {
         present(makeDefaultPricePicker(), animated: true)
     }
 
+    /// Still the rouble presets labelled in the wallet currency: choosing a
+    /// tier outside roubles is part 2b of #1147, after the editor's tiers land.
     func makeDefaultPricePicker() -> UIAlertController {
         let currency = walletCurrencyStore.currency
         let sheet = UIAlertController(

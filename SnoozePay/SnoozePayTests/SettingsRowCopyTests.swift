@@ -111,7 +111,9 @@ final class SettingsRowCopyTests: XCTestCase {
             } else {
                 XCTAssertThrowsError(try alarms.fetchAllChecked())
             }
-            let sut = SettingsViewController(alarmDefaults: AlarmDefaults(defaults: defaults))
+            let sut = SettingsViewController(
+                alarmDefaults: AlarmDefaults(defaults: defaults), priceContextSource: { .scale(.rouble) }
+            )
             sut.loadViewIfNeeded()
 
             sut.performRecovery(balanceService: wallet, alarmRepository: alarms)
@@ -264,7 +266,7 @@ final class SettingsRowCopyTests: XCTestCase {
         let suite = "test.settings.rowcopy.\(UUID().uuidString)"
         let defaults = AlarmDefaults(defaults: UserDefaults(suiteName: suite)!)
         if let snoozeMinutes { defaults.snoozeMinutes = snoozeMinutes }
-        let sut = SettingsViewController(alarmDefaults: defaults)
+        let sut = SettingsViewController(alarmDefaults: defaults, priceContextSource: { .scale(.rouble) })
         sut.loadViewIfNeeded()
         return sut
     }
