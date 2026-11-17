@@ -39,6 +39,11 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
     /// pointing at Settings.
     var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
 
+    /// Unknown, not empty: the tour has no system inventory to read, and nil
+    /// is the value that keeps a refresh from cancelling anything blindly.
+    /// Spelled out since #1125 - it used to be an inherited protocol default.
+    var alertingAlarmIDs: Set<UUID>? { nil }
+
     /// Answers with the pinned decision instead of prompting. The tour must
     /// never put a system dialog on screen — an unexpected SpringBoard alert
     /// is what makes UI tests flaky.
@@ -88,10 +93,11 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
 
     // MARK: - Occurrence finish (#1076, #1117)
     //
-    // «Я встал» goes through these since #1076. The protocol defaults answer
+    // «Я встал» goes through these since #1076. The protocol defaults answered
     // `.unsupported`, which the firing screen shows as «Завершение не
     // подтверждено» — so inheriting them made every tour dismiss fail and the
-    // firing E2E stop short of the WokeMorning summary (#1117).
+    // firing E2E stop short of the WokeMorning summary (#1117). Those
+    // defaults are gone since #1125: a forgotten requirement no longer compiles.
     //
     // The postcondition is the production adapter's, over what this fake
     // registers: originals are never registered here (`schedule` arms nothing
@@ -124,6 +130,18 @@ final class UITourAlarmKitBackend: AlarmKitScheduling {
         _ request: AlarmOccurrenceFinishRequest
     ) -> Result<Void, AlarmOccurrenceFinishError> {
         verifyFinishedOccurrence(request)
+    }
+
+    // MARK: - Corrupt-store recovery (#1125)
+    //
+    // Was the last requirement still inherited as `.unsupported`. Same
+    // postcondition as the production sweep, over this fake's inventory:
+    // everything it registered is dropped, then absence is verified. Like the
+    // finish family it needs no grant - clearing never arms anything.
+
+    func clearRegisteredAlarmsForRecovery() -> Result<Void, AlarmRecoveryError> {
+        fixedSchedules.removeAll()
+        return fixedSchedules.isEmpty ? .success(()) : .failure(.registrationsRemain)
     }
 
     private func derivedCopy(of alarmID: UUID) -> Date? {
