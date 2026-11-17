@@ -52,6 +52,16 @@ final class LocalizableCatalogTests: XCTestCase {
 
     // MARK: - Layer 2: plain keys
 
+    func testSharedDataErrorTitleKeepsRussianAndEnglishCopy() throws {
+        for (language, expected) in [("ru", "Ошибка данных"), ("en", "Data Error")] {
+            let path = try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"))
+            let localized = try XCTUnwrap(Bundle(path: path))
+            XCTAssertEqual(
+                localized.localizedString(forKey: "common.error.data_title", value: nil, table: nil), expected
+            )
+        }
+    }
+
     func testTimePickerHeaderResolves() {
         XCTAssertEqual(Localized.text("create_alarm.wake_up"), "Подъём")
     }

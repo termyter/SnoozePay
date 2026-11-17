@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import SnoozePay
 
 @available(iOS 26.0, *)
@@ -65,6 +66,41 @@ final class AlarmSchedulerPaidSnoozeRearmTests: XCTestCase {
                       "Disable, delete and finish must still cancel both system IDs")
     }
 
+    func testExplicitFullCancelRemovesAlertingOriginalAndPaidSnoozeWhileAuthorized() {
+        let alarm = dailyAlarm()
+        let backend = backendWithPaidSnooze(alarm)
+        backend.alertingAlarmIDs = [alarm.id]
+        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
+
+        scheduler.cancel(alarm.id)
+
+        XCTAssertTrue(backend.pending.isEmpty, "Explicit cancellation must also remove an alerting original")
+    }
+
+    func testForegroundRearmPreservesAlertingOriginalAndPaidDeadline() {
+        assertNotificationRearm(UIApplication.didBecomeActiveNotification)
+    }
+
+    func testTimeChangeRearmPreservesAlertingOriginalAndPaidDeadline() {
+        assertNotificationRearm(UIApplication.significantTimeChangeNotification)
+    }
+
+    func testForegroundRearmCountsOnlyFailedFutureOriginal() {
+        assertNotificationRearm(UIApplication.didBecomeActiveNotification, rejectFuture: true)
+    }
+
+    func testTimeChangeRearmCountsOnlyFailedFutureOriginal() {
+        assertNotificationRearm(UIApplication.significantTimeChangeNotification, rejectFuture: true)
+    }
+
+    func testForegroundRearmWithUnknownSystemStatePreservesSchedulesAndReportsEnabledFailures() {
+        assertUnknownStateNotificationRearm(UIApplication.didBecomeActiveNotification)
+    }
+
+    func testTimeChangeRearmWithUnknownSystemStatePreservesSchedulesAndReportsEnabledFailures() {
+        assertUnknownStateNotificationRearm(UIApplication.significantTimeChangeNotification)
+    }
+
     func testFirstCurrencyFreezeRefreshesFutureOriginalButPreservesAlertingOriginalAndPaidDeadline() async throws {
         let alarm = dailyAlarm()
         let future = Alarm(time: originalDate.addingTimeInterval(60))
@@ -109,6 +145,73 @@ final class AlarmSchedulerPaidSnoozeRearmTests: XCTestCase {
         XCTAssertEqual(backend.pending, before)
     }
 
+    private func assertNotificationRearm(_ trigger: Notification.Name, rejectFuture: Bool = false) {
+        let alarm = dailyAlarm()
+        let future = Alarm(time: originalDate.addingTimeInterval(60))
+        let disabled = Alarm(time: originalDate.addingTimeInterval(120), enabled: false)
+        let backend = backendWithPaidSnooze(alarm)
+        backend.schedule(future) { _ in }
+        backend.schedule(disabled) { _ in }
+        backend.scheduleSnooze(disabled, fireDate: paidFireDate.addingTimeInterval(60)) { _ in }
+        backend.alertingAlarmIDs = [alarm.id]
+        let before = backend.pending
+        let scheduledBefore = backend.scheduledOriginals
+        backend.failSchedule = rejectFuture
+        let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
+
+        XCTAssertEqual(rearmFromNotification(trigger, scheduler: scheduler, alarms: [alarm, future, disabled]),
+                       rejectFuture ? 1 : 0)
+
+        XCTAssertEqual(backend.cancelledOriginals, [future.id],
+                       "Foreground/time change must leave the alerting and disabled originals untouched")
+        XCTAssertEqual(backend.scheduledOriginals, scheduledBefore + [future.id])
+        var expected = before
+        if rejectFuture { expected.removeValue(forKey: future.id) }
+        XCTAssertEqual(backend.pending, expected)
+        XCTAssertEqual(backend.pending[alarmID], originalDate)
+        XCTAssertEqual(backend.pending[snoozeID], paidFireDate)
+    }
+
+    private func assertUnknownStateNotificationRearm(_ trigger: Notification.Name) {
+        let alarm = dailyAlarm()
+        let future = Alarm(time: originalDate.addingTimeInterval(60))
+        let disabled = Alarm(time: originalDate.addingTimeInterval(120), enabled: false)
+        let backend = backendWithPaidSnooze(alarm)
+        backend.schedule(future) { _ in }
+        backend.schedule(disabled) { _ in }
+        backend.alertingAlarmIDs = nil
+        let before = backend.pending
+        let scheduledBefore = backend.scheduledOriginals
+        let center = InertNotificationCenter()
+        let scheduler = AlarmScheduler(notificationCenter: center, alarmKit: backend)
+
+        XCTAssertEqual(rearmFromNotification(trigger, scheduler: scheduler, alarms: [alarm, future, disabled]), 2)
+
+        XCTAssertTrue(backend.cancelledOriginals.isEmpty)
+        XCTAssertEqual(backend.scheduledOriginals, scheduledBefore)
+        XCTAssertEqual(backend.pending, before)
+        XCTAssertEqual(backend.pending[snoozeID], paidFireDate)
+        XCTAssertTrue(center.removedIdentifiers.isEmpty)
+    }
+
+    private func rearmFromNotification(
+        _ trigger: Notification.Name, scheduler: AlarmScheduler, alarms: [Alarm]
+    ) -> Int? {
+        let center = NotificationCenter()
+        let completed = expectation(description: "notification rearm outcome reported")
+        var failures: Int?
+        let tokens = AppDelegate.observeAlarmRescheduleTriggers(center: center) { name in
+            AppDelegate.rearmSavedAlarms(alarms, trigger: name, scheduler: scheduler) {
+                failures = $0
+                completed.fulfill()
+            }
+        }
+        defer { tokens.forEach { center.removeObserver($0) } }
+        center.post(name: trigger, object: nil)
+        wait(for: [completed], timeout: 5)
+        return failures
+    }
+
     private func dailyAlarm() -> Alarm {
         Alarm(id: alarmID, time: originalDate, repeatDays: [0, 1, 2, 3, 4, 5, 6])
     }
@@ -139,6 +242,7 @@ private final class PendingAlarmKitBackend: AlarmKitScheduling {
     var failSchedule = false
     var alertingAlarmIDs: Set<UUID>? = []
     private(set) var cancelledOriginals: [UUID] = []
+    private(set) var scheduledOriginals: [UUID] = []
     private(set) var pending: [UUID: Date] = [:]
     private lazy var cancellation = AlarmKitScheduler(cancelAlarm: { [unowned self] alarmID in
         _ = self.pending.removeValue(forKey: alarmID)
@@ -147,6 +251,7 @@ private final class PendingAlarmKitBackend: AlarmKitScheduling {
     func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(isAuthorized) }
 
     func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) {
+        scheduledOriginals.append(alarm.id)
         guard !failSchedule else {
             completion(.failure(TestAlarmKitBackend.ScheduleRejected()))
             return

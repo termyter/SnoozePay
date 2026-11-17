@@ -34,6 +34,27 @@ final class AlarmRepositoryTests: XCTestCase {
         return Alarm(time: date, name: name, penaltyAmount: 50)
     }
 
+    private func makeDatedAlarm(day: Int, hour: Int, minute: Int = 0, name: String) throws -> Alarm {
+        let calendar = Calendar(identifier: .gregorian)
+        let time = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 10, day: day, hour: hour, minute: minute
+        )))
+        return Alarm(
+            time: time,
+            repeatDays: [1, 3, 5],
+            name: name,
+            soundID: "marimba",
+            vibrationEnabled: false,
+            snoozeMinutes: 7,
+            penaltyAmount: 150,
+            progressiveScale: true,
+            enabled: false,
+            volume: 0.4,
+            volumeFadeIn: true,
+            theme: .ocean
+        )
+    }
+
     // MARK: - Basic CRUD
 
     func testSave_persistsAlarm() {
@@ -337,6 +358,67 @@ final class AlarmRepositoryTests: XCTestCase {
         let names = repo.fetchAllOrFail().map(\.name)
         XCTAssertEqual(names, ["Early", "Mid", "Late"],
                        "fetchAll must order alarms by time ascending")
+    }
+
+    // Also pins the deprecated lossy route: both reads must use the same ordering.
+    @available(*, deprecated, message: "Pins the deprecated lossy read on purpose")
+    func testFetchAll_sortsByLocalClockTimeAcrossCreationDates() throws {
+        let late = try makeDatedAlarm(day: 25, hour: 22, name: "Late")
+        let early = try makeDatedAlarm(day: 26, hour: 6, name: "Early")
+
+        for insertionOrder in [[late, early], [early, late]] {
+            testDefaults.removeObject(forKey: "stored_alarms")
+            for alarm in insertionOrder {
+                XCTAssertTrue(repo.save(alarm))
+            }
+            let storedData = try XCTUnwrap(testDefaults.data(forKey: "stored_alarms"))
+
+            XCTAssertEqual(try repo.fetchAllChecked(), [early, late],
+                           "Displayed clock time must take precedence over the stored creation date")
+            XCTAssertEqual(repo.fetchAll(), [early, late],
+                           "Lossy and checked reads must preserve every field and use the same clock order")
+            XCTAssertEqual(testDefaults.data(forKey: "stored_alarms"), storedData,
+                           "Sorting on read must leave the persisted dates and bytes untouched")
+        }
+    }
+
+    func testFetchAllChecked_sortsByMinutesWithinSameHour() throws {
+        let late = try makeDatedAlarm(day: 25, hour: 7, minute: 45, name: "Late")
+        let early = try makeDatedAlarm(day: 26, hour: 7, minute: 15, name: "Early")
+        XCTAssertTrue(repo.save(late))
+        XCTAssertTrue(repo.save(early))
+
+        XCTAssertEqual(try repo.fetchAllChecked(), [early, late])
+    }
+
+    func testFetchAllChecked_equalClockTimesPreserveDateOrder() throws {
+        let older = try makeDatedAlarm(day: 25, hour: 7, minute: 30, name: "Older")
+        let newer = try makeDatedAlarm(day: 26, hour: 7, minute: 30, name: "Newer")
+
+        for insertionOrder in [[newer, older], [older, newer]] {
+            testDefaults.removeObject(forKey: "stored_alarms")
+            for alarm in insertionOrder {
+                XCTAssertTrue(repo.save(alarm))
+            }
+
+            XCTAssertEqual(try repo.fetchAllChecked(), [older, newer],
+                           "Equal displayed times must retain the previous absolute-date ordering")
+        }
+    }
+
+    func testFetchAllChecked_equalDatesPreserveInsertionOrder() throws {
+        let first = try makeDatedAlarm(day: 25, hour: 7, minute: 30, name: "First")
+        let second = try makeDatedAlarm(day: 25, hour: 7, minute: 30, name: "Second")
+
+        for insertionOrder in [[first, second], [second, first]] {
+            testDefaults.removeObject(forKey: "stored_alarms")
+            for alarm in insertionOrder {
+                XCTAssertTrue(repo.save(alarm))
+            }
+
+            XCTAssertEqual(try repo.fetchAllChecked(), insertionOrder,
+                           "Exact-date ties must retain the persisted order")
+        }
     }
 
     /// Earlier tests cover preservation of corrupt bytes on disk. This one nails
