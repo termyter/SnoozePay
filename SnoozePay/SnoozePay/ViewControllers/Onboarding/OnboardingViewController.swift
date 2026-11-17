@@ -43,36 +43,54 @@ final class OnboardingViewController: UIViewController {
     /// Deposit presets shown on step 3. The middle preset is the default
     /// selection so the «Пополнить» CTA reads «500 ₽» on first appear.
     struct DepositOption {
-        let amount: Decimal
+        /// `nil` while the price context is unavailable: no invented number.
+        let money: Money?
         let title: String
         let description: String
         let isPopular: Bool
+
+        var amount: Decimal? { money?.amount }
     }
+
+    /// The wallet's price context (#1109) the example amounts are quoted in.
+    /// Re-read when the scale or the wallet currency moves, so a first launch
+    /// switches from roubles once the catalogue loads.
+    private(set) var priceContext: SnoozePriceContext
+    private let priceContextSource: () -> SnoozePriceContext
+    private let notificationCenter: NotificationCenter
+    private var priceContextObservers: [NSObjectProtocol] = []
 
     /// `internal` so the cross-file `+Pages` extension can read these when
     /// building option cards and the CTA suffix.
-    let depositOptions: [DepositOption] = [
-        DepositOption(
-            amount: 250,
-            title: Localized.text("onboarding.page3.option1_title"),
-            description: Localized.format(
-                "onboarding.page3.option1_body", MoneyFormatter.string(50)
+    private(set) var depositOptions: [DepositOption]
+
+    /// 250 / 500 / 1000 ₽ are 5, 10 and 20 snoozes at 50 ₽ — what the card
+    /// bodies promise — so outside roubles they are the same multiples of the
+    /// low tier.
+    static func depositOptions(in context: SnoozePriceContext) -> [DepositOption] {
+        let perSnooze = ExampleMoneyCopy.string(roubles: 50, tier: .low, in: context)
+        return [
+            DepositOption(
+                money: ExampleMoneyCopy.money(roubles: 250, tier: .low, times: 5, in: context),
+                title: Localized.text("onboarding.page3.option1_title"),
+                description: perSnooze.map { Localized.format("onboarding.page3.option1_body", $0) }
+                    ?? Localized.text("onboarding.page3.option1_body_unpriced"),
+                isPopular: false
             ),
-            isPopular: false
-        ),
-        DepositOption(
-            amount: 500,
-            title: Localized.text("onboarding.page3.option2_title"),
-            description: Localized.text("onboarding.page3.option2_body"),
-            isPopular: true
-        ),
-        DepositOption(
-            amount: 1000,
-            title: Localized.text("onboarding.page3.option3_title"),
-            description: Localized.text("onboarding.page3.option3_body"),
-            isPopular: false
-        )
-    ]
+            DepositOption(
+                money: ExampleMoneyCopy.money(roubles: 500, tier: .low, times: 10, in: context),
+                title: Localized.text("onboarding.page3.option2_title"),
+                description: Localized.text("onboarding.page3.option2_body"),
+                isPopular: true
+            ),
+            DepositOption(
+                money: ExampleMoneyCopy.money(roubles: 1000, tier: .low, times: 20, in: context),
+                title: Localized.text("onboarding.page3.option3_title"),
+                description: Localized.text("onboarding.page3.option3_body"),
+                isPopular: false
+            )
+        ]
+    }
 
     /// Default-selected option index — the «Серьёзно» 500 ₽ preset.
     let defaultDepositIndex: Int = 1
@@ -236,10 +254,46 @@ final class OnboardingViewController: UIViewController {
 
     // MARK: - Init
 
-    init() {
+    /// No default source (as in Settings): a caller that forgot the context
+    /// would silently quote roubles. The app passes
+    /// `{ BalanceService.shared.priceContext }`; tests pass a fixed context.
+    init(
+        priceContextSource: @escaping () -> SnoozePriceContext,
+        notificationCenter: NotificationCenter = .default
+    ) {
         self.selectedDepositIndex = 1
+        self.priceContextSource = priceContextSource
+        self.notificationCenter = notificationCenter
+        let context = priceContextSource()
+        self.priceContext = context
+        self.depositOptions = Self.depositOptions(in: context)
         super.init(nibName: nil, bundle: nil)
         self.selectedDepositIndex = defaultDepositIndex
+        priceContextObservers = [
+            BalanceService.walletCurrencyChangedNotification,
+            SnoozePriceScaleStore.snoozePriceScaleChangedNotification
+        ].map { name in
+            // The scale store posts from the recording thread; hop to main.
+            notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshPriceContext() }
+            }
+        }
+    }
+
+    deinit {
+        priceContextObservers.forEach { notificationCenter.removeObserver($0) }
+    }
+
+    /// Re-reads the context; when it moved, rebuilds the pages and the CTA.
+    func refreshPriceContext() {
+        let context = priceContextSource()
+        guard context != priceContext else { return }
+        priceContext = context
+        depositOptions = Self.depositOptions(in: context)
+        guard isViewLoaded else { return }
+        buildPageStack()
+        if pageControl.currentPage == pageCount - 1 { rebuildDepositCTA() }
+        view.setNeedsLayout()
     }
 
     required init?(coder: NSCoder) {
