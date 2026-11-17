@@ -5,21 +5,14 @@ import XCTest
 /// apparently armed alarm, discard existing user data or duplicate a retry.
 final class CreateAlarmPermissionTests: XCTestCase {
     private var defaults: UserDefaults!
-    private var suite: String!
     private var scheduler: AlarmsListViewModelTests.StubScheduler!
     private var repository: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suite = "test.createPermission.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = makeIsolatedDefaults()
         scheduler = AlarmsListViewModelTests.StubScheduler()
         repository = AlarmRepository(defaults: defaults, scheduler: scheduler)
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        super.tearDown()
     }
 
     private func makeViewModel(

@@ -5,7 +5,6 @@ import XCTest
 @MainActor
 final class StatisticsHeatmapCurrencyTests: XCTestCase {
     private var defaults: UserDefaults!
-    private var suiteName: String!
     private var repository: TransactionRepository!
     private var wakes: WakeEventStore!
     private var alarms: AlarmRepository!
@@ -19,16 +18,10 @@ final class StatisticsHeatmapCurrencyTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.heatmapCurrency.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         wakes = WakeEventStore(defaults: defaults)
         repository = TransactionRepository(defaults: defaults, wakeStore: wakes)
         alarms = AlarmRepository(defaults: defaults, scheduler: InertScheduler())
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     func testMixedDayKeepsThreeSnoozesAndShowsOnlyUSDCentsInRealTooltip() throws {

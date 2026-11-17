@@ -7,20 +7,13 @@ import XCTest
 @MainActor
 final class StoreKitPurchaseCrashRecoveryTests: XCTestCase {
     private let usd = Currency(code: "USD")!
-    private var suites: [String] = []
     private let paid = RestorableTopUp(transactionID: 7, productID: "io.mobilife.snoozepay.balance.299",
                                        currency: Currency(code: "USD"), transactionPrice: 2.99,
                                        purchaseDate: Date(timeIntervalSince1970: 1_700_000_000))
 
-    override func tearDown() {
-        suites.forEach { UserDefaults().removePersistentDomain(forName: $0) }
-        super.tearDown()
-    }
-
     private func makeSuite() -> (UserDefaults, String) {
-        let name = "StoreKitPurchaseCrashRecoveryTests.\(UUID())"
-        suites.append(name)
-        return (UserDefaults(suiteName: name)!, name)
+        let suite = makeIsolatedSuite()
+        return (suite.defaults, suite.name)
     }
 
     /// A fresh process over `defaults`: new wallet, new purchase service.
@@ -41,9 +34,7 @@ final class StoreKitPurchaseCrashRecoveryTests: XCTestCase {
     /// relaunches over it. Mark-first ordering fails at the prefix holding only
     /// the marker: the replay finishes with zero rows.
     func testInterruptionAfterEveryWriteRecoversToExactlyOneCredit() async throws {
-        let liveName = "StoreKitPurchaseCrashRecoveryTests.live.\(UUID())"
-        suites.append(liveName)
-        let live = try XCTUnwrap(WriteLogDefaults(suiteName: liveName))
+        let (live, liveName) = makeIsolatedSuite(as: WriteLogDefaults.self)
         let (balance, store) = relaunch(live)
         let before = live.persistentDomain(forName: liveName) ?? [:]
         let firstWrite = live.writes.count
@@ -169,7 +160,9 @@ final class StoreKitPurchaseCrashRecoveryTests: XCTestCase {
 }
 
 /// Logs every write so a test can rebuild the on-disk state after any prefix.
-private final class WriteLogDefaults: UserDefaults, @unchecked Sendable {
+private final class WriteLogDefaults: UserDefaults, IsolatedDefaultsSubclass, @unchecked Sendable {
+    // Spelled out: an inherited initializer does not witness `IsolatedDefaultsSubclass`.
+    override init?(suiteName suitename: String?) { super.init(suiteName: suitename) }
     private(set) var writes: [(key: String, value: Any?)] = []
 
     override func set(_ value: Any?, forKey defaultName: String) {

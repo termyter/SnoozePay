@@ -38,9 +38,7 @@ final class SoundThemePickerCatalogueTests: XCTestCase {
     }
 
     func testCreateAlarmViewModel_availableSounds_mirrorsCatalogue() {
-        let suite = "test.catalogue.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let vm = CreateAlarmViewModel(repository: AlarmRepository(defaults: defaults))
         XCTAssertEqual(vm.availableSounds.map { $0.id }, SoundCatalogue.entries.map { $0.id })
     }

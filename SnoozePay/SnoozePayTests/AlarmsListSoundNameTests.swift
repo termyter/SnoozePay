@@ -120,20 +120,13 @@ final class AlarmsListSoundNameTests: XCTestCase {
         "reflection": "Размышление"
     ]
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var repository: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmsListSoundName.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     private func makeViewModel(withSoundIDs soundIDs: [String]) -> AlarmsListViewModel {

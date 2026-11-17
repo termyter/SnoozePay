@@ -119,11 +119,41 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
             let two = UserDefaults.init( \(key): b)
             let three: UserDefaults? = .init(\(key): c)
             let four = UserDefaults
-                .init(\(key): d)
+                (\(key): d)
             let none = UserDefaults.standard
             let alsoNone = UserDefaults()
             """
         XCTAssertEqual(Self.rawSuiteSites(in: source), 4)
+    }
+
+    func testRatchetCountsUserDefaultsSubclasses() {
+        let key = "suite" + "Name"
+        let sources = [
+            "a.swift": "private final class LogDefaults: UserDefaults, @unchecked Sendable {}",
+            "b.swift": """
+                final class StrictDefaults : UserDefaults {}
+                class StricterDefaults: StrictDefaults {}
+                // class CommentedDefaults: UserDefaults {}
+                let one = LogDefaults(\(key): a)
+                let two = StricterDefaults.init(\(key): b)
+                let three = StrictDefaults
+                    (\(key): c)
+                let none = NotADefaults(\(key): d)
+                override init?(\(key) name: String?) { super.init(\(key): name) }
+                """
+        ]
+        let subclasses = Self.defaultsSubclasses(in: sources)
+        XCTAssertEqual(subclasses, ["LogDefaults", "StrictDefaults", "StricterDefaults"])
+        XCTAssertEqual(Self.rawSuiteSites(in: sources["b.swift"] ?? "", subclasses: subclasses), 3)
+    }
+
+    /// The real subclasses are found, so the scan above is not vacuous on this checkout.
+    func testRatchetFindsTheSubclassesInThisTarget() throws {
+        let subclasses = Self.defaultsSubclasses(in: try Self.testSources())
+        XCTAssertTrue(
+            subclasses.isSuperset(of: ["RecoveryStorageDefaults", "FinishWriteRefusingDefaults", "WriteLogDefaults"]),
+            "found \(subclasses.sorted())"
+        )
     }
 
     // MARK: - Ratchet
@@ -147,70 +177,90 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         "AlarmKitSnoozeIdentityTests.swift": 1,
         "AlarmKitSnoozeLoadFailureTests.swift": 1,
         "AlarmListPriceCurrencyTests.swift": 2,
-        "AlarmPriceTierTests.swift": 1,
         "AlarmRecoveryAcceptanceTests.swift": 2,
         "AlarmRecoveryGuardTests.swift": 1,
-        "AlarmThemeImageLifetimeTests.swift": 1,
         "AlarmsListIndexTests.swift": 1,
-        "AlarmsListSoundNameTests.swift": 1,
         "AppDelegateSnoozeDiagnosticTests.swift": 1,
         "AppLoggerSinkTests.swift": 1,
         "BalanceLedgerDecimalTests.swift": 1,
-        "CreateAlarmPermissionTests.swift": 1,
         "CreateAlarmViewModelPreviewTests.swift": 1,
-        "CriticalWarningCenterTests.swift": 1,
         "DepositCatalogCurrencyTests.swift": 1,
         "EditorPriceCurrencyTests.swift": 1,
         "FiringDirectPurchaseTerminalTests.swift": 1,
-        "FiringTopUpAutoResumeTests.swift": 1,
         "FiringTopUpCatalogTests.swift": 1,
         "MissingAlarmNotificationAudioTests.swift": 1,
         "PenaltyDisplayColorTests.swift": 1,
-        "ReferralFriendCodeApplyTests.swift": 1,
         "ReferralPersonalCodeTests.swift": 1,
         "ReferralServiceTests.swift": 1,
-        "SettingsPriceCurrencyTests.swift": 1,
         "SettingsReferralIsolationTests.swift": 1,
         "SettingsSubtitleRowHeightTests.swift": 1,
-        "SettingsViewModelTests.swift": 1,
-        "SoundThemePickerCatalogueTests.swift": 1,
-        "StatisticsCurrencyTests.swift": 1,
-        "StatisticsHeatmapCurrencyTests.swift": 1,
         "StatisticsSnapshotTests.swift": 1,
-        "StoreKitCopyTests.swift": 1,
         "StoreKitPurchaseCancellationTests.swift": 1,
-        "StoreKitPurchaseCrashRecoveryTests.swift": 1,
         "TopUpDisplayAmountTests.swift": 1,
         "TopUpSuccessCurrencyTests.swift": 1,
-        "TrackedSnoozeTestSupport.swift": 1,
         "VolumePickerInteractionTests.swift": 1,
-        "WakeHistoryAvailabilityTests.swift": 1,
         "WakeHistoryHostedLayoutTests.swift": 1,
         "WalletBalanceCurrencyTests.swift": 2
     ]
-    /// The initializer with or without `.init`, with any whitespace (newlines
-    /// included) around `.init` and `(`, plus the inferred `.init(suiteName:`.
-    /// One alternation, so `UserDefaults.init(suiteName:` is one match, not two.
-    private static let rawSite = try? NSRegularExpression(
-        pattern: #"UserDefaults\s*(?:\.init)?\s*\(\s*suiteName|\.init\s*\(\s*suiteName"#
-    )
+    /// The initializer of `UserDefaults` or of any of its `subclasses`, with or
+    /// without `.init`, with any whitespace (newlines included) around `.init`
+    /// and `(`, plus the inferred `.init(suiteName:`. One alternation, so
+    /// `UserDefaults.init(suiteName:` is one match, not two. A subclass built on
+    /// a pool name still counts: only the helper builds those. `super.init(suiteName:)`
+    /// does not: it forwards the name of whoever builds the subclass, which is counted.
+    private static func rawSitePattern(subclasses: Set<String>) -> NSRegularExpression? {
+        let names = (["UserDefaults"] + subclasses.sorted()).joined(separator: "|")
+        return try? NSRegularExpression(
+            pattern: #"(?:"# + names + #")\s*(?:\.init)?\s*\(\s*suiteName|(?<!super)\.init\s*\(\s*suiteName"#
+        )
+    }
 
-    /// Raw suite sites in `text`, not counting `/* */` blocks or `//` lines.
-    /// A pattern that failed to compile counts 0, which the two tests above catch.
-    private static func rawSuiteSites(in text: String) -> Int {
-        let code = text.replacingOccurrences(of: #"/\*[\s\S]*?\*/"#, with: " ", options: .regularExpression)
+    /// `text` without `/* */` blocks and `//` lines.
+    private static func stripComments(_ text: String) -> String {
+        text.replacingOccurrences(of: #"/\*[\s\S]*?\*/"#, with: " ", options: .regularExpression)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        return rawSite?.numberOfMatches(in: code, range: NSRange(code.startIndex..., in: code)) ?? 0
+    }
+
+    /// Classes declared as `UserDefaults` subclasses, directly or through
+    /// another subclass, anywhere in `sources` — not guessed by name suffix.
+    private static func defaultsSubclasses(in sources: [String: String]) -> Set<String> {
+        let declaration = try? NSRegularExpression(pattern: #"\bclass\s+(\w+)\s*:\s*(\w+)"#)
+        var parents: [String: String] = [:]
+        for text in sources.values.map(stripComments) {
+            let range = NSRange(text.startIndex..., in: text)
+            for match in declaration?.matches(in: text, range: range) ?? [] {
+                guard let name = Range(match.range(at: 1), in: text), let parent = Range(match.range(at: 2), in: text)
+                else { continue }
+                parents[String(text[name])] = String(text[parent])
+            }
+        }
+        var found: Set<String> = []
+        var grew = true
+        while grew {
+            let next = Set(parents.filter { $0.value == "UserDefaults" || found.contains($0.value) }.keys)
+            grew = next.count > found.count
+            found = next
+        }
+        return found
+    }
+
+    /// Raw suite sites in `text`, not counting `/* */` blocks or `//` lines.
+    /// A pattern that failed to compile counts 0, which the tests above catch.
+    private static func rawSuiteSites(in text: String, subclasses: Set<String> = []) -> Int {
+        let code = stripComments(text)
+        let pattern = rawSitePattern(subclasses: subclasses)
+        return pattern?.numberOfMatches(in: code, range: NSRange(code.startIndex..., in: code)) ?? 0
     }
 
     func testHandRolledSuitesMatchTheAllowlist() throws {
         let sources = try Self.testSources()
         XCTAssertGreaterThan(sources.count, 50, "found \(sources.count) sources — the scan would be vacuous")
 
+        let subclasses = Self.defaultsSubclasses(in: sources)
         let found = sources.compactMapValues { text -> Int? in
-            let count = Self.rawSuiteSites(in: text)
+            let count = Self.rawSuiteSites(in: text, subclasses: subclasses)
             return count > 0 ? count : nil
         }
         let offenders = Set(found.keys).union(Self.handRolled.keys)

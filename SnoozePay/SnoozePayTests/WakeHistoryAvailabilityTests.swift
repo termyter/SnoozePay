@@ -10,13 +10,9 @@ final class WakeHistoryAvailabilityTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.wakeAvailability.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
+        let isolated = makeIsolatedSuite()
+        defaults = isolated.defaults
+        suiteName = isolated.name
     }
 
     private func put(_ dates: [Date], key: String) throws {

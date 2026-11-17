@@ -20,6 +20,11 @@ import XCTest
 ///   `IsolatedDefaultsTestSupportTests` counts them per file. To prove
 ///   persistence across a relaunch, take the name from `makeIsolatedSuite()`
 ///   and reopen it with `reopenIsolatedDefaults(named:)`.
+/// - A `UserDefaults` subclass (fault injection, write logs) is built on a
+///   pool suite by `makeIsolatedSuite(as:)`, or by `IsolatedDefaultsPool.checkOut(as:)`
+///   in a fixture that is not a test case and checks the slot back in from its
+///   `close()`. A subclass built with `(suiteName:)` in a test file is a raw
+///   site like any other — even on a pool name — and the ratchet counts it.
 /// - Teardown blocks run after the test method and *before* `tearDown()`, so
 ///   a `tearDown()` that writes to these defaults writes into a freed slot.
 /// - Do not keep the returned defaults in a `static`: the slot is handed to
@@ -44,6 +49,15 @@ extension XCTestCase {
         return (lease.defaults, IsolatedDefaultsPool.suiteName(lease.slot))
     }
 
+    /// Same as ``makeIsolatedSuite()``, as an instance of a `UserDefaults` subclass.
+    func makeIsolatedSuite<Defaults: IsolatedDefaultsSubclass>(
+        as type: Defaults.Type
+    ) -> (defaults: Defaults, name: String) {
+        let lease = IsolatedDefaultsPool.checkOut(as: type)
+        addTeardownBlock { IsolatedDefaultsPool.checkIn(lease.slot) }
+        return (lease.defaults, IsolatedDefaultsPool.suiteName(lease.slot))
+    }
+
     /// A second, independent instance on a suite from ``makeIsolatedSuite()``,
     /// standing in for the app after a relaunch. Cleanup stays with the lease.
     func reopenIsolatedDefaults(named name: String) -> UserDefaults {
@@ -57,6 +71,13 @@ extension XCTestCase {
         }
         return defaults
     }
+}
+
+/// A `UserDefaults` subclass the pool can build on its own suites. The
+/// subclass must spell out `override init?(suiteName:)` forwarding to `super`:
+/// the inherited initializer does not satisfy the requirement.
+protocol IsolatedDefaultsSubclass: UserDefaults {
+    init?(suiteName suitename: String?)
 }
 
 /// Which pool slots are handed out to the running test.
@@ -86,6 +107,19 @@ enum IsolatedDefaultsPool {
             preconditionFailure("UserDefaults refused suite name \(name)")
         }
         defaults.removePersistentDomain(forName: name)
+        return (slot, defaults)
+    }
+
+    /// ``checkOut()``, with the slot's suite opened as `Defaults`. The caller
+    /// owns the slot until it hands it back with ``checkIn(_:)``.
+    static func checkOut<Defaults: IsolatedDefaultsSubclass>(
+        as type: Defaults.Type
+    ) -> (slot: Int, defaults: Defaults) {
+        let slot = checkOut().slot
+        let name = suiteName(slot)
+        guard let defaults = Defaults(suiteName: name) else {
+            preconditionFailure("\(Defaults.self) refused suite name \(name)")
+        }
         return (slot, defaults)
     }
 

@@ -5,20 +5,17 @@ import os
 
 @MainActor
 final class CriticalWarningCenterTests: XCTestCase {
-    private var suite: String!
     private var defaults: UserDefaults!
     private var center: CriticalWarningCenter!
 
     override func setUp() {
         super.setUp()
-        suite = "critical-warnings-\(UUID())"
-        defaults = UserDefaults(suiteName: suite)
+        defaults = makeIsolatedDefaults()
         center = makeCenter()
     }
 
     override func tearDown() {
         center = nil
-        defaults.removePersistentDomain(forName: suite)
         defaults = nil
         super.tearDown()
     }
