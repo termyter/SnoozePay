@@ -678,6 +678,47 @@ enum AppTypography {
         ])
     }
 
+    // MARK: - Dynamic Type (#1111)
+    //
+    // `UIFontMetrics` is the identity at the default `.large` category, so a
+    // scaled role renders exactly like its fixed twin until the user picks
+    // another text size. Each role is paired with the system style whose
+    // `.large` size it already matches (17/15/13/12pt), so it grows on Apple's
+    // curve. Labels carrying one also need `adjustsFontForContentSizeCategory`.
+
+    /// Ceiling for every scaled role, as a multiple of its default size. The
+    /// largest accessibility size is ~3.1× body (17 → 53pt), which leaves a
+    /// Settings row title room for about six characters a line next to its
+    /// icon and value; 2× (≈ AX2) keeps every word on screen while still
+    /// doubling the text.
+    static let maximumScale: CGFloat = 2
+
+    /// `font` grown along `style`'s Dynamic Type curve, capped at
+    /// `maximumScale`. `traits` pins the category (for attributed text that is
+    /// rebuilt by hand); without it the font follows the label it is set on.
+    static func scaled(
+        _ font: UIFont,
+        as style: UIFont.TextStyle,
+        compatibleWith traits: UITraitCollection? = nil
+    ) -> UIFont {
+        UIFontMetrics(forTextStyle: style).scaledFont(
+            for: font,
+            maximumPointSize: font.pointSize * maximumScale,
+            compatibleWith: traits
+        )
+    }
+
+    /// `bodyLg`, scaled as `.body` (17pt at the default size).
+    static var scaledBodyLg: UIFont { scaled(bodyLg, as: .body) }
+    /// `body`, scaled as `.subheadline` (15pt at the default size).
+    static var scaledBody: UIFont { scaled(body, as: .subheadline) }
+    /// `meta`, scaled as `.footnote` (13pt at the default size).
+    static var scaledMeta: UIFont { scaled(meta, as: .footnote) }
+    /// `caps`, scaled as `.caption1` (12pt at the default size).
+    static func scaledCaps(compatibleWith traits: UITraitCollection? = nil) -> UIFont {
+        scaled(caps, as: .caption1, compatibleWith: traits)
+    }
+
     // MARK: - Legacy section header
     //
     // Pre-token "ВЕРХНИЙ ТЕКСТ" recipe used by SettingsVC / CreateAlarmVC /

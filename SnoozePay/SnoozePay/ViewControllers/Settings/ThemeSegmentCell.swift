@@ -49,7 +49,9 @@ final class ThemeSegmentCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("settings.theme.title")
-        label.font = AppTypography.bodyLg
+        label.font = AppTypography.scaledBodyLg
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label

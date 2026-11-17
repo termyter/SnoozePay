@@ -45,17 +45,21 @@ final class SettingsIconRowCell: UITableViewCell {
     /// `text-overflow` (`components.css:96`). A row whose title fits on one
     /// line is unaffected; the sections that host such titles must return
     /// `automaticDimension` from `heightForRowAt` so the second line has room.
+    /// Unlimited since Dynamic Type (#1111): at accessibility sizes a title
+    /// needs more than two lines, and the row self-sizes around them.
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.bodyLg
+        label.font = AppTypography.scaledBodyLg
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg1
-        label.numberOfLines = 2
+        label.numberOfLines = 0
         return label
     }()
 
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.isHidden = true
@@ -66,7 +70,8 @@ final class SettingsIconRowCell: UITableViewCell {
     /// unless configured.
     private let trailingLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.isHidden = true
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
