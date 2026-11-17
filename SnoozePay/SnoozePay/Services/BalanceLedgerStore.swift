@@ -77,23 +77,34 @@ enum BalanceLedger {
     ///
     /// Order-independent by construction — a shuffled or newest-first ledger
     /// yields the same number as a chronological one.
+    ///
+    /// Summed in `Decimal` (#1119): in `Double`, 1.99 + 1.99 − 2.99 − 0.99 is
+    /// −2.2e-16 and latched a healthy wallet as corrupt. Integer (rouble)
+    /// ledgers come out bit-identical to the old `Double` sum.
     static func net(of entries: [Transaction], in currency: Currency) -> Double {
+        let terms = signedAmounts(of: entries, in: currency)
+        return MoneyDecimal.sum(terms).flatMap(MoneyDecimal.double) ?? terms.reduce(0, +)
+    }
+
+    /// `+amount` for each credit and `−amount` for each charge that counts
+    /// towards `currency`, after the dedup / currency / validity filters.
+    private static func signedAmounts(of entries: [Transaction], in currency: Currency) -> [Double] {
         var seenIdentifiers = Set<UUID>()
-        var total: Double = 0
+        var terms: [Double] = []
         for entry in entries {
             guard seenIdentifiers.insert(entry.id).inserted else { continue }
             guard entry.currency == currency else { continue }
             guard entry.amount.isFinite, entry.amount > 0 else { continue }
             switch entry.type {
             case .topup, .promotion, .refund:
-                total += entry.amount
+                terms.append(entry.amount)
             case .charge:
-                total -= entry.amount
+                terms.append(-entry.amount)
             case .unknown:
                 continue
             }
         }
-        return total
+        return terms
     }
 }
 

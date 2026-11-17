@@ -217,24 +217,12 @@ enum MoneyFormatter {
 
     // MARK: - Display bridge
 
-    /// Decimal(Double) can change even exact large integers. Keep their fixed
-    /// C-format digits; for fractions use Double's shortest round-trip text.
-    /// Unrepresentable values stay unknown instead of becoming zero.
+    /// Exact display value of a stored non-negative amount. The bridge itself
+    /// lives in `MoneyDecimal.exact`, so ledger maths uses the same one (#1119).
+    /// Negative and unrepresentable values stay unknown instead of becoming zero.
     static func decimalForDisplay(_ amount: Double) -> Decimal {
         guard amount.isFinite, amount >= 0 else { return .nan }
-        let integral = amount.rounded(.towardZero) == amount
-        let text = integral ? String(format: "%.0f", amount) : String(amount)
-        if integral {
-            // A successful Decimal parse may round beyond its 38-digit
-            // precision. Exclude trailing zeros, which use only its exponent.
-            let significantDigits = text.drop(while: { $0 == "0" })
-                .reversed().drop(while: { $0 == "0" }).count
-            guard significantDigits <= 38 else { return .nan }
-        }
-        guard let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")),
-              !decimal.isNaN,
-              Double(NSDecimalNumber(decimal: decimal).stringValue) == amount else { return .nan }
-        return decimal
+        return MoneyDecimal.exact(amount)
     }
 
     // MARK: - Private
