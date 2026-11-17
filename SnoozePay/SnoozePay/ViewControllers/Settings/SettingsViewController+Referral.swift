@@ -10,38 +10,24 @@ import UIKit
 
 extension SettingsViewController {
 
-    /// The only gate on the referral section, as a pure function of the flag
-    /// so BOTH positions can be laid out on a real table.
-    ///
-    /// Reading `AppFeatureFlags.referralEnabled` inline here is what made the
-    /// on-position untestable: it is a `let` shipping `false`, so the two
-    /// tests that wanted it had to `XCTSkipUnless` and never ran, and
-    /// reversibility — the whole promise of #676 — rested on helpers
-    /// production never called. Invert this `filter` and the suite goes red.
-    ///
-    /// The archaeology behind hiding rather than emptying — the 17.33pt
-    /// phantom footer, why `heightForFooterInSection` cannot take it back,
-    /// and why `.diagnostics` is treated differently (#684) — lives on
-    /// `ReferralEntryPointVisibilityTests`, next to the assertions that
-    /// measure it.
-    static func visibleSections(referralEnabled: Bool) -> [Section] {
-        Section.allCases.filter { $0 != .referral || referralEnabled }
+    /// Optional sections are absent when they have no rows. Keeping an empty
+    /// grouped section would still reserve its footer above the version line.
+    /// Both gates live here so table indices always address visible content.
+    static func visibleSections(referralEnabled: Bool, recoveryVisible: Bool) -> [Section] {
+        Section.allCases.filter { section in
+            switch section {
+            case .referral: return referralEnabled
+            case .diagnostics: return recoveryVisible
+            default: return true
+            }
+        }
     }
 
     /// The sections the table is currently showing, in order. A table section
     /// INDEX is a position in this array, not a `Section` raw value.
     var visibleSections: [Section] {
-        Self.visibleSections(referralEnabled: referralEnabled)
+        Self.visibleSections(referralEnabled: referralEnabled, recoveryVisible: isRecoveryVisible)
     }
-
-    // The `.referral` section's rows and header are plain constants in
-    // `SettingsViewController`, not functions of the flag. They used to be
-    // `referralRowCount(referralEnabled:)` / `referralSectionTitle(...)`,
-    // gated a second time inside a `switch` that
-    // `visibleSections(referralEnabled:)` had already filtered. The off-branch
-    // was unreachable in production and the two tests pinning it were green
-    // against code that never ran (#676). One gate, in `visibleSections`,
-    // tested on a live table in both positions.
 
     /// Dispatches to one of three layouts (`myCode`, `friendInput`, `caption`).
     /// Centralising the switch keeps `cellForRowAt:` short and the row-index

@@ -43,6 +43,18 @@ private final class SwallowingHost: UIViewController {
 /// not mean the root's appearance transition has finished (#918).
 private final class MountedAlertHost: UIViewController {
     var onDidAppear: (() -> Void)?
+    private(set) var didCompletePresentation = false
+
+    override func present(
+        _ viewControllerToPresent: UIViewController,
+        animated flag: Bool,
+        completion: (() -> Void)? = nil
+    ) {
+        super.present(viewControllerToPresent, animated: flag) {
+            self.didCompletePresentation = true
+            completion?()
+        }
+    }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -140,24 +152,24 @@ final class AppDelegateAlertTests: XCTestCase {
         window.frame = scene.coordinateSpace.bounds
     }
 
-    override func tearDown() {
-        dismissMountedAlert()
+    override func tearDown() async throws {
+        await dismissMountedAlert()
         window?.rootViewController = nil
         window?.isHidden = true
         window = nil
         // Spend this fixture's deferred removal work before restoring the
         // previous key window or letting the next test install a log sink.
-        drainMainQueue()
+        await drainMainQueueAsync()
         previousKeyWindow?.makeKeyAndVisible()
         previousKeyWindow = nil
         AppDelegate.scheduleNotificationsAlertRetry = savedRetry
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - The corrupt-data alert reaches the user
 
-    func testCorruptDataAlert_onAMountedPresenter_logsThatTheUserSawIt() {
-        let host = makeMountedHost()
+    func testCorruptDataAlert_onAMountedPresenter_logsThatTheUserSawIt() async {
+        let host = await makeMountedHost()
         XCTAssertNil(
             AppDelegate.droppedAlertDiagnostic(presenter: host, message: message),
             "test precondition: a mounted, settled presenter must not read as one that cannot present"
@@ -167,7 +179,8 @@ final class AppDelegateAlertTests: XCTestCase {
         // sink that waits catches whatever deferred work a neighbour left
         // behind, and a stray ALERT-SHOWN would carry the same handle this test
         // counts (#742).
-        drainMainQueue()
+        await drainMainQueueAsync()
+        assertMountedHost(host)
 
         let shown = expectation(description: "the ALERT-SHOWN line reached the seam")
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
@@ -176,10 +189,11 @@ final class AppDelegateAlertTests: XCTestCase {
         // `text` rather than `message`: the test's own `message` is what the
         // alert carries, and shadowing it inside the sink would make the two
         // assertions below read as if they compared a line against itself.
-        AppLogger.withTestSink({ category, level, text in
+        await AppLogger.withAsyncTestSink({ category, level, text in
             lines.append((category: category, level: level, message: text))
             // Guarded: a second fulfil is an XCTest API misuse failure.
             if !fulfilled, text.contains(AppDelegate.alertShownErrorID) {
+                XCTAssertTrue(host.didCompletePresentation, "SHOWN must come from UIKit completion")
                 fulfilled = true
                 shown.fulfill()
             }
@@ -215,10 +229,29 @@ final class AppDelegateAlertTests: XCTestCase {
                 """
             )
 
+            // Suspend the test instead of nesting a main-thread XCTest run loop
+            // while UIKit needs to finish its presentation transaction (#918).
             // 25 s to match the sibling presentation suites: on a saturated
             // three-core runner a tight deadline answers "the runner was busy"
             // instead of "it never logged".
-            wait(for: [shown], timeout: 25)
+            await fulfillment(of: [shown], timeout: 25)
+
+            let alert = host.presentedViewController as? UIAlertController
+            XCTAssertNotNil(
+                alert,
+                """
+                the line claims an alert was shown, so one has to be on screen. \
+                \(presentationDiagnostics(rootedAt: window.rootViewController))
+                """
+            )
+            XCTAssertEqual(alert?.title, "Будильник", "alarm_failure.corrupted.title, the words it shipped with (#733)")
+            XCTAssertEqual(alert?.message, message)
+            XCTAssertEqual(alert?.actions.count, 1, "the alert only acknowledges; it decides nothing")
+            XCTAssertEqual(
+                alert?.actions.first?.title, Localized.text("common.button.ok"),
+                "the acknowledge title comes from the catalogue"
+            )
+            await dismissMountedAlert()
         })
 
         let shownLines = lines.filter { $0.message.contains(AppDelegate.alertShownErrorID) }
@@ -244,22 +277,6 @@ final class AppDelegateAlertTests: XCTestCase {
         XCTAssertTrue(
             lines.allSatisfy { !$0.message.contains(AppDelegate.alertDroppedErrorID) },
             "an alert that was shown must not also be reported as dropped"
-        )
-
-        let alert = host.presentedViewController as? UIAlertController
-        XCTAssertNotNil(
-            alert,
-            """
-            the line claims an alert was shown, so one has to be on screen. \
-            \(presentationDiagnostics(rootedAt: window.rootViewController))
-            """
-        )
-        XCTAssertEqual(alert?.title, "Будильник", "alarm_failure.corrupted.title, the words it shipped with (#733)")
-        XCTAssertEqual(alert?.message, message)
-        XCTAssertEqual(alert?.actions.count, 1, "the alert only acknowledges; it decides nothing")
-        XCTAssertEqual(
-            alert?.actions.first?.title, Localized.text("common.button.ok"),
-            "the acknowledge title comes from the catalogue"
         )
     }
 
@@ -489,8 +506,8 @@ final class AppDelegateAlertTests: XCTestCase {
     /// Before #789 this presentation had no completion and no read-back, so
     /// "the user was warned" and "UIKit declined silently" looked identical
     /// from outside.
-    func testNotificationsDisabledAlert_onAMountedPresenter_logsThatTheUserSawIt() {
-        let host = makeMountedHost()
+    func testNotificationsDisabledAlert_onAMountedPresenter_logsThatTheUserSawIt() async {
+        let host = await makeMountedHost()
         XCTAssertNil(
             AppDelegate.presentationRefusalReason(presenter: host),
             "test precondition: a mounted, settled presenter must not read as one that cannot present"
@@ -498,15 +515,17 @@ final class AppDelegateAlertTests: XCTestCase {
 
         // Drained immediately before the sink goes in: a sink that waits also
         // catches whatever deferred work a neighbour left queued (#742).
-        drainMainQueue()
+        await drainMainQueueAsync()
+        assertMountedHost(host)
 
         let shown = expectation(description: "the ALARM-789 ALERT-SHOWN line reached the seam")
         var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
         var fulfilled = false
 
-        AppLogger.withTestSink({ category, level, text in
+        await AppLogger.withAsyncTestSink({ category, level, text in
             lines.append((category: category, level: level, message: text))
             if !fulfilled, text.contains(AppDelegate.notificationsAlertShownErrorID) {
+                XCTAssertTrue(host.didCompletePresentation, "SHOWN must come from UIKit completion")
                 fulfilled = true
                 shown.fulfill()
             }
@@ -534,7 +553,24 @@ final class AppDelegateAlertTests: XCTestCase {
 
             // 25 s to match the sibling suites: on a saturated three-core
             // runner a tight deadline answers "the runner was busy".
-            wait(for: [shown], timeout: 25)
+            await fulfillment(of: [shown], timeout: 25)
+
+            let alert = host.presentedViewController as? UIAlertController
+            XCTAssertNotNil(
+                alert,
+                """
+                the line claims an alert was shown, so one has to be on screen. \
+                \(presentationDiagnostics(rootedAt: window.rootViewController))
+                """
+            )
+            XCTAssertEqual(
+                alert?.title, "Уведомления выключены",
+                "CreateAlarmUITests matches this alert by these exact words"
+            )
+            XCTAssertEqual(alert?.actions.count, 2, "the guard must not have cost the alert its actions")
+            XCTAssertEqual(alert?.actions.first?.title, "Отмена")
+            XCTAssertEqual(alert?.actions.last?.title, "Настройки", "this is the action that opens Settings")
+            await dismissMountedAlert()
         })
 
         let shownLines = lines.filter { $0.message.contains(AppDelegate.notificationsAlertShownErrorID) }
@@ -562,22 +598,6 @@ final class AppDelegateAlertTests: XCTestCase {
             lines.allSatisfy { !$0.message.contains(AppDelegate.notificationsAlertDroppedErrorID) },
             "an alert that was shown must not also be reported as dropped"
         )
-
-        let alert = host.presentedViewController as? UIAlertController
-        XCTAssertNotNil(
-            alert,
-            """
-            the line claims an alert was shown, so one has to be on screen. \
-            \(presentationDiagnostics(rootedAt: window.rootViewController))
-            """
-        )
-        XCTAssertEqual(
-            alert?.title, "Уведомления выключены",
-            "CreateAlarmUITests matches this alert by these exact words"
-        )
-        XCTAssertEqual(alert?.actions.count, 2, "the guard must not have cost the alert its actions")
-        XCTAssertEqual(alert?.actions.first?.title, "Отмена")
-        XCTAssertEqual(alert?.actions.last?.title, "Настройки", "this is the action that opens Settings")
     }
 
     /// The branch #789 exists for. A presenter off the window hierarchy is the
@@ -752,7 +772,7 @@ final class AppDelegateAlertTests: XCTestCase {
         )
     }
 
-    private func makeMountedHost() -> UIViewController {
+    private func makeMountedHost() async -> MountedAlertHost {
         let appeared = expectation(description: "the alert presenter's root appearance finished")
         let host = MountedAlertHost()
         host.onDidAppear = { appeared.fulfill() }
@@ -762,7 +782,12 @@ final class AppDelegateAlertTests: XCTestCase {
         // FIFO queue quietness does not finish a UIKit appearance transition.
         // Wait for the actual lifecycle boundary before testing presentation;
         // keep the alert's separate 25 s wait and completion-order assertions.
-        wait(for: [appeared], timeout: 25)
+        await fulfillment(of: [appeared], timeout: 25)
+        assertMountedHost(host)
+        return host
+    }
+
+    private func assertMountedHost(_ host: UIViewController) {
         XCTAssertEqual(window.windowScene?.activationState, .foregroundActive)
         XCTAssertTrue(window.isKeyWindow, "the alert must use the scene's actual key window")
         XCTAssertTrue(host.viewIfLoaded?.window === window)
@@ -771,16 +796,15 @@ final class AppDelegateAlertTests: XCTestCase {
             host.presentedViewController,
             "test precondition: mounting already presented something, and the assertions would grade it"
         )
-        return host
     }
 
-    private func dismissMountedAlert() {
+    private func dismissMountedAlert() async {
         guard let root = window?.rootViewController, root.presentedViewController != nil else { return }
         let dismissed = expectation(description: "the alert's dismissal finished before its window is released")
         root.dismiss(animated: false) { dismissed.fulfill() }
         // Keep the window and root alive until UIKit finishes, otherwise its
         // outstanding presentation completion can escape into the next test.
-        wait(for: [dismissed], timeout: 25)
+        await fulfillment(of: [dismissed], timeout: 25)
         XCTAssertNil(root.presentedViewController)
         XCTAssertNil(root.transitionCoordinator, "dismissal must not outlive the fixture")
     }

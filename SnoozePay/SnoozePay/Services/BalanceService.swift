@@ -24,6 +24,8 @@ final class BalanceService {
     /// `userInfo[Self.balanceUserInfoKey]` carries the new balance as `Double`.
     static let balanceChangedNotification = Notification.Name("snoozepay.balance.changed")
     static let balanceUserInfoKey = "balance"
+    /// A first paid currency freeze invalidates already scheduled price labels.
+    static let walletCurrencyChangedNotification = Notification.Name("snoozepay.wallet.currency.changed")
 
     /// Broadcast once per process when a negative `user_balance` is observed
     /// in storage (concurrent write race, downgrade, manual tampering — see
@@ -372,6 +374,14 @@ final class BalanceService {
     /// calling back into `balance` would deadlock.
     var walletCurrency: Currency { currencyStore.currency }
 
+    /// A pristine wallet may still adopt a foreign currency. Do not persist a
+    /// RUB quote into an alert that could be ringing during its first purchase.
+    var alarmQuoteCurrency: Currency? {
+        if let established = currencyStore.storedCurrency { return established }
+        let pristine = walletIsPristine
+        return currencyStore.storedCurrency ?? (pristine ? nil : .legacyDefault)
+    }
+
     /// Records this wallet's currency, once. See `WalletCurrencyFreeze` for why
     /// the result is a value the caller has to look at rather than a silent
     /// no-op.
@@ -381,7 +391,12 @@ final class BalanceService {
     /// empty on a simulator) must never reach here: a debug top-up would
     /// otherwise permanently denominate the wallet.
     func freezeCurrency(_ currency: Currency) -> WalletCurrencyFreeze {
-        currencyStore.freeze(currency)
+        let result = currencyStore.freeze(currency)
+        if case .frozen = result {
+            // Store lock has been released; observers read the new currency.
+            notificationCenter.post(name: Self.walletCurrencyChangedNotification, object: self)
+        }
+        return result
     }
 
     /// Whether a paid top-up denominated in `currency` can be accepted.

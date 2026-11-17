@@ -88,6 +88,23 @@ final class AlarmKitCopyTests: XCTestCase {
         )
     }
 
+    func testPricedSnoozeQuotesActualCurrencyAndNeverAdvertisesSubminorAsZero() throws {
+        for code in ["RUB", "USD", "EUR", "JPY", "KWD"] {
+            let currency = try XCTUnwrap(Currency(code: code))
+            for penalty in [50.0, 1.25, 0.001] {
+                let quote = MoneyFormatter.quotedString(penalty, currency: currency) ?? "—"
+                let expected = "Поспать ещё (−\(quote))"
+                XCTAssertEqual(AlarmKitCopy.pricedSnooze(penalty: penalty, currency: currency), expected)
+                XCTAssertEqual(String(localized: AlarmKitCopy.pricedSnoozeTitle(
+                    penalty: penalty, currency: currency
+                )), expected)
+                if code != "RUB" { XCTAssertFalse(expected.contains("₽")) }
+            }
+        }
+        let usd = try XCTUnwrap(Currency(code: "USD"))
+        XCTAssertEqual(AlarmKitCopy.pricedSnooze(penalty: 0.001, currency: usd), "Поспать ещё (−—)")
+    }
+
     // MARK: - Layer 4: exported intent resources in both languages
 
     func testIntentTitlesResolveMainBundleCatalogueInRussianAndEnglish() throws {

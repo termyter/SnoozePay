@@ -192,7 +192,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     // MARK: - Alarm re-arming (#427)
 
-    /// Observe the two system signals that can silently invalidate already
+    /// Observe system signals and the first wallet currency that invalidate already
     /// scheduled alarm triggers and re-arm every saved alarm in response:
     ///
     /// - `significantTimeChangeNotification` — posted on timezone change, DST
@@ -205,22 +205,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ///   permission (so `usesAlarmKit` is re-evaluated and the alarm moves to
     ///   the correct backend).
     ///
+    /// - Wallet currency establishment refreshes price labels on future
+    ///   originals only; original IDs reported as alerting are skipped.
+    ///
     /// Re-arming is idempotent — for an unchanged alarm `cancel` + `schedule`
     /// re-adds the same deterministic notification identifiers — so firing it on
     /// every activation only recomputes triggers, never duplicates them.
     private func registerAlarmRescheduleObservers() {
+        rescheduleObserverTokens = Self.observeAlarmRescheduleTriggers(center: .default) { [weak self] name in
+            self?.rescheduleSavedAlarms(trigger: name)
+        }
+    }
+
+    /// Shared registration boundary; tests supply an isolated center and rearm handler.
+    static func observeAlarmRescheduleTriggers(
+        center: NotificationCenter, onTrigger: @escaping (Notification.Name) -> Void
+    ) -> [NSObjectProtocol] {
         let names: [Notification.Name] = [
             UIApplication.significantTimeChangeNotification,
-            UIApplication.didBecomeActiveNotification
+            UIApplication.didBecomeActiveNotification,
+            BalanceService.walletCurrencyChangedNotification
         ]
-        rescheduleObserverTokens = names.map { name in
-            NotificationCenter.default.addObserver(
-                forName: name,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.rescheduleSavedAlarms(trigger: name)
-            }
+        return names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { _ in onTrigger(name) }
         }
     }
 
@@ -248,8 +255,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             )
             return
         }
-        AlarmScheduler.shared.rescheduleAll(saved) { [weak self] failedCount in
+        Self.rearmSavedAlarms(saved, trigger: trigger, scheduler: .shared) { [weak self] failedCount in
             self?.handleRescheduleOutcome(failedCount: failedCount)
+        }
+    }
+
+    static func rearmSavedAlarms(
+        _ alarms: [Alarm], trigger: Notification.Name, scheduler: AlarmScheduler,
+        completion: @escaping (Int) -> Void
+    ) {
+        if trigger == BalanceService.walletCurrencyChangedNotification {
+            scheduler.refreshCurrencyPresentations(alarms, completion: completion)
+        } else {
+            scheduler.rescheduleAll(alarms, completion: completion)
         }
     }
 
@@ -695,19 +713,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     private func logSnoozeOutcome(_ outcome: AlarmFiringCoordinator.SnoozeOutcome) {
         switch outcome {
         case .invalidPayload:
-            AppLogger.appDelegate.error("SNOOZE_ACTION: invalid payload, snooze skipped")
+            AppLogger.emit(.appDelegate, .error, "SNOOZE_ACTION: invalid payload, snooze skipped")
         case .alarmNotFound:
-            AppLogger.appDelegate.notice("SNOOZE_ACTION: alarm not found, snooze skipped")
+            AppLogger.emit(.appDelegate, .default, "SNOOZE_ACTION: alarm not found, snooze skipped")
         case .alarmLoadFailed:
             // The coordinator wrote the cause with its error id and handle.
             AppLogger.appDelegate.error("SNOOZE_ACTION: alarm failed to load, snooze skipped — posting fallback banner")
         case .insufficientFunds:
-            AppLogger.appDelegate.notice(
+            AppLogger.emit(
+                .appDelegate, .default,
                 "SNOOZE_ACTION: insufficient funds — snooze skipped, alarm will not repeat"
             )
         case let .scheduled(newSnoozeCount, charged):
-            AppLogger.appDelegate.info(
-                "SNOOZE_ACTION: scheduled #\(newSnoozeCount, privacy: .public) charged=\(charged, privacy: .public)"
+            AppLogger.emit(
+                .appDelegate, .info, "SNOOZE_ACTION: scheduled #\(newSnoozeCount) charged=\(charged)"
             )
         case let .scheduleFailed(error):
             // Penalty was refunded inside the coordinator. We log the cause

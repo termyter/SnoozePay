@@ -19,7 +19,7 @@ import Foundation
 /// `LocalizedStringResource`, but their values are prepared differently.
 ///
 /// The alert's **secondary button** is built at schedule time. Its price is
-/// already formatted, so ``pricedSnoozeTitle(penalty:)`` resolves the current
+/// already formatted, so ``pricedSnoozeTitle(penalty:currency:)`` resolves the current
 /// app-language catalogue entry before handing the complete words to AlarmKit.
 /// Already scheduled presentation text is not relocalized by this helper.
 ///
@@ -50,13 +50,14 @@ enum AlarmKitCopy {
     static let stopKey = "alarm_kit.action.stop"
 
     /// The catalogue key used by `SnoozeAlarmIntent.title`. The alert's
-    /// secondary button has its own priced label, ``pricedSnoozeKey``.
+    /// secondary button has its own priced label, ``pricedSnoozeKey``; this
+    /// key is also read at runtime for an unpriced snooze button until a
+    /// pristine wallet establishes currency.
     static let snoozeKey = "alarm_kit.action.snooze"
 
     /// «Поспать ещё (−50 ₽)» — the text of the alert's secondary button, which
     /// names the price. `%@` is a sum already formatted by ``MoneyFormatter``.
-    /// The only one of the three whose surface is ours to set, and the only
-    /// one read at runtime.
+    /// Used at runtime once the wallet has an established or legacy currency.
     static let pricedSnoozeKey = "alarm_kit.action.snooze.priced"
 
     // MARK: - Copy
@@ -67,11 +68,12 @@ enum AlarmKitCopy {
     /// concatenated, because where the price sits inside the phrase is a
     /// property of the language — the same rule ``Localized`` states for
     /// `firing.hint.next_price`.
-    static func pricedSnooze(penalty: Double) -> String {
-        Localized.format(pricedSnoozeKey, MoneyFormatter.string(penalty))
+    static func pricedSnooze(penalty: Double, currency: Currency? = .legacyDefault) -> String {
+        guard let currency else { return Localized.text(snoozeKey) }
+        return Localized.format(pricedSnoozeKey, MoneyFormatter.quotedString(penalty, currency: currency) ?? "—")
     }
 
-    static func pricedSnoozeTitle(penalty: Double) -> LocalizedStringResource {
-        LocalizedStringResource(stringLiteral: pricedSnooze(penalty: penalty))
+    static func pricedSnoozeTitle(penalty: Double, currency: Currency? = .legacyDefault) -> LocalizedStringResource {
+        LocalizedStringResource(stringLiteral: pricedSnooze(penalty: penalty, currency: currency))
     }
 }

@@ -59,6 +59,8 @@ protocol AlarmKitScheduling: AnyObject {
     /// `SystemAlarmBackendProbe`, which needs "never asked" and "refused" kept
     /// apart to choose between an in-app prompt and a deep link to Settings.
     var authorization: AlarmKitAuthorization { get }
+    /// Nil means the current system state could not be read; refresh must not cancel blindly.
+    var alertingAlarmIDs: Set<UUID>? { get }
 
     /// Request AlarmKit authorization. Completes with `true` when authorized.
     /// Idempotent — AlarmKit returns the cached state once decided.
@@ -106,6 +108,16 @@ protocol AlarmKitScheduling: AnyObject {
         completion: @escaping (Result<Void, Error>) -> Void
     )
 
+    /// A tracked schedule must return its actual registered fixed schedule, not a predicted date.
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
+        isCurrent: @escaping () -> Bool,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    )
+
+    /// True only when absence of the derived registration was confirmed.
+    func cancelTrackedSnooze(_ alarmID: UUID) -> Bool
+
     /// Cancel only the original schedule before rearming it. A paid one-shot
     /// snooze under its separate ID must keep its existing fire date.
     func cancelOriginal(_ alarmID: UUID)
@@ -122,7 +134,19 @@ protocol AlarmKitScheduling: AnyObject {
 /// The production `AlarmKitScheduler` overrides this with the real tri-state,
 /// which is the only place the distinction can actually be observed.
 extension AlarmKitScheduling {
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
+        isCurrent: @escaping () -> Bool,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        // An old backend's Void success is not evidence of a registered fixed schedule.
+        completion(.failure(AlarmSnoozeContextError.unsupportedBackend))
+    }
+
+    func cancelTrackedSnooze(_ alarmID: UUID) -> Bool { false }
+
     var authorization: AlarmKitAuthorization { isAuthorized ? .authorized : .denied }
+    var alertingAlarmIDs: Set<UUID>? { nil }
 }
 
 #if canImport(AlarmKit)
@@ -147,11 +171,31 @@ final class AlarmKitScheduler: AlarmKitScheduling {
 
     private let manager = AlarmManager.shared
     private let cancelAlarm: (UUID) throws -> Void
+    private let readAuthorization: () -> AlarmManager.AuthorizationState
+    private let requestNativeAuthorization: () async throws -> AlarmManager.AuthorizationState
+    private let readAlarms: () throws -> [AlarmKit.Alarm]
+    typealias SnoozeConfiguration = AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
+    var registerTracked: (UUID, SnoozeConfiguration) async throws -> AlarmSnoozeReceipt = { id, configuration in
+        let registered = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
+        guard registered.id == id, case .fixed(let date)? = registered.schedule,
+              date.timeIntervalSince1970.isFinite else { throw AlarmSnoozeContextError.unconfirmedRegistration }
+        return AlarmSnoozeReceipt(systemID: registered.id, fireDate: date)
+    }
 
-    /// Only cancellation is injectable: regressions exercise the production ID
-    /// selection against pending schedules without cancelling real system alarms.
-    init(cancelAlarm: @escaping (UUID) throws -> Void = { try AlarmManager.shared.cancel(id: $0) }) {
+    /// Per-instance native operations keep adapter outcomes observable without
+    /// prompting for permission or scheduling an alarm in unit tests.
+    init(
+        cancelAlarm: @escaping (UUID) throws -> Void = { try AlarmManager.shared.cancel(id: $0) },
+        readAuthorization: @escaping () -> AlarmManager.AuthorizationState = { AlarmManager.shared.authorizationState },
+        requestNativeAuthorization: @escaping () async throws -> AlarmManager.AuthorizationState = {
+            try await AlarmManager.shared.requestAuthorization()
+        },
+        readAlarms: @escaping () throws -> [AlarmKit.Alarm] = { try AlarmManager.shared.alarms }
+    ) {
         self.cancelAlarm = cancelAlarm
+        self.readAuthorization = readAuthorization
+        self.requestNativeAuthorization = requestNativeAuthorization
+        self.readAlarms = readAlarms
     }
 
     var isAuthorized: Bool {
@@ -159,7 +203,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     }
 
     var authorization: AlarmKitAuthorization {
-        switch manager.authorizationState {
+        switch readAuthorization() {
         case .notDetermined:
             return .notDetermined
         case .authorized:
@@ -174,9 +218,21 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         }
     }
 
+    var alertingAlarmIDs: Set<UUID>? {
+        do {
+            return Set(try readAlarms().filter { $0.state == .alerting }.map(\.id))
+        } catch {
+            AppLogger.emit(
+                .scheduler, .error,
+                "currency refresh skipped: AlarmKit state unreadable: \(error.localizedDescription)"
+            )
+            return nil
+        }
+    }
+
     func requestAuthorization(completion: @escaping (Bool) -> Void) {
         // Already decided? Report synchronously without re-prompting.
-        switch manager.authorizationState {
+        switch readAuthorization() {
         case .authorized:
             completion(true)
             return
@@ -191,14 +247,14 @@ final class AlarmKitScheduler: AlarmKitScheduling {
 
         Task {
             do {
-                let state = try await manager.requestAuthorization()
-                AppLogger.scheduler.notice(
-                    "AlarmKit authorization resolved=\(String(describing: state), privacy: .public)"
+                let state = try await requestNativeAuthorization()
+                AppLogger.emit(
+                    .scheduler, .default, "AlarmKit authorization resolved=\(String(describing: state))"
                 )
                 await MainActor.run { completion(state == .authorized) }
             } catch {
-                AppLogger.scheduler.error(
-                    "AlarmKit authorization failed: \(error.localizedDescription, privacy: .public)"
+                AppLogger.emit(
+                    .scheduler, .error, "AlarmKit authorization failed: \(error.localizedDescription)"
                 )
                 await MainActor.run { completion(false) }
             }
@@ -211,7 +267,7 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     ) {
         let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
         do {
-            configuration = try Self.makeConfiguration(for: alarm)
+            configuration = try Self.makeConfiguration(for: alarm, currency: BalanceService.shared.alarmQuoteCurrency)
         } catch {
             // Synchronous config-build failure — report immediately so the
             // caller surfaces it instead of claiming the alarm is armed (#417).
@@ -260,7 +316,9 @@ final class AlarmKitScheduler: AlarmKitScheduling {
         // rings once.
         let configuration: AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata>
         do {
-            configuration = try Self.makeSnoozeConfiguration(for: alarm, fireDate: fireDate)
+            configuration = try Self.makeSnoozeConfiguration(
+                for: alarm, fireDate: fireDate, currency: BalanceService.shared.alarmQuoteCurrency
+            )
         } catch {
             // Synchronous config-build failure — report immediately so the
             // caller arms the notification fallback (#394 Finding 1).
@@ -294,6 +352,47 @@ final class AlarmKitScheduler: AlarmKitScheduling {
                 )
                 await MainActor.run { completion(.failure(error)) }
             }
+        }
+    }
+
+    func scheduleTrackedSnooze(
+        _ alarm: Alarm, fireDate: Date, token: AlarmSnoozeToken, attemptCount: Int,
+        isCurrent: @escaping () -> Bool,
+        completion: @escaping (Result<AlarmSnoozeReceipt, Error>) -> Void
+    ) {
+        do {
+            let configuration = try Self.makeSnoozeConfiguration(
+                for: alarm, fireDate: fireDate, currency: BalanceService.shared.alarmQuoteCurrency,
+                token: token, attemptCount: attemptCount
+            )
+            Task {
+                do {
+                    // Recheck inside the Task, before entering the physical await.
+                    guard isCurrent() else { throw AlarmSnoozeContextError.finished }
+                    let receipt = try await registerTracked(Self.snoozeID(for: alarm.id), configuration)
+                    guard receipt.systemID == Self.snoozeID(for: alarm.id),
+                          receipt.fireDate.timeIntervalSince1970.isFinite else {
+                        throw AlarmSnoozeContextError.unconfirmedRegistration
+                    }
+                    completion(.success(receipt))
+                } catch {
+                    if case .unconfirmedRegistration? = error as? AlarmSnoozeContextError {
+                        _ = cancelTrackedSnooze(alarm.id)
+                    }
+                    completion(.failure(error))
+                }
+            }
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
+    func cancelTrackedSnooze(_ alarmID: UUID) -> Bool {
+        let id = Self.snoozeID(for: alarmID)
+        do { try cancelAlarm(id); return true } catch {
+            // A throw is not a successful cancellation; checked absence can still prove cleanup.
+            guard let alarms = try? manager.alarms else { return false }
+            return !alarms.contains { $0.id == id }
         }
     }
 
@@ -347,10 +446,12 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// + weekly recurrence), the full-screen alert presentation (title + stop /
     /// snooze buttons), the stop / snooze intents, and the alarm sound.
     static func makeConfiguration(
-        for alarm: Alarm
+        for alarm: Alarm,
+        currency: Currency? = .legacyDefault,
+        presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation
     ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
         let schedule = makeSchedule(for: alarm)
-        let presentation = makePresentation(for: alarm)
+        let presentation = buildPresentation(alarm, currency)
         let attributes = AlarmAttributes<SnoozePayAlarmMetadata>(
             presentation: presentation,
             metadata: SnoozePayAlarmMetadata(),
@@ -371,21 +472,29 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// now + snoozeMinutes instead of the alarm's configured time-of-day (#383).
     static func makeSnoozeConfiguration(
         for alarm: Alarm,
-        fireDate: Date
-    ) throws -> AlarmManager.AlarmConfiguration<SnoozePayAlarmMetadata> {
+        fireDate: Date,
+        currency: Currency? = .legacyDefault,
+        token: AlarmSnoozeToken? = nil,
+        attemptCount: Int = 0,
+        presentation buildPresentation: (Alarm, Currency?) -> AlarmPresentation = AlarmKitScheduler.makePresentation,
+        construct: (AlarmKit.Alarm.Schedule, AlarmAttributes<SnoozePayAlarmMetadata>, StopAlarmIntent,
+                    SnoozeAlarmIntent, ActivityKit.AlertConfiguration.AlertSound) -> SnoozeConfiguration = {
+            .alarm(schedule: $0, attributes: $1, stopIntent: $2, secondaryIntent: $3, sound: $4)
+        }
+    ) throws -> SnoozeConfiguration {
         let schedule = makeSnoozeSchedule(fireDate: fireDate)
-        let presentation = makePresentation(for: alarm)
+        let presentation = token == nil ? buildPresentation(alarm, currency)
+            : makePresentation(for: alarm, currency: currency, nextSnoozeCount: attemptCount + 1)
         let attributes = AlarmAttributes<SnoozePayAlarmMetadata>(
             presentation: presentation,
             metadata: SnoozePayAlarmMetadata(),
             tintColor: Color.orange
         )
-        return AlarmManager.AlarmConfiguration.alarm(
-            schedule: schedule,
-            attributes: attributes,
-            stopIntent: StopAlarmIntent(alarmID: alarm.id),
-            secondaryIntent: SnoozeAlarmIntent(alarmID: alarm.id),
-            sound: alarmSound(for: alarm)
+        return construct(
+            schedule, attributes,
+            StopAlarmIntent(alarmID: alarm.id, token: token),
+            SnoozeAlarmIntent(alarmID: alarm.id, token: token),
+            alarmSound(for: alarm)
         )
     }
 
@@ -479,13 +588,17 @@ final class AlarmKitScheduler: AlarmKitScheduling {
     /// Build the full-screen alert presentation. The primary (stop) button is
     /// driven by `stopIntent`; the secondary (snooze) button shows the paid
     /// snooze cost and is driven by `secondaryIntent`.
-    private static func makePresentation(for alarm: Alarm) -> AlarmPresentation {
+    static func makePresentation(for alarm: Alarm, currency: Currency?) -> AlarmPresentation {
+        makePresentation(for: alarm, currency: currency, nextSnoozeCount: 1)
+    }
+
+    static func makePresentation(for alarm: Alarm, currency: Currency?, nextSnoozeCount: Int) -> AlarmPresentation {
         // The price is substituted into a catalogue format rather than
         // interpolated into a literal: interpolating made the whole rendered
         // phrase the resource's lookup key, so the words could never come from
         // the catalogue (`AlarmKitCopy`).
         let snoozeTitle = AlarmKitCopy.pricedSnoozeTitle(
-            penalty: alarm.penalty(forSnoozeCount: 1)
+            penalty: alarm.penalty(forSnoozeCount: nextSnoozeCount), currency: currency
         )
         let snoozeButton = AlarmButton(
             text: snoozeTitle,

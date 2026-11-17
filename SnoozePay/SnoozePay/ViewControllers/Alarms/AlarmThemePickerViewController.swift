@@ -39,7 +39,7 @@ final class AlarmThemePickerViewController: UIViewController {
     /// V2 firing-screen preview block — sits above the grid and tracks the
     /// currently-selected theme so the user sees a 180pt-tall stamp of what
     /// the alarm-firing screen will look like before they pick. Matches
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:344-355` contains "height: 180".
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:343-354` contains "height: 180".
     private let previewContainer: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -122,7 +122,7 @@ final class AlarmThemePickerViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = AppColors.bg0
         // V2 caps title — matches
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:339` contains "Тема будильника".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:338` contains "Тема будильника".
         let titleLabel = UILabel()
         titleLabel.attributedText = NSAttributedString(
             string: Localized.text("create_alarm.theme_picker.title").uppercased(),
@@ -136,7 +136,7 @@ final class AlarmThemePickerViewController: UIViewController {
         navigationItem.titleView = titleLabel
 
         // «Готово» quiet-sm — V3 exit affordance, matching the canon header at
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:340` contains "quiet".
+        // `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:339` contains "quiet".
         // The path matters: a second copy of that file under
         // `docs/design/v2-handoff/` is numbered differently, and the reference
         // this replaces was reading it.
@@ -244,7 +244,7 @@ final class AlarmThemePickerViewController: UIViewController {
     }
 
     /// Three-column compositional grid, tile aspect 1:1.2 (V3 —
-    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:359-365` contains "aspectRatio").
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:358-364` contains "aspectRatio").
     /// The 10pt inter-column gap is folded into per-item trailing
     /// insets; the row group height tracks the tile aspect so tiles stay 1:1.2.
     /// A «Готовые темы» caps header sits above the grid.

@@ -394,7 +394,7 @@ final class AlarmsListViewModel {
     // MARK: - Delete
 
     func deleteAlarm(at index: Int) {
-        guard index < alarms.count else { return }
+        guard alarms.indices.contains(index) else { return }
         deleteAlarm(id: alarms[index].id)
     }
 
@@ -546,20 +546,20 @@ final class AlarmsListViewModel {
     /// ``WallClockFormatter`` keeps the width and hands the cycle back to the
     /// locale, caching the formatter as this did.
     func alarmTimeString(at index: Int) -> String {
-        guard index < alarms.count else { return "" }
+        guard alarms.indices.contains(index) else { return "" }
         return WallClockFormatter.string(from: alarms[index].time, style: .compact)
     }
 
     /// Detail line for alarm card: "Name - Days" (e.g. "Работа - Будни")
     func alarmDetail(at index: Int) -> String {
-        guard index < alarms.count else { return "" }
+        guard alarms.indices.contains(index) else { return "" }
         let alarm = alarms[index]
         return "\(alarm.name) \u{2022} \(alarm.repeatDaysDescription)"
     }
 
     /// Penalty line for alarm card (e.g. "▲ ПОСПАТЬ ЕЩЁ: −50 ₽")
     func alarmPenaltyString(at index: Int) -> String {
-        guard index < alarms.count else { return "" }
+        guard alarms.indices.contains(index) else { return "" }
         let price = formattedAlarmPrice(alarms[index].penaltyAmount)
         guard price != "—" else { return price }
         return Localized.format("alarms.penalty", price)
@@ -588,7 +588,7 @@ final class AlarmsListViewModel {
     /// alarm-list spec line "Спорт · Вт, Чт" lives here so the cell can stay
     /// a passive renderer.
     func alarmDaysCaps(at index: Int) -> String {
-        guard index < alarms.count else { return "" }
+        guard alarms.indices.contains(index) else { return "" }
         let alarm = alarms[index]
         let daysPhrase = Self.weekdayPhrase(
             for: alarm.repeatDays,
@@ -648,7 +648,7 @@ final class AlarmsListViewModel {
 
     /// Price pill text uses the injected wallet currency, like the balance.
     func alarmPriceText(at index: Int) -> String {
-        guard index < alarms.count else { return "" }
+        guard alarms.indices.contains(index) else { return "" }
         return formattedAlarmPrice(alarms[index].penaltyAmount)
     }
 
@@ -667,7 +667,7 @@ final class AlarmsListViewModel {
     /// pill. The exact factor is informational — the firing screen
     /// computes the actual penalty per snooze count.
     func alarmMultiplierText(at index: Int) -> String? {
-        guard index < alarms.count else { return nil }
+        guard alarms.indices.contains(index) else { return nil }
         return alarms[index].progressiveScale ? "×2" : nil
     }
 
@@ -690,7 +690,7 @@ final class AlarmsListViewModel {
     /// «common.sound.name.foo» would be a regression against a pill that reads
     /// «foo», so the miss is resolved here and not by the shared reader.
     func alarmSoundName(at index: Int) -> String? {
-        guard index < alarms.count else { return nil }
+        guard alarms.indices.contains(index) else { return nil }
         let soundID = alarms[index].soundID
         return Localized.optionalText(SoundCatalogue.nameKey(for: soundID)) ?? soundID
     }

@@ -157,6 +157,7 @@ class AlarmFiringViewController: UIViewController {
     /// every snooze tap. `internal` so the +Progressive extension can re-tone
     /// it on `updateUI()`.
     var snoozeCTA: SPSnoozePrice?
+    let progressionUnavailableLabel = UILabel()
     var criticalWarnings: CriticalWarningCenter = .shared
 
     /// `internal` so the +NoBalance extension can hide / show this when
@@ -297,7 +298,7 @@ class AlarmFiringViewController: UIViewController {
     // MARK: - Init
 
     convenience init(alarm: Alarm, snoozeCount: Int = 0) {
-        self.init(viewModel: AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount))
+        self.init(viewModel: AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount, snoozeSessions: .shared))
     }
 
     /// Designated initializer taking a pre-built view model, so tests can pin
@@ -463,6 +464,7 @@ class AlarmFiringViewController: UIViewController {
         // While the snoozed state is live (#226) re-render its chrome too — a
         // back-to-back snooze bumps the ladder rung / countdown / hero suffix.
         refreshSnoozedChrome()
+        progressionUnavailableLabel.isHidden = viewModel.isProgressionAvailable
     }
 
     /// Build the eyebrow caps copy below the clock — «пора вставать» normally,
