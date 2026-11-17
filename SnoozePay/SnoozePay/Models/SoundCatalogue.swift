@@ -46,12 +46,14 @@ enum SoundCatalogue {
         let subtitle: String
     }
 
-    /// The 14 bundled sounds, in catalogue order. The first ten match the
+    /// The 19 bundled sounds, in catalogue order. The first ten match the
     /// pre-V3 `availableSounds` list (do NOT cut to 6 — design keeps the full
     /// lineup); `hawk`, `morning`, `sirena` and `spaceship` are the PM's
-    /// recordings appended by #850. Each id is also the base name of its file
-    /// in `Resources/Sounds/`, which is how both the ring and the preview
-    /// find it (``fileURL(for:resourceURL:)``).
+    /// recordings appended by #850; `marimba`, `badinerie`, `vibraphone`,
+    /// `strum` and `reflection` are the melodic set appended by #1092. Each id
+    /// is also the base name of its file in `Resources/Sounds/`, which is how
+    /// both the ring and the preview find it
+    /// (``fileURL(for:resourceURL:)``).
     ///
     /// The order is the picker's row order and is pinned to a literal copy of
     /// this list in `SoundCatalogueCopyTests.idsInCatalogueOrder` (#762), so
@@ -61,7 +63,8 @@ enum SoundCatalogue {
     static let ids: [String] = [
         "dawn", "radar", "drops", "piano", "guitar",
         "bell", "waves", "birds", "classic", "jazz",
-        "hawk", "morning", "sirena", "spaceship"
+        "hawk", "morning", "sirena", "spaceship",
+        "marimba", "badinerie", "vibraphone", "strum", "reflection"
     ]
 
     /// Id of the disabled custom-melody slot. Not one of ``ids``: it is

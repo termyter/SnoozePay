@@ -145,8 +145,8 @@ final class TransactionRepository {
     /// actually woke without a charge, not merely charge-free calendar days
     /// (#276). See `StreakCalculator` for the full semantics (charge breaks,
     /// neutral alarm-less days skip, today counts only after its wake, empty
-    /// wake-store legacy fallback). Returns 0 for a brand-new user or a
-    /// corrupt ledger — callers should consult `lastLoadFailed` before
+    /// wake-store legacy fallback). Returns 0 for a brand-new user, a
+    /// corrupt ledger or an unreadable wake history — callers should consult `lastLoadFailed` before
     /// trusting a zero.
     ///
     /// Production callers that have already paid the cost of a checked read
@@ -155,10 +155,7 @@ final class TransactionRepository {
     /// (issue #117).
     func currentStreak() -> Int {
         let allTransactions = queue.sync { (try? readAll()) ?? [] }
-        return StreakCalculator.currentStreak(
-            transactions: allTransactions,
-            wakeDays: wakeStore.wakeDays()
-        )
+        return currentStreak(from: allTransactions)
     }
 
     /// Streak computation against a caller-supplied transaction list. Used
@@ -168,10 +165,17 @@ final class TransactionRepository {
     /// banner (issue #117). Wake days are still read fresh from the store —
     /// they live in a separate ledger that the transaction snapshot doesn't
     /// cover.
+    ///
+    /// An **unreadable** wake history returns 0 (#1099). `wakeDays()` folds it
+    /// into an empty set, which `StreakCalculator` reads as "no history yet"
+    /// and answers with the legacy charge-free-days streak — so the alarms
+    /// banner and the milestone modal would celebrate a streak Statistics
+    /// reports as unavailable. A missing key stays the legacy fallback.
     func currentStreak(from transactions: [Transaction]) -> Int {
-        StreakCalculator.currentStreak(
+        guard let wakeDays = wakeStore.readSnapshot().days.dates else { return 0 }
+        return StreakCalculator.currentStreak(
             transactions: transactions,
-            wakeDays: wakeStore.wakeDays()
+            wakeDays: Set(wakeDays)
         )
     }
 

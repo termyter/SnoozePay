@@ -1117,24 +1117,6 @@
         }
       }
     },
-    "alarms.error.data_title" : {
-      "comment" : "Alarms list: title of the alert shown when the alarm store cannot be read.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
-          }
-        }
-      }
-    },
     "alarms.error.load_failed" : {
       "comment" : "Alert body when the stored alarms JSON cannot be decoded (AlarmRepository.RepositoryError.decodeFailure).",
       "extractionState" : "manual",
@@ -1513,6 +1495,24 @@
         }
       }
     },
+    "common.error.data_title" : {
+      "comment" : "Shared title for alarm-list and statistics data-load errors. Each alert message identifies the affected domain.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data Error"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ошибка данных"
+          }
+        }
+      }
+    },
     "common.purchase_failed.message" : {
       "comment" : "Fallback body of the purchase-failure alert, used when StoreKit supplies no message of its own.",
       "extractionState" : "manual",
@@ -1617,6 +1617,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Хватит на ~%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "common.sound.name.badinerie" : {
+      "comment" : "Display name of the «badinerie» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bach's Badinerie"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шутка Баха"
           }
         }
       }
@@ -1765,6 +1783,24 @@
         }
       }
     },
+    "common.sound.name.marimba" : {
+      "comment" : "Display name of the «marimba» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marimba"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маримба"
+          }
+        }
+      }
+    },
     "common.sound.name.morning" : {
       "comment" : "Display name of the «morning» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1819,6 +1855,24 @@
         }
       }
     },
+    "common.sound.name.reflection" : {
+      "comment" : "Display name of the «reflection» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reflection"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Размышление"
+          }
+        }
+      }
+    },
     "common.sound.name.sirena" : {
       "comment" : "Display name of the «sirena» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
       "extractionState" : "manual",
@@ -1851,6 +1905,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Космолёт"
+          }
+        }
+      }
+    },
+    "common.sound.name.strum" : {
+      "comment" : "Display name of the «strum» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strum"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перебор"
+          }
+        }
+      }
+    },
+    "common.sound.name.vibraphone" : {
+      "comment" : "Display name of the «vibraphone» alarm sound. Seen on two screens — the sound picker row and the alarms-list cell — which is why it is common.* and not create_alarm.*.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibraphone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрафон"
           }
         }
       }
@@ -2413,6 +2503,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.badinerie" : {
+      "comment" : "Sound picker: the descriptive line under «Шутка Баха». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bach in 8-bit"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бах в 8-битной обработке"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.bell" : {
       "comment" : "Sound picker: the descriptive line under «Колокольчик». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2575,6 +2683,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.marimba" : {
+      "comment" : "Sound picker: the descriptive line under «Маримба». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Morning marimba chime"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Утренний перезвон маримбы"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.morning" : {
       "comment" : "Sound picker: the descriptive line under «Утро». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2629,6 +2755,24 @@
         }
       }
     },
+    "create_alarm.sound.subtitle.reflection" : {
+      "comment" : "Sound picker: the descriptive line under «Размышление». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A quiet melody for a gentle morning"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тихая мелодия для лёгкого утра"
+          }
+        }
+      }
+    },
     "create_alarm.sound.subtitle.sirena" : {
       "comment" : "Sound picker: the descriptive line under «Сирена». Picker-only, unlike the name above it.",
       "extractionState" : "manual",
@@ -2661,6 +2805,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Гул космического корабля"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.strum" : {
+      "comment" : "Sound picker: the descriptive line under «Перебор». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soft plucked guitar chords"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мягкие гитарные аккорды"
+          }
+        }
+      }
+    },
+    "create_alarm.sound.subtitle.vibraphone" : {
+      "comment" : "Sound picker: the descriptive line under «Вибрафон». Picker-only, unlike the name above it.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bright, airy vibraphone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонкий воздушный вибрафон"
           }
         }
       }
@@ -7107,24 +7287,6 @@
         }
       }
     },
-    "statistics.error.title" : {
-      "comment" : "Title of the alert shown when the statistics repository fails to load. Byte for byte the value of alarms.error.data_title, and knowingly so rather than by oversight: both alerts are title + errorDescription-or-fallback + OK, the domain lives in the message (statistics.error.message vs alarms.error.load_failed_fallback) and not in the title, so by the common.* rule in Localized.swift this is a candidate for one shared common.error.data_title. Not merged in this slice because dropping a key is precisely the case merge-xcstrings.py refuses to resolve, and the #599 lane is editing this same file in parallel. alarms.error.data_title itself came from #601, which is closed and already on main — it is not what #599 is holding. Consolidate-or-justify-forever is #724. This is not the streak.behavioral.caps situation: there the two entries have different shapes behind them, here they do not.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Data Error"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ошибка данных"
-          }
-        }
-      }
-    },
     "statistics.last_slip" : {
       "comment" : "Hero meta line; %@ is a day-and-month date («8 января»).",
       "extractionState" : "manual",
@@ -7539,6 +7701,24 @@
         }
       }
     },
+    "statistics.wake_time.calculation_unavailable" : {
+      "comment" : "Wake-time card when enough history exists but its median cannot be published. No recovery promise.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up time couldn’t be calculated from the recorded history."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось рассчитать время подъёма по записанной истории."
+          }
+        }
+      }
+    },
     "statistics.wake_time.caps" : {
       "comment" : "Caps title of the wake-time card (SPWakeTimeCard).",
       "extractionState" : "manual",
@@ -7553,6 +7733,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ВРЕМЯ ПОДЪЁМА"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.comparison_unavailable" : {
+      "comment" : "Wake-time card comparison when the baseline result was refused; the recent median remains visible.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The wake-up time comparison is unavailable."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сравнение времени подъёма недоступно."
           }
         }
       }
@@ -7661,6 +7859,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Копим историю: нужно ещё %1$lld %2$@"
+          }
+        }
+      }
+    },
+    "statistics.wake_time.unreadable" : {
+      "comment" : "Wake history could not be read. Used by the wake-time card or the statistics unavailable state; no repair action.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your wake-up history couldn’t be read."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать историю подъёмов."
           }
         }
       }
