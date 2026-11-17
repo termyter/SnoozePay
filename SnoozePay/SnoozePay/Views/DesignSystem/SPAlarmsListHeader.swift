@@ -15,8 +15,8 @@ import UIKit
 /// ```
 ///
 /// Replaces the legacy big-balance-card + amber «БАЛАНС ПОЧТИ ПУСТ» banner —
-/// the urgency is now folded directly into the pill: when balance drops below
-/// `SPAlarmsListHeader.lowBalanceThreshold` the pill switches its background
+/// the urgency is now folded directly into the pill: when the host reports a
+/// low balance (`AlarmsListViewModel.isLowBalance`) the pill switches its background
 /// to a soft warn tint + warn-stroke and the hint copy reflects the warning.
 /// At exactly 0 ₽ the pill escalates further into the pain (zero-balance)
 /// variant — red stroke, reddish gradient wash, crossed-out coin tile and an
@@ -56,19 +56,22 @@ final class SPAlarmsListHeader: UIView {
     /// routes through the same «Пополнить» tap path.
     var onWarnTopUpTap: (() -> Void)?
 
-    /// Update the balance pill in place. The pill auto-switches between
-    /// three tones based on the amount: pain when the balance is 0 ₽
-    /// (zero-balance state, #232), warn-tint when
-    /// `balance.doubleValue ≤ lowBalanceThreshold`, neutral otherwise.
+    /// Update the balance pill in place. The pill switches between three
+    /// tones: pain when the balance is 0 (zero-balance state, #232), warn-tint
+    /// when `isLow`, neutral otherwise. `isLow` is the host's
+    /// `AlarmsListViewModel.isLowBalance`, whose threshold follows the price
+    /// context (#1151) — the pill no longer keeps its own «≤ 100 of any
+    /// currency», which tinted a $5.00 wallet as low.
     /// `hint` and `delta` are accepted for source-compat with the legacy
     /// header; `delta` is currently ignored in the V2 pill layout (the
     /// rolling-week change rendered as `↑/↓ amount` migrates onto the
     /// Wallet screen). Pass through unchanged so existing call sites
     /// keep compiling.
-    func setBalance(_ balance: Decimal, currency: Currency, hint: String?, delta: Decimal? = nil) {
+    func setBalance(_ balance: Decimal, currency: Currency, hint: String?, isLow: Bool, delta: Decimal? = nil) {
         _ = delta // accepted for API compat; pill omits the delta row.
         currentBalance = balance
         currentCurrency = currency
+        currentIsLow = isLow
         hasBalance = true
         // The amount's ink is part of the tone (0 ₽ renders in the pain wash
         // ink; the zero-balance pill is handoff only,
@@ -76,7 +79,7 @@ final class SPAlarmsListHeader: UIView {
         // so `applyTone` re-renders the text — that is also what makes the
         // value follow a light/dark flip, since `refreshDynamicColors` goes
         // through the same call.
-        applyTone(Self.tone(for: balance))
+        applyTone(Self.tone(for: balance, isLow: isLow))
         if let hint = hint, !hint.isEmpty {
             balanceHintLabel.text = hint
             balanceHintLabel.isHidden = false
@@ -85,41 +88,25 @@ final class SPAlarmsListHeader: UIView {
         }
     }
 
-    /// Kept for source-compat with the legacy header. The V2 pill folds
-    /// the warning into its own tone, so this method now just routes the
-    /// state through `setBalance(_:currency:hint:)`'s low-balance branch — the
-    /// controller already calls both methods on refresh.
-    func setWarning(visible: Bool, balance: Decimal) {
-        // `applyTone` is driven by `setBalance`; this method is preserved
-        // so the controller doesn't need to be rewritten to drop the
-        // call. The `visible` flag is implied by the balance value.
-        _ = (visible, balance)
-    }
-
     // MARK: - Tokens
-
-    /// Pill bg switches to warn-tint at or below this threshold (₽).
-    /// Matches `AlarmsListViewModel.lowBalanceThreshold` so the view and
-    /// the model agree on what "low" means without coupling them through
-    /// an import.
-    static let lowBalanceThreshold: Double = 100
 
     /// Visual tone of the balance pill (#232). `zero` (pain chrome +
     /// IconCoinOff) outranks `low` (warn chrome) — both can't show at
     /// once and an empty wallet is the more urgent story. The alarms in
     /// the list stay visually active in every tone: at 0 ₽ they still
     /// fire, the user just can't pay to snooze them.
-    private enum PillTone {
+    enum PillTone {
         case normal
         case low
         case zero
     }
 
-    private static func tone(for balance: Decimal) -> PillTone {
-        let value = NSDecimalNumber(decimal: balance).doubleValue
-        if value <= 0 { return .zero }
-        if value <= lowBalanceThreshold { return .low }
-        return .normal
+    /// The tone last applied — read by tests.
+    private(set) var pillTone: PillTone = .normal
+
+    private static func tone(for balance: Decimal, isLow: Bool) -> PillTone {
+        if NSDecimalNumber(decimal: balance).doubleValue <= 0 { return .zero }
+        return isLow ? .low : .normal
     }
 
     // MARK: - Subviews
@@ -335,6 +322,7 @@ final class SPAlarmsListHeader: UIView {
 
     private var currentBalance: Decimal = 0
     private var currentCurrency: Currency?
+    private var currentIsLow = false
 
     /// `applyTone` renders the amount, and it runs once during `configure`
     /// too — before the controller has pushed anything. Without this the pill
@@ -366,7 +354,7 @@ final class SPAlarmsListHeader: UIView {
 
     private func refreshDynamicColors() {
         refreshChrome()
-        applyTone(Self.tone(for: currentBalance))
+        applyTone(Self.tone(for: currentBalance, isLow: currentIsLow))
     }
 
     /// Re-resolve everything that lives on a `CALayer` outside the pill.
@@ -554,6 +542,7 @@ final class SPAlarmsListHeader: UIView {
     /// CTA keeps its money variant in every tone — topping up is a
     /// positive action even when the wallet is empty.
     private func applyTone(_ tone: PillTone) {
+        pillTone = tone
         let trait = traitCollection
         zeroTintGradient.isHidden = tone != .zero
         zeroTintGradient.refresh(colors: Self.zeroWashColors(for: trait), locations: [0.0, 1.0])

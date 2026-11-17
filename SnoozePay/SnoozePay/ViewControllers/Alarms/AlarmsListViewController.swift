@@ -362,11 +362,10 @@ class AlarmsListViewController: UIViewController {
             // `balanceHint` swaps in «Откладывать не получится» at 0 ₽
             // (#232) and falls back to the affordability line otherwise.
             hint: viewModel.balanceHint,
+            // The warn tint follows the price-context threshold (#1151).
+            isLow: viewModel.isLowBalance,
             delta: viewModel.weeklyDelta
         )
-        // Legacy method preserved for source-compat — the V2 pill already
-        // self-toggles its tone from `setBalance` based on the threshold.
-        header.setWarning(visible: viewModel.isLowBalance, balance: balance)
     }
 
     /// Mount / dismount the "alarms won't ring" banner between the header and

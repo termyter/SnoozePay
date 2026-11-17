@@ -84,7 +84,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     func testZeroBalancePill_inksItsTextWithTheWashPair_notTheGlowStep() throws {
         let (header, window) = makeHostedHeader(style: .light)
         defer { window.isHidden = true }
-        header.setBalance(0, currency: .rub, hint: "Пополни, чтобы откладывать")
+        header.setBalance(0, currency: .rub, hint: "Пополни, чтобы откладывать", isLow: true)
         window.layoutIfNeeded()
 
         let labels = try pillLabels(of: header)
@@ -111,7 +111,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     func testLowBalancePill_inksItsHintAgainstItsOwnTint() throws {
         let (header, window) = makeHostedHeader(style: .light)
         defer { window.isHidden = true }
-        header.setBalance(50, currency: .rub, hint: "Хватит на 1 откладывание")
+        header.setBalance(50, currency: .rub, hint: "Хватит на 1 откладывание", isLow: true)
         window.layoutIfNeeded()
 
         let labels = try pillLabels(of: header)
@@ -132,7 +132,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
     func testPill_liftsOffTheLightPage_andStaysFlatInDark() throws {
         let (light, lightWindow) = makeHostedHeader(style: .light)
         defer { lightWindow.isHidden = true }
-        light.setBalance(840, currency: .rub, hint: "Хватит на ~16 откладываний")
+        light.setBalance(840, currency: .rub, hint: "Хватит на ~16 откладываний", isLow: false)
         lightWindow.layoutIfNeeded()
         let lightPill = try XCTUnwrap(findPill(in: light))
         XCTAssertGreaterThan(lightPill.layer.shadowOpacity, 0, "light pill needs --sp-shadow-1")
@@ -140,7 +140,7 @@ final class AlarmsListLightThemeTests: XCTestCase {
 
         let (dark, darkWindow) = makeHostedHeader(style: .dark)
         defer { darkWindow.isHidden = true }
-        dark.setBalance(840, currency: .rub, hint: "Хватит на ~16 откладываний")
+        dark.setBalance(840, currency: .rub, hint: "Хватит на ~16 откладываний", isLow: false)
         darkWindow.layoutIfNeeded()
         let darkPill = try XCTUnwrap(findPill(in: dark))
         XCTAssertEqual(darkPill.layer.shadowOpacity, 0, "dark keeps the flat pill — bg2 on bg0 already steps")

@@ -21,7 +21,8 @@ final class SnoozeAffordabilityLargeCountTests: XCTestCase {
             XCTAssertEqual(
                 SnoozeAffordability.hint(
                     balance: Double(testCase.count),
-                    alarms: [Alarm(penaltyAmount: 1, enabled: true)]
+                    alarms: [Alarm(penaltyAmount: 1, enabled: true)],
+                    context: .scale(.rouble)
                 ),
                 testCase.expected
             )

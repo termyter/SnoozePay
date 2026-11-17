@@ -104,7 +104,7 @@ final class DesignSystemCopyTests: XCTestCase {
 
     func testAlarmsListHeaderRendersCopyRatherThanKeys() {
         let header = SPAlarmsListHeader(frame: CGRect(x: 0, y: 0, width: 402, height: 220))
-        header.setBalance(500, currency: .rub, hint: nil)
+        header.setBalance(500, currency: .rub, hint: nil, isLow: false)
         header.layoutIfNeeded()
 
         let rendered = Self.strings(in: header)

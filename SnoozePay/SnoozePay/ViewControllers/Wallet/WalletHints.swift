@@ -23,12 +23,16 @@ enum WalletHints {
     /// divided by a hardcoded 50 ₽ (and still claimed «при текущей цене») while
     /// the list divided by the priciest alarm, so 298 ₽ read as «~5» here and
     /// «~1» one tap away.
+    ///
+    /// `context` is the wallet's `priceContext` (#1151); `nil` (no hint line)
+    /// when no snooze price resolves in it.
     static func affordHint(
         forBalance balance: Double,
         alarms: [Alarm],
-        defaults: AlarmDefaults = .shared
-    ) -> String {
+        defaults: AlarmDefaults = .shared,
+        context: SnoozePriceContext
+    ) -> String? {
         guard balance > 0 else { return emptyBalanceHint }
-        return SnoozeAffordability.hint(balance: balance, alarms: alarms, defaults: defaults)
+        return SnoozeAffordability.hint(balance: balance, alarms: alarms, defaults: defaults, context: context)
     }
 }

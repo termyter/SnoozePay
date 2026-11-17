@@ -33,8 +33,8 @@ final class SnoozeAffordabilityTests: XCTestCase {
 
     /// What each screen renders for one state of the world.
     private struct Screens {
-        let list: String
-        let wallet: String
+        let list: String?
+        let wallet: String?
         let price: Double
         let count: Int
     }
@@ -87,10 +87,11 @@ final class SnoozeAffordabilityTests: XCTestCase {
             wallet: WalletHints.affordHint(
                 forBalance: service.balance,
                 alarms: repo.fetchAll(),
-                defaults: alarmDefaults
+                defaults: alarmDefaults,
+                context: service.priceContext
             ),
-            price: viewModel.currentSnoozePrice,
-            count: viewModel.affordableSnoozeCount
+            price: viewModel.currentSnoozePrice ?? .nan,
+            count: viewModel.affordableSnoozeCount ?? -1
         )
     }
 
@@ -112,6 +113,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
     func testBothScreensAgreeOnTheSameBalanceAndAlarms() {
         let screens = renderBothScreens(balance: 298, alarms: issueScreenshotAlarms)
 
+        XCTAssertNotNil(screens.list, "nil == nil must not pass as agreement")
         XCTAssertEqual(
             screens.list,
             screens.wallet,
@@ -134,6 +136,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
     func testScreensStayInStepAcrossBalances() {
         for balance in [1.0, 99.0, 100.0, 250.0, 298.0, 1000.0, 5000.0] {
             let screens = renderBothScreens(balance: balance, alarms: issueScreenshotAlarms)
+            XCTAssertNotNil(screens.list, "no hint at \(balance) ₽")
             XCTAssertEqual(
                 screens.list,
                 screens.wallet,
@@ -171,7 +174,9 @@ final class SnoozeAffordabilityTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            SnoozeAffordability.currentPrice(alarms: alarms, defaults: AlarmDefaults()),
+            SnoozeAffordability.currentPrice(
+                alarms: alarms, defaults: AlarmDefaults(), context: .scale(.rouble)
+            ) ?? .nan,
             100,
             accuracy: 0.0001
         )
@@ -184,7 +189,9 @@ final class SnoozeAffordabilityTests: XCTestCase {
         alarms.append(Alarm(penaltyAmount: 200, enabled: true))
 
         XCTAssertEqual(
-            SnoozeAffordability.currentPrice(alarms: alarms, defaults: AlarmDefaults()),
+            SnoozeAffordability.currentPrice(
+                alarms: alarms, defaults: AlarmDefaults(), context: .scale(.rouble)
+            ) ?? .nan,
             50,
             accuracy: 0.0001
         )
@@ -199,7 +206,9 @@ final class SnoozeAffordabilityTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            SnoozeAffordability.currentPrice(alarms: alarms, defaults: AlarmDefaults()),
+            SnoozeAffordability.currentPrice(
+                alarms: alarms, defaults: AlarmDefaults(), context: .scale(.rouble)
+            ) ?? .nan,
             200,
             accuracy: 0.0001
         )
@@ -295,7 +304,8 @@ final class SnoozeAffordabilityTests: XCTestCase {
     func testAffordableCountPreservesTheDoubleImmediatelyBelowIntLimit() {
         let count = SnoozeAffordability.affordableCount(
             balance: Double(Int.max).nextDown,
-            alarms: [Alarm(penaltyAmount: 1, enabled: true)]
+            alarms: [Alarm(penaltyAmount: 1, enabled: true)],
+            context: .scale(.rouble)
         )
 
         // On the supported 64-bit targets, the Double below 2^63 is 2^63 - 1024.
@@ -306,7 +316,8 @@ final class SnoozeAffordabilityTests: XCTestCase {
         XCTAssertEqual(
             SnoozeAffordability.affordableCount(
                 balance: Double(Int.max),
-                alarms: [Alarm(penaltyAmount: 1, enabled: true)]
+                alarms: [Alarm(penaltyAmount: 1, enabled: true)],
+                context: .scale(.rouble)
             ),
             Int.max
         )
@@ -316,7 +327,8 @@ final class SnoozeAffordabilityTests: XCTestCase {
         XCTAssertEqual(
             SnoozeAffordability.affordableCount(
                 balance: .greatestFiniteMagnitude,
-                alarms: [Alarm(penaltyAmount: 50, enabled: true)]
+                alarms: [Alarm(penaltyAmount: 50, enabled: true)],
+                context: .scale(.rouble)
             ),
             Int.max
         )
@@ -325,7 +337,9 @@ final class SnoozeAffordabilityTests: XCTestCase {
     func testAffordableCountCapsAnOverflowingQuotientForAModelAcceptedPrice() throws {
         let alarm = try XCTUnwrap(Alarm(validating: UUID(), penaltyAmount: .leastNonzeroMagnitude))
 
-        XCTAssertEqual(SnoozeAffordability.affordableCount(balance: 100, alarms: [alarm]), Int.max)
+        XCTAssertEqual(SnoozeAffordability.affordableCount(
+            balance: 100, alarms: [alarm], context: .scale(.rouble)
+        ), Int.max)
     }
 
     func testAffordableCountStillFloorsOrdinaryFractionalQuotients() {
@@ -341,7 +355,8 @@ final class SnoozeAffordabilityTests: XCTestCase {
             XCTAssertEqual(
                 SnoozeAffordability.affordableCount(
                     balance: testCase.balance,
-                    alarms: [Alarm(penaltyAmount: 0.5, enabled: true)]
+                    alarms: [Alarm(penaltyAmount: 0.5, enabled: true)],
+                    context: .scale(.rouble)
                 ),
                 testCase.expected
             )
@@ -353,7 +368,8 @@ final class SnoozeAffordabilityTests: XCTestCase {
             XCTAssertEqual(
                 SnoozeAffordability.affordableCount(
                     balance: balance,
-                    alarms: [Alarm(penaltyAmount: 1, enabled: true)]
+                    alarms: [Alarm(penaltyAmount: 1, enabled: true)],
+                    context: .scale(.rouble)
                 ),
                 0,
                 "Unexpected count for balance \(balance)"

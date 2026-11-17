@@ -188,8 +188,20 @@ enum UITourLauncher {
             seedWakeHistory()
         }
         if let raw = value(after: "-uitour-balance"), let target = Double(raw) {
+            forgetStorefrontScales()
             forceBalance(to: target)
         }
+    }
+
+    /// `-uitour-balance` is a rouble amount and the E2E tests match «0 ₽», but a
+    /// pristine wallet takes the price context of the last-seen storefront
+    /// (#1109): a simulator that once loaded a USD catalogue showed «$0.00»
+    /// and rescaled every price. Dropping the cached storefront and its scales
+    /// gives a pristine tour wallet the rouble context, whatever the host
+    /// cached before (#1151). A wallet with a stored currency keeps it.
+    private static func forgetStorefrontScales() {
+        UserDefaults.standard.removeObject(forKey: SnoozePriceScaleStore.lastStorefrontCurrencyKey)
+        UserDefaults.standard.removeObject(forKey: SnoozePriceScaleStore.scalesKey)
     }
 
     /// Demo alarms for `-uitour-seed`.

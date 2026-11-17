@@ -210,8 +210,6 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     // MARK: - Content
 
     func testConfirmDeleteSheetShowsTitleBodyAndBothActions() {
-        let expectedBody = AlarmDeletionCopy.body(balance: BalanceService.shared.balance)
-
         mountRoute()
 
         guard let sheet = waitForSizedSheet() else {
@@ -219,6 +217,12 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
                 timeoutMessage("`-uitour confirm-delete` never presented a sized confirmation sheet.")
             )
         }
+        // The route mounts the sheet's default body, which reads the shared
+        // wallet; the expectation mirrors it, currency included (#1151), and is
+        // read after the mount so no wallet change in between can split them.
+        let expectedBody = AlarmDeletionCopy.body(
+            balance: BalanceService.shared.balance, currency: BalanceService.shared.displayCurrency
+        )
         let diagnostics = layoutDiagnostics()
 
         let title = contentView("confirmDelete.title", in: sheet) as? UILabel

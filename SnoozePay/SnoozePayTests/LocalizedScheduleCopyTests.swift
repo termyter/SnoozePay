@@ -243,8 +243,8 @@ final class LocalizedScheduleCopyTests: XCTestCase {
             AlarmDeletionCopy.contextLine(repeatDays: [], repeatMode: .weekly, time: sevenAM),
             AlarmDeletionCopy.contextLine(repeatDays: [0, 1], repeatMode: .never, time: sevenAM),
             AlarmDeletionCopy.contextLine(repeatDays: [5, 6], repeatMode: .weekly, time: sevenAM),
-            AlarmDeletionCopy.body(balance: 840),
-            AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 840)
+            AlarmDeletionCopy.body(balance: 840, currency: .rub),
+            AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 840, currency: .rub)
         ]
         for line in lines {
             XCTAssertFalse(line.contains("%"), "a specifier was left unsubstituted: \(line)")
@@ -278,8 +278,8 @@ final class LocalizedScheduleCopyTests: XCTestCase {
     /// re-worded copy of it — that is what makes «context. reassurance» a
     /// translatable join instead of a Swift concatenation frozen into Russian.
     func testBodyWithContextContainsTheStandaloneReassuranceVerbatim() {
-        let standalone = AlarmDeletionCopy.body(balance: 840)
-        let joined = AlarmDeletionCopy.body(contextLine: "Каждый день · 07:00", balance: 840)
+        let standalone = AlarmDeletionCopy.body(balance: 840, currency: .rub)
+        let joined = AlarmDeletionCopy.body(contextLine: "Каждый день · 07:00", balance: 840, currency: .rub)
         XCTAssertTrue(joined.hasSuffix(standalone), "\(joined) does not end with \(standalone)")
         XCTAssertTrue(joined.hasPrefix("Каждый день · 07:00"), joined)
     }

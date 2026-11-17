@@ -20,14 +20,14 @@ final class AlarmDeletionCopyTests: XCTestCase {
 
     func testBody_withoutContext_reassuresBalanceStaysPut() {
         XCTAssertEqual(
-            AlarmDeletionCopy.body(balance: 840),
+            AlarmDeletionCopy.body(balance: 840, currency: .rub),
             "Баланс 840\(narrowSpace)₽ останется на месте — "
                 + "он не привязан к будильнику."
         )
     }
 
     func testBody_withContext_prependsContextSentence() {
-        let body = AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 840)
+        let body = AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 840, currency: .rub)
         XCTAssertEqual(
             body,
             "Будни · Пн–Пт · 07:00. Баланс 840\(narrowSpace)₽ останется на месте — "
@@ -37,13 +37,13 @@ final class AlarmDeletionCopyTests: XCTestCase {
 
     func testBody_emptyContext_degradesToReassuranceOnly() {
         XCTAssertEqual(
-            AlarmDeletionCopy.body(contextLine: "", balance: 100),
-            AlarmDeletionCopy.body(balance: 100)
+            AlarmDeletionCopy.body(contextLine: "", balance: 100, currency: .rub),
+            AlarmDeletionCopy.body(balance: 100, currency: .rub)
         )
     }
 
     func testBody_groupsThousandsViaMoneyFormatter() {
-        let body = AlarmDeletionCopy.body(balance: 1234)
+        let body = AlarmDeletionCopy.body(balance: 1234, currency: .rub)
         XCTAssertTrue(
             body.contains("1\(groupSpace)234\(narrowSpace)₽"),
             "Balance must render through fmtRub grouping: \(body)"
@@ -51,7 +51,7 @@ final class AlarmDeletionCopyTests: XCTestCase {
     }
 
     func testBody_neverClaimsMoneyIsLost() {
-        let body = AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 50)
+        let body = AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 50, currency: .rub)
         XCTAssertFalse(body.contains("не вернутся"), "Pre-#277 false claim must be gone: \(body)")
         XCTAssertFalse(body.contains("безвозвратно"), "Pre-#277 false claim must be gone: \(body)")
     }

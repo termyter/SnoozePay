@@ -18,18 +18,10 @@ extension CreateAlarmViewController {
     ///
     /// Body copy is composed per the `SPMore2.jsx` artboard (#277): the
     /// alarm's identity line («Будни · Пн–Пт · 07:00») followed by the
-    /// balance-stays-put reassurance with the live balance interpolated.
+    /// balance-stays-put reassurance with the live balance interpolated —
+    /// from the editor's injected wallet, in its display currency (#1151).
     func confirmDelete() {
-        let body = AlarmDeletionCopy.body(
-            contextLine: AlarmDeletionCopy.contextLine(
-                repeatDays: viewModel.repeatDays,
-                repeatMode: viewModel.repeatMode,
-                time: viewModel.time,
-                clockTime: viewModel.selectedTimeOfDay
-            ),
-            balance: BalanceService.shared.balance
-        )
-        let sheet = ConfirmDeleteAlarmViewController(body: body) { [weak self] in
+        let sheet = ConfirmDeleteAlarmViewController(body: viewModel.deletionBody) { [weak self] in
             guard let self else { return }
             // ViewModel.delete forwards to AlarmRepository.delete, which
             // cancels the scheduled UNNotificationRequests via AlarmScheduler.

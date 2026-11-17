@@ -37,7 +37,7 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     /// reassurance copy «Баланс N ₽ останется на месте — он не привязан
     /// к будильнику» with the live balance interpolated
     /// (#277); the host should pass `AlarmDeletionCopy.body(contextLine:
-    /// balance:)` to prepend alarm-specific context (repeat + time).
+    /// balance:currency:)` to prepend alarm-specific context (repeat + time).
     private let bodyCopy: String
 
     // MARK: - UI
@@ -149,7 +149,9 @@ final class ConfirmDeleteAlarmViewController: UIViewController {
     ///   - onConfirm: Closure invoked on the destructive tap. The sheet
     ///     dismisses itself before firing the callback.
     init(
-        body: String = AlarmDeletionCopy.body(balance: BalanceService.shared.balance),
+        body: String = AlarmDeletionCopy.body(
+            balance: BalanceService.shared.balance, currency: BalanceService.shared.displayCurrency
+        ),
         onConfirm: (() -> Void)? = nil
     ) {
         self.bodyCopy = body
