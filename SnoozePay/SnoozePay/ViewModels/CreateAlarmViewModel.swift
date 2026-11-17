@@ -9,12 +9,23 @@ final class CreateAlarmViewModel {
 
     private let alarmRepository: AlarmRepository
     private let balanceService: BalanceService
+    private let editorCalendar: Calendar
+    private var projectingPickerTime = false
 
     var walletCurrency: Currency { balanceService.walletCurrency }
 
     // MARK: - Editable state (bound to UI controls)
 
-    var time: Date
+    /// Date bridge retained for callers; only a changed local clock adopts civil authority.
+    var time: Date {
+        didSet {
+            guard !projectingPickerTime,
+                  let selected = TimeOfDay(from: time, calendar: editorCalendar),
+                  selected != TimeOfDay(from: oldValue, calendar: editorCalendar) else { return }
+            clockTime = selected
+        }
+    }
+    private(set) var clockTime: TimeOfDay?
     var repeatDays: [Int]
     var name: String
     var soundID: String
@@ -47,16 +58,24 @@ final class CreateAlarmViewModel {
         alarm: Alarm? = nil,
         repository: AlarmRepository = .shared,
         defaults: AlarmDefaults = .shared,
-        balanceService: BalanceService = .shared
+        balanceService: BalanceService = .shared,
+        calendar: Calendar = .current,
+        now: Date = Date()
     ) {
         self.alarmRepository = repository
         self.balanceService = balanceService
         self.existingID = alarm?.id
+        self.editorCalendar = calendar
 
         // Seed from existing alarm or — for a brand-new alarm — the user's
         // global defaults (#283). Editing an existing alarm always keeps its
         // own saved values; only `alarm == nil` falls through to the defaults.
-        self.time = alarm?.time ?? Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
+        self.time = alarm?.time ?? calendar.date(bySettingHour: 7, minute: 0, second: 0, of: now) ?? now
+        if let alarm {
+            self.clockTime = alarm.clockTime
+        } else {
+            self.clockTime = TimeOfDay(hour: 7, minute: 0)
+        }
         let seededDays = alarm?.repeatDays ?? []
         self.repeatDays = seededDays
         // New alarms start with an empty name so the form shows the
@@ -81,6 +100,30 @@ final class CreateAlarmViewModel {
         self.volumeFadeIn = alarm?.volumeFadeIn ?? false
         self.theme = alarm?.theme ?? .dawn
         self.repeatMode = Self.openingRepeatMode(stored: alarm?.repeatMode ?? .weekly, days: seededDays)
+    }
+
+    var selectedTimeOfDay: TimeOfDay? { clockTime ?? TimeOfDay(from: time, calendar: editorCalendar) }
+
+    /// The picker edits a clock on a fixed UTC day, so a DST gap cannot change its selection.
+    var pickerCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        return calendar
+    }
+
+    var pickerTime: Date {
+        guard let clock = selectedTimeOfDay else { return time }
+        return Date(timeIntervalSinceReferenceDate: TimeInterval(clock.hour * 3_600 + clock.minute * 60))
+    }
+
+    func selectPickerTime(_ date: Date) {
+        guard let selected = TimeOfDay(from: date, calendar: pickerCalendar),
+              selected != selectedTimeOfDay else { return }
+        clockTime = selected
+        // The compatibility Date may normalize on a DST gap; the selected clock remains authoritative.
+        projectingPickerTime = true
+        defer { projectingPickerTime = false }
+        if let projected = selected.toDate(on: time, calendar: editorCalendar) { time = projected }
     }
 
     /// The mode the form must OPEN in, given the stored mode and day set (#633).
@@ -216,6 +259,7 @@ final class CreateAlarmViewModel {
         return Alarm(
             id: existingID ?? UUID(),
             time: time,
+            clockTime: clockTime,
             repeatDays: safeRepeatDays,
             // Empty field → no user name at all, rather than a copy of the
             // default frozen into storage in today's language (#623).

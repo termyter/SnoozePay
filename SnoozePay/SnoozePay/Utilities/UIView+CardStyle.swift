@@ -185,7 +185,7 @@ extension UITableViewCell {
     /// alarm card on the home screen: `bg1` is `#FFFFFF` against a `#F4F6FB`
     /// page, so the shadow alone leaves the card barely detached — the border
     /// is what actually draws the edge (#496).
-    func styleAsCardRow(position: CardRowPosition, cornerRadius: CGFloat = AppRadius.sm) {
+    func styleAsCardRow(position: CardRowPosition, cornerRadius: CGFloat = AppRadius.xl) {
         // The system's default `backgroundColor` already paints
         // `secondarySystemBackground`. Wrap that in a custom `backgroundView`
         // so we can draw the rounded corners + shadow + outline ourselves.
@@ -220,6 +220,9 @@ final class CardRowBackgroundView: UIView {
         // warm `#1C1C1E`, so rows match `SPCard`/`CardView` on the same screen.
         backgroundColor = AppColors.bg1
         layer.cornerRadius = cornerRadius
+        // Match the circular stroke. Section backgrounds are also masked by
+        // UITableView; the larger default follows the measured #738 workaround.
+        layer.cornerCurve = .circular
         layer.maskedCorners = position.maskedCorners
         layer.masksToBounds = false
         outline.fillColor = UIColor.clear.cgColor
@@ -239,8 +242,12 @@ final class CardRowBackgroundView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // Match the existing shadow recipe's bounded radius, including short
+        // rows, so fill, outline and shadow describe the same silhouette.
+        let radius = max(0, min(cardCornerRadius, bounds.width / 2, bounds.height / 2))
+        layer.cornerRadius = radius
         outline.frame = bounds
-        outline.path = outlinePath(lineWidth: outline.lineWidth)
+        outline.path = outlinePath(lineWidth: outline.lineWidth, cornerRadius: radius)
         guard position != .middle else { return }
         // The ambient stop is the half of this that shows: masking it out of
         // the seam takes the light-mode band from 11/255 to 6/255, measured on
@@ -263,12 +270,12 @@ final class CardRowBackgroundView: UIView {
         // the neighbour instead of removing it.
         layer.shadowPath = AppShadow.cardPath(
             bounds,
-            cornerRadius: cardCornerRadius,
+            cornerRadius: radius,
             corners: position.maskedCorners
         )
         AppShadow.installAmbientShadow1Layer(
             on: layer,
-            cornerRadius: cardCornerRadius,
+            cornerRadius: radius,
             trait: traitCollection,
             corners: position.maskedCorners,
             openEdges: position.openEdges
@@ -288,18 +295,23 @@ final class CardRowBackgroundView: UIView {
     }
 
     /// Stroke path covering only this row's share of the section outline.
-    private func outlinePath(lineWidth: CGFloat) -> CGPath {
-        let inset = lineWidth / 2
+    private func outlinePath(lineWidth: CGFloat, cornerRadius: CGFloat) -> CGPath {
+        // Capsule rows leave one additional physical pixel between the outline
+        // and the host edge. This clearance is independent of the stroke width.
+        let fillsShortSide = cornerRadius >= min(bounds.width, bounds.height) / 2
+        let edgeGuard = position == .single && fillsShortSide ? hairlineWidth : 0
+        let inset = lineWidth / 2 + edgeGuard
         let left = bounds.minX + inset
         let right = bounds.maxX - inset
         let drawsTop = position == .first || position == .single
         let drawsBottom = position == .last || position == .single
         // Rails run flush to the cell edge where the neighbour continues them,
-        // and pull in by half a hairline where this row caps the section.
+        // and pull in by the outline inset where this row caps the section.
         let top = drawsTop ? bounds.minY + inset : bounds.minY
         let bottom = drawsBottom ? bounds.maxY - inset : bounds.maxY
         guard right > left, bottom > top else { return UIBezierPath().cgPath }
-        let radius = min(cardCornerRadius, (right - left) / 2, (bottom - top) / 2)
+        // Pull the radius in with the rect so both arcs remain concentric.
+        let radius = max(0, cornerRadius - inset)
 
         if position == .single {
             // The whole card in one row — a plain rounded rect, so the rails
