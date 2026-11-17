@@ -33,21 +33,14 @@ final class AlarmsListViewModelTests: XCTestCase {
     }
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var stubScheduler: StubScheduler!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmsList.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         stubScheduler = StubScheduler()
         repo = AlarmRepository(defaults: testDefaults, scheduler: stubScheduler)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Helpers
@@ -625,22 +618,15 @@ final class AlarmsListViewModelTests: XCTestCase {
 final class AlarmsListViewModelCorruptionTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmsListCorruption.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         repo = AlarmRepository(
             defaults: testDefaults,
             scheduler: AlarmsListViewModelTests.StubScheduler()
         )
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     /// Builds a VM wired to an isolated BalanceService + NotificationCenter
@@ -778,18 +764,14 @@ final class AlarmsListViewModelCorruptionTests: XCTestCase {
 final class AlarmsListWeeklyDeltaTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmsListWeeklyDelta.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
     }
 
     override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
         testDefaults = nil
-        suiteName = nil
         super.tearDown()
     }
 

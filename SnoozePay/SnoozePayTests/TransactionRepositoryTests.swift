@@ -5,14 +5,12 @@ import XCTest
 final class TransactionRepositoryTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var repo: TransactionRepository!
     private var wakeStore: WakeEventStore!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.txRepo.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         // Isolated wake store so the streak's #276 wake lookup (and its
         // empty-store legacy fallback) can't read real-device history.
         wakeStore = WakeEventStore(defaults: testDefaults)
@@ -24,11 +22,6 @@ final class TransactionRepositoryTests: XCTestCase {
     private func recordWake(daysAgo: Int) {
         let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date())!
         wakeStore.recordWake(on: date)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Helpers
@@ -345,16 +338,13 @@ final class TransactionRepositoryTests: XCTestCase {
 
     func testIsolation_separateSuites() {
         // Verify that our test UserDefaults suite is isolated
-        let otherSuiteName = "test.txRepo.other.\(UUID().uuidString)"
-        let otherDefaults = UserDefaults(suiteName: otherSuiteName)!
+        let otherDefaults = makeIsolatedDefaults()
         let otherRepo = TransactionRepository(defaults: otherDefaults)
 
         repo.record(charge(amount: 50))
 
         XCTAssertEqual(repo.fetchAllOrFail().count, 1)
         XCTAssertEqual(otherRepo.fetchAllOrFail().count, 0, "Different suites should be isolated")
-
-        otherDefaults.removePersistentDomain(forName: otherSuiteName)
     }
 
     // MARK: - Corrupted persistence (issue #23)
