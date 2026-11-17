@@ -89,6 +89,113 @@ final class SettingsPriceContextTests: XCTestCase {
         waitForRow(MoneyFormatter.string(50.0, currency: .rub), in: sut)
     }
 
+    // MARK: - Default-price picker
+
+    func testUSDPickerOffersTheScaleTiersAndChecksTheStoredOne() throws {
+        let titles = ["0.99", "1.99", "2.99"].map { MoneyFormatter.string(decimal($0), currency: usd) }
+        for (amount, checked) in [(20.0, 0), (50, 0), (100, 1), (137, 2), (500, 2)] {
+            let sut = makeSUT(amount: amount) { .scale(self.usdScale) }
+            // Pristine wallet: the store still says roubles, the labels follow the context.
+            XCTAssertEqual(sut.walletCurrencyStore.currency, .rub)
+            let picker = sut.makeDefaultPricePicker()
+            XCTAssertEqual(picker.actions.count, 4, "\(amount)")
+            XCTAssertEqual(picker.actions.dropLast().map(\.title), titles, "\(amount)")
+            XCTAssertTrue(picker.actions.dropLast().allSatisfy { $0.style == .default && $0.isEnabled })
+            XCTAssertEqual(picker.actions.last?.style, .cancel)
+            XCTAssertTrue(picker.preferredAction === picker.actions[checked], "\(amount) → tier \(checked)")
+            XCTAssertEqual(sut.alarmDefaults.penaltyAmount, amount)
+        }
+    }
+
+    func testRoubleContextPickerKeepsThePresetsAndChecksNothing() {
+        let sut = makeSUT(amount: 137) { .scale(.rouble) }
+        let picker = sut.makeDefaultPricePicker()
+        XCTAssertEqual(picker.actions.dropLast().map(\.title), [20, 50, 100, 200, 500].map {
+            MoneyFormatter.string(Double($0), currency: .rub)
+        })
+        XCTAssertNil(picker.preferredAction)
+        tap(3, in: sut)
+        XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 200)
+    }
+
+    func testChoosingATierStoresItsRoubleEquivalent() {
+        for (amount, choice, stored) in [(50.0, 1, 100.0), (50, 2, 200), (137, 0, 50), (500, 1, 100)] {
+            let sut = makeSUT(amount: amount) { .scale(self.usdScale) }
+            tap(choice, in: sut)
+            XCTAssertEqual(sut.alarmDefaults.penaltyAmount, stored, "\(amount) → tier \(choice)")
+            let reopened = sut.makeDefaultPricePicker()
+            XCTAssertTrue(reopened.preferredAction === reopened.actions[choice], "\(amount) → tier \(choice)")
+        }
+    }
+
+    func testReChoosingTheCheckedTierKeepsTheStoredAmount() {
+        for (amount, checked) in [(137.0, 2), (20, 0), (73, 1)] {
+            let sut = makeSUT(amount: amount) { .scale(self.usdScale) }
+            let picker = sut.makeDefaultPricePicker()
+            XCTAssertTrue(picker.preferredAction === picker.actions[checked])
+            tap(checked, in: sut)
+            XCTAssertEqual(sut.alarmDefaults.penaltyAmount, amount)
+        }
+    }
+
+    func testChoosingATierReloadsBothMountedRows() throws {
+        let sut = makeSUT(amount: 50) { .scale(self.usdScale) }
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = sut
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        window.layoutIfNeeded()
+        XCTAssertTrue(rowShows(MoneyFormatter.string(decimal("0.99"), currency: usd), in: sut))
+
+        tap(2, in: sut)
+        XCTAssertTrue(rowShows(MoneyFormatter.string(decimal("2.99"), currency: usd), in: sut))
+        let rules = try XCTUnwrap(sut.tableView.cellForRow(at: rulesIndexPath(in: sut)))
+        let chain = ["2.99", "5.98", "11.96", "23.92"]
+            .map { MoneyFormatter.string(decimal($0), currency: usd) }.joined(separator: " → ")
+        XCTAssertTrue(labels(in: rules).contains { $0.text == chain })
+    }
+
+    func testUnavailableContextDisablesThePicker() throws {
+        let sut = makeSUT(amount: 50) { .unavailable(self.usd) }
+        XCTAssertFalse(sut.isDefaultPricePickerEnabled)
+        let row = sut.makeFinanceCell(at: priceIndexPath(in: sut))
+        XCTAssertEqual(row.accessoryType, .none)
+        XCTAssertEqual(row.selectionStyle, .none)
+        let picker = sut.makeDefaultPricePicker()
+        XCTAssertEqual(picker.actions.map(\.style), [.cancel])
+        XCTAssertNil(picker.preferredAction)
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = sut
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        window.layoutIfNeeded()
+        sut.tableView(sut.tableView, didSelectRowAt: priceIndexPath(in: sut))
+        XCTAssertNil(sut.presentedViewController)
+        XCTAssertEqual(sut.alarmDefaults.penaltyAmount, 50)
+
+        for context in [SnoozePriceContext.scale(.rouble), .scale(usdScale)] {
+            let enabled = makeSUT(amount: 50) { context }
+            XCTAssertTrue(enabled.isDefaultPricePickerEnabled)
+            XCTAssertEqual(enabled.makeFinanceCell(at: priceIndexPath(in: enabled)).accessoryType,
+                           .disclosureIndicator)
+        }
+    }
+
+    /// Taps option `index` of the sheet: commits the choice behind that action,
+    /// after checking the sheet shows exactly the choices, in order.
+    private func tap(_ index: Int, in sut: SettingsViewController) {
+        let choices = sut.defaultPriceChoices()
+        XCTAssertEqual(sut.makeDefaultPricePicker().actions.dropLast().map(\.title), choices.map(\.title))
+        choices[index].commit()
+    }
+
     // MARK: - Fixture
 
     private func makeSUT(

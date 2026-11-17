@@ -87,13 +87,6 @@ class SettingsViewController: UIViewController {
         }
     }
 
-    /// The list's gear button only (`AlarmsListViewController.openSettings`):
-    /// the real wallet's context. Temporary, until that call site passes the
-    /// source itself; tests never call it.
-    convenience init() {
-        self.init(priceContextSource: { BalanceService.shared.priceContext })
-    }
-
     deinit {
         priceContextObservers.forEach { notificationCenter.removeObserver($0) }
     }
