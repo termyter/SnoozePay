@@ -469,31 +469,35 @@ final class AlarmsListViewModel {
     /// number (#546). Was `averagePenalty`, a "mode over ALL alarms" that
     /// degenerated into "the most expensive alarm" whenever every alarm had a
     /// different price, and that counted disabled alarms which can never
-    /// charge anything.
-    var currentSnoozePrice: Double {
-        SnoozeAffordability.currentPrice(alarms: alarms, defaults: alarmDefaults)
+    /// charge anything. Resolved in `priceContext` like the row pills
+    /// (#1151); `nil` when the context is `.unavailable`.
+    var currentSnoozePrice: Double? {
+        SnoozeAffordability.currentPrice(alarms: alarms, defaults: alarmDefaults, context: priceContext)
     }
 
     /// Number of snoozes the user can currently afford given the
     /// current `balance` and `currentSnoozePrice`. Floored — the list hint
     /// never advertises a fractional snooze. Returns 0 when the user is
-    /// out of money so the warning banner can still fire.
-    var affordableSnoozeCount: Int {
+    /// out of money so the warning banner can still fire; `nil` when no
+    /// price resolves.
+    var affordableSnoozeCount: Int? {
         SnoozeAffordability.affordableCount(
             balance: balance,
             alarms: alarms,
-            defaults: alarmDefaults
+            defaults: alarmDefaults,
+            context: priceContext
         )
     }
 
     /// Localised hint shown under the balance number on the alarms
     /// list: "Хватит на ~5 откладываний". Shared verbatim with the wallet
-    /// balance card (#546).
-    var affordabilityHint: String {
+    /// balance card (#546). `nil` (no hint line) when no price resolves.
+    var affordabilityHint: String? {
         SnoozeAffordability.hint(
             balance: balance,
             alarms: alarms,
-            defaults: alarmDefaults
+            defaults: alarmDefaults,
+            context: priceContext
         )
     }
 
@@ -517,7 +521,7 @@ final class AlarmsListViewModel {
     /// the balance figure: zero-balance copy when the wallet is empty,
     /// otherwise the regular "Хватит на ~N откладываний" affordability
     /// line ("~0 откладываний" never ships — the zero branch wins first).
-    var balanceHint: String {
+    var balanceHint: String? {
         isZeroBalance ? Self.zeroBalanceHint : affordabilityHint
     }
 
@@ -559,13 +563,20 @@ final class AlarmsListViewModel {
     /// `true` when the balance is at or below the low-balance
     /// threshold. The list shows a warning banner whenever this is
     /// true on view appear (see issue #142).
+    ///
+    /// The threshold is resolved in `priceContext` as a legacy rouble amount
+    /// (#1151): exactly 100 in roubles, the `mid` tier elsewhere ($1.99 —
+    /// again about two cheapest snoozes) instead of «100 dollars». With an
+    /// `.unavailable` context only an empty wallet is low.
     var isLowBalance: Bool {
-        balance <= Self.lowBalanceThreshold
+        guard let threshold = SnoozePriceResolver.base(.amount(Self.lowBalanceThreshold), in: priceContext)
+            .flatMap({ MoneyDecimal.double($0.amount) }) else { return isZeroBalance }
+        return balance <= threshold
     }
 
-    /// Threshold for the low-balance warning banner. Matched against
-    /// the raw `balance` (₽). 100 ₽ chosen because it's roughly 2
-    /// snoozes at the default penalty — the warning gives the user
+    /// Threshold for the low-balance warning banner, in roubles (see
+    /// `isLowBalance` for other currencies). 100 ₽ chosen because it's
+    /// roughly 2 snoozes at the default penalty — the warning gives the user
     /// runway to top up before the next charge fails.
     static let lowBalanceThreshold: Double = 100
 

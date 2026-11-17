@@ -210,7 +210,11 @@ final class UITourConfirmDeleteRouteTests: XCTestCase {
     // MARK: - Content
 
     func testConfirmDeleteSheetShowsTitleBodyAndBothActions() {
-        let expectedBody = AlarmDeletionCopy.body(balance: BalanceService.shared.balance)
+        // The route mounts the sheet's default body, which reads the shared
+        // wallet; the expectation mirrors it, currency included (#1151).
+        let expectedBody = AlarmDeletionCopy.body(
+            balance: BalanceService.shared.balance, currency: BalanceService.shared.displayCurrency
+        )
 
         mountRoute()
 

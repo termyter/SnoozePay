@@ -17,8 +17,9 @@ import Foundation
 ///   from CLDR through `Weekday.localizedShortName`, not from the catalogue;
 ///   only the phrasing — the ranges and the three-segment one-shot line — is
 ///   copy, and it gets its own `alarms.delete.*` keys.
-/// - `body(contextLine:balance:)` — the reassurance sentence with the live
-///   balance interpolated via `MoneyFormatter` (single money-string source).
+/// - `body(contextLine:balance:currency:)` — the reassurance sentence with the
+///   live balance interpolated via `MoneyFormatter` (single money-string
+///   source), in the wallet's display currency (#1151).
 enum AlarmDeletionCopy {
 
     // MARK: - Body
@@ -27,8 +28,16 @@ enum AlarmDeletionCopy {
     /// artboard: «<context>. Баланс N ₽ останется на месте — …». Without one
     /// (e.g. generic call sites that have no alarm at hand) the reassurance
     /// sentence stands alone.
-    static func body(contextLine: String? = nil, balance: Double) -> String {
-        let reassurance = Localized.format("alarms.delete.reassurance", MoneyFormatter.string(balance))
+    ///
+    /// `currency` is the wallet's `BalanceService.displayCurrency`, and it has
+    /// no default so no caller falls back to roubles by omission (#1151): a
+    /// stored-USD wallet holding $1.99 used to read «Баланс 1 ₽». Roubles keep
+    /// the legacy whole-rouble formatter, so a rouble sheet reads as before.
+    static func body(contextLine: String? = nil, balance: Double, currency: Currency) -> String {
+        let amount = currency == .rub
+            ? MoneyFormatter.string(balance)
+            : MoneyFormatter.string(balance, currency: currency)
+        let reassurance = Localized.format("alarms.delete.reassurance", amount)
         guard let contextLine, !contextLine.isEmpty else { return reassurance }
         return Localized.format("alarms.delete.body", contextLine, reassurance)
     }

@@ -226,11 +226,11 @@ final class CreateAlarmLightThemeTests: XCTestCase {
     /// Both overloads are unconditionally non-empty — the reassurance sentence
     /// always renders, with or without an alarm context line.
     func testDeletionCopy_isNeverEmpty_withOrWithoutAlarmContext() {
-        XCTAssertFalse(AlarmDeletionCopy.body(balance: 0).isEmpty)
-        XCTAssertFalse(AlarmDeletionCopy.body(contextLine: nil, balance: 840).isEmpty)
-        XCTAssertFalse(AlarmDeletionCopy.body(contextLine: "", balance: 840).isEmpty)
+        XCTAssertFalse(AlarmDeletionCopy.body(balance: 0, currency: .rub).isEmpty)
+        XCTAssertFalse(AlarmDeletionCopy.body(contextLine: nil, balance: 840, currency: .rub).isEmpty)
+        XCTAssertFalse(AlarmDeletionCopy.body(contextLine: "", balance: 840, currency: .rub).isEmpty)
         XCTAssertFalse(
-            AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 840).isEmpty
+            AlarmDeletionCopy.body(contextLine: "Будни · Пн–Пт · 07:00", balance: 840, currency: .rub).isEmpty
         )
     }
 

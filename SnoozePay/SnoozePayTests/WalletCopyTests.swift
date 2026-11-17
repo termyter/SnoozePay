@@ -315,7 +315,7 @@ final class WalletCopyTests: XCTestCase {
     func testEmptyBalanceHintComesFromTheCatalogue() {
         XCTAssertEqual(WalletHints.emptyBalanceHint, Localized.text("wallet.hint.empty_balance"))
         XCTAssertEqual(
-            WalletHints.affordHint(forBalance: 0, alarms: []),
+            WalletHints.affordHint(forBalance: 0, alarms: [], context: .scale(.rouble)),
             Localized.text("wallet.hint.empty_balance"),
             "a zero balance stopped routing to the wallet-specific hint"
         )

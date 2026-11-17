@@ -27,7 +27,8 @@ extension CreateAlarmViewController {
                 time: viewModel.time,
                 clockTime: viewModel.selectedTimeOfDay
             ),
-            balance: BalanceService.shared.balance
+            balance: BalanceService.shared.balance,
+            currency: BalanceService.shared.displayCurrency
         )
         let sheet = ConfirmDeleteAlarmViewController(body: body) { [weak self] in
             guard let self else { return }
