@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Domain model for an alarm. Separate from Core Data entity for clean MVVM.
 ///
@@ -33,6 +34,12 @@ struct Alarm: Identifiable, Equatable, Codable {
     let vibrationEnabled: Bool
     let snoozeMinutes: Int
     let penaltyAmount: Double
+    /// The snooze-price tier chosen outside roubles (#1109), or `nil` for an
+    /// alarm priced by ``penaltyAmount``. Persisted under the optional key
+    /// `penaltyTier`; `penaltyAmount` is still written next to it, so a build
+    /// that predates the key reads the same record it always read. Read through
+    /// ``price``.
+    let penaltyTier: SnoozePriceTier?
     let progressiveScale: Bool
     let enabled: Bool
     /// Per-alarm playback volume in `0.0...1.0`. Default `1.0` keeps the
@@ -133,6 +140,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
         penaltyAmount: Double = 50,
+        penaltyTier: SnoozePriceTier? = nil,
         progressiveScale: Bool = false,
         enabled: Bool = true,
         volume: Float = 1.0,
@@ -154,6 +162,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         self.vibrationEnabled = vibrationEnabled
         self.snoozeMinutes = snoozeMinutes
         self.penaltyAmount = penaltyAmount
+        self.penaltyTier = penaltyTier
         self.progressiveScale = progressiveScale
         self.enabled = enabled
         self.volume = Self.clampedVolume(volume)
@@ -176,6 +185,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         vibrationEnabled: Bool = true,
         snoozeMinutes: Int = 9,
         penaltyAmount: Double = 50,
+        penaltyTier: SnoozePriceTier? = nil,
         progressiveScale: Bool = false,
         enabled: Bool = true,
         volume: Float = 1.0,
@@ -193,6 +203,7 @@ struct Alarm: Identifiable, Equatable, Codable {
             vibrationEnabled: vibrationEnabled,
             snoozeMinutes: snoozeMinutes,
             penaltyAmount: penaltyAmount,
+            penaltyTier: penaltyTier,
             progressiveScale: progressiveScale,
             enabled: enabled,
             volume: volume,
@@ -223,6 +234,12 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// A supplied `clockTime` is authoritative. A changed Date establishes a
     /// civil clock only when its hour/minute also changes in `calendar`;
     /// identity/date-only copies and nil arguments retain the old authority.
+    ///
+    /// `price` replaces the snooze price as a whole (#1127): `.tier` stores the
+    /// tier and keeps `penaltyAmount`; `.amount(x)` stores `x` and clears the
+    /// tier, and wins over a `penaltyAmount` passed alongside it. Omitting it —
+    /// every copy made before #1127 — keeps the tier, so `with(enabled:)` on a
+    /// tier alarm cannot silently turn it back into a bare amount.
     func with(
         time: Date? = nil,
         clockTime: TimeOfDay? = nil,
@@ -232,6 +249,7 @@ struct Alarm: Identifiable, Equatable, Codable {
         vibrationEnabled: Bool? = nil,
         snoozeMinutes: Int? = nil,
         penaltyAmount: Double? = nil,
+        price: SnoozePrice? = nil,
         progressiveScale: Bool? = nil,
         enabled: Bool? = nil,
         volume: Float? = nil,
@@ -250,6 +268,13 @@ struct Alarm: Identifiable, Equatable, Codable {
         } else {
             copiedClock = self.clockTime
         }
+        var copiedAmount = penaltyAmount ?? self.penaltyAmount
+        var copiedTier = self.penaltyTier
+        switch price {
+        case .tier(let tier): copiedTier = tier
+        case .amount(let amount): (copiedAmount, copiedTier) = (amount, nil)
+        case nil: break
+        }
         return Alarm(
             id: id,
             time: time ?? self.time,
@@ -262,7 +287,8 @@ struct Alarm: Identifiable, Equatable, Codable {
             soundID: soundID ?? self.soundID,
             vibrationEnabled: vibrationEnabled ?? self.vibrationEnabled,
             snoozeMinutes: snoozeMinutes ?? self.snoozeMinutes,
-            penaltyAmount: penaltyAmount ?? self.penaltyAmount,
+            penaltyAmount: copiedAmount,
+            penaltyTier: copiedTier,
             progressiveScale: progressiveScale ?? self.progressiveScale,
             enabled: enabled ?? self.enabled,
             volume: volume ?? self.volume,
@@ -298,7 +324,7 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// makes a key impossible to declare and then forget to write.
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case id, time, clockTime, repeatDays, name, nameIsDefault, soundID, vibrationEnabled
-        case snoozeMinutes, penaltyAmount, progressiveScale, enabled
+        case snoozeMinutes, penaltyAmount, penaltyTier, progressiveScale, enabled
         case volume, volumeFadeIn, theme, repeatMode
     }
 
@@ -360,6 +386,7 @@ struct Alarm: Identifiable, Equatable, Codable {
             case .vibrationEnabled: try container.encode(vibrationEnabled, forKey: .vibrationEnabled)
             case .snoozeMinutes: try container.encode(snoozeMinutes, forKey: .snoozeMinutes)
             case .penaltyAmount: try container.encode(penaltyAmount, forKey: .penaltyAmount)
+            case .penaltyTier: try container.encodeIfPresent(penaltyTier, forKey: .penaltyTier)
             case .progressiveScale: try container.encode(progressiveScale, forKey: .progressiveScale)
             case .enabled: try container.encode(enabled, forKey: .enabled)
             case .volume: try container.encode(volume, forKey: .volume)
@@ -408,6 +435,23 @@ struct Alarm: Identifiable, Equatable, Codable {
         // (no charge) rather than crashing or locking the store.
         let rawPenalty = try container.decode(Double.self, forKey: .penaltyAmount)
         self.penaltyAmount = rawPenalty.isFinite ? max(rawPenalty, 0) : 0
+        // `penaltyTier` (#1127): absent → nil, the legacy shape. A present value
+        // that is not a known tier (null, a string, a raw value a future build
+        // added) also reads as nil, so the alarm falls back to its always-written
+        // `penaltyAmount` instead of throwing — a throw here locks the whole store
+        // (#72 / #117). The fallback is logged: it changes what the alarm charges.
+        // Inline rather than a helper so it shares this initializer's isolation.
+        if container.contains(.penaltyTier) {
+            let rawTier = try? container.decode(Int.self, forKey: .penaltyTier)
+            let tier = rawTier.flatMap(SnoozePriceTier.init(rawValue:))
+            self.penaltyTier = tier
+            if tier == nil {
+                AppLogger.emit(.repository, .error, "ALARM-1127-UNKNOWN-TIER: penaltyTier "
+                    + "\(rawTier.map(String.init) ?? "non-integer") ignored, using penaltyAmount")
+            }
+        } else {
+            self.penaltyTier = nil
+        }
         self.progressiveScale = try container.decode(Bool.self, forKey: .progressiveScale)
         self.enabled = try container.decode(Bool.self, forKey: .enabled)
         // New in #150 — fall back to the "ring at full volume, no fade"
@@ -535,5 +579,12 @@ struct Alarm: Identifiable, Equatable, Codable {
     /// about currencies, hence the legacy bridge (#561).
     var penaltyMoney: Money? {
         Money.legacy(penaltyAmount)
+    }
+
+    /// What a snooze of this alarm costs before it meets a currency (#1109):
+    /// the stored tier when there is one, else the legacy ``penaltyAmount``.
+    /// Resolved into `Money` by `SnoozePriceResolver`.
+    var price: SnoozePrice {
+        penaltyTier.map(SnoozePrice.tier) ?? .amount(penaltyAmount)
     }
 }
