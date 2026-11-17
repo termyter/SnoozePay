@@ -19,6 +19,10 @@ final class TrackedSessionBackend: AlarmKitScheduling {
     private(set) var cancelled: [UUID] = []
     private(set) var registrations: [UUID: Date] = [:]
     private var pending: (() -> Void)?
+    var occurrenceFinishResult: Result<Void, AlarmOccurrenceFinishError> = .success(())
+    private(set) var occurrenceFinishRequests: [AlarmOccurrenceFinishRequest] = []
+    private(set) var lateSnoozeCleanupRequests: [AlarmOccurrenceFinishRequest] = []
+    private(set) var finishOriginalStopIDs: [UUID] = []
 
     func requestAuthorization(completion: @escaping (Bool) -> Void) { completion(isAuthorized) }
     func schedule(_ alarm: Alarm, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -65,6 +69,40 @@ final class TrackedSessionBackend: AlarmKitScheduling {
         registrations[AlarmKitScheduler.snoozeID(for: alarmID)] = nil
     }
     func stop(_ alarmID: UUID) {}
+
+    /// A configured consumer outcome; this fake's Date dictionary models snoozes, not native state.
+    func finishOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        occurrenceFinishRequests.append(request)
+        if case .success = occurrenceFinishResult {
+            let derivedID = AlarmKitScheduler.snoozeID(for: request.alarmID)
+            if let date = registrations[derivedID] {
+                guard request.expectedDerivedFireDate == date || request.allowsUntrackedDerived else {
+                    return .failure(.ownershipUnavailable)
+                }
+                guard confirmsCancellation else { return .failure(.nativeUnconfirmed) }
+            }
+            registrations[derivedID] = nil
+            if request.weekly == nil { registrations[request.alarmID] = nil }
+        }
+        return occurrenceFinishResult
+    }
+
+    func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError> {
+        lateSnoozeCleanupRequests.append(request)
+        guard confirmsCancellation else { return .failure(.nativeUnconfirmed) }
+        let derivedID = AlarmKitScheduler.snoozeID(for: request.alarmID)
+        if let date = registrations[derivedID],
+           request.expectedDerivedFireDate != date && !request.allowsUntrackedDerived {
+            return .failure(.ownershipUnavailable)
+        }
+        registrations[derivedID] = nil
+        return .success(())
+    }
+
+    func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
+        finishOriginalStopIDs.append(alarmID)
+        return .success(())
+    }
 }
 
 @MainActor

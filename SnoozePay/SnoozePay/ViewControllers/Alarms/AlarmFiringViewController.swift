@@ -22,6 +22,7 @@ class AlarmFiringViewController: UIViewController {
     /// `internal` so the +Audio and +Progressive extensions in sibling files
     /// can read VM state during their UI updates.
     let viewModel: AlarmFiringViewModel
+    var occurrenceRecovery: AlarmOccurrenceRecovering?
 
     // MARK: - Background
 
@@ -299,6 +300,7 @@ class AlarmFiringViewController: UIViewController {
 
     convenience init(alarm: Alarm, snoozeCount: Int = 0) {
         self.init(viewModel: AlarmFiringViewModel(alarm: alarm, snoozeCount: snoozeCount, snoozeSessions: .shared))
+        occurrenceRecovery = AlarmOccurrenceRecovery.shared
     }
 
     /// Designated initializer taking a pre-built view model, so tests can pin
@@ -438,7 +440,7 @@ class AlarmFiringViewController: UIViewController {
                 minutes: viewModel.alarm.snoozeMinutes,
                 hint: snoozeHintText()
             )
-            snooze.isEnabled = viewModel.canSnooze && !viewModel.isSnoozeScheduling
+            snooze.isEnabled = viewModel.canSnooze && !viewModel.isSnoozeScheduling && !viewModel.finishRequested
             // The CTA stays GOLD on every progressive step (#288). Escalation
             // is carried by the background tone crossfade + the indicator pill,
             // never by reddening the button — so we no longer re-tone it here.
@@ -460,6 +462,10 @@ class AlarmFiringViewController: UIViewController {
         // (Apple Pay 500 ₽) stack based on affordability. `canSnooze` is
         // the single source of truth.
         refreshNoBalanceVisibility()
+        if viewModel.finishRequested {
+            applePayNoBalanceButton?.isEnabled = false
+            chooseAmountLink?.isEnabled = false
+        }
 
         // While the snoozed state is live (#226) re-render its chrome too — a
         // back-to-back snooze bumps the ladder rung / countdown / hero suffix.
@@ -611,15 +617,18 @@ class AlarmFiringViewController: UIViewController {
     /// `presentingViewController?.dismiss` on THIS firing VC, unwinding both
     /// screens back to the app.
     @objc func dismissTapped() {
-        // Read the summary BEFORE `dismiss()` so the numbers describe the wake
-        // that just ended. Both figures come from the ledger (#400) — a snooze
-        // whose trigger the scheduler rejected was refunded, so it must not
-        // inflate either the count or the sum the user is shown. When the
-        // ledger can't be read we say so rather than print a guessed total.
-        let summary = wokeMorningContent()
-        // Stop hands deferred feedback back to StoreKit before the summary covers this screen.
+        // Close deferred purchase feedback before requesting native finish.
         noBalancePurchase.finish()
-        viewModel.dismiss()
+        switch viewModel.dismiss() {
+        case .failure(let error):
+            presentOccurrenceFinishError(error)
+            return
+        case .success(.alreadyCompleted): return
+        case .success(.completedNow): break
+        }
+        // The successful finish includes settled late callbacks; use one fresh
+        // checked ledger snapshot rather than figures from before confirmation.
+        let summary = wokeMorningContent()
         isStoppedByUser = true
         onUserStop?()
         // Check and stop in one step (#880).

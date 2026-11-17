@@ -25,6 +25,8 @@ final class AlarmFiringTrackedLifecycleTests: XCTestCase {
         let id = AlarmKitScheduler.snoozeID(for: fixture.alarm.id)
         XCTAssertNil(backend.registrations[id])
         XCTAssertNil(first.nextRingDate())
+        XCTAssertTrue(WakeEventStore(defaults: fixture.defaults).wakeDays().isEmpty)
+        XCTAssertEqual(first.dismiss(), .success(.completedNow), "Retry confirms cleanup before a new debit")
         XCTAssertThrowsError(try fixture.store().resolve(firstToken, alarmID: fixture.alarm.id))
         backend.deferred = false
         let second = fixture.model(backend: backend)
@@ -52,7 +54,7 @@ final class AlarmFiringTrackedLifecycleTests: XCTestCase {
         XCTAssertFalse(fixture.model(backend: backend).snooze())
         XCTAssertEqual(try charges().count, 1)
         backend.confirmsCancellation = true
-        fixture.scheduler(backend).cancel(fixture.alarm.id)
+        XCTAssertEqual(first.dismiss(), .success(.completedNow), "Checked retry must retain the weekly original")
         backend.deferred = false
         XCTAssertTrue(fixture.model(backend: backend).snooze())
         XCTAssertEqual(try charges().count, 2)
@@ -260,7 +262,11 @@ final class AlarmFiringTrackedLifecycleTests: XCTestCase {
         XCTAssertEqual(rows.first { $0.type == .refund }?.refundsTransactionID, try charges().first?.id)
         XCTAssertEqual(BalanceService(defaults: fixture.defaults).balance, 2_000)
         backend.confirmsCancellation = true
-        model.dismiss()
+        XCTAssertEqual(model.dismiss(), .failure(.ownershipUnavailable),
+                       "An unconfirmed receipt must not authorize deletion of an unknown derived registration")
+        XCTAssertFalse(fixture.model(backend: backend).snooze())
+        XCTAssertTrue(backend.cancelTrackedSnooze(fixture.alarm.id), "External cleanup establishes actual absence")
+        XCTAssertEqual(model.dismiss(), .success(.completedNow))
         backend.unconfirmedRegistration = false
         XCTAssertTrue(fixture.model(backend: backend).snooze())
         XCTAssertEqual(try charges().count, 2)
