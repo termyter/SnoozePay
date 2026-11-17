@@ -106,7 +106,7 @@ final class StoreKitPurchaseFeedbackSignalTests: XCTestCase {
     // MARK: - Refusals
 
     /// Credit landed, then the dedup table drifted: the purchase is refused,
-    /// and the user is told why — once per attempt, never as a success.
+    /// and the user is told why — once for the single attempt, never as a success.
     func testDegradedDedupRefusalTellsTheUser() async {
         let defaults = makeDefaults()
         let process = launch(defaults)
@@ -136,12 +136,10 @@ final class StoreKitPurchaseFeedbackSignalTests: XCTestCase {
         XCTAssertEqual(process.feedback.completed, [])
     }
 
-    /// The same unreadable ledger with a non-rouble payment never reaches the
-    /// ledger write: an unreadable wallet is not pristine, so it is treated as
-    /// a legacy rouble wallet and refused as `.refusedCurrency`. Pinned here:
-    /// the user is told it failed, every attempt, never that it succeeded.
-    /// The wording is deliberately not pinned — today it is the foreign-currency
-    /// copy, which misnames the cause (reported on #1104's PR).
+    /// The same unreadable ledger with a non-rouble payment: the user is told
+    /// the ledger is locked, every attempt, never that it succeeded. Before
+    /// #1133 an unreadable (hence not pristine) wallet was treated as a legacy
+    /// rouble wallet and the copy blamed the payment currency.
     func testUnreadableLedgerWithNonRoublePaymentStillTellsTheUser() async {
         let defaults = makeDefaults()
         defaults.set(Data("unreadable ledger".utf8), forKey: "stored_transactions")
@@ -150,8 +148,9 @@ final class StoreKitPurchaseFeedbackSignalTests: XCTestCase {
         let finishes = await apply(process, times: 2)
 
         XCTAssertEqual(finishes, 0)
-        XCTAssertEqual(process.feedback.failed.count, 2)
-        XCTAssertFalse(process.feedback.failed.contains(""), "A refusal carries a message")
+        XCTAssertEqual(process.feedback.failed, Array(repeating: StoreKitService.ledgerLockedFailureMessage, count: 2),
+                       "The locked ledger is named, not a currency problem")
+        XCTAssertFalse(process.feedback.failed.contains(FeedbackRecorder.noMessage), "A refusal carries a message")
         XCTAssertEqual(process.feedback.completed, [])
     }
 
@@ -186,6 +185,8 @@ final class StoreKitPurchaseFeedbackSignalTests: XCTestCase {
 private final class FeedbackRecorder: NSObject {
     private(set) var completed: [Double] = []
     private(set) var failed: [String] = []
+    /// What `failed` records for a failure broadcast that carries no message.
+    static let noMessage = "<no message>"
 
     init(store: StoreKitService) {
         super.init()
@@ -205,6 +206,6 @@ private final class FeedbackRecorder: NSObject {
     }
 
     @objc private func didFail(_ note: Notification) {
-        failed.append(note.userInfo?[StoreKitService.messageUserInfoKey] as? String ?? "<no message>")
+        failed.append(note.userInfo?[StoreKitService.messageUserInfoKey] as? String ?? Self.noMessage)
     }
 }

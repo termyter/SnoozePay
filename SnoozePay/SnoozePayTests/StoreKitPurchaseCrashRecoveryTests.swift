@@ -135,6 +135,9 @@ final class StoreKitPurchaseCrashRecoveryTests: XCTestCase {
         XCTAssertEqual(finishes, 0)
         XCTAssertEqual(defaults.data(forKey: "stored_transactions"), corrupt)
         XCTAssertNil(defaults.object(forKey: "storekit.processed_tx_ids"))
+        // The USD payment stops at the locked ledger, not at a currency refusal (#1133).
+        XCTAssertEqual(balance.topUpFromPurchase(amount: 2.99, currency: usd, ledgerID: paid.ledgerRowID),
+                       .notRecorded)
     }
 
     /// Credit landed, then the dedup table drifted: refuse rather than guess.
