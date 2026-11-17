@@ -5,7 +5,8 @@ import XCTest
 ///
 /// It used to hide the `50 → 100 → 200 → 400 ₽` chain and grey the flame, so
 /// the disarmed card was a title and a switch. Now the chain stays, muted to
-/// neutral ink and marked not-enabled for VoiceOver, and the flame stays
+/// neutral ink and spoken with a «Выключено» prefix (one off signal, no
+/// `.notEnabled` trait — #1113), and the flame stays
 /// pain-tinted at the app's disabled alpha. These tests pin the on/off mapping
 /// in both directions, through `configure` and through the switch itself.
 @MainActor
@@ -25,7 +26,7 @@ final class ProgressiveScaleCellOffStateTests: XCTestCase {
             "off: every step fg3, arrows fg4 — no warn or pain ink"
         )
         XCTAssertFalse(chain.isUserInteractionEnabled)
-        XCTAssertTrue(chain.accessibilityTraits.contains(.notEnabled))
+        XCTAssertEqual(chain.accessibilityTraits, .staticText, "off is said once, by the label (#1113)")
         XCTAssertEqual(
             chain.accessibilityLabel,
             Localized.format("create_alarm.progressive.chain_off_accessibility", spokenChain)
@@ -42,7 +43,7 @@ final class ProgressiveScaleCellOffStateTests: XCTestCase {
         XCTAssertTrue(inks.contains(hex(AppColors.warn400)))
         XCTAssertTrue(inks.contains(hex(AppColors.pain400)))
         XCTAssertFalse(inks.contains(hex(AppColors.fg3)), "on: no step may stay muted")
-        XCTAssertFalse(chain.accessibilityTraits.contains(.notEnabled))
+        XCTAssertEqual(chain.accessibilityTraits, .staticText)
         XCTAssertEqual(chain.accessibilityLabel, spokenChain)
     }
 
@@ -70,14 +71,18 @@ final class ProgressiveScaleCellOffStateTests: XCTestCase {
         toggle.sendActions(for: .valueChanged)
         var chain = try chainLabel(in: cell)
         XCTAssertFalse(chain.isHidden)
-        XCTAssertTrue(chain.accessibilityTraits.contains(.notEnabled))
+        XCTAssertEqual(chain.accessibilityTraits, .staticText)
+        XCTAssertEqual(
+            chain.accessibilityLabel,
+            Localized.format("create_alarm.progressive.chain_off_accessibility", spokenChain)
+        )
         XCTAssertFalse(Set(inkHexes(of: chain)).contains(hex(AppColors.pain400)))
         XCTAssertEqual(try flame(in: cell).alpha, ProgressiveScaleCell.disabledFlameAlpha, accuracy: 0.001)
 
         toggle.isOn = true
         toggle.sendActions(for: .valueChanged)
         chain = try chainLabel(in: cell)
-        XCTAssertFalse(chain.accessibilityTraits.contains(.notEnabled))
+        XCTAssertEqual(chain.accessibilityTraits, .staticText)
         XCTAssertTrue(Set(inkHexes(of: chain)).contains(hex(AppColors.pain400)))
         XCTAssertEqual(chain.accessibilityLabel, spokenChain)
         XCTAssertEqual(try flame(in: cell).alpha, 1, accuracy: 0.001)

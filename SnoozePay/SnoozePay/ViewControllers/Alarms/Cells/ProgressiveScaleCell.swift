@@ -190,15 +190,14 @@ final class ProgressiveScaleCell: UITableViewCell {
         chainLabel.attributedText = Self.chainText(for: chain, currency: currency, isArmed: isOn)
         // A UILabel takes no touches, so the chain is not interactive in
         // either state; VoiceOver is told the rule is off rather than reading
-        // the prices as if they applied.
+        // the prices as if they applied. Exactly one off signal (#1113): the
+        // spoken «Выключено» prefix. The chain is static text, not a disabled
+        // control, so `.notEnabled` («недоступно») would repeat the off state
+        // and wrongly suggest something here could be enabled by tapping it.
         chainLabel.accessibilityLabel = isOn
             ? accessibilityChain
             : Localized.format("create_alarm.progressive.chain_off_accessibility", accessibilityChain)
-        if isOn {
-            chainLabel.accessibilityTraits.remove(.notEnabled)
-        } else {
-            chainLabel.accessibilityTraits.insert(.notEnabled)
-        }
+        chainLabel.accessibilityTraits = .staticText
         surface.setPainTinted(isOn)
     }
 
