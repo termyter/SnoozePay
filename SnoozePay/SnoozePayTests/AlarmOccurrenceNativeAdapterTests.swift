@@ -290,6 +290,34 @@ final class AlarmOccurrenceNativeAdapterTests: XCTestCase {
         XCTAssertTrue(fixture.cancelled.isEmpty)
     }
 
+    func testSupersedeProofIsReadOnlyAndNeedsAnAlertingOriginalWithNoDerivedCopy() {
+        let other = snapshot(UUID(), .scheduled, fixed: date)
+        let records = [snapshot(alarmID, .alerting, weekly: weekly), other]
+        let fixture = FinishInventory(entries: records)
+        assertSuccess(fixture.backend.verifySupersededOccurrence(request(weekly: false, untracked: false)))
+        XCTAssertEqual(fixture.entries, records)
+        XCTAssertEqual(fixture.reads, 1)
+        XCTAssertTrue(fixture.stopped.isEmpty)
+        XCTAssertTrue(fixture.cancelled.isEmpty)
+
+        let refused = [[], [snapshot(alarmID, .scheduled, weekly: weekly)],
+                       [snapshot(alarmID, .unknown, weekly: weekly)],
+                       [snapshot(alarmID, .alerting, weekly: weekly), snapshot(derivedID, .scheduled, fixed: date)],
+                       [snapshot(alarmID, .alerting, weekly: weekly), snapshot(derivedID, .alerting, fixed: date)]]
+        for entries in refused {
+            let candidate = FinishInventory(entries: entries)
+            assertFailure(candidate.backend.verifySupersededOccurrence(request(untracked: false)), .nativeUnconfirmed)
+            XCTAssertEqual(candidate.entries, entries)
+            XCTAssertTrue(candidate.stopped.isEmpty)
+            XCTAssertTrue(candidate.cancelled.isEmpty)
+        }
+        let unreadable = FinishInventory(entries: records)
+        unreadable.failedRead = 1
+        assertFailure(unreadable.backend.verifySupersededOccurrence(request(untracked: false)), .inventoryUnavailable)
+        XCTAssertTrue(unreadable.stopped.isEmpty)
+        XCTAssertTrue(unreadable.cancelled.isEmpty)
+    }
+
     private var derivedID: UUID { AlarmKitScheduler.snoozeID(for: alarmID) }
 
     private func snapshot(
