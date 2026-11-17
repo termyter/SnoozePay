@@ -264,7 +264,7 @@ final class AlarmOffWarningHeroBadgeTests: XCTestCase {
         let window = UIWindow(frame: CGRect(origin: .zero, size: referenceSize))
         window.overrideUserInterfaceStyle = style
         window.isHidden = false
-        let sut = AlarmOffWarningViewController()
+        let sut = AlarmOffWarningViewController(priceContext: .scale(.rouble))
         window.rootViewController = sut
         hostWindows.append(window)
 

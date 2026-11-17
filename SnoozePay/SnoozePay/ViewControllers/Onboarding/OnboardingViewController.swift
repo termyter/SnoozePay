@@ -254,11 +254,11 @@ final class OnboardingViewController: UIViewController {
 
     // MARK: - Init
 
-    /// `priceContextSource` defaults to the rouble scale — the copy before
-    /// #1109 — so a fixture never reads the host app's wallet; the app passes
-    /// `BalanceService.shared.priceContext`.
+    /// No default source (as in Settings): a caller that forgot the context
+    /// would silently quote roubles. The app passes
+    /// `{ BalanceService.shared.priceContext }`; tests pass a fixed context.
     init(
-        priceContextSource: @escaping () -> SnoozePriceContext = { .scale(.rouble) },
+        priceContextSource: @escaping () -> SnoozePriceContext,
         notificationCenter: NotificationCenter = .default
     ) {
         self.selectedDepositIndex = 1

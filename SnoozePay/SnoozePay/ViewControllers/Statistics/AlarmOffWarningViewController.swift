@@ -33,12 +33,12 @@ final class AlarmOffWarningViewController: UIViewController {
     /// re-resolves — `refreshHeroTheme()` installs them trait-explicitly.
     let heroBadge = SPGradientView(colors: [], locations: SPSupport.painGradientLocations)
 
-    /// The price context the example amounts are quoted in (#1109). Defaults to
-    /// the rouble scale — the copy before — so a fixture never reads the host
-    /// app's wallet; the app passes `BalanceService.shared.priceContext`.
+    /// The price context the example amounts are quoted in (#1109). No default
+    /// (as in Settings): a forgotten context would silently quote roubles. The
+    /// app passes `BalanceService.shared.priceContext`; tests a fixed context.
     let priceContext: SnoozePriceContext
 
-    init(priceContext: SnoozePriceContext = .scale(.rouble)) {
+    init(priceContext: SnoozePriceContext) {
         self.priceContext = priceContext
         super.init(nibName: nil, bundle: nil)
     }

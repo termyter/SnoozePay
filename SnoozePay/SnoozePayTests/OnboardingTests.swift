@@ -36,7 +36,7 @@ final class OnboardingTests: XCTestCase {
     // MARK: - Page count
 
     func testOnboardingPages_count() {
-        let vc = OnboardingViewController()
+        let vc = OnboardingViewController(priceContextSource: { .scale(.rouble) })
         vc.loadViewIfNeeded()
 
         // The page control should reflect 3 onboarding pages
@@ -48,7 +48,7 @@ final class OnboardingTests: XCTestCase {
     // MARK: - Deposit presets (V3, #238)
 
     func testDepositOptions_firstPresetIs250() {
-        let vc = OnboardingViewController()
+        let vc = OnboardingViewController(priceContextSource: { .scale(.rouble) })
 
         let first = vc.depositOptions[0]
         XCTAssertEqual(first.amount, 250, "V3 entry preset is 250 ₽ (was 200 ₽)")
@@ -63,7 +63,7 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testDepositOptions_amounts() {
-        let vc = OnboardingViewController()
+        let vc = OnboardingViewController(priceContextSource: { .scale(.rouble) })
 
         XCTAssertEqual(vc.depositOptions.map(\.amount), [250, 500, 1000])
         XCTAssertEqual(vc.defaultDepositIndex, 1, "500 ₽ stays the default selection")
@@ -72,7 +72,7 @@ final class OnboardingTests: XCTestCase {
     // MARK: - Skip pill (V3, #238)
 
     func testSkip_marksOnboardingCompleted_andNotifies() {
-        let vc = OnboardingViewController()
+        let vc = OnboardingViewController(priceContextSource: { .scale(.rouble) })
         vc.loadViewIfNeeded()
         var finished = false
         vc.onFinished = { finished = true }
@@ -88,7 +88,7 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testSkipButton_isInstalled() {
-        let vc = OnboardingViewController()
+        let vc = OnboardingViewController(priceContextSource: { .scale(.rouble) })
         vc.loadViewIfNeeded()
 
         XCTAssertNotNil(vc.skipButton.superview, "Skip pill is mounted on the onboarding canvas")

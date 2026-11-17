@@ -98,7 +98,7 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
     // MARK: - Layer 2a: the deposit page
 
     func testDepositPresetsComeFromTheCatalogue() {
-        let controller = OnboardingViewController()
+        let controller = OnboardingViewController(priceContextSource: { .scale(.rouble) })
 
         let titles = controller.depositOptions.map(\.title)
         XCTAssertEqual(titles, [
@@ -118,7 +118,7 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
     /// The `ПОПУЛЯРНО` tag is drawn by `OnboardingDepositOptionView`, not by
     /// the VC, so a miss there is invisible in `depositOptions`.
     func testDepositPageRendersPresetCopyRatherThanKeys() {
-        let controller = mount(OnboardingViewController())
+        let controller = mount(OnboardingViewController(priceContextSource: { .scale(.rouble) }))
 
         let rendered = controller.pageViews.flatMap { strings(in: $0) }
         assertNoKeysLeaked(Self.allKeys, in: rendered)
@@ -153,7 +153,7 @@ final class OnboardingPermissionsCopyTests: XCTestCase {
     /// whole control as one accessibility element, which is also the string
     /// the UI test matches on.
     func testOnboardingChromeButtonsComeFromTheCatalogue() {
-        let controller = mount(OnboardingViewController())
+        let controller = mount(OnboardingViewController(priceContextSource: { .scale(.rouble) }))
 
         let skip = controller.skipButton.configuration?.attributedTitle.map { String($0.characters) }
         XCTAssertEqual(skip, Localized.text("onboarding.button.skip"))

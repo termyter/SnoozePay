@@ -110,25 +110,63 @@ final class ExampleMoneyCopyTests: XCTestCase {
         XCTAssertTrue(rendered.contains(Localized.text("onboarding.page2.step2_title_unpriced")))
         let pill = controller.pageViews[0].allSubviews.compactMap { $0 as? OnboardingPenaltyPill }.first
         XCTAssertEqual(pill?.isHidden, true, "the −price pill must not show a made-up number")
+        XCTAssertEqual(controller.depositOptionViews.count, 3)
+        for optionView in controller.depositOptionViews {
+            XCTAssertTrue(strings(in: optionView).contains("—"), "preset amount is not «—»: \(strings(in: optionView))")
+        }
         controller.rebuildDepositCTA()
         XCTAssertEqual(controller.primaryButton.accessibilityLabel, Localized.text("onboarding.button.deposit"))
     }
 
+    /// The five keys a context without a scale renders: each must resolve to
+    /// copy, or the unpriced assertions above would pass on an echoed key.
+    func testUnpricedKeysResolveToCopy() {
+        for key in [
+            "onboarding.page2.step1_title_unpriced", "onboarding.page2.step2_title_unpriced",
+            "onboarding.page3.option1_body_unpriced", "alarm_off.body_unpriced",
+            "alarm_off.lower_price.subtitle_unpriced"
+        ] {
+            XCTAssertNotEqual(Localized.text(key), key, "\(key) is missing from the catalogue")
+        }
+    }
+
     /// A first launch builds onboarding before the catalogue loads; the scale
-    /// notification must re-quote the pages in the storefront currency.
-    func testOnboardingSwitchesWhenTheScaleArrives() {
+    /// notification must re-quote the pages in the storefront currency without
+    /// losing the user's place or selection.
+    func testOnboardingRequotesWhenTheScaleArrives() {
+        assertRequote(on: SnoozePriceScaleStore.snoozePriceScaleChangedNotification)
+    }
+
+    /// The first purchase freezes the wallet currency; the pages follow it too.
+    func testOnboardingRequotesWhenTheWalletCurrencyChanges() {
+        assertRequote(on: BalanceService.walletCurrencyChangedNotification)
+    }
+
+    private func assertRequote(on name: Notification.Name, line: UInt = #line) {
         let center = NotificationCenter()
         var context = rouble
         let controller = mount(OnboardingViewController(priceContextSource: { context }, notificationCenter: center))
-        XCTAssertEqual(controller.depositOptions[1].money?.currency, .rub)
+        controller.primaryTapped()
+        controller.primaryTapped()
+        let lastPage = controller.pageCount - 1
+        XCTAssertEqual(controller.pageControl.currentPage, lastPage, line: line)
+        controller.handleDepositOptionTap(at: 2)
+        let roubleLabel = controller.primaryButton.accessibilityLabel ?? ""
+        XCTAssertTrue(roubleLabel.hasSuffix(MoneyFormatter.string(1000)), roubleLabel, line: line)
 
         context = usdContext
-        center.post(name: SnoozePriceScaleStore.snoozePriceScaleChangedNotification, object: nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        center.post(name: name, object: nil)
 
-        XCTAssertEqual(controller.depositOptions[1].money, Money(Decimal(string: "9.9")!, currency: usd))
-        let rendered = controller.pageViews.flatMap(strings(in:))
-        XCTAssertTrue(rendered.contains("−\(usdText("0.99"))"), "pages were not rebuilt: \(rendered)")
+        XCTAssertEqual(controller.pageControl.currentPage, lastPage, "the user was moved off the page", line: line)
+        XCTAssertEqual(
+            controller.depositOptionViews.map(\.isSelectedOption), [false, false, true],
+            "the rebuilt pages lost the selection", line: line
+        )
+        let label = controller.primaryButton.accessibilityLabel ?? ""
+        XCTAssertTrue(label.hasSuffix(usdText("19.8")), "CTA not re-quoted: \(label)", line: line)
+        let rendered = controller.pageViews.flatMap(strings(in:)) + [label]
+        XCTAssertFalse(rendered.contains { $0.contains("₽") }, "rouble left after the switch: \(rendered)", line: line)
+        XCTAssertTrue(rendered.contains("−\(usdText("0.99"))"), "pages were not rebuilt: \(rendered)", line: line)
     }
 
     // MARK: - Alarm-off sheet
