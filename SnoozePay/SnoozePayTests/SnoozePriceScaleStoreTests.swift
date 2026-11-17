@@ -160,9 +160,11 @@ final class SnoozePriceScaleStoreTests: XCTestCase {
         StoreKitService.productIDs, ["0.99", "1.99", "2.99", "4.99", "9.99"]
     ))
 
-    private func offers(_ pairs: [(String, String)]) -> [TopUpOffer] {
-        pairs.map {
-            TopUpOffer(productID: $0.0, price: Decimal(string: $0.1)!, currencyCode: "USD", displayPrice: "$\($0.1)")!
+    private func offers(_ pairs: [(String, String)], codes: [String]? = nil) -> [TopUpOffer] {
+        let codes = codes ?? Array(repeating: "USD", count: pairs.count)
+        return zip(pairs, codes).map { pair, code in
+            TopUpOffer(productID: pair.0, price: Decimal(string: pair.1)!, currencyCode: code,
+                       displayPrice: "\(pair.1) \(code)")!
         }
     }
 
@@ -170,6 +172,7 @@ final class SnoozePriceScaleStoreTests: XCTestCase {
     func testOnlyAFullRealCatalogueYieldsAScaleToRecord() {
         struct Case {
             let name: String, pairs: [(String, String)], isDemo: Bool, expected: SnoozePriceScale?
+            var codes: [String]?
         }
         let full = usdCatalogue
         let cheapest3 = scale(usd, ["0.99", "1.99", "2.99"])
@@ -183,10 +186,16 @@ final class SnoozePriceScaleStoreTests: XCTestCase {
             Case(name: "duplicate product ID", pairs: Array(full.dropLast()) + [full[0]], isDemo: false, expected: nil),
             Case(name: "6 offers, one duplicated", pairs: full + [full[0]], isDemo: false, expected: nil),
             Case(name: "foreign product ID", pairs: Array(full.dropLast()) + [("io.example.other", "9.99")],
+                 isDemo: false, expected: nil),
+            Case(name: "5/5 IDs, mixed currencies", pairs: full, isDemo: false, expected: nil,
+                 codes: ["USD", "USD", "USD", "USD", "EUR"]),
+            Case(name: "5/5 IDs, fewer than 3 distinct prices",
+                 pairs: zip(StoreKitService.productIDs, ["0.99", "0.99", "1.99", "1.99", "1.99"]).map { ($0, $1) },
                  isDemo: false, expected: nil)
         ]
         for testCase in cases {
-            XCTAssertEqual(StoreKitService.scaleToRecord(from: offers(testCase.pairs), isDemo: testCase.isDemo),
+            XCTAssertEqual(StoreKitService.scaleToRecord(from: offers(testCase.pairs, codes: testCase.codes),
+                                                         isDemo: testCase.isDemo),
                            testCase.expected, testCase.name)
         }
     }

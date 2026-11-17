@@ -255,8 +255,10 @@ final class StoreKitService {
     // MARK: - Purchase
 
     func purchase(_ product: Product) async {
-        // Before the credit and the wallet-currency freeze, so the first paid
-        // top-up never meets a wallet whose scale is missing (#1126).
+        // Before the credit and the wallet-currency freeze, so a full catalogue
+        // has its scale stored by the time the wallet freezes (#1126). A partial
+        // catalogue records nothing and the purchase still goes through, so later
+        // steps must treat a missing scale as an expected state, not a bug.
         recordPriceScale(from: products)
         do {
             let result = try await product.purchase()
@@ -655,7 +657,19 @@ extension StoreKitService {
             )
             return nil
         }
-        return SnoozePriceScale(offers: offers)
+        guard let scale = SnoozePriceScale(offers: offers) else {
+            let currencies = Set(offers.map(\.currency.code)).sorted().joined(separator: ",")
+            let distinctPrices = Set(offers.map(\.price)).count
+            AppLogger.storeKit.error(
+                """
+                snooze price scale not recorded: full catalogue has currencies \
+                [\(currencies, privacy: .public)] and \(distinctPrices, privacy: .public) distinct prices \
+                (needs one currency and \(SnoozePriceScale.tierCount, privacy: .public))
+                """
+            )
+            return nil
+        }
+        return scale
     }
 
     fileprivate var isDemoCatalog: Bool {
@@ -672,8 +686,18 @@ extension StoreKitService {
     /// product, so a partial catalogue there records nothing too.
     func recordPriceScale(from products: [Product]) {
         let offers = products.compactMap(TopUpOffer.init(product:))
-        guard offers.count == products.count,
-              let scale = Self.scaleToRecord(from: offers, isDemo: isDemoCatalog) else { return }
+        guard offers.count == products.count else {
+            let converted = Set(offers.map(\.productID))
+            let failed = products.map(\.id).filter { !converted.contains($0) }.joined(separator: ", ")
+            AppLogger.storeKit.error(
+                """
+                snooze price scale not recorded: \(products.count - offers.count, privacy: .public) of \
+                \(products.count, privacy: .public) products are not valid offers: \(failed, privacy: .public)
+                """
+            )
+            return
+        }
+        guard let scale = Self.scaleToRecord(from: offers, isDemo: isDemoCatalog) else { return }
         _ = priceScaleStore.record(scale)
     }
 }
