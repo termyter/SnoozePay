@@ -228,6 +228,67 @@ final class AlarmFiringPriceDisplayTests: XCTestCase {
         XCTAssertEqual(inWalletCurrency.selected, 149)
     }
 
+    /// #1109 step 10, progressive: the pack is the cheapest one covering the
+    /// NEXT price of the dollar chain ($0.99 → 1.98 → 3.96 → 7.92), not the
+    /// base price and not the cheapest pack. The direct CTA and the amount
+    /// sheet, built as `presentTopUpSheet()` builds it, pick the same pack.
+    func testPristineWalletOnDollarStorefront_progressivePickCoversTheNextPriceOfTheChain() throws {
+        XCTAssertTrue(scaleStore.record(usdScale))
+        let catalogue = try dollarCatalogue()
+        // Snoozes already paid → the next price of the chain → the minimal pack covering it.
+        let chain: [Int: (price: String, pack: Int)] = [0: ("0.99", 49), 1: ("1.98", 299), 2: ("3.96", 499),
+                                                        3: ("7.92", 999)]
+        for (count, step) in chain.sorted(by: { $0.key < $1.key }) {
+            let controller = makeController(Alarm(penaltyAmount: 50, progressiveScale: true),
+                                            snoozeCount: count) { controller in
+                AlarmFiringNoBalancePurchase(
+                    controller: controller, center: NotificationCenter(),
+                    dispatch: { _ in }, offerProvider: { catalogue[$0] },
+                    beginFeedback: {}, endFeedback: {}
+                )
+            }
+            let model = controller.viewModel
+            XCTAssertEqual(wallet.walletCurrency, .rub, "count \(count): the wallet itself is not stamped")
+            XCTAssertEqual(model.currentPrice, Money(Decimal(string: step.price)!, currency: usd), "count \(count)")
+            XCTAssertEqual(controller.noBalanceContainer?.isHidden, false, "count \(count)")
+            XCTAssertEqual(controller.noBalancePurchase.offer?.productID, sku(step.pack), "count \(count)")
+
+            let sheet = FiringTopUpBottomSheetViewController(
+                snoozePrice: model.currentPenalty, snoozePriceCurrency: model.priceCurrency, balance: wallet,
+                notificationCenter: NotificationCenter(),
+                scheduleSuccessDismissal: { _, _ in }, purchaseProduct: { _ in },
+                presentPurchaseFailure: { _ in }, pauseLifecycle: { _ in }, preflightRefusal: { _ in nil },
+                offerProvider: { catalogue[$0] }, arguments: []
+            )
+            sheet.loadViewIfNeeded()
+            let selected = descendants(sheet.view).compactMap { $0 as? FiringTopUpPresetRow }
+                .filter(\.isSelected).map(\.accessibilityIdentifier)
+            XCTAssertEqual(selected, ["firingTopUp.preset." + sku(step.pack)], "count \(count)")
+        }
+    }
+
+    /// A dollar wallet whose scale was never cached has no price at all: the
+    /// screen keeps the honest unavailable state and quotes no pack as the way
+    /// to snooze — no no-balance stack, no top-up CTA, no number.
+    func testUnavailablePrice_presentsNoPackAsTheWayToSnooze() throws {
+        fund(1.49, in: usd)
+        let catalogue = try dollarCatalogue()
+        let controller = makeController(Alarm(penaltyAmount: 50, progressiveScale: true)) { controller in
+            AlarmFiringNoBalancePurchase(
+                controller: controller, center: NotificationCenter(),
+                dispatch: { _ in }, offerProvider: { catalogue[$0] },
+                beginFeedback: {}, endFeedback: {}
+            )
+        }
+
+        XCTAssertEqual(controller.viewModel.lockedPriceContext, .unavailable(usd))
+        XCTAssertEqual(controller.noBalanceContainer?.isHidden, true)
+        XCTAssertEqual(controller.noBalanceCenterBlock?.isHidden, true)
+        XCTAssertEqual(controller.snoozeCTA?.isHidden, true)
+        XCTAssertFalse(controller.progressionUnavailableLabel.isHidden)
+        XCTAssertNil(controller.snoozeHintText(), "an unavailable price quotes no number")
+    }
+
     // MARK: - Mid-ring freeze in another currency
 
     func testWalletFrozenInAnotherCurrencyMidRing_hidesTheCardAndCTAAndShowsTheRefusal() throws {
