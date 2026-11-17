@@ -15,22 +15,29 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
     private struct PriceCase {
         let code: String
         let amount: Double
+        /// The wallet currency's cached scale; `nil` for roubles (constant scale).
+        let scale: [String]?
+        /// The tier the legacy amount maps to outside roubles (#1147), else the amount.
+        let shown: String
         let digits: String
     }
 
-    func testListPriceAndPenaltyPreserveWalletCurrencyAndFractions() {
+    /// Outside roubles the row quotes the tier the stored amount maps to, from
+    /// the wallet currency's cached scale, with that currency's fractions (#1147).
+    func testListPriceAndPenaltyQuoteTheScaleInWalletCurrencyAndFractions() {
         let cases = [
-            PriceCase(code: "USD", amount: 2.99, digits: "2,99"),
-            PriceCase(code: "EUR", amount: 1.25, digits: "1,25"),
-            PriceCase(code: "JPY", amount: 299, digits: "299"),
-            PriceCase(code: "KWD", amount: 0.001, digits: "0,001"),
-            PriceCase(code: "RUB", amount: 1234.5, digits: "1\u{00A0}234,5")
+            PriceCase(code: "USD", amount: 2.99, scale: ["0.99", "1.99", "2.99"], shown: "0.99", digits: "0,99"),
+            PriceCase(code: "EUR", amount: 75, scale: ["1.25", "2.49", "3.99"], shown: "2.49", digits: "2,49"),
+            PriceCase(code: "JPY", amount: 299, scale: ["160", "320", "480"], shown: "480", digits: "480"),
+            PriceCase(code: "KWD", amount: 0.001, scale: ["0.299", "0.599", "0.899"], shown: "0.299", digits: "0,299"),
+            PriceCase(code: "RUB", amount: 1234.5, scale: nil, shown: "1234.5", digits: "1\u{00A0}234,5")
         ]
         for item in cases {
             let (code, amount, digits) = (item.code, item.amount, item.digits)
-            withPrice(amount, currency: Currency(code: code)!) { viewModel in
+            withPrice(amount, currency: Currency(code: code)!, scale: item.scale) { viewModel in
                 let price = viewModel.alarmPriceText(at: 0)
-                XCTAssertEqual(price, MoneyFormatter.string(amount, currency: viewModel.walletCurrency), code)
+                let shown = Decimal(string: item.shown, locale: Locale(identifier: "en_US_POSIX"))!
+                XCTAssertEqual(price, MoneyFormatter.string(shown, currency: viewModel.walletCurrency), code)
                 XCTAssertTrue(price.contains(digits), price)
                 XCTAssertEqual(viewModel.alarmPenaltyString(at: 0), Localized.format("alarms.penalty", price))
                 XCTAssertEqual(viewModel.alarms[0].penaltyAmount, amount)
@@ -40,15 +47,36 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
     }
 
     func testPositiveUnderflowIsUnknownWhileActualZeroRemainsZero() {
-        for (code, amount) in [("USD", 0.002), ("JPY", 0.2), ("RUB", 0.002)] {
+        let currency = Currency.rub
+        withPrice(0.002, currency: currency) { viewModel in
+            XCTAssertEqual(viewModel.alarmPriceText(at: 0), "—")
+            XCTAssertEqual(viewModel.alarmPenaltyString(at: 0), "—")
+            XCTAssertEqual(viewModel.alarms[0].penaltyAmount, 0.002)
+        }
+        withPrice(0, currency: currency) { viewModel in
+            XCTAssertEqual(viewModel.alarmPriceText(at: 0), MoneyFormatter.string(0.0, currency: currency))
+        }
+    }
+
+    /// Outside roubles a stored amount is never quoted as a bare number (#1147):
+    /// with no cached scale (`.unavailable`) even a free alarm is unpriced; with
+    /// one, a free alarm stays free and a tiny amount maps to the lowest tier.
+    func testForeignWalletWithoutScaleIsUnpricedAndWithScaleKeepsFreeAlarmsFree() {
+        for (code, scale) in [("USD", ["0.99", "1.99", "2.99"]), ("JPY", ["160", "320", "480"])] {
             let currency = Currency(code: code)!
-            withPrice(amount, currency: currency) { viewModel in
-                XCTAssertEqual(viewModel.alarmPriceText(at: 0), "—", code)
-                XCTAssertEqual(viewModel.alarmPenaltyString(at: 0), "—")
-                XCTAssertEqual(viewModel.alarms[0].penaltyAmount, amount)
+            for amount in [0.002, 0] {
+                withPrice(amount, currency: currency) { viewModel in
+                    XCTAssertEqual(viewModel.alarmPriceText(at: 0), "—", code)
+                    XCTAssertEqual(viewModel.alarmPenaltyString(at: 0), "—")
+                    XCTAssertEqual(viewModel.alarms[0].penaltyAmount, amount)
+                }
             }
-            withPrice(0, currency: currency) { viewModel in
+            withPrice(0, currency: currency, scale: scale) { viewModel in
                 XCTAssertEqual(viewModel.alarmPriceText(at: 0), MoneyFormatter.string(0.0, currency: currency))
+            }
+            withPrice(0.002, currency: currency, scale: scale) { viewModel in
+                let low = Decimal(string: scale[0], locale: Locale(identifier: "en_US_POSIX"))!
+                XCTAssertEqual(viewModel.alarmPriceText(at: 0), MoneyFormatter.string(low, currency: currency))
             }
         }
     }
@@ -57,14 +85,16 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         let cell = AlarmCell(style: .default, reuseIdentifier: AlarmCell.reuseID)
         for (code, amount, enabled) in [("RUB", 50.0, true), ("USD", 2.99, true),
                                         ("RUB", 50.0, false), ("RUB", 50.0, true)] {
-            withPrice(amount, currency: Currency(code: code)!) { viewModel in
+            let scale = code == "USD" ? ["0.99", "1.99", "2.99"] : nil
+            withPrice(amount, currency: Currency(code: code)!, scale: scale) { viewModel in
                 cell.prepareForReuse()
                 let price = viewModel.alarmPriceText(at: 0)
                 cell.configure(
                     time: "7:00", daysCaps: "", priceText: price,
-                    priceCurrency: viewModel.walletCurrency,
+                    priceCurrency: viewModel.priceCurrency,
                     multiplier: nil, soundName: nil, enabled: enabled
                 )
+                if code == "USD" { XCTAssertTrue(price.contains("$"), price) }
                 let views = descendants(of: cell.contentView)
                 XCTAssertTrue(views.compactMap { ($0 as? UILabel)?.attributedText?.string }.contains(price))
                 XCTAssertTrue(views.contains { $0.accessibilityLabel == "Будильник 7:00, \(price)" })
@@ -122,7 +152,8 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         XCTAssertFalse(caption.text?.contains("₽") == true)
         XCTAssertGreaterThan(fixture.streakReads.count, readsBeforeCurrencyChange)
         XCTAssertEqual(controller.appearanceCount, appearances)
-        let price = MoneyFormatter.string(2.99, currency: usd)
+        // The USD scale is cached, so the 2.99 alarm quotes its tier (#1147).
+        let price = MoneyFormatter.string(0.99, currency: usd)
         let updated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             table.visibleCells.contains { cell in
                 self.descendants(of: cell).contains { $0.accessibilityLabel?.contains(price) == true }
@@ -185,6 +216,10 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         cleanups.append { defaults.removePersistentDomain(forName: suite) }
         let center = NotificationCenter()
+        // A cached USD scale without a last storefront: the pristine wallet
+        // still resolves roubles, a USD wallet resolves this scale (#1147).
+        defaults.set(["USD": [SnoozePriceScaleStore.tiersField: ["0.99", "1.99", "2.99"]]],
+                     forKey: SnoozePriceScaleStore.scalesKey)
         let balance = BalanceService(defaults: defaults, notificationCenter: center)
         if let initialPaidCurrency {
             let credit = balance.topUpFromPurchase(amount: 10, currency: initialPaidCurrency)
@@ -217,13 +252,20 @@ final class AlarmListPriceCurrencyTests: XCTestCase {
                                   controller: controller, window: window, table: table, streakReads: reads)
     }
 
-    private func withPrice(_ amount: Double, currency: Currency, body: (AlarmsListViewModel) -> Void) {
+    private func withPrice(
+        _ amount: Double, currency: Currency, scale: [String]? = nil, body: (AlarmsListViewModel) -> Void
+    ) {
         let suite = "test.alarmListPrice.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let center = NotificationCenter()
         let balance = BalanceService(defaults: defaults, notificationCenter: center)
         _ = balance.freezeCurrency(currency)
+        if let scale {
+            // Written raw: `record` would post on `.default` and reach the host app.
+            defaults.set([currency.code: [SnoozePriceScaleStore.tiersField: scale]],
+                         forKey: SnoozePriceScaleStore.scalesKey)
+        }
         let repository = AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler())
         repository.save(Alarm(penaltyAmount: amount))
         let viewModel = AlarmsListViewModel(

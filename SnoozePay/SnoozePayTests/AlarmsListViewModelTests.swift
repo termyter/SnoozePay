@@ -49,6 +49,17 @@ final class AlarmsListViewModelTests: XCTestCase {
         AlarmsListViewModel(alarmRepository: repo, balanceService: .shared)
     }
 
+    /// For tests that assert a currency or an amount: since #1147 the row price
+    /// and the balance follow the wallet's price context, and `.shared` follows
+    /// the storefront scale the host app cached (dollars on the gate simulator).
+    /// A pristine wallet on this test's suite has no cached scale: roubles.
+    private func makeRoubleWalletViewModel() -> AlarmsListViewModel {
+        AlarmsListViewModel(
+            alarmRepository: repo,
+            balanceService: BalanceService(defaults: testDefaults, notificationCenter: NotificationCenter())
+        )
+    }
+
     // MARK: - alarmDetail(at:)
 
     func testAlarmDetail_withNameAndDays() {
@@ -89,7 +100,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         let alarm = Alarm(penaltyAmount: 50)
         repo.save(alarm)
 
-        let vm = makeViewModel()
+        let vm = makeRoubleWalletViewModel()
         vm.loadData()
 
         let penalty = vm.alarmPenaltyString(at: 0)
@@ -100,7 +111,7 @@ final class AlarmsListViewModelTests: XCTestCase {
         let alarm = Alarm(penaltyAmount: 1000)
         repo.save(alarm)
 
-        let vm = makeViewModel()
+        let vm = makeRoubleWalletViewModel()
         vm.loadData()
 
         let penalty = vm.alarmPenaltyString(at: 0)
@@ -145,7 +156,7 @@ final class AlarmsListViewModelTests: XCTestCase {
     }
 
     func testFormattedBalance_containsRubleSign() {
-        let vm = makeViewModel()
+        let vm = makeRoubleWalletViewModel()
         XCTAssertTrue(vm.formattedBalance.contains("₽"))
     }
 
@@ -154,7 +165,7 @@ final class AlarmsListViewModelTests: XCTestCase {
     /// `formattedBalance` is the single source of truth for the banner — it MUST contain
     /// exactly one ruble glyph, and the controller MUST render it verbatim (no extra prefix).
     func testFormattedBalance_containsExactlyOneRubleSign() {
-        let vm = makeViewModel()
+        let vm = makeRoubleWalletViewModel()
         let occurrences = vm.formattedBalance.filter { $0 == "₽" }.count
         XCTAssertEqual(
             occurrences, 1,
@@ -167,7 +178,7 @@ final class AlarmsListViewModelTests: XCTestCase {
     /// "X ₽", not "₽X"). A regression toward prefix style would silently break the
     /// banner layout; encode the convention explicitly here.
     func testFormattedBalance_endsWithRubleSuffix() {
-        let vm = makeViewModel()
+        let vm = makeRoubleWalletViewModel()
         XCTAssertTrue(
             vm.formattedBalance.hasSuffix("₽"),
             "formattedBalance must end with ₽ (suffix style); got \"\(vm.formattedBalance)\""

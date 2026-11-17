@@ -538,7 +538,7 @@ class AlarmFiringViewController: UIViewController {
         let balance = viewModel.balance
         let tone: SPPill.Tone = balance > 0 ? .money : .pain
         guard let pill = balancePill else { return }
-        let value = MoneyFormatter.string(balance, currency: viewModel.walletCurrency)
+        let value = MoneyFormatter.string(balance, currency: viewModel.balanceCurrency)
         pill.setBalance(label: Localized.text("firing.pill.balance"), value: value)
         // SPPill's `tone` is `let` (constructor-only), so we re-build when
         // the tone needs to flip between money and pain. Cheap — pill is a

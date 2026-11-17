@@ -27,6 +27,9 @@ class AlarmsListViewController: UIViewController {
 
     private let viewModel: AlarmsListViewModel
     private var renderedPriceCurrency: Currency
+    /// The price context the visible rows were rendered in (#1147). A scale
+    /// or pristine-wallet change moves it without moving `walletCurrency`.
+    private var renderedPriceContext: SnoozePriceContext
     private let bannerStreakCount: () -> Int
     private let occurrenceRecovery: AlarmOccurrenceRecovering
     private let recoveryNotificationCenter: NotificationCenter
@@ -42,6 +45,7 @@ class AlarmsListViewController: UIViewController {
     ) {
         self.viewModel = viewModel
         self.renderedPriceCurrency = viewModel.walletCurrency
+        self.renderedPriceContext = viewModel.priceContext
         self.bannerStreakCount = bannerStreakCount
         self.occurrenceRecovery = occurrenceRecovery
         self.recoveryNotificationCenter = recoveryNotificationCenter
@@ -307,6 +311,7 @@ class AlarmsListViewController: UIViewController {
         viewModel.onAlarmsUpdated = { [weak self] in
             guard let self else { return }
             self.renderedPriceCurrency = self.viewModel.walletCurrency
+            self.renderedPriceContext = self.viewModel.priceContext
             self.tableView.reloadData()
             let isEmpty = self.viewModel.alarms.isEmpty
             self.emptyStateView.isHidden = !isEmpty
@@ -319,9 +324,12 @@ class AlarmsListViewController: UIViewController {
             guard let self else { return }
             // The first paid top-up can establish currency while a partial
             // Deposit sheet is open; presenter appearance need not run again.
+            // The price context also moves on a scale change (#1147).
             let currency = self.viewModel.walletCurrency
-            if currency != self.renderedPriceCurrency {
+            let context = self.viewModel.priceContext
+            if currency != self.renderedPriceCurrency || context != self.renderedPriceContext {
                 self.renderedPriceCurrency = currency
+                self.renderedPriceContext = context
                 self.tableView.reloadData()
                 self.refreshStreakBanner()
             }
@@ -350,7 +358,7 @@ class AlarmsListViewController: UIViewController {
         let balance = Decimal(viewModel.balance)
         header.setBalance(
             balance,
-            currency: viewModel.walletCurrency,
+            currency: viewModel.balanceCurrency,
             // `balanceHint` swaps in «Откладывать не получится» at 0 ₽
             // (#232) and falls back to the affordability line otherwise.
             hint: viewModel.balanceHint,
@@ -569,7 +577,7 @@ extension AlarmsListViewController: UITableViewDataSource {
             time: viewModel.alarmTimeString(at: indexPath.row),
             daysCaps: viewModel.alarmDaysCaps(at: indexPath.row),
             priceText: viewModel.alarmPriceText(at: indexPath.row),
-            priceCurrency: viewModel.walletCurrency,
+            priceCurrency: viewModel.priceCurrency,
             multiplier: viewModel.alarmMultiplierText(at: indexPath.row),
             soundName: viewModel.alarmSoundName(at: indexPath.row),
             enabled: alarm.enabled
