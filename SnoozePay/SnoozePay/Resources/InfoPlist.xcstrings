@@ -1,0 +1,24 @@
+{
+  "sourceLanguage" : "ru",
+  "strings" : {
+    "NSAlarmKitUsageDescription" : {
+      "comment" : "System AlarmKit permission purpose, approved by PM for Russian and English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SnoozePay uses alarms to wake you on time, even when your phone is on silent."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SnoozePay использует будильники, чтобы будить вас вовремя — даже в беззвучном режиме."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
