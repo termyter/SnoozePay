@@ -516,19 +516,22 @@ extension SettingsViewController {
 /// private header" note.
 final class SettingsSectionHeaderView: UIView {
 
+    private let text: String
+    private let label = UILabel()
+
     init(text: String) {
+        self.text = text
         super.init(frame: .zero)
         backgroundColor = .clear
-        let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.attributedText = NSAttributedString(
-            string: text.uppercased(),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
+        label.numberOfLines = 0
+        renderText()
+        // Attributed text is rebuilt by hand rather than trusted to
+        // `adjustsFontForContentSizeCategory`, so the tracking grows with the
+        // font (#1111).
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: SettingsSectionHeaderView, _) in
+            view.renderText()
+        }
         addSubview(label)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
@@ -536,6 +539,20 @@ final class SettingsSectionHeaderView: UIView {
             label.topAnchor.constraint(equalTo: topAnchor, constant: AppSpacing.lg),
             label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AppSpacing.sm)
         ])
+    }
+
+    /// Tracking stays `capsKerning` (+0.12em) of whatever size the font
+    /// scaled to — the same 1.44pt at the default category.
+    private func renderText() {
+        let font = AppTypography.scaledCaps(compatibleWith: traitCollection)
+        label.attributedText = NSAttributedString(
+            string: text.uppercased(),
+            attributes: [
+                .font: font,
+                .kern: AppTypography.capsKerning * font.pointSize / AppTypography.caps.pointSize,
+                .foregroundColor: AppColors.fg3
+            ]
+        )
     }
 
     @available(*, unavailable)

@@ -28,7 +28,8 @@ final class LegalViewController: UIViewController {
 
         let textView = UITextView()
         textView.text = Localized.format("settings.legal.body", legalTitle)
-        textView.font = AppTypography.body
+        textView.font = AppTypography.scaledBody
+        textView.adjustsFontForContentSizeCategory = true
         textView.textColor = AppColors.fg1
         textView.backgroundColor = .clear
         textView.isEditable = false
