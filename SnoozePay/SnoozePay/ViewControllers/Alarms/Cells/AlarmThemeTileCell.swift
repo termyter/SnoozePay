@@ -35,6 +35,17 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         return view
     }()
 
+    /// Flat fill of the empty `.custom` slot — `--sp-white-06` in
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:365`.
+    /// A dynamic colour, so it follows the theme on its own (#1110).
+    private let customFill: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = AppColors.whiteOverlay06
+        view.isHidden = true
+        return view
+    }()
+
     /// Centered "+" symbol for the empty `.custom` slot.
     private let plusIcon: UIImageView = {
         let icon = UIImageView(image: UIImage(systemName: "plus")?
@@ -74,16 +85,22 @@ final class AlarmThemeTileCell: UICollectionViewCell {
     }()
 
     /// 22pt money-gradient checkmark badge, top-right when selected.
-    private let checkmarkBadge: UIView = {
-        let view = UIView()
+    ///
+    /// The gradient IS the view's layer (#1110). It used to be a sublayer
+    /// framed from the cell's `layoutSubviews`, but the badge sits three
+    /// levels down (cell → contentView → card → badge): at that moment Auto
+    /// Layout has not sized it yet, so the layer stayed 0×0 and only the bare
+    /// tick showed. Stops start empty and are resolved against this view's
+    /// traits in `refreshBadgeColors()` — a `CGColor` read in `setup()` bakes
+    /// whichever theme `UITraitCollection.current` was (same as #553).
+    private let checkmarkBadge: SPGradientView = {
+        let view = SPGradientView(colors: [], locations: SPSupport.moneyGradientLocations)
         view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerRadius = 11
         view.layer.masksToBounds = true
         view.isHidden = true
         return view
     }()
-
-    private let checkmarkGradient = CAGradientLayer()
 
     private let checkmarkIcon: UIImageView = {
         let view = UIImageView(image: UIImage(systemName: "checkmark")?
@@ -109,6 +126,7 @@ final class AlarmThemeTileCell: UICollectionViewCell {
     private func setup() {
         contentView.addSubview(card)
         card.addSubview(previewView)
+        card.addSubview(customFill)
         card.addSubview(imageView)
         card.addSubview(plusIcon)
 
@@ -118,13 +136,12 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         applyTextShadow(to: subtitleLabel)
         card.addSubview(textStack)
 
-        checkmarkGradient.startPoint = SPSupport.gradientStart
-        checkmarkGradient.endPoint = SPSupport.gradientEnd
-        checkmarkGradient.colors = SPSupport.moneyGradientColors
-        checkmarkGradient.locations = SPSupport.moneyGradientLocations
-        checkmarkBadge.layer.insertSublayer(checkmarkGradient, at: 0)
         checkmarkBadge.addSubview(checkmarkIcon)
         card.addSubview(checkmarkBadge)
+        refreshBadgeColors()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: AlarmThemeTileCell, _) in
+            cell.refreshBadgeColors()
+        }
 
         NSLayoutConstraint.activate([
             card.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -136,6 +153,11 @@ final class AlarmThemeTileCell: UICollectionViewCell {
             previewView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
             previewView.trailingAnchor.constraint(equalTo: card.trailingAnchor),
             previewView.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+
+            customFill.topAnchor.constraint(equalTo: card.topAnchor),
+            customFill.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            customFill.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            customFill.bottomAnchor.constraint(equalTo: card.bottomAnchor),
 
             imageView.topAnchor.constraint(equalTo: card.topAnchor),
             imageView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
@@ -167,9 +189,23 @@ final class AlarmThemeTileCell: UICollectionViewCell {
         label.layer.masksToBounds = false
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        checkmarkGradient.frame = checkmarkBadge.bounds
+    private func refreshBadgeColors() {
+        checkmarkBadge.refresh(
+            colors: SPSupport.moneyGradientColors(for: traitCollection),
+            locations: SPSupport.moneyGradientLocations
+        )
+    }
+
+    /// White + shadow over theme imagery (the canon's `#FFF` / 75%); theme
+    /// inks on the flat empty custom slot, where white disappears on the light
+    /// theme's `whiteOverlay06` (#1110). The canon is dark-only and paints
+    /// white there because its `--sp-white-06` sits on `--sp-bg-0`.
+    private func applyLabelStyle(onFlatFill: Bool) {
+        nameLabel.textColor = onFlatFill ? AppColors.fg1 : .white
+        subtitleLabel.textColor = onFlatFill ? AppColors.fg2 : UIColor.white.withAlphaComponent(0.75)
+        let shadowOpacity: Float = onFlatFill ? 0 : 0.6
+        nameLabel.layer.shadowOpacity = shadowOpacity
+        subtitleLabel.layer.shadowOpacity = shadowOpacity
     }
 
     // MARK: - Configure
@@ -177,14 +213,19 @@ final class AlarmThemeTileCell: UICollectionViewCell {
     /// - Parameters:
     ///   - theme: built-in theme to render the gradient/name/subtitle from.
     ///     Ignored for the custom slot (pass `.dawn` as a placeholder).
-    ///   - isCustomSlot: when true, render the `+` affordance plus a dimmed
-    ///     placeholder gradient (or the picked photo thumbnail).
+    ///   - isCustomSlot: when true, render the `+` affordance on a flat
+    ///     `whiteOverlay06` fill with theme-ink copy (or the picked photo
+    ///     thumbnail with white copy).
     ///   - isSelected: money outline + offset + checkmark badge.
     ///   - customImage: thumbnail for the `.custom` slot when a photo exists.
     func configure(theme: AlarmTheme, isCustomSlot: Bool, isSelected: Bool, customImage: UIImage?) {
         imageView.image = nil
         imageView.isHidden = true
         plusIcon.isHidden = true
+        customFill.isHidden = true
+        previewView.isHidden = false
+        previewView.alpha = 1.0
+        var onFlatFill = false
 
         let displayTheme: AlarmTheme
         if isCustomSlot {
@@ -194,9 +235,10 @@ final class AlarmThemeTileCell: UICollectionViewCell {
                 imageView.isHidden = false
                 previewView.isHidden = true
             } else {
-                previewView.apply(theme: .dawn)
-                previewView.alpha = 0.4 // dim placeholder so "+" pops
+                previewView.isHidden = true
+                customFill.isHidden = false
                 plusIcon.isHidden = false
+                onFlatFill = true
             }
         } else if case .custom(let url) = theme {
             displayTheme = theme
@@ -206,13 +248,12 @@ final class AlarmThemeTileCell: UICollectionViewCell {
                 previewView.isHidden = true
             } else {
                 previewView.apply(theme: .dawn)
-                previewView.alpha = 1.0
             }
         } else {
             displayTheme = theme
             previewView.apply(theme: theme)
-            previewView.alpha = 1.0
         }
+        applyLabelStyle(onFlatFill: onFlatFill)
 
         nameLabel.text = displayTheme.displayName
         subtitleLabel.text = AlarmThemeSubtitles.subtitle(for: displayTheme)
